@@ -8,6 +8,7 @@
 //!   [`Diagnostic`]s that carry the file, line and column.
 //! - [`Store`] holds the configuration in effect. A file that fails to load
 //!   keeps its previous value, so a typo never breaks a running session.
+//! - [`Watcher`] and [`Debouncer`] tell the caller when to reload.
 //!
 //! Every value in a [`Config`] is valid by construction: validation happens
 //! while deserializing, so nothing downstream needs to re-check it.
@@ -16,6 +17,7 @@ mod action;
 mod bounded;
 mod color;
 mod config;
+mod debounce;
 mod diagnostic;
 mod general;
 mod keys;
@@ -26,11 +28,13 @@ mod rules;
 pub mod schema;
 mod store;
 mod theme;
+mod watcher;
 
 pub use action::{Action, Command, MAX_WORKSPACES, WorkspaceNumber};
 pub use bounded::Bounded;
 pub use color::Color;
 pub use config::{Config, FILES, MAX_FILE_SIZE};
+pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{Focus, FocusModel, General, Keyboard, Placement, Touchpad, Workspaces};
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
@@ -39,3 +43,4 @@ pub use paths::config_dir;
 pub use rules::{Match, Rule, Rules};
 pub use store::Store;
 pub use theme::{Animations, Border, Colors, Decoration, Font, Theme, Titlebar};
+pub use watcher::Watcher;
