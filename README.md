@@ -23,8 +23,8 @@ Supported targets: Linux on `x86_64` and `aarch64`.
 
 ```sh
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo llvm-cov --workspace --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo llvm-cov --workspace --all-features --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo deny check
 ```
 

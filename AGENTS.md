@@ -29,9 +29,9 @@ Rust and inspired by Fluxbox. It is a fresh implementation, not a port: see
 
 ```sh
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo llvm-cov --workspace --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-cargo test --workspace --doc
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo llvm-cov --workspace --all-features --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo test --workspace --all-features --doc
 cargo deny check
 ```
 
@@ -53,6 +53,12 @@ All five must pass. CI runs the same commands.
   "...")]` with a real reason is acceptable; a blanket `allow` is not.
 - **New dependencies** must pass `cargo deny check` and be justified in the
   commit body. Prefer the standard library.
+- **Error paths count.** The region gate treats an untested `?` as uncovered.
+  Make the failure reachable from a test (a real error, not a mock, where
+  possible) rather than restructuring code to hide it.
+- **Configuration types validate while deserializing** (`try_from`), so parser
+  errors carry a line and column. After changing them, regenerate the JSON
+  Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
 - **Record significant decisions** as a new ADR in `docs/adr/`, and keep
   `docs/ROADMAP.md` current when a task is finished.
 

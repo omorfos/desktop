@@ -22,7 +22,7 @@ inwards: adapters depend on the domain, never the reverse.
 | Crate | Status | Responsibility |
 |---|---|---|
 | `omorfos-core` | started | Pure domain: geometry, windows, workspaces, tab groups, focus, placement, key-chain state machine, per-app rules. No I/O, no Smithay types. |
-| `omorfos-config` | planned | YAML schema, defaults, validation with file and line diagnostics, directory watcher, last-known-good store. |
+| `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | planned | Versioned request, response and event types, plus a client library. |
 | `omorfos` | planned | The compositor binary. Translates Smithay events into domain commands and domain state into rendering. |
 | `omorfosctl` | planned | Command-line client for the IPC socket. |
@@ -37,9 +37,14 @@ Crates are created when their first task starts, not before.
 - **Hardware sits behind traits.** DRM/KMS, libinput and the seat are
   adapters, so every policy decision can be tested against a headless
   backend.
-- **Configuration is a value.** Reload parses and validates a whole new
-  value, then swaps it atomically. An invalid config is rejected whole; the
-  running one stays in place and the error is shown to the user.
+- **Configuration is a value.** Reload builds a whole new validated value
+  and swaps it in. Each file stands alone: one that fails to load keeps the
+  value it had, the others still apply, and the problem is kept as a
+  diagnostic to show the user. See
+  [adr/0003-configuration-loading.md](adr/0003-configuration-loading.md).
+- **The compositor maps configuration to the domain.** `omorfos-config` and
+  `omorfos-core` do not depend on each other; the binary translates config
+  values into domain commands.
 - **Components are processes, not plugins.** Panels, launchers and
   notification daemons are ordinary Wayland clients. They integrate through
   standard protocols (layer-shell, foreign-toplevel, ext-workspace) and the
@@ -51,4 +56,9 @@ Crates are created when their first task starts, not before.
 
 Files live in `$XDG_CONFIG_HOME/omorfos/` (default `~/.config/omorfos/`):
 `config.yaml`, `keys.yaml`, `rules.yaml`, `theme.yaml`, `menu.yaml`. All are
-optional; built-in defaults apply when a file is absent.
+optional; built-in defaults apply when a file is absent. The format is
+described in [CONFIGURATION.md](CONFIGURATION.md).
+
+Live reload is three small pieces the compositor's event loop wires
+together: `Watcher` (an inotify descriptor to poll), `Debouncer` (a pure
+timer state machine) and `Store` (the configuration in effect).
