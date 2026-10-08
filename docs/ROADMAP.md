@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 2, configuration.
+**Next:** milestone 3, core domain.
 
 ## 1. Bootstrap
 
@@ -18,13 +18,23 @@ land and keep the "Next" pointer current.
 
 ## 2. Configuration (`omorfos-config`)
 
-- [ ] Choose a maintained YAML crate (`serde_yaml` is archived); record an ADR
-- [ ] Schema and built-in defaults for `config`, `keys`, `rules`, `theme`,
+- [x] YAML crate chosen: `serde-saphyr` (ADR 3)
+- [x] Schema and built-in defaults for `config`, `keys`, `rules`, `theme`,
       `menu`
-- [ ] Validation with file, line and column diagnostics
-- [ ] Last-known-good store: an invalid reload is rejected whole
-- [ ] Directory watcher with debounce (editors save by atomic rename)
-- [ ] Generated JSON Schema for editor completion
+- [x] Validation with file, line and column diagnostics
+- [x] Last-known-good store, per file
+- [x] Directory watcher and debouncer (editors save by atomic rename)
+- [x] Generated JSON Schemas in `schemas/`, checked by a test
+
+Deferred to later milestones, where the pieces they need exist:
+
+- Checking key names against real XKB keysyms (milestone 4, with
+  libxkbcommon). Today any non-empty key name is accepted.
+- Wiring the watcher and debouncer into the event loop and creating the
+  directory on first run (milestone 4).
+- Showing diagnostics on screen and `omorfosctl config check` / `reload`
+  (milestone 7). A manual reload also covers symlinked files whose target is
+  edited in place, which the watcher cannot see.
 
 ## 3. Core domain (`omorfos-core`)
 
