@@ -1,0 +1,56 @@
+# Curated from gitignore.io (rust, linux, macos, windows).
+# Cargo.lock is committed on purpose: this workspace ships binaries.
+
+### Rust ###
+/target/
+**/*.rs.bk
+*.pdb
+
+### Coverage and profiling ###
+*.profraw
+*.profdata
+lcov.info
+/coverage/
+perf.data*
+flamegraph.svg
+
+### Packaging ###
+*.deb
+*.pkg.tar.*
+/dist/
+
+### Secrets and local overrides ###
+.env
+.env.*
+!.env.example
+
+### Editors ###
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+### Linux ###
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+### Windows ###
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
