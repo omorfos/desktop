@@ -1,0 +1,11 @@
+# https://github.com/crate-ci/committed
+style = "conventional"
+subject_length = 72
+line_length = 100
+hard_line_length = 100
+subject_capitalized = false
+subject_not_punctuated = true
+imperative_subject = true
+no_fixup = true
+no_wip = true
+ignore_author_re = "(dependabot|renovate)"
