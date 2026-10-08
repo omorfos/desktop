@@ -1,0 +1,201 @@
+//! JSON Schemas for the configuration files.
+//!
+//! Editors with YAML language support use these for completion, hover
+//! documentation and inline validation. The schemas are generated from the
+//! same types that parse the files, so they cannot drift from the parser.
+
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+
+use crate::keys::RawKeys;
+use crate::menu::RawItem;
+use crate::rules::RawMatch;
+use crate::{
+    Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, Rules,
+    Theme, Workspaces,
+};
+
+/// Generates a schema for each configuration file.
+///
+/// Returns pairs of the schema's file name, such as `keys.schema.json`, and
+/// its pretty-printed JSON.
+#[must_use]
+pub fn schemas() -> [(&'static str, String); 5] {
+    [
+        ("config.schema.json", render::<General>()),
+        ("keys.schema.json", render::<Keys>()),
+        ("rules.schema.json", render::<Rules>()),
+        ("theme.schema.json", render::<Theme>()),
+        ("menu.schema.json", render::<Menu>()),
+    ]
+}
+
+fn render<T: JsonSchema>() -> String {
+    format!(
+        "{:#}\n",
+        SchemaGenerator::default()
+            .into_root_schema_for::<T>()
+            .as_value()
+    )
+}
+
+impl<const MIN: u32, const MAX: u32> JsonSchema for Bounded<MIN, MAX> {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        format!("Integer{MIN}To{MAX}").into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "integer", "minimum": MIN, "maximum": MAX })
+    }
+}
+
+impl JsonSchema for Color {
+    fn schema_name() -> Cow<'static, str> {
+        "Color".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "A color written as `#rrggbb` or `#rrggbbaa`.",
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+        })
+    }
+}
+
+impl JsonSchema for Command {
+    fn schema_name() -> Cow<'static, str> {
+        "Command".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "A program followed by its arguments, run without a shell.",
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+        })
+    }
+}
+
+impl JsonSchema for KeyChain {
+    fn schema_name() -> Cow<'static, str> {
+        "KeyChain".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "Chords such as `Super+Return`, separated by spaces when chained.",
+            "type": "string",
+            "pattern": "\\S",
+        })
+    }
+}
+
+impl JsonSchema for Workspaces {
+    fn schema_name() -> Cow<'static, str> {
+        "Workspaces".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1,
+            "maxItems": MAX_WORKSPACES,
+        })
+    }
+}
+
+impl JsonSchema for Keys {
+    fn schema_name() -> Cow<'static, str> {
+        RawKeys::schema_name()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        RawKeys::json_schema(generator)
+    }
+}
+
+impl JsonSchema for Match {
+    fn schema_name() -> Cow<'static, str> {
+        RawMatch::schema_name()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut schema = RawMatch::json_schema(generator);
+        schema.insert("minProperties".to_owned(), 1.into());
+        schema
+    }
+}
+
+impl JsonSchema for MenuItem {
+    fn schema_name() -> Cow<'static, str> {
+        "MenuItem".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let entry = generator.subschema_for::<RawItem>();
+        json_schema!({
+            "oneOf": [
+                { "description": "A dividing line.", "const": "separator" },
+                entry,
+            ],
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schema(name: &str) -> String {
+        let schemas = schemas();
+        let (_, text) = schemas.iter().find(|(file, _)| *file == name).unwrap();
+        text.clone()
+    }
+
+    #[test]
+    fn there_is_one_schema_per_configuration_file() {
+        let names = schemas().map(|(name, _)| name.replace(".schema.json", ".yaml"));
+        assert_eq!(names, crate::FILES);
+    }
+
+    #[test]
+    fn schemas_are_pretty_printed_json_objects_ending_in_a_newline() {
+        for (name, text) in schemas() {
+            assert!(text.starts_with("{\n  \""), "{name}: {text}");
+            assert!(text.ends_with("}\n"), "{name}");
+        }
+    }
+
+    #[test]
+    fn settings_are_documented_for_editor_hover() {
+        assert!(
+            schema("config.schema.json").contains("\"description\": \"How windows gain focus.\"")
+        );
+    }
+
+    #[test]
+    fn value_constraints_are_part_of_the_schema() {
+        let theme = schema("theme.schema.json");
+        assert!(theme.contains("\"maximum\": 72"), "{theme}");
+        assert!(theme.contains("[0-9a-fA-F]{6}"), "{theme}");
+        assert!(schema("config.schema.json").contains("\"maxItems\": 32"));
+        assert!(schema("rules.schema.json").contains("\"minProperties\": 1"));
+        assert!(schema("keys.schema.json").contains("\"minItems\": 1"));
+        assert!(schema("keys.schema.json").contains("\"pattern\": \"\\\\S\""));
+    }
+
+    #[test]
+    fn menus_nest_through_a_reference() {
+        let menu = schema("menu.schema.json");
+        assert!(menu.contains("\"const\": \"separator\""), "{menu}");
+        assert!(menu.contains("\"$ref\": \"#/$defs/MenuItem\""), "{menu}");
+    }
+}

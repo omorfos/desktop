@@ -1,0 +1,26 @@
+[package]
+name = "omorfos-config"
+description = "Configuration schema, validation and live reload for the omorfos compositor"
+keywords = ["wayland", "compositor", "configuration"]
+categories = ["config"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Generates JSON Schemas for the configuration files (editor completion).
+schema = ["dep:schemars"]
+
+[dependencies]
+schemars = { version = "1.2.2", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde-saphyr = { version = "1.3.0", default-features = false, features = ["deserialize"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

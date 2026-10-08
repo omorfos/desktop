@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "Focus": {
+      "additionalProperties": false,
+      "description": "How windows gain focus.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/FocusModel",
+          "description": "What gives a window focus."
+        },
+        "raise_on_focus": {
+          "default": true,
+          "description": "Whether focusing a window also raises it above the others.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "FocusModel": {
+      "description": "What gives a window focus.",
+      "oneOf": [
+        {
+          "const": "click",
+          "description": "A window is focused when it is clicked.",
+          "type": "string"
+        },
+        {
+          "const": "sloppy",
+          "description": "A window is focused when the pointer enters it, and keeps focus while\nthe pointer is over the desktop.",
+          "type": "string"
+        }
+      ]
+    },
+    "Keyboard": {
+      "additionalProperties": false,
+      "description": "Keyboard layout and key repeat.",
+      "properties": {
+        "layout": {
+          "default": "us",
+          "description": "XKB layout, such as `us` or `gb,pl` for several.",
+          "type": "string"
+        },
+        "options": {
+          "default": "",
+          "description": "XKB options, such as `caps:escape,grp:alt_shift_toggle`.",
+          "type": "string"
+        },
+        "repeat_delay": {
+          "default": 400,
+          "description": "Milliseconds a key is held before it starts repeating.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "repeat_rate": {
+          "default": 30,
+          "description": "Repeats per second once repeating starts. `0` disables key repeat.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "variant": {
+          "default": "",
+          "description": "XKB variant, such as `dvorak`. Empty for the default.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Placement": {
+      "description": "Where a new window appears when no rule positions it.",
+      "oneOf": [
+        {
+          "const": "cascade",
+          "description": "Each window is offset from the previous one, so titlebars stay visible.",
+          "type": "string"
+        },
+        {
+          "const": "center",
+          "description": "In the middle of the screen.",
+          "type": "string"
+        },
+        {
+          "const": "pointer",
+          "description": "Under the pointer.",
+          "type": "string"
+        }
+      ]
+    },
+    "Touchpad": {
+      "additionalProperties": false,
+      "description": "Touchpad behaviour.",
+      "properties": {
+        "natural_scroll": {
+          "default": false,
+          "description": "Whether content follows the fingers when scrolling.",
+          "type": "boolean"
+        },
+        "tap_to_click": {
+          "default": true,
+          "description": "Whether tapping the touchpad clicks.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Workspaces": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The contents of `config.yaml`.",
+  "properties": {
+    "focus": {
+      "$ref": "#/$defs/Focus",
+      "description": "How windows gain focus."
+    },
+    "keyboard": {
+      "$ref": "#/$defs/Keyboard",
+      "description": "Keyboard layout and key repeat."
+    },
+    "placement": {
+      "$ref": "#/$defs/Placement",
+      "description": "Where new windows appear."
+    },
+    "touchpad": {
+      "$ref": "#/$defs/Touchpad",
+      "description": "Touchpad behaviour."
+    },
+    "workspaces": {
+      "$ref": "#/$defs/Workspaces",
+      "description": "The workspaces of the session, as a list of names."
+    }
+  },
+  "title": "General",
+  "type": "object"
+}

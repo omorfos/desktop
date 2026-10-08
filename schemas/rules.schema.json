@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "Match": {
+      "additionalProperties": false,
+      "description": "A match as written, before checking that it selects on something.",
+      "minProperties": 1,
+      "properties": {
+        "app_id": {
+          "default": null,
+          "description": "Pattern for the application identifier, such as `firefox` or\n`org.gnome.*`. `*` stands for any run of characters.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "default": null,
+          "description": "Pattern for the window title. `*` stands for any run of characters.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Rule": {
+      "additionalProperties": false,
+      "description": "What to do with a new window that matches.",
+      "properties": {
+        "decorations": {
+          "default": null,
+          "description": "Draw a titlebar and border around the window, or not.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fullscreen": {
+          "default": null,
+          "description": "Open the window fullscreen, or not.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "match": {
+          "$ref": "#/$defs/Match",
+          "description": "Which windows the rule applies to."
+        },
+        "maximized": {
+          "default": null,
+          "description": "Open the window maximized, or not.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "workspace": {
+          "description": "Open the window on the workspace with this number.",
+          "maximum": 32,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "match"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The contents of `rules.yaml`.",
+  "properties": {
+    "rules": {
+      "description": "Rules applied to new windows. Every matching rule applies, in order,\nso a later rule overrides an earlier one.",
+      "items": {
+        "$ref": "#/$defs/Rule"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "rules"
+  ],
+  "title": "Rules",
+  "type": "object"
+}

@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "Animations": {
+      "additionalProperties": false,
+      "description": "Motion.",
+      "properties": {
+        "duration": {
+          "description": "How long a transition takes, in milliseconds.",
+          "maximum": 1000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether transitions are animated at all.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Border": {
+      "additionalProperties": false,
+      "description": "Window borders.",
+      "properties": {
+        "radius": {
+          "description": "Corner radius in pixels. `0` gives square corners.",
+          "maximum": 32,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "description": "Border thickness in pixels. `0` removes the border.",
+          "maximum": 16,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Color": {
+      "description": "A color written as `#rrggbb` or `#rrggbbaa`.",
+      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "type": "string"
+    },
+    "Colors": {
+      "additionalProperties": false,
+      "description": "The color palette. Colors are written as `\"#rrggbb\"` or `\"#rrggbbaa\"`.",
+      "properties": {
+        "accent": {
+          "$ref": "#/$defs/Color",
+          "description": "Highlights, such as the selected menu entry."
+        },
+        "background": {
+          "$ref": "#/$defs/Color",
+          "description": "The desktop background, shown where there is no wallpaper."
+        },
+        "focused": {
+          "$ref": "#/$defs/Decoration",
+          "description": "Decoration of the focused window."
+        },
+        "unfocused": {
+          "$ref": "#/$defs/Decoration",
+          "description": "Decoration of every other window."
+        }
+      },
+      "type": "object"
+    },
+    "Decoration": {
+      "additionalProperties": false,
+      "description": "The colors of one window's decoration. All three are required.",
+      "properties": {
+        "border": {
+          "$ref": "#/$defs/Color",
+          "description": "The border around the window."
+        },
+        "text": {
+          "$ref": "#/$defs/Color",
+          "description": "The title text."
+        },
+        "titlebar": {
+          "$ref": "#/$defs/Color",
+          "description": "The titlebar background."
+        }
+      },
+      "required": [
+        "border",
+        "titlebar",
+        "text"
+      ],
+      "type": "object"
+    },
+    "Font": {
+      "additionalProperties": false,
+      "description": "The font used for titlebars and menus.",
+      "properties": {
+        "family": {
+          "default": "sans-serif",
+          "description": "A font family name, or a generic one such as `sans-serif`.",
+          "type": "string"
+        },
+        "size": {
+          "description": "Size in points.",
+          "maximum": 72,
+          "minimum": 6,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Titlebar": {
+      "additionalProperties": false,
+      "description": "Window titlebars.",
+      "properties": {
+        "height": {
+          "description": "Titlebar height in pixels.",
+          "maximum": 64,
+          "minimum": 16,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The contents of `theme.yaml`.",
+  "properties": {
+    "animations": {
+      "$ref": "#/$defs/Animations",
+      "description": "Motion."
+    },
+    "border": {
+      "$ref": "#/$defs/Border",
+      "description": "Window borders."
+    },
+    "colors": {
+      "$ref": "#/$defs/Colors",
+      "description": "The color palette."
+    },
+    "font": {
+      "$ref": "#/$defs/Font",
+      "description": "The font used for titlebars and menus."
+    },
+    "titlebar": {
+      "$ref": "#/$defs/Titlebar",
+      "description": "Window titlebars."
+    }
+  },
+  "title": "Theme",
+  "type": "object"
+}
