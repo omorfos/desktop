@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "Action": {
+      "description": "An action triggered by a key binding or a menu entry.\n\nIn YAML, actions without a parameter are plain strings (`close`) and\nactions with one are single-key mappings (`workspace: 2`).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Start a program, given as a list: the program followed by its\narguments. No shell is involved, so nothing is expanded or split.",
+          "properties": {
+            "spawn": {
+              "$ref": "#/$defs/Command"
+            }
+          },
+          "required": [
+            "spawn"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "close",
+          "description": "Ask the focused window to close.",
+          "type": "string"
+        },
+        {
+          "const": "maximize",
+          "description": "Toggle the focused window between maximized and its normal size.",
+          "type": "string"
+        },
+        {
+          "const": "fullscreen",
+          "description": "Toggle fullscreen for the focused window.",
+          "type": "string"
+        },
+        {
+          "const": "minimize",
+          "description": "Hide the focused window.",
+          "type": "string"
+        },
+        {
+          "const": "focus_next",
+          "description": "Focus the next window on the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "focus_previous",
+          "description": "Focus the previous window on the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "next_tab",
+          "description": "Switch to the tab after the active one in the focused window's group.",
+          "type": "string"
+        },
+        {
+          "const": "previous_tab",
+          "description": "Switch to the tab before the active one in the focused window's group.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Switch to the workspace with this number.",
+          "properties": {
+            "workspace": {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "workspace"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "next_workspace",
+          "description": "Switch to the following workspace.",
+          "type": "string"
+        },
+        {
+          "const": "previous_workspace",
+          "description": "Switch to the preceding workspace.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Send the focused window to the workspace with this number.",
+          "properties": {
+            "move_to_workspace": {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "move_to_workspace"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "show_menu",
+          "description": "Open the root menu at the pointer.",
+          "type": "string"
+        },
+        {
+          "const": "reload_config",
+          "description": "Re-read the configuration now.",
+          "type": "string"
+        },
+        {
+          "const": "quit",
+          "description": "End the session.",
+          "type": "string"
+        }
+      ]
+    },
+    "Binding": {
+      "additionalProperties": false,
+      "description": "One key binding: the keys to press and what they do.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/Action",
+          "description": "What the binding does."
+        },
+        "keys": {
+          "$ref": "#/$defs/KeyChain",
+          "description": "The keys to press, such as `Super+Return`. Separate several chords\nwith spaces to make a chain pressed one after another, such as\n`Super+x t`."
+        }
+      },
+      "required": [
+        "keys",
+        "action"
+      ],
+      "type": "object"
+    },
+    "Command": {
+      "description": "A program followed by its arguments, run without a shell.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "KeyChain": {
+      "description": "Chords such as `Super+Return`, separated by spaces when chained.",
+      "pattern": "\\S",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`keys.yaml` as written, before conflicts between bindings are checked.",
+  "properties": {
+    "bindings": {
+      "description": "The key bindings. Giving this list replaces all built-in bindings.",
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "bindings"
+  ],
+  "title": "Keys",
+  "type": "object"
+}

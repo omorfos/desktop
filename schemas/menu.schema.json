@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "Action": {
+      "description": "An action triggered by a key binding or a menu entry.\n\nIn YAML, actions without a parameter are plain strings (`close`) and\nactions with one are single-key mappings (`workspace: 2`).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Start a program, given as a list: the program followed by its\narguments. No shell is involved, so nothing is expanded or split.",
+          "properties": {
+            "spawn": {
+              "$ref": "#/$defs/Command"
+            }
+          },
+          "required": [
+            "spawn"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "close",
+          "description": "Ask the focused window to close.",
+          "type": "string"
+        },
+        {
+          "const": "maximize",
+          "description": "Toggle the focused window between maximized and its normal size.",
+          "type": "string"
+        },
+        {
+          "const": "fullscreen",
+          "description": "Toggle fullscreen for the focused window.",
+          "type": "string"
+        },
+        {
+          "const": "minimize",
+          "description": "Hide the focused window.",
+          "type": "string"
+        },
+        {
+          "const": "focus_next",
+          "description": "Focus the next window on the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "focus_previous",
+          "description": "Focus the previous window on the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "next_tab",
+          "description": "Switch to the tab after the active one in the focused window's group.",
+          "type": "string"
+        },
+        {
+          "const": "previous_tab",
+          "description": "Switch to the tab before the active one in the focused window's group.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Switch to the workspace with this number.",
+          "properties": {
+            "workspace": {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "workspace"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "next_workspace",
+          "description": "Switch to the following workspace.",
+          "type": "string"
+        },
+        {
+          "const": "previous_workspace",
+          "description": "Switch to the preceding workspace.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Send the focused window to the workspace with this number.",
+          "properties": {
+            "move_to_workspace": {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "move_to_workspace"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "show_menu",
+          "description": "Open the root menu at the pointer.",
+          "type": "string"
+        },
+        {
+          "const": "reload_config",
+          "description": "Re-read the configuration now.",
+          "type": "string"
+        },
+        {
+          "const": "quit",
+          "description": "End the session.",
+          "type": "string"
+        }
+      ]
+    },
+    "Command": {
+      "description": "A program followed by its arguments, run without a shell.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "MenuEntry": {
+      "additionalProperties": false,
+      "description": "A menu mapping as written, before checking it is an entry or a submenu.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Action"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What choosing the item does. Give either this or `items`."
+        },
+        "items": {
+          "description": "A nested menu. Give either this or `action`.",
+          "items": {
+            "$ref": "#/$defs/MenuItem"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "label": {
+          "description": "The text shown.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "type": "object"
+    },
+    "MenuItem": {
+      "oneOf": [
+        {
+          "const": "separator",
+          "description": "A dividing line."
+        },
+        {
+          "$ref": "#/$defs/MenuEntry"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The contents of `menu.yaml`.",
+  "properties": {
+    "items": {
+      "description": "The entries of the root menu, top to bottom.",
+      "items": {
+        "$ref": "#/$defs/MenuItem"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "Menu",
+  "type": "object"
+}
