@@ -136,6 +136,12 @@ pub struct Compositor {
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed_keys: Vec<Keycode>,
     pub(crate) pointer_location: Point<f64, Logical>,
+    /// The picture of the pointer, when the compositor is the one to draw
+    /// it.
+    pointer_image: Option<MemoryRenderBuffer>,
+    /// The virtual terminal the user asked to switch to, until the backend
+    /// collects it.
+    pub(crate) terminal_wanted: Option<i32>,
     pub(crate) hovered: Option<WindowId>,
     children: Vec<Child>,
     pub(crate) ipc: Option<Server>,
@@ -258,6 +264,8 @@ impl Compositor {
                     problems: Vec::new(),
                     suppressed_keys: Vec::new(),
                     pointer_location: (0.0, 0.0).into(),
+                    pointer_image: None,
+                    terminal_wanted: None,
                     hovered: None,
                     children: Vec::new(),
                     ipc: None,
@@ -356,6 +364,19 @@ impl Compositor {
     #[must_use]
     pub const fn is_running(&self) -> bool {
         self.running
+    }
+
+    /// Draws the pointer as part of the output from now on. For a backend
+    /// that drives the screen itself, where nothing else would show it.
+    pub fn show_pointer(&mut self) {
+        self.pointer_image = Some(buffer(&paint::pointer()));
+    }
+
+    /// The virtual terminal the user has asked to switch to since this was
+    /// last called, numbered from 1. Only a backend that holds the seat can
+    /// do it; others have nothing to do with the answer.
+    pub fn take_terminal_switch(&mut self) -> Option<i32> {
+        self.terminal_wanted.take()
     }
 
     /// The window-management state.
@@ -753,6 +774,18 @@ impl Compositor {
         let unspecified = Kind::Unspecified;
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
+        if let Some(image) = &self.pointer_image {
+            let pointer = MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                self.pointer_location.to_physical(1.0),
+                image,
+                None,
+                None,
+                None,
+                Kind::Cursor,
+            );
+            elements.extend(pointer.ok().map(Element::Memory));
+        }
         if let Some(notice) = &self.notice {
             let at = (
                 f64::from(notice.area.origin.x),

@@ -60,9 +60,11 @@ pub(crate) mod key {
     pub(crate) const T: Keycode = Keycode::new(28);
     pub(crate) const RETURN: Keycode = Keycode::new(36);
     pub(crate) const A: Keycode = Keycode::new(38);
+    pub(crate) const CONTROL: Keycode = Keycode::new(37);
     pub(crate) const SHIFT: Keycode = Keycode::new(50);
     pub(crate) const ALT: Keycode = Keycode::new(64);
     pub(crate) const X: Keycode = Keycode::new(53);
+    pub(crate) const F2: Keycode = Keycode::new(68);
     pub(crate) const SUPER: Keycode = Keycode::new(133);
 }
 

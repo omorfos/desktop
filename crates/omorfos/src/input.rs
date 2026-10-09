@@ -36,6 +36,14 @@ pub enum Input {
         /// Distance from the top edge.
         y: f64,
     },
+    /// The pointer moved by a distance, in pixels, as a mouse or touchpad
+    /// reports it. The pointer stops at the edges of the output.
+    MotionBy {
+        /// Distance moved to the right.
+        dx: f64,
+        /// Distance moved down.
+        dy: f64,
+    },
     /// A pointer button was pressed or released.
     Button {
         /// The Linux input event code, such as `0x110` for the left button.
@@ -50,6 +58,15 @@ pub enum Input {
         /// Downwards scroll distance.
         vertical: f64,
     },
+}
+
+/// The virtual terminal a key asks for, if it is one of the keys that
+/// switch between them: Ctrl+Alt+F1 to F12 on the usual layouts.
+fn virtual_terminal(keysym: Keysym) -> Option<i32> {
+    let first = Keysym::XF86_Switch_VT_1.raw();
+    (first..first + 12)
+        .position(|switch| switch == keysym.raw())
+        .and_then(|index| i32::try_from(index + 1).ok())
 }
 
 /// Linux input event codes for the pointer buttons.
@@ -153,6 +170,12 @@ impl Compositor {
         match event {
             Input::Key { code, pressed } => self.key(code, pressed, time),
             Input::Motion { x, y } => self.motion(x, y, time),
+            Input::MotionBy { dx, dy } => {
+                let size = self.output_size().to_f64();
+                let x = (self.pointer_location.x + dx).clamp(0.0, (size.w - 1.0).max(0.0));
+                let y = (self.pointer_location.y + dy).clamp(0.0, (size.h - 1.0).max(0.0));
+                self.motion(x, y, time);
+            }
             Input::Button { button, pressed } => self.button(button, pressed, time),
             Input::Scroll {
                 horizontal,
@@ -188,6 +211,13 @@ impl Compositor {
                 } else {
                     FilterResult::Forward
                 };
+            }
+            if let Some(terminal) = virtual_terminal(key.modified_sym()) {
+                // Not ours to act on: the backend that holds the seat is
+                // asked, and no client or binding sees the key.
+                compositor.terminal_wanted = Some(terminal);
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
             }
             let keysym = key
                 .raw_latin_sym_or_raw_current_sym()
