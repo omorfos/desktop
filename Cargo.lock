@@ -1004,6 +1004,9 @@ dependencies = [
  "omorfos-config",
  "omorfos-core",
  "smithay",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
