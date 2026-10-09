@@ -37,7 +37,8 @@ pub use config::{Config, FILES, MAX_FILE_SIZE};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Focus, FocusModel, General, Keyboard, Output, OutputScale, Placement, Touchpad, Workspaces,
+    Focus, FocusModel, General, Keyboard, NamedOutput, Output, OutputScale, Outputs, Placement,
+    Touchpad, Workspaces,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};

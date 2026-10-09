@@ -19,8 +19,11 @@ pub struct General {
     pub keyboard: Keyboard,
     /// Touchpad behaviour.
     pub touchpad: Touchpad,
-    /// How the screen is driven.
+    /// How every screen is driven, unless it is named in `outputs`.
     pub output: Output,
+    /// Particular screens, by name: where each stands and how it is
+    /// driven.
+    pub outputs: Outputs,
     /// Programs to start with the session, each as a program and its
     /// arguments. They are started once, in order, and not again when the
     /// configuration is reloaded.
@@ -170,6 +173,60 @@ pub struct Output {
     pub scale: OutputScale,
 }
 
+/// Particular screens, by name.
+///
+/// The screens listed stand side by side in this order, from the left,
+/// ahead of any that are connected but not listed. No name is listed twice.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(try_from = "Vec<NamedOutput>")]
+pub struct Outputs(Vec<NamedOutput>);
+
+impl Outputs {
+    /// The screens listed, from the left.
+    #[must_use]
+    pub fn listed(&self) -> &[NamedOutput] {
+        &self.0
+    }
+
+    /// What is said about the screen called `name`, if it is listed.
+    #[must_use]
+    pub fn named(&self, name: &str) -> Option<&NamedOutput> {
+        self.0.iter().find(|output| output.name == name)
+    }
+}
+
+impl TryFrom<Vec<NamedOutput>> for Outputs {
+    type Error = String;
+
+    fn try_from(outputs: Vec<NamedOutput>) -> Result<Self, Self::Error> {
+        let repeated = outputs.iter().enumerate().find(|(index, output)| {
+            let earlier = &outputs[..*index];
+            earlier.iter().any(|other| other.name == output.name)
+        });
+        if outputs.iter().any(|output| output.name.is_empty()) {
+            Err("an output's name must not be empty".to_owned())
+        } else if let Some((_, output)) = repeated {
+            Err(format!("output `{}` is listed more than once", output.name))
+        } else {
+            Ok(Self(outputs))
+        }
+    }
+}
+
+/// One screen, by the name of the socket it is plugged into.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct NamedOutput {
+    /// The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl
+    /// state` shows it.
+    pub name: String,
+    /// How large everything is drawn on it. Without this, the scale given
+    /// for every screen applies.
+    #[serde(default)]
+    pub scale: Option<OutputScale>,
+}
+
 /// How large everything is drawn on the screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(try_from = "String")]
@@ -221,6 +278,41 @@ mod tests {
             parse("autostart: [[]]").is_err(),
             "a program has to be named"
         );
+    }
+
+    #[test]
+    fn screens_are_listed_by_name_in_the_order_they_stand() {
+        assert_eq!(General::default().outputs.listed(), []);
+        let yaml = "outputs:\n  - { name: DP-3, scale: 1.25 }\n  - { name: eDP-1 }\n";
+        let outputs = parse(yaml).unwrap().outputs;
+        let names: Vec<&str> = outputs.listed().iter().map(|o| o.name.as_str()).collect();
+        assert_eq!(names, ["DP-3", "eDP-1"]);
+        assert_eq!(
+            outputs.named("DP-3").unwrap().scale,
+            Some(OutputScale::Quarters(5))
+        );
+        assert_eq!(outputs.named("eDP-1").unwrap().scale, None);
+        assert_eq!(outputs.named("HDMI-A-1"), None);
+    }
+
+    #[test]
+    fn a_screen_cannot_be_listed_twice_or_without_a_name() {
+        let twice = "outputs:\n  - { name: DP-3 }\n  - { name: eDP-1 }\n  - { name: DP-3 }\n";
+        let error = parse(twice).unwrap_err();
+        assert!(
+            error.contains("output `DP-3` is listed more than once"),
+            "{error}"
+        );
+        let error = parse("outputs: [{ name: '' }]").unwrap_err();
+        assert!(
+            error.contains("an output's name must not be empty"),
+            "{error}"
+        );
+        assert!(
+            parse("outputs: [{ scale: 2 }]").is_err(),
+            "a name is needed"
+        );
+        assert!(parse("outputs: [{ name: DP-3, size: 2 }]").is_err());
     }
 
     #[test]

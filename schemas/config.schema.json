@@ -77,6 +77,31 @@
       },
       "type": "object"
     },
+    "NamedOutput": {
+      "additionalProperties": false,
+      "description": "One screen, by the name of the socket it is plugged into.",
+      "properties": {
+        "name": {
+          "description": "The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl\nstate` shows it.",
+          "type": "string"
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputScale"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How large everything is drawn on it. Without this, the scale given\nfor every screen applies."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "Output": {
       "additionalProperties": false,
       "description": "How the screen is driven.",
@@ -102,6 +127,13 @@
           "type": "number"
         }
       ]
+    },
+    "Outputs": {
+      "description": "Screens by name, in the order they stand from the left.",
+      "items": {
+        "$ref": "#/$defs/NamedOutput"
+      },
+      "type": "array"
     },
     "Placement": {
       "description": "Where a new window appears when no rule positions it.",
@@ -171,7 +203,11 @@
     },
     "output": {
       "$ref": "#/$defs/Output",
-      "description": "How the screen is driven."
+      "description": "How every screen is driven, unless it is named in `outputs`."
+    },
+    "outputs": {
+      "$ref": "#/$defs/Outputs",
+      "description": "Particular screens, by name: where each stands and how it is\ndriven."
     },
     "placement": {
       "$ref": "#/$defs/Placement",

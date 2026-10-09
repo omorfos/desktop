@@ -43,6 +43,7 @@ touchpad:
   natural_scroll: false
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
+outputs: []               # particular screens, by name
 autostart: []             # programs to start with the session
 ```
 
@@ -63,8 +64,20 @@ time you log in; reloading the configuration does not start them again. A
 program that cannot be started is reported like any other problem.
 
 With more than one screen, they are placed side by side from left to
-right in the order they were plugged in, a laptop's own first. There is no
-setting for the arrangement yet.
+right in the order they were plugged in, a laptop's own first. To say
+otherwise, list them under `outputs`:
+
+```yaml
+outputs:
+  - { name: HDMI-A-1, scale: 1.25 }
+  - { name: eDP-1 }
+```
+
+The screens listed stand in that order from the left, ahead of any that
+are connected but not listed, and each may have a `scale` of its own in
+place of `output.scale`. A screen's name is the `output` shown by
+`omorfosctl state`. One that is listed but not plugged in is skipped.
+Screens can only be side by side for now, not one above another.
 
 Each screen has its own set of the workspaces listed, and shows one of
 them: switching workspace on one screen leaves the others as they are. A
@@ -72,7 +85,8 @@ window dragged onto another screen joins the workspace that screen is
 showing. When a screen is unplugged, its windows move to the workspace of
 the same number on the first screen that is left.
 
-`output.scale` is how large everything is drawn, on every screen. With `auto`, omorfos
+`output.scale` is how large everything is drawn, on every screen that
+`outputs` does not give a scale of its own. With `auto`, omorfos
 chooses for each screen from how dense it is, so that a laptop with a sharp panel
 is as readable as a desktop monitor. If the choice does not suit you, give
 a number: `1` is one pixel to a pixel, `1.5` half as large again, `2`

@@ -703,3 +703,71 @@ fn with_no_screen_the_state_still_lists_one_set_of_workspaces() {
     );
     assert_eq!(state.windows[0].output, "");
 }
+
+/// The left edge of each output, in the order they were added.
+fn lefts(session: &Session, second: &Output) -> (i32, i32) {
+    let compositor = session.compositor();
+    let first = compositor.area_of(&session.output()).loc.x;
+    (first, compositor.area_of(second).loc.x)
+}
+
+#[test]
+fn screens_stand_in_the_order_the_configuration_lists_them() {
+    // The second screen to be plugged in is to stand on the left.
+    let listed = "outputs:\n  - { name: test-1 }\n  - { name: not-plugged-in }\n";
+    let mut session = Session::with_config(&[("config.yaml", listed)]);
+    assert_eq!(session.compositor().area_of(&session.output()).loc.x, 0);
+    let second = session.add_output((800, 600));
+    assert_eq!(lefts(&session, &second), (800, 0), "the first moved over");
+
+    // A window keeps its place on its screen when the screens change
+    // places, and each screen keeps its own workspaces.
+    let mut client = session.connect();
+    pointer_to(&mut session, 800 + 100, 100);
+    session.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(session.draw_on(0).at(100, 50), RED);
+
+    session.write_config("config.yaml", "outputs: [{ name: test-0 }]\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(lefts(&session, &second), (0, WIDTH));
+    assert_eq!(session.draw_on(0).at(100, 50), RED, "still on the first");
+    assert_eq!(session.draw_on(1).at(100, 50), BACKGROUND);
+    assert_eq!(frames(&session), [(0, 0, 200, 100)]);
+
+    // With none listed they stand in the order they were plugged in.
+    session.write_config("config.yaml", "");
+    session.compositor_mut().reload_config();
+    assert_eq!(lefts(&session, &second), (0, WIDTH));
+}
+
+#[test]
+fn a_screen_named_in_the_configuration_has_the_scale_given_for_it() {
+    let scales =
+        "output: { scale: 1.5 }\noutputs:\n  - { name: test-1, scale: 2 }\n  - { name: test-2 }\n";
+    let mut session = Session::with_config(&[("config.yaml", scales)]);
+    let second = session.add_output((800, 600));
+    let third = session.add_output((800, 600));
+    let scale = |session: &Session, output: &Output| session.compositor().scale_of(output);
+    assert_eq!(
+        scale(&session, &session.output()),
+        Scale::new(1.5),
+        "for all"
+    );
+    assert_eq!(scale(&session, &second), Scale::new(2.0), "its own");
+    assert_eq!(
+        scale(&session, &third),
+        Scale::new(1.5),
+        "named, but no scale"
+    );
+
+    // What the backend suggests still counts where the configuration
+    // leaves it to the screen.
+    session.write_config("config.yaml", "outputs: [{ name: test-1, scale: auto }]\n");
+    session.compositor_mut().reload_config();
+    session
+        .compositor_mut()
+        .suggest_scale(&second, Scale::new(1.25));
+    assert_eq!(scale(&session, &second), Scale::new(1.25));
+    assert_eq!(scale(&session, &third), Scale::ONE);
+}

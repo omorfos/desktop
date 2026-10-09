@@ -67,11 +67,16 @@ come back when a screen does.
 
 ## Consequences
 
-- The arrangement cannot be changed: no mirroring, no stacking one above
-  the other, no choosing which is on the left beyond the order they were
-  plugged in.
-- One scale setting for all outputs. A different one per output needs a
-  setting keyed by the output's name.
+- At first the arrangement could not be changed and there was one scale
+  setting for all outputs. `outputs` in `config.yaml` now lists screens by
+  name: they stand in the order listed, ahead of any not listed, and each
+  may have its own scale. An output's identity to the window-management
+  model is still the order it was added in, so rearranging moves screens
+  and their windows with them without disturbing which workspaces are
+  whose.
+- Screens are side by side only: no mirroring, and none above another. A
+  list keeps the arrangement free of gaps the pointer could not cross,
+  which positions given by hand would not.
 - One graphics card. A screen on a second card is not seen.
 - A screen is driven at the mode it prefers. Its refresh rate is still
   reported to applications as 60 Hz.

@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem,
-    OutputScale, Rules, Theme, Workspaces,
+    NamedOutput, OutputScale, Outputs, Rules, Theme, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -114,6 +114,21 @@ impl JsonSchema for OutputScale {
                     "multipleOf": 0.25,
                 },
             ],
+        })
+    }
+}
+
+impl JsonSchema for Outputs {
+    fn schema_name() -> Cow<'static, str> {
+        "Outputs".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let output = generator.subschema_for::<NamedOutput>();
+        json_schema!({
+            "description": "Screens by name, in the order they stand from the left.",
+            "type": "array",
+            "items": output,
         })
     }
 }
