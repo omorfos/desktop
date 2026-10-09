@@ -16,5 +16,14 @@ omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
 smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "backend_winit"] }
 
+[dev-dependencies]
+tempfile = "3.27.0"
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
 [lints]
 workspace = true
