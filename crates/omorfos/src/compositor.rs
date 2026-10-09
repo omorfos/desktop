@@ -67,6 +67,7 @@ use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
 use crate::bridge::{self, Bindings};
+use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::input::Drag;
 use crate::ipc::Server;
@@ -769,6 +770,7 @@ impl Compositor {
                             id: *id,
                             fullscreen: frame.fullscreen,
                             window: window.clone(),
+                            surface: toplevel.wl_surface().clone(),
                             outer: frame.geometry,
                             origin,
                             chrome,
@@ -1023,7 +1025,8 @@ impl Compositor {
                 let bar = chrome.decoration.titlebar().origin;
                 let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
                 elements.extend(chrome.titlebar.element(renderer, at, view, unspecified));
-                for (buffer, border) in chrome.borders.iter().zip(chrome.decoration.borders()) {
+                let straight = corners::straight_borders(&chrome.decoration, chrome.radius);
+                for (buffer, border) in chrome.borders.iter().zip(straight) {
                     let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
                     let border = SolidColorRenderElement::from_buffer(
                         buffer,
@@ -1034,19 +1037,88 @@ impl Compositor {
                     );
                     elements.push(Element::Solid(border));
                 }
+                // Where the border turns the bottom corners.
+                let outer = chrome.decoration.outer();
+                let size = logical_size(outer.size);
+                let radius = chrome.radius.cast_signed();
+                let top = outer.origin.y + size.h - radius;
+                let lefts = [outer.origin.x, outer.origin.x + size.w - radius];
+                for (corner, left) in chrome.corners.iter().zip(lefts) {
+                    let at = Point::<i32, Logical>::from((left, top)).to_f64();
+                    elements.extend(corner.element(renderer, at, view, unspecified));
+                }
             }
-            // A window's surface may start above and left of its visible
-            // geometry, where it draws its own shadows.
-            let location = shown.origin - shown.window.geometry().loc;
+            Self::window_elements(renderer, view, shown, elements);
+        }
+    }
+
+    /// Adds what a window itself shows: its pop-ups whole, and its own
+    /// picture, which is cut to the frame if the frame's bottom corners are
+    /// rounded.
+    fn window_elements<R>(
+        renderer: &mut R,
+        view: View,
+        shown: &Shown,
+        elements: &mut Vec<Element<R>>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let scale = smithay::utils::Scale::from(view.scale.factor());
+        // A window's surface may start above and left of its visible
+        // geometry, where it draws its own shadows.
+        let location = shown.origin - shown.window.geometry().loc;
+        let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
+        let Some(chrome) = rounded else {
             let surfaces = shown
                 .window
                 .render_elements::<WaylandSurfaceRenderElement<R>>(
                     renderer,
                     view.pixel(location.to_f64()),
-                    smithay::utils::Scale::from(view.scale.factor()),
+                    scale,
                     1.0,
                 );
             elements.extend(surfaces.into_iter().map(Element::Surface));
+            return;
+        };
+        // Pop-ups reach beyond the frame and are not cut to it.
+        for (popup, offset) in PopupManager::popups_for_surface(&shown.surface) {
+            let at = location + shown.window.geometry().loc + offset - popup.geometry().loc;
+            let picture = render_elements_from_surface_tree(
+                renderer,
+                popup.wl_surface(),
+                view.pixel(at.to_f64()),
+                scale,
+                1.0,
+                Kind::Unspecified,
+            );
+            elements.extend(picture.into_iter().map(Element::Surface));
+        }
+        let pixels = |area: Rect| {
+            let corner = Point::<i32, Logical>::from((area.origin.x, area.origin.y));
+            let size = logical_size(area.size);
+            let from = view.pixel(corner.to_f64());
+            let to = view.pixel((corner + size.to_point()).to_f64());
+            Rectangle::new(from, (to - from).to_size())
+        };
+        let areas = corners::strips(
+            pixels(chrome.decoration.outer()),
+            pixels(chrome.decoration.client()),
+            view.scale.pixels(chrome.radius.cast_signed()),
+        );
+        for (strip, area) in areas.into_iter().enumerate() {
+            let whole: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+                renderer,
+                &shown.surface,
+                view.pixel(location.to_f64()),
+                scale,
+                1.0,
+                Kind::Unspecified,
+            );
+            let strips = whole.into_iter().filter_map(|picture| {
+                Strip::of(picture, view.scale.factor(), area, strip, &chrome.strips)
+            });
+            elements.extend(strips.map(Element::Strip));
         }
     }
 
@@ -1189,6 +1261,7 @@ render_elements! {
     /// decorations.
     Element<R> where R: ImportAll + ImportMem;
     Surface=WaylandSurfaceRenderElement<R>,
+    Strip=Strip<WaylandSurfaceRenderElement<R>>,
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
 }
@@ -1360,6 +1433,8 @@ pub(crate) struct Shown {
     pub(crate) id: WindowId,
     pub(crate) fullscreen: bool,
     pub(crate) window: Window,
+    /// The window's own surface.
+    surface: WlSurface,
     /// The whole frame, decoration included.
     pub(crate) outer: Rect,
     /// Where the window's visible geometry starts.
@@ -1383,6 +1458,12 @@ struct Chrome {
     decoration: Decoration,
     titlebar: Painted,
     borders: [SolidColorBuffer; 3],
+    /// How far the bottom corners are rounded, in units of layout.
+    radius: u32,
+    /// The border where it turns the bottom corners, left and right.
+    corners: [Painted; 2],
+    /// What the strips the window is drawn as are called.
+    strips: Names,
 }
 
 /// Everything a titlebar's pixels depend on. Its position is not part of
@@ -1393,6 +1474,8 @@ struct Appearance {
     active: usize,
     focused: bool,
     size: DomainSize,
+    /// How far the bottom corners are rounded.
+    radius: u32,
     theme: Theme,
     scale: Scale,
 }
@@ -1408,25 +1491,27 @@ impl Chrome {
         frame: &FrameInfo,
         decoration: Decoration,
     ) -> Self {
+        let radius = corners::radius(&decoration, theme.border.radius.get());
         let appearance = Appearance {
             titles: frame.titles.clone(),
             active: frame.active,
             focused: frame.focused,
             size: decoration.titlebar().size,
+            radius,
             theme: theme.clone(),
             scale,
         };
-        let (cached_titlebar, mut borders) = cached
-            .map(|chrome| {
-                (
-                    (chrome.appearance == appearance).then_some(chrome.titlebar),
-                    chrome.borders,
-                )
-            })
-            .unwrap_or_default();
-        let titlebar = cached_titlebar.unwrap_or_else(|| {
+        let palette = if frame.focused {
+            theme.colors.focused
+        } else {
+            theme.colors.unfocused
+        };
+        let straight = corners::straight_borders(&decoration, radius);
+        // Everything painted is kept for as long as it would look the same.
+        let kept = cached.filter(|chrome| chrome.appearance == appearance);
+        let mut chrome = kept.unwrap_or_else(|| {
             let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
-            Painted::new(&paint::titlebar(
+            let titlebar = paint::titlebar(
                 text,
                 theme,
                 &decoration,
@@ -1434,24 +1519,31 @@ impl Chrome {
                 frame.active,
                 frame.focused,
                 scale,
-            ))
+            );
+            let border = straight[0].size.width;
+            let corner = |mirrored| {
+                let canvas = paint::corner(palette.border, radius, border, mirrored, scale);
+                Painted::new(&canvas)
+            };
+            Self {
+                tabs: frame.tabs.clone(),
+                appearance: appearance.clone(),
+                decoration,
+                titlebar: Painted::new(&titlebar),
+                borders: <[SolidColorBuffer; 3]>::default(),
+                radius,
+                corners: [corner(false), corner(true)],
+                strips: Names::default(),
+            }
         });
-        let palette = if frame.focused {
-            theme.colors.focused
-        } else {
-            theme.colors.unfocused
-        };
-        for (buffer, border) in borders.iter_mut().zip(decoration.borders()) {
+        for (buffer, border) in chrome.borders.iter_mut().zip(straight) {
             // Updating with an unchanged size and colour is not damage.
             buffer.update(logical_size(border.size), color(palette.border));
         }
-        Self {
-            tabs: frame.tabs.clone(),
-            appearance,
-            decoration,
-            titlebar,
-            borders,
-        }
+        chrome.tabs.clone_from(&frame.tabs);
+        chrome.decoration = decoration;
+        chrome.radius = radius;
+        chrome
     }
 }
 

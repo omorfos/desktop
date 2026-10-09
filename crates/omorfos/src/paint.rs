@@ -189,6 +189,53 @@ fn corner_coverage(x: u32, y: u32, radius: u32) -> u32 {
     u32::try_from(count).unwrap_or(SAMPLES)
 }
 
+/// How many of a pixel's samples lie in a ring: within `outer` of the
+/// centre and not within `inner`.
+///
+/// `(x, y)` is the pixel's position from the corner of a square of side
+/// `outer`; the ring is centred on the square's opposite corner.
+fn ring_coverage(x: u32, y: u32, outer: u32, inner: u32) -> u32 {
+    // In eighths of a pixel, as in `corner_coverage`.
+    let centre = u64::from(outer) * 8;
+    let (far, near) = (centre * centre, (u64::from(inner) * 8).pow(2));
+    let inside = |x: u32, y: u32| {
+        let (dx, dy) = (centre.abs_diff(u64::from(x)), centre.abs_diff(u64::from(y)));
+        let distance = dx * dx + dy * dy;
+        distance <= far && distance > near
+    };
+    let samples = (0..4).flat_map(|row| (0..4).map(move |column| (column, row)));
+    let count = samples
+        .filter(|(column, row)| inside(x * 8 + column * 2 + 1, y * 8 + row * 2 + 1))
+        .count();
+    u32::try_from(count).unwrap_or(SAMPLES)
+}
+
+/// Paints the border where it turns a bottom corner of a frame: a quarter
+/// ring `radius` across and `border` thick, smooth at both edges. It is the
+/// left-hand corner, or the right-hand one if `mirrored`.
+pub(crate) fn corner(
+    color: Color,
+    radius: u32,
+    border: u32,
+    mirrored: bool,
+    scale: Scale,
+) -> Canvas {
+    let mut canvas = Canvas::scaled(radius, radius, scale);
+    let (_, thickness) = span(scale, 0, border);
+    let size = canvas.width().min(canvas.height());
+    for y in 0..size {
+        for x in 0..size {
+            // The ring's centre is the square's top corner on the inner
+            // side, so rows are counted up from the bottom.
+            let lit = ring_coverage(x, size - 1 - y, size, size.saturating_sub(thickness));
+            let column = if mirrored { size - 1 - x } else { x };
+            let coverage = u8::try_from(lit * 255 / SAMPLES).unwrap_or(u8::MAX);
+            canvas.blend(column.cast_signed(), y.cast_signed(), color, coverage);
+        }
+    }
+    canvas
+}
+
 /// Lays out and rasterises text. Holds the system's fonts, so it is created
 /// once and kept.
 pub(crate) struct Text {

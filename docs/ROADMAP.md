@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 8, real hardware.
+**Next:** milestone 9, shell components.
 
 ## 1. Bootstrap
 
@@ -117,8 +117,8 @@ Still open, carried forward:
 - During a resize from the left or top edge, the window's content can lag
   the frame by a frame or two, because the frame moves before the window
   has redrawn at the new size.
-- Only the titlebar's top corners are rounded; rounding the window itself
-  needs a shader and waits for the hardware backend (milestone 8).
+- Only the titlebar's top corners were rounded. The window's own are
+  since milestone 8, and without the shader that was expected to need.
 - Pointer cursor shapes (for example a resize arrow over a border): done
   in milestone 8.
 
@@ -175,7 +175,7 @@ Known gaps:
       ADR 14)
 - [x] A `wayland-sessions` entry for login screens, with programs told
       about the session however they are started (ADR 13)
-- [ ] Rounded window corners (needs a shader)
+- [x] Rounded window corners, without a shader (ADR 16)
 
 ## 9. Shell components
 

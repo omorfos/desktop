@@ -15,6 +15,7 @@ pub mod backend;
 pub mod bridge;
 pub mod cli;
 mod compositor;
+mod corners;
 mod cursor;
 mod handlers;
 mod input;
