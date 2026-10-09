@@ -13,8 +13,7 @@ land and keep the "Next" pointer current.
 - [x] Agent context: `AGENTS.md`, architecture, ADRs, this roadmap
 - [x] CI: format, Clippy, docs, `cargo-deny`, spelling, commit lint, tests
       with the coverage gate on amd64 and arm64
-- [ ] Push to GitHub and confirm the workflows pass there (needs the
-      repository URL; then set `repository` in the workspace manifest)
+- [x] Pushed to `github.com/omorfos/desktop`; workflows pass there
 
 ## 2. Configuration (`omorfos-config`)
 
