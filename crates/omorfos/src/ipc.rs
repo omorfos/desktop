@@ -1,0 +1,294 @@
+//! The server side of the IPC socket.
+//!
+//! Peers are other programs of the same user: panels, scripts, `omorfosctl`.
+//! They are still treated as untrusted in one respect that matters to a
+//! compositor: none of them may make it wait or grow without bound. All
+//! socket I/O is non-blocking, messages and buffers are capped, and a peer
+//! that breaks a rule is simply dropped.
+
+use std::fs;
+use std::io::{self, Read, Write};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
+
+use omorfos_config::Action;
+use omorfos_core::WindowId;
+use omorfos_ipc::{
+    MAX_MESSAGE, PROTOCOL, Reply, Request, State, Window, Workspace, decode, encode,
+};
+use serde::Deserialize;
+use smithay::reexports::rustix::net::sockopt::socket_peercred;
+
+use crate::Compositor;
+
+/// The most peers served at once. Further connections are refused.
+const MAX_PEERS: usize = 32;
+
+/// The most unsent output held for one peer, in bytes. A peer that falls
+/// further behind than this is not reading, and is dropped.
+const MAX_BACKLOG: usize = 1024 * 1024;
+
+/// The listening socket and the peers connected to it.
+#[derive(Debug)]
+pub(crate) struct Server {
+    listener: UnixListener,
+    path: PathBuf,
+    /// The user who may connect: the owner of the socket file.
+    owner: u32,
+    peers: Vec<Peer>,
+    /// The state last sent to subscribers.
+    published: Option<State>,
+}
+
+#[derive(Debug)]
+struct Peer {
+    stream: UnixStream,
+    /// Bytes received that do not yet end in a newline.
+    inbox: Vec<u8>,
+    /// Bytes still to be sent.
+    outbox: Vec<u8>,
+    subscribed: bool,
+    /// Subscribed, but not yet sent the state for the first time.
+    waiting: bool,
+    alive: bool,
+}
+
+impl Server {
+    /// Starts listening at `path`, replacing a socket left behind by an
+    /// earlier run. The socket is readable and writable by its owner only.
+    fn bind(path: PathBuf) -> io::Result<Self> {
+        // A leftover file would make the bind fail. If there is none, the
+        // removal fails instead, harmlessly.
+        let _ = fs::remove_file(&path);
+        let owner_only = fs::Permissions::from_mode(0o600);
+        UnixListener::bind(&path)
+            .and_then(|listener| fs::set_permissions(&path, owner_only).map(|()| listener))
+            .and_then(|listener| listener.set_nonblocking(true).map(|()| listener))
+            .and_then(|listener| fs::metadata(&path).map(|socket| (listener, socket.uid())))
+            .map(|(listener, owner)| Self {
+                listener,
+                path,
+                owner,
+                peers: Vec::new(),
+                published: None,
+            })
+    }
+
+    /// Takes on the connections waiting, up to the limit, turning away any
+    /// that are not from the socket's owner.
+    fn accept(&mut self) {
+        while let Ok((stream, _)) = self.listener.accept() {
+            let trusted = same_user(
+                socket_peercred(&stream).ok().map(|peer| peer.uid.as_raw()),
+                self.owner,
+            );
+            let room = self.peers.len() < MAX_PEERS;
+            let ready = stream.set_nonblocking(true).is_ok();
+            let peer = Peer {
+                stream,
+                inbox: Vec::new(),
+                outbox: Vec::new(),
+                subscribed: false,
+                waiting: false,
+                alive: true,
+            };
+            self.peers
+                .extend((trusted && room && ready).then_some(peer));
+        }
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// Whether a peer may use the socket: only if its user is known and is the
+/// owner.
+fn same_user(peer: Option<u32>, owner: u32) -> bool {
+    peer == Some(owner)
+}
+
+impl Peer {
+    /// Reads whatever has arrived and returns the complete lines.
+    fn read_lines(&mut self) -> Vec<Vec<u8>> {
+        let mut chunk = [0; 4096];
+        loop {
+            match self.stream.read(&mut chunk) {
+                Ok(length) if length > 0 => self.inbox.extend_from_slice(&chunk[..length]),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                // The peer closed the connection, or it failed.
+                _ => {
+                    self.alive = false;
+                    break;
+                }
+            }
+        }
+        let mut lines = Vec::new();
+        while let Some(end) = self.inbox.iter().position(|byte| *byte == b'\n') {
+            lines.push(self.inbox.drain(..=end).collect());
+        }
+        // What is left is the start of a line. One this long is not a
+        // message, and waiting for its end would mean buffering it.
+        self.alive &= self.inbox.len() <= MAX_MESSAGE;
+        lines
+    }
+
+    fn queue(&mut self, reply: &Reply) {
+        self.outbox.extend_from_slice(encode(reply).as_bytes());
+    }
+
+    /// Sends as much queued output as the socket will take right now.
+    fn flush(&mut self) {
+        match self.stream.write(&self.outbox) {
+            Ok(sent) => drop(self.outbox.drain(..sent)),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+            Err(_) => self.alive = false,
+        }
+        self.alive &= self.outbox.len() <= MAX_BACKLOG;
+    }
+}
+
+impl Compositor {
+    /// Starts serving the IPC protocol on a socket at `path`.
+    ///
+    /// Programs started by the compositor are told where it is through the
+    /// `OMORFOS_SOCKET` environment variable.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the socket cannot be created.
+    pub fn listen_ipc(&mut self, path: impl Into<PathBuf>) -> io::Result<()> {
+        Server::bind(path.into()).map(|server| self.ipc = Some(server))
+    }
+
+    /// Where the IPC socket is, if one is being served.
+    pub(crate) fn ipc_path(&self) -> Option<&Path> {
+        self.ipc.as_ref().map(|server| server.path.as_path())
+    }
+
+    /// Accepts new peers and answers the requests that have arrived.
+    pub(crate) fn serve_ipc(&mut self) {
+        // The server is moved out while requests are answered, because
+        // answering needs the whole compositor.
+        let Some(mut server) = self.ipc.take() else {
+            return;
+        };
+        server.accept();
+        for peer in &mut server.peers {
+            for line in peer.read_lines() {
+                let request = String::from_utf8(line).map_err(|error| error.to_string());
+                match request.and_then(|line| decode::<Request>(&line)) {
+                    // Answered when the state is next published, moments
+                    // from now, so that it is sent once and not twice.
+                    Ok(Request::Subscribe) => {
+                        peer.subscribed = true;
+                        peer.waiting = true;
+                    }
+                    Ok(request) => peer.queue(&self.answer(request)),
+                    Err(message) => peer.queue(&Reply::Error { message }),
+                }
+            }
+        }
+        self.ipc = Some(server);
+    }
+
+    /// Sends subscribers the state if it changed, and sends everyone what
+    /// is queued for them. Peers that have gone or misbehaved are dropped.
+    pub(crate) fn publish_ipc(&mut self) {
+        let Some(mut server) = self.ipc.take() else {
+            return;
+        };
+        let state = self.ipc_state();
+        let changed = server.published.as_ref() != Some(&state);
+        let update = Reply::State(state.clone());
+        for peer in server.peers.iter_mut().filter(|peer| peer.subscribed) {
+            if changed || peer.waiting {
+                peer.queue(&update);
+                peer.waiting = false;
+            }
+        }
+        server.published = Some(state);
+        for peer in &mut server.peers {
+            peer.flush();
+        }
+        server.peers.retain(|peer| peer.alive);
+        self.ipc = Some(server);
+    }
+
+    fn answer(&mut self, request: Request) -> Reply {
+        match request {
+            Request::Version => Reply::Version {
+                protocol: PROTOCOL,
+                compositor: env!("CARGO_PKG_VERSION").to_owned(),
+            },
+            // A subscription is answered in `publish_ipc`; should one get
+            // here it is treated as asking for the state once.
+            Request::State | Request::Subscribe => Reply::State(self.ipc_state()),
+            Request::Reload => {
+                self.reload_config();
+                Reply::Done
+            }
+            Request::Perform { action } => match Action::deserialize(action) {
+                Ok(action) => {
+                    self.perform(&action);
+                    Reply::Done
+                }
+                Err(error) => Reply::Error {
+                    message: format!("not an action: {error}"),
+                },
+            },
+            Request::Activate { window } => {
+                self.desktop.activate(WindowId::from_raw(window));
+                Reply::Done
+            }
+        }
+    }
+
+    fn ipc_state(&self) -> State {
+        let number = |index: usize| u32::try_from(index + 1).unwrap_or(u32::MAX);
+        let names = self.config().general.workspaces.names();
+        let active = self.desktop.active_workspace();
+        State {
+            workspaces: (0..self.desktop.workspace_count())
+                .map(|index| Workspace {
+                    number: number(index),
+                    name: names.get(index).cloned().unwrap_or_default(),
+                    active: index == active,
+                })
+                .collect(),
+            windows: self
+                .desktop
+                .windows()
+                .map(|listed| Window {
+                    id: listed.window.id.raw(),
+                    app_id: listed.window.app_id.clone(),
+                    title: listed.window.title.clone(),
+                    workspace: number(listed.workspace),
+                    focused: listed.focused,
+                    shown: listed.shown,
+                    minimized: listed.minimized,
+                })
+                .collect(),
+            problems: self.problems().to_vec(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_owner_of_the_socket_may_use_it() {
+        assert!(same_user(Some(1000), 1000));
+        assert!(!same_user(Some(1001), 1000), "another user");
+        assert!(
+            !same_user(Some(0), 1000),
+            "not even root is assumed to be welcome"
+        );
+        assert!(!same_user(None, 1000), "an unidentified peer");
+    }
+}

@@ -41,6 +41,7 @@ use smithay::wayland::shm::ShmState;
 
 use crate::bridge::{self, Bindings};
 use crate::input::Drag;
+use crate::ipc::Server;
 use crate::paint::{self, Text};
 
 /// How long the configuration directory must be quiet before it is reloaded.
@@ -105,6 +106,7 @@ pub struct Compositor {
     pub(crate) pointer_location: Point<f64, Logical>,
     pub(crate) hovered: Option<WindowId>,
     children: Vec<Child>,
+    pub(crate) ipc: Option<Server>,
     socket_name: Option<OsString>,
     running: bool,
 }
@@ -202,6 +204,7 @@ impl Compositor {
                     pointer_location: (0.0, 0.0).into(),
                     hovered: None,
                     children: Vec::new(),
+                    ipc: None,
                     socket_name: None,
                     running: true,
                 };
@@ -310,9 +313,11 @@ impl Compositor {
         // Collect children that have exited so they do not linger as zombies.
         self.children
             .retain_mut(|child| child.try_wait().is_ok_and(|status| status.is_none()));
+        self.serve_ipc();
         self.sync();
         self.space.refresh();
         self.popups.cleanup();
+        self.publish_ipc();
     }
 
     // --- Configuration -------------------------------------------------------
@@ -420,6 +425,9 @@ impl Compositor {
         process.args(command.arguments()).stdin(Stdio::null());
         if let Some(name) = &self.socket_name {
             process.env("WAYLAND_DISPLAY", name);
+        }
+        if let Some(path) = self.ipc_path() {
+            process.env("OMORFOS_SOCKET", path);
         }
         match process.spawn() {
             Ok(child) => self.children.push(child),

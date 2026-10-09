@@ -37,9 +37,12 @@ assets = [
 cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash", "fontconfig"] }
 omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
+omorfos-ipc = { path = "../omorfos-ipc" }
+serde = "1.0.229"
 smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "backend_winit"] }
 
 [dev-dependencies]
+serde_json = "1.0"
 # The software renderer lets the tests draw without a GPU. It is enabled here
 # only, so the shipped binary does not link pixman.
 smithay = { version = "0.7.0", default-features = false, features = ["renderer_pixman"] }
