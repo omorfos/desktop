@@ -54,6 +54,7 @@ screen sets the one from the other.
 - There is no `graphical-session.target` integration, so user services
   that wait for it do not start. That needs a session manager's worth of
   care about ordering and shutdown, and is left until something needs it.
-- Nothing is started automatically at login. A panel or wallpaper has to
-  be started by hand or from a key binding until there is a setting for
-  it.
+- Nothing was started automatically at login at first. `autostart` in
+  `config.yaml` now lists programs to start with the session. They are
+  started once the backend has its sockets and screens, and never a second
+  time: a reload that restarted them would run two of each.

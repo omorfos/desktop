@@ -43,10 +43,24 @@ touchpad:
   natural_scroll: false
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
+autostart: []             # programs to start with the session
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
 `["1", "2", "3", "4"]`.
+
+`autostart` lists programs to start when the session does, each as a
+program and its arguments, as for `spawn`:
+
+```yaml
+autostart:
+  - [swayidle, -w, timeout, "300", swaylock -f]
+  - [waybar]
+```
+
+They are started once, in order. Changing the list takes effect the next
+time you log in; reloading the configuration does not start them again. A
+program that cannot be started is reported like any other problem.
 
 With more than one screen, they are placed side by side from left to
 right in the order they were plugged in, a laptop's own first. There is no
@@ -176,8 +190,8 @@ bindings:
     action: { spawn: [swayidle, -w, timeout, "300", swaylock -f] }
 ```
 
-The second starts the daemon that locks after five minutes; there is no
-setting yet to start it at login. While the screen is locked nothing else
+The second starts the daemon that locks after five minutes. To have it
+running from login, list it under `autostart` in `config.yaml` instead. While the screen is locked nothing else
 is shown and no key binding works, except Ctrl+Alt+F1 to F12.
 
 ## Using windows

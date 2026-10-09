@@ -67,3 +67,39 @@ fn the_login_screen_entry_starts_omorfos_under_the_name_programs_are_told() {
     );
     assert_ne!(keys["Name"], "", "shown in the list of sessions");
 }
+
+#[test]
+fn the_programs_listed_are_started_with_the_session_and_only_once() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let marker = |name: &str| directory.path().join(name);
+    let append = |name: &str| format!("printf x >> '{}'", marker(name).display());
+    let config = format!(
+        "autostart:\n  - [sh, -c, \"{}\"]\n  - [sh, -c, \"{}\"]\n  - [/no/such/program]\n",
+        append("first"),
+        append("second"),
+    );
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    assert!(!marker("first").exists(), "not before the backend is ready");
+
+    session.compositor_mut().autostart();
+    let ran = |name: &str| std::fs::read_to_string(marker(name)).unwrap_or_default();
+    session.eventually(|_| ran("first") == "x" && ran("second") == "x");
+    assert_eq!(
+        session.compositor().problems(),
+        ["cannot start `/no/such/program`: No such file or directory (os error 2)"],
+        "one that cannot be started is reported, and the rest still are"
+    );
+
+    // Neither asking again nor reloading the configuration starts them
+    // a second time.
+    session.compositor_mut().autostart();
+    session.compositor_mut().reload_config();
+    session.compositor_mut().autostart();
+    let marker = session.config.path().join("later");
+    let script = format!("printf x > '{}'", marker.display());
+    let spawn: Action = serde_json::from_value(json!({ "spawn": ["sh", "-c", script] })).unwrap();
+    session.compositor_mut().perform(&spawn);
+    session.eventually(|_| marker.exists());
+    assert_eq!(ran("first"), "x");
+    assert_eq!(ran("second"), "x");
+}

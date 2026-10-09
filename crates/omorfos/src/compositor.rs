@@ -215,6 +215,8 @@ pub struct Compositor {
     /// shown, such as a film being played.
     pub(crate) inhibitors: Vec<WlSurface>,
     children: Vec<Child>,
+    /// Whether the programs to start with the session have been.
+    started: bool,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
     pub(crate) ipc_retry: Option<Instant>,
@@ -329,6 +331,7 @@ impl Compositor {
                     _idle_inhibit: idle_inhibit,
                     inhibitors: Vec::new(),
                     children: Vec::new(),
+                    started: false,
                     ipc: None,
                     ipc_retry: None,
                     event_loop,
@@ -644,6 +647,23 @@ impl Compositor {
                 self.problems
                     .push(format!("cannot start `{}`: {error}", command.program()));
             }
+        }
+    }
+
+    /// Starts the programs the configuration lists to be started with the
+    /// session. A backend calls this once it is ready for them: when the
+    /// sockets are open and there is a screen to show them on.
+    ///
+    /// They are started once. Calling this again, or changing the list and
+    /// reloading, starts nothing: what is already running would be started
+    /// twice.
+    pub fn autostart(&mut self) {
+        if std::mem::replace(&mut self.started, true) {
+            return;
+        }
+        let config = Arc::clone(self.store.current());
+        for command in &config.general.autostart {
+            self.spawn(command);
         }
     }
 
