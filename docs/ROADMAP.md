@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 6, Fluxbox features.
+**Next:** milestone 7, IPC and ecosystem protocols.
 
 ## 1. Bootstrap
 
@@ -67,13 +67,8 @@ Deferred until the features that need them:
 Not done yet, and where it is planned:
 
 - Clipboard and drag-and-drop (`wl_data_device`): milestone 7.
-- Popup grabs (dismissing a menu by clicking elsewhere), interactive move
-  and resize, and decorations: milestone 6.
-- The window's size is taken once, when it first shows content. A window
-  that later resizes itself is drawn correctly, but restoring it from
-  maximized uses the original size: milestone 6.
-- A window that a rule maximizes shows one frame at its natural size before
-  it is told the new size: milestone 6.
+- Popup grabs and the one-frame flash of rule-maximized windows: see the
+  open items under milestone 6.
 - The mouse cursor is the host's; drawing our own, and client-set cursors,
   come with the hardware backend in milestone 8.
 - Problems (bad configuration, a program that would not start) are printed
@@ -100,10 +95,32 @@ the compositor can drive real hardware.
 
 ## 6. Fluxbox features
 
-- [ ] Server-side decorations with tabs
-- [ ] Interactive move and resize
-- [ ] Root menu
-- [ ] Key chains and per-application rules wired to config
+- [x] Server-side decorations with tabs (xdg-decoration; titlebar, borders
+      and titles drawn by the compositor)
+- [x] Interactive move and resize (titlebar and border drags, Alt-drag,
+      and client requests)
+- [x] Tabs by pointer: click to switch, middle-drag to attach and detach
+- [x] Root menu (right click on the desktop, or `show_menu`)
+- [x] Key chains and per-application rules wired to config (done in
+      milestone 4)
+- [x] Windows that resize themselves resize their frames; fullscreen
+      frames are drawn above the rest
+
+Still open, carried forward:
+
+- Popup grabs: a client's own menus are not dismissed by clicking outside
+  them (milestone 7).
+- A window that a rule maximizes shows one frame at its natural size first
+  (milestone 7).
+- Titlebar buttons (close, maximize, minimize), double-click to maximize,
+  and keyboard navigation of the root menu.
+- During a resize from the left or top edge, the window's content can lag
+  the frame by a frame or two, because the frame moves before the window
+  has redrawn at the new size.
+- Only the titlebar's top corners are rounded; rounding the window itself
+  needs a shader and waits for the hardware backend (milestone 8).
+- Pointer cursor shapes (for example a resize arrow over a border) come
+  with our own cursor in milestone 8.
 
 ## 7. IPC and ecosystem protocols
 

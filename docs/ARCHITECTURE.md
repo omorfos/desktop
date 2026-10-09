@@ -21,7 +21,7 @@ inwards: adapters depend on the domain, never the reverse.
 
 | Crate | Status | Responsibility |
 |---|---|---|
-| `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
+| `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | planned | Versioned request, response and event types, plus a client library. |
 | `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
@@ -67,6 +67,13 @@ A backend owns the event loop and the screen. Each turn it:
    and then makes Smithay's view match the `Desktop`: which windows are
    mapped, where, in what order and state, and which has keyboard focus;
 4. draws with `Compositor::render`, generic over the renderer.
+
+The compositor draws three kinds of thing, from its own scene (bottom to
+top) rather than Smithay's `Space`, so that decorations interleave with
+windows correctly: client surfaces, frame decorations, and the root menu.
+Decorations and the menu are painted on the CPU by `paint` into a `Canvas`
+and uploaded as textures, repainted only when their appearance changes. See
+[adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md).
 
 Because the renderer and the input source are both parameters, the tests in
 `crates/omorfos/tests/integration` run the whole compositor against a real
