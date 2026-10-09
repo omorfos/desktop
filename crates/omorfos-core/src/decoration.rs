@@ -42,9 +42,11 @@ impl Edges {
         self.0 & other.0 == other.0
     }
 
-    /// Returns `other` if `condition` holds, and no edges otherwise.
-    const fn when(condition: bool, other: Self) -> Self {
-        if condition { other } else { Self::NONE }
+    /// Returns the union of `self` and `other` if `condition` holds, and
+    /// `self` unchanged otherwise.
+    #[must_use]
+    pub const fn with_if(self, condition: bool, other: Self) -> Self {
+        if condition { self.with(other) } else { self }
     }
 }
 
@@ -216,19 +218,11 @@ impl Decoration {
         let near_right = x >= outer.right() - across;
         let near_top = y < i64::from(outer.origin.y) + down;
         let near_bottom = y >= outer.bottom() - down;
-        let edges = Edges::when(left || ((top || bottom) && near_left), Edges::LEFT)
-            .with(Edges::when(
-                right || ((top || bottom) && near_right),
-                Edges::RIGHT,
-            ))
-            .with(Edges::when(
-                top || ((left || right) && near_top),
-                Edges::TOP,
-            ))
-            .with(Edges::when(
-                bottom || ((left || right) && near_bottom),
-                Edges::BOTTOM,
-            ));
+        let edges = Edges::NONE
+            .with_if(left || ((top || bottom) && near_left), Edges::LEFT)
+            .with_if(right || ((top || bottom) && near_right), Edges::RIGHT)
+            .with_if(top || ((left || right) && near_top), Edges::TOP)
+            .with_if(bottom || ((left || right) && near_bottom), Edges::BOTTOM);
         Some(Part::Border(edges))
     }
 }
@@ -461,6 +455,8 @@ mod tests {
         assert!(corner.contains(Edges::LEFT) && corner.contains(Edges::TOP));
         assert!(!corner.contains(Edges::RIGHT));
         assert!(corner.contains(Edges::NONE));
+        assert_eq!(Edges::LEFT.with_if(true, Edges::TOP), corner);
+        assert_eq!(Edges::LEFT.with_if(false, Edges::TOP), Edges::LEFT);
         assert_eq!(Edges::default(), Edges::NONE);
     }
 
