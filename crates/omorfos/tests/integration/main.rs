@@ -15,4 +15,5 @@ mod input;
 mod ipc;
 mod layers;
 mod menu;
+mod notice;
 mod windows;
