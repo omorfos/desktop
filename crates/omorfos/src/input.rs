@@ -96,10 +96,13 @@ enum Under {
     Frame(WindowId, Hit),
     /// A layer-shell surface, and where it is on the output. `wallpaper`
     /// marks the background layer, which stands in for the bare desktop.
+    /// `takes_keyboard` is the layer's own surface if it accepts the
+    /// keyboard when clicked.
     Layer {
         surface: WlSurface,
         origin: Point<f64, Logical>,
         wallpaper: bool,
+        takes_keyboard: Option<WlSurface>,
     },
 }
 
@@ -324,12 +327,16 @@ impl Compositor {
             let surface = layers.layer_under(layer, self.pointer_location)?;
             let origin = layers.layer_geometry(surface).unwrap_or_default().loc;
             let within = self.pointer_location - origin.to_f64();
+            let takes_keyboard = surface
+                .can_receive_keyboard_focus()
+                .then(|| surface.wl_surface().clone());
             let (surface, offset) = surface.surface_under(within, WindowSurfaceType::ALL)?;
             let wallpaper = layer == Layer::Background;
             Some(Under::Layer {
                 surface,
                 origin: (offset + origin).to_f64(),
                 wallpaper,
+                takes_keyboard,
             })
         };
         let on_frame = |fullscreen| {
@@ -412,6 +419,12 @@ impl Compositor {
         let under = self.under();
         if pressed {
             self.dismiss_popups(under.as_ref());
+            // A panel that accepts the keyboard, such as one with a search
+            // box, has it from a click on it until a click elsewhere.
+            self.layer_focus = match &under {
+                Some(Under::Layer { takes_keyboard, .. }) => takes_keyboard.clone(),
+                _ => None,
+            };
         }
         let desktop = matches!(
             under,

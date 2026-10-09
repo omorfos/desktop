@@ -440,3 +440,48 @@ fn only_layers_above_the_windows_can_demand_the_keyboard() {
         "a desktop widget is not a launcher"
     );
 }
+
+#[test]
+fn a_panel_that_accepts_the_keyboard_has_it_from_a_click_until_a_click_elsewhere() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let search = LayerShape {
+        keyboard: KeyboardInteractivity::OnDemand,
+        ..panel()
+    };
+    let (surface, role) = session.open_layer(&mut client, &search, (WIDTH, 30), YELLOW);
+    assert!(
+        !client.take_events().contains(&Event::KeyboardLeave),
+        "not until it is clicked"
+    );
+
+    // The panel reserved the top 30 pixels; the window opened below it.
+    move_to(&mut session, 300, 12);
+    click(&mut session, LEFT);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::KeyboardLeave) && events.contains(&Event::KeyboardEnter),
+        "{events:?}"
+    );
+
+    move_to(&mut session, 50, 60);
+    click(&mut session, LEFT);
+    session.roundtrip(&mut client);
+    assert!(
+        client.take_events().contains(&Event::KeyboardLeave),
+        "back to the window"
+    );
+
+    // Clicked again, then closed: the window gets the keyboard back.
+    move_to(&mut session, 300, 12);
+    click(&mut session, LEFT);
+    session.roundtrip(&mut client);
+    client.take_events();
+    role.destroy();
+    surface.destroy();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::KeyboardEnter));
+}
