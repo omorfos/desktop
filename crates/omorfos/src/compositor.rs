@@ -1031,7 +1031,7 @@ fn color(color: omorfos_config::Color) -> Color32F {
     )
 }
 
-fn set(states: &mut ToplevelStateSet, state: ToplevelState, on: bool) {
+pub(crate) fn set(states: &mut ToplevelStateSet, state: ToplevelState, on: bool) {
     if on {
         states.set(state);
     } else {
@@ -1039,7 +1039,7 @@ fn set(states: &mut ToplevelStateSet, state: ToplevelState, on: bool) {
     }
 }
 
-fn logical_size(size: DomainSize) -> Size<i32, Logical> {
+pub(crate) fn logical_size(size: DomainSize) -> Size<i32, Logical> {
     let clamp = |length: u32| i32::try_from(length).unwrap_or(i32::MAX);
     (clamp(size.width), clamp(size.height)).into()
 }

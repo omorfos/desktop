@@ -7,7 +7,7 @@ use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_
 use smithay::desktop::{LayerSurface, PopupKind, Window, WindowSurfaceType, layer_map_for_output};
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge;
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{ResizeEdge, State as ToplevelState};
 use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -35,7 +35,7 @@ use smithay::{
     delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
-use crate::compositor::{ClientState, Compositor, Mapped};
+use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
 use crate::input::Wanted;
 
 impl CompositorHandler for Compositor {
@@ -118,7 +118,31 @@ impl Compositor {
         else {
             return;
         };
+        let (app_id, title) = names(surface);
+        // The window expects us to decorate it if it negotiated that.
+        let wants_decoration = self.unmapped[index]
+            .with_pending_state(|state| state.decoration_mode == Some(DecorationMode::ServerSide));
         if !self.unmapped[index].is_initial_configure_sent() {
+            // A window that rules open maximized or fullscreen is told so
+            // now, before it draws, so that it never shows at another size.
+            let opening =
+                self.desktop
+                    .opening(&app_id, &title, self.pointer_position(), wants_decoration);
+            self.unmapped[index].with_pending_state(|state| {
+                if let Some(opening) = opening {
+                    state.size = Some(logical_size(opening.size));
+                    set(
+                        &mut state.states,
+                        ToplevelState::Maximized,
+                        opening.maximized,
+                    );
+                    set(
+                        &mut state.states,
+                        ToplevelState::Fullscreen,
+                        opening.fullscreen,
+                    );
+                }
+            });
             self.unmapped[index].send_configure();
             return;
         }
@@ -129,11 +153,7 @@ impl Compositor {
         let toplevel = self.unmapped.remove(index);
         let window = Window::new_wayland_window(toplevel.clone());
         window.on_commit();
-        let (app_id, title) = names(surface);
         let size = domain_size(window.geometry().size);
-        // The window expects us to decorate it if it negotiated that.
-        let wants_decoration = toplevel
-            .with_pending_state(|state| state.decoration_mode == Some(DecorationMode::ServerSide));
         let id = self.desktop.add_window(
             app_id,
             title,
