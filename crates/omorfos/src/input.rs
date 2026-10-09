@@ -233,6 +233,11 @@ impl Compositor {
             return;
         }
 
+        if self.over_notice() {
+            // The notice is ours; nothing underneath sees the pointer.
+            self.move_pointer(None, time);
+            return;
+        }
         if let Some(menu) = &mut self.menu {
             // An open menu has the pointer, like a drag.
             menu.hover(position);
@@ -270,6 +275,14 @@ impl Compositor {
         };
         pointer.motion(self, focus, &event);
         pointer.frame(self);
+    }
+
+    /// Whether the pointer is on the problem notice.
+    fn over_notice(&self) -> bool {
+        let position = self.pointer_position();
+        self.notice
+            .as_ref()
+            .is_some_and(|notice| notice.area.contains(position))
     }
 
     /// What is under the pointer, in the order things are drawn: overlays,
@@ -343,6 +356,13 @@ impl Compositor {
             return;
         }
         let position = self.pointer_position();
+        if self.over_notice() {
+            // A click on the notice dismisses it, until what it says changes.
+            if pressed {
+                self.dismissed = self.problems().to_vec();
+            }
+            return;
+        }
         if let Some(menu) = &mut self.menu {
             let outcome = if pressed {
                 menu.press(position)

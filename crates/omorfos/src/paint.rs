@@ -356,6 +356,52 @@ pub(crate) fn menu_panel<A: Clone>(
     canvas
 }
 
+/// The height of one line of the problem notice, in pixels.
+const NOTICE_ROW: u32 = 22;
+
+/// The most problems the notice lists before summarising the rest.
+const NOTICE_LINES: usize = 6;
+
+/// Paints the notice that tells the user something is wrong: a heading and
+/// one line per problem, each cut short if it does not fit.
+pub(crate) fn notice(text: &mut Text, theme: &Theme, problems: &[String], width: u32) -> Canvas {
+    let hidden = problems.len().saturating_sub(NOTICE_LINES);
+    let heading = "Problems (click to dismiss)".to_owned();
+    let more = (hidden > 0).then(|| format!("\u{2026} and {hidden} more"));
+    let lines: Vec<&String> = std::iter::once(&heading)
+        .chain(problems.iter().take(NOTICE_LINES))
+        .chain(more.iter())
+        .collect();
+
+    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    let height = rows.saturating_mul(NOTICE_ROW).saturating_add(PADDING * 2);
+    let colors = &theme.colors;
+    let mut canvas = Canvas::new(width, height);
+    canvas.fill((0, 0, width, height), colors.accent);
+    canvas.fill(
+        (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
+        colors.focused.titlebar,
+    );
+    let room = width.saturating_sub(PADDING * 2);
+    let mut top = PADDING.cast_signed();
+    for (index, line) in lines.into_iter().enumerate() {
+        let ink = if index == 0 {
+            colors.accent
+        } else {
+            colors.focused.text
+        };
+        text.draw(
+            &mut canvas,
+            line,
+            (PADDING.cast_signed(), top, room, NOTICE_ROW),
+            ink,
+            &theme.font,
+        );
+        top += NOTICE_ROW.cast_signed();
+    }
+    canvas
+}
+
 #[cfg(test)]
 mod tests {
     use omorfos_core::Metrics as FrameMetrics;
@@ -640,6 +686,53 @@ mod tests {
             lit.at(190, 50),
             argb(colors.focused.titlebar),
             "the others are not"
+        );
+    }
+
+    #[test]
+    fn a_notice_lists_each_problem_under_a_heading() {
+        let theme = Theme::default();
+        let colors = &theme.colors;
+        let mut text = Text::new();
+        let problems = vec![
+            "theme.yaml:2:11: invalid color".to_owned(),
+            "keys.yaml: no such key".to_owned(),
+        ];
+
+        let canvas = notice(&mut text, &theme, &problems, 400);
+
+        // A heading and two problems, 22 pixels each, plus padding.
+        assert_eq!((canvas.width(), canvas.height()), (400, 86));
+        assert_eq!(
+            canvas.at(0, 40),
+            argb(colors.accent),
+            "outlined in the accent colour"
+        );
+        assert_eq!(canvas.at(395, 40), argb(colors.focused.titlebar));
+        let row = |top: u32| (10..300).flat_map(move |x| (top..top + 22).map(move |y| (x, y)));
+        let ink = |top: u32| {
+            row(top)
+                .filter(|(x, y)| canvas.at(*x, *y) != argb(colors.focused.titlebar))
+                .count()
+        };
+        assert!(
+            ink(10) > 30 && ink(32) > 30 && ink(54) > 30,
+            "three lines of text"
+        );
+    }
+
+    #[test]
+    fn a_long_list_of_problems_is_summarised() {
+        let mut text = Text::new();
+        let few: Vec<String> = (0..6).map(|n| format!("problem {n}")).collect();
+        let many: Vec<String> = (0..40).map(|n| format!("problem {n}")).collect();
+        let exactly = notice(&mut text, &Theme::default(), &few, 400);
+        let capped = notice(&mut text, &Theme::default(), &many, 400);
+        assert_eq!(exactly.height(), 7 * 22 + 20, "a heading and six problems");
+        assert_eq!(
+            capped.height(),
+            8 * 22 + 20,
+            "the same, and a line counting the rest"
         );
     }
 

@@ -99,6 +99,10 @@ pub struct Compositor {
     /// The root menu, while it is open.
     pub(crate) menu: Option<Menu<Action>>,
     menu_chrome: Option<MenuChrome>,
+    /// The on-screen notice of what is wrong, while there is something.
+    pub(crate) notice: Option<Notice>,
+    /// The problems the user has clicked away, hidden until they change.
+    pub(crate) dismissed: Vec<String>,
     text: Text,
 
     store: Store,
@@ -205,6 +209,8 @@ impl Compositor {
                     drag: None,
                     menu: None,
                     menu_chrome: None,
+                    notice: None,
+                    dismissed: Vec::new(),
                     text: Text::new(),
                     store,
                     watcher,
@@ -560,8 +566,40 @@ impl Compositor {
                 .map_element(shown.window.clone(), shown.origin, false);
         }
 
-        // Repaint the menu if it, or the theme, changed since it was drawn.
+        self.repaint_overlays();
+        self.sync_keyboard_focus(focused);
+    }
+
+    /// Brings the problem notice and the root menu up to date, repainting
+    /// each only when what it shows would differ.
+    fn repaint_overlays(&mut self) {
+        // Show what is wrong until it is put right or the notice is clicked
+        // away, and repaint it only when its contents would differ.
+        let config = Arc::clone(self.store.current());
         let theme = &config.theme;
+        if self.problems.is_empty() {
+            self.dismissed.clear();
+        }
+        let wanted = !self.problems.is_empty() && self.problems != self.dismissed;
+        let output_width = self.screen.area.size.width;
+        let current = self.notice.take().filter(|notice| {
+            wanted
+                && notice.problems == self.problems
+                && notice.theme == *theme
+                && notice.output_width == output_width
+        });
+        self.notice = match (current, wanted) {
+            (Some(notice), _) => Some(notice),
+            (None, true) => Some(Notice::paint(
+                &mut self.text,
+                theme,
+                &self.problems,
+                output_width,
+            )),
+            (None, false) => None,
+        };
+
+        // Repaint the menu if it, or the theme, changed since it was drawn.
         let current = self
             .menu_chrome
             .take()
@@ -571,7 +609,10 @@ impl Compositor {
             (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu)),
             (None, None) => None,
         };
+    }
 
+    /// Gives the keyboard to whoever should have it now.
+    fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
         // A launcher or lock prompt that demands the keyboard has it for as
         // long as it is up; otherwise the focused window does.
         let demanding = layer_map_for_output(&self.output)
@@ -617,6 +658,22 @@ impl Compositor {
         let unspecified = Kind::Unspecified;
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
+        if let Some(notice) = &self.notice {
+            let at = (
+                f64::from(notice.area.origin.x),
+                f64::from(notice.area.origin.y),
+            );
+            let notice = MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                at,
+                &notice.pixels,
+                None,
+                None,
+                None,
+                unspecified,
+            );
+            elements.extend(notice.ok().map(Element::Memory));
+        }
         for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
             let panel = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
@@ -736,6 +793,43 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<R>,
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
+}
+
+/// The widest the problem notice gets, and its distance from the edges of
+/// the output, in pixels.
+const NOTICE_WIDTH: u32 = 520;
+const NOTICE_MARGIN: u32 = 12;
+
+/// The notice telling the user what is wrong, kept until that changes.
+#[derive(Debug)]
+pub(crate) struct Notice {
+    problems: Vec<String>,
+    theme: Theme,
+    output_width: u32,
+    /// Where on the output the notice is: its top-right corner.
+    pub(crate) area: Rect,
+    pixels: MemoryRenderBuffer,
+}
+
+impl Notice {
+    fn paint(text: &mut Text, theme: &Theme, problems: &[String], output_width: u32) -> Self {
+        let width = NOTICE_WIDTH.min(output_width.saturating_sub(NOTICE_MARGIN * 2));
+        let canvas = paint::notice(text, theme, problems, width);
+        let left = output_width
+            .saturating_sub(width + NOTICE_MARGIN)
+            .cast_signed();
+        let area = Rect::new(
+            DomainPoint::new(left, NOTICE_MARGIN.cast_signed()),
+            DomainSize::new(canvas.width(), canvas.height()),
+        );
+        Self {
+            problems: problems.to_vec(),
+            theme: theme.clone(),
+            output_width,
+            area,
+            pixels: buffer(&canvas),
+        }
+    }
 }
 
 /// The width of a menu panel, in pixels.
