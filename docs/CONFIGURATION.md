@@ -66,6 +66,12 @@ With more than one screen, they are placed side by side from left to
 right in the order they were plugged in, a laptop's own first. There is no
 setting for the arrangement yet.
 
+Each screen has its own set of the workspaces listed, and shows one of
+them: switching workspace on one screen leaves the others as they are. A
+window dragged onto another screen joins the workspace that screen is
+showing. When a screen is unplugged, its windows move to the workspace of
+the same number on the first screen that is left.
+
 `output.scale` is how large everything is drawn, on every screen. With `auto`, omorfos
 chooses for each screen from how dense it is, so that a laptop with a sharp panel
 is as readable as a desktop monitor. If the choice does not suit you, give
@@ -106,9 +112,10 @@ that are already bound on their own.
 | `maximize`, `fullscreen`, `minimize` | Toggle or apply that state. |
 | `focus_next`, `focus_previous` | Cycle windows. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
-| `workspace: N` | Switch to workspace N (from 1). |
-| `next_workspace`, `previous_workspace` | Cycle workspaces. |
-| `move_to_workspace: N` | Send the focused window to workspace N. |
+| `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. |
+| `next_workspace`, `previous_workspace` | Cycle workspaces on the screen the pointer is on. |
+| `move_to_workspace: N` | Send the focused window to workspace N of its screen. |
+| `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
 | `reload_config` | Re-read the configuration. |
 | `quit` | End the session. |

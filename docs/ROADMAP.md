@@ -184,12 +184,8 @@ Known gaps:
 
 ## 10. Later
 
-- [ ] Workspaces per monitor: each screen with its own set, so that
-      switching workspace on one leaves the others as they are. Today one
-      workspace is shown across all outputs, as in Fluxbox. A frame's
-      position has to be kept relative to its output, not to the whole
-      space, which is a change to the domain model; the configuration and
-      the IPC state, which list one set, change shape too
+- [x] Workspaces per monitor: each screen with its own set, so that
+      switching workspace on one leaves the others as they are (ADR 17)
 - [ ] Settings for particular outputs, by name: where each stands, and its
       scale
 - [ ] XWayland behind a feature flag

@@ -83,7 +83,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Send the focused window to the workspace with this number.",
+          "description": "Send the focused window to the workspace with this number, on the\nscreen it is on.",
           "properties": {
             "move_to_workspace": {
               "maximum": 32,
@@ -95,6 +95,11 @@
             "move_to_workspace"
           ],
           "type": "object"
+        },
+        {
+          "const": "move_to_next_output",
+          "description": "Send the focused window to the next screen.",
+          "type": "string"
         },
         {
           "const": "show_menu",

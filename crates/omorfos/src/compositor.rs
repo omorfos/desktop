@@ -590,12 +590,21 @@ impl Compositor {
             Action::FocusPrevious => self.desktop.focus_previous(),
             Action::NextTab => self.on_focused(Desktop::next_tab),
             Action::PreviousTab => self.on_focused(Desktop::previous_tab),
+            // Switching workspace applies to the screen the pointer is on.
             Action::Workspace(number) => {
+                self.desktop.turn_to(self.pointer_position());
                 self.desktop
                     .switch_workspace(bridge::workspace_index(*number));
             }
-            Action::NextWorkspace => self.desktop.next_workspace(),
-            Action::PreviousWorkspace => self.desktop.previous_workspace(),
+            Action::NextWorkspace => {
+                self.desktop.turn_to(self.pointer_position());
+                self.desktop.next_workspace();
+            }
+            Action::PreviousWorkspace => {
+                self.desktop.turn_to(self.pointer_position());
+                self.desktop.previous_workspace();
+            }
+            Action::MoveToNextOutput => self.on_focused(Desktop::move_to_next_output),
             Action::MoveToWorkspace(number) => {
                 let workspace = bridge::workspace_index(*number);
                 self.on_focused(|desktop, id| desktop.move_to_workspace(id, workspace));

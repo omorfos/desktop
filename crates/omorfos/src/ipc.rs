@@ -303,13 +303,23 @@ impl Compositor {
     fn ipc_state(&self) -> State {
         let number = |index: usize| u32::try_from(index + 1).unwrap_or(u32::MAX);
         let names = self.config().general.workspaces.names();
-        let active = self.desktop.active_workspace();
+        // The desktop counts outputs in the order they were added, which is
+        // the order they are kept in here.
+        let output = |index: usize| {
+            let head = self.heads.get(index);
+            head.map(|head| head.output.name()).unwrap_or_default()
+        };
+        let count = self.desktop.workspace_count();
+        let shown = self.desktop.shown_workspaces().enumerate();
         State {
-            workspaces: (0..self.desktop.workspace_count())
-                .map(|index| Workspace {
-                    number: number(index),
-                    name: names.get(index).cloned().unwrap_or_default(),
-                    active: index == active,
+            workspaces: shown
+                .flat_map(|(set, active)| {
+                    (0..count).map(move |index| Workspace {
+                        output: output(set),
+                        number: number(index),
+                        name: names.get(index).cloned().unwrap_or_default(),
+                        active: index == active,
+                    })
                 })
                 .collect(),
             windows: self
@@ -319,6 +329,7 @@ impl Compositor {
                     id: listed.window.id.raw(),
                     app_id: listed.window.app_id.clone(),
                     title: listed.window.title.clone(),
+                    output: output(listed.output),
                     workspace: number(listed.workspace),
                     focused: listed.focused,
                     shown: listed.shown,
