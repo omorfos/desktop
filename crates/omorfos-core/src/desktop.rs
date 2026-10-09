@@ -9,6 +9,39 @@ use crate::rules::{Rule, resolve};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct WindowId(u64);
 
+impl WindowId {
+    /// The identifier as a plain number, for showing to users and sending
+    /// to other programs.
+    #[must_use]
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+
+    /// Rebuilds an identifier from a number another program sent back.
+    ///
+    /// Nothing guarantees such a window exists; the desktop ignores
+    /// identifiers it does not know.
+    #[must_use]
+    pub const fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+}
+
+/// A window together with where it is, as listed by [`Desktop::windows`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Listed<'a> {
+    /// The window.
+    pub window: &'a Window,
+    /// The zero-based workspace it is on.
+    pub workspace: usize,
+    /// Whether its frame is minimized.
+    pub minimized: bool,
+    /// Whether it is the tab its frame is showing.
+    pub shown: bool,
+    /// Whether it has keyboard focus.
+    pub focused: bool,
+}
+
 /// An application window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Window {
@@ -319,6 +352,40 @@ impl Desktop {
     pub fn window(&self, id: WindowId) -> Option<&Window> {
         self.locate(id)
             .map(|at| &self.workspaces[at.workspace].groups[at.group].tabs[at.tab])
+    }
+
+    /// Every window on every workspace, in the order frames were created
+    /// and then tab order: a stable order suited to a task list.
+    pub fn windows(&self) -> impl Iterator<Item = Listed<'_>> {
+        let mut groups: Vec<(usize, &Workspace, &Group)> = self
+            .workspaces
+            .iter()
+            .enumerate()
+            .flat_map(|(index, workspace)| {
+                workspace
+                    .groups
+                    .iter()
+                    .map(move |group| (index, workspace, group))
+            })
+            .collect();
+        groups.sort_by_key(|(_, _, group)| group.serial);
+        let active = self.active;
+        groups
+            .into_iter()
+            .flat_map(move |(index, workspace, group)| {
+                let focused = index == active && workspace.focused == Some(group.serial);
+                group
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(move |(tab, window)| Listed {
+                        window,
+                        workspace: index,
+                        minimized: group.minimized,
+                        shown: tab == group.active,
+                        focused: focused && tab == group.active,
+                    })
+            })
     }
 
     /// The zero-based workspace a window is on.
@@ -910,6 +977,57 @@ mod tests {
             desktop.window(id).map(|window| window.title.as_str()),
             Some("notes.txt")
         );
+    }
+
+    #[test]
+    fn every_window_is_listed_with_where_it_is() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "a");
+        let b = open(&mut desktop, "b");
+        let c = open(&mut desktop, "c");
+        let d = open(&mut desktop, "d");
+        desktop.attach(b, a);
+        desktop.minimize(c);
+        desktop.move_to_workspace(d, 2);
+
+        let listed: Vec<_> = desktop
+            .windows()
+            .map(|entry| {
+                (
+                    entry.window.id,
+                    entry.workspace,
+                    entry.minimized,
+                    entry.shown,
+                    entry.focused,
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (a, 0, false, false, false),
+                (b, 0, false, true, true),
+                (c, 0, true, true, false),
+                (d, 2, false, true, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_window_focused_on_a_hidden_workspace_does_not_have_keyboard_focus() {
+        let mut desktop = desktop();
+        open(&mut desktop, "here");
+        desktop.switch_workspace(1);
+        assert!(desktop.windows().all(|entry| !entry.focused));
+    }
+
+    #[test]
+    fn identifiers_survive_a_round_trip_through_a_number() {
+        let mut desktop = desktop();
+        let id = open(&mut desktop, "app");
+        assert_eq!(WindowId::from_raw(id.raw()), id);
+        desktop.activate(WindowId::from_raw(9999));
+        assert_eq!(desktop.focused(), Some(id), "an unknown number is ignored");
     }
 
     #[test]
