@@ -18,6 +18,7 @@ use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, with_states,
 };
+use smithay::wayland::foreign_toplevel_list::{ForeignToplevelListHandler, ForeignToplevelListState};
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::selection::primary_selection::{
@@ -38,7 +39,7 @@ use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_foreign_toplevel_list, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -160,6 +161,7 @@ impl Compositor {
         let window = Window::new_wayland_window(toplevel.clone());
         window.on_commit();
         let size = domain_size(window.geometry().size);
+        let listed = self.foreign_toplevels.new_toplevel::<Self>(&title, &app_id);
         let id = self.desktop.add_window(
             app_id,
             title,
@@ -171,6 +173,7 @@ impl Compositor {
             id,
             window,
             toplevel,
+            listed,
         });
     }
 
@@ -226,6 +229,7 @@ impl XdgShellHandler for Compositor {
                 let keep = mapped.id != id;
                 if !keep {
                     self.space.unmap_elem(&mapped.window);
+                    self.foreign_toplevels.remove_toplevel(&mapped.listed);
                 }
                 keep
             });
@@ -234,7 +238,15 @@ impl XdgShellHandler for Compositor {
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
         let (_, title) = names(surface.wl_surface());
-        self.on_window(&surface, |desktop, id| desktop.set_title(id, title));
+        if let Some(mapped) = self
+            .windows
+            .iter()
+            .find(|mapped| mapped.toplevel == surface)
+        {
+            mapped.listed.send_title(&title);
+            mapped.listed.send_done();
+            self.desktop.set_title(mapped.id, title);
+        }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
@@ -393,6 +405,12 @@ impl PrimarySelectionHandler for Compositor {
     }
 }
 
+impl ForeignToplevelListHandler for Compositor {
+    fn foreign_toplevel_list_state(&mut self) -> &mut ForeignToplevelListState {
+        &mut self.foreign_toplevels
+    }
+}
+
 impl ClientDndGrabHandler for Compositor {}
 
 impl ServerDndGrabHandler for Compositor {}
@@ -437,6 +455,7 @@ delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
 delegate_layer_shell!(Compositor);
 delegate_data_device!(Compositor);
+delegate_foreign_toplevel_list!(Compositor);
 delegate_primary_selection!(Compositor);
 delegate_xdg_activation!(Compositor);
 delegate_xdg_decoration!(Compositor);

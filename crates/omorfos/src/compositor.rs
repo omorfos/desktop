@@ -34,6 +34,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
+use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
@@ -67,6 +68,8 @@ pub(crate) struct Mapped {
     pub(crate) id: WindowId,
     pub(crate) window: Window,
     pub(crate) toplevel: ToplevelSurface,
+    /// The window's entry in the list offered to taskbars.
+    pub(crate) listed: ForeignToplevelHandle,
 }
 
 /// The compositor, minus the event loop and the screen.
@@ -92,6 +95,7 @@ pub struct Compositor {
     pub(crate) data_device: DataDeviceState,
     pub(crate) activation: XdgActivationState,
     pub(crate) primary_selection: PrimarySelectionState,
+    pub(crate) foreign_toplevels: ForeignToplevelListState,
 
     pub(crate) desktop: Desktop,
     /// Windows the desktop knows about.
@@ -178,6 +182,7 @@ impl Compositor {
         let data_device = DataDeviceState::new::<Self>(&display);
         let activation = XdgActivationState::new::<Self>(&display);
         let primary_selection = PrimarySelectionState::new::<Self>(&display);
+        let foreign_toplevels = ForeignToplevelListState::new::<Self>(&display);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -218,6 +223,7 @@ impl Compositor {
                     data_device,
                     activation,
                     primary_selection,
+                    foreign_toplevels,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),
@@ -530,6 +536,7 @@ impl Compositor {
             id,
             window,
             toplevel,
+            ..
         } in &self.windows
         {
             let frame = frames

@@ -301,6 +301,7 @@ fn requests_about_a_window_that_is_not_shown_yet_are_ignored() {
 
     window.role._move(client.seat(), 0);
     window.role.resize(client.seat(), 0, ResizeEdge::Right);
+    window.role.set_maximized();
     session.roundtrip(&mut client);
     move_to(&mut session, 100, 100);
 
