@@ -17,7 +17,7 @@ use std::io::{Write, stderr};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::Touchpad;
+use omorfos_config::{Action, Command, Touchpad};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{
@@ -119,6 +119,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.suggest_scale(Scale::for_screen(u32::from(width), millimetres));
     compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
+    announce_session(compositor);
 
     let screen = Rc::new(RefCell::new(Screen {
         seat: seat.clone(),
@@ -225,6 +226,21 @@ fn watch_devices(
         },
     )?;
     Ok(())
+}
+
+/// Tells whatever else starts programs for the user about this session.
+///
+/// Programs are also started by D-Bus and by systemd, which know nothing of
+/// the session unless told. This backend is the user's whole session, so
+/// they are told; the nested one must not, or it would redirect the
+/// programs of the desktop it runs inside.
+fn announce_session(compositor: &mut Compositor) {
+    let told = compositor.session_environment().into_iter();
+    let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
+    let arguments = std::iter::once("--systemd".to_owned()).chain(told);
+    if let Some(tell) = Command::new("dbus-update-activation-environment", arguments) {
+        compositor.perform(&Action::Spawn(tell));
+    }
 }
 
 /// What the screen does each turn of the loop: report, switch virtual

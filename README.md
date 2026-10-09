@@ -33,7 +33,16 @@ Wayland or X11 session and prints the name of its socket. Started from a
 text console (a virtual terminal), it drives the screen, keyboard and mouse
 itself; that part is new and has only been tried on one machine.
 Ctrl+Alt+F1 to F12 switch virtual terminal, and Super+Shift+e ends the
-session. Start a program inside it with, for example,
+session.
+
+The packages also add omorfos to the sessions a login screen offers. To do
+the same from a build, put the binaries on the system's path and install
+the entry:
+
+```sh
+sudo install -m755 target/release/omorfos target/release/omorfosctl /usr/local/bin/
+sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
+``` Start a program inside it with, for example,
 `WAYLAND_DISPLAY=wayland-1 foot`. Key bindings using Super may be taken by
 the host desktop before they reach the window. Configuration is described in
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md), and scripting and component

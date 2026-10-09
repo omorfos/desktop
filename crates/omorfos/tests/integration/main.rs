@@ -16,6 +16,7 @@ mod executable;
 mod input;
 mod ipc;
 mod layers;
+mod login;
 mod menu;
 mod notice;
 mod popups;

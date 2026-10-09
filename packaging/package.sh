@@ -22,7 +22,7 @@ name="omorfos-${VERSION}-${TARGET}"
 stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
 cp target/release/omorfos target/release/omorfosctl LICENSE README.md docs/CONFIGURATION.md \
-  "${stage}/${name}/"
+  packaging/omorfos.desktop "${stage}/${name}/"
 cp -r schemas "${stage}/${name}/"
 tar -C "${stage}" -czf "${out}/${name}.tar.gz" "${name}"
 

@@ -69,6 +69,11 @@ use crate::input::Drag;
 use crate::ipc::Server;
 use crate::paint::{self, Text};
 
+/// What the desktop calls itself to programs that behave differently from
+/// one desktop to another. The same name is in the login session entry,
+/// `packaging/omorfos.desktop`.
+pub const DESKTOP_NAME: &str = "omorfos";
+
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
 
@@ -692,19 +697,10 @@ impl Compositor {
 
     fn spawn(&mut self, command: &omorfos_config::Command) {
         let mut process = std::process::Command::new(command.program());
-        process.args(command.arguments()).stdin(Stdio::null());
-        if let Some(name) = &self.socket_name {
-            process.env("WAYLAND_DISPLAY", name);
-        }
-        if let Some(path) = self.ipc_path() {
-            process.env("OMORFOS_SOCKET", path);
-        }
-        // Applications that draw the pointer themselves use the same theme
-        // and size as the compositor does.
-        let cursor = &self.store.current().theme.cursor;
         process
-            .env("XCURSOR_THEME", &cursor.theme)
-            .env("XCURSOR_SIZE", cursor.size.get().to_string());
+            .args(command.arguments())
+            .stdin(Stdio::null())
+            .envs(self.session_environment());
         match process.spawn() {
             Ok(child) => {
                 self.wake_when_exited(&child);
@@ -715,6 +711,34 @@ impl Compositor {
                     .push(format!("cannot start `{}`: {error}", command.program()));
             }
         }
+    }
+
+    /// What a program has to be told to take part in the session: where
+    /// the compositor is, that this is a Wayland session and whose, and
+    /// which pointer to draw if it draws its own.
+    ///
+    /// Programs the compositor starts are given these. A backend that is
+    /// the user's whole session passes them on to whatever else starts
+    /// programs on the user's behalf.
+    #[must_use]
+    pub fn session_environment(&self) -> Vec<(&'static str, OsString)> {
+        let cursor = &self.store.current().theme.cursor;
+        let display = self.socket_name.clone();
+        let socket = self.ipc_path().map(|path| path.as_os_str().to_owned());
+        let fixed = [
+            ("XDG_SESSION_TYPE", OsString::from("wayland")),
+            ("XDG_CURRENT_DESKTOP", OsString::from(DESKTOP_NAME)),
+            ("XCURSOR_THEME", OsString::from(&cursor.theme)),
+            (
+                "XCURSOR_SIZE",
+                OsString::from(cursor.size.get().to_string()),
+            ),
+        ];
+        let located = [("WAYLAND_DISPLAY", display), ("OMORFOS_SOCKET", socket)];
+        let located = located
+            .into_iter()
+            .filter_map(|(name, value)| value.map(|value| (name, value)));
+        located.chain(fixed).collect()
     }
 
     // --- Windows -------------------------------------------------------------
