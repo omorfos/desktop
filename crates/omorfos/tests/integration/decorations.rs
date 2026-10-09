@@ -22,7 +22,7 @@ fn a_window_that_asks_is_told_the_compositor_decorates_it() {
         events.contains(&Event::Decoration { server_side: true }),
         "{events:?}"
     );
-    let frame = session.compositor.desktop().frames().next().unwrap();
+    let frame = session.compositor().desktop().frames().next().unwrap();
     assert!(frame.decoration.is_some());
     assert_eq!(frame.geometry.size.width, 200 + 2 * BORDER.unsigned_abs());
     assert_eq!(
@@ -36,7 +36,7 @@ fn a_window_that_does_not_ask_is_left_undecorated() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open(&mut client, "gtk", (200, 100), RED);
-    let frame = session.compositor.desktop().frames().next().unwrap();
+    let frame = session.compositor().desktop().frames().next().unwrap();
     assert_eq!(frame.decoration, None);
     assert_eq!(session.draw().at(0, 0), RED);
 }
@@ -88,7 +88,7 @@ fn the_compositor_insists_on_decorating_whatever_mode_is_requested() {
     );
     assert!(
         session
-            .compositor
+            .compositor()
             .desktop()
             .frames()
             .next()
@@ -221,7 +221,7 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
     session.open_decorated(&mut client, "first", (200, 100), RED);
     session.open(&mut client, "second", (50, 50), RED);
     session
-        .compositor
+        .compositor_mut()
         .input(omorfos::Input::Motion { x: 600.0, y: 400.0 }, 0);
 
     let picture = session.draw();
@@ -251,7 +251,7 @@ fn a_theme_change_restyles_existing_frames() {
     session.open_decorated(&mut client, "foot", (200, 100), RED);
 
     session.write_config("theme.yaml", "colors: { accent: '#00ff00', focused: { border: '#00ff00', titlebar: '#0000ff', text: '#ffffff' } }\nborder: { width: 4, radius: 0 }\n");
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 

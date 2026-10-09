@@ -28,7 +28,7 @@ fn session() -> Session {
 }
 
 fn move_to(session: &mut Session, x: i32, y: i32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Motion {
             x: f64::from(x),
             y: f64::from(y),
@@ -38,14 +38,14 @@ fn move_to(session: &mut Session, x: i32, y: i32) {
 }
 
 fn click(session: &mut Session, button: u32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: true,
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: false,
@@ -79,7 +79,7 @@ fn a_right_click_on_the_desktop_opens_the_menu_at_the_pointer() {
 fn the_show_menu_action_opens_it_too() {
     let mut session = session();
     move_to(&mut session, 100, 100);
-    session.compositor.perform(&Action::ShowMenu);
+    session.compositor_mut().perform(&Action::ShowMenu);
     session.step();
     assert_eq!(session.draw().at(310, 110), PANEL);
 }
@@ -103,7 +103,7 @@ fn choosing_an_entry_performs_its_action_and_closes_the_menu() {
     move_to(&mut session, 400, 218);
     click(&mut session, LEFT);
 
-    assert_eq!(session.compositor.desktop().active_workspace(), 1);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
     assert_eq!(session.draw().at(510, 218), BACKGROUND, "the menu is gone");
 }
 
@@ -125,7 +125,7 @@ fn a_submenu_opens_beside_its_row_and_its_entries_can_be_chosen() {
 
     move_to(&mut session, 150, 255);
     click(&mut session, LEFT);
-    assert!(!session.compositor.is_running(), "Quit was chosen");
+    assert!(!session.compositor().is_running(), "Quit was chosen");
 }
 
 #[test]
@@ -167,14 +167,14 @@ fn escape_closes_the_menu_and_is_kept_from_the_focused_window() {
     open_menu(&mut session);
     client.take_events();
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::ESCAPE,
             pressed: true,
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::ESCAPE,
             pressed: false,
@@ -201,7 +201,7 @@ fn other_keys_still_reach_the_focused_window_while_the_menu_is_open() {
     open_menu(&mut session);
     client.take_events();
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::A,
             pressed: true,
@@ -242,7 +242,7 @@ fn the_menu_follows_a_theme_change_while_open() {
         "theme.yaml",
         "colors: { focused: { border: '#000000', titlebar: '#00ff00', text: '#ffffff' } }\n",
     );
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
     assert_eq!(session.draw().at(510, 220), 0xff00_ff00);
 }

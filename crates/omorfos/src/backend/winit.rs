@@ -6,10 +6,12 @@
 //! is excluded from the coverage gate (see `docs/adr/0002-coverage-policy.md`).
 //! Keep decisions out of it: anything worth testing belongs in `Compositor`.
 
+use std::cell::Cell;
 use std::env;
 use std::error::Error;
 use std::io::{Write, stderr};
-use std::time::{Duration, Instant};
+use std::rc::Rc;
+use std::time::Instant;
 
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyState, KeyboardKeyEvent,
@@ -18,30 +20,22 @@ use smithay::backend::input::{
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend, WinitInput};
-use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
-use smithay::reexports::wayland_server::{Display, ListeningSocket};
+use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
-use crate::{Compositor, Input};
-
-/// How often the loop wakes when nothing else does, so that configuration
-/// reloads and child processes are attended to.
-const IDLE_INTERVAL: Duration = Duration::from_millis(100);
+use crate::{Compositor, Input, Session};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
 const WHEEL_NOTCH: f64 = 15.0;
 
-struct Session {
-    compositor: Compositor,
-    display: Display<Compositor>,
-    socket: ListeningSocket,
+/// The window the compositor is drawn in.
+struct Screen {
     backend: WinitGraphicsBackend<GlesRenderer>,
     tracker: OutputDamageTracker,
     started: Instant,
-    redraw: bool,
+    /// Set when the window wants drawing again.
+    redraw: Rc<Cell<bool>>,
     reported: Vec<String>,
-    failure: Option<Box<dyn Error>>,
 }
 
 /// Runs the compositor in a window until the session ends.
@@ -57,8 +51,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     )
     .ok_or("cannot find the configuration directory: set HOME or XDG_CONFIG_HOME")?;
 
-    let mut event_loop: EventLoop<'_, Session> = EventLoop::try_new()?;
-    let mut display: Display<Compositor> = Display::new()?;
     // The usual reason is that there is no session to open a window on,
     // which the error itself does not say.
     let (backend, winit) = winit::init::<GlesRenderer>().map_err(|error| {
@@ -69,15 +61,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     })?;
     let size = backend.window_size();
     // OpenGL's origin is the bottom-left corner, so the picture is flipped.
-    let mut compositor = Compositor::new(
-        display.handle(),
-        config_directory,
-        (size.w, size.h),
-        Transform::Flipped180,
-    )?;
+    let mut session = Session::new(config_directory, (size.w, size.h), Transform::Flipped180)?;
 
     let socket = ListeningSocket::bind_auto("wayland", 1..33)?;
     if let Some(name) = socket.socket_name() {
+        let compositor = session.compositor_mut();
         compositor.set_socket_name(name);
         let _ = writeln!(stderr(), "omorfos: listening on {}", name.display());
         let runtime_directory = env::var_os("XDG_RUNTIME_DIR");
@@ -86,127 +74,96 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             compositor.listen_ipc(path)?;
         }
     }
+    session.serve(socket)?;
 
-    let handle = event_loop.handle();
-    handle.insert_source(winit, |event, (), session| session.on_winit(event))?;
-    // These two only wake the loop; the work happens in `Session::turn`.
-    let wake = |_, _: &mut _, _: &mut Session| Ok(PostAction::Continue);
-    let clients = display.backend().poll_fd().try_clone_to_owned()?;
-    handle.insert_source(Generic::new(clients, Interest::READ, Mode::Level), wake)?;
-    let listener = std::os::fd::AsFd::as_fd(&socket).try_clone_to_owned()?;
-    handle.insert_source(Generic::new(listener, Interest::READ, Mode::Level), wake)?;
+    let redraw = Rc::new(Cell::new(true));
+    let wanted = Rc::clone(&redraw);
+    session
+        .handle()
+        .insert_source(winit, move |event, (), compositor| match event {
+            WinitEvent::Resized { size, .. } => {
+                compositor.resize_output((size.w, size.h));
+                wanted.set(true);
+            }
+            WinitEvent::Input(event) => on_input(compositor, event),
+            WinitEvent::Redraw => wanted.set(true),
+            WinitEvent::CloseRequested => compositor.perform(&omorfos_config::Action::Quit),
+            WinitEvent::Focus(_) => {}
+        })?;
 
-    let mut session = Session {
-        tracker: OutputDamageTracker::from_output(compositor.output()),
-        compositor,
-        display,
-        socket,
+    let mut screen = Screen {
+        tracker: OutputDamageTracker::from_output(session.compositor().output()),
         backend,
         started: Instant::now(),
-        redraw: true,
+        redraw,
         reported: Vec::new(),
-        failure: None,
     };
-    let signal = event_loop.get_signal();
-    event_loop.run(Some(IDLE_INTERVAL), &mut session, |session| {
-        if let Err(error) = session.turn() {
-            session.failure = Some(error);
-        }
-        if session.failure.is_some() || !session.compositor.is_running() {
-            signal.stop();
-        }
-    })?;
-    session.failure.map_or(Ok(()), Err)
+    session.run(|compositor| screen.turn(compositor))
 }
 
-impl Session {
-    fn on_winit(&mut self, event: WinitEvent) {
-        match event {
-            WinitEvent::Resized { size, .. } => {
-                self.compositor.resize_output((size.w, size.h));
-                self.redraw = true;
-            }
-            WinitEvent::Input(event) => self.on_input(event),
-            WinitEvent::Redraw => self.redraw = true,
-            WinitEvent::CloseRequested => {
-                self.compositor.perform(&omorfos_config::Action::Quit);
-            }
-            WinitEvent::Focus(_) => {}
+fn on_input(compositor: &mut Compositor, event: InputEvent<WinitInput>) {
+    let size = compositor.output_size();
+    let (input, time) = match event {
+        InputEvent::Keyboard { event } => {
+            let pressed = event.state() == KeyState::Pressed;
+            (
+                Input::Key {
+                    code: event.key_code(),
+                    pressed,
+                },
+                event.time_msec(),
+            )
         }
-    }
-
-    fn on_input(&mut self, event: InputEvent<WinitInput>) {
-        let size = self.compositor.output_size();
-        let (input, time) = match event {
-            InputEvent::Keyboard { event } => {
-                let pressed = event.state() == KeyState::Pressed;
-                (
-                    Input::Key {
-                        code: event.key_code(),
-                        pressed,
-                    },
-                    event.time_msec(),
-                )
-            }
-            InputEvent::PointerMotionAbsolute { event } => {
-                let (x, y) = (event.x_transformed(size.w), event.y_transformed(size.h));
-                (Input::Motion { x, y }, event.time_msec())
-            }
-            InputEvent::PointerButton { event } => {
-                let pressed = event.state() == ButtonState::Pressed;
-                (
-                    Input::Button {
-                        button: event.button_code(),
-                        pressed,
-                    },
-                    event.time_msec(),
-                )
-            }
-            InputEvent::PointerAxis { event } => {
-                let amount = |axis| {
-                    event
-                        .amount(axis)
-                        .or_else(|| {
-                            event
-                                .amount_v120(axis)
-                                .map(|v120| v120 / 120.0 * WHEEL_NOTCH)
-                        })
-                        .unwrap_or(0.0)
-                };
-                let scroll = Input::Scroll {
-                    horizontal: amount(Axis::Horizontal),
-                    vertical: amount(Axis::Vertical),
-                };
-                (scroll, event.time_msec())
-            }
-            _ => return,
-        };
-        self.compositor.input(input, time);
-    }
-
-    /// One turn of the loop: talk to clients, update, draw.
-    fn turn(&mut self) -> Result<(), Box<dyn Error>> {
-        while let Some(stream) = self.socket.accept()? {
-            self.compositor.insert_client(stream)?;
+        InputEvent::PointerMotionAbsolute { event } => {
+            let (x, y) = (event.x_transformed(size.w), event.y_transformed(size.h));
+            (Input::Motion { x, y }, event.time_msec())
         }
-        self.display.dispatch_clients(&mut self.compositor)?;
-        self.compositor.refresh(Instant::now());
-        self.display.flush_clients()?;
-        self.report_problems();
+        InputEvent::PointerButton { event } => {
+            let pressed = event.state() == ButtonState::Pressed;
+            (
+                Input::Button {
+                    button: event.button_code(),
+                    pressed,
+                },
+                event.time_msec(),
+            )
+        }
+        InputEvent::PointerAxis { event } => {
+            let amount = |axis| {
+                event
+                    .amount(axis)
+                    .or_else(|| {
+                        event
+                            .amount_v120(axis)
+                            .map(|v120| v120 / 120.0 * WHEEL_NOTCH)
+                    })
+                    .unwrap_or(0.0)
+            };
+            let scroll = Input::Scroll {
+                horizontal: amount(Axis::Horizontal),
+                vertical: amount(Axis::Vertical),
+            };
+            (scroll, event.time_msec())
+        }
+        _ => return,
+    };
+    compositor.input(input, time);
+}
 
-        if self.redraw {
-            self.redraw = false;
+impl Screen {
+    /// What the window does each turn of the loop: report, then draw.
+    fn turn(&mut self, compositor: &mut Compositor) -> Result<(), Box<dyn Error>> {
+        self.report_problems(compositor);
+        if self.redraw.replace(false) {
             let age = self.backend.buffer_age().unwrap_or(0);
             let damage = {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
                 let result =
-                    self.compositor
-                        .render(renderer, &mut framebuffer, &mut self.tracker, age)?;
+                    compositor.render(renderer, &mut framebuffer, &mut self.tracker, age)?;
                 result.damage.cloned()
             };
             self.backend.submit(damage.as_deref())?;
-            self.compositor.send_frames(self.started.elapsed());
-            self.display.flush_clients()?;
+            compositor.send_frames(self.started.elapsed());
             // Draw continuously; the host compositor paces us.
             self.backend.window().request_redraw();
         }
@@ -214,9 +171,9 @@ impl Session {
     }
 
     /// Tells the user about problems, once each time they change.
-    fn report_problems(&mut self) {
-        if self.compositor.problems() != self.reported {
-            self.reported = self.compositor.problems().to_vec();
+    fn report_problems(&mut self, compositor: &Compositor) {
+        if compositor.problems() != self.reported {
+            self.reported = compositor.problems().to_vec();
             for problem in &self.reported {
                 let _ = writeln!(stderr(), "omorfos: {problem}");
             }

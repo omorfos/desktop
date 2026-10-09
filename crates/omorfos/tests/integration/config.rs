@@ -8,8 +8,8 @@ use crate::windows::{BACKGROUND, RED};
 #[test]
 fn the_defaults_have_no_problems() {
     let session = Session::new();
-    assert_eq!(session.compositor.problems(), [""; 0]);
-    assert_eq!(session.compositor.desktop().workspace_count(), 4);
+    assert_eq!(session.compositor().problems(), [""; 0]);
+    assert_eq!(session.compositor().desktop().workspace_count(), 4);
 }
 
 #[test]
@@ -18,7 +18,7 @@ fn the_configuration_directory_is_created_on_first_run() {
     let directory = home.path().join("config").join("omorfos");
     let session = Session::in_directory(home, Some(&directory));
     assert!(directory.is_dir());
-    assert_eq!(session.compositor.problems(), [""; 0]);
+    assert_eq!(session.compositor().problems(), [""; 0]);
 }
 
 #[test]
@@ -28,22 +28,22 @@ fn a_directory_that_cannot_be_used_is_reported_and_defaults_apply() {
     let directory = home.path().join("file").join("omorfos");
     let session = Session::in_directory(home, Some(&directory));
 
-    let problems = session.compositor.problems();
+    let problems = session.compositor().problems();
     assert!(
         problems
             .iter()
             .any(|p| p.contains("changes will not be picked up automatically")),
         "{problems:?}"
     );
-    assert_eq!(session.compositor.desktop().workspace_count(), 4);
+    assert_eq!(session.compositor().desktop().workspace_count(), 4);
 }
 
 #[test]
 fn settings_are_applied_at_startup() {
     let session = Session::with_config(&[("config.yaml", "workspaces: [web, code]\n")]);
-    assert_eq!(session.compositor.desktop().workspace_count(), 2);
+    assert_eq!(session.compositor().desktop().workspace_count(), 2);
     assert_eq!(
-        session.compositor.config().general.workspaces.names(),
+        session.compositor().config().general.workspaces.names(),
         ["web", "code"]
     );
 }
@@ -56,14 +56,14 @@ fn rules_from_the_configuration_apply_to_new_windows() {
 
     session.open(&mut client, "chat", (200, 100), RED);
 
-    assert_eq!(session.compositor.desktop().frames().count(), 0);
+    assert_eq!(session.compositor().desktop().frames().count(), 0);
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
 }
 
 #[test]
 fn a_mistake_in_a_file_is_reported_with_its_location() {
     let session = Session::with_config(&[("theme.yaml", "colors:\n  accent: nope\n")]);
-    let problems = session.compositor.problems();
+    let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1);
     assert!(
         problems[0]
@@ -76,7 +76,7 @@ fn a_mistake_in_a_file_is_reported_with_its_location() {
 fn a_binding_for_a_key_that_does_not_exist_is_reported() {
     let bindings = "bindings:\n  - { keys: Super+Retrun, action: close }\n";
     let session = Session::with_config(&[("keys.yaml", bindings)]);
-    let problems = session.compositor.problems();
+    let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(
         problems[0].ends_with(
@@ -91,7 +91,7 @@ fn a_binding_for_a_key_that_does_not_exist_is_reported() {
 fn an_invalid_keyboard_layout_is_reported() {
     let layout = "keyboard: { layout: no-such-layout }\n";
     let session = Session::with_config(&[("config.yaml", layout)]);
-    let problems = session.compositor.problems();
+    let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].starts_with("config.yaml: keyboard layout `no-such-layout`"));
 }
@@ -118,7 +118,7 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
         Session::with_config(&[("theme.yaml", "colors: { background: '#ff0000' }\n")]);
 
     session.write_config("theme.yaml", "colors: { background: oops }\n");
-    session.eventually(|session| session.compositor.problems().len() == 1);
+    session.eventually(|session| session.compositor().problems().len() == 1);
     assert_eq!(
         session.draw().at(5, 5),
         RED,
@@ -126,7 +126,7 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
     );
 
     session.write_config("theme.yaml", "colors: { background: '#ff0000' }\n");
-    session.eventually(|session| session.compositor.problems().is_empty());
+    session.eventually(|session| session.compositor().problems().is_empty());
 }
 
 #[test]

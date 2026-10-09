@@ -465,24 +465,18 @@ delegate_output!(Compositor);
 
 #[cfg(test)]
 mod tests {
-    use smithay::reexports::wayland_server::Display;
     use smithay::utils::Transform;
 
     use super::*;
+    use crate::Session;
 
     #[test]
     fn smithay_is_handed_the_compositors_own_clipboard_state() {
         // Smithay requires this accessor but, as of 0.7, never calls it
         // itself, so no client request can exercise it.
         let directory = tempfile::TempDir::new().unwrap();
-        let display = Display::<Compositor>::new().unwrap();
-        let compositor = Compositor::new(
-            display.handle(),
-            directory.path(),
-            (640, 480),
-            Transform::Normal,
-        )
-        .unwrap();
+        let session = Session::new(directory.path(), (640, 480), Transform::Normal).unwrap();
+        let compositor = session.compositor();
         assert!(std::ptr::eq(
             compositor.data_device_state(),
             &raw const compositor.data_device

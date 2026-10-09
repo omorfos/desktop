@@ -18,5 +18,6 @@ mod layers;
 mod menu;
 mod notice;
 mod popups;
+mod session;
 mod taskbar;
 mod windows;
