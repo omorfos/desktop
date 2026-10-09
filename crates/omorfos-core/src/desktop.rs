@@ -1,5 +1,6 @@
 //! The state of the session: windows, tab groups, workspaces and focus.
 
+use crate::decoration::{Decoration, Metrics};
 use crate::geometry::{Point, Rect, Size};
 use crate::placement::{CASCADE_STEP, Placement, place};
 use crate::rules::{Rule, resolve};
@@ -31,6 +32,8 @@ pub struct Settings {
     pub raise_on_focus: bool,
     /// Where new windows appear.
     pub placement: Placement,
+    /// The thickness of the titlebar and borders around decorated windows.
+    pub decoration: Metrics,
 }
 
 impl Default for Settings {
@@ -39,6 +42,7 @@ impl Default for Settings {
             focus_follows_pointer: false,
             raise_on_focus: true,
             placement: Placement::default(),
+            decoration: Metrics::default(),
         }
     }
 }
@@ -52,9 +56,14 @@ pub struct Frame<'a> {
     pub tabs: &'a [Window],
     /// The index in `tabs` of the window being shown.
     pub active: usize,
-    /// Where the frame is on screen, taking maximized and fullscreen into
-    /// account.
+    /// Where the frame is on screen, decoration included, taking maximized
+    /// and fullscreen into account.
     pub geometry: Rect,
+    /// The layout of the titlebar and borders, if the frame has them. A
+    /// frame is decorated when its shown window is, or when it holds
+    /// several tabs, which need a titlebar to be reachable. A fullscreen
+    /// frame never is.
+    pub decoration: Option<Decoration>,
     /// Whether the frame fills its output.
     pub maximized: bool,
     /// Whether the frame covers its output without decorations.
@@ -68,6 +77,13 @@ impl Frame<'_> {
     #[must_use]
     pub fn window(&self) -> &Window {
         &self.tabs[self.active]
+    }
+
+    /// The part of the frame the window itself occupies.
+    #[must_use]
+    pub fn client(&self) -> Rect {
+        self.decoration
+            .map_or(self.geometry, |decoration| decoration.client())
     }
 }
 
@@ -86,6 +102,11 @@ struct Group {
 }
 
 impl Group {
+    /// Whether the frame has a titlebar and borders when not fullscreen.
+    fn decorated(&self) -> bool {
+        self.tabs.len() > 1 || self.tabs[self.active].decorated
+    }
+
     fn remove(&mut self, tab: usize) -> Window {
         let window = self.tabs.remove(tab);
         // Keep showing the same window; if it was the one removed, show its
@@ -230,15 +251,20 @@ impl Desktop {
 
     /// Adds a new window in a frame of its own and returns its identifier.
     ///
-    /// Rules decide its workspace and initial state; otherwise it opens on
-    /// the current workspace. It is placed on the output under `pointer` and
-    /// becomes the focused, topmost frame of its workspace.
+    /// `size` is the size of the window itself; the frame is larger by its
+    /// decoration. `wants_decoration` says whether the window expects the
+    /// compositor to draw its titlebar and border; a rule overrides it
+    /// either way. Rules also decide its workspace and initial state;
+    /// otherwise it opens on the current workspace. It is placed on the
+    /// output under `pointer` and becomes the focused, topmost frame of its
+    /// workspace.
     pub fn add_window(
         &mut self,
         app_id: impl Into<String>,
         title: impl Into<String>,
         size: Size,
         pointer: Point,
+        wants_decoration: bool,
     ) -> WindowId {
         let (app_id, title) = (app_id.into(), title.into());
         let effects = resolve(&self.rules, &app_id, &title);
@@ -246,6 +272,12 @@ impl Desktop {
         let workspace = effects
             .workspace
             .map_or(self.active, |workspace| workspace.min(last));
+        let decorated = effects.decorations.unwrap_or(wants_decoration);
+        let size = if decorated {
+            self.settings.decoration.outer_size(size)
+        } else {
+            size
+        };
         let area = self.output_at(pointer);
         let index = self.workspaces[workspace].groups.len();
         let origin = place(self.settings.placement, size, area, pointer, index);
@@ -254,7 +286,7 @@ impl Desktop {
             id,
             app_id,
             title,
-            decorated: effects.decorations.unwrap_or(true),
+            decorated,
         };
         let group = Group {
             serial: self.serial(),
@@ -295,7 +327,30 @@ impl Desktop {
         self.locate(id).map(|at| at.workspace)
     }
 
+    /// Sets whether a window gets a titlebar and border, for example
+    /// because it turned out to draw its own. The frame keeps its place.
+    pub fn set_decorated(&mut self, id: WindowId, decorated: bool) {
+        let Some(at) = self.locate(id) else { return };
+        self.workspaces[at.workspace].groups[at.group].tabs[at.tab].decorated = decorated;
+    }
+
     // --- Frame state -------------------------------------------------------
+
+    /// Records that a window resized itself to `size`, and resizes its frame
+    /// to fit. Ignored while the frame is maximized or fullscreen, when its
+    /// size is not the window's to choose, and for a tab that is not shown.
+    pub fn set_client_size(&mut self, id: WindowId, size: Size) {
+        let Some(at) = self.locate(id) else { return };
+        let metrics = self.settings.decoration;
+        let group = &mut self.workspaces[at.workspace].groups[at.group];
+        if group.active == at.tab && !group.maximized && !group.fullscreen {
+            group.geometry.size = if group.decorated() {
+                metrics.outer_size(size)
+            } else {
+                size
+            };
+        }
+    }
 
     /// Moves and resizes a window's frame, leaving maximized and fullscreen.
     pub fn set_geometry(&mut self, id: WindowId, geometry: Rect) {
@@ -499,25 +554,33 @@ impl Desktop {
     // --- What to show ------------------------------------------------------
 
     /// The frames to draw on the current workspace, bottom to top. Minimized
-    /// frames are left out.
+    /// frames are left out, and fullscreen frames are above all others.
     pub fn frames(&self) -> impl Iterator<Item = Frame<'_>> {
         let workspace = &self.workspaces[self.active];
-        workspace
-            .groups
-            .iter()
-            .filter(|group| !group.minimized)
-            .map(|group| Frame {
+        let shown = |fullscreen: bool| {
+            workspace
+                .groups
+                .iter()
+                .filter(move |group| !group.minimized && group.fullscreen == fullscreen)
+        };
+        shown(false).chain(shown(true)).map(|group| {
+            let geometry = if group.maximized || group.fullscreen {
+                self.output_for(group.geometry)
+            } else {
+                group.geometry
+            };
+            let decorated = group.decorated() && !group.fullscreen;
+            Frame {
                 tabs: &group.tabs,
                 active: group.active,
-                geometry: if group.maximized || group.fullscreen {
-                    self.output_for(group.geometry)
-                } else {
-                    group.geometry
-                },
+                geometry,
+                decoration: decorated
+                    .then(|| Decoration::new(geometry, self.settings.decoration, group.tabs.len())),
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
                 focused: workspace.focused == Some(group.serial),
-            })
+            }
+        })
     }
 
     // --- Internals ---------------------------------------------------------
@@ -634,7 +697,7 @@ mod tests {
     }
 
     fn open(desktop: &mut Desktop, app_id: &str) -> WindowId {
-        desktop.add_window(app_id, format!("{app_id} window"), SIZE, POINTER)
+        desktop.add_window(app_id, format!("{app_id} window"), SIZE, POINTER, true)
     }
 
     /// The shown window of each frame on the current workspace, bottom to top.
@@ -689,7 +752,7 @@ mod tests {
     #[test]
     fn a_new_window_is_decorated_normal_and_alone_in_its_frame() {
         let mut desktop = desktop();
-        let id = desktop.add_window("foot", "~", SIZE, POINTER);
+        let id = desktop.add_window("foot", "~", SIZE, POINTER, true);
         let frame = frame(&desktop, id);
         assert_eq!(
             frame.tabs,
@@ -736,7 +799,7 @@ mod tests {
     fn a_new_window_opens_on_the_output_under_the_pointer() {
         let mut desktop = desktop();
         desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
-        let id = desktop.add_window("app", "", SIZE, Point::new(2000, 500));
+        let id = desktop.add_window("app", "", SIZE, Point::new(2000, 500), true);
         assert_eq!(frame(&desktop, id).geometry.origin, SECOND_SCREEN.origin);
     }
 
@@ -744,7 +807,7 @@ mod tests {
     fn a_new_window_opens_on_the_first_output_when_the_pointer_is_on_none() {
         let mut desktop = desktop();
         desktop.set_outputs(vec![SECOND_SCREEN, SCREEN]);
-        let id = desktop.add_window("app", "", SIZE, Point::new(-500, -500));
+        let id = desktop.add_window("app", "", SIZE, Point::new(-500, -500), true);
         assert_eq!(frame(&desktop, id).geometry.origin, SECOND_SCREEN.origin);
     }
 
@@ -855,6 +918,175 @@ mod tests {
         let first = open(&mut desktop, "first");
         desktop.remove_window(first);
         assert_ne!(open(&mut desktop, "second"), first);
+    }
+
+    // --- Decorations -------------------------------------------------------
+
+    const METRICS: Metrics = Metrics {
+        border: 2,
+        titlebar: 20,
+    };
+
+    fn decorated_desktop() -> Desktop {
+        let mut desktop = desktop();
+        desktop.set_settings(Settings {
+            decoration: METRICS,
+            ..Settings::default()
+        });
+        desktop
+    }
+
+    #[test]
+    fn a_frame_is_larger_than_its_window_by_the_decoration() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "app");
+        let frame = frame(&desktop, id);
+        assert_eq!(
+            frame.geometry,
+            Rect::new(Point::new(0, 0), Size::new(804, 622))
+        );
+        assert_eq!(frame.client(), Rect::new(Point::new(2, 20), SIZE));
+        assert_eq!(
+            frame.decoration.map(|decoration| decoration.tabs()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_window_a_rule_leaves_undecorated_fills_its_frame() {
+        let mut desktop = decorated_desktop();
+        desktop.set_rules(vec![rule(
+            "dock",
+            Effects {
+                decorations: Some(false),
+                ..Effects::default()
+            },
+        )]);
+        let id = open(&mut desktop, "dock");
+        let frame = frame(&desktop, id);
+        assert_eq!(frame.decoration, None);
+        assert_eq!(frame.client(), frame.geometry);
+        assert_eq!(frame.geometry.size, SIZE);
+    }
+
+    #[test]
+    fn a_window_that_draws_its_own_titlebar_is_left_alone_unless_a_rule_insists() {
+        let mut desktop = decorated_desktop();
+        desktop.set_rules(vec![rule(
+            "forced",
+            Effects {
+                decorations: Some(true),
+                ..Effects::default()
+            },
+        )]);
+        let own = desktop.add_window("gtk", "", SIZE, POINTER, false);
+        let forced = desktop.add_window("forced", "", SIZE, POINTER, false);
+        assert_eq!(frame(&desktop, own).decoration, None);
+        assert!(frame(&desktop, forced).decoration.is_some());
+    }
+
+    #[test]
+    fn a_window_can_gain_or_lose_its_decoration_later() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "app");
+        let outer = frame(&desktop, id).geometry;
+
+        desktop.set_decorated(id, false);
+        assert_eq!(frame(&desktop, id).decoration, None);
+        assert_eq!(
+            frame(&desktop, id).client(),
+            outer,
+            "the frame keeps its place"
+        );
+
+        desktop.set_decorated(id, true);
+        assert_eq!(frame(&desktop, id).client().size, SIZE);
+    }
+
+    #[test]
+    fn a_frame_with_several_tabs_is_decorated_even_if_its_windows_are_not() {
+        let mut desktop = decorated_desktop();
+        desktop.set_rules(vec![rule(
+            "*",
+            Effects {
+                decorations: Some(false),
+                ..Effects::default()
+            },
+        )]);
+        let a = open(&mut desktop, "a");
+        let b = open(&mut desktop, "b");
+        desktop.attach(b, a);
+        assert_eq!(
+            frame(&desktop, a)
+                .decoration
+                .map(|decoration| decoration.tabs()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn a_maximized_frame_keeps_its_decoration_and_a_fullscreen_one_does_not() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "app");
+
+        desktop.set_maximized(id, true);
+        let inside = Rect::new(Point::new(2, 20), Size::new(1916, 1058));
+        assert_eq!(frame(&desktop, id).client(), inside);
+
+        desktop.set_fullscreen(id, true);
+        assert_eq!(frame(&desktop, id).decoration, None);
+        assert_eq!(frame(&desktop, id).client(), SCREEN);
+    }
+
+    #[test]
+    fn a_window_that_resizes_itself_resizes_its_frame() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "terminal");
+        desktop.set_client_size(id, Size::new(640, 480));
+        assert_eq!(frame(&desktop, id).client().size, Size::new(640, 480));
+        assert_eq!(frame(&desktop, id).geometry.size, Size::new(644, 502));
+
+        desktop.set_decorated(id, false);
+        desktop.set_client_size(id, Size::new(100, 100));
+        assert_eq!(frame(&desktop, id).geometry.size, Size::new(100, 100));
+    }
+
+    #[test]
+    fn a_window_cannot_resize_a_maximized_or_fullscreen_frame_or_one_showing_another_tab() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "app");
+        let normal = frame(&desktop, id).geometry;
+
+        desktop.set_maximized(id, true);
+        desktop.set_client_size(id, Size::new(10, 10));
+        desktop.set_maximized(id, false);
+        desktop.set_fullscreen(id, true);
+        desktop.set_client_size(id, Size::new(10, 10));
+        desktop.set_fullscreen(id, false);
+        assert_eq!(frame(&desktop, id).geometry, normal);
+
+        let other = open(&mut desktop, "other");
+        desktop.attach(other, id);
+        desktop.set_client_size(id, Size::new(10, 10));
+        assert_eq!(
+            frame(&desktop, id).geometry,
+            normal,
+            "`other` is the shown tab"
+        );
+    }
+
+    #[test]
+    fn fullscreen_frames_are_drawn_above_the_others() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        let chat = open(&mut desktop, "chat");
+        desktop.set_fullscreen(video, true);
+        assert_eq!(stack(&desktop), [chat, video]);
+        assert_eq!(
+            desktop.focused(),
+            Some(chat),
+            "stacking does not move focus"
+        );
     }
 
     // --- Frame state -------------------------------------------------------
@@ -1437,6 +1669,8 @@ mod tests {
 
         desktop.remove_window(closed);
         desktop.set_title(closed, "ghost");
+        desktop.set_decorated(closed, false);
+        desktop.set_client_size(closed, SIZE);
         desktop.set_geometry(closed, SCREEN);
         desktop.set_maximized(closed, true);
         desktop.toggle_maximized(closed);
@@ -1507,7 +1741,7 @@ mod tests {
         for step in 0..5000 {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
-            match random(20) {
+            match random(22) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 2 => desktop.remove_window(id),
                 3 => desktop.minimize(id),
@@ -1525,6 +1759,8 @@ mod tests {
                 15 => desktop.toggle_maximized(id),
                 16 => desktop.toggle_fullscreen(id),
                 17 => desktop.next_workspace(),
+                19 => desktop.set_decorated(id, random(2) == 0),
+                20 => desktop.set_client_size(id, Size::new(100, 100)),
                 18 => desktop.previous_workspace(),
                 _ => desktop.set_outputs(vec![SCREEN; random(3)]),
             }

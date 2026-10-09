@@ -34,6 +34,7 @@ pub fn settings(general: &General) -> Settings {
             omorfos_config::Placement::Center => Placement::Center,
             omorfos_config::Placement::Pointer => Placement::Pointer,
         },
+        ..Settings::default()
     }
 }
 
@@ -176,6 +177,7 @@ mod tests {
                 focus_follows_pointer: true,
                 raise_on_focus: false,
                 placement: Placement::Center,
+                ..Settings::default()
             }
         );
         let general = config("config.yaml", "placement: pointer\n").general;
