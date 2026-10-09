@@ -36,6 +36,7 @@ use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, 
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
+use smithay::wayland::selection::primary_selection::PrimarySelectionState;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{
@@ -90,6 +91,7 @@ pub struct Compositor {
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
     pub(crate) activation: XdgActivationState,
+    pub(crate) primary_selection: PrimarySelectionState,
 
     pub(crate) desktop: Desktop,
     /// Windows the desktop knows about.
@@ -175,6 +177,7 @@ impl Compositor {
         let layer_shell = WlrLayerShellState::new::<Self>(&display);
         let data_device = DataDeviceState::new::<Self>(&display);
         let activation = XdgActivationState::new::<Self>(&display);
+        let primary_selection = PrimarySelectionState::new::<Self>(&display);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -214,6 +217,7 @@ impl Compositor {
                     layer_shell,
                     data_device,
                     activation,
+                    primary_selection,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),

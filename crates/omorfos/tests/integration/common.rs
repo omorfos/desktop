@@ -25,6 +25,12 @@ use wayland_client::protocol::{
     wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_protocols::wp::primary_selection::zv1::client::{
+    zwp_primary_selection_device_manager_v1 as primary_manager,
+    zwp_primary_selection_device_v1 as primary_device,
+    zwp_primary_selection_offer_v1 as primary_offer,
+    zwp_primary_selection_source_v1 as primary_source,
+};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
@@ -342,6 +348,12 @@ pub(crate) struct ClientState {
     layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     clipboards: Option<wl_data_device_manager::WlDataDeviceManager>,
     activation: Option<xdg_activation_v1::XdgActivationV1>,
+    primaries: Option<primary_manager::ZwpPrimarySelectionDeviceManagerV1>,
+    primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
+    /// What this client hands over when asked for the text it has selected.
+    selected: String,
+    /// The primary selection as last offered to this client.
+    pub(crate) primary: Option<primary_offer::ZwpPrimarySelectionOfferV1>,
     /// The activation token most recently issued to this client.
     pub(crate) token: Option<String>,
     data_device: Option<wl_data_device::WlDataDevice>,
@@ -579,6 +591,33 @@ impl Client {
         (surface, popup)
     }
 
+    /// Makes `text` the primary selection, as selecting it with the mouse
+    /// does.
+    pub(crate) fn select(&mut self, text: &str) {
+        text.clone_into(&mut self.state.selected);
+        let source = self
+            .state
+            .primaries
+            .as_ref()
+            .unwrap()
+            .create_source(&self.handle(), ());
+        source.offer(TEXT.to_owned());
+        self.state
+            .primary_device
+            .as_ref()
+            .unwrap()
+            .set_selection(Some(&source), self.state.serial);
+    }
+
+    /// Asks for the primary selection, as a middle click does. Returns
+    /// where it will arrive, or `None` if nothing is selected.
+    pub(crate) fn paste_selection(&self) -> Option<std::io::PipeReader> {
+        let offer = self.state.primary.as_ref()?;
+        let (reader, writer) = std::io::pipe().unwrap();
+        offer.receive(TEXT.to_owned(), writer.as_fd());
+        Some(reader)
+    }
+
     /// Asks for an activation token: the right to hand focus to a window.
     /// `from_input` ties it to the last thing the user did in this client.
     /// The token arrives in [`ClientState::token`].
@@ -694,6 +733,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "zwp_primary_selection_device_manager_v1" => {
+                state.primaries = Some(registry.bind(name, version, handle, ()));
+            }
             "xdg_activation_v1" => {
                 state.activation = Some(registry.bind(name, version, handle, ()));
             }
@@ -759,6 +801,10 @@ impl Dispatch<wl_seat::WlSeat, ()> for ClientState {
             state
                 .data_device
                 .get_or_insert_with(|| clipboards.get_data_device(seat, handle, ()));
+            let primaries = state.primaries.as_ref().unwrap();
+            state
+                .primary_device
+                .get_or_insert_with(|| primaries.get_device(seat, handle, ()));
             state
                 .pointer
                 .get_or_insert_with(|| seat.get_pointer(handle, ()));
@@ -922,6 +968,42 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
     }
 }
 
+impl Dispatch<primary_device::ZwpPrimarySelectionDeviceV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &primary_device::ZwpPrimarySelectionDeviceV1,
+        event: primary_device::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let primary_device::Event::Selection { id } = event {
+            state.primary = id;
+        }
+    }
+
+    wayland_client::event_created_child!(ClientState, primary_device::ZwpPrimarySelectionDeviceV1, [
+        primary_device::EVT_DATA_OFFER_OPCODE => (primary_offer::ZwpPrimarySelectionOfferV1, ()),
+    ]);
+}
+
+impl Dispatch<primary_source::ZwpPrimarySelectionSourceV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &primary_source::ZwpPrimarySelectionSourceV1,
+        event: primary_source::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let primary_source::Event::Send { fd, .. } = event {
+            std::fs::File::from(fd)
+                .write_all(state.selected.as_bytes())
+                .unwrap();
+        }
+    }
+}
+
 impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for ClientState {
     fn event(
         state: &mut Self,
@@ -1055,6 +1137,8 @@ delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);
 delegate_noop!(ClientState: wl_region::WlRegion);
 delegate_noop!(ClientState: xdg_positioner::XdgPositioner);
+delegate_noop!(ClientState: primary_manager::ZwpPrimarySelectionDeviceManagerV1);
+delegate_noop!(ClientState: ignore primary_offer::ZwpPrimarySelectionOfferV1);
 delegate_noop!(ClientState: xdg_activation_v1::XdgActivationV1);
 delegate_noop!(ClientState: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
