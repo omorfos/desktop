@@ -25,6 +25,9 @@ use wayland_client::protocol::{
     wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
+    ext_foreign_toplevel_handle_v1 as listed_handle, ext_foreign_toplevel_list_v1 as toplevel_list,
+};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
     zwp_primary_selection_device_v1 as primary_device,
@@ -348,6 +351,10 @@ pub(crate) struct ClientState {
     layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     clipboards: Option<wl_data_device_manager::WlDataDeviceManager>,
     activation: Option<xdg_activation_v1::XdgActivationV1>,
+
+    /// The windows the compositor lists for taskbars, as this client has
+    /// been told about them, in the order they were announced.
+    pub(crate) taskbar: Vec<Task>,
     primaries: Option<primary_manager::ZwpPrimarySelectionDeviceManagerV1>,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
     /// What this client hands over when asked for the text it has selected.
@@ -694,6 +701,15 @@ impl Client {
     }
 }
 
+/// A window as a taskbar sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Task {
+    handle: listed_handle::ExtForeignToplevelHandleV1,
+    pub(crate) app_id: String,
+    pub(crate) title: String,
+    pub(crate) closed: bool,
+}
+
 /// The format the test client copies and pastes.
 const TEXT: &str = "text/plain;charset=utf-8";
 
@@ -733,6 +749,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "ext_foreign_toplevel_list_v1" => {
+                let _: toplevel_list::ExtForeignToplevelListV1 =
+                    registry.bind(name, version, handle, ());
+            }
             "zwp_primary_selection_device_manager_v1" => {
                 state.primaries = Some(registry.bind(name, version, handle, ()));
             }
@@ -1000,6 +1020,53 @@ impl Dispatch<primary_source::ZwpPrimarySelectionSourceV1, ()> for ClientState {
             std::fs::File::from(fd)
                 .write_all(state.selected.as_bytes())
                 .unwrap();
+        }
+    }
+}
+
+impl Dispatch<toplevel_list::ExtForeignToplevelListV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &toplevel_list::ExtForeignToplevelListV1,
+        event: toplevel_list::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let toplevel_list::Event::Toplevel { toplevel } = event {
+            state.taskbar.push(Task {
+                handle: toplevel,
+                app_id: String::new(),
+                title: String::new(),
+                closed: false,
+            });
+        }
+    }
+
+    wayland_client::event_created_child!(ClientState, toplevel_list::ExtForeignToplevelListV1, [
+        toplevel_list::EVT_TOPLEVEL_OPCODE => (listed_handle::ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<listed_handle::ExtForeignToplevelHandleV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        handle: &listed_handle::ExtForeignToplevelHandleV1,
+        event: listed_handle::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let task = state
+            .taskbar
+            .iter_mut()
+            .find(|task| task.handle == *handle)
+            .unwrap();
+        match event {
+            listed_handle::Event::Title { title } => task.title = title,
+            listed_handle::Event::AppId { app_id } => task.app_id = app_id,
+            listed_handle::Event::Closed => task.closed = true,
+            _ => {}
         }
     }
 }
