@@ -67,6 +67,9 @@ struct Hardware {
     /// Whether the seat is ours. It is not while the user is on another
     /// virtual terminal.
     active: bool,
+    /// Whether the screens are on. They are turned off when the user has
+    /// been away for as long as the configuration says.
+    lit: bool,
     /// The touchpads plugged in, and the settings they were last given.
     touchpads: Vec<Device>,
     configured: Option<Touchpad>,
@@ -138,6 +141,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         screens: Vec::new(),
         started: Instant::now(),
         active: true,
+        lit: true,
         touchpads: Vec::new(),
         configured: None,
         reported: Vec::new(),
@@ -274,6 +278,23 @@ fn turn(
     }
     now.configure_touchpads(compositor.config().general.touchpad);
     if !now.active {
+        return Ok(());
+    }
+    // Turn the screens off when the user has been away, and on again when
+    // they are back. A screen turned back on shows nothing of ours yet.
+    let wanted = compositor.screens_on();
+    if wanted != now.lit {
+        now.lit = wanted;
+        for screen in &mut now.screens {
+            if wanted {
+                screen.surface.reset_buffers();
+            } else {
+                let _ = screen.surface.surface().clear();
+            }
+            screen.picture = Picture::Stale;
+        }
+    }
+    if !now.lit {
         return Ok(());
     }
     let Hardware {

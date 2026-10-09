@@ -39,6 +39,20 @@
         }
       ]
     },
+    "Idle": {
+      "additionalProperties": false,
+      "description": "What happens when the user is away.",
+      "properties": {
+        "screen_off": {
+          "default": 0,
+          "description": "Seconds without input after which the screens are turned off. `0`\nnever turns them off.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Keyboard": {
       "additionalProperties": false,
       "description": "Keyboard layout and key repeat.",
@@ -196,6 +210,10 @@
     "focus": {
       "$ref": "#/$defs/Focus",
       "description": "How windows gain focus."
+    },
+    "idle": {
+      "$ref": "#/$defs/Idle",
+      "description": "What happens when the user is away."
     },
     "keyboard": {
       "$ref": "#/$defs/Keyboard",

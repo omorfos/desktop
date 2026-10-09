@@ -121,3 +121,102 @@ fn a_panel_can_ask_too() {
     let _inhibitor = client.inhibit_idle(&surface);
     assert!(!idles_within(&mut session, &mut client, A_WHILE));
 }
+
+/// A session that turns its screens off after a minute without input.
+fn dozing() -> Session {
+    let mut session = Session::with_config(&[("config.yaml", "idle: { screen_off: 60 }\n")]);
+    session.step();
+    session
+}
+
+fn seconds(seconds: u64) -> Duration {
+    Duration::from_secs(seconds)
+}
+
+#[test]
+fn the_screens_stay_on_unless_told_to_turn_off() {
+    let mut session = Session::new();
+    session.advance(seconds(100_000));
+    assert!(session.compositor().screens_on());
+    assert_eq!(session.compositor().deadline(), None, "nothing to wait for");
+}
+
+#[test]
+fn the_screens_turn_off_after_the_time_without_input_and_on_at_the_next() {
+    let mut session = dozing();
+    assert!(session.compositor().screens_on());
+    assert_eq!(
+        session.compositor().deadline(),
+        Some(session.now + seconds(60)),
+        "the session wakes itself to turn them off"
+    );
+
+    session.advance(seconds(59));
+    assert!(session.compositor().screens_on(), "not yet");
+    session.advance(seconds(1));
+    assert!(!session.compositor().screens_on());
+    assert_eq!(session.compositor().deadline(), None, "and sleeps on");
+
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 10.0, y: 10.0 }, 0);
+    session.step();
+    assert!(session.compositor().screens_on(), "the user is back");
+    session.advance(seconds(59));
+    assert!(session.compositor().screens_on(), "counted from then");
+    session.advance(seconds(2));
+    assert!(!session.compositor().screens_on());
+}
+
+#[test]
+fn something_being_watched_keeps_the_screens_on() {
+    let mut session = dozing();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "film", (200, 100), RED);
+    let inhibitor = client.inhibit_idle(&window.surface);
+    session.roundtrip(&mut client);
+
+    session.advance(seconds(600));
+    assert!(session.compositor().screens_on());
+
+    inhibitor.destroy();
+    session.roundtrip(&mut client);
+    session.advance(seconds(59));
+    assert!(
+        session.compositor().screens_on(),
+        "a minute from when it ended"
+    );
+    session.advance(seconds(2));
+    assert!(!session.compositor().screens_on());
+}
+
+#[test]
+fn a_locked_session_turns_its_screens_off_whatever_is_being_watched() {
+    let mut session = dozing();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "film", (200, 100), RED);
+    let _inhibitor = client.inhibit_idle(&window.surface);
+    let mut locker = session.connect();
+    let _lock = locker.lock();
+    session.roundtrip(&mut locker);
+
+    session.advance(seconds(61));
+    assert!(!session.compositor().screens_on());
+}
+
+#[test]
+fn the_time_can_be_changed_or_taken_away_while_running() {
+    let mut session = dozing();
+    session.advance(seconds(61));
+    assert!(!session.compositor().screens_on());
+
+    session.write_config("config.yaml", "idle: { screen_off: 0 }\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert!(session.compositor().screens_on(), "never means on");
+
+    session.write_config("config.yaml", "idle: { screen_off: 30 }\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert!(!session.compositor().screens_on(), "long since");
+}

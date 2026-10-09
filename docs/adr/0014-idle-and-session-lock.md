@@ -67,10 +67,18 @@ so there is no list of trusted lockers to maintain.
 - Programs of the user's that talk to the IPC socket can still act on a
   locked session. They run as the user and could do anything anyway; the
   lock is against whoever is at the keyboard.
-- The compositor does not start a locker or an idle daemon, turn the
-  screen off, or lock before sleep. Those are the daemon's to arrange, and
-  turning the screen off needs an output power protocol that is not
-  offered yet.
+- The compositor does not start a locker or an idle daemon by itself, or
+  lock before sleep. Those are the daemon's to arrange; `autostart` in
+  `config.yaml` can start it.
+- Turning the screens off was first left to a daemon too, which would have
+  needed an output power protocol that Smithay does not provide. It is
+  instead a setting, `idle.screen_off`: the compositor already knows when
+  there was last input and what is asking to stay awake, and says through
+  `Compositor::screens_on` whether the screens should be on. The decision
+  is tested with the clock the tests control; a backend that drives
+  screens acts on it. It is off unless a time is given, because the part
+  that powers a screen down and up again is hardware glue that cannot be
+  tested here.
 - Nothing is configured: which locker to use and after how long are the
   idle daemon's settings.
 - A key handled between the request to lock and the next sync can be

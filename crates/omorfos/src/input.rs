@@ -196,6 +196,7 @@ impl Compositor {
         // Whatever it is, the user is here.
         let seat = self.seat.clone();
         self.idle.notify_activity(&seat);
+        self.presence.stirred = true;
         // A distance moved becomes the position arrived at.
         let event = match event {
             Input::Key { code, pressed } => Placed::Key { code, pressed },
