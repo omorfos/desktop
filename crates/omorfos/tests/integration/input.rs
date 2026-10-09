@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use omorfos::Input;
 use smithay::input::keyboard::Keycode;
 
-use crate::common::{Event, Session, key};
+use crate::common::{Event, HEIGHT, Session, WIDTH, key};
 use crate::windows::{BLUE, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
@@ -85,6 +85,119 @@ fn the_pointer_enters_moves_within_and_leaves_a_window() {
         "{events:?}"
     );
     assert_eq!(events.last(), Some(&Event::PointerLeave));
+}
+
+#[test]
+fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 10.0, y: 20.0 }, 1);
+    session.roundtrip(&mut client);
+    client.take_events();
+
+    session
+        .compositor_mut()
+        .input(Input::MotionBy { dx: 5.0, dy: -3.0 }, 2);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: -9000.0,
+            dy: -9000.0,
+        },
+        3,
+    );
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::PointerMotion { x: 15.0, y: 17.0 }),
+        "{events:?}"
+    );
+    assert_eq!(
+        events.last(),
+        Some(&Event::PointerMotion { x: 0.0, y: 0.0 }),
+        "stopped at the top-left corner"
+    );
+
+    // The far corner is the last pixel, not one past it.
+    session.compositor_mut().show_pointer();
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: 9000.0,
+            dy: 9000.0,
+        },
+        4,
+    );
+    session.roundtrip(&mut client);
+    assert_eq!(client.take_events().last(), Some(&Event::PointerLeave));
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: -5.0,
+            dy: -20.0,
+        },
+        5,
+    );
+    assert_eq!(
+        session.draw().at(WIDTH - 5, HEIGHT - 17),
+        0xffff_ffff,
+        "the pointer is five to the left of the last column and twenty above the last row"
+    );
+}
+
+#[test]
+fn the_pointer_is_drawn_only_for_a_backend_that_asks() {
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 300.0, y: 200.0 }, 1);
+    let background = session.draw().at(301, 203);
+
+    session.compositor_mut().show_pointer();
+    let picture = session.draw();
+    assert_eq!(picture.at(301, 203), 0xffff_ffff, "inside the arrow");
+    assert_eq!(picture.at(299, 203), background, "left of its tip");
+    assert_eq!(picture.at(330, 203), background, "right of it");
+
+    // It follows the pointer.
+    session
+        .compositor_mut()
+        .input(Input::MotionBy { dx: 50.0, dy: 0.0 }, 2);
+    let picture = session.draw();
+    assert_eq!(picture.at(301, 203), background);
+    assert_eq!(picture.at(351, 203), 0xffff_ffff);
+}
+
+#[test]
+fn the_keys_that_switch_virtual_terminal_are_kept_for_the_backend() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    session.roundtrip(&mut client);
+    client.take_events();
+    assert_eq!(session.compositor_mut().take_terminal_switch(), None);
+
+    press(&mut session, key::CONTROL);
+    press(&mut session, key::ALT);
+    press(&mut session, key::F2);
+    release(&mut session, key::F2);
+    release(&mut session, key::ALT);
+    release(&mut session, key::CONTROL);
+    session.roundtrip(&mut client);
+
+    assert_eq!(session.compositor_mut().take_terminal_switch(), Some(2));
+    assert_eq!(
+        session.compositor_mut().take_terminal_switch(),
+        None,
+        "asked for once"
+    );
+    let f2 = key::F2.raw() - 8;
+    assert!(
+        keys(&client.take_events())
+            .iter()
+            .all(|(code, _)| *code != f2),
+        "the application does not see the key"
+    );
 }
 
 #[test]
