@@ -14,9 +14,12 @@ publish.workspace = true
 [dependencies]
 omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
-smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "backend_winit"] }
+smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "backend_winit"] }
 
 [dev-dependencies]
+# The software renderer lets the tests draw without a GPU. It is enabled here
+# only, so the shipped binary does not link pixman.
+smithay = { version = "0.7.0", default-features = false, features = ["renderer_pixman"] }
 tempfile = "3.27.0"
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client"] }
