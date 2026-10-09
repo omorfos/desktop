@@ -14,7 +14,8 @@ the changelog by hand.
 4. The workflow tags `vX.Y.Z`, creates the GitHub release, builds on amd64
    and arm64, and attaches to the release, for each architecture:
    - `omorfos_X.Y.Z-1_<arch>.deb`
-   - `omorfos-X.Y.Z-<target>.tar.gz` (binary, licence, docs, schemas)
+   - `omorfos-X.Y.Z-<target>.tar.gz` (binary, licence, docs, schemas,
+     login session entry)
    - a `.sha256` file for each
 5. If enabled, it then publishes the `omorfos` package to the AUR.
 

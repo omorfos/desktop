@@ -23,7 +23,7 @@ mod paint;
 mod scale;
 mod session;
 
-pub use compositor::{ClientState, Compositor};
+pub use compositor::{ClientState, Compositor, DESKTOP_NAME};
 pub use cursor::Themes;
 pub use input::Input;
 pub use scale::Scale;

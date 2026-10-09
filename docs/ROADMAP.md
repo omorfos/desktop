@@ -92,8 +92,8 @@ first real release: the release-please configuration, the upload and
 attestation steps, and the push to the AUR. See
 [RELEASING.md](RELEASING.md) for the one-time setup on GitHub.
 
-A `wayland-sessions` entry for login screens is left for milestone 8, when
-the compositor can drive real hardware.
+A `wayland-sessions` entry for login screens was left for milestone 8, when
+the compositor could drive real hardware, and is done there.
 
 ## 6. Fluxbox features
 
@@ -171,7 +171,8 @@ Known gaps:
 - [x] Our own pointer cursor, client-set cursors and cursor shapes, from
       the installed cursor theme (ADR 12)
 - [ ] idle-notify and session-lock (moved from milestone 7)
-- [ ] A `wayland-sessions` entry for login screens
+- [x] A `wayland-sessions` entry for login screens, with programs told
+      about the session however they are started (ADR 13)
 - [ ] Rounded window corners (needs a shader)
 
 ## 9. Shell components

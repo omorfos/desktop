@@ -36,4 +36,5 @@ package() {
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"
+  install -Dm644 packaging/omorfos.desktop -t "$pkgdir/usr/share/wayland-sessions/"
 }

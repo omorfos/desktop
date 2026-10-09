@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=omorfos
+Comment=A lightweight Wayland compositor inspired by Fluxbox
+Exec=omorfos
+DesktopNames=omorfos
