@@ -73,6 +73,18 @@ impl From<Rect> for Screen {
     }
 }
 
+/// How a window that rules open maximized or fullscreen should first be
+/// told to draw itself, as answered by [`Desktop::opening`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Opening {
+    /// The size the window itself will have.
+    pub size: Size,
+    /// Whether it opens maximized.
+    pub maximized: bool,
+    /// Whether it opens fullscreen.
+    pub fullscreen: bool,
+}
+
 /// Behaviour that the user can configure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
@@ -325,12 +337,15 @@ impl Desktop {
             .workspace
             .map_or(self.active, |workspace| workspace.min(last));
         let decorated = effects.decorations.unwrap_or(wants_decoration);
-        let size = if decorated {
-            self.settings.decoration.outer_size(size)
-        } else {
-            size
-        };
         let area = self.output_at(pointer).usable;
+        let fills = effects.maximized == Some(true) || effects.fullscreen == Some(true);
+        let size = match (fills, decorated) {
+            // The window drew itself to fill the output, so its own idea of
+            // a size was never seen. When restored it gets a moderate one.
+            (true, _) => Size::new(area.size.width / 3 * 2, area.size.height / 3 * 2),
+            (false, true) => self.settings.decoration.outer_size(size),
+            (false, false) => size,
+        };
         let index = self.workspaces[workspace].groups.len();
         let origin = place(self.settings.placement, size, area, pointer, index);
         let id = WindowId(self.serial());
@@ -351,6 +366,41 @@ impl Desktop {
         };
         self.push_focused(workspace, group);
         id
+    }
+
+    /// Says how a window about to be added should first draw itself, if
+    /// rules open it maximized or fullscreen; `None` if it may choose its
+    /// own size.
+    ///
+    /// Asking before the window has drawn anything lets it appear at its
+    /// final size, instead of at its natural size for one frame.
+    #[must_use]
+    pub fn opening(
+        &self,
+        app_id: &str,
+        title: &str,
+        pointer: Point,
+        wants_decoration: bool,
+    ) -> Option<Opening> {
+        let effects = resolve(&self.rules, app_id, title);
+        let fullscreen = effects.fullscreen == Some(true);
+        let maximized = effects.maximized == Some(true);
+        let screen = self.output_at(pointer);
+        let decorated = effects.decorations.unwrap_or(wants_decoration);
+        let size = match (fullscreen, decorated) {
+            (true, _) => screen.area.size,
+            (false, true) => {
+                Decoration::new(screen.usable, self.settings.decoration, 1)
+                    .client()
+                    .size
+            }
+            (false, false) => screen.usable.size,
+        };
+        (fullscreen || maximized).then_some(Opening {
+            size,
+            maximized,
+            fullscreen,
+        })
     }
 
     /// Removes a window, for example because it closed.
@@ -929,6 +979,96 @@ mod tests {
         let frame = frame(&desktop, player);
         assert!(frame.maximized && frame.fullscreen && !frame.window().decorated);
         assert!(!self::frame(&desktop, other).maximized);
+    }
+
+    #[test]
+    fn a_window_that_rules_leave_alone_chooses_its_own_size() {
+        let desktop = decorated_desktop();
+        assert_eq!(desktop.opening("foot", "", POINTER, true), None);
+    }
+
+    #[test]
+    fn a_window_a_rule_maximizes_is_told_the_size_it_will_fill() {
+        let mut desktop = decorated_desktop();
+        desktop.set_rules(vec![
+            rule(
+                "editor",
+                Effects {
+                    maximized: Some(true),
+                    ..Effects::default()
+                },
+            ),
+            rule(
+                "bare",
+                Effects {
+                    maximized: Some(true),
+                    decorations: Some(false),
+                    ..Effects::default()
+                },
+            ),
+        ]);
+
+        let framed = desktop.opening("editor", "", POINTER, true).unwrap();
+        assert_eq!(
+            framed,
+            Opening {
+                size: Size::new(1916, 1058),
+                maximized: true,
+                fullscreen: false
+            }
+        );
+        let bare = desktop.opening("bare", "", POINTER, true).unwrap();
+        assert_eq!(bare.size, SCREEN.size, "no frame to leave room for");
+        let own_titlebar = desktop.opening("editor", "", POINTER, false).unwrap();
+        assert_eq!(own_titlebar.size, SCREEN.size);
+    }
+
+    #[test]
+    fn a_window_a_rule_makes_fullscreen_is_told_the_whole_output() {
+        let mut desktop = decorated_desktop();
+        let usable = Rect::new(Point::new(0, 30), Size::new(1920, 1050));
+        desktop.set_outputs([Screen {
+            area: SCREEN,
+            usable,
+        }]);
+        desktop.set_rules(vec![rule(
+            "mpv",
+            Effects {
+                fullscreen: Some(true),
+                ..Effects::default()
+            },
+        )]);
+
+        let opening = desktop.opening("mpv", "", POINTER, true).unwrap();
+        assert_eq!(
+            opening,
+            Opening {
+                size: SCREEN.size,
+                maximized: false,
+                fullscreen: true
+            }
+        );
+    }
+
+    #[test]
+    fn a_window_opened_filling_the_output_restores_to_a_moderate_size() {
+        let mut desktop = desktop();
+        desktop.set_rules(vec![rule(
+            "editor",
+            Effects {
+                maximized: Some(true),
+                ..Effects::default()
+            },
+        )]);
+        let id = desktop.add_window("editor", "", SCREEN.size, POINTER, true);
+        assert_eq!(frame(&desktop, id).geometry, SCREEN);
+
+        desktop.set_maximized(id, false);
+        assert_eq!(
+            frame(&desktop, id).geometry.size,
+            Size::new(1280, 720),
+            "two thirds of the output"
+        );
     }
 
     #[test]
