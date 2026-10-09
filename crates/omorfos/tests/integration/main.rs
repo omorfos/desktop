@@ -16,4 +16,5 @@ mod ipc;
 mod layers;
 mod menu;
 mod notice;
+mod popups;
 mod windows;

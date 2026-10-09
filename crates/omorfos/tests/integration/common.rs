@@ -301,6 +301,8 @@ pub(crate) enum Event {
         size: (i32, i32),
     },
     PopupRepositioned(u32),
+    /// The compositor dismissed a popup.
+    PopupDone,
     PointerEnter {
         x: f64,
         y: f64,
@@ -549,6 +551,28 @@ impl Client {
             xdg_surface.get_popup(Some(&parent.xdg_surface), &positioner, &self.handle(), ());
         surface.commit();
         (surface, popup, positioner)
+    }
+
+    /// Creates a popup on a layer-shell surface, such as a panel's menu,
+    /// and makes its initial commit.
+    pub(crate) fn layer_popup(
+        &self,
+        parent: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        position: (i32, i32),
+        size: (i32, i32),
+    ) -> (wl_surface::WlSurface, xdg_popup::XdgPopup) {
+        let wm_base = self.state.wm_base.as_ref().unwrap();
+        let positioner = wm_base.create_positioner(&self.handle(), ());
+        positioner.set_size(size.0, size.1);
+        positioner.set_anchor_rect(position.0, position.1, 1, 1);
+        positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
+        positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+        let surface = self.surface();
+        let xdg_surface = wm_base.get_xdg_surface(&surface, &self.handle(), ());
+        let popup = xdg_surface.get_popup(None, &positioner, &self.handle(), ());
+        parent.get_popup(&popup);
+        surface.commit();
+        (surface, popup)
     }
 
     /// Puts `text` on the clipboard, as an application does on Ctrl+C.
@@ -894,6 +918,7 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for ClientState {
             xdg_popup::Event::Repositioned { token } => {
                 state.events.push(Event::PopupRepositioned(token));
             }
+            xdg_popup::Event::PopupDone => state.events.push(Event::PopupDone),
             _ => {}
         }
     }

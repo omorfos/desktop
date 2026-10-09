@@ -38,7 +38,9 @@ use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
-use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState};
+use smithay::wayland::shell::xdg::{
+    PopupSurface, ToplevelStateSet, ToplevelSurface, XdgShellState,
+};
 use smithay::wayland::shm::ShmState;
 
 use crate::bridge::{self, Bindings};
@@ -99,6 +101,9 @@ pub struct Compositor {
     /// The root menu, while it is open.
     pub(crate) menu: Option<Menu<Action>>,
     menu_chrome: Option<MenuChrome>,
+    /// Popups, such as menus, that asked to be dismissed when the user
+    /// clicks away from them, oldest first.
+    pub(crate) grabbed_popups: Vec<PopupSurface>,
     /// The on-screen notice of what is wrong, while there is something.
     pub(crate) notice: Option<Notice>,
     /// The problems the user has clicked away, hidden until they change.
@@ -209,6 +214,7 @@ impl Compositor {
                     drag: None,
                     menu: None,
                     menu_chrome: None,
+                    grabbed_popups: Vec::new(),
                     notice: None,
                     dismissed: Vec::new(),
                     text: Text::new(),
@@ -614,7 +620,13 @@ impl Compositor {
     /// Gives the keyboard to whoever should have it now.
     fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
         // A launcher or lock prompt that demands the keyboard has it for as
-        // long as it is up; otherwise the focused window does.
+        // long as it is up. Failing that, an open menu has it, so it can be
+        // driven with the arrow keys. Otherwise the focused window does.
+        self.grabbed_popups.retain(PopupSurface::alive);
+        let menu = self
+            .grabbed_popups
+            .last()
+            .map(|popup| popup.wl_surface().clone());
         let demanding = layer_map_for_output(&self.output)
             .layers()
             .rev()
@@ -623,7 +635,7 @@ impl Compositor {
                     && matches!(layer.layer(), Layer::Top | Layer::Overlay)
             })
             .map(|layer| layer.wl_surface().clone());
-        let focus = demanding.or_else(|| {
+        let focus = demanding.or(menu).or_else(|| {
             focused
                 .and_then(|id| self.mapped(id))
                 .map(|mapped| mapped.toplevel.wl_surface().clone())
