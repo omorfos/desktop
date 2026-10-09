@@ -58,8 +58,14 @@ what is wrong, and `omorfosctl config check` prints the same list.
 - A subscriber is sent more bytes than a diff would need; negligible here.
 - The IPC protocol is a compatibility surface from now on; it carries a
   version number that rises only on breaking changes.
-- Not yet offered, so panels cannot yet list windows or workspaces through
-  standard protocols and must use our socket: foreign-toplevel and
-  ext-workspace. Also outstanding: xdg-activation, idle-notify,
-  session-lock, the primary selection, popup grabs, and popups of layer
-  surfaces.
+- Taskbars can list windows through ext-foreign-toplevel-list, and focus
+  can be handed over through xdg-activation. Workspaces, and acting on a
+  window other than activating it, are available only through our socket:
+  Smithay provides neither ext-workspace nor the wlr
+  foreign-toplevel-management protocol, and hand-writing them is not
+  justified while the socket covers the need.
+- An activation token is honoured only if tied to user input, but the
+  serial it quotes is not verified against events actually delivered.
+- idle-notify and session-lock are deferred to the hardware milestone:
+  the first needs the event loop, and the second must be provably
+  exclusive to be worth having.
