@@ -25,6 +25,7 @@ use wayland_client::protocol::{
     wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
@@ -340,6 +341,9 @@ pub(crate) struct ClientState {
     decorations: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     clipboards: Option<wl_data_device_manager::WlDataDeviceManager>,
+    activation: Option<xdg_activation_v1::XdgActivationV1>,
+    /// The activation token most recently issued to this client.
+    pub(crate) token: Option<String>,
     data_device: Option<wl_data_device::WlDataDevice>,
     /// What this client hands over when asked for what it copied.
     copied: String,
@@ -575,6 +579,27 @@ impl Client {
         (surface, popup)
     }
 
+    /// Asks for an activation token: the right to hand focus to a window.
+    /// `from_input` ties it to the last thing the user did in this client.
+    /// The token arrives in [`ClientState::token`].
+    pub(crate) fn request_token(&self, from_input: bool) {
+        let activation = self.state.activation.as_ref().unwrap();
+        let token = activation.get_activation_token(&self.handle(), ());
+        if from_input {
+            token.set_serial(self.state.serial, self.seat());
+        }
+        token.commit();
+    }
+
+    /// Asks for `surface`'s window to be focused, presenting `token`.
+    pub(crate) fn activate(&self, token: &str, surface: &wl_surface::WlSurface) {
+        self.state
+            .activation
+            .as_ref()
+            .unwrap()
+            .activate(token.to_owned(), surface);
+    }
+
     /// Puts `text` on the clipboard, as an application does on Ctrl+C.
     pub(crate) fn copy(&mut self, text: &str) {
         text.clone_into(&mut self.state.copied);
@@ -669,6 +694,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "xdg_activation_v1" => {
+                state.activation = Some(registry.bind(name, version, handle, ()));
+            }
             "wl_data_device_manager" => {
                 state.clipboards = Some(registry.bind(name, version.min(3), handle, ()));
             }
@@ -894,6 +922,21 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
     }
 }
 
+impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &xdg_activation_token_v1::XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_activation_token_v1::Event::Done { token } = event {
+            state.token = Some(token);
+        }
+    }
+}
+
 impl Dispatch<xdg_popup::XdgPopup, ()> for ClientState {
     fn event(
         state: &mut Self,
@@ -1012,6 +1055,7 @@ delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);
 delegate_noop!(ClientState: wl_region::WlRegion);
 delegate_noop!(ClientState: xdg_positioner::XdgPositioner);
+delegate_noop!(ClientState: xdg_activation_v1::XdgActivationV1);
 delegate_noop!(ClientState: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);

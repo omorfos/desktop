@@ -31,8 +31,11 @@ use smithay::wayland::shell::xdg::{
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::xdg_activation::{
+    XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
+};
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -383,6 +386,30 @@ impl ClientDndGrabHandler for Compositor {}
 
 impl ServerDndGrabHandler for Compositor {}
 
+impl XdgActivationHandler for Compositor {
+    fn activation_state(&mut self) -> &mut XdgActivationState {
+        &mut self.activation
+    }
+
+    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
+        // A token is the right to move focus. It is honoured only if the
+        // application tied it to something the user did (a click, a key),
+        // so that windows cannot raise themselves unprompted.
+        data.serial.is_some()
+    }
+
+    fn request_activation(
+        &mut self,
+        _token: XdgActivationToken,
+        _data: XdgActivationTokenData,
+        surface: WlSurface,
+    ) {
+        if let Some(id) = self.window_id(&surface) {
+            self.desktop.activate(id);
+        }
+    }
+}
+
 impl ShmHandler for Compositor {
     fn shm_state(&self) -> &ShmState {
         &self.shm
@@ -399,6 +426,7 @@ delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
 delegate_layer_shell!(Compositor);
 delegate_data_device!(Compositor);
+delegate_xdg_activation!(Compositor);
 delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);

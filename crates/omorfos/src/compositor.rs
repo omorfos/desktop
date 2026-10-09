@@ -42,6 +42,7 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, ToplevelStateSet, ToplevelSurface, XdgShellState,
 };
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::bridge::{self, Bindings};
 use crate::input::Drag;
@@ -88,6 +89,7 @@ pub struct Compositor {
     screen: Screen,
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
+    pub(crate) activation: XdgActivationState,
 
     pub(crate) desktop: Desktop,
     /// Windows the desktop knows about.
@@ -172,6 +174,7 @@ impl Compositor {
         let decorations = XdgDecorationState::new::<Self>(&display);
         let layer_shell = WlrLayerShellState::new::<Self>(&display);
         let data_device = DataDeviceState::new::<Self>(&display);
+        let activation = XdgActivationState::new::<Self>(&display);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -210,6 +213,7 @@ impl Compositor {
                     screen: Screen::default(),
                     layer_shell,
                     data_device,
+                    activation,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),

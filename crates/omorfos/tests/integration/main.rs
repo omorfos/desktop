@@ -5,6 +5,7 @@
 //! compositor by hand, so each exchange is deterministic.
 
 mod actions;
+mod activation;
 mod clipboard;
 mod common;
 mod config;
