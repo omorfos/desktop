@@ -39,6 +39,9 @@ cosmic-text = { version = "0.19.0", default-features = false, features = ["std",
 omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
 omorfos-ipc = { path = "../omorfos-ipc" }
+# Already in the tree through Smithay; named here for the `process` feature,
+# which lets the event loop be woken when a program we started exits.
+rustix = { version = "1.1.5", default-features = false, features = ["process"] }
 serde = "1.0.229"
 smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "backend_winit"] }
 

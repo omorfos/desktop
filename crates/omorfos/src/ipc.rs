@@ -11,6 +11,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use omorfos_config::Action;
 use omorfos_core::WindowId;
@@ -18,6 +19,7 @@ use omorfos_ipc::{
     MAX_MESSAGE, PROTOCOL, Reply, Request, State, Window, Workspace, decode, encode,
 };
 use serde::Deserialize;
+use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
 
 use crate::{Compositor, bridge};
@@ -28,6 +30,10 @@ const MAX_PEERS: usize = 32;
 /// The most unsent output held for one peer, in bytes. A peer that falls
 /// further behind than this is not reading, and is dropped.
 const MAX_BACKLOG: usize = 1024 * 1024;
+
+/// How long to wait before trying again to send a peer what its socket
+/// would not take.
+const RETRY: Duration = Duration::from_millis(20);
 
 /// The listening socket and the peers connected to it.
 #[derive(Debug)]
@@ -52,6 +58,9 @@ struct Peer {
     /// Subscribed, but not yet sent the state for the first time.
     waiting: bool,
     alive: bool,
+    /// What wakes the event loop when the peer writes, to be removed with
+    /// the peer.
+    wake: Option<RegistrationToken>,
 }
 
 impl Server {
@@ -76,8 +85,9 @@ impl Server {
     }
 
     /// Takes on the connections waiting, up to the limit, turning away any
-    /// that are not from the socket's owner.
-    fn accept(&mut self) {
+    /// that are not from the socket's owner. `wake` arranges for the event
+    /// loop to be woken when a peer that was taken on writes.
+    fn accept(&mut self, wake: impl Fn(&UnixStream) -> Option<RegistrationToken>) {
         while let Ok((stream, _)) = self.listener.accept() {
             let trusted = same_user(
                 socket_peercred(&stream).ok().map(|peer| peer.uid.as_raw()),
@@ -85,16 +95,15 @@ impl Server {
             );
             let room = self.peers.len() < MAX_PEERS;
             let ready = stream.set_nonblocking(true).is_ok();
-            let peer = Peer {
+            self.peers.extend((trusted && room && ready).then(|| Peer {
+                wake: wake(&stream),
                 stream,
                 inbox: Vec::new(),
                 outbox: Vec::new(),
                 subscribed: false,
                 waiting: false,
                 alive: true,
-            };
-            self.peers
-                .extend((trusted && room && ready).then_some(peer));
+            }));
         }
     }
 }
@@ -172,7 +181,11 @@ impl Compositor {
     ///
     /// Returns an error if the socket cannot be created.
     pub fn listen_ipc(&mut self, path: impl Into<PathBuf>) -> io::Result<()> {
-        Server::bind(path.into()).map(|server| self.ipc = Some(server))
+        Server::bind(path.into()).map(|server| {
+            // Lasts as long as the session: the socket is never replaced.
+            self.wake_on(&server.listener);
+            self.ipc = Some(server);
+        })
     }
 
     /// Where the IPC socket is, if one is being served.
@@ -187,7 +200,7 @@ impl Compositor {
         let Some(mut server) = self.ipc.take() else {
             return;
         };
-        server.accept();
+        server.accept(|stream| self.wake_on(stream));
         for peer in &mut server.peers {
             for line in peer.read_lines() {
                 let request = String::from_utf8(line).map_err(|error| error.to_string());
@@ -208,7 +221,10 @@ impl Compositor {
 
     /// Sends subscribers the state if it changed, and sends everyone what
     /// is queued for them. Peers that have gone or misbehaved are dropped.
-    pub(crate) fn publish_ipc(&mut self) {
+    ///
+    /// A peer whose socket would not take everything is tried again a
+    /// little after `now`.
+    pub(crate) fn publish_ipc(&mut self, now: Instant) {
         let Some(mut server) = self.ipc.take() else {
             return;
         };
@@ -225,7 +241,12 @@ impl Compositor {
         for peer in &mut server.peers {
             peer.flush();
         }
+        let gone = server.peers.iter().filter(|peer| !peer.alive);
+        gone.filter_map(|peer| peer.wake)
+            .for_each(|wake| self.event_loop.remove(wake));
         server.peers.retain(|peer| peer.alive);
+        let behind = server.peers.iter().any(|peer| !peer.outbox.is_empty());
+        self.ipc_retry = behind.then(|| now + RETRY);
         self.ipc = Some(server);
     }
 

@@ -62,7 +62,7 @@ Crates are created when their first task starts, not before.
 
 A `Session` owns the event loop, the Wayland display and the `Compositor`.
 A backend owns the screen and the input devices, and adds both to the
-session. Each turn:
+session. The loop sleeps until something happens. Each turn:
 
 1. the backend's input sources feed `Compositor::input` with `Input`
    values, a small enum that hides where input comes from;
@@ -75,7 +75,11 @@ session. Each turn:
 4. clients are sent what they are owed, and the backend draws with
    `Compositor::render`, generic over the renderer.
 
-See [adr/0009-session-and-event-loop.md](adr/0009-session-and-event-loop.md).
+Nothing is polled. The compositor registers what it waits for besides its
+clients (the configuration directory, IPC peers, programs it started) with
+the loop, and reports through `Compositor::deadline` when it next needs a
+turn regardless. See
+[adr/0009-session-and-event-loop.md](adr/0009-session-and-event-loop.md).
 
 The compositor draws, from its own scene rather than Smithay's `Space` so
 that decorations interleave with windows correctly: client surfaces, frame
@@ -100,6 +104,6 @@ Files live in `$XDG_CONFIG_HOME/omorfos/` (default `~/.config/omorfos/`):
 optional; built-in defaults apply when a file is absent. The format is
 described in [CONFIGURATION.md](CONFIGURATION.md).
 
-Live reload is three small pieces the compositor's event loop wires
-together: `Watcher` (an inotify descriptor to poll), `Debouncer` (a pure
+Live reload is three small pieces the compositor wires together: `Watcher`
+(an inotify descriptor that wakes the event loop), `Debouncer` (a pure
 timer state machine) and `Store` (the configuration in effect).

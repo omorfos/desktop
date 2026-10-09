@@ -41,14 +41,38 @@ event source, which is the only place that needs the whole of it; a
 duplicate of its descriptor wakes the loop. Everything else flushes through
 the `DisplayHandle` the compositor already holds.
 
-**Polling is kept for now.** The session still wakes ten times a second so
-that `refresh` can look at the configuration directory, the IPC socket and
-the programs it started. Waking for them instead is the next step, and is
-what the loop now makes possible.
+**The compositor is woken, never polled.** It holds a handle to the loop
+and registers what it waits for: the configuration watcher, the IPC
+listener, each IPC peer, and each program it starts (through a pidfd).
+These sources only wake the loop. What happened is still worked out in
+`refresh`, in one place, as before.
+
+**Time stays a parameter.** `refresh` is still told what time it is, and
+`Compositor::deadline` says when it next needs calling if nothing else
+happens: the end of the quiet period before a reload, or a retry for an IPC
+peer whose socket was full. `Session::run` sleeps until then. Tests keep
+their own clock, so nothing in the suite waits on a real timer, with the
+exception below.
+
+**Wake-ups are tested by running the session for real.** Stepping by hand
+cannot show that a sleeping loop wakes. A few tests call `Session::run`
+with nothing to prompt it and wait for a saved file, an IPC request or an
+exiting program to do so. A watchdog fails them after half a minute rather
+than letting them hang.
 
 ## Consequences
 
+- An idle session makes no system calls. The IPC socket answers at once;
+  the roadmap's note about polling it is closed.
 - A backend is smaller and has less to get wrong. The file excluded from
   coverage lost its loop and its client handling.
-- Tests that built a `Compositor` and a display by hand now build a
-  `Session`, so they exercise the loop a backend uses.
+- `Compositor::new` takes a loop handle, so a compositor cannot be built
+  without a loop. Tests that built one directly now build a `Session`.
+- A source that only wakes the loop relies on `refresh` reading everything
+  that is there. One that left data unread would spin. The peer and
+  listener sockets and the watcher are all drained until they would block.
+- `rustix` is named as a direct dependency for its `process` feature. It
+  was already in the tree through Smithay.
+- Reaping a child still calls `try_wait` on each one every turn; the pidfd
+  only makes sure there is a turn. With the handful of programs a session
+  starts this is not worth more state.
