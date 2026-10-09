@@ -6,8 +6,9 @@ work on omorfos. Deeper detail lives in `docs/`.
 ## What this is
 
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
-Rust and inspired by Fluxbox. It needs the development files for
-libxkbcommon and pixman to build. It is a fresh implementation, not a port: see
+Rust and inspired by Fluxbox. It needs `pkg-config` and the development
+files for libxkbcommon, pixman, udev, libinput, libseat and GBM to build.
+It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 
 - Current state and next task: [docs/ROADMAP.md](docs/ROADMAP.md)
@@ -45,7 +46,8 @@ All five must pass. CI runs the same commands.
   alias in `.cargo/config.toml`). Do not lower the gate. Code that cannot run
   in CI (real GPU, TTY, seat) is kept free of decisions and listed in
   [docs/adr/0002-coverage-policy.md](docs/adr/0002-coverage-policy.md) before
-  it is excluded. One file is excluded today: the nested winit backend.
+  it is excluded. Two files are excluded today: the nested winit backend
+  and the hardware backend.
 - **Test behaviour, not implementation.** Test names read as sentences
   describing the behaviour.
 - **No panics in non-test code:** `unwrap`, `expect`, `panic!`, `todo!` and

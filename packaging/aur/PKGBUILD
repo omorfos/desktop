@@ -10,7 +10,8 @@ pkgdesc='A lightweight Wayland compositor inspired by Fluxbox'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
 license=('MIT')
-depends=('gcc-libs' 'glibc' 'libglvnd' 'libxkbcommon' 'ttf-font')
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libxkbcommon' 'mesa' 'seatd'
+         'systemd-libs' 'ttf-font')
 makedepends=('cargo')
 optdepends=('foot: the terminal started by the default key bindings')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")

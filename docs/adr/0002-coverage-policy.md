@@ -31,6 +31,7 @@ code, so the full list is visible in one place.
 | File | Reason |
 |---|---|
 | `crates/omorfos/src/backend/winit.rs` | Opens a window on a host display and draws with OpenGL; CI runners have neither. It translates winit events into `Input` and draws with `Compositor::render` after each turn of the `Session`, all of which are covered through the software renderer. |
+| `crates/omorfos/src/backend/hardware.rs` | Takes the seat, opens the graphics card and the input devices, and sets a mode on a real screen; CI runners have none of these. It translates libinput events into `Input` with the same function as the nested backend, and draws with `Compositor::render`. What it needs decided (which backend to use, where the pointer stops, which keys switch virtual terminal) is decided in covered code. See ADR 10. |
 
 ## Consequences
 

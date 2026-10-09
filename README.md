@@ -28,8 +28,12 @@ Supported targets: Linux on `x86_64` and `aarch64`.
 cargo run -p omorfos
 ```
 
-This opens omorfos in a window on your current Wayland or X11 session and
-prints the name of its socket. Start a program inside it with, for example,
+Started from a desktop, this opens omorfos in a window on your current
+Wayland or X11 session and prints the name of its socket. Started from a
+text console (a virtual terminal), it drives the screen, keyboard and mouse
+itself; that part is new and has only been tried on one machine.
+Ctrl+Alt+F1 to F12 switch virtual terminal, and Super+Shift+e ends the
+session. Start a program inside it with, for example,
 `WAYLAND_DISPLAY=wayland-1 foot`. Key bindings using Super may be taken by
 the host desktop before they reach the window. Configuration is described in
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md), and scripting and component
@@ -37,9 +41,10 @@ integration in [docs/IPC.md](docs/IPC.md).
 
 ## Development
 
-Building needs the development files for libxkbcommon and pixman
-(`libxkbcommon-dev libpixman-1-dev` on Debian and Ubuntu). Running also needs
-EGL and OpenGL ES (`libegl1 libgles2`).
+Building needs `pkg-config` and the development files for libxkbcommon,
+pixman, udev, libinput, libseat and GBM (`pkg-config libxkbcommon-dev
+libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev` on Debian
+and Ubuntu). Running also needs EGL and OpenGL ES (`libegl1 libgles2`).
 
 ```sh
 cargo fmt --all --check

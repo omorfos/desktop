@@ -14,12 +14,12 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyState, KeyboardKeyEvent,
-    PointerAxisEvent, PointerButtonEvent,
+    AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
+    KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend, WinitInput};
+use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
@@ -63,18 +63,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // OpenGL's origin is the bottom-left corner, so the picture is flipped.
     let mut session = Session::new(config_directory, (size.w, size.h), Transform::Flipped180)?;
 
-    let socket = ListeningSocket::bind_auto("wayland", 1..33)?;
-    if let Some(name) = socket.socket_name() {
-        let compositor = session.compositor_mut();
-        compositor.set_socket_name(name);
-        let _ = writeln!(stderr(), "omorfos: listening on {}", name.display());
-        let runtime_directory = env::var_os("XDG_RUNTIME_DIR");
-        if let Some(path) = omorfos_ipc::socket_path(None, runtime_directory.as_deref(), Some(name))
-        {
-            compositor.listen_ipc(path)?;
-        }
-    }
-    session.serve(socket)?;
+    listen(&mut session)?;
 
     let redraw = Rc::new(Cell::new(true));
     let wanted = Rc::clone(&redraw);
@@ -101,7 +90,24 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     session.run(|compositor| screen.turn(compositor))
 }
 
-fn on_input(compositor: &mut Compositor, event: InputEvent<WinitInput>) {
+/// Opens the Wayland socket for clients and the IPC socket beside it.
+pub(super) fn listen(session: &mut Session) -> Result<(), Box<dyn Error>> {
+    let socket = ListeningSocket::bind_auto("wayland", 1..33)?;
+    if let Some(name) = socket.socket_name() {
+        let compositor = session.compositor_mut();
+        compositor.set_socket_name(name);
+        let _ = writeln!(stderr(), "omorfos: listening on {}", name.display());
+        let runtime_directory = env::var_os("XDG_RUNTIME_DIR");
+        if let Some(path) = omorfos_ipc::socket_path(None, runtime_directory.as_deref(), Some(name))
+        {
+            compositor.listen_ipc(path)?;
+        }
+    }
+    session.serve(socket)
+}
+
+/// Hands an input event to the compositor, whichever backend it is from.
+pub(super) fn on_input<B: InputBackend>(compositor: &mut Compositor, event: InputEvent<B>) {
     let size = compositor.output_size();
     let (input, time) = match event {
         InputEvent::Keyboard { event } => {
@@ -117,6 +123,13 @@ fn on_input(compositor: &mut Compositor, event: InputEvent<WinitInput>) {
         InputEvent::PointerMotionAbsolute { event } => {
             let (x, y) = (event.x_transformed(size.w), event.y_transformed(size.h));
             (Input::Motion { x, y }, event.time_msec())
+        }
+        InputEvent::PointerMotion { event } => {
+            let moved = Input::MotionBy {
+                dx: event.delta_x(),
+                dy: event.delta_y(),
+            };
+            (moved, event.time_msec())
         }
         InputEvent::PointerButton { event } => {
             let pressed = event.state() == ButtonState::Pressed;
