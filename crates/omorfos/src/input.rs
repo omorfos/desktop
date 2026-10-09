@@ -6,9 +6,11 @@ use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use smithay::wayland::shell::wlr_layer::Layer;
+use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
 use crate::compositor::Compositor;
@@ -99,6 +101,16 @@ enum Under {
         origin: Point<f64, Logical>,
         wallpaper: bool,
     },
+}
+
+impl Under {
+    /// The client surface this is, if it is one rather than a decoration.
+    const fn surface(&self) -> Option<&WlSurface> {
+        match self {
+            Self::Frame(_, Hit::Surface(surface, _)) | Self::Layer { surface, .. } => Some(surface),
+            Self::Frame(_, Hit::Part(_)) => None,
+        }
+    }
 }
 
 /// What the pointer is on, within a frame.
@@ -277,6 +289,24 @@ impl Compositor {
         pointer.frame(self);
     }
 
+    /// Closes the menus that asked for it, if a press lands anywhere but on
+    /// a surface of the application they belong to. Innermost first, as the
+    /// protocol requires.
+    fn dismiss_popups(&mut self, pressed_on: Option<&Under>) {
+        self.grabbed_popups.retain(PopupSurface::alive);
+        let client = |surface: &WlSurface| surface.client().map(|client| client.id());
+        let owner = self
+            .grabbed_popups
+            .first()
+            .and_then(|popup| client(popup.wl_surface()));
+        let target = pressed_on.and_then(Under::surface).and_then(client);
+        if owner.is_some() && owner != target {
+            for popup in self.grabbed_popups.drain(..).rev() {
+                popup.send_popup_done();
+            }
+        }
+    }
+
     /// Whether the pointer is on the problem notice.
     fn over_notice(&self) -> bool {
         let position = self.pointer_position();
@@ -380,6 +410,9 @@ impl Compositor {
             return;
         }
         let under = self.under();
+        if pressed {
+            self.dismiss_popups(under.as_ref());
+        }
         let desktop = matches!(
             under,
             None | Some(Under::Layer {

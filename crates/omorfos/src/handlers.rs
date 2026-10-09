@@ -276,9 +276,10 @@ impl XdgShellHandler for Compositor {
         surface.send_repositioned(token);
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {
-        // Popup grabs (dismissing a menu by clicking elsewhere) are not
-        // implemented yet; the popup still shows and works.
+    fn grab(&mut self, surface: PopupSurface, _seat: WlSeat, _serial: Serial) {
+        // A menu asks to be told when the user clicks away from it, and to
+        // have the keyboard while it is up.
+        self.grabbed_popups.push(surface);
     }
 }
 
