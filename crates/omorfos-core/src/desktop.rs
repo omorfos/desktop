@@ -55,6 +55,24 @@ pub struct Window {
     pub decorated: bool,
 }
 
+/// An output: a monitor, or the window a nested compositor draws into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Screen {
+    /// The whole output, in the global space.
+    pub area: Rect,
+    /// The part of it left for windows once panels and docks have reserved
+    /// their edges. New windows are placed in it and maximized windows fill
+    /// it; a fullscreen window covers the whole area.
+    pub usable: Rect,
+}
+
+impl From<Rect> for Screen {
+    /// An output with nothing reserved: all of it is usable.
+    fn from(area: Rect) -> Self {
+        Self { area, usable: area }
+    }
+}
+
 /// Behaviour that the user can configure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
@@ -208,7 +226,7 @@ struct Location {
 pub struct Desktop {
     settings: Settings,
     rules: Vec<Rule>,
-    outputs: Vec<Rect>,
+    outputs: Vec<Screen>,
     /// Never empty.
     workspaces: Vec<Workspace>,
     active: usize,
@@ -241,11 +259,12 @@ impl Desktop {
         self.rules = rules;
     }
 
-    /// Replaces the outputs, given as rectangles in the global space.
+    /// Replaces the outputs. A plain rectangle stands for an output that
+    /// is usable in full.
     ///
     /// Frames left entirely off-screen are moved onto the first output.
-    pub fn set_outputs(&mut self, outputs: Vec<Rect>) {
-        self.outputs = outputs;
+    pub fn set_outputs<S: Into<Screen>>(&mut self, outputs: impl IntoIterator<Item = S>) {
+        self.outputs = outputs.into_iter().map(Into::into).collect();
         if let Some(first) = self.outputs.first() {
             let outputs = &self.outputs;
             for group in self
@@ -255,9 +274,9 @@ impl Desktop {
             {
                 if !outputs
                     .iter()
-                    .any(|output| output.intersection(group.geometry).is_some())
+                    .any(|output| output.area.intersection(group.geometry).is_some())
                 {
-                    group.geometry.origin = first.origin;
+                    group.geometry.origin = first.usable.origin;
                 }
             }
         }
@@ -311,7 +330,7 @@ impl Desktop {
         } else {
             size
         };
-        let area = self.output_at(pointer);
+        let area = self.output_at(pointer).usable;
         let index = self.workspaces[workspace].groups.len();
         let origin = place(self.settings.placement, size, area, pointer, index);
         let id = WindowId(self.serial());
@@ -631,10 +650,11 @@ impl Desktop {
                 .filter(move |group| !group.minimized && group.fullscreen == fullscreen)
         };
         shown(false).chain(shown(true)).map(|group| {
-            let geometry = if group.maximized || group.fullscreen {
-                self.output_for(group.geometry)
-            } else {
-                group.geometry
+            let screen = self.output_for(group.geometry);
+            let geometry = match (group.fullscreen, group.maximized) {
+                (true, _) => screen.area,
+                (false, true) => screen.usable,
+                (false, false) => group.geometry,
             };
             let decorated = group.decorated() && !group.fullscreen;
             Frame {
@@ -720,8 +740,11 @@ impl Desktop {
     }
 
     /// The output containing `point`, or failing that the first one.
-    fn output_at(&self, point: Point) -> Rect {
-        let containing = self.outputs.iter().find(|output| output.contains(point));
+    fn output_at(&self, point: Point) -> Screen {
+        let containing = self
+            .outputs
+            .iter()
+            .find(|output| output.area.contains(point));
         containing
             .or(self.outputs.first())
             .copied()
@@ -730,9 +753,10 @@ impl Desktop {
 
     /// The output a frame at `geometry` mostly lies on. With no outputs,
     /// the geometry itself.
-    fn output_for(&self, geometry: Rect) -> Rect {
-        let overlap = |output: &&Rect| {
+    fn output_for(&self, geometry: Rect) -> Screen {
+        let overlap = |output: &&Screen| {
             output
+                .area
                 .intersection(geometry)
                 .map_or(0, |shared| shared.size.area())
         };
@@ -743,7 +767,7 @@ impl Desktop {
             .rev()
             .max_by_key(overlap)
             .copied()
-            .unwrap_or(geometry)
+            .unwrap_or(Screen::from(geometry))
     }
 }
 
@@ -1771,8 +1795,55 @@ mod tests {
         let id = open(&mut desktop, "app");
         let geometry = Rect::new(Point::new(300, 200), SIZE);
         desktop.set_geometry(id, geometry);
-        desktop.set_outputs(Vec::new());
+        desktop.set_outputs(Vec::<Rect>::new());
         assert_eq!(frame(&desktop, id).geometry, geometry);
+    }
+
+    #[test]
+    fn windows_keep_clear_of_the_part_of_an_output_reserved_for_panels() {
+        let mut desktop = Desktop::new(Settings::default(), 1);
+        // A 30 pixel panel along the top and a 50 pixel dock on the left.
+        let usable = Rect::new(Point::new(50, 30), Size::new(1870, 1050));
+        desktop.set_outputs([Screen {
+            area: SCREEN,
+            usable,
+        }]);
+
+        let id = open(&mut desktop, "app");
+        assert_eq!(
+            frame(&desktop, id).geometry.origin,
+            usable.origin,
+            "placed in the usable part"
+        );
+
+        desktop.set_maximized(id, true);
+        assert_eq!(
+            frame(&desktop, id).geometry,
+            usable,
+            "maximized up to the panels"
+        );
+
+        desktop.set_fullscreen(id, true);
+        assert_eq!(
+            frame(&desktop, id).geometry,
+            SCREEN,
+            "fullscreen covers them"
+        );
+    }
+
+    #[test]
+    fn a_stranded_frame_moves_to_the_usable_part_of_the_first_output() {
+        let mut desktop = desktop();
+        let id = open(&mut desktop, "app");
+        desktop.set_geometry(id, Rect::new(Point::new(5000, 5000), SIZE));
+        let usable = Rect::new(Point::new(0, 40), Size::new(1920, 1040));
+
+        desktop.set_outputs([Screen {
+            area: SCREEN,
+            usable,
+        }]);
+
+        assert_eq!(frame(&desktop, id).geometry.origin, usable.origin);
     }
 
     // --- Robustness --------------------------------------------------------
