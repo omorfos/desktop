@@ -123,3 +123,40 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
     session.write_config("theme.yaml", "colors: { background: '#ff0000' }\n");
     session.eventually(|session| session.compositor.problems().is_empty());
 }
+
+#[test]
+fn a_window_a_rule_opens_fullscreen_is_told_so_before_it_draws() {
+    use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
+
+    use crate::common::{Event, HEIGHT, WIDTH};
+
+    let rules = "rules:\n  - match: { app_id: player }\n    fullscreen: true\n  - match: { app_id: editor }\n    maximized: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    let mut client = session.connect();
+
+    let player = client.toplevel("player", "");
+    session.roundtrip(&mut client);
+    assert_eq!(
+        client.take_events(),
+        [Event::Configure {
+            size: (WIDTH, HEIGHT),
+            states: vec![State::Fullscreen]
+        }],
+        "the very first configure already carries the final size"
+    );
+    client.fill(&player.surface, (WIDTH, HEIGHT), RED);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw().at(WIDTH - 1, HEIGHT - 1), RED);
+
+    client.toplevel("editor", "");
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Configure {
+            size: (WIDTH, HEIGHT),
+            states: vec![State::Maximized]
+        }),
+        "{events:?}"
+    );
+}
