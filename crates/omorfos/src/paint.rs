@@ -197,14 +197,26 @@ impl Text {
             ink,
             |x, y, glyph_width, glyph_height, ink| {
                 let ink_color = Color::rgba(ink.r(), ink.g(), ink.b(), 255);
-                for row in 0..glyph_height.cast_signed() {
-                    for column in 0..glyph_width.cast_signed() {
-                        canvas.blend(left + x + column, top + y + row, ink_color, ink.a());
+                // Glyphs may overhang the line they are set on, by a pixel
+                // of side bearing or more for an ellipsis in a tiny area.
+                // Only the part inside the area is drawn.
+                let columns = visible(x, glyph_width, width);
+                for row in visible(y, glyph_height, height) {
+                    for column in columns.clone() {
+                        canvas.blend(left + column, top + row, ink_color, ink.a());
                     }
                 }
             },
         );
     }
+}
+
+/// The part of the span `start..start + length` that lies within
+/// `0..limit`, which is empty if none of it does.
+fn visible(start: i32, length: u32, limit: u32) -> std::ops::Range<i32> {
+    let clamp = |position: i64| i32::try_from(position.clamp(0, i64::from(limit))).unwrap_or(0);
+    let start = i64::from(start);
+    clamp(start)..clamp(start + i64::from(length))
 }
 
 /// Paints a frame's titlebar: one tab per window with its title, and the
@@ -510,6 +522,39 @@ mod tests {
                 .any(|pixel| pixel == argb(RED))
         );
         assert_eq!(format!("{text:?}"), "Text { .. }");
+    }
+
+    #[test]
+    fn only_the_part_of_a_span_inside_the_limit_is_visible() {
+        assert_eq!(visible(3, 4, 10), 3..7, "wholly inside");
+        assert_eq!(visible(-2, 5, 10), 0..3, "overhanging the start");
+        assert_eq!(visible(8, 5, 10), 8..10, "overhanging the end");
+        assert!(visible(-9, 4, 10).is_empty(), "wholly before");
+        assert!(visible(12, 4, 10).is_empty(), "wholly after");
+        assert!(visible(i32::MAX, u32::MAX, 10).is_empty(), "no overflow");
+    }
+
+    #[test]
+    fn text_never_leaves_its_area_even_when_the_area_is_tiny() {
+        let mut text = Text::new();
+        let mut canvas = Canvas::new(100, 40);
+        // Three pixels cannot hold even an ellipsis, in any font.
+        text.draw(
+            &mut canvas,
+            "Wide title",
+            (50, 10, 3, 12),
+            RED,
+            &Font::default(),
+        );
+        assert_eq!(inked(&canvas, 0..50, 0), 0, "left of the area");
+        assert_eq!(inked(&canvas, 53..100, 0), 0, "right of the area");
+        let above_or_below = (0..100).flat_map(|x| (0..10).chain(22..40).map(move |y| (x, y)));
+        assert_eq!(
+            above_or_below
+                .filter(|(x, y)| canvas.at(*x, *y) != 0)
+                .count(),
+            0
+        );
     }
 
     #[test]
