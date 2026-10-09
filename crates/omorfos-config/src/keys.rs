@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::{Action, Command, WorkspaceNumber};
+use crate::{Action, Command, Position, WorkspaceNumber};
 
 /// The contents of `keys.yaml`.
 ///
@@ -32,14 +32,20 @@ impl Keys {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawKeys {
     /// The key bindings. Giving this list replaces all built-in bindings.
-    bindings: Vec<Binding>,
+    bindings: Vec<RawBinding>,
 }
 
 impl TryFrom<RawKeys> for Keys {
     type Error = String;
 
     fn try_from(raw: RawKeys) -> Result<Self, Self::Error> {
-        let bindings = raw.bindings;
+        Self::checked(raw.bindings.into_iter().map(Binding::from).collect())
+    }
+}
+
+impl Keys {
+    /// Accepts bindings only if none conflicts with another.
+    fn checked(bindings: Vec<Binding>) -> Result<Self, String> {
         for (index, later) in bindings.iter().enumerate() {
             for earlier in &bindings[..index] {
                 let (short, long) = if earlier.keys.0.len() <= later.keys.0.len() {
@@ -107,13 +113,13 @@ fn bind(chord: &str, action: Action) -> Binding {
             key: key.to_owned(),
         }]),
         action,
+        position: None,
     }
 }
 
 /// One key binding: the keys to press and what they do.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(deny_unknown_fields)]
+#[serde(from = "RawBinding")]
 pub struct Binding {
     /// The keys to press, such as `Super+Return`. Separate several chords
     /// with spaces to make a chain pressed one after another, such as
@@ -121,6 +127,41 @@ pub struct Binding {
     pub keys: KeyChain,
     /// What the binding does.
     pub action: Action,
+    /// Where the keys are written in `keys.yaml`, so that a problem found
+    /// with them later can point there. Built-in bindings are written
+    /// nowhere.
+    pub position: Option<Position>,
+}
+
+/// One key binding: the keys to press and what they do.
+// This is the binding as written, with the place its keys were found. Its
+// documentation is the user's, because it becomes the JSON Schema.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(rename = "Binding"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawBinding {
+    /// The keys to press, such as `Super+Return`. Separate several chords
+    /// with spaces to make a chain pressed one after another, such as
+    /// `Super+x t`.
+    #[cfg_attr(feature = "schema", schemars(with = "KeyChain"))]
+    keys: serde_saphyr::Spanned<KeyChain>,
+    /// What the binding does.
+    action: Action,
+}
+
+impl From<RawBinding> for Binding {
+    fn from(raw: RawBinding) -> Self {
+        let written = raw.keys.referenced;
+        Self {
+            keys: raw.keys.value,
+            action: raw.action,
+            position: Some(Position {
+                line: written.line(),
+                column: written.column(),
+            }),
+        }
+    }
 }
 
 /// One or more chords pressed in sequence.
@@ -386,6 +427,18 @@ bindings:
     }
 
     #[test]
+    fn a_binding_remembers_where_its_keys_are_written() {
+        let yaml = "bindings:\n  - keys: Super+Return\n    action: close\n";
+        let keys = parse(yaml).unwrap();
+        let position = Position {
+            line: 2,
+            column: 11,
+        };
+        assert_eq!(keys.bindings()[0].position, Some(position));
+        assert_eq!(Keys::default().bindings()[0].position, None, "built in");
+    }
+
+    #[test]
     fn an_empty_list_removes_every_binding() {
         assert_eq!(parse("bindings: []").unwrap().bindings(), []);
     }
@@ -458,9 +511,6 @@ bindings:
             action_for("Super+Shift+4"),
             Some(Action::MoveToWorkspace(WorkspaceNumber::clamped(4)))
         );
-        let raw = RawKeys {
-            bindings: keys.bindings().to_vec(),
-        };
-        assert_eq!(Keys::try_from(raw), Ok(keys));
+        assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
     }
 }

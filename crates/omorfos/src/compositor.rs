@@ -400,9 +400,10 @@ impl Compositor {
         self.desktop
             .set_workspace_count(config.general.workspaces.names().len());
 
-        let (bindings, unknown_keys) = bridge::bindings(&config.keys);
+        let keys_file = self.store.directory().join("keys.yaml");
+        let (bindings, unknown_keys) = bridge::bindings(&config.keys, &keys_file);
         self.bindings = bindings;
-        problems.extend(unknown_keys);
+        problems.extend(unknown_keys.iter().map(ToString::to_string));
 
         let keyboard = self.keyboard.clone();
         let settings = &config.general.keyboard;
