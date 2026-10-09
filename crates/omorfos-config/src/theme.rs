@@ -19,6 +19,8 @@ pub struct Theme {
     pub colors: Colors,
     /// Motion.
     pub animations: Animations,
+    /// The pointer.
+    pub cursor: Cursor,
 }
 
 /// The font used for titlebars and menus.
@@ -37,6 +39,27 @@ impl Default for Font {
         Self {
             family: "sans-serif".to_owned(),
             size: Bounded::clamped(11),
+        }
+    }
+}
+
+/// The pictures used for the pointer.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Cursor {
+    /// The name of an installed cursor theme, such as `Adwaita`. `default`
+    /// is whichever the system has set up as its default.
+    pub theme: String,
+    /// The size of the pointer, before scaling.
+    pub size: Bounded<8, 128>,
+}
+
+impl Default for Cursor {
+    fn default() -> Self {
+        Self {
+            theme: "default".to_owned(),
+            size: Bounded::clamped(24),
         }
     }
 }
