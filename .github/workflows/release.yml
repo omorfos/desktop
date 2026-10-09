@@ -91,3 +91,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${TAG}" dist/* --clobber
+
+  # Off unless the repository variable AUR_PUBLISH is "true". Needs a public
+  # repository and the AUR_SSH_PRIVATE_KEY secret; see docs/RELEASING.md.
+  aur:
+    name: Publish to the AUR
+    needs: [release-please, packages]
+    if: needs.release-please.outputs.created == 'true' && vars.AUR_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+      - name: Render PKGBUILD and .SRCINFO
+        run: packaging/aur/render.sh aur
+      - name: Push to the AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: packaging/aur/push.sh aur
