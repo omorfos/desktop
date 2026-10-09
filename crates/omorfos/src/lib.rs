@@ -19,6 +19,7 @@ mod cursor;
 mod handlers;
 mod input;
 mod ipc;
+mod lock;
 mod paint;
 mod scale;
 mod session;

@@ -1,5 +1,6 @@
 //! The compositor's state and its main operations.
 
+use std::cell::Cell;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
@@ -50,9 +51,12 @@ use smithay::wayland::compositor::{
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState};
 use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fractional_scale};
+use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
+use smithay::wayland::idle_notify::IdleNotifierState;
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
+use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{
@@ -67,6 +71,7 @@ use crate::bridge::{self, Bindings};
 use crate::cursor::{self, Themes};
 use crate::input::Drag;
 use crate::ipc::Server;
+use crate::lock::Lock;
 use crate::paint::{self, Text};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -76,6 +81,24 @@ pub const DESKTOP_NAME: &str = "omorfos";
 
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
+
+/// Creates the output and the space it shows, and offers the output to
+/// clients.
+fn new_output(display: &DisplayHandle) -> (Output, Space<Window>) {
+    let output = Output::new(
+        "omorfos-0".to_owned(),
+        PhysicalProperties {
+            size: (0, 0).into(),
+            subpixel: Subpixel::Unknown,
+            make: "omorfos".to_owned(),
+            model: "virtual".to_owned(),
+        },
+    );
+    let _global = output.create_global::<Compositor>(display);
+    let mut space = Space::default();
+    space.map_output(&output, (0, 0));
+    (output, space)
+}
 
 /// Starts watching the configuration directory, creating it if need be.
 /// Failing to is not fatal: it is returned as a problem to tell the user.
@@ -122,7 +145,7 @@ pub struct Compositor {
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
     _decorations: XdgDecorationState,
-    _seat: Seat<Self>,
+    pub(crate) seat: Seat<Self>,
     pub(crate) keyboard: KeyboardHandle<Self>,
     pub(crate) pointer: PointerHandle<Self>,
     pub(crate) space: Space<Window>,
@@ -190,6 +213,19 @@ pub struct Compositor {
     /// collects it.
     pub(crate) terminal_wanted: Option<i32>,
     pub(crate) hovered: Option<WindowId>,
+    /// The lock on the session, while it is locked.
+    pub(crate) lock: Option<Lock>,
+    /// Whether a frame showing nothing of the session has been drawn since
+    /// it was locked. Set while drawing, which does not change anything
+    /// else.
+    pub(crate) blanked: Cell<bool>,
+    pub(crate) lock_manager: SessionLockManagerState,
+    /// Tells those who asked when the user has been away for a while.
+    pub(crate) idle: IdleNotifierState<Self>,
+    _idle_inhibit: IdleInhibitManagerState,
+    /// Surfaces that ask for the session not to go idle while they are
+    /// shown, such as a film being played.
+    pub(crate) inhibitors: Vec<WlSurface>,
     children: Vec<Child>,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
@@ -234,6 +270,10 @@ impl Compositor {
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let viewporter = ViewporterState::new::<Self>(&display);
         let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
+        // Any client may lock the session: locking gives nothing away.
+        let lock_manager = SessionLockManagerState::new::<Self, _>(&display, |_| true);
+        let idle = IdleNotifierState::new(&display, event_loop.clone());
+        let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
@@ -247,18 +287,7 @@ impl Compositor {
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
 
-        let output = Output::new(
-            "omorfos-0".to_owned(),
-            PhysicalProperties {
-                size: (0, 0).into(),
-                subpixel: Subpixel::Unknown,
-                make: "omorfos".to_owned(),
-                model: "virtual".to_owned(),
-            },
-        );
-        let _global = output.create_global::<Self>(&display);
-        let mut space = Space::default();
-        space.map_output(&output, (0, 0));
+        let (output, space) = new_output(&display);
 
         seat.add_keyboard(XkbConfig::default(), 400, 30)
             .map_err(Box::from)
@@ -271,7 +300,7 @@ impl Compositor {
                     seats,
                     _output_manager_state: output_manager_state,
                     _decorations: decorations,
-                    _seat: seat,
+                    seat,
                     keyboard,
                     pointer,
                     space,
@@ -315,6 +344,12 @@ impl Compositor {
                     _cursor_shapes: cursor_shapes,
                     terminal_wanted: None,
                     hovered: None,
+                    lock: None,
+                    blanked: Cell::new(false),
+                    lock_manager,
+                    idle,
+                    _idle_inhibit: idle_inhibit,
+                    inhibitors: Vec::new(),
                     children: Vec::new(),
                     ipc: None,
                     ipc_retry: None,
@@ -366,6 +401,7 @@ impl Compositor {
         self.output.set_preferred(mode);
         layer_map_for_output(&self.output).arrange();
         self.update_screen();
+        self.configure_lock_surface();
     }
 
     /// Says what scale suits the screen, which a backend knows from how
@@ -414,8 +450,12 @@ impl Compositor {
         for layer in layer_map_for_output(&self.output).layers() {
             layer.with_surfaces(tell);
         }
-        // The picture an application gave for the pointer is a surface too.
+        // The picture an application gave for the pointer is a surface too,
+        // and so is a locker's.
         if let Look::Surface(surface) = &self.shown {
+            with_states(surface, |states| tell(surface, states));
+        }
+        if let Some(surface) = self.lock_surface() {
             with_states(surface, |states| tell(surface, states));
         }
     }
@@ -741,6 +781,17 @@ impl Compositor {
         located.chain(fixed).collect()
     }
 
+    /// Whether `surface` is the main surface of a window or panel that is
+    /// on screen now.
+    pub(crate) fn is_shown(&self, surface: &WlSurface) -> bool {
+        let window = |shown: &Shown| {
+            let toplevel = shown.window.toplevel();
+            toplevel.is_some_and(|toplevel| toplevel.wl_surface() == surface)
+        };
+        let layers = layer_map_for_output(&self.output);
+        self.scene.iter().any(window) || layers.layers().any(|layer| layer.wl_surface() == surface)
+    }
+
     // --- Windows -------------------------------------------------------------
 
     pub(crate) fn mapped(&self, id: WindowId) -> Option<&Mapped> {
@@ -834,6 +885,7 @@ impl Compositor {
         self.repaint_overlays();
         self.update_pointer();
         self.announce_scale();
+        self.update_idle_inhibition();
         self.sync_keyboard_focus(focused);
     }
 
@@ -883,6 +935,16 @@ impl Compositor {
 
     /// Gives the keyboard to whoever should have it now.
     fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
+        if self.is_locked() {
+            // The lock surface has the keyboard, or nothing does. Nothing
+            // below is consulted.
+            let focus = self.lock_surface().cloned();
+            let keyboard = self.keyboard.clone();
+            if keyboard.current_focus() != focus {
+                keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
+            }
+            return;
+        }
         // A launcher or lock prompt that demands the keyboard has it for as
         // long as it is up. Failing that, an open menu has it, so it can be
         // driven with the arrow keys. Otherwise the focused window does.
@@ -939,6 +1001,25 @@ impl Compositor {
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
         self.pointer_elements(renderer, &mut elements);
+        if self.is_locked() {
+            // Nothing of the session is drawn while it is locked: only what
+            // the locker shows, on black. This returns before anything
+            // else is even looked at.
+            let surface = self.lock_surface().into_iter();
+            let shown = surface.flat_map(|surface| {
+                render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    (0, 0),
+                    scale.factor(),
+                    1.0,
+                    unspecified,
+                )
+            });
+            elements.extend(shown.map(Element::Surface));
+            self.blanked.set(true);
+            return tracker.render_output(renderer, framebuffer, age, &elements, Color32F::BLACK);
+        }
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
             elements.extend(
@@ -1074,7 +1155,17 @@ impl Compositor {
 
     /// Tells the windows on screen that a frame was shown, so they draw the
     /// next one. `elapsed` is the time since the compositor started.
-    pub fn send_frames(&self, elapsed: Duration) {
+    pub fn send_frames(&mut self, elapsed: Duration) {
+        self.confirm_lock();
+        if let Some(surface) = self.lock_surface() {
+            send_frames_surface_tree(
+                surface,
+                &self.output,
+                elapsed,
+                Some(Duration::ZERO),
+                |_, _| Some(self.output.clone()),
+            );
+        }
         for window in self.space.elements() {
             window.send_frame(&self.output, elapsed, Some(Duration::ZERO), |_, _| {
                 Some(self.output.clone())

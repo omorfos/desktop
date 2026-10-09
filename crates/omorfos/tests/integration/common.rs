@@ -31,11 +31,20 @@ use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, deleg
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1 as listed_handle, ext_foreign_toplevel_list_v1 as toplevel_list,
 };
+use wayland_protocols::ext::idle_notify::v1::client::{
+    ext_idle_notification_v1, ext_idle_notifier_v1,
+};
+use wayland_protocols::ext::session_lock::v1::client::{
+    ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
+};
 use wayland_protocols::wp::cursor_shape::v1::client::{
     wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1,
 };
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
+};
+use wayland_protocols::wp::idle_inhibit::zv1::client::{
+    zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1,
 };
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
@@ -432,6 +441,17 @@ pub(crate) enum Event {
         pressed: bool,
     },
     FrameDone,
+    /// The session is locked, as this client asked.
+    Locked,
+    /// This client's request to lock the session was turned down.
+    LockRefused,
+    /// The size a lock surface has to be.
+    LockSize(u32, u32),
+    /// The user has been away for as long as this client asked to be told
+    /// about.
+    Idle,
+    /// The user is back.
+    Back,
 }
 
 /// The client's globals and everything it has been told.
@@ -454,6 +474,10 @@ pub(crate) struct ClientState {
     fractions: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     viewporter: Option<wp_viewporter::WpViewporter>,
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
+    lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
+    idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
+    inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    output: Option<wl_output::WlOutput>,
     /// What the client's surfaces were last told about how they are shown.
     pub(crate) told: Told,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
@@ -625,6 +649,38 @@ impl Client {
         surface.attach(Some(&self.buffer(size, color)), 0, 0);
         surface.damage_buffer(0, 0, size.0, size.1);
         surface.commit();
+    }
+
+    /// Asks for the session to be locked.
+    pub(crate) fn lock(&self) -> ext_session_lock_v1::ExtSessionLockV1 {
+        let lockers = self.state.lockers.as_ref().unwrap();
+        lockers.lock(&self.handle(), ())
+    }
+
+    /// Makes a surface the one shown while the session is locked.
+    pub(crate) fn lock_surface(
+        &self,
+        lock: &ext_session_lock_v1::ExtSessionLockV1,
+    ) -> wl_surface::WlSurface {
+        let surface = self.surface();
+        let output = self.state.output.as_ref().unwrap();
+        lock.get_lock_surface(&surface, output, &self.handle(), ());
+        surface
+    }
+
+    /// Asks to be told when the user has been away for `milliseconds`.
+    pub(crate) fn watch_idle(&self, milliseconds: u32) {
+        let idlers = self.state.idlers.as_ref().unwrap();
+        idlers.get_idle_notification(milliseconds, self.seat(), &self.handle(), ());
+    }
+
+    /// Asks for the session not to go idle while `surface` is shown.
+    pub(crate) fn inhibit_idle(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1 {
+        let inhibitors = self.state.inhibitors.as_ref().unwrap();
+        inhibitors.create_inhibitor(surface, &self.handle(), ())
     }
 
     /// Asks for the pointer to be drawn as `picture` while it is over this
@@ -927,8 +983,17 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "wl_output" => {
-                let _: wl_output::WlOutput = registry.bind(name, version, handle, ());
+                state.output = Some(registry.bind(name, version, handle, ()));
                 state.outputs += 1;
+            }
+            "ext_session_lock_manager_v1" => {
+                state.lockers = Some(registry.bind(name, version, handle, ()));
+            }
+            "ext_idle_notifier_v1" => {
+                state.idlers = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_idle_inhibit_manager_v1" => {
+                state.inhibitors = Some(registry.bind(name, version, handle, ()));
             }
             _ => {}
         }
@@ -1371,6 +1436,66 @@ delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(ClientState: wp_viewporter::WpViewporter);
+delegate_noop!(ClientState: ext_session_lock_manager_v1::ExtSessionLockManagerV1);
+delegate_noop!(ClientState: ext_idle_notifier_v1::ExtIdleNotifierV1);
+delegate_noop!(ClientState: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
+delegate_noop!(ClientState: zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
+
+impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &ext_session_lock_v1::ExtSessionLockV1,
+        event: ext_session_lock_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            ext_session_lock_v1::Event::Locked => state.events.push(Event::Locked),
+            ext_session_lock_v1::Event::Finished => state.events.push(Event::LockRefused),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        surface: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
+        event: ext_session_lock_surface_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let ext_session_lock_surface_v1::Event::Configure {
+            serial,
+            width,
+            height,
+        } = event
+        {
+            surface.ack_configure(serial);
+            state.events.push(Event::LockSize(width, height));
+        }
+    }
+}
+
+impl Dispatch<ext_idle_notification_v1::ExtIdleNotificationV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &ext_idle_notification_v1::ExtIdleNotificationV1,
+        event: ext_idle_notification_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            ext_idle_notification_v1::Event::Idled => state.events.push(Event::Idle),
+            ext_idle_notification_v1::Event::Resumed => state.events.push(Event::Back),
+            _ => {}
+        }
+    }
+}
+
 delegate_noop!(ClientState: wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
 delegate_noop!(ClientState: wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(ClientState: wp_viewport::WpViewport);

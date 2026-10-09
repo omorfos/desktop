@@ -158,6 +158,24 @@ The menu opens with a right click on the desktop or the `show_menu` action
 (`Super+space` by default). Click an entry to choose it; click elsewhere or
 press Escape to close the menu.
 
+## Locking the screen
+
+omorfos does not lock by itself; it lets a screen locker do it, and tells
+an idle daemon when you have been away. With `swaylock` and `swayidle`
+installed, for example:
+
+```yaml
+bindings:
+  - keys: Super+l
+    action: { spawn: [swaylock] }
+  - keys: Super+Shift+i
+    action: { spawn: [swayidle, -w, timeout, "300", swaylock -f] }
+```
+
+The second starts the daemon that locks after five minutes; there is no
+setting yet to start it at login. While the screen is locked nothing else
+is shown and no key binding works, except Ctrl+Alt+F1 to F12.
+
 ## Using windows
 
 Windows that support it get a titlebar and border drawn by omorfos.
