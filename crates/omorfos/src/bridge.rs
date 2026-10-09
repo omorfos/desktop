@@ -4,7 +4,9 @@
 //! module is where a configuration value becomes domain settings, rules and
 //! key chains.
 
-use omorfos_config::{Action, Config, FocusModel, Keys, Modifiers, Rules};
+use std::path::Path;
+
+use omorfos_config::{Action, Config, Diagnostic, FocusModel, Keys, Modifiers, Rules};
 use omorfos_core::{Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
@@ -90,9 +92,10 @@ pub fn workspace_index(number: omorfos_config::WorkspaceNumber) -> usize {
 /// Converts configured key bindings into key chains.
 ///
 /// A binding that names a key XKB does not know is left out, and described
-/// in the returned list of problems so the user can be told.
+/// in the returned list of problems so the user can be told. `file` is where
+/// the bindings were read from, for those problems to point at.
 #[must_use]
-pub fn bindings(keys: &Keys) -> (Bindings, Vec<String>) {
+pub fn bindings(keys: &Keys, file: &Path) -> (Bindings, Vec<Diagnostic>) {
     let mut problems = Vec::new();
     let mut chains = Vec::new();
     for binding in keys.bindings() {
@@ -109,10 +112,14 @@ pub fn bindings(keys: &Keys) -> (Bindings, Vec<String>) {
             .collect();
         match chords {
             Some(chords) => chains.push((chords, binding.action.clone())),
-            None => problems.push(format!(
-                "keys.yaml: `{}` names a key that does not exist; the binding is ignored",
-                binding.keys
-            )),
+            None => problems.push(Diagnostic {
+                file: file.to_owned(),
+                position: binding.position,
+                message: format!(
+                    "`{}` names a key that does not exist; the binding is ignored",
+                    binding.keys
+                ),
+            }),
         }
     }
     (KeyChains::new(chains), problems)
@@ -303,13 +310,13 @@ items:
 
     #[test]
     fn the_built_in_bindings_all_resolve() {
-        let (_, problems) = bindings(&Keys::default());
-        assert_eq!(problems, [""; 0]);
+        let (_, problems) = bindings(&Keys::default(), Path::new("keys.yaml"));
+        assert_eq!(problems, []);
     }
 
     #[test]
     fn bindings_trigger_on_the_unshifted_key_with_the_named_modifiers() {
-        let (mut bindings, _) = bindings(&Keys::default());
+        let (mut bindings, _) = bindings(&Keys::default(), Path::new("keys.yaml"));
         let terminal = chord(Modifiers::SUPER, Keysym::Return);
         let spawn_terminal = Action::Spawn(Command::terminal());
         assert_eq!(
@@ -335,8 +342,9 @@ bindings:
   - { keys: Super+Q, action: quit }
   - { keys: XF86AudioMute x, action: maximize }
 ";
-        let (mut bindings, problems) = bindings(&config("keys.yaml", yaml).keys);
-        assert_eq!(problems, [""; 0]);
+        let keys = config("keys.yaml", yaml).keys;
+        let (mut bindings, problems) = bindings(&keys, Path::new("keys.yaml"));
+        assert_eq!(problems, []);
         let close = chord(Modifiers::SUPER, Keysym::Return);
         assert_eq!(bindings.press(close), KeyOutcome::Triggered(&Action::Close));
         let quit = chord(Modifiers::SUPER, Keysym::q);
@@ -354,10 +362,14 @@ bindings:
   - { keys: Super+Retrun, action: close }
   - { keys: Super+q, action: quit }
 ";
-        let (mut bindings, problems) = bindings(&config("keys.yaml", yaml).keys);
+        let keys = config("keys.yaml", yaml).keys;
+        let (mut bindings, problems) = bindings(&keys, Path::new("/etc/keys.yaml"));
         assert_eq!(
-            problems,
-            ["keys.yaml: `Super+Retrun` names a key that does not exist; the binding is ignored"]
+            problems.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            [
+                "/etc/keys.yaml:3:13: `Super+Retrun` names a key that does not exist; \
+              the binding is ignored"
+            ]
         );
         let quit = chord(Modifiers::SUPER, Keysym::q);
         assert_eq!(bindings.press(quit), KeyOutcome::Triggered(&Action::Quit));

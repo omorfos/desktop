@@ -76,9 +76,14 @@ fn a_mistake_in_a_file_is_reported_with_its_location() {
 fn a_binding_for_a_key_that_does_not_exist_is_reported() {
     let bindings = "bindings:\n  - { keys: Super+Retrun, action: close }\n";
     let session = Session::with_config(&[("keys.yaml", bindings)]);
-    assert_eq!(
-        session.compositor.problems(),
-        ["keys.yaml: `Super+Retrun` names a key that does not exist; the binding is ignored"]
+    let problems = session.compositor.problems();
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(
+        problems[0].ends_with(
+            "/keys.yaml:2:13: `Super+Retrun` names a key that does not exist; \
+             the binding is ignored"
+        ),
+        "{problems:?}"
     );
 }
 
