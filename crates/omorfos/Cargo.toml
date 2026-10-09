@@ -1,0 +1,20 @@
+[package]
+name = "omorfos"
+description = "A lightweight Wayland compositor inspired by Fluxbox"
+keywords = ["wayland", "compositor", "window-manager"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+omorfos-config = { path = "../omorfos-config" }
+omorfos-core = { path = "../omorfos-core" }
+smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "backend_winit"] }
+
+[lints]
+workspace = true

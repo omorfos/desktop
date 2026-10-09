@@ -4,6 +4,9 @@ all-features = true
 
 [advisories]
 yanked = "deny"
+# Vulnerabilities fail everywhere. "Unmaintained" notices fail only for crates
+# we depend on directly; ones deep in Smithay's tree are not ours to replace.
+unmaintained = "workspace"
 
 [licenses]
 # Permissive licences compatible with shipping an MIT binary. Extend only
@@ -24,6 +27,8 @@ unused-allowed-license = "allow"
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Path dependencies between our own unpublished crates have no version.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
