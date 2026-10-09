@@ -63,7 +63,7 @@ pub enum Input {
 
 /// The virtual terminal a key asks for, if it is one of the keys that
 /// switch between them: Ctrl+Alt+F1 to F12 on the usual layouts.
-fn virtual_terminal(keysym: Keysym) -> Option<i32> {
+pub(crate) fn virtual_terminal(keysym: Keysym) -> Option<i32> {
     let first = Keysym::XF86_Switch_VT_1.raw();
     (first..first + 12)
         .position(|switch| switch == keysym.raw())
@@ -81,6 +81,17 @@ fn resize_icon(edges: Edges) -> CursorIcon {
         (true, true) if left == top => CursorIcon::NwseResize,
         (true, true) => CursorIcon::NeswResize,
     }
+}
+
+/// An input event once the pointer's position is known: a distance moved
+/// has become the place arrived at, so nothing later has to tell the two
+/// apart.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Placed {
+    Key { code: Keycode, pressed: bool },
+    Motion { x: f64, y: f64 },
+    Button { button: u32, pressed: bool },
+    Scroll { horizontal: f64, vertical: f64 },
 }
 
 /// Linux input event codes for the pointer buttons.
@@ -181,17 +192,38 @@ impl Compositor {
     /// Handles an input event that happened at `time`, in milliseconds on
     /// any monotonic clock.
     pub fn input(&mut self, event: Input, time: u32) {
-        match event {
-            Input::Key { code, pressed } => self.key(code, pressed, time),
-            Input::Motion { x, y } => self.motion(x, y, time),
+        // Whatever it is, the user is here.
+        let seat = self.seat.clone();
+        self.idle.notify_activity(&seat);
+        // A distance moved becomes the position arrived at.
+        let event = match event {
+            Input::Key { code, pressed } => Placed::Key { code, pressed },
+            Input::Motion { x, y } => Placed::Motion { x, y },
             Input::MotionBy { dx, dy } => {
                 let size = self.logical_size().to_f64();
                 let x = (self.pointer_location.x + dx).clamp(0.0, (size.w - 1.0).max(0.0));
                 let y = (self.pointer_location.y + dy).clamp(0.0, (size.h - 1.0).max(0.0));
-                self.motion(x, y, time);
+                Placed::Motion { x, y }
             }
-            Input::Button { button, pressed } => self.button(button, pressed, time),
+            Input::Button { button, pressed } => Placed::Button { button, pressed },
             Input::Scroll {
+                horizontal,
+                vertical,
+            } => Placed::Scroll {
+                horizontal,
+                vertical,
+            },
+        };
+        if self.is_locked() {
+            // A locked session sees none of what follows.
+            self.locked_input(event, time);
+            return;
+        }
+        match event {
+            Placed::Key { code, pressed } => self.key(code, pressed, time),
+            Placed::Motion { x, y } => self.motion(x, y, time),
+            Placed::Button { button, pressed } => self.button(button, pressed, time),
+            Placed::Scroll {
                 horizontal,
                 vertical,
             } => {
@@ -325,7 +357,11 @@ impl Compositor {
         self.move_pointer(focus, time);
     }
 
-    fn move_pointer(&mut self, focus: Option<(WlSurface, Point<f64, Logical>)>, time: u32) {
+    pub(crate) fn move_pointer(
+        &mut self,
+        focus: Option<(WlSurface, Point<f64, Logical>)>,
+        time: u32,
+    ) {
         let pointer = self.pointer.clone();
         let event = MotionEvent {
             location: self.pointer_location,
@@ -361,6 +397,11 @@ impl Compositor {
     /// Everywhere else it is the compositor's to choose: a shape that says
     /// what a drag is doing or would do, or the ordinary pointer.
     pub(crate) fn cursor_wanted(&self) -> Look {
+        if self.is_locked() {
+            // The locker's choice, as for any application, and nothing of
+            // the session's own.
+            return self.cursor_asked_for();
+        }
         match self.drag {
             Some(Drag::Move { .. } | Drag::Tab { .. }) => {
                 return Look::Icon(CursorIcon::Grabbing);
@@ -373,15 +414,22 @@ impl Compositor {
         }
         match self.under() {
             Some(Under::Frame(_, Hit::Part(Part::Border(edges)))) => Look::Icon(resize_icon(edges)),
-            Some(Under::Frame(_, Hit::Surface(..)) | Under::Layer { .. }) => match &self.cursor {
-                CursorImageStatus::Hidden => Look::Hidden,
-                CursorImageStatus::Named(icon) => Look::Icon(*icon),
-                CursorImageStatus::Surface(surface) if surface.is_alive() => {
-                    Look::Surface(surface.clone())
-                }
-                CursorImageStatus::Surface(_) => Look::Icon(CursorIcon::Default),
-            },
+            Some(Under::Frame(_, Hit::Surface(..)) | Under::Layer { .. }) => {
+                self.cursor_asked_for()
+            }
             _ => Look::Icon(CursorIcon::Default),
+        }
+    }
+
+    /// What the application under the pointer last asked it to look like.
+    fn cursor_asked_for(&self) -> Look {
+        match &self.cursor {
+            CursorImageStatus::Hidden => Look::Hidden,
+            CursorImageStatus::Named(icon) => Look::Icon(*icon),
+            CursorImageStatus::Surface(surface) if surface.is_alive() => {
+                Look::Surface(surface.clone())
+            }
+            CursorImageStatus::Surface(_) => Look::Icon(CursorIcon::Default),
         }
     }
 

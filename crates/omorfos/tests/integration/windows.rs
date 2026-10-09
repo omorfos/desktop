@@ -325,7 +325,9 @@ fn clients_are_told_when_a_frame_has_been_shown() {
     assert!(!client.take_events().contains(&Event::FrameDone));
 
     session.draw();
-    session.compositor().send_frames(Duration::from_millis(16));
+    session
+        .compositor_mut()
+        .send_frames(Duration::from_millis(16));
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::FrameDone));
 }

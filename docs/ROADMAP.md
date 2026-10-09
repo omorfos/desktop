@@ -170,7 +170,8 @@ Known gaps:
       or set in `config.yaml` (ADR 11)
 - [x] Our own pointer cursor, client-set cursors and cursor shapes, from
       the installed cursor theme (ADR 12)
-- [ ] idle-notify and session-lock (moved from milestone 7)
+- [x] idle-notify, idle-inhibit and session-lock (moved from milestone 7;
+      ADR 14)
 - [x] A `wayland-sessions` entry for login screens, with programs told
       about the session however they are started (ADR 13)
 - [ ] Rounded window corners (needs a shader)

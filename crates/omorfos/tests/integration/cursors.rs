@@ -133,7 +133,7 @@ fn an_application_draws_the_pointer_itself_or_hides_it() {
     // The picture can be animated, so it is told when a frame is shown.
     client.take_events();
     session
-        .compositor()
+        .compositor_mut()
         .send_frames(std::time::Duration::from_millis(16));
     session.roundtrip(&mut client);
     assert!(
