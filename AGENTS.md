@@ -71,6 +71,12 @@ All five must pass. CI runs the same commands.
   effects can arrive late. Use `Session::eventually` instead of asserting
   straight away, and stress the suite (run the test binary a few hundred
   times) after adding tests that spawn processes or watch files.
+- **Drawn text depends on the installed fonts.** CI has DejaVu; your machine
+  may resolve `sans-serif` to something else, with different glyph shapes.
+  Tests on text must hold for any font: assert on where ink may and may not
+  be, not on exact pixels. To reproduce CI, put DejaVu's `.ttf` files in a
+  directory, name it in a `<dir>` element of a minimal `fonts.conf`, and run
+  the tests with `FONTCONFIG_FILE` pointing at that file.
 - **Configuration types validate while deserializing** (`try_from`), so parser
   errors carry a line and column. After changing them, regenerate the JSON
   Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
