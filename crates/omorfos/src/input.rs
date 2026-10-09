@@ -445,12 +445,16 @@ impl Compositor {
                 .and_then(|decoration| decoration.hit(point))
                 .filter(|part| *part != Part::Client);
             let hit = part.map(Hit::Part).or_else(|| {
-                let within = self.pointer_location - shown.origin.to_f64();
+                // A window may draw outside what it calls its geometry, for
+                // a shadow say, so its surface can begin above and left of
+                // where the window is placed.
+                let surface_origin = shown.origin - shown.window.geometry().loc;
+                let within = self.pointer_location - surface_origin.to_f64();
                 shown
                     .window
                     .surface_under(within, WindowSurfaceType::ALL)
                     .map(|(surface, offset)| {
-                        Hit::Surface(surface, (offset + shown.origin).to_f64())
+                        Hit::Surface(surface, (offset + surface_origin).to_f64())
                     })
             });
             hit.map(|hit| (shown.id, hit))

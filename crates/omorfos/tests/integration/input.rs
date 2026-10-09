@@ -6,7 +6,7 @@ use omorfos::Input;
 use smithay::input::keyboard::Keycode;
 
 use crate::common::{Event, HEIGHT, Session, WIDTH, key};
-use crate::windows::{BLUE, RED};
+use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
 
@@ -199,6 +199,54 @@ fn the_keys_that_switch_virtual_terminal_are_kept_for_the_backend() {
             .all(|(code, _)| *code != f2),
         "the application does not see the key"
     );
+}
+
+#[test]
+fn the_pointer_is_where_it_looks_on_a_window_that_draws_its_own_shadow() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    // The window proper is the middle of a larger surface, as it is for an
+    // application that draws a shadow around itself.
+    let window = client.toplevel("app", "app");
+    session.roundtrip(&mut client);
+    window.xdg_surface.set_window_geometry(30, 20, 200, 100);
+    client.fill(&window.surface, (260, 160), RED);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    client.take_events();
+    // The window is placed at the corner, so its shadow is off the screen
+    // above and to the left.
+    assert_eq!(
+        session.draw().at(229, 139),
+        RED,
+        "the far corner of the shadow"
+    );
+    assert_eq!(session.draw().at(231, 141), BACKGROUND);
+
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 10.0, y: 5.0 }, 1);
+    session.roundtrip(&mut client);
+    assert_eq!(
+        client.take_events(),
+        [Event::PointerEnter { x: 40.0, y: 25.0 }],
+        "counted from the corner of the surface, shadow included"
+    );
+
+    // The shadow below and to the right belongs to the window as well.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 225.0, y: 135.0 }, 2);
+    session.roundtrip(&mut client);
+    assert_eq!(
+        client.take_events(),
+        [Event::PointerMotion { x: 255.0, y: 155.0 }]
+    );
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 235.0, y: 145.0 }, 3);
+    session.roundtrip(&mut client);
+    assert_eq!(client.take_events(), [Event::PointerLeave]);
 }
 
 #[test]
