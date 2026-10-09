@@ -462,24 +462,44 @@ fn a_locked_session_shows_nothing_on_any_output() {
     );
 }
 
-/// A client with one window on each of two outputs.
 #[test]
-fn a_window_that_is_not_shown_is_told_the_scale_of_the_first_output() {
+fn a_window_that_is_not_shown_is_still_told_the_scale_of_its_own_output() {
     let (mut session, second) = two_screens();
     session
         .compositor_mut()
         .suggest_scale(&second, Scale::new(2.0));
     pointer_to(&mut session, WIDTH + 100, 100);
     let mut client: Client = session.connect();
-    session.open(&mut client, "app", (100, 50), RED);
+    let window = session.open(&mut client, "app", (100, 50), RED);
+    client.watch_scale(&window.surface);
+    session.roundtrip(&mut client);
     assert_eq!(client.state.told.buffer_scale, Some(2));
+    assert_eq!(client.state.told.scale, Some(240));
 
-    perform(
-        &mut session,
-        &Action::Workspace(WorkspaceNumber::clamped(2)),
-    );
+    // Hidden by a switch of workspace on its screen, it is not told the
+    // first screen's scale: it would draw itself for a screen it is not
+    // on, and a terminal changes size doing that, a little more each time.
+    for _ in 0..3 {
+        perform(
+            &mut session,
+            &Action::Workspace(WorkspaceNumber::clamped(2)),
+        );
+        session.roundtrip(&mut client);
+        assert_eq!(client.state.told.buffer_scale, Some(2), "while hidden");
+        assert_eq!(client.state.told.scale, Some(240));
+        perform(
+            &mut session,
+            &Action::Workspace(WorkspaceNumber::clamped(1)),
+        );
+        session.roundtrip(&mut client);
+        assert_eq!(client.state.told.scale, Some(240), "and shown again");
+    }
+
+    // Sent to the first screen, it is told that one's.
+    perform(&mut session, &Action::MoveToNextOutput);
     session.roundtrip(&mut client);
     assert_eq!(client.state.told.buffer_scale, Some(1));
+    assert_eq!(client.state.told.scale, Some(120));
 }
 
 #[test]

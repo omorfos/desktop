@@ -370,7 +370,8 @@ impl Compositor {
     /// on, so that applications draw at that size themselves and are not
     /// stretched. A surface is told once, and again only if either changes.
     ///
-    /// A window is shown at the scale of the output most of it is on.
+    /// A window is shown at the scale of the output whose workspaces it is
+    /// on, which is the one most of it is on.
     fn announce_scale(&self) {
         // A window that has shown nothing yet will be placed by the pointer.
         let at_pointer = self.pointer_head();
@@ -379,9 +380,14 @@ impl Compositor {
                 tell_scale(at_pointer, toplevel.wl_surface(), states);
             });
         }
+        // A window is told the scale of the output it belongs to, whether
+        // or not it is being shown. Told another's while hidden, it would
+        // draw itself for a screen it is not on, and some change size
+        // doing so.
         for mapped in &self.windows {
-            let frame = self.scene.iter().find(|shown| shown.id == mapped.id);
-            let head = frame.map_or_else(|| self.heads.first(), |shown| self.head_for(shown.outer));
+            let mut listed = self.desktop.windows();
+            let listed = listed.find(|listed| listed.window.id == mapped.id);
+            let head = listed.and_then(|listed| self.heads.get(listed.output));
             mapped
                 .window
                 .with_surfaces(|surface, states| tell_scale(head, surface, states));
