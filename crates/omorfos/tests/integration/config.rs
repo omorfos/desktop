@@ -1,7 +1,5 @@
 //! Configuration: what is applied at startup and when files change.
 
-use std::time::Duration;
-
 use tempfile::TempDir;
 
 use crate::common::Session;
@@ -106,8 +104,7 @@ fn a_saved_change_is_applied_once_the_directory_goes_quiet() {
         "not reloaded while changes may still arrive"
     );
 
-    session.advance(Duration::from_millis(500));
-    assert_eq!(session.draw().at(5, 5), RED);
+    session.eventually(|session| session.draw().at(5, 5) == RED);
 }
 
 #[test]
@@ -116,18 +113,13 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
         Session::with_config(&[("theme.yaml", "colors: { background: '#ff0000' }\n")]);
 
     session.write_config("theme.yaml", "colors: { background: oops }\n");
-    session.step();
-    session.advance(Duration::from_millis(500));
-
-    assert_eq!(session.draw().at(5, 5), RED);
-    assert_eq!(session.compositor.problems().len(), 1);
+    session.eventually(|session| session.compositor.problems().len() == 1);
+    assert_eq!(
+        session.draw().at(5, 5),
+        RED,
+        "the previous colour is still in effect"
+    );
 
     session.write_config("theme.yaml", "colors: { background: '#ff0000' }\n");
-    session.step();
-    session.advance(Duration::from_millis(500));
-    assert_eq!(
-        session.compositor.problems(),
-        [""; 0],
-        "fixing the file clears the problem"
-    );
+    session.eventually(|session| session.compositor.problems().is_empty());
 }

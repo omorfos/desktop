@@ -64,6 +64,13 @@ All five must pass. CI runs the same commands.
   with the software renderer, so tests can assert on protocol events and on
   pixels. A Smithay handler method only exists if a test makes a client
   call it.
+- **Wait for effects that depend on a file descriptor closing.** A client
+  disconnecting and a file-change notification both happen when the last
+  copy of a descriptor closes. Tests run in parallel in one process, and a
+  test that starts a program briefly duplicates every descriptor, so these
+  effects can arrive late. Use `Session::eventually` instead of asserting
+  straight away, and stress the suite (run the test binary a few hundred
+  times) after adding tests that spawn processes or watch files.
 - **Configuration types validate while deserializing** (`try_from`), so parser
   errors carry a line and column. After changing them, regenerate the JSON
   Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.

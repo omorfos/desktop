@@ -130,6 +130,26 @@ impl Session {
         self.step();
     }
 
+    /// Keeps the compositor running, with its clock moving, until
+    /// `condition` holds.
+    ///
+    /// Some effects reach the compositor a little late: a client's socket
+    /// closing, or the notification that a file was written. Both wait for
+    /// the last copy of a file descriptor to be closed, and while tests run
+    /// in parallel another test may be starting a process, which briefly
+    /// holds copies of every descriptor in this one. Such effects have to be
+    /// waited for rather than assumed.
+    pub(crate) fn eventually(&mut self, condition: impl Fn(&mut Self) -> bool) {
+        for _ in 0..5000 {
+            if condition(self) {
+                return;
+            }
+            self.advance(Duration::from_millis(200));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        unreachable!("the expected state was never reached");
+    }
+
     /// Connects a new client.
     pub(crate) fn connect(&mut self) -> Client {
         let (ours, theirs) = UnixStream::pair().unwrap();

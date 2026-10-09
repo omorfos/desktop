@@ -256,10 +256,8 @@ fn a_disconnected_client_takes_its_windows_with_it() {
     session.open(&mut client, "doomed", (200, 100), RED);
 
     drop(client);
-    session.step();
-    session.step();
+    session.eventually(|session| session.compositor.desktop().frames().count() == 0);
 
-    assert_eq!(session.compositor.desktop().frames().count(), 0);
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
 }
 
