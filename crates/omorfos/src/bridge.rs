@@ -4,8 +4,8 @@
 //! module is where a configuration value becomes domain settings, rules and
 //! key chains.
 
-use omorfos_config::{Action, FocusModel, General, Keys, Modifiers, Rules};
-use omorfos_core::{Effects, KeyChains, Pattern, Placement, Rule, Settings};
+use omorfos_config::{Action, Config, FocusModel, Keys, Modifiers, Rules};
+use omorfos_core::{Effects, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
 /// One step of a key binding: modifiers held while a key is pressed.
@@ -23,9 +23,11 @@ pub struct Chord {
 /// The key bindings in the form the compositor matches key presses against.
 pub type Bindings = KeyChains<Chord, Action>;
 
-/// Converts the general configuration into domain settings.
+/// Converts configuration into domain settings: behaviour from the general
+/// configuration, decoration sizes from the theme.
 #[must_use]
-pub fn settings(general: &General) -> Settings {
+pub fn settings(config: &Config) -> Settings {
+    let general = &config.general;
     Settings {
         focus_follows_pointer: general.focus.model == FocusModel::Sloppy,
         raise_on_focus: general.focus.raise_on_focus,
@@ -34,7 +36,10 @@ pub fn settings(general: &General) -> Settings {
             omorfos_config::Placement::Center => Placement::Center,
             omorfos_config::Placement::Pointer => Placement::Pointer,
         },
-        ..Settings::default()
+        decoration: Metrics {
+            border: config.theme.border.width.get(),
+            titlebar: config.theme.titlebar.height.get(),
+        },
     }
 }
 
@@ -132,7 +137,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use omorfos_config::{Command, Config};
+    use omorfos_config::Command;
     use omorfos_core::KeyOutcome;
     use smithay::input::keyboard::Keysym;
 
@@ -164,24 +169,51 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_are_click_to_focus_with_raise_and_cascade() {
-        assert_eq!(settings(&General::default()), Settings::default());
+    fn default_settings_are_click_to_focus_with_raise_cascade_and_the_default_frame() {
+        let expected = Settings {
+            focus_follows_pointer: false,
+            raise_on_focus: true,
+            placement: Placement::Cascade,
+            decoration: Metrics {
+                border: 1,
+                titlebar: 28,
+            },
+        };
+        assert_eq!(settings(&Config::default()), expected);
+    }
+
+    #[test]
+    fn decoration_sizes_come_from_the_theme() {
+        let theme = config(
+            "theme.yaml",
+            "border: { width: 3 }\ntitlebar: { height: 40 }\n",
+        );
+        assert_eq!(
+            settings(&theme).decoration,
+            Metrics {
+                border: 3,
+                titlebar: 40
+            }
+        );
     }
 
     #[test]
     fn focus_and_placement_settings_carry_over() {
         let yaml = "focus: { model: sloppy, raise_on_focus: false }\nplacement: center\n";
         assert_eq!(
-            settings(&config("config.yaml", yaml).general),
+            settings(&config("config.yaml", yaml)),
             Settings {
                 focus_follows_pointer: true,
                 raise_on_focus: false,
                 placement: Placement::Center,
-                ..Settings::default()
+                decoration: Metrics {
+                    border: 1,
+                    titlebar: 28
+                },
             }
         );
-        let general = config("config.yaml", "placement: pointer\n").general;
-        assert_eq!(settings(&general).placement, Placement::Pointer);
+        let pointer = config("config.yaml", "placement: pointer\n");
+        assert_eq!(settings(&pointer).placement, Placement::Pointer);
     }
 
     #[test]

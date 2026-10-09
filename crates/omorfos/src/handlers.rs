@@ -12,19 +12,21 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::Serial;
+use smithay::utils::{Logical, Serial, Size};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, with_states,
 };
 use smithay::wayland::output::OutputHandler;
+use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
-    delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped};
@@ -52,10 +54,26 @@ impl CompositorHandler for Compositor {
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        self.windows
+        if let Some(mapped) = self
+            .windows
             .iter()
-            .filter(|mapped| *mapped.toplevel.wl_surface() == root)
-            .for_each(|mapped| mapped.window.on_commit());
+            .find(|mapped| *mapped.toplevel.wl_surface() == root)
+        {
+            mapped.window.on_commit();
+            // A window may resize itself. Believe its size only once it has
+            // acknowledged the size we last asked for; before that, a
+            // differing size is just the old one still in flight.
+            let asked = self
+                .desktop
+                .frames()
+                .find(|frame| frame.window().id == mapped.id)
+                .map(|frame| frame.client().size);
+            let acknowledged = mapped.toplevel.current_state().size.map(domain_size);
+            let actual = domain_size(mapped.window.geometry().size);
+            if asked.is_some() && acknowledged == asked && asked != Some(actual) {
+                self.desktop.set_client_size(mapped.id, actual);
+            }
+        }
 
         self.map_if_ready(surface);
 
@@ -93,11 +111,17 @@ impl Compositor {
         let window = Window::new_wayland_window(toplevel.clone());
         window.on_commit();
         let (app_id, title) = names(surface);
-        let size = window.geometry().size;
-        let size = DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs());
-        let id = self
-            .desktop
-            .add_window(app_id, title, size, self.pointer_position(), true);
+        let size = domain_size(window.geometry().size);
+        // The window expects us to decorate it if it negotiated that.
+        let wants_decoration = toplevel
+            .with_pending_state(|state| state.decoration_mode == Some(DecorationMode::ServerSide));
+        let id = self.desktop.add_window(
+            app_id,
+            title,
+            size,
+            self.pointer_position(),
+            wants_decoration,
+        );
         self.windows.push(Mapped {
             id,
             window,
@@ -115,6 +139,10 @@ impl Compositor {
             operation(&mut self.desktop, id);
         }
     }
+}
+
+fn domain_size(size: Size<i32, Logical>) -> DomainSize {
+    DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs())
 }
 
 /// A toplevel's application identifier and title, empty where unset.
@@ -210,6 +238,35 @@ impl XdgShellHandler for Compositor {
     }
 }
 
+impl Compositor {
+    /// Tells a toplevel that the compositor draws its decoration. Whatever
+    /// the client prefers, the answer is the same: frames carry the tabs, so
+    /// they are ours to draw. Clients that cannot go without their own
+    /// titlebar never ask, and are left undecorated.
+    fn decorate(toplevel: &ToplevelSurface) {
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(DecorationMode::ServerSide);
+        });
+        if toplevel.is_initial_configure_sent() {
+            toplevel.send_configure();
+        }
+    }
+}
+
+impl XdgDecorationHandler for Compositor {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        Self::decorate(&toplevel);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
+        Self::decorate(&toplevel);
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        Self::decorate(&toplevel);
+    }
+}
+
 impl SeatHandler for Compositor {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
@@ -238,6 +295,7 @@ impl OutputHandler for Compositor {}
 
 delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
+delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);
 delegate_output!(Compositor);

@@ -29,6 +29,7 @@ use smithay::reexports::wayland_server::{Client, DisplayHandle};
 use smithay::utils::{Logical, Physical, Point, SERIAL_COUNTER, Size, Transform};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState};
 use smithay::wayland::shm::ShmState;
 
@@ -62,6 +63,7 @@ pub struct Compositor {
     pub(crate) shm: ShmState,
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
+    _decorations: XdgDecorationState,
     _seat: Seat<Self>,
     pub(crate) keyboard: KeyboardHandle<Self>,
     pub(crate) pointer: PointerHandle<Self>,
@@ -131,6 +133,7 @@ impl Compositor {
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
+        let decorations = XdgDecorationState::new::<Self>(&display);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -158,6 +161,7 @@ impl Compositor {
                     shm,
                     seats,
                     _output_manager_state: output_manager_state,
+                    _decorations: decorations,
                     _seat: seat,
                     keyboard,
                     pointer,
@@ -302,7 +306,7 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
 
-        self.desktop.set_settings(bridge::settings(&config.general));
+        self.desktop.set_settings(bridge::settings(&config));
         self.desktop.set_rules(bridge::rules(&config.rules));
         self.desktop
             .set_workspace_count(config.general.workspaces.names().len());
@@ -412,7 +416,7 @@ impl Compositor {
             .map(|frame| {
                 (
                     frame.window().id,
-                    frame.geometry,
+                    frame.client(),
                     frame.maximized,
                     frame.fullscreen,
                 )

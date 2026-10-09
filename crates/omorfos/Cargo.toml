@@ -43,7 +43,7 @@ smithay = { version = "0.7.0", default-features = false, features = ["wayland_fr
 smithay = { version = "0.7.0", default-features = false, features = ["renderer_pixman"] }
 tempfile = "3.27.0"
 wayland-client = "0.31.15"
-wayland-protocols = { version = "0.32.13", features = ["client"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "unstable"] }
 
 [[test]]
 name = "integration"
