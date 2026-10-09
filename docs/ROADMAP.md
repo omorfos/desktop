@@ -176,6 +176,8 @@ Known gaps:
 - [x] A `wayland-sessions` entry for login screens, with programs told
       about the session however they are started (ADR 13)
 - [x] Rounded window corners, without a shader (ADR 16)
+- [x] Screens turned off when the user is away (`idle.screen_off`), and
+      programs started with the session (`autostart`)
 
 ## 9. Shell components
 

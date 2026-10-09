@@ -21,6 +21,8 @@
 //!
 //! See `docs/adr/0014-idle-and-session-lock.md`.
 
+use std::time::{Duration, Instant};
+
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::utils::under_from_surface_tree;
@@ -57,6 +59,31 @@ pub(crate) struct Lock {
     /// The promise to tell the locker that the session is locked, kept once
     /// a frame without anything of the session in it has been shown.
     unconfirmed: Option<SessionLocker>,
+}
+
+/// What is known of whether the user is there.
+#[derive(Debug)]
+pub(crate) struct Presence {
+    /// Whether something on screen is asking for the session to stay awake.
+    pub(crate) kept_awake: bool,
+    /// Whether there has been input since the compositor was last brought
+    /// up to date.
+    pub(crate) stirred: bool,
+    /// When the user was last known to be there.
+    last_active: Option<Instant>,
+    /// Whether the screens are to be on.
+    screens_on: bool,
+}
+
+impl Default for Presence {
+    fn default() -> Self {
+        Self {
+            kept_awake: false,
+            stirred: false,
+            last_active: None,
+            screens_on: true,
+        }
+    }
 }
 
 impl Compositor {
@@ -219,7 +246,36 @@ impl Compositor {
             self.is_shown(&root)
         };
         let inhibited = !self.is_locked() && self.inhibitors.iter().any(shown);
+        self.presence.kept_awake = inhibited;
         self.idle.set_is_inhibited(inhibited);
+    }
+
+    /// Whether the screens are to be on. They are turned off once there has
+    /// been no input for as long as the configuration says, and on again at
+    /// the next. A backend that drives screens acts on this each turn.
+    #[must_use]
+    pub const fn screens_on(&self) -> bool {
+        self.presence.screens_on
+    }
+
+    /// When the screens are due to go off: the configured time after the
+    /// user was last there, if a time is configured.
+    pub(crate) fn screens_off_at(&self) -> Option<Instant> {
+        let after = u64::from(self.config().general.idle.screen_off);
+        let since = self.presence.last_active.filter(|_| after > 0);
+        since.map(|since| since + Duration::from_secs(after))
+    }
+
+    /// Notes whether the user is there as of `now`, and settles whether the
+    /// screens are on. Something being watched counts as the user being
+    /// there, as it does for the session going idle.
+    pub(crate) fn rest_or_wake(&mut self, now: Instant) {
+        let presence = &mut self.presence;
+        let here = std::mem::take(&mut presence.stirred) || presence.kept_awake;
+        if here || presence.last_active.is_none() {
+            presence.last_active = Some(now);
+        }
+        self.presence.screens_on = self.screens_off_at().is_none_or(|at| now < at);
     }
 }
 

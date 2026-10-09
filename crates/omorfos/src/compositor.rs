@@ -71,7 +71,7 @@ use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::input::Drag;
 use crate::ipc::Server;
-use crate::lock::Lock;
+use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Text};
 
@@ -214,6 +214,8 @@ pub struct Compositor {
     /// Surfaces that ask for the session not to go idle while they are
     /// shown, such as a film being played.
     pub(crate) inhibitors: Vec<WlSurface>,
+    /// Whether the user is there, and so whether the screens are on.
+    pub(crate) presence: Presence,
     children: Vec<Child>,
     /// Whether the programs to start with the session have been.
     started: bool,
@@ -330,6 +332,7 @@ impl Compositor {
                     idle,
                     _idle_inhibit: idle_inhibit,
                     inhibitors: Vec::new(),
+                    presence: Presence::default(),
                     children: Vec::new(),
                     started: false,
                     ipc: None,
@@ -503,7 +506,9 @@ impl Compositor {
     /// should wait no longer than this.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
-        [self.debouncer.deadline(), self.ipc_retry]
+        // Once the screens are off there is nothing more to wait for.
+        let screens_off = self.screens_off_at().filter(|_| self.screens_on());
+        [self.debouncer.deadline(), self.ipc_retry, screens_off]
             .into_iter()
             .flatten()
             .min()
@@ -530,6 +535,7 @@ impl Compositor {
             .retain_mut(|child| child.try_wait().is_ok_and(|status| status.is_none()));
         self.serve_ipc();
         self.sync();
+        self.rest_or_wake(now);
         self.space.refresh();
         self.popups.cleanup();
         self.publish_ipc(now);

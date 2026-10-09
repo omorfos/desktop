@@ -24,6 +24,8 @@ pub struct General {
     /// Particular screens, by name: where each stands and how it is
     /// driven.
     pub outputs: Outputs,
+    /// What happens when the user is away.
+    pub idle: Idle,
     /// Programs to start with the session, each as a program and its
     /// arguments. They are started once, in order, and not again when the
     /// configuration is reloaded.
@@ -141,6 +143,16 @@ impl Default for Keyboard {
             repeat_rate: 30,
         }
     }
+}
+
+/// What happens when the user is away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Idle {
+    /// Seconds without input after which the screens are turned off. `0`
+    /// never turns them off.
+    pub screen_off: u32,
 }
 
 /// Touchpad behaviour.
@@ -278,6 +290,15 @@ mod tests {
             parse("autostart: [[]]").is_err(),
             "a program has to be named"
         );
+    }
+
+    #[test]
+    fn the_screens_stay_on_unless_a_time_is_given() {
+        assert_eq!(General::default().idle.screen_off, 0);
+        let idle = parse("idle: { screen_off: 600 }").unwrap().idle;
+        assert_eq!(idle.screen_off, 600);
+        assert!(parse("idle: { screen_off: -5 }").is_err());
+        assert!(parse("idle: { screen_of: 5 }").is_err());
     }
 
     #[test]

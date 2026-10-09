@@ -44,11 +44,18 @@ touchpad:
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
 outputs: []               # particular screens, by name
+idle:
+  screen_off: 0           # seconds without input; 0 never
 autostart: []             # programs to start with the session
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
 `["1", "2", "3", "4"]`.
+
+`idle.screen_off` turns the screens off after that many seconds without
+input, and on again at the next key or movement. Something that asks for
+the session to stay awake, such as a film being played, keeps them on. It
+is off by default.
 
 `autostart` lists programs to start when the session does, each as a
 program and its arguments, as for `spawn`:
