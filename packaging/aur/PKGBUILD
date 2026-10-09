@@ -26,12 +26,12 @@ build() {
   cd "desktop-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release -p omorfos
+  cargo build --frozen --release -p omorfos -p omorfosctl
 }
 
 package() {
   cd "desktop-$pkgver"
-  install -Dm755 target/release/omorfos "$pkgdir/usr/bin/omorfos"
+  install -Dm755 target/release/omorfos target/release/omorfosctl -t "$pkgdir/usr/bin/"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"

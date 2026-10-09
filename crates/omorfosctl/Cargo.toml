@@ -1,0 +1,22 @@
+[package]
+name = "omorfosctl"
+description = "Command-line control for the omorfos compositor"
+keywords = ["wayland", "compositor", "cli"]
+categories = ["command-line-utilities"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+omorfos-ipc = { path = "../omorfos-ipc" }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

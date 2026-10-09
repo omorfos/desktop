@@ -75,7 +75,7 @@ jobs:
         with:
           tool: cargo-deb@3.8.0
       - name: Build
-        run: cargo build --release --locked -p omorfos
+        run: cargo build --release --locked -p omorfos -p omorfosctl
       - name: Package
         run: packaging/package.sh dist
       # Attestations need a public repository unless the organisation is on
