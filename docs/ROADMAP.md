@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 7, IPC and ecosystem protocols.
+**Next:** the rest of milestone 7 (see its open items), then milestone 8.
 
 ## 1. Bootstrap
 
@@ -66,13 +66,13 @@ Deferred until the features that need them:
 
 Not done yet, and where it is planned:
 
-- Clipboard and drag-and-drop (`wl_data_device`): milestone 7.
+- Clipboard: done in milestone 7. Drag-and-drop: see its open items.
 - Popup grabs and the one-frame flash of rule-maximized windows: see the
   open items under milestone 6.
 - The mouse cursor is the host's; drawing our own, and client-set cursors,
   come with the hardware backend in milestone 8.
-- Problems (bad configuration, a program that would not start) are printed
-  to standard error; showing them on screen is milestone 7.
+- Problems (bad configuration, a program that would not start) were only
+  printed to standard error; they are shown on screen since milestone 7.
 - The nested backend has only been started under WSLg, not exercised with
   real applications.
 
@@ -108,10 +108,8 @@ the compositor can drive real hardware.
 
 Still open, carried forward:
 
-- Popup grabs: a client's own menus are not dismissed by clicking outside
-  them (milestone 7).
-- A window that a rule maximizes shows one frame at its natural size first
-  (milestone 7).
+- Popup grabs and the one-frame flash of rule-maximized windows: still
+  open, listed under milestone 7.
 - Titlebar buttons (close, maximize, minimize), double-click to maximize,
   and keyboard navigation of the root menu.
 - During a resize from the left or top edge, the window's content can lag
@@ -124,10 +122,32 @@ Still open, carried forward:
 
 ## 7. IPC and ecosystem protocols
 
-- [ ] `omorfos-ipc` protocol and client library, `omorfosctl`
-- [ ] layer-shell, foreign-toplevel, ext-workspace, xdg-activation,
-      idle-notify, session-lock
-- [ ] Config errors surfaced on screen and via `omorfosctl config check`
+Done:
+
+- [x] `omorfos-ipc` protocol and client library; the compositor serves it
+- [x] `omorfosctl` (state, watch, actions, activate, config check/reload)
+- [x] layer-shell: panels, docks, launchers, wallpapers, with reserved
+      space respected by placement and maximize
+- [x] Clipboard (`wl_data_device`)
+- [x] Config errors surfaced on screen and via `omorfosctl config check`
+
+Still open:
+
+- [ ] foreign-toplevel and ext-workspace, so standard taskbars and
+      workspace switchers work without our socket
+- [ ] xdg-activation (a launcher or notification asking for a window to be
+      focused)
+- [ ] idle-notify and session-lock
+- [ ] Popup grabs: a client's own menus are not dismissed by clicking
+      outside them. Popups of layer surfaces (a panel's menus) are not
+      shown at all.
+- [ ] Primary selection (paste with the middle button)
+- [ ] Drag-and-drop between applications is enabled through Smithay's
+      defaults but untested
+- [ ] A window that a rule maximizes shows one frame at its natural size
+- [ ] Keyboard focus on demand for layer surfaces; only surfaces that
+      demand the keyboard exclusively get it
+- [ ] The IPC socket is polled each turn of the loop rather than waking it
 
 ## 8. Real hardware
 

@@ -5,8 +5,9 @@ A lightweight Wayland compositor for Linux, written in Rust and inspired by
 keybindings, per-application rules and a small footprint, with a modern look.
 
 > **Status:** early development. The compositor runs in a window on an
-> existing desktop and shows application windows, without decorations yet.
-> It cannot drive real hardware. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> existing desktop, with decorations, tabs, a root menu, the clipboard,
+> panels and wallpapers through layer-shell, and an IPC socket. It cannot
+> drive real hardware yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Goals
 
@@ -30,7 +31,8 @@ This opens omorfos in a window on your current Wayland or X11 session and
 prints the name of its socket. Start a program inside it with, for example,
 `WAYLAND_DISPLAY=wayland-1 foot`. Key bindings using Super may be taken by
 the host desktop before they reach the window. Configuration is described in
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md), and scripting and component
+integration in [docs/IPC.md](docs/IPC.md).
 
 ## Development
 
