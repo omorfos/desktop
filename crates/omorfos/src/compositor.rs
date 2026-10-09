@@ -40,6 +40,7 @@ use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellSt
 use smithay::wayland::shm::ShmState;
 
 use crate::bridge::{self, Bindings};
+use crate::input::Drag;
 use crate::paint::{self, Text};
 
 /// How long the configuration directory must be quiet before it is reloaded.
@@ -85,7 +86,9 @@ pub struct Compositor {
     /// Toplevels that exist but have not shown any content yet.
     pub(crate) unmapped: Vec<ToplevelSurface>,
     /// What is on screen, bottom to top, as of the last sync.
-    scene: Vec<Shown>,
+    pub(crate) scene: Vec<Shown>,
+    /// The move, resize or tab drag in progress.
+    pub(crate) drag: Option<Drag>,
     text: Text,
 
     store: Store,
@@ -183,6 +186,7 @@ impl Compositor {
                     windows: Vec::new(),
                     unmapped: Vec::new(),
                     scene: Vec::new(),
+                    drag: None,
                     text: Text::new(),
                     store,
                     watcher,
@@ -472,6 +476,7 @@ impl Compositor {
                     scene.push((
                         order,
                         Shown {
+                            id: *id,
                             window: window.clone(),
                             origin,
                             chrome,
@@ -589,10 +594,18 @@ render_elements! {
 /// A window on screen: where it is and the decoration drawn around it.
 #[derive(Debug)]
 pub(crate) struct Shown {
-    window: Window,
+    pub(crate) id: WindowId,
+    pub(crate) window: Window,
     /// Where the window's visible geometry starts.
-    origin: Point<i32, Logical>,
+    pub(crate) origin: Point<i32, Logical>,
     chrome: Option<Chrome>,
+}
+
+impl Shown {
+    /// The layout of the frame's titlebar and borders, if it has them.
+    pub(crate) fn decoration(&self) -> Option<&Decoration> {
+        self.chrome.as_ref().map(|chrome| &chrome.decoration)
+    }
 }
 
 /// The pixels of a frame's decoration, kept until its appearance changes.

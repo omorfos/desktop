@@ -2,11 +2,12 @@
 //! operations on the desktop model.
 
 use omorfos_core::geometry::Size as DomainSize;
-use omorfos_core::{Desktop, WindowId};
+use omorfos_core::{Desktop, Edges, WindowId};
 use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state};
 use smithay::desktop::{PopupKind, Window};
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge;
 use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -30,6 +31,7 @@ use smithay::{
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped};
+use crate::input::Wanted;
 
 impl CompositorHandler for Compositor {
     fn compositor_state(&mut self) -> &mut CompositorState {
@@ -210,6 +212,31 @@ impl XdgShellHandler for Compositor {
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
         self.on_window(&surface, Desktop::minimize);
+    }
+
+    fn move_request(&mut self, surface: ToplevelSurface, _seat: WlSeat, _serial: Serial) {
+        if let Some(id) = self.window_id(surface.wl_surface()) {
+            self.begin(id, Wanted::Move);
+        }
+    }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: WlSeat,
+        _serial: Serial,
+        edges: ResizeEdge,
+    ) {
+        // The protocol encodes the edges as bits: top, bottom, left, right.
+        let bits = u32::from(edges);
+        let edges = Edges::NONE
+            .with_if(bits & 1 != 0, Edges::TOP)
+            .with_if(bits & 2 != 0, Edges::BOTTOM)
+            .with_if(bits & 4 != 0, Edges::LEFT)
+            .with_if(bits & 8 != 0, Edges::RIGHT);
+        if let Some(id) = self.window_id(surface.wl_surface()) {
+            self.begin(id, Wanted::Resize(edges));
+        }
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {

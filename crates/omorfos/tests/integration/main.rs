@@ -8,6 +8,7 @@ mod actions;
 mod common;
 mod config;
 mod decorations;
+mod dragging;
 mod executable;
 mod input;
 mod windows;
