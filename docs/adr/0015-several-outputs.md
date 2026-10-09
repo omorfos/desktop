@@ -1,0 +1,82 @@
+# 15. Several outputs
+
+- Status: accepted
+- Date: 2026-10-09
+- Amends: [10. Hardware backend](0010-hardware-backend.md),
+  [11. Scaling](0011-scaling.md)
+
+## Context
+
+The compositor was built around one output: one size, one scale, one set
+of panels, one lock surface. A laptop on a desk has two screens, and they
+come and go while the session runs.
+
+The window-management model was already written for several: it places a
+new window on the output under the pointer, maximizes onto the output a
+frame is mostly on, and moves frames off an output that disappears. What
+knew only one was the adapter around it.
+
+## Decision
+
+**One space, and each output shows a rectangle of it.** Windows, the
+pointer, the menu and the notice are positioned in a single space in units
+of layout, as before. An output has a position in it, a size in pixels and
+a scale. Drawing an output means drawing the space from that output's
+corner at that output's scale; nothing else about drawing changed.
+
+**Outputs stand side by side, left to right, in the order they appeared,**
+with their tops aligned. The hardware backend takes a laptop's own panel
+first. There is no setting for the arrangement yet.
+
+**An output is named by Smithay's `Output` in every call about it.**
+`add_output` returns one, and resizing, scaling, drawing and frame timing
+take it. What the compositor needs to draw comes from the output itself,
+so drawing an output that has just been unplugged is harmless and no call
+can fail for lack of one.
+
+**Each output has its own scale** (ADR 11), suggested by its own density
+unless the configuration names one for all. A surface is told the scale of
+the output most of its window is on. A frame's titlebar is painted for
+that output too, and stretched on the other if the frame straddles two of
+different scales.
+
+**The pointer is always on an output.** It crosses where two meet and
+slides along an edge that leads nowhere. If its output goes, it moves to
+the nearest point of the one it would otherwise be on.
+
+**Panels belong to an output:** the one they ask for, or the one the
+pointer is on. Each output has its own reserved edges. Panels on an output
+that goes are closed.
+
+**Locking covers every output.** The locker gives a surface for each, and
+an output without one is black. The locker is told the session is locked
+only once every output has drawn a frame without the session in it. The
+keyboard goes to the lock surface on the pointer's output, or failing that
+to any.
+
+**A window is told a frame was shown by the output most of it is on,** so
+it draws at that screen's pace and not at the sum of two.
+
+**The hardware backend drives every connected screen** of the seat's
+graphics card and looks again when udev reports a change, and when the
+session comes back from another virtual terminal. A screen that cannot be
+set up is reported and left dark; the others and the session carry on.
+
+**A session with no output keeps running.** Windows keep their places and
+come back when a screen does.
+
+## Consequences
+
+- The arrangement cannot be changed: no mirroring, no stacking one above
+  the other, no choosing which is on the left beyond the order they were
+  plugged in.
+- One scale setting for all outputs. A different one per output needs a
+  setting keyed by the output's name.
+- One graphics card. A screen on a second card is not seen.
+- A screen is driven at the mode it prefers. Its refresh rate is still
+  reported to applications as 60 Hz.
+- The notice of problems is on the first output only.
+- A window is told to enter outputs by Smithay as it overlaps them; the
+  scale it is told is the compositor's choice of one of them.
+- The hardware side has no tests, as before. The compositor's side is
+  tested with two software screens.

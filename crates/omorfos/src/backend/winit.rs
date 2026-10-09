@@ -20,6 +20,7 @@ use smithay::backend::input::{
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
+use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
@@ -32,6 +33,8 @@ const WHEEL_NOTCH: f64 = 15.0;
 struct Screen {
     backend: WinitGraphicsBackend<GlesRenderer>,
     tracker: OutputDamageTracker,
+    /// The window, as an output of the compositor.
+    output: Output,
     started: Instant,
     /// Set when the window wants drawing again.
     redraw: Rc<Cell<bool>>,
@@ -61,11 +64,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     })?;
     let size = backend.window_size();
     // OpenGL's origin is the bottom-left corner, so the picture is flipped.
-    let mut session = Session::new(config_directory, (size.w, size.h), Transform::Flipped180)?;
+    let mut session = Session::new(config_directory)?;
+    let compositor = session.compositor_mut();
+    let output = compositor.add_output("nested", (size.w, size.h), Transform::Flipped180);
 
     // The host desktop knows how dense its screen is.
     let density = backend.window().scale_factor();
-    session.compositor_mut().suggest_scale(Scale::new(density));
+    compositor.suggest_scale(&output, Scale::new(density));
     listen(&mut session)?;
     // The pointer is drawn by omorfos, so that it looks as applications
     // inside ask, and the host's is hidden over the window.
@@ -76,22 +81,24 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let redraw = Rc::new(Cell::new(true));
     let wanted = Rc::clone(&redraw);
+    let shown = output.clone();
     session
         .handle()
         .insert_source(winit, move |event, (), compositor| match event {
             WinitEvent::Resized { size, scale_factor } => {
-                compositor.resize_output((size.w, size.h));
-                compositor.suggest_scale(Scale::new(scale_factor));
+                compositor.resize_output(&shown, (size.w, size.h));
+                compositor.suggest_scale(&shown, Scale::new(scale_factor));
                 wanted.set(true);
             }
-            WinitEvent::Input(event) => on_input(compositor, event),
+            WinitEvent::Input(event) => on_input(compositor, Some(&shown), event),
             WinitEvent::Redraw => wanted.set(true),
             WinitEvent::CloseRequested => compositor.perform(&omorfos_config::Action::Quit),
             WinitEvent::Focus(_) => {}
         })?;
 
     let mut screen = Screen {
-        tracker: OutputDamageTracker::from_output(session.compositor().output()),
+        tracker: OutputDamageTracker::from_output(&output),
+        output,
         backend,
         started: Instant::now(),
         redraw,
@@ -125,8 +132,15 @@ pub(super) fn listen(session: &mut Session) -> Result<(), Box<dyn Error>> {
 }
 
 /// Hands an input event to the compositor, whichever backend it is from.
-pub(super) fn on_input<B: InputBackend>(compositor: &mut Compositor, event: InputEvent<B>) {
-    let size = compositor.logical_size();
+pub(super) fn on_input<B: InputBackend>(
+    compositor: &mut Compositor,
+    output: Option<&Output>,
+    event: InputEvent<B>,
+) {
+    // A device that reports positions, not movement, covers this output.
+    let area = output.map(|output| compositor.area_of(output));
+    let area = area.unwrap_or_default();
+    let size = area.size;
     let (input, time) = match event {
         InputEvent::Keyboard { event } => {
             let pressed = event.state() == KeyState::Pressed;
@@ -139,7 +153,8 @@ pub(super) fn on_input<B: InputBackend>(compositor: &mut Compositor, event: Inpu
             )
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            let (x, y) = (event.x_transformed(size.w), event.y_transformed(size.h));
+            let x = f64::from(area.loc.x) + event.x_transformed(size.w);
+            let y = f64::from(area.loc.y) + event.y_transformed(size.h);
             (Input::Motion { x, y }, event.time_msec())
         }
         InputEvent::PointerMotion { event } => {
@@ -189,12 +204,17 @@ impl Screen {
             let age = self.backend.buffer_age().unwrap_or(0);
             let damage = {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
-                let result =
-                    compositor.render(renderer, &mut framebuffer, &mut self.tracker, age)?;
+                let result = compositor.render(
+                    &self.output,
+                    renderer,
+                    &mut framebuffer,
+                    &mut self.tracker,
+                    age,
+                )?;
                 result.damage.cloned()
             };
             self.backend.submit(damage.as_deref())?;
-            compositor.send_frames(self.started.elapsed());
+            compositor.send_frames(&self.output, self.started.elapsed());
             // Draw continuously; the host compositor paces us.
             self.backend.window().request_redraw();
         }

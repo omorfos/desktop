@@ -26,6 +26,7 @@ use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::utils::under_from_surface_tree;
 use smithay::input::keyboard::{FilterResult, Keycode};
 use smithay::input::pointer::{AxisFrame, ButtonEvent};
+use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -50,8 +51,9 @@ pub(crate) struct Lock {
     /// The locker's hold on the session. The lock is its to release, and
     /// nobody else's while it lives.
     by: ExtSessionLockV1,
-    /// What the locker shows, once it has something to show.
-    surface: Option<LockSurface>,
+    /// What the locker shows on each output, once it has something to
+    /// show there.
+    surfaces: Vec<(Output, LockSurface)>,
     /// The promise to tell the locker that the session is locked, kept once
     /// a frame without anything of the session in it has been shown.
     unconfirmed: Option<SessionLocker>,
@@ -64,13 +66,36 @@ impl Compositor {
         self.lock.is_some()
     }
 
-    /// The surface the locker is showing, if the session is locked and it
-    /// has one.
-    pub(crate) fn lock_surface(&self) -> Option<&WlSurface> {
-        let shown = self.lock.as_ref().and_then(|lock| lock.surface.as_ref());
-        shown
-            .filter(|surface| surface.alive())
-            .map(LockSurface::wl_surface)
+    /// The surfaces the locker is showing, and the output each is on.
+    fn lock_surfaces(&self) -> impl Iterator<Item = &(Output, LockSurface)> {
+        let surfaces = self.lock.iter().flat_map(|lock| &lock.surfaces);
+        surfaces.filter(|(_, surface)| surface.alive())
+    }
+
+    /// The surface the locker is showing on `output`, if the session is
+    /// locked and it has one there.
+    pub(crate) fn lock_surface_on(&self, output: &Output) -> Option<&WlSurface> {
+        self.lock_surfaces()
+            .find(|(on, _)| on == output)
+            .map(|(_, surface)| surface.wl_surface())
+    }
+
+    /// The lock surface that has the keyboard: the one on the output the
+    /// pointer is on, or failing that any there is.
+    pub(crate) fn lock_focus(&self) -> Option<&WlSurface> {
+        let here = self.pointer_head().map(|head| &head.output);
+        here.and_then(|output| self.lock_surface_on(output))
+            .or_else(|| {
+                let any = self.lock_surfaces().next();
+                any.map(|(_, surface)| surface.wl_surface())
+            })
+    }
+
+    /// Stops showing a lock surface on an output that has gone.
+    pub(crate) fn forget_lock_surface(&mut self, output: &Output) {
+        if let Some(lock) = &mut self.lock {
+            lock.surfaces.retain(|(on, _)| on != output);
+        }
     }
 
     /// Handles input while the session is locked. Everything goes to the
@@ -141,23 +166,25 @@ impl Compositor {
         );
     }
 
-    /// Points the pointer at the lock surface if it is over it, and at
-    /// nothing otherwise.
+    /// Points the pointer at the lock surface on the output it is on, if it
+    /// is over it, and at nothing otherwise.
     fn point_at_lock(&mut self, time: u32) {
-        let focus = self.lock_surface().and_then(|surface| {
+        let head = self.head_at(self.pointer_location);
+        let focus = head.and_then(|head| {
+            let surface = self.lock_surface_on(&head.output)?;
+            let origin = head.area().loc;
             let all = WindowSurfaceType::ALL;
-            under_from_surface_tree(surface, self.pointer_location, (0, 0), all)
+            under_from_surface_tree(surface, self.pointer_location, origin, all)
         });
         let focus = focus.map(|(surface, origin)| (surface, origin.to_f64()));
         self.move_pointer(focus, time);
     }
 
-    /// Tells the lock surface how large the output is, which is the size it
-    /// has to be.
-    pub(crate) fn configure_lock_surface(&self) {
-        let shown = self.lock.as_ref().and_then(|lock| lock.surface.as_ref());
-        if let Some(surface) = shown {
-            let size = self.logical_size();
+    /// Tells each lock surface how large its output is, which is the size
+    /// it has to be.
+    pub(crate) fn configure_lock_surfaces(&self) {
+        for (output, surface) in self.lock_surfaces() {
+            let size = self.area_of(output).size;
             let size = (size.w.unsigned_abs(), size.h.unsigned_abs());
             surface.with_pending_state(|state| state.size = Some(size.into()));
             surface.send_configure();
@@ -165,10 +192,10 @@ impl Compositor {
     }
 
     /// Tells the locker that the session is locked, if it has not been told
-    /// and a frame showing nothing of the session has been drawn since it
-    /// asked.
+    /// and a frame showing nothing of the session has been drawn on every
+    /// output since it asked.
     pub(crate) fn confirm_lock(&mut self) {
-        if !self.blanked.get() {
+        if !self.heads.iter().all(|head| head.blanked.get()) {
             return;
         }
         let lock = self.lock.as_mut();
@@ -209,10 +236,12 @@ impl SessionLockHandler for Compositor {
         // Nothing half done survives into, or out of, a locked session.
         self.menu = None;
         self.drag = None;
-        self.blanked.set(false);
+        for head in &self.heads {
+            head.blanked.set(false);
+        }
         self.lock = Some(Lock {
             by: confirmation.ext_session_lock().clone(),
-            surface: None,
+            surfaces: Vec::new(),
             unconfirmed: Some(confirmation),
         });
         // The keyboard and pointer leave whatever had them at once, not
@@ -234,16 +263,17 @@ impl SessionLockHandler for Compositor {
         self.input(Input::Motion { x: at.x, y: at.y }, 0);
     }
 
-    fn new_surface(&mut self, surface: LockSurface, _output: WlOutput) {
+    fn new_surface(&mut self, surface: LockSurface, output: WlOutput) {
         // Only the locker's own surface is ever shown. A client whose
         // request to lock was refused still has an object to ask with, and
         // must not get to put its surface over the real one, or to show one
         // when the session is not locked at all.
         let client = surface.wl_surface().client();
         let lock = self.lock.as_mut();
-        if let Some(lock) = lock.filter(|lock| lock.by.client() == client) {
-            lock.surface = Some(surface);
-            self.configure_lock_surface();
+        let held = lock.filter(|lock| lock.by.client() == client);
+        if let Some((lock, output)) = held.zip(Output::from_resource(&output)) {
+            lock.surfaces.push((output, surface));
+            self.configure_lock_surfaces();
         }
     }
 }

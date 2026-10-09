@@ -154,7 +154,7 @@ fn a_panel_follows_the_output_when_it_is_resized() {
     session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
     client.take_events();
 
-    session.compositor_mut().resize_output((800, 600));
+    session.resize_output((800, 600));
     session.roundtrip(&mut client);
 
     assert!(

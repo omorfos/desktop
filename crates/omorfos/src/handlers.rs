@@ -34,6 +34,7 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceData,
 };
+use smithay::output::Output;
 use smithay::wayland::fractional_scale::FractionalScaleHandler;
 use smithay::wayland::tablet_manager::TabletSeatHandler;
 use smithay::wayland::shm::{ShmHandler, ShmState};
@@ -95,15 +96,16 @@ impl CompositorHandler for Compositor {
 
         // A panel, dock or wallpaper: lay the layers out again and tell it
         // the size it has been given.
-        let mut layers = layer_map_for_output(self.output());
-        let layer = layers
-            .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-            .cloned();
-        if let Some(layer) = layer {
-            layers.arrange();
-            layer.layer_surface().send_pending_configure();
+        for head in &self.heads {
+            let mut layers = layer_map_for_output(&head.output);
+            let layer = layers
+                .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                .cloned();
+            if let Some(layer) = layer {
+                layers.arrange();
+                layer.layer_surface().send_pending_configure();
+            }
         }
-        drop(layers);
 
         self.popups.commit(surface);
         if let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface)
@@ -368,14 +370,23 @@ impl WlrLayerShellHandler for Compositor {
     fn new_layer_surface(
         &mut self,
         surface: WlrLayerSurface,
-        _output: Option<WlOutput>,
+        output: Option<WlOutput>,
         _layer: Layer,
         namespace: String,
     ) {
-        // Mapping fails only for a surface that is already mapped, which a
-        // new one cannot be.
-        let _ =
-            layer_map_for_output(self.output()).map_layer(&LayerSurface::new(surface, namespace));
+        // On the output it asked for, or else the one the pointer is on.
+        let asked = output.as_ref().and_then(Output::from_resource);
+        let asked = asked.as_ref().and_then(|output| self.head(output));
+        match asked.or_else(|| self.pointer_head()) {
+            // Mapping fails only for a surface that is already mapped,
+            // which a new one cannot be.
+            Some(head) => {
+                let layer = LayerSurface::new(surface, namespace);
+                let _ = layer_map_for_output(&head.output).map_layer(&layer);
+            }
+            // With no screen there is nowhere to put it.
+            None => surface.send_close(),
+        }
     }
 }
 
@@ -482,7 +493,6 @@ delegate_viewporter!(Compositor);
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::Transform;
 
     use super::*;
     use crate::Session;
@@ -492,7 +502,7 @@ mod tests {
         // Smithay requires this accessor but, as of 0.7, never calls it
         // itself, so no client request can exercise it.
         let directory = tempfile::TempDir::new().unwrap();
-        let session = Session::new(directory.path(), (640, 480), Transform::Normal).unwrap();
+        let session = Session::new(directory.path()).unwrap();
         let compositor = session.compositor();
         assert!(std::ptr::eq(
             compositor.data_device_state(),

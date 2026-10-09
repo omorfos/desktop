@@ -29,8 +29,8 @@ pub enum Input {
         /// `true` for a press, `false` for a release.
         pressed: bool,
     },
-    /// The pointer moved to a position on the output, in units of layout
-    /// (see [`Compositor::logical_size`]).
+    /// The pointer moved to a position in the space the outputs show, in
+    /// units of layout (see [`Compositor::area_of`]).
     Motion {
         /// Distance from the left edge.
         x: f64,
@@ -38,7 +38,8 @@ pub enum Input {
         y: f64,
     },
     /// The pointer moved by a distance, in units of layout, as a mouse or
-    /// touchpad reports it. The pointer stops at the edges of the output.
+    /// touchpad reports it. The pointer stays on an output: it crosses from
+    /// one to the next where they meet and stops at their other edges.
     MotionBy {
         /// Distance moved to the right.
         dx: f64,
@@ -200,10 +201,8 @@ impl Compositor {
             Input::Key { code, pressed } => Placed::Key { code, pressed },
             Input::Motion { x, y } => Placed::Motion { x, y },
             Input::MotionBy { dx, dy } => {
-                let size = self.logical_size().to_f64();
-                let x = (self.pointer_location.x + dx).clamp(0.0, (size.w - 1.0).max(0.0));
-                let y = (self.pointer_location.y + dy).clamp(0.0, (size.h - 1.0).max(0.0));
-                Placed::Motion { x, y }
+                let to = self.moved_by(dx, dy);
+                Placed::Motion { x: to.x, y: to.y }
             }
             Input::Button { button, pressed } => Placed::Button { button, pressed },
             Input::Scroll {
@@ -444,10 +443,14 @@ impl Compositor {
     /// fullscreen windows, panels and docks, ordinary windows, then the
     /// layers behind them.
     fn under(&self) -> Option<Under> {
-        let layers = layer_map_for_output(self.output());
+        // Panels belong to an output and are placed within it.
+        let head = self.head_at(self.pointer_location);
         let on_layer = |layer: Layer| {
-            let surface = layers.layer_under(layer, self.pointer_location)?;
-            let origin = layers.layer_geometry(surface).unwrap_or_default().loc;
+            let head = head?;
+            let layers = layer_map_for_output(&head.output);
+            let corner = head.area().loc;
+            let surface = layers.layer_under(layer, self.pointer_location - corner.to_f64())?;
+            let origin = layers.layer_geometry(surface).unwrap_or_default().loc + corner;
             let within = self.pointer_location - origin.to_f64();
             let takes_keyboard = surface
                 .can_receive_keyboard_focus()

@@ -21,6 +21,7 @@ mod lock;
 mod login;
 mod menu;
 mod notice;
+mod outputs;
 mod popups;
 mod scaling;
 mod session;

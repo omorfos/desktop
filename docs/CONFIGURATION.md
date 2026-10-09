@@ -48,8 +48,12 @@ output:
 The values shown are the defaults, except `workspaces`, which defaults to
 `["1", "2", "3", "4"]`.
 
-`output.scale` is how large everything is drawn. With `auto`, omorfos
-chooses from how dense the screen is, so that a laptop with a sharp panel
+With more than one screen, they are placed side by side from left to
+right in the order they were plugged in, a laptop's own first. There is no
+setting for the arrangement yet.
+
+`output.scale` is how large everything is drawn, on every screen. With `auto`, omorfos
+chooses for each screen from how dense it is, so that a laptop with a sharp panel
 is as readable as a desktop monitor. If the choice does not suit you, give
 a number: `1` is one pixel to a pixel, `1.5` half as large again, `2`
 twice the size.

@@ -57,8 +57,8 @@ again when it reaches the screen. If nothing changed there is no such
 moment, so they are told one frame's time later instead. An idle screen
 draws nothing.
 
-**One screen for now:** the first one found connected, at the mode it
-prefers. Several screens and hotplug are the next roadmap item.
+**One screen at first:** the first one found connected, at the mode it
+prefers. ADR 15 added the rest, and hotplug.
 
 ## Consequences
 
@@ -85,4 +85,5 @@ prefers. Several screens and hotplug are the next roadmap item.
 - Applications get a shared-memory buffer back only when they attach the
   next one, which is how Smithay's buffer handling works. Some keep a
   second buffer because of it; foot says so in a warning.
-- A graphics card or screen plugged in later is not noticed.
+- A graphics card plugged in later is not noticed. Screens are, since
+  ADR 15.

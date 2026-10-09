@@ -165,7 +165,8 @@ Known gaps:
 - [x] DRM/KMS, libinput and libseat backend (ADR 10): one screen, a drawn
       pointer, virtual terminal switching and touchpad settings. Run by
       hand on one laptop with foot and Firefox
-- [ ] Multi-monitor and hotplug
+- [x] Multi-monitor and hotplug (ADR 15): every connected screen, side by
+      side, each with its own scale, coming and going
 - [x] Scaling, whole and fractional: automatic from the screen's density
       or set in `config.yaml` (ADR 11)
 - [x] Our own pointer cursor, client-set cursors and cursor shapes, from

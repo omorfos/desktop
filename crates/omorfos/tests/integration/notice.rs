@@ -163,7 +163,7 @@ fn a_problem_that_comes_back_after_being_fixed_is_shown_again() {
 fn the_notice_follows_the_output_and_the_theme() {
     let mut session = Session::with_config(&[("keys.yaml", "bindings: nope\n")]);
     session.step();
-    session.compositor_mut().resize_output((400, 300));
+    session.resize_output((400, 300));
     session.write_config(
         "theme.yaml",
         "colors: { focused: { border: '#000000', titlebar: '#00ff00', text: '#ffffff' } }\n",

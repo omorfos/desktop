@@ -20,6 +20,7 @@ mod handlers;
 mod input;
 mod ipc;
 mod lock;
+mod outputs;
 mod paint;
 mod scale;
 mod session;

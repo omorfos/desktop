@@ -186,11 +186,12 @@ fn a_maximized_window_follows_the_output_when_it_is_resized() {
     session.roundtrip(&mut client);
     client.take_events();
 
-    session.compositor_mut().resize_output((800, 600));
+    session.resize_output((800, 600));
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor().output_size(), (800, 600).into());
+    let area = session.compositor().area_of(&session.output());
+    assert_eq!(area.size, (800, 600).into());
     assert_eq!(client.last_configure().0, (800, 600));
 }
 
@@ -325,9 +326,7 @@ fn clients_are_told_when_a_frame_has_been_shown() {
     assert!(!client.take_events().contains(&Event::FrameDone));
 
     session.draw();
-    session
-        .compositor_mut()
-        .send_frames(Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::FrameDone));
 }

@@ -34,9 +34,7 @@ fn keys(events: &[Event]) -> usize {
 /// Shows a frame, which is when a locker is told the session is locked.
 fn show_frame(session: &mut Session) {
     session.draw();
-    session
-        .compositor_mut()
-        .send_frames(Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
 }
 
 /// Locks the session with a locker that shows a green surface, and waits
@@ -80,18 +78,14 @@ fn a_locker_is_told_the_session_is_locked_only_once_nothing_of_it_shows() {
     assert_eq!(locker.take_events(), [], "not told yet");
 
     // A frame being shown is not enough if it was drawn before locking.
-    session
-        .compositor_mut()
-        .send_frames(Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
     session.roundtrip(&mut locker);
     assert_eq!(locker.take_events(), [], "the window is still on screen");
 
     let picture = session.draw();
     assert_eq!(picture.at(50, 50), BLACK, "where the window was");
     assert_eq!(picture.at(400, 400), BLACK, "where the desktop was");
-    session
-        .compositor_mut()
-        .send_frames(Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
     session.roundtrip(&mut locker);
     assert_eq!(locker.take_events(), [Event::Locked]);
 
@@ -128,9 +122,7 @@ fn the_lockers_surface_covers_the_screen_and_is_all_that_is_drawn() {
     for (x, y) in [(50, 50), (WIDTH - 20, 20), (5, 5), (WIDTH - 1, HEIGHT - 1)] {
         assert_eq!(picture.at(x, y), GREEN, "at {x}, {y}");
     }
-    session
-        .compositor_mut()
-        .send_frames(Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
     session.roundtrip(&mut locker);
     let events = locker.take_events();
     assert!(events.contains(&Event::Locked), "{events:?}");
@@ -372,13 +364,13 @@ fn the_lockers_surface_follows_the_size_and_scale_of_the_screen() {
     let mut locker = session.connect();
     let lock = locker.lock();
     session.roundtrip(&mut locker);
-    session.compositor_mut().resize_output((800, 600));
+    session.resize_output((800, 600));
     let surface = locker.lock_surface(&lock);
     session.roundtrip(&mut locker);
     assert!(locker.take_events().contains(&Event::LockSize(800, 600)));
 
-    session.compositor_mut().resize_output((WIDTH, HEIGHT));
-    session.compositor_mut().suggest_scale(Scale::new(2.0));
+    session.resize_output((WIDTH, HEIGHT));
+    session.suggest_scale(Scale::new(2.0));
     session.roundtrip(&mut locker);
     session.roundtrip(&mut locker);
     let half = Event::LockSize(WIDTH.unsigned_abs() / 2, HEIGHT.unsigned_abs() / 2);
