@@ -53,7 +53,11 @@ and reads one reply.
 | `{"activate": {"window": 7}}` | `"done"` |
 
 Anything that cannot be understood or carried out is answered with
-`{"error": {"message": "..."}}`, and the connection stays open.
+`{"error": {"message": "..."}}`, and the connection stays open. That
+includes naming something that does not exist: activating a window that is
+not there, or switching or moving to a workspace beyond the last one. An
+action on the focused window when no window is focused does nothing and is
+answered with `"done"`, as the same key binding would be.
 
 An action is written exactly as in `keys.yaml`: `"close"`,
 `{"workspace": 2}`, `{"spawn": ["foot", "--title", "scratch"]}`.

@@ -171,13 +171,49 @@ fn a_window_can_be_activated_by_its_identifier() {
         Reply::Done
     );
     assert!(state(&mut session, &mut peer).windows[0].focused);
+}
 
-    // A number that names no window is accepted and changes nothing.
+#[test]
+fn activating_a_window_that_does_not_exist_is_refused() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "only", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+
     assert_eq!(
         session.ask(&mut peer, &Request::Activate { window: 99_999 }),
-        Reply::Done
+        Reply::Error {
+            message: "there is no window 99999".to_owned()
+        }
     );
     assert!(state(&mut session, &mut peer).windows[0].focused);
+}
+
+#[test]
+fn an_action_naming_a_workspace_that_does_not_exist_is_refused() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "only", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+
+    for action in [json!({ "workspace": 5 }), json!({ "move_to_workspace": 5 })] {
+        assert_eq!(
+            session.ask(&mut peer, &Request::Perform { action }),
+            Reply::Error {
+                message: "there is no workspace 5".to_owned()
+            }
+        );
+    }
+    let state = state(&mut session, &mut peer);
+    assert!(state.workspaces[0].active);
+    assert_eq!(state.windows[0].workspace, 1);
+
+    // The last workspace does exist.
+    let action = json!({ "move_to_workspace": 4 });
+    assert_eq!(
+        session.ask(&mut peer, &Request::Perform { action }),
+        Reply::Done
+    );
 }
 
 #[test]

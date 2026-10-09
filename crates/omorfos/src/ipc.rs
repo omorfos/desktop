@@ -20,7 +20,7 @@ use omorfos_ipc::{
 use serde::Deserialize;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
 
-use crate::Compositor;
+use crate::{Compositor, bridge};
 
 /// The most peers served at once. Further connections are refused.
 const MAX_PEERS: usize = 32;
@@ -243,19 +243,40 @@ impl Compositor {
                 Reply::Done
             }
             Request::Perform { action } => match Action::deserialize(action) {
-                Ok(action) => {
-                    self.perform(&action);
-                    Reply::Done
-                }
+                Ok(action) => match self.objection(&action) {
+                    None => {
+                        self.perform(&action);
+                        Reply::Done
+                    }
+                    Some(message) => Reply::Error { message },
+                },
                 Err(error) => Reply::Error {
                     message: format!("not an action: {error}"),
                 },
             },
             Request::Activate { window } => {
-                self.desktop.activate(WindowId::from_raw(window));
-                Reply::Done
+                let id = WindowId::from_raw(window);
+                if self.desktop.window(id).is_some() {
+                    self.desktop.activate(id);
+                    Reply::Done
+                } else {
+                    Reply::Error {
+                        message: format!("there is no window {window}"),
+                    }
+                }
             }
         }
+    }
+
+    /// Why an action cannot be carried out, if it names something that does
+    /// not exist. A key binding doing the same is quietly ignored; a peer
+    /// is told, because it has no screen to see that nothing happened.
+    fn objection(&self, action: &Action) -> Option<String> {
+        let (Action::Workspace(number) | Action::MoveToWorkspace(number)) = action else {
+            return None;
+        };
+        (bridge::workspace_index(*number) >= self.desktop.workspace_count())
+            .then(|| format!("there is no workspace {}", number.get()))
     }
 
     fn ipc_state(&self) -> State {
