@@ -122,6 +122,8 @@ impl Compositor {
             return;
         };
         let head = self.heads.remove(index);
+        // Its windows go to the first output that is left.
+        self.desktop.remove_output(index);
         for layer in layer_map_for_output(&head.output).layers() {
             layer.layer_surface().send_close();
         }

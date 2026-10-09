@@ -78,11 +78,17 @@ pub struct State {
 /// A workspace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Workspace {
-    /// Its number, counting from 1 as key bindings and rules do.
+    /// The name of the output it belongs to, such as `eDP-1`. Each output
+    /// has its own workspaces, numbered alike. Empty while there is no
+    /// output.
+    #[serde(default)]
+    pub output: String,
+    /// Its number among that output's, counting from 1 as key bindings and
+    /// rules do.
     pub number: u32,
     /// Its configured name.
     pub name: String,
-    /// Whether it is the one being shown.
+    /// Whether it is the one its output is showing.
     pub active: bool,
 }
 
@@ -95,7 +101,12 @@ pub struct Window {
     pub app_id: String,
     /// The window's title.
     pub title: String,
-    /// The number of the workspace it is on, counting from 1.
+    /// The name of the output whose workspaces it is on. Empty while there
+    /// is no output.
+    #[serde(default)]
+    pub output: String,
+    /// The number of the workspace it is on, among that output's, counting
+    /// from 1.
     pub workspace: u32,
     /// Whether it has keyboard focus.
     pub focused: bool,
@@ -179,6 +190,7 @@ mod tests {
         }
         let state = State {
             workspaces: vec![Workspace {
+                output: "eDP-1".to_owned(),
                 number: 1,
                 name: "web".to_owned(),
                 active: true,
@@ -187,6 +199,7 @@ mod tests {
                 id: 3,
                 app_id: "foot".to_owned(),
                 title: "a \"quoted\"\ntitle".to_owned(),
+                output: "eDP-1".to_owned(),
                 workspace: 1,
                 focused: true,
                 shown: true,

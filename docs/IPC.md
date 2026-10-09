@@ -71,13 +71,14 @@ anything.
 ```json
 {
   "workspaces": [
-    { "number": 1, "name": "web", "active": true }
+    { "output": "eDP-1", "number": 1, "name": "web", "active": true }
   ],
   "windows": [
     {
       "id": 7,
       "app_id": "foot",
       "title": "~",
+      "output": "eDP-1",
       "workspace": 1,
       "focused": true,
       "shown": true,
@@ -88,7 +89,11 @@ anything.
 }
 ```
 
-Workspaces are numbered from 1. Windows are listed in a stable order (by
+Each screen has its own set of workspaces, numbered from 1, and shows one
+of them. They are listed screen by screen, so numbers repeat and one
+workspace per screen is `active`; tell them apart by `output` and `number`
+together. A window's `output` and `workspace` say which it is on. `output`
+is empty while no screen is connected. Windows are listed in a stable order (by
 when their frame was created, then tab order), so a task list does not
 reshuffle. `shown` is false for a tab that is not the one its frame is
 showing.

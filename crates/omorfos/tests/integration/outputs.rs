@@ -509,3 +509,177 @@ fn a_locker_with_a_surface_on_one_output_only_still_has_the_keyboard() {
         "{heard:?}"
     );
 }
+
+/// Two screens with a red window on the first and a blue one on the second,
+/// and the pointer left on the second.
+fn a_window_on_each() -> (Session, Output, Client) {
+    let (mut session, second) = two_screens();
+    let mut client = session.connect();
+    pointer_to(&mut session, 100, 100);
+    session.open(&mut client, "left", (200, 100), RED);
+    pointer_to(&mut session, WIDTH + 100, 100);
+    session.open(&mut client, "right", (200, 100), BLUE);
+    client.take_events();
+    (session, second, client)
+}
+
+fn workspace(number: u32) -> WorkspaceNumber {
+    WorkspaceNumber::clamped(number)
+}
+
+#[test]
+fn switching_workspace_changes_only_the_screen_the_pointer_is_on() {
+    let (mut session, _second, _client) = a_window_on_each();
+    perform(&mut session, &Action::Workspace(workspace(2)));
+    session.step();
+    assert_eq!(
+        session.draw_on(1).at(100, 50),
+        BACKGROUND,
+        "the second moved on"
+    );
+    assert_eq!(session.draw_on(0).at(100, 50), RED, "the first did not");
+
+    pointer_to(&mut session, 100, 100);
+    perform(&mut session, &Action::NextWorkspace);
+    session.step();
+    assert_eq!(session.draw_on(0).at(100, 50), BACKGROUND);
+    perform(&mut session, &Action::PreviousWorkspace);
+    session.step();
+    assert_eq!(session.draw_on(0).at(100, 50), RED);
+    assert_eq!(
+        session.draw_on(1).at(100, 50),
+        BACKGROUND,
+        "still on its second"
+    );
+}
+
+#[test]
+fn the_keyboard_goes_to_the_screen_whose_workspace_was_switched() {
+    let (mut session, _second, mut client) = a_window_on_each();
+    let focused = |session: &Session| {
+        let desktop = session.compositor().desktop();
+        let id = desktop.focused()?;
+        desktop.window(id).map(|window| window.app_id.clone())
+    };
+    assert_eq!(focused(&session).as_deref(), Some("right"));
+
+    // Moving the pointer over does not take the keyboard along.
+    pointer_to(&mut session, 300, 300);
+    assert_eq!(focused(&session).as_deref(), Some("right"));
+
+    // Switching workspace there and back does.
+    perform(&mut session, &Action::NextWorkspace);
+    assert_eq!(focused(&session), None, "nothing on that workspace");
+    perform(&mut session, &Action::PreviousWorkspace);
+    session.roundtrip(&mut client);
+    assert_eq!(focused(&session).as_deref(), Some("left"));
+}
+
+#[test]
+fn a_window_can_be_sent_to_the_next_screen() {
+    let (mut session, _second, _client) = a_window_on_each();
+    // The blue window has the keyboard, and goes round to the first.
+    perform(&mut session, &Action::MoveToNextOutput);
+    session.step();
+    assert_eq!(session.draw_on(1).at(100, 50), BACKGROUND);
+    assert_eq!(
+        session.draw_on(0).at(100, 50),
+        BLUE,
+        "on top of the red one"
+    );
+
+    perform(&mut session, &Action::MoveToNextOutput);
+    session.step();
+    assert_eq!(session.draw_on(0).at(100, 50), RED);
+    assert_eq!(session.draw_on(1).at(100, 50), BLUE);
+}
+
+#[test]
+fn a_window_from_an_unplugged_screen_keeps_its_workspace_number() {
+    let (mut session, second, _client) = a_window_on_each();
+    perform(&mut session, &Action::MoveToWorkspace(workspace(3)));
+    session.compositor_mut().remove_output(&second);
+    session.step();
+
+    assert_eq!(
+        session.draw().at(100, 50),
+        RED,
+        "the first shows what it did"
+    );
+    pointer_to(&mut session, 100, 100);
+    perform(&mut session, &Action::Workspace(workspace(3)));
+    session.step();
+    assert_eq!(session.draw().at(100, 50), BLUE, "on the first's third");
+}
+
+#[test]
+fn the_state_says_which_screen_each_workspace_and_window_is_on() {
+    use omorfos_ipc::{Client as Peer, Reply, Request};
+
+    let (mut session, _second, _client) = a_window_on_each();
+    perform(&mut session, &Action::Workspace(workspace(2)));
+    let mut peer = Peer::connect(&session.listen()).unwrap();
+    let Reply::State(state) = session.ask(&mut peer, &Request::State) else {
+        unreachable!("expected the state")
+    };
+
+    let workspaces: Vec<(&str, u32, bool)> = state
+        .workspaces
+        .iter()
+        .map(|workspace| {
+            (
+                workspace.output.as_str(),
+                workspace.number,
+                workspace.active,
+            )
+        })
+        .collect();
+    assert_eq!(
+        workspaces,
+        [
+            ("test-0", 1, true),
+            ("test-0", 2, false),
+            ("test-0", 3, false),
+            ("test-0", 4, false),
+            ("test-1", 1, false),
+            ("test-1", 2, true),
+            ("test-1", 3, false),
+            ("test-1", 4, false),
+        ]
+    );
+    let windows: Vec<(&str, &str, u32)> = state
+        .windows
+        .iter()
+        .map(|window| {
+            (
+                window.app_id.as_str(),
+                window.output.as_str(),
+                window.workspace,
+            )
+        })
+        .collect();
+    assert_eq!(windows, [("left", "test-0", 1), ("right", "test-1", 1)]);
+}
+
+#[test]
+fn with_no_screen_the_state_still_lists_one_set_of_workspaces() {
+    use omorfos_ipc::{Client as Peer, Reply, Request};
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let only = session.output();
+    session.compositor_mut().remove_output(&only);
+    let mut peer = Peer::connect(&session.listen()).unwrap();
+    let Reply::State(state) = session.ask(&mut peer, &Request::State) else {
+        unreachable!("expected the state")
+    };
+    assert_eq!(state.workspaces.len(), 4);
+    assert!(
+        state
+            .workspaces
+            .iter()
+            .all(|workspace| workspace.output.is_empty())
+    );
+    assert_eq!(state.windows[0].output, "");
+}

@@ -300,6 +300,7 @@ mod tests {
     fn state(problems: &[&str]) -> State {
         State {
             workspaces: vec![Workspace {
+                output: "eDP-1".to_owned(),
                 number: 1,
                 name: "web".to_owned(),
                 active: true,
@@ -308,6 +309,7 @@ mod tests {
                 id: 7,
                 app_id: "foot".to_owned(),
                 title: "~".to_owned(),
+                output: "eDP-1".to_owned(),
                 workspace: 1,
                 focused: true,
                 shown: true,

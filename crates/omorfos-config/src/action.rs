@@ -43,8 +43,11 @@ pub enum Action {
     NextWorkspace,
     /// Switch to the preceding workspace.
     PreviousWorkspace,
-    /// Send the focused window to the workspace with this number.
+    /// Send the focused window to the workspace with this number, on the
+    /// screen it is on.
     MoveToWorkspace(WorkspaceNumber),
+    /// Send the focused window to the next screen.
+    MoveToNextOutput,
     /// Open the root menu at the pointer.
     ShowMenu,
     /// Re-read the configuration now.
@@ -134,6 +137,7 @@ mod tests {
             parse("move_to_workspace: 2"),
             Ok(Action::MoveToWorkspace(two))
         );
+        assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
     }
 
     #[test]

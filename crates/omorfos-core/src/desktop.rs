@@ -32,7 +32,10 @@ impl WindowId {
 pub struct Listed<'a> {
     /// The window.
     pub window: &'a Window,
-    /// The zero-based workspace it is on.
+    /// The output whose set of workspaces it is in, counted in the order
+    /// the outputs were given. Zero while there is no output.
+    pub output: usize,
+    /// The zero-based workspace it is on, among that output's.
     pub workspace: usize,
     /// Whether its frame is minimized.
     pub minimized: bool,
@@ -220,9 +223,39 @@ impl Workspace {
     }
 }
 
-/// Where a window is: its workspace, its group there, and its tab.
+/// The workspaces of one output, and which of them it is showing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Set {
+    /// Never empty.
+    workspaces: Vec<Workspace>,
+    active: usize,
+}
+
+impl Set {
+    fn new(workspaces: usize) -> Self {
+        Self {
+            workspaces: vec![Workspace::default(); workspaces],
+            active: 0,
+        }
+    }
+
+    /// Takes on everything in `other`, workspace by workspace, on top of
+    /// what is here. Workspaces `other` has more of go to the last.
+    fn absorb(&mut self, other: Self) {
+        let last = self.workspaces.len() - 1;
+        for (index, workspace) in other.workspaces.into_iter().enumerate() {
+            let onto = &mut self.workspaces[index.min(last)];
+            onto.groups.extend(workspace.groups);
+            onto.repair();
+        }
+    }
+}
+
+/// Where a window is: its output's set, its workspace there, its group and
+/// its tab.
 #[derive(Clone, Copy)]
 struct Location {
+    set: usize,
     workspace: usize,
     group: usize,
     tab: usize,
@@ -230,8 +263,14 @@ struct Location {
 
 /// The state of the session.
 ///
-/// Windows live in frames (tab groups of one or more), frames live on
-/// workspaces, and one workspace is shown at a time across all outputs.
+/// Windows live in frames (tab groups of one or more) and frames live on
+/// workspaces. Each output has a set of workspaces of its own and shows one
+/// of them, so switching workspace on one screen leaves the others as they
+/// are. One output is the current one: its focused frame has the keyboard,
+/// and it is the one workspace switching applies to.
+///
+/// Frames are positioned in the one space all the outputs show. A frame
+/// belongs to an output's set, and follows that output if it moves.
 /// Methods that take a [`WindowId`] do nothing if the window is unknown, so
 /// a late event for a window that has just closed is harmless.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,9 +278,11 @@ pub struct Desktop {
     settings: Settings,
     rules: Vec<Rule>,
     outputs: Vec<Screen>,
-    /// Never empty.
-    workspaces: Vec<Workspace>,
-    active: usize,
+    /// One set of workspaces for each output, in the same order, or a
+    /// single set while there is no output. Never empty.
+    sets: Vec<Set>,
+    /// The set that has the keyboard.
+    current: usize,
     next_serial: u64,
 }
 
@@ -253,8 +294,8 @@ impl Desktop {
             settings,
             rules: Vec::new(),
             outputs: Vec::new(),
-            workspaces: vec![Workspace::default(); workspaces.max(1)],
-            active: 0,
+            sets: vec![Set::new(workspaces.max(1))],
+            current: 0,
             next_serial: 0,
         }
     }
@@ -274,41 +315,91 @@ impl Desktop {
     /// Replaces the outputs. A plain rectangle stands for an output that
     /// is usable in full.
     ///
-    /// Frames left entirely off-screen are moved onto the first output.
+    /// Outputs are told apart by their place in the list: the first given
+    /// is the first there was, and so on. One more than before is a new
+    /// output, with an empty set of workspaces. Fewer means the last ones
+    /// have gone; to take away another, say which with
+    /// [`Desktop::remove_output`] first.
+    ///
+    /// A frame keeps its place on its output if the output moves, and one
+    /// left entirely off its output is moved onto it.
     pub fn set_outputs<S: Into<Screen>>(&mut self, outputs: impl IntoIterator<Item = S>) {
-        self.outputs = outputs.into_iter().map(Into::into).collect();
-        if let Some(first) = self.outputs.first() {
-            let outputs = &self.outputs;
-            for group in self
-                .workspaces
-                .iter_mut()
-                .flat_map(|workspace| &mut workspace.groups)
-            {
-                if !outputs
-                    .iter()
-                    .any(|output| output.area.intersection(group.geometry).is_some())
-                {
-                    group.geometry.origin = first.usable.origin;
+        let outputs: Vec<Screen> = outputs.into_iter().map(Into::into).collect();
+        while self.sets.len() > outputs.len().max(1) {
+            self.remove_set(self.sets.len() - 1);
+        }
+        let count = self.workspace_count();
+        self.sets
+            .resize_with(outputs.len().max(1), || Set::new(count));
+        for (index, (set, output)) in self.sets.iter_mut().zip(&outputs).enumerate() {
+            // Where the output was, if it was anywhere.
+            let before = self.outputs.get(index).map(|output| output.area.origin);
+            let moved = before.map_or((0, 0), |before| {
+                let now = output.area.origin;
+                (
+                    now.x.saturating_sub(before.x),
+                    now.y.saturating_sub(before.y),
+                )
+            });
+            let groups = set.workspaces.iter_mut().flat_map(|on| &mut on.groups);
+            for group in groups {
+                group.geometry.origin = group.geometry.origin.offset(moved.0, moved.1);
+                if output.area.intersection(group.geometry).is_none() {
+                    group.geometry.origin = output.usable.origin;
                 }
             }
         }
+        self.outputs = outputs;
     }
 
-    /// Changes the number of workspaces (at least one).
+    /// Takes away the output at `index`, counted in the order the outputs
+    /// were given. Its frames move to the first output that remains, each
+    /// to the workspace of the same number, and its place in the list is
+    /// closed up. Does nothing if there is no such output.
+    pub fn remove_output(&mut self, index: usize) {
+        if index < self.outputs.len() {
+            self.outputs.remove(index);
+            self.remove_set(index);
+            // The frames that moved are placed by the next `set_outputs`,
+            // which the outputs' new positions will come with. Until then
+            // they are on their new output or off every one.
+            let outputs = std::mem::take(&mut self.outputs);
+            self.set_outputs(outputs);
+        }
+    }
+
+    /// Removes a set of workspaces, giving its frames to the first of the
+    /// sets that remain. The last set there is stays.
+    fn remove_set(&mut self, index: usize) {
+        if self.sets.len() > 1 {
+            let gone = self.sets.remove(index);
+            self.sets[0].absorb(gone);
+            self.current = match self.current {
+                current if current == index => 0,
+                current if current > index => current - 1,
+                current => current,
+            };
+        }
+    }
+
+    /// Changes the number of workspaces each output has (at least one).
     ///
-    /// Frames on removed workspaces move to the last remaining one.
+    /// Frames on removed workspaces move to the last remaining one of the
+    /// same output.
     pub fn set_workspace_count(&mut self, count: usize) {
         let last = count.max(1) - 1;
-        let orphans: Vec<Group> = self
-            .workspaces
-            .iter_mut()
-            .skip(last + 1)
-            .flat_map(|workspace| workspace.groups.drain(..))
-            .collect();
-        self.workspaces.resize_with(last + 1, Workspace::default);
-        self.workspaces[last].groups.extend(orphans);
-        self.workspaces[last].repair();
-        self.active = self.active.min(last);
+        for set in &mut self.sets {
+            let orphans: Vec<Group> = set
+                .workspaces
+                .iter_mut()
+                .skip(last + 1)
+                .flat_map(|workspace| workspace.groups.drain(..))
+                .collect();
+            set.workspaces.resize_with(last + 1, Workspace::default);
+            set.workspaces[last].groups.extend(orphans);
+            set.workspaces[last].repair();
+            set.active = set.active.min(last);
+        }
     }
 
     // --- Windows -----------------------------------------------------------
@@ -318,10 +409,10 @@ impl Desktop {
     /// `size` is the size of the window itself; the frame is larger by its
     /// decoration. `wants_decoration` says whether the window expects the
     /// compositor to draw its titlebar and border; a rule overrides it
-    /// either way. Rules also decide its workspace and initial state;
-    /// otherwise it opens on the current workspace. It is placed on the
-    /// output under `pointer` and becomes the focused, topmost frame of its
-    /// workspace.
+    /// either way. It is placed on the output under `pointer`, on the
+    /// workspace that output is showing unless a rule names another of its
+    /// workspaces, and becomes the focused, topmost frame there. That
+    /// output becomes the current one.
     pub fn add_window(
         &mut self,
         app_id: impl Into<String>,
@@ -332,10 +423,11 @@ impl Desktop {
     ) -> WindowId {
         let (app_id, title) = (app_id.into(), title.into());
         let effects = resolve(&self.rules, &app_id, &title);
-        let last = self.workspaces.len() - 1;
+        let set = self.set_at(pointer);
+        let last = self.workspace_count() - 1;
         let workspace = effects
             .workspace
-            .map_or(self.active, |workspace| workspace.min(last));
+            .map_or(self.sets[set].active, |workspace| workspace.min(last));
         let decorated = effects.decorations.unwrap_or(wants_decoration);
         let area = self.output_at(pointer).usable;
         let fills = effects.maximized == Some(true) || effects.fullscreen == Some(true);
@@ -346,7 +438,7 @@ impl Desktop {
             (false, true) => self.settings.decoration.outer_size(size),
             (false, false) => size,
         };
-        let index = self.workspaces[workspace].groups.len();
+        let index = self.sets[set].workspaces[workspace].groups.len();
         let origin = place(self.settings.placement, size, area, pointer, index);
         let id = WindowId(self.serial());
         let window = Window {
@@ -364,7 +456,8 @@ impl Desktop {
             fullscreen: effects.fullscreen.unwrap_or(false),
             minimized: false,
         };
-        self.push_focused(workspace, group);
+        self.push_focused(set, workspace, group);
+        self.current = set;
         id
     }
 
@@ -406,49 +499,51 @@ impl Desktop {
     /// Removes a window, for example because it closed.
     pub fn remove_window(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.workspaces[at.workspace].groups[at.group].remove(at.tab);
-        self.workspaces[at.workspace].repair();
+        self.sets[at.set].workspaces[at.workspace].groups[at.group].remove(at.tab);
+        self.sets[at.set].workspaces[at.workspace].repair();
     }
 
     /// Updates a window's title.
     pub fn set_title(&mut self, id: WindowId, title: impl Into<String>) {
         let Some(at) = self.locate(id) else { return };
-        self.workspaces[at.workspace].groups[at.group].tabs[at.tab].title = title.into();
+        self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs[at.tab].title =
+            title.into();
     }
 
     /// Looks a window up.
     #[must_use]
     pub fn window(&self, id: WindowId) -> Option<&Window> {
         self.locate(id)
-            .map(|at| &self.workspaces[at.workspace].groups[at.group].tabs[at.tab])
+            .map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs[at.tab])
     }
 
-    /// Every window on every workspace, in the order frames were created
-    /// and then tab order: a stable order suited to a task list.
+    /// Every window on every workspace of every output, in the order frames
+    /// were created and then tab order: a stable order suited to a task
+    /// list.
     pub fn windows(&self) -> impl Iterator<Item = Listed<'_>> {
-        let mut groups: Vec<(usize, &Workspace, &Group)> = self
-            .workspaces
-            .iter()
-            .enumerate()
-            .flat_map(|(index, workspace)| {
-                workspace
-                    .groups
-                    .iter()
-                    .map(move |group| (index, workspace, group))
+        let workspaces = self.sets.iter().enumerate().flat_map(|(output, set)| {
+            let on = set.workspaces.iter().enumerate();
+            on.map(move |(index, workspace)| (output, index, workspace))
+        });
+        let mut groups: Vec<(usize, usize, &Workspace, &Group)> = workspaces
+            .flat_map(|(output, index, workspace)| {
+                let groups = workspace.groups.iter();
+                groups.map(move |group| (output, index, workspace, group))
             })
             .collect();
-        groups.sort_by_key(|(_, _, group)| group.serial);
-        let active = self.active;
+        groups.sort_by_key(|(_, _, _, group)| group.serial);
+        let current = (self.current, self.sets[self.current].active);
         groups
             .into_iter()
-            .flat_map(move |(index, workspace, group)| {
-                let focused = index == active && workspace.focused == Some(group.serial);
+            .flat_map(move |(output, index, workspace, group)| {
+                let focused = (output, index) == current && workspace.focused == Some(group.serial);
                 group
                     .tabs
                     .iter()
                     .enumerate()
                     .map(move |(tab, window)| Listed {
                         window,
+                        output,
                         workspace: index,
                         minimized: group.minimized,
                         shown: tab == group.active,
@@ -467,7 +562,8 @@ impl Desktop {
     /// because it turned out to draw its own. The frame keeps its place.
     pub fn set_decorated(&mut self, id: WindowId, decorated: bool) {
         let Some(at) = self.locate(id) else { return };
-        self.workspaces[at.workspace].groups[at.group].tabs[at.tab].decorated = decorated;
+        self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs[at.tab].decorated =
+            decorated;
     }
 
     // --- Frame state -------------------------------------------------------
@@ -478,7 +574,7 @@ impl Desktop {
     pub fn set_client_size(&mut self, id: WindowId, size: Size) {
         let Some(at) = self.locate(id) else { return };
         let metrics = self.settings.decoration;
-        let group = &mut self.workspaces[at.workspace].groups[at.group];
+        let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         if group.active == at.tab && !group.maximized && !group.fullscreen {
             group.geometry.size = if group.decorated() {
                 metrics.outer_size(size)
@@ -489,13 +585,20 @@ impl Desktop {
     }
 
     /// Moves and resizes a window's frame, leaving maximized and fullscreen.
+    ///
+    /// A frame moved so that most of it is on another output now belongs
+    /// there: it joins the workspace that output is showing, and that
+    /// output becomes the current one.
     pub fn set_geometry(&mut self, id: WindowId, geometry: Rect) {
-        let Some(group) = self.group_mut(id) else {
-            return;
-        };
+        let Some(at) = self.locate(id) else { return };
+        let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         group.geometry = geometry;
         group.maximized = false;
         group.fullscreen = false;
+        let onto = self.set_for(geometry).unwrap_or(at.set);
+        if onto != at.set {
+            self.rehome(at, onto);
+        }
     }
 
     /// Maximizes a window's frame, or restores it.
@@ -534,8 +637,8 @@ impl Desktop {
     /// [`Desktop::activate`] brings it back.
     pub fn minimize(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.workspaces[at.workspace].groups[at.group].minimized = true;
-        self.workspaces[at.workspace].repair();
+        self.sets[at.set].workspaces[at.workspace].groups[at.group].minimized = true;
+        self.sets[at.set].workspaces[at.workspace].repair();
     }
 
     // --- Focus -------------------------------------------------------------
@@ -544,13 +647,15 @@ impl Desktop {
     /// restores it if minimized, shows its tab, focuses and raises it.
     pub fn activate(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.active = at.workspace;
+        self.sets[at.set].active = at.workspace;
+        self.current = at.set;
         self.show(at, true);
     }
 
     /// Reports a click on a window, which focuses it and shows its tab.
     pub fn clicked(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
+        self.current = at.set;
         self.show(at, self.settings.raise_on_focus);
     }
 
@@ -559,7 +664,9 @@ impl Desktop {
     pub fn pointer_entered(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
         if self.settings.focus_follows_pointer {
-            self.workspaces[at.workspace].focus(at.group, self.settings.raise_on_focus);
+            self.current = at.set;
+            self.sets[at.set].workspaces[at.workspace]
+                .focus(at.group, self.settings.raise_on_focus);
         }
     }
 
@@ -576,7 +683,7 @@ impl Desktop {
     }
 
     /// The window with keyboard focus: the shown tab of the focused frame on
-    /// the current workspace.
+    /// the workspace the current output is showing.
     #[must_use]
     pub fn focused(&self) -> Option<WindowId> {
         self.frames()
@@ -608,15 +715,16 @@ impl Desktop {
         let (Some(from), Some(to)) = (self.locate(id), self.locate(target)) else {
             return;
         };
-        if (from.workspace, from.group) == (to.workspace, to.group) {
+        if (from.set, from.workspace, from.group) == (to.set, to.workspace, to.group) {
             return;
         }
-        let window = self.workspaces[from.workspace].groups[from.group].remove(from.tab);
-        let group = &mut self.workspaces[to.workspace].groups[to.group];
+        let window =
+            self.sets[from.set].workspaces[from.workspace].groups[from.group].remove(from.tab);
+        let group = &mut self.sets[to.set].workspaces[to.workspace].groups[to.group];
         group.tabs.push(window);
         group.active = group.tabs.len() - 1;
-        self.workspaces[to.workspace].focus(to.group, true);
-        self.workspaces[from.workspace].repair();
+        self.sets[to.set].workspaces[to.workspace].focus(to.group, true);
+        self.sets[from.set].workspaces[from.workspace].repair();
     }
 
     /// Moves a window out of a shared frame into a frame of its own, just
@@ -624,7 +732,7 @@ impl Desktop {
     pub fn detach(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
         let serial = self.serial();
-        let source = &mut self.workspaces[at.workspace].groups[at.group];
+        let source = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         if source.tabs.len() < 2 {
             return;
         }
@@ -641,83 +749,157 @@ impl Desktop {
             fullscreen: false,
             minimized: false,
         };
-        self.push_focused(at.workspace, group);
+        self.push_focused(at.set, at.workspace, group);
     }
 
     // --- Workspaces --------------------------------------------------------
 
-    /// The number of workspaces. At least one.
+    /// The number of workspaces each output has. At least one.
     #[must_use]
-    pub const fn workspace_count(&self) -> usize {
-        self.workspaces.len()
+    pub fn workspace_count(&self) -> usize {
+        self.sets[0].workspaces.len()
     }
 
-    /// The zero-based workspace being shown.
-    #[must_use]
-    pub const fn active_workspace(&self) -> usize {
-        self.active
-    }
-
-    /// Shows a workspace. Does nothing if it does not exist.
-    pub const fn switch_workspace(&mut self, workspace: usize) {
-        if workspace < self.workspaces.len() {
-            self.active = workspace;
+    /// Makes the output at `point` the current one: the one whose focused
+    /// frame has the keyboard, and which switching workspace applies to. A
+    /// point on no output leaves things as they are.
+    pub fn turn_to(&mut self, point: Point) {
+        let containing = |output: &Screen| output.area.contains(point);
+        if let Some(index) = self.outputs.iter().position(containing) {
+            self.current = index;
         }
     }
 
-    /// Shows the following workspace, wrapping around.
-    pub const fn next_workspace(&mut self) {
-        self.active = (self.active + 1) % self.workspaces.len();
+    /// The output that is current, counted in the order the outputs were
+    /// given. Zero while there is none.
+    #[must_use]
+    pub const fn current_output(&self) -> usize {
+        self.current
     }
 
-    /// Shows the preceding workspace, wrapping around.
-    pub const fn previous_workspace(&mut self) {
-        self.active = (self.active + self.workspaces.len() - 1) % self.workspaces.len();
+    /// The zero-based workspace the current output is showing.
+    #[must_use]
+    pub fn active_workspace(&self) -> usize {
+        self.sets[self.current].active
     }
 
-    /// Sends a window's whole frame to another workspace, where it becomes
-    /// the focused, topmost frame. The workspace being shown does not change.
+    /// The zero-based workspace each output is showing, in the order the
+    /// outputs were given. One entry while there is no output.
+    pub fn shown_workspaces(&self) -> impl Iterator<Item = usize> {
+        self.sets.iter().map(|set| set.active)
+    }
+
+    /// Shows a workspace on the current output. Does nothing if it does not
+    /// exist.
+    pub fn switch_workspace(&mut self, workspace: usize) {
+        if workspace < self.workspace_count() {
+            self.sets[self.current].active = workspace;
+        }
+    }
+
+    /// Shows the following workspace on the current output, wrapping
+    /// around.
+    pub fn next_workspace(&mut self) {
+        let count = self.workspace_count();
+        let set = &mut self.sets[self.current];
+        set.active = (set.active + 1) % count;
+    }
+
+    /// Shows the preceding workspace on the current output, wrapping
+    /// around.
+    pub fn previous_workspace(&mut self) {
+        let count = self.workspace_count();
+        let set = &mut self.sets[self.current];
+        set.active = (set.active + count - 1) % count;
+    }
+
+    /// Sends a window's whole frame to another workspace of its output,
+    /// where it becomes the focused, topmost frame. The workspace being
+    /// shown does not change.
     pub fn move_to_workspace(&mut self, id: WindowId, workspace: usize) {
         let Some(at) = self.locate(id) else { return };
-        if workspace >= self.workspaces.len() || workspace == at.workspace {
+        if workspace >= self.workspace_count() || workspace == at.workspace {
             return;
         }
-        let group = self.workspaces[at.workspace].groups.remove(at.group);
-        self.workspaces[at.workspace].repair();
-        self.push_focused(workspace, group);
+        let group = self.sets[at.set].workspaces[at.workspace]
+            .groups
+            .remove(at.group);
+        self.sets[at.set].workspaces[at.workspace].repair();
+        self.push_focused(at.set, workspace, group);
+    }
+
+    /// Sends a window's whole frame to the next output, wrapping around,
+    /// keeping its place relative to the output's corner where that fits.
+    /// It joins the workspace that output is showing, and that output
+    /// becomes the current one. Does nothing with fewer than two outputs.
+    pub fn move_to_next_output(&mut self, id: WindowId) {
+        let Some(at) = self.locate(id) else { return };
+        let onto = (at.set + 1) % self.sets.len();
+        let (Some(from), Some(to)) = (self.outputs.get(at.set), self.outputs.get(onto)) else {
+            return;
+        };
+        if onto == at.set {
+            return;
+        }
+        let (from, to) = (from.usable, *to);
+        let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
+        let within = (
+            group.geometry.origin.x.saturating_sub(from.origin.x),
+            group.geometry.origin.y.saturating_sub(from.origin.y),
+        );
+        group.geometry.origin = to.usable.origin.offset(within.0, within.1);
+        if to.area.intersection(group.geometry).is_none() {
+            group.geometry.origin = to.usable.origin;
+        }
+        self.rehome(at, onto);
     }
 
     // --- What to show ------------------------------------------------------
 
-    /// The frames to draw on the current workspace, bottom to top. Minimized
-    /// frames are left out, and fullscreen frames are above all others.
+    /// The frames to draw, bottom to top: those on the workspace each
+    /// output is showing. Minimized frames are left out, fullscreen frames
+    /// are above all others, and the current output's are above the rest
+    /// where frames of two outputs overlap.
     pub fn frames(&self) -> impl Iterator<Item = Frame<'_>> {
-        let workspace = &self.workspaces[self.active];
-        let shown = |fullscreen: bool| {
-            workspace
-                .groups
-                .iter()
-                .filter(move |group| !group.minimized && group.fullscreen == fullscreen)
+        // The current set last, so that its frames are on top.
+        let order = (0..self.sets.len())
+            .filter(|index| *index != self.current)
+            .chain([self.current]);
+        let shown = move |fullscreen: bool| {
+            order.clone().flat_map(move |index| {
+                let set = &self.sets[index];
+                let workspace = &set.workspaces[set.active];
+                let groups = workspace.groups.iter();
+                groups
+                    .filter(move |group| !group.minimized && group.fullscreen == fullscreen)
+                    .map(move |group| (index, workspace, group))
+            })
         };
-        shown(false).chain(shown(true)).map(|group| {
-            let screen = self.output_for(group.geometry);
-            let geometry = match (group.fullscreen, group.maximized) {
-                (true, _) => screen.area,
-                (false, true) => screen.usable,
-                (false, false) => group.geometry,
-            };
-            let decorated = group.decorated() && !group.fullscreen;
-            Frame {
-                tabs: &group.tabs,
-                active: group.active,
-                geometry,
-                decoration: decorated
-                    .then(|| Decoration::new(geometry, self.settings.decoration, group.tabs.len())),
-                maximized: group.maximized,
-                fullscreen: group.fullscreen,
-                focused: workspace.focused == Some(group.serial),
-            }
-        })
+        shown(false)
+            .chain(shown(true))
+            .map(|(index, workspace, group)| {
+                // A frame fills its own output; with none, it has only
+                // itself to fill.
+                let own = self.outputs.get(index).copied();
+                let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
+                let geometry = match (group.fullscreen, group.maximized) {
+                    (true, _) => screen.area,
+                    (false, true) => screen.usable,
+                    (false, false) => group.geometry,
+                };
+                let decorated = group.decorated() && !group.fullscreen;
+                Frame {
+                    tabs: &group.tabs,
+                    active: group.active,
+                    geometry,
+                    decoration: decorated.then(|| {
+                        Decoration::new(geometry, self.settings.decoration, group.tabs.len())
+                    }),
+                    maximized: group.maximized,
+                    fullscreen: group.fullscreen,
+                    focused: index == self.current && workspace.focused == Some(group.serial),
+                }
+            })
     }
 
     // --- Internals ---------------------------------------------------------
@@ -728,42 +910,76 @@ impl Desktop {
     }
 
     fn locate(&self, id: WindowId) -> Option<Location> {
-        self.workspaces
-            .iter()
-            .enumerate()
-            .find_map(|(workspace, on)| {
+        self.sets.iter().enumerate().find_map(|(set, in_set)| {
+            let workspaces = in_set.workspaces.iter().enumerate();
+            workspaces.into_iter().find_map(|(workspace, on)| {
                 on.groups.iter().enumerate().find_map(|(group, in_group)| {
                     let tab = in_group.tabs.iter().position(|window| window.id == id)?;
                     Some(Location {
+                        set,
                         workspace,
                         group,
                         tab,
                     })
                 })
             })
+        })
     }
 
     fn group_mut(&mut self, id: WindowId) -> Option<&mut Group> {
         self.locate(id)
-            .map(|at| &mut self.workspaces[at.workspace].groups[at.group])
+            .map(|at| &mut self.sets[at.set].workspaces[at.workspace].groups[at.group])
     }
 
-    fn push_focused(&mut self, workspace: usize, group: Group) {
-        let workspace = &mut self.workspaces[workspace];
+    fn push_focused(&mut self, set: usize, workspace: usize, group: Group) {
+        let workspace = &mut self.sets[set].workspaces[workspace];
         workspace.focused = Some(group.serial);
         workspace.groups.push(group);
         // A minimized frame can be moved here; it must not hold focus.
         workspace.repair();
     }
 
+    /// Gives a frame to another output's set, on the workspace that output
+    /// is showing, focused and on top, and makes that output current.
+    fn rehome(&mut self, at: Location, onto: usize) {
+        let from = &mut self.sets[at.set].workspaces[at.workspace];
+        let group = from.groups.remove(at.group);
+        from.repair();
+        let workspace = self.sets[onto].active;
+        self.push_focused(onto, workspace, group);
+        self.current = onto;
+    }
+
+    /// The set of the output at `point`, or failing that the first.
+    fn set_at(&self, point: Point) -> usize {
+        let containing = |output: &Screen| output.area.contains(point);
+        self.outputs.iter().position(containing).unwrap_or(0)
+    }
+
+    /// The set of the output most of a frame at `geometry` lies on, if it
+    /// lies on any.
+    fn set_for(&self, geometry: Rect) -> Option<usize> {
+        let overlap = |output: &Screen| {
+            let shared = output.area.intersection(geometry);
+            shared.map_or(0, |shared| shared.size.area())
+        };
+        // `max_by_key` keeps the last of equal maxima; reversing makes ties
+        // resolve to the first output.
+        let most = self.outputs.iter().enumerate().rev();
+        most.max_by_key(|(_, output)| overlap(output))
+            .filter(|(_, output)| overlap(output) > 0)
+            .map(|(index, _)| index)
+    }
+
     fn show(&mut self, at: Location, raise: bool) {
-        let workspace = &mut self.workspaces[at.workspace];
+        let workspace = &mut self.sets[at.set].workspaces[at.workspace];
         workspace.groups[at.group].active = at.tab;
         workspace.focus(at.group, raise);
     }
 
     fn cycle_focus(&mut self, backwards: bool) {
-        let workspace = &mut self.workspaces[self.active];
+        let set = &mut self.sets[self.current];
+        let workspace = &mut set.workspaces[set.active];
         let mut serials: Vec<u64> = workspace
             .groups
             .iter()
@@ -799,25 +1015,6 @@ impl Desktop {
             .or(self.outputs.first())
             .copied()
             .unwrap_or_default()
-    }
-
-    /// The output a frame at `geometry` mostly lies on. With no outputs,
-    /// the geometry itself.
-    fn output_for(&self, geometry: Rect) -> Screen {
-        let overlap = |output: &&Screen| {
-            output
-                .area
-                .intersection(geometry)
-                .map_or(0, |shared| shared.size.area())
-        };
-        // `max_by_key` keeps the last of equal maxima; reversing makes ties,
-        // including no overlap at all, resolve to the first output.
-        self.outputs
-            .iter()
-            .rev()
-            .max_by_key(overlap)
-            .copied()
-            .unwrap_or(Screen::from(geometry))
     }
 }
 
@@ -1905,28 +2102,308 @@ mod tests {
 
     // --- Outputs -----------------------------------------------------------
 
-    #[test]
-    fn frames_left_off_screen_move_to_the_first_output() {
+    /// A window opened with the pointer on the second output.
+    fn open_on_second(desktop: &mut Desktop, app_id: &str) -> WindowId {
+        let pointer = SECOND_SCREEN.origin.offset(10, 10);
+        desktop.add_window(app_id, format!("{app_id} window"), SIZE, pointer, true)
+    }
+
+    /// A desktop with two outputs side by side.
+    fn two_outputs() -> Desktop {
         let mut desktop = desktop();
         desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
-        let stays = open(&mut desktop, "stays");
-        let stranded = open(&mut desktop, "stranded");
-        desktop.switch_workspace(1);
-        let hidden = open(&mut desktop, "hidden");
-        desktop.set_geometry(stranded, Rect::new(Point::new(2500, 100), SIZE));
-        desktop.set_geometry(hidden, Rect::new(Point::new(2500, 100), SIZE));
-        let stays_at = Rect::new(Point::new(0, 0), SIZE);
+        desktop
+    }
 
+    fn shown(desktop: &Desktop) -> Vec<usize> {
+        desktop.shown_workspaces().collect()
+    }
+
+    fn visible(desktop: &Desktop, id: WindowId) -> bool {
+        desktop.frames().any(|frame| frame.window().id == id)
+    }
+
+    #[test]
+    fn each_output_shows_a_workspace_of_its_own() {
+        let mut desktop = two_outputs();
+        let left = open(&mut desktop, "left");
+        let right = open_on_second(&mut desktop, "right");
+        assert_eq!(shown(&desktop), [0, 0]);
+        assert_eq!(desktop.current_output(), 1, "where the last window opened");
+
+        desktop.switch_workspace(1);
+        assert_eq!(shown(&desktop), [0, 1], "only the second output changed");
+        assert!(visible(&desktop, left));
+        assert!(!visible(&desktop, right));
+        assert_eq!(desktop.active_workspace(), 1);
+
+        // Turning to the first output, switching applies there.
+        desktop.turn_to(POINTER);
+        assert_eq!(desktop.current_output(), 0);
+        assert_eq!(desktop.active_workspace(), 0);
+        desktop.next_workspace();
+        desktop.next_workspace();
+        desktop.previous_workspace();
+        assert_eq!(shown(&desktop), [1, 1]);
+        assert!(!visible(&desktop, left));
+        assert!(!visible(&desktop, right), "each on the first of its own");
+
+        // A point on no output turns nowhere.
+        desktop.turn_to(Point::new(-50, -50));
+        assert_eq!(desktop.current_output(), 0);
+    }
+
+    #[test]
+    fn a_window_is_listed_with_its_output_and_its_workspace_there() {
+        let mut desktop = two_outputs();
+        let left = open(&mut desktop, "left");
+        let right = open_on_second(&mut desktop, "right");
+        desktop.move_to_workspace(right, 2);
+
+        let listed: Vec<(WindowId, usize, usize)> = desktop
+            .windows()
+            .map(|listed| (listed.window.id, listed.output, listed.workspace))
+            .collect();
+        assert_eq!(listed, [(left, 0, 0), (right, 1, 2)]);
+        assert_eq!(desktop.workspace_of(right), Some(2));
+        assert!(
+            visible(&desktop, left),
+            "the first output still shows its own"
+        );
+    }
+
+    #[test]
+    fn only_the_current_output_has_a_focused_frame() {
+        let mut desktop = two_outputs();
+        let left = open(&mut desktop, "left");
+        let right = open_on_second(&mut desktop, "right");
+        assert_eq!(desktop.focused(), Some(right));
+        assert_eq!(
+            stack(&desktop),
+            [left, right],
+            "the current output's on top"
+        );
+
+        desktop.clicked(left);
+        assert_eq!(desktop.current_output(), 0);
+        assert_eq!(desktop.focused(), Some(left));
+        assert_eq!(stack(&desktop), [right, left]);
+        assert_eq!(desktop.frames().filter(|frame| frame.focused).count(), 1);
+
+        desktop.activate(right);
+        assert_eq!(desktop.current_output(), 1);
+        assert_eq!(desktop.focused(), Some(right));
+
+        // Cycling stays on the output that has the keyboard.
+        desktop.focus_next();
+        assert_eq!(desktop.focused(), Some(right));
+    }
+
+    #[test]
+    fn the_pointer_takes_focus_to_another_output_when_focus_follows_it() {
+        let mut desktop = two_outputs();
+        desktop.set_settings(Settings {
+            focus_follows_pointer: true,
+            ..Settings::default()
+        });
+        let left = open(&mut desktop, "left");
+        open_on_second(&mut desktop, "right");
+        desktop.pointer_entered(left);
+        assert_eq!(desktop.current_output(), 0);
+        assert_eq!(desktop.focused(), Some(left));
+    }
+
+    #[test]
+    fn a_frame_dragged_onto_another_output_joins_the_workspace_shown_there() {
+        let mut desktop = two_outputs();
+        let dragged = open(&mut desktop, "dragged");
+        let other = open_on_second(&mut desktop, "other");
+        desktop.switch_workspace(1);
+        assert_eq!(shown(&desktop), [0, 1]);
+        desktop.turn_to(POINTER);
+
+        // Half across is not most of it.
+        let straddling = Rect::new(Point::new(1920 - 500, 100), SIZE);
+        desktop.set_geometry(dragged, straddling);
+        assert_eq!(desktop.windows().next().unwrap().output, 0);
+        assert_eq!(desktop.current_output(), 0);
+
+        let across = Rect::new(Point::new(1920 - 100, 100), SIZE);
+        desktop.set_geometry(dragged, across);
+        let listed = desktop.windows().next().unwrap();
+        assert_eq!((listed.output, listed.workspace), (1, 1));
+        assert!(visible(&desktop, dragged), "it did not vanish on the way");
+        assert!(
+            !visible(&desktop, other),
+            "which is on the workspace not shown"
+        );
+        assert_eq!(desktop.current_output(), 1);
+        assert_eq!(desktop.focused(), Some(dragged));
+        assert_eq!(frame(&desktop, dragged).geometry, across);
+    }
+
+    #[test]
+    fn a_frame_can_be_sent_to_the_next_output_keeping_its_place() {
+        let mut desktop = two_outputs();
+        let id = open(&mut desktop, "app");
+        desktop.set_geometry(id, Rect::new(Point::new(100, 200), SIZE));
+
+        desktop.move_to_next_output(id);
+        assert_eq!(desktop.windows().next().unwrap().output, 1);
+        assert_eq!(
+            frame(&desktop, id).geometry.origin,
+            SECOND_SCREEN.origin.offset(100, 200)
+        );
+        assert_eq!(desktop.current_output(), 1);
+
+        // And round again to the first.
+        desktop.move_to_next_output(id);
+        assert_eq!(desktop.windows().next().unwrap().output, 0);
+        assert_eq!(frame(&desktop, id).geometry.origin, Point::new(100, 200));
+
+        // A place that the next output does not reach becomes its corner.
+        desktop.set_geometry(id, Rect::new(Point::new(1500, 1050), SIZE));
+        desktop.move_to_next_output(id);
+        assert_eq!(frame(&desktop, id).geometry.origin, SECOND_SCREEN.origin);
+    }
+
+    #[test]
+    fn with_one_output_or_none_there_is_no_next_one() {
+        let mut desktop = desktop();
+        let id = open(&mut desktop, "app");
+        let before = desktop.clone();
+        desktop.move_to_next_output(id);
+        assert_eq!(desktop, before);
+
+        desktop.set_outputs(Vec::<Rect>::new());
+        let before = desktop.clone();
+        desktop.move_to_next_output(id);
+        assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn frames_of_an_output_that_goes_move_to_the_same_workspace_of_the_first() {
+        let mut desktop = two_outputs();
+        let stays = open(&mut desktop, "stays");
+        let first = open_on_second(&mut desktop, "first");
+        desktop.switch_workspace(1);
+        let second = open_on_second(&mut desktop, "second");
+        assert_eq!(desktop.current_output(), 1);
+
+        desktop.remove_output(1);
         desktop.set_outputs(vec![SCREEN]);
 
-        desktop.switch_workspace(0);
-        assert_eq!(frame(&desktop, stays).geometry, stays_at);
+        assert_eq!(desktop.current_output(), 0, "the output that is left");
+        let listed: Vec<(WindowId, usize, usize)> = desktop
+            .windows()
+            .map(|listed| (listed.window.id, listed.output, listed.workspace))
+            .collect();
+        assert_eq!(listed, [(stays, 0, 0), (first, 0, 0), (second, 0, 1)]);
+        assert_eq!(shown(&desktop), [0], "the first output shows what it did");
+        assert_eq!(frame(&desktop, stays).geometry.origin, SCREEN.origin);
         assert_eq!(
-            frame(&desktop, stranded).geometry,
-            Rect::new(SCREEN.origin, SIZE)
+            frame(&desktop, first).geometry.origin,
+            SCREEN.origin,
+            "brought onto the output it now belongs to"
         );
         desktop.switch_workspace(1);
-        assert_eq!(frame(&desktop, hidden).geometry.origin, SCREEN.origin);
+        assert_eq!(frame(&desktop, second).geometry.origin, SCREEN.origin);
+
+        // An output that is not there cannot be taken away.
+        let before = desktop.clone();
+        desktop.remove_output(1);
+        assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn taking_away_the_first_output_makes_the_next_the_first() {
+        let mut desktop = two_outputs();
+        let left = open(&mut desktop, "left");
+        let right = open_on_second(&mut desktop, "right");
+        desktop.turn_to(SECOND_SCREEN.origin);
+        desktop.switch_workspace(2);
+
+        desktop.remove_output(0);
+        desktop.set_outputs(vec![SECOND_SCREEN]);
+
+        assert_eq!(shown(&desktop), [2], "what the second output was showing");
+        assert_eq!(desktop.current_output(), 0);
+        desktop.switch_workspace(0);
+        assert!(visible(&desktop, left));
+        assert!(visible(&desktop, right));
+        assert!(
+            SECOND_SCREEN.contains(frame(&desktop, left).geometry.origin),
+            "on the output that is left"
+        );
+    }
+
+    #[test]
+    fn fewer_outputs_than_before_means_the_last_ones_went() {
+        let mut desktop = two_outputs();
+        let left = open(&mut desktop, "left");
+        let right = open_on_second(&mut desktop, "right");
+
+        desktop.set_outputs(vec![SCREEN]);
+        assert!(visible(&desktop, left));
+        assert_eq!(frame(&desktop, right).geometry.origin, SCREEN.origin);
+        assert_eq!(desktop.windows().last().unwrap().output, 0);
+    }
+
+    #[test]
+    fn a_frame_keeps_its_place_on_an_output_that_moves() {
+        let mut desktop = two_outputs();
+        let id = open_on_second(&mut desktop, "app");
+        desktop.set_geometry(id, Rect::new(SECOND_SCREEN.origin.offset(40, 60), SIZE));
+
+        // The first output becomes narrower, so the second starts further
+        // to the left.
+        let narrower = Rect::new(Point::new(0, 0), Size::new(1280, 1080));
+        let moved = Rect::new(Point::new(1280, 0), SECOND_SCREEN.size);
+        desktop.set_outputs(vec![narrower, moved]);
+
+        assert_eq!(
+            frame(&desktop, id).geometry.origin,
+            moved.origin.offset(40, 60)
+        );
+        assert_eq!(desktop.windows().next().unwrap().output, 1);
+    }
+
+    #[test]
+    fn a_new_output_has_as_many_workspaces_as_the_others() {
+        let mut desktop = desktop();
+        desktop.set_workspace_count(5);
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
+        let id = open_on_second(&mut desktop, "app");
+        desktop.move_to_workspace(id, 4);
+        assert_eq!(desktop.workspace_of(id), Some(4));
+
+        // Fewer workspaces means fewer on every output.
+        desktop.turn_to(SECOND_SCREEN.origin);
+        desktop.switch_workspace(4);
+        desktop.set_workspace_count(2);
+        assert_eq!(desktop.workspace_count(), 2);
+        assert_eq!(shown(&desktop), [0, 1]);
+        assert_eq!(desktop.workspace_of(id), Some(1));
+    }
+
+    #[test]
+    fn a_rule_names_a_workspace_of_the_output_the_window_opens_on() {
+        let mut desktop = two_outputs();
+        desktop.set_rules(vec![Rule {
+            app_id: Some(Pattern::new("chat")),
+            title: None,
+            effects: Effects {
+                workspace: Some(2),
+                ..Effects::default()
+            },
+        }]);
+        let id = open_on_second(&mut desktop, "chat");
+        let listed = desktop.windows().next().unwrap();
+        assert_eq!(
+            (listed.window.id, listed.output, listed.workspace),
+            (id, 1, 2)
+        );
+        assert!(!visible(&desktop, id), "that output is showing another");
     }
 
     #[test]
@@ -2023,8 +2500,18 @@ mod tests {
 
     /// Checks what must hold after any sequence of operations.
     fn assert_consistent(desktop: &Desktop) {
-        assert!(desktop.active < desktop.workspaces.len());
-        for workspace in &desktop.workspaces {
+        assert_eq!(desktop.sets.len(), desktop.outputs.len().max(1));
+        assert!(
+            desktop.current < desktop.sets.len(),
+            "the current set exists"
+        );
+        let count = desktop.workspace_count();
+        for set in &desktop.sets {
+            assert_eq!(set.workspaces.len(), count, "every output has as many");
+            assert!(set.active < count, "the workspace shown exists");
+        }
+        let workspaces = desktop.sets.iter().flat_map(|set| &set.workspaces);
+        for workspace in workspaces.clone() {
             let focusable: Vec<u64> = workspace
                 .groups
                 .iter()
@@ -2039,9 +2526,7 @@ mod tests {
                 assert!(group.active < group.tabs.len(), "the shown tab exists");
             }
         }
-        let mut ids: Vec<WindowId> = desktop
-            .workspaces
-            .iter()
+        let mut ids: Vec<WindowId> = workspaces
             .flat_map(|workspace| &workspace.groups)
             .flat_map(|group| &group.tabs)
             .map(|window| window.id)
@@ -2070,7 +2555,8 @@ mod tests {
         for step in 0..5000 {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
-            match random(22) {
+            let screens = [SCREEN, SECOND_SCREEN];
+            match random(27) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 2 => desktop.remove_window(id),
                 3 => desktop.minimize(id),
@@ -2091,7 +2577,21 @@ mod tests {
                 19 => desktop.set_decorated(id, random(2) == 0),
                 20 => desktop.set_client_size(id, Size::new(100, 100)),
                 18 => desktop.previous_workspace(),
-                _ => desktop.set_outputs(vec![SCREEN; random(3)]),
+                21 => desktop.set_outputs(vec![SCREEN; random(3)]),
+                22 => desktop.set_outputs(screens[..random(3)].to_vec()),
+                23 => desktop.remove_output(random(3)),
+                24 => desktop.move_to_next_output(id),
+                25 => desktop.turn_to(Point::new(
+                    i32::try_from(random(3200)).unwrap(),
+                    i32::try_from(random(1000)).unwrap(),
+                )),
+                _ => {
+                    let origin = Point::new(
+                        i32::try_from(random(3200)).unwrap() - 200,
+                        i32::try_from(random(1000)).unwrap(),
+                    );
+                    desktop.set_geometry(id, Rect::new(origin, Size::new(400, 300)));
+                }
             }
             assert_consistent(&desktop);
             assert!(
