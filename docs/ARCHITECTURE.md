@@ -24,7 +24,7 @@ inwards: adapters depend on the domain, never the reverse.
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, and a small blocking client. Depends on no other workspace crate. |
-| `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `Session` is the event loop around it. `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
+| `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `Session` is the event loop around it. `bridge` maps configuration onto the domain. `backend::winit` runs it in a window and `backend::hardware` on the screen itself. |
 | `omorfosctl` | done | Command-line client for the IPC socket: state, actions, configuration check and reload. |
 
 Crates are created when their first task starts, not before.
@@ -37,9 +37,10 @@ Crates are created when their first task starts, not before.
   deterministic and testable without a display. The frame (a tab group of
   one or more windows) is the unit of position, stacking and state. See
   [adr/0004-domain-model.md](adr/0004-domain-model.md).
-- **Hardware sits behind traits.** DRM/KMS, libinput and the seat are
-  adapters, so every policy decision can be tested against a headless
-  backend.
+- **Hardware sits behind the session.** DRM/KMS, libinput and the seat are
+  a backend that feeds `Input` in and draws with `render`, so every policy
+  decision is tested without them. See
+  [adr/0010-hardware-backend.md](adr/0010-hardware-backend.md).
 - **Configuration is a value.** Reload builds a whole new validated value
   and swaps it in. Each file stands alone: one that fails to load keeps the
   value it had, the others still apply, and the problem is kept as a

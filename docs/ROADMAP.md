@@ -162,7 +162,9 @@ Known gaps:
 
 - [x] The event loop reworked so the core can register timers and
       sources: a tested `Session` owns it, and nothing is polled (ADR 9)
-- [ ] DRM/KMS, libinput and libseat backend
+- [x] DRM/KMS, libinput and libseat backend (ADR 10): one screen, a drawn
+      pointer, virtual terminal switching and touchpad settings. Run by
+      hand on one laptop with foot and Firefox
 - [ ] Multi-monitor and hotplug
 - [ ] Fractional scaling
 - [ ] Our own pointer cursor, client-set cursors and cursor shapes

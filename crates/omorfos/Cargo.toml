@@ -43,7 +43,19 @@ omorfos-ipc = { path = "../omorfos-ipc" }
 # which lets the event loop be woken when a program we started exits.
 rustix = { version = "1.1.5", default-features = false, features = ["process"] }
 serde = "1.0.229"
-smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend", "desktop", "backend_winit"] }
+smithay = { version = "0.7.0", default-features = false, features = [
+    "wayland_frontend",
+    "desktop",
+    "backend_winit",
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "renderer_gl",
+    "renderer_multi",
+] }
 
 [dev-dependencies]
 serde_json = "1.0"

@@ -70,7 +70,7 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag }}
           persist-credentials: false
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev dpkg-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libudev-dev libinput-dev libseat-dev libgbm-dev dpkg-dev
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-deb@3.8.0
