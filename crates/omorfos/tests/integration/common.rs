@@ -31,6 +31,9 @@ use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, deleg
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1 as listed_handle, ext_foreign_toplevel_list_v1 as toplevel_list,
 };
+use wayland_protocols::wp::cursor_shape::v1::client::{
+    wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1,
+};
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
 };
@@ -150,6 +153,31 @@ impl Session {
     /// Ends the session, keeping its configuration directory.
     pub(crate) fn end(self) -> TempDir {
         self.config
+    }
+
+    /// Installs a cursor theme called `name` whose shapes are plain
+    /// squares, one per `(shape, size, colour)`, with the hotspot one pixel
+    /// in from the corner. Returns where themes are then to be found.
+    pub(crate) fn install_cursors(
+        &self,
+        name: &str,
+        shapes: &[(&str, u32, u32)],
+    ) -> omorfos::Themes {
+        let themes = self.config.path().join("icons");
+        let folder = themes.join(name).join("cursors");
+        std::fs::create_dir_all(&folder).unwrap();
+        for (shape, size, color) in shapes {
+            let word = |value: u32| value.to_le_bytes();
+            // One image: the file's header, a table of contents with one
+            // entry, then the image's own header and its pixels.
+            let header = [0x7275_6358, 16, 0x1_0000, 1, 0xfffd_0002, *size, 28];
+            let image = [36, 0xfffd_0002, *size, 1, *size, *size, 1, 1, 0];
+            let pixels = usize::try_from(size * size).unwrap();
+            let mut bytes: Vec<u8> = header.into_iter().chain(image).flat_map(word).collect();
+            bytes.extend(word(*color).repeat(pixels));
+            std::fs::write(folder.join(shape), bytes).unwrap();
+        }
+        omorfos::Themes::new(vec![themes])
     }
 
     /// Adds a source that wakes the session each time something is sent to
@@ -425,6 +453,7 @@ pub(crate) struct ClientState {
     primaries: Option<primary_manager::ZwpPrimarySelectionDeviceManagerV1>,
     fractions: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     viewporter: Option<wp_viewporter::WpViewporter>,
+    shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     /// What the client's surfaces were last told about how they are shown.
     pub(crate) told: Told,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
@@ -596,6 +625,23 @@ impl Client {
         surface.attach(Some(&self.buffer(size, color)), 0, 0);
         surface.damage_buffer(0, 0, size.0, size.1);
         surface.commit();
+    }
+
+    /// Asks for the pointer to be drawn as `picture` while it is over this
+    /// client, with `hotspot` the place in it that is the position, or to
+    /// be hidden.
+    pub(crate) fn set_cursor(&self, picture: Option<&wl_surface::WlSurface>, hotspot: (i32, i32)) {
+        let pointer = self.state.pointer.as_ref().unwrap();
+        pointer.set_cursor(self.state.serial, picture, hotspot.0, hotspot.1);
+    }
+
+    /// Asks for the pointer to be one of the named shapes while it is over
+    /// this client.
+    pub(crate) fn set_cursor_shape(&self, shape: wp_cursor_shape_device_v1::Shape) {
+        let pointer = self.state.pointer.as_ref().unwrap();
+        let shapes = self.state.shapes.as_ref().unwrap();
+        let device = shapes.get_pointer(pointer, &self.handle(), ());
+        device.set_shape(self.state.serial, shape);
     }
 
     /// Asks to be told the exact scale `surface` is shown at.
@@ -876,6 +922,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.fractions = Some(registry.bind(name, version, handle, ()));
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
+            "wp_cursor_shape_manager_v1" => {
+                state.shapes = Some(registry.bind(name, version, handle, ()));
+            }
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "wl_output" => {
                 let _: wl_output::WlOutput = registry.bind(name, version, handle, ());
@@ -1322,6 +1371,8 @@ delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(ClientState: wp_viewporter::WpViewporter);
+delegate_noop!(ClientState: wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
+delegate_noop!(ClientState: wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(ClientState: wp_viewport::WpViewport);
 
 impl Dispatch<wl_surface::WlSurface, ()> for ClientState {
