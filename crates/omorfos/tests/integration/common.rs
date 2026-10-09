@@ -20,8 +20,9 @@ use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Rectangle, Transform};
 use tempfile::TempDir;
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_region,
-    wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
+    wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -336,6 +337,14 @@ pub(crate) struct ClientState {
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     decorations: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    clipboards: Option<wl_data_device_manager::WlDataDeviceManager>,
+    data_device: Option<wl_data_device::WlDataDevice>,
+    /// What this client hands over when asked for what it copied.
+    copied: String,
+    /// The clipboard as last offered to this client, if it holds anything.
+    pub(crate) selection: Option<wl_data_offer::WlDataOffer>,
+    /// The formats the offered clipboard can be had in.
+    pub(crate) formats: Vec<String>,
     seat: Option<wl_seat::WlSeat>,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
@@ -542,6 +551,32 @@ impl Client {
         (surface, popup, positioner)
     }
 
+    /// Puts `text` on the clipboard, as an application does on Ctrl+C.
+    pub(crate) fn copy(&mut self, text: &str) {
+        text.clone_into(&mut self.state.copied);
+        let source = self
+            .state
+            .clipboards
+            .as_ref()
+            .unwrap()
+            .create_data_source(&self.handle(), ());
+        source.offer(TEXT.to_owned());
+        self.state
+            .data_device
+            .as_ref()
+            .unwrap()
+            .set_selection(Some(&source), self.state.serial);
+    }
+
+    /// Asks for the clipboard's text, as an application does on Ctrl+V.
+    /// Returns where it will arrive, or `None` if the clipboard is empty.
+    pub(crate) fn paste(&self) -> Option<std::io::PipeReader> {
+        let offer = self.state.selection.as_ref()?;
+        let (reader, writer) = std::io::pipe().unwrap();
+        offer.receive(TEXT.to_owned(), writer.as_fd());
+        Some(reader)
+    }
+
     /// Limits where a surface accepts the pointer to one rectangle.
     pub(crate) fn input_region(
         &self,
@@ -570,6 +605,9 @@ impl Client {
         self.state.seat.as_ref().unwrap()
     }
 }
+
+/// The format the test client copies and pastes.
+const TEXT: &str = "text/plain;charset=utf-8";
 
 /// How a layer-shell surface asks to be placed.
 pub(crate) struct LayerShape {
@@ -607,6 +645,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "wl_data_device_manager" => {
+                state.clipboards = Some(registry.bind(name, version.min(3), handle, ()));
+            }
             "zwlr_layer_shell_v1" => {
                 state.layer_shell = Some(registry.bind(name, version.min(4), handle, ()));
             }
@@ -662,6 +703,10 @@ impl Dispatch<wl_seat::WlSeat, ()> for ClientState {
             state
                 .keyboard
                 .get_or_insert_with(|| seat.get_keyboard(handle, ()));
+            let clipboards = state.clipboards.as_ref().unwrap();
+            state
+                .data_device
+                .get_or_insert_with(|| clipboards.get_data_device(seat, handle, ()));
             state
                 .pointer
                 .get_or_insert_with(|| seat.get_pointer(handle, ()));
@@ -771,6 +816,60 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for ClientState {
     }
 }
 
+impl Dispatch<wl_data_device::WlDataDevice, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_device::WlDataDevice,
+        event: wl_data_device::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_data_device::Event::DataOffer { .. } => state.formats.clear(),
+            wl_data_device::Event::Selection { id } => state.selection = id,
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(ClientState, wl_data_device::WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, ()),
+    ]);
+}
+
+impl Dispatch<wl_data_offer::WlDataOffer, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_offer::WlDataOffer,
+        event: wl_data_offer::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_data_offer::Event::Offer { mime_type } = event {
+            state.formats.push(mime_type);
+        }
+    }
+}
+
+impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_source::WlDataSource,
+        event: wl_data_source::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_data_source::Event::Send { fd, .. } = event {
+            // Hand over what was copied and close the pipe by dropping it.
+            std::fs::File::from(fd)
+                .write_all(state.copied.as_bytes())
+                .unwrap();
+        }
+    }
+}
+
 impl Dispatch<xdg_popup::XdgPopup, ()> for ClientState {
     fn event(
         state: &mut Self,
@@ -862,7 +961,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { .. } => state.events.push(Event::KeyboardEnter),
+            wl_keyboard::Event::Enter { serial, .. } => {
+                state.serial = serial;
+                state.events.push(Event::KeyboardEnter);
+            }
             wl_keyboard::Event::Leave { .. } => state.events.push(Event::KeyboardLeave),
             wl_keyboard::Event::Key {
                 serial,
@@ -885,6 +987,7 @@ delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);
 delegate_noop!(ClientState: wl_region::WlRegion);
 delegate_noop!(ClientState: xdg_positioner::XdgPositioner);
+delegate_noop!(ClientState: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(ClientState: ignore wl_shm::WlShm);

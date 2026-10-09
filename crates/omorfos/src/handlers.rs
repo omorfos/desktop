@@ -8,7 +8,7 @@ use smithay::desktop::{LayerSurface, PopupKind, Window, WindowSurfaceType, layer
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge;
-use smithay::reexports::wayland_server::Client;
+use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
@@ -19,6 +19,10 @@ use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, with_states,
 };
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::selection::data_device::{
+    ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler, set_data_device_focus,
+};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::wayland::shell::wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
@@ -28,7 +32,7 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
-    delegate_compositor, delegate_layer_shell, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped};
@@ -335,10 +339,28 @@ impl SeatHandler for Compositor {
         &mut self.seats
     }
 
-    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        // The clipboard is offered to whichever client has the keyboard.
+        let client = focused.and_then(|surface| self.display.get_client(surface.id()).ok());
+        set_data_device_focus(&self.display, seat, client);
+    }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
 }
+
+impl SelectionHandler for Compositor {
+    type SelectionUserData = ();
+}
+
+impl DataDeviceHandler for Compositor {
+    fn data_device_state(&self) -> &DataDeviceState {
+        &self.data_device
+    }
+}
+
+impl ClientDndGrabHandler for Compositor {}
+
+impl ServerDndGrabHandler for Compositor {}
 
 impl ShmHandler for Compositor {
     fn shm_state(&self) -> &ShmState {
@@ -355,7 +377,35 @@ impl OutputHandler for Compositor {}
 delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
 delegate_layer_shell!(Compositor);
+delegate_data_device!(Compositor);
 delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);
 delegate_output!(Compositor);
+
+#[cfg(test)]
+mod tests {
+    use smithay::reexports::wayland_server::Display;
+    use smithay::utils::Transform;
+
+    use super::*;
+
+    #[test]
+    fn smithay_is_handed_the_compositors_own_clipboard_state() {
+        // Smithay requires this accessor but, as of 0.7, never calls it
+        // itself, so no client request can exercise it.
+        let directory = tempfile::TempDir::new().unwrap();
+        let display = Display::<Compositor>::new().unwrap();
+        let compositor = Compositor::new(
+            display.handle(),
+            directory.path(),
+            (640, 480),
+            Transform::Normal,
+        )
+        .unwrap();
+        assert!(std::ptr::eq(
+            compositor.data_device_state(),
+            &raw const compositor.data_device
+        ));
+    }
+}
