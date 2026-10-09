@@ -10,15 +10,21 @@ use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Config, Debouncer, Store, Watcher};
+use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Desktop, WindowId};
+use omorfos_core::{Decoration, Desktop, Frame, WindowId};
+use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
 };
+use smithay::backend::renderer::element::memory::{
+    MemoryRenderBuffer, MemoryRenderBufferRenderElement,
+};
+use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::{Color32F, ImportAll, Renderer, Texture};
-use smithay::desktop::{PopupManager, Space, Window, space};
+use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
+use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
+use smithay::desktop::{PopupManager, Space, Window};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::PointerHandle;
 use smithay::input::{Seat, SeatState};
@@ -34,6 +40,7 @@ use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellSt
 use smithay::wayland::shm::ShmState;
 
 use crate::bridge::{self, Bindings};
+use crate::paint::{self, Text};
 
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
@@ -77,6 +84,9 @@ pub struct Compositor {
     pub(crate) windows: Vec<Mapped>,
     /// Toplevels that exist but have not shown any content yet.
     pub(crate) unmapped: Vec<ToplevelSurface>,
+    /// What is on screen, bottom to top, as of the last sync.
+    scene: Vec<Shown>,
+    text: Text,
 
     store: Store,
     watcher: Option<Watcher>,
@@ -172,6 +182,8 @@ impl Compositor {
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),
+                    scene: Vec::new(),
+                    text: Text::new(),
                     store,
                     watcher,
                     debouncer: Debouncer::new(RELOAD_DELAY),
@@ -407,50 +419,74 @@ impl Compositor {
     }
 
     /// Makes Smithay's view of the windows match the desktop model: which
-    /// are shown, where, in what order and state, and which has focus.
+    /// are shown, where, in what order and state, and which has focus. Also
+    /// repaints the decoration of any frame whose appearance changed.
     fn sync(&mut self) {
         let focused = self.desktop.focused();
-        let frames: Vec<(WindowId, Rect, bool, bool)> = self
+        let frames: Vec<FrameInfo> = self
             .desktop
             .frames()
-            .map(|frame| {
-                (
-                    frame.window().id,
-                    frame.client(),
-                    frame.maximized,
-                    frame.fullscreen,
-                )
-            })
+            .map(|frame| FrameInfo::of(&frame))
             .collect();
+        let config = Arc::clone(self.store.current());
+        let mut previous = std::mem::take(&mut self.scene);
+        let text = &mut self.text;
 
-        let mut shown = Vec::new();
+        let mut scene = Vec::new();
         for Mapped {
             id,
             window,
             toplevel,
         } in &self.windows
         {
-            let frame = frames.iter().enumerate().find(|(_, frame)| frame.0 == *id);
+            let frame = frames
+                .iter()
+                .enumerate()
+                .find(|(_, frame)| frame.shown == *id);
             let activated = Some(*id) == focused;
             toplevel.with_pending_state(|state| {
                 set(&mut state.states, ToplevelState::Activated, activated);
-                if let Some((_, (_, geometry, maximized, fullscreen))) = frame {
-                    set(&mut state.states, ToplevelState::Maximized, *maximized);
-                    set(&mut state.states, ToplevelState::Fullscreen, *fullscreen);
-                    state.size = Some(logical_size(geometry.size));
+                if let Some((_, frame)) = frame {
+                    set(&mut state.states, ToplevelState::Maximized, frame.maximized);
+                    set(
+                        &mut state.states,
+                        ToplevelState::Fullscreen,
+                        frame.fullscreen,
+                    );
+                    state.size = Some(logical_size(frame.client.size));
                 }
             });
             toplevel.send_pending_configure();
             match frame {
-                Some((order, (_, geometry, ..))) => shown.push((order, window, geometry.origin)),
+                Some((order, frame)) => {
+                    let chrome = frame.decoration.map(|decoration| {
+                        let cached = previous
+                            .iter()
+                            .position(|shown| {
+                                shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
+                            })
+                            .and_then(|index| previous.swap_remove(index).chrome);
+                        Chrome::paint(text, &config.theme, cached, frame, decoration)
+                    });
+                    let origin = (frame.client.origin.x, frame.client.origin.y).into();
+                    scene.push((
+                        order,
+                        Shown {
+                            window: window.clone(),
+                            origin,
+                            chrome,
+                        },
+                    ));
+                }
                 None => self.space.unmap_elem(window),
             }
         }
         // Mapping raises an element, so mapping bottom to top sets the order.
-        shown.sort_by_key(|(order, ..)| *order);
-        for (_, window, origin) in shown {
+        scene.sort_by_key(|(order, _)| *order);
+        self.scene = scene.into_iter().map(|(_, shown)| shown).collect();
+        for shown in &self.scene {
             self.space
-                .map_element(window.clone(), (origin.x, origin.y), false);
+                .map_element(shown.window.clone(), shown.origin, false);
         }
 
         let focus = focused
@@ -480,27 +516,53 @@ impl Compositor {
         age: usize,
     ) -> Result<RenderOutputResult<'tracker>, RenderError<R::Error>>
     where
-        R: Renderer + ImportAll,
-        R::TextureId: Clone + Texture + 'static,
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
     {
-        let background = self.config().theme.colors.background;
-        let channel = |value: u8| f32::from(value) / 255.0;
-        let clear = Color32F::new(
-            channel(background.red),
-            channel(background.green),
-            channel(background.blue),
-            channel(background.alpha),
-        );
-        space::render_output::<_, WaylandSurfaceRenderElement<R>, _, _>(
-            &self.output,
+        let unspecified = Kind::Unspecified;
+        // Elements are listed from the top of the stack down.
+        let mut elements: Vec<Element<R>> = Vec::new();
+        for shown in self.scene.iter().rev() {
+            if let Some(chrome) = &shown.chrome {
+                let bar = chrome.decoration.titlebar().origin;
+                let at = (f64::from(bar.x), f64::from(bar.y));
+                // A texture that cannot be uploaded is skipped, not fatal.
+                let titlebar = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    at,
+                    &chrome.titlebar,
+                    None,
+                    None,
+                    None,
+                    unspecified,
+                );
+                elements.extend(titlebar.ok().map(Element::Memory));
+                for (buffer, border) in chrome.borders.iter().zip(chrome.decoration.borders()) {
+                    let at = (border.origin.x, border.origin.y);
+                    let border =
+                        SolidColorRenderElement::from_buffer(buffer, at, 1.0, 1.0, unspecified);
+                    elements.push(Element::Solid(border));
+                }
+            }
+            // A window's surface may start above and left of its visible
+            // geometry, where it draws its own shadows.
+            let location = (shown.origin - shown.window.geometry().loc).to_physical(1);
+            let surfaces = shown
+                .window
+                .render_elements::<WaylandSurfaceRenderElement<R>>(
+                    renderer,
+                    location,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                );
+            elements.extend(surfaces.into_iter().map(Element::Surface));
+        }
+        tracker.render_output(
             renderer,
             framebuffer,
-            1.0,
             age,
-            [&self.space],
-            &[],
-            tracker,
-            clear,
+            &elements,
+            color(self.config().theme.colors.background),
         )
     }
 
@@ -513,6 +575,154 @@ impl Compositor {
             });
         }
     }
+}
+
+render_elements! {
+    /// Everything the compositor draws: client surfaces and its own
+    /// decorations.
+    Element<R> where R: ImportAll + ImportMem;
+    Surface=WaylandSurfaceRenderElement<R>,
+    Memory=MemoryRenderBufferRenderElement<R>,
+    Solid=SolidColorRenderElement,
+}
+
+/// A window on screen: where it is and the decoration drawn around it.
+#[derive(Debug)]
+pub(crate) struct Shown {
+    window: Window,
+    /// Where the window's visible geometry starts.
+    origin: Point<i32, Logical>,
+    chrome: Option<Chrome>,
+}
+
+/// The pixels of a frame's decoration, kept until its appearance changes.
+#[derive(Debug)]
+struct Chrome {
+    /// The windows in the frame, which identify it between syncs.
+    tabs: Vec<WindowId>,
+    appearance: Appearance,
+    decoration: Decoration,
+    titlebar: MemoryRenderBuffer,
+    borders: [SolidColorBuffer; 3],
+}
+
+/// Everything a titlebar's pixels depend on. Its position is not part of
+/// this, so moving a frame does not repaint it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Appearance {
+    titles: Vec<String>,
+    active: usize,
+    focused: bool,
+    size: DomainSize,
+    theme: Theme,
+}
+
+impl Chrome {
+    /// Brings a frame's decoration up to date, reusing `cached` pixels when
+    /// nothing they depend on has changed.
+    fn paint(
+        text: &mut Text,
+        theme: &Theme,
+        cached: Option<Self>,
+        frame: &FrameInfo,
+        decoration: Decoration,
+    ) -> Self {
+        let appearance = Appearance {
+            titles: frame.titles.clone(),
+            active: frame.active,
+            focused: frame.focused,
+            size: decoration.titlebar().size,
+            theme: theme.clone(),
+        };
+        let (cached_titlebar, mut borders) = cached
+            .map(|chrome| {
+                (
+                    (chrome.appearance == appearance).then_some(chrome.titlebar),
+                    chrome.borders,
+                )
+            })
+            .unwrap_or_default();
+        let titlebar = cached_titlebar.unwrap_or_else(|| {
+            let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
+            let canvas = paint::titlebar(
+                text,
+                theme,
+                &decoration,
+                &titles,
+                frame.active,
+                frame.focused,
+            );
+            let size = (canvas.width().cast_signed(), canvas.height().cast_signed());
+            MemoryRenderBuffer::from_slice(
+                canvas.bytes(),
+                Fourcc::Argb8888,
+                size,
+                1,
+                Transform::Normal,
+                None,
+            )
+        });
+        let palette = if frame.focused {
+            theme.colors.focused
+        } else {
+            theme.colors.unfocused
+        };
+        for (buffer, border) in borders.iter_mut().zip(decoration.borders()) {
+            // Updating with an unchanged size and colour is not damage.
+            buffer.update(logical_size(border.size), color(palette.border));
+        }
+        Self {
+            tabs: frame.tabs.clone(),
+            appearance,
+            decoration,
+            titlebar,
+            borders,
+        }
+    }
+}
+
+/// What `sync` needs to know about a frame, copied out of the desktop.
+struct FrameInfo {
+    shown: WindowId,
+    client: Rect,
+    maximized: bool,
+    fullscreen: bool,
+    focused: bool,
+    decoration: Option<Decoration>,
+    tabs: Vec<WindowId>,
+    titles: Vec<String>,
+    active: usize,
+}
+
+impl FrameInfo {
+    fn of(frame: &Frame<'_>) -> Self {
+        Self {
+            shown: frame.window().id,
+            client: frame.client(),
+            maximized: frame.maximized,
+            fullscreen: frame.fullscreen,
+            focused: frame.focused,
+            decoration: frame.decoration,
+            tabs: frame.tabs.iter().map(|window| window.id).collect(),
+            titles: frame
+                .tabs
+                .iter()
+                .map(|window| window.title.clone())
+                .collect(),
+            active: frame.active,
+        }
+    }
+}
+
+/// Converts a configured colour into the renderer's form.
+fn color(color: omorfos_config::Color) -> Color32F {
+    let channel = |value: u8| f32::from(value) / 255.0;
+    Color32F::new(
+        channel(color.red),
+        channel(color.green),
+        channel(color.blue),
+        channel(color.alpha),
+    )
 }
 
 fn set(states: &mut ToplevelStateSet, state: ToplevelState, on: bool) {
