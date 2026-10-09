@@ -69,6 +69,32 @@
       },
       "type": "object"
     },
+    "Output": {
+      "additionalProperties": false,
+      "description": "How the screen is driven.",
+      "properties": {
+        "scale": {
+          "$ref": "#/$defs/OutputScale",
+          "description": "How large everything is drawn: `auto` to suit the screen, or a\nnumber from 1 to 4 in steps of 0.25."
+        }
+      },
+      "type": "object"
+    },
+    "OutputScale": {
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "Whatever suits the screen."
+        },
+        {
+          "description": "Pixels to a unit of layout.",
+          "maximum": 4,
+          "minimum": 1,
+          "multipleOf": 0.25,
+          "type": "number"
+        }
+      ]
+    },
     "Placement": {
       "description": "Where a new window appears when no rule positions it.",
       "oneOf": [
@@ -127,6 +153,10 @@
     "keyboard": {
       "$ref": "#/$defs/Keyboard",
       "description": "Keyboard layout and key repeat."
+    },
+    "output": {
+      "$ref": "#/$defs/Output",
+      "description": "How the screen is driven."
     },
     "placement": {
       "$ref": "#/$defs/Placement",

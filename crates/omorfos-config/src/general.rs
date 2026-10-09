@@ -19,6 +19,8 @@ pub struct General {
     pub keyboard: Keyboard,
     /// Touchpad behaviour.
     pub touchpad: Touchpad,
+    /// How the screen is driven.
+    pub output: Output,
 }
 
 /// The names of the workspaces, in order. There is always at least one.
@@ -154,9 +156,84 @@ impl Default for Touchpad {
     }
 }
 
+/// How the screen is driven.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Output {
+    /// How large everything is drawn: `auto` to suit the screen, or a
+    /// number from 1 to 4 in steps of 0.25.
+    pub scale: OutputScale,
+}
+
+/// How large everything is drawn on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(try_from = "String")]
+pub enum OutputScale {
+    /// Whatever suits the screen, going by how dense it is.
+    #[default]
+    Auto,
+    /// A fixed scale, counted in quarters: 4 draws one pixel to a unit of
+    /// layout, 6 one and a half, 8 two. Between 4 and 16.
+    Quarters(u8),
+}
+
+impl TryFrom<String> for OutputScale {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        if text == "auto" {
+            return Ok(Self::Auto);
+        }
+        let quarters = text.parse::<f64>().ok().map(|scale| scale * 4.0);
+        let whole = quarters.filter(|quarters| (4.0..=16.0).contains(quarters));
+        whole
+            .filter(|quarters| quarters.fract() == 0.0)
+            .and_then(|quarters| format!("{quarters}").parse().ok())
+            .map(Self::Quarters)
+            .ok_or_else(|| {
+                format!(
+                    "invalid scale `{text}`: expected `auto` or a number from 1 to 4 in \
+                     steps of 0.25"
+                )
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_scale_is_automatic_unless_a_number_is_given() {
+        assert_eq!(General::default().output.scale, OutputScale::Auto);
+        let scale = |yaml: &str| parse(yaml).map(|general| general.output.scale);
+        assert_eq!(scale("output: { scale: auto }"), Ok(OutputScale::Auto));
+        assert_eq!(scale("output: { scale: 1 }"), Ok(OutputScale::Quarters(4)));
+        assert_eq!(
+            scale("output: { scale: 1.5 }"),
+            Ok(OutputScale::Quarters(6))
+        );
+        assert_eq!(
+            scale("output: { scale: 2.75 }"),
+            Ok(OutputScale::Quarters(11))
+        );
+        assert_eq!(scale("output: { scale: 4 }"), Ok(OutputScale::Quarters(16)));
+    }
+
+    #[test]
+    fn a_scale_that_cannot_be_used_is_rejected_with_what_can() {
+        for wrong in ["big", "0.5", "4.25", "1.1", "-2", "nan", "inf", "Auto"] {
+            let error = parse(&format!("output: {{ scale: {wrong} }}")).unwrap_err();
+            assert!(
+                error.contains(&format!(
+                    "invalid scale `{wrong}`: expected `auto` or a number from 1 to 4 in steps \
+                     of 0.25"
+                )),
+                "{wrong}: {error}"
+            );
+        }
+    }
 
     fn parse(yaml: &str) -> Result<General, String> {
         serde_saphyr::from_str(yaml).map_err(|error| error.without_snippet().to_string())
