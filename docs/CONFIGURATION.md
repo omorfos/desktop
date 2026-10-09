@@ -103,7 +103,8 @@ rules:
 
 A rule needs `app_id`, `title` or both; `*` stands for any run of
 characters. Every matching rule applies, in order. Properties are
-`workspace`, `maximized`, `fullscreen` and `decorations`.
+`workspace`, `maximized`, `fullscreen` and `decorations`. Without a
+`decorations` rule, a window is framed if it asks omorfos to decorate it.
 
 ## `theme.yaml`
 
@@ -137,3 +138,21 @@ items:
 
 An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
+
+The menu opens with a right click on the desktop or the `show_menu` action
+(`Super+space` by default). Click an entry to choose it; click elsewhere or
+press Escape to close the menu.
+
+## Using windows
+
+Windows that support it get a titlebar and border drawn by omorfos.
+Applications that insist on drawing their own, such as GTK ones, are left
+alone; a rule with `decorations: true` forces a frame onto them anyway.
+
+| To | Do this |
+|---|---|
+| Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |
+| Resize a window | Drag a border or corner, or hold Alt and drag with the right button |
+| Group windows as tabs | Drag a titlebar with the middle button onto another titlebar |
+| Switch tab | Click the tab |
+| Ungroup a tab | Drag it with the middle button and drop it off any titlebar |
