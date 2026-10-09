@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 5, release pipeline.
+**Next:** milestone 6, Fluxbox features.
 
 ## 1. Bootstrap
 
@@ -83,10 +83,20 @@ Not done yet, and where it is planned:
 
 ## 5. Release pipeline
 
-- [ ] Semver releases from Conventional Commits (release-please)
-- [ ] amd64 and arm64 binaries with build provenance attestation
-- [ ] `.deb` via `cargo-deb`
-- [ ] AUR `PKGBUILD` and publishing
+- [x] Semver releases from Conventional Commits (release-please)
+- [x] amd64 and arm64 binaries, with build provenance attestation when the
+      repository is public
+- [x] `.deb` via `cargo-deb`
+- [x] AUR `PKGBUILD` and opt-in publishing
+
+Verified locally: the `.deb` and tarball packaging, and the AUR package
+built and installed in an Arch Linux container. Not verifiable until the
+first real release: the release-please configuration, the upload and
+attestation steps, and the push to the AUR. See
+[RELEASING.md](RELEASING.md) for the one-time setup on GitHub.
+
+A `wayland-sessions` entry for login screens is left for milestone 8, when
+the compositor can drive real hardware.
 
 ## 6. Fluxbox features
 

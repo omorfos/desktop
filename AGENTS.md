@@ -81,4 +81,8 @@ checked by `committed` in CI.
 - Body: always present. Explain why the change is needed and what it does,
   plus any trade-off taken. Wrap at 100 columns.
 - Breaking changes: `!` after the type and a `BREAKING CHANGE:` footer.
-- One logical change per commit. Releases are derived from these messages.
+- One logical change per commit (atomic commits): each commit builds and
+  passes the checks on its own.
+- Releases are derived from these messages; see
+  [docs/RELEASING.md](docs/RELEASING.md). A new workspace crate must be added
+  to `release-please-config.json` so its `Cargo.lock` version is bumped.
