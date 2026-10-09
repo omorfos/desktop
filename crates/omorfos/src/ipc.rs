@@ -113,27 +113,38 @@ fn same_user(peer: Option<u32>, owner: u32) -> bool {
 
 impl Peer {
     /// Reads whatever has arrived and returns the complete lines.
+    ///
+    /// Lines are taken out as they arrive, so that no more than one message
+    /// and one read is ever held, however fast the peer writes.
     fn read_lines(&mut self) -> Vec<Vec<u8>> {
         let mut chunk = [0; 4096];
-        loop {
+        let mut lines = Vec::new();
+        while self.alive {
             match self.stream.read(&mut chunk) {
-                Ok(length) if length > 0 => self.inbox.extend_from_slice(&chunk[..length]),
+                Ok(length) if length > 0 => {
+                    self.inbox.extend_from_slice(&chunk[..length]);
+                    self.take_lines(&mut lines);
+                }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
                 // The peer closed the connection, or it failed.
-                _ => {
-                    self.alive = false;
-                    break;
-                }
+                _ => self.alive = false,
             }
         }
-        let mut lines = Vec::new();
-        while let Some(end) = self.inbox.iter().position(|byte| *byte == b'\n') {
-            lines.push(self.inbox.drain(..=end).collect());
-        }
-        // What is left is the start of a line. One this long is not a
-        // message, and waiting for its end would mean buffering it.
-        self.alive &= self.inbox.len() <= MAX_MESSAGE;
         lines
+    }
+
+    /// Moves the complete lines out of the inbox. A line longer than a
+    /// message may be ends the connection, whether or not it is finished.
+    fn take_lines(&mut self, lines: &mut Vec<Vec<u8>>) {
+        while let Some(end) = self.inbox.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = self.inbox.drain(..=end).collect();
+            self.alive &= line.len() <= MAX_MESSAGE;
+            lines.extend(self.alive.then_some(line));
+        }
+        // What is left is the start of a line, with its newline still to
+        // come. One this long is not a message, and waiting for its end
+        // would mean buffering it.
+        self.alive &= self.inbox.len() < MAX_MESSAGE;
     }
 
     fn queue(&mut self, reply: &Reply) {

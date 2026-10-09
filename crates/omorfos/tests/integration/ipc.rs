@@ -265,6 +265,46 @@ fn closed(session: &mut Session, stream: &mut UnixStream) -> bool {
 }
 
 #[test]
+fn a_line_as_long_as_a_message_may_be_is_still_read() {
+    let mut session = Session::new();
+    let path = session.listen();
+    let mut raw = UnixStream::connect(&path).unwrap();
+    // Blank, so that the error it earns is short enough to read back.
+    let mut longest = vec![b' '; omorfos_ipc::MAX_MESSAGE - 1];
+    longest.extend_from_slice(b"\n\"version\"\n");
+    raw.write_all(&longest).unwrap();
+    session.step();
+    session.step();
+
+    let mut peer = Client::from_stream(raw);
+    assert!(matches!(peer.receive().unwrap(), Reply::Error { .. }));
+    assert!(matches!(peer.receive().unwrap(), Reply::Version { .. }));
+}
+
+#[test]
+fn a_finished_line_longer_than_any_message_ends_the_connection_unanswered() {
+    let mut session = Session::new();
+    let path = session.listen();
+    let mut raw = UnixStream::connect(&path).unwrap();
+    // One byte too many, sent whole, with a request behind it.
+    let mut oversized = vec![b' '; omorfos_ipc::MAX_MESSAGE];
+    oversized.extend_from_slice(b"\n\"version\"\n");
+    raw.write_all(&oversized).unwrap();
+
+    raw.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut answer = [0; 64];
+    let ended = loop {
+        session.step();
+        match raw.read(&mut answer) {
+            Ok(length) => break length,
+            Err(_) => assert!(Instant::now() < deadline, "still connected"),
+        }
+    };
+    assert_eq!(ended, 0, "nothing is sent before the connection closes");
+}
+
+#[test]
 fn a_line_longer_than_any_message_ends_the_connection() {
     let mut session = Session::new();
     let path = session.listen();
