@@ -59,7 +59,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut event_loop: EventLoop<'_, Session> = EventLoop::try_new()?;
     let mut display: Display<Compositor> = Display::new()?;
-    let (backend, winit) = winit::init::<GlesRenderer>()?;
+    // The usual reason is that there is no session to open a window on,
+    // which the error itself does not say.
+    let (backend, winit) = winit::init::<GlesRenderer>().map_err(|error| {
+        format!(
+            "cannot open a window: {error}. omorfos runs inside a Wayland or X11 session for \
+             now: start it from one, where WAYLAND_DISPLAY or DISPLAY is set"
+        )
+    })?;
     let size = backend.window_size();
     // OpenGL's origin is the bottom-left corner, so the picture is flipped.
     let mut compositor = Compositor::new(
