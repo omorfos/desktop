@@ -8,7 +8,7 @@ use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
@@ -23,12 +23,17 @@ use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::surface::{
+    WaylandSurfaceRenderElement, render_elements_from_surface_tree,
+};
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
+use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
-use smithay::input::pointer::PointerHandle;
+use smithay::input::pointer::{
+    CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
+};
 use smithay::input::{Seat, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::calloop::generic::Generic;
@@ -42,6 +47,7 @@ use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, 
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
 };
+use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState};
 use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fractional_scale};
 use smithay::wayland::output::OutputManagerState;
@@ -58,6 +64,7 @@ use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
 use crate::bridge::{self, Bindings};
+use crate::cursor::{self, Themes};
 use crate::input::Drag;
 use crate::ipc::Server;
 use crate::paint::{self, Text};
@@ -164,9 +171,16 @@ pub struct Compositor {
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed_keys: Vec<Keycode>,
     pub(crate) pointer_location: Point<f64, Logical>,
-    /// The picture of the pointer, when the compositor is the one to draw
-    /// it.
-    pointer_image: Option<Painted>,
+    /// Whether the compositor is the one to draw the pointer.
+    draws_pointer: bool,
+    /// What applications last asked the pointer to look like over them.
+    pub(crate) cursor: CursorImageStatus,
+    /// What the pointer looks like now, as of the last sync.
+    shown: Look,
+    /// The picture for the shape being shown, kept until it would differ.
+    pointer_image: Option<PointerImage>,
+    themes: Themes,
+    _cursor_shapes: CursorShapeManagerState,
     /// The virtual terminal the user asked to switch to, until the backend
     /// collects it.
     pub(crate) terminal_wanted: Option<i32>,
@@ -214,6 +228,7 @@ impl Compositor {
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let viewporter = ViewporterState::new::<Self>(&display);
+        let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
@@ -287,7 +302,12 @@ impl Compositor {
                     problems: Vec::new(),
                     suppressed_keys: Vec::new(),
                     pointer_location: (0.0, 0.0).into(),
+                    draws_pointer: false,
+                    cursor: CursorImageStatus::default_named(),
+                    shown: Look::Icon(CursorIcon::Default),
                     pointer_image: None,
+                    themes: Themes::default(),
+                    _cursor_shapes: cursor_shapes,
                     terminal_wanted: None,
                     hovered: None,
                     children: Vec::new(),
@@ -364,11 +384,6 @@ impl Compositor {
             self.scale = scale;
             let size = self.output_size();
             self.resize_output((size.w, size.h));
-            // The pointer is the one picture that is not repainted as part
-            // of bringing the scene up to date.
-            if self.pointer_image.is_some() {
-                self.show_pointer();
-            }
         }
     }
 
@@ -393,6 +408,10 @@ impl Compositor {
         }
         for layer in layer_map_for_output(&self.output).layers() {
             layer.with_surfaces(tell);
+        }
+        // The picture an application gave for the pointer is a surface too.
+        if let Look::Surface(surface) = &self.shown {
+            with_states(surface, |states| tell(surface, states));
         }
     }
 
@@ -451,9 +470,33 @@ impl Compositor {
     }
 
     /// Draws the pointer as part of the output from now on. For a backend
-    /// that drives the screen itself, where nothing else would show it.
+    /// where nothing else would show it, or would show what applications
+    /// ask it to look like.
     pub fn show_pointer(&mut self) {
-        self.pointer_image = Some(Painted::new(&paint::pointer(self.scale)));
+        self.draws_pointer = true;
+    }
+
+    /// Says where cursor themes are installed. Until this is called there
+    /// are none, and the pointer is a plain arrow.
+    pub fn set_cursor_themes(&mut self, themes: Themes) {
+        self.themes = themes;
+        self.pointer_image = None;
+    }
+
+    /// Works out what the pointer looks like now and readies its picture.
+    fn update_pointer(&mut self) {
+        if !self.draws_pointer {
+            return;
+        }
+        self.shown = self.cursor_wanted();
+        if let Look::Icon(icon) = self.shown {
+            let theme = &self.store.current().theme.cursor;
+            let current = self.pointer_image.take().filter(|image| {
+                image.icon == icon && image.scale == self.scale && image.theme == *theme
+            });
+            self.pointer_image =
+                current.or_else(|| Some(PointerImage::load(&self.themes, theme, icon, self.scale)));
+        }
     }
 
     /// The virtual terminal the user has asked to switch to since this was
@@ -656,6 +699,12 @@ impl Compositor {
         if let Some(path) = self.ipc_path() {
             process.env("OMORFOS_SOCKET", path);
         }
+        // Applications that draw the pointer themselves use the same theme
+        // and size as the compositor does.
+        let cursor = &self.store.current().theme.cursor;
+        process
+            .env("XCURSOR_THEME", &cursor.theme)
+            .env("XCURSOR_SIZE", cursor.size.get().to_string());
         match process.spawn() {
             Ok(child) => {
                 self.wake_when_exited(&child);
@@ -688,7 +737,6 @@ impl Compositor {
     fn sync(&mut self) {
         layer_map_for_output(&self.output).cleanup();
         self.update_screen();
-        self.announce_scale();
         let focused = self.desktop.focused();
         let frames: Vec<FrameInfo> = self
             .desktop
@@ -760,6 +808,8 @@ impl Compositor {
         }
 
         self.repaint_overlays();
+        self.update_pointer();
+        self.announce_scale();
         self.sync_keyboard_focus(focused);
     }
 
@@ -864,9 +914,7 @@ impl Compositor {
         let scale = self.scale;
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
-        if let Some(image) = &self.pointer_image {
-            elements.extend(image.element(renderer, self.pointer_location, scale, Kind::Cursor));
-        }
+        self.pointer_elements(renderer, &mut elements);
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
             elements.extend(
@@ -893,6 +941,47 @@ impl Compositor {
             &elements,
             color(self.config().theme.colors.background),
         )
+    }
+
+    /// Adds the pointer, if it is the compositor's to draw and is not
+    /// hidden: a picture from the cursor theme, or one an application gave.
+    fn pointer_elements<R>(&self, renderer: &mut R, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        if !self.draws_pointer {
+            return;
+        }
+        match (&self.shown, &self.pointer_image) {
+            (Look::Icon(_), Some(image)) => {
+                let at = self.pointer_location - image.hotspot;
+                elements.extend(
+                    image
+                        .picture
+                        .element(renderer, at, self.scale, Kind::Cursor),
+                );
+            }
+            (Look::Surface(surface), _) => {
+                let hotspot = with_states(surface, |states| {
+                    let attributes = states.data_map.get::<Mutex<CursorImageAttributes>>();
+                    attributes
+                        .and_then(|attributes| attributes.lock().ok().map(|held| held.hotspot))
+                        .unwrap_or_default()
+                });
+                let at = self.pointer_location - hotspot.to_f64();
+                let picture = render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    at.to_physical(self.scale.factor()).to_i32_round(),
+                    self.scale.factor(),
+                    1.0,
+                    Kind::Cursor,
+                );
+                elements.extend(picture.into_iter().map(Element::Surface));
+            }
+            (Look::Hidden | Look::Icon(_), _) => {}
+        }
     }
 
     /// Adds the frames that are, or are not, fullscreen, topmost first.
@@ -966,6 +1055,69 @@ impl Compositor {
             window.send_frame(&self.output, elapsed, Some(Duration::ZERO), |_, _| {
                 Some(self.output.clone())
             });
+        }
+        // An application may animate the picture it gave for the pointer.
+        if let Look::Surface(surface) = &self.shown {
+            send_frames_surface_tree(
+                surface,
+                &self.output,
+                elapsed,
+                Some(Duration::ZERO),
+                |_, _| Some(self.output.clone()),
+            );
+        }
+    }
+}
+
+/// What the pointer looks like.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Look {
+    /// Nothing: an application asked for it to be hidden.
+    Hidden,
+    /// One of the named shapes, drawn from the cursor theme.
+    Icon(CursorIcon),
+    /// A picture an application drew.
+    Surface(WlSurface),
+}
+
+/// The picture of a named pointer shape, and everything it depends on.
+#[derive(Debug)]
+struct PointerImage {
+    icon: CursorIcon,
+    scale: Scale,
+    theme: omorfos_config::Cursor,
+    picture: Painted,
+    /// Where in the picture the pointer's position is.
+    hotspot: Point<f64, Logical>,
+}
+
+impl PointerImage {
+    /// Finds the shape in the cursor theme at the size the scale calls
+    /// for. A shape no theme has is shown as the ordinary pointer, and if
+    /// there is not even that, as an arrow painted here.
+    fn load(
+        themes: &Themes,
+        theme: &omorfos_config::Cursor,
+        icon: CursorIcon,
+        scale: Scale,
+    ) -> Self {
+        let pixels = scale.pixels(theme.size.get().cast_signed()).unsigned_abs();
+        let found = [icon, CursorIcon::Default]
+            .into_iter()
+            .find_map(|icon| themes.load(&theme.theme, icon, pixels));
+        let (picture, hotspot) = found.map_or_else(
+            || (Painted::new(&paint::pointer(scale)), (0.0, 0.0)),
+            |image| {
+                let hotspot = (f64::from(image.hotspot.0), f64::from(image.hotspot.1));
+                (Painted::from_image(&image, scale), hotspot)
+            },
+        );
+        Self {
+            icon,
+            scale,
+            theme: theme.clone(),
+            picture,
+            hotspot: Point::<f64, Physical>::from(hotspot).to_logical(scale.factor()),
         }
     }
 }
@@ -1079,16 +1231,30 @@ impl Painted {
     fn new(canvas: &paint::Canvas) -> Self {
         let pixels = (canvas.width().cast_signed(), canvas.height().cast_signed());
         let (width, height) = canvas.units();
+        let size = (width.cast_signed(), height.cast_signed());
+        Self::from_pixels(canvas.bytes(), pixels, size)
+    }
+
+    /// Readies a picture from a cursor theme to be drawn pixel for pixel at
+    /// `scale`.
+    fn from_image(image: &cursor::Image, scale: Scale) -> Self {
+        let pixels = (image.size.0.cast_signed(), image.size.1.cast_signed());
+        let size = (scale.units(pixels.0), scale.units(pixels.1));
+        Self::from_pixels(&image.pixels, pixels, size)
+    }
+
+    /// `bytes` are `pixels` across and down, and stand for `size` units.
+    fn from_pixels(bytes: &[u8], pixels: (i32, i32), size: (i32, i32)) -> Self {
         Self {
             pixels: MemoryRenderBuffer::from_slice(
-                canvas.bytes(),
+                bytes,
                 Fourcc::Argb8888,
                 pixels,
                 1,
                 Transform::Normal,
                 None,
             ),
-            size: (width.cast_signed(), height.cast_signed()).into(),
+            size: size.into(),
             whole: Rectangle::from_size(Size::from(pixels).to_f64()),
         }
     }

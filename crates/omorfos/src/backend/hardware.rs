@@ -42,7 +42,7 @@ use smithay::reexports::input::{Device, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
-use super::winit::{listen, on_input};
+use super::winit::{cursor_themes, listen, on_input};
 use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -104,6 +104,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     listen(&mut session)?;
     let compositor = session.compositor_mut();
     compositor.suggest_scale(Scale::for_screen(u32::from(width), millimetres));
+    compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
 
     let screen = Rc::new(RefCell::new(Screen {

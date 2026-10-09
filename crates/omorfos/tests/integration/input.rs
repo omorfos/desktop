@@ -154,6 +154,7 @@ fn the_pointer_is_drawn_only_for_a_backend_that_asks() {
     let background = session.draw().at(301, 203);
 
     session.compositor_mut().show_pointer();
+    session.step();
     let picture = session.draw();
     assert_eq!(picture.at(301, 203), 0xffff_ffff, "inside the arrow");
     assert_eq!(picture.at(299, 203), background, "left of its tip");

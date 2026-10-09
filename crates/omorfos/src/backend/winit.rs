@@ -23,7 +23,7 @@ use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
-use crate::{Compositor, Input, Scale, Session};
+use crate::{Compositor, Input, Scale, Session, Themes};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
 const WHEEL_NOTCH: f64 = 15.0;
@@ -67,6 +67,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let density = backend.window().scale_factor();
     session.compositor_mut().suggest_scale(Scale::new(density));
     listen(&mut session)?;
+    // The pointer is drawn by omorfos, so that it looks as applications
+    // inside ask, and the host's is hidden over the window.
+    backend.window().set_cursor_visible(false);
+    let compositor = session.compositor_mut();
+    compositor.set_cursor_themes(cursor_themes());
+    compositor.show_pointer();
 
     let redraw = Rc::new(Cell::new(true));
     let wanted = Rc::clone(&redraw);
@@ -92,6 +98,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         reported: Vec::new(),
     };
     session.run(|compositor| screen.turn(compositor))
+}
+
+/// Where cursor themes are installed, going by the environment.
+pub(super) fn cursor_themes() -> Themes {
+    Themes::conventional(
+        env::var_os("XCURSOR_PATH").as_deref(),
+        env::var_os("HOME").as_deref(),
+    )
 }
 
 /// Opens the Wayland socket for clients and the IPC socket beside it.

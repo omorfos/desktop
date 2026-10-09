@@ -15,6 +15,7 @@ pub mod backend;
 pub mod bridge;
 pub mod cli;
 mod compositor;
+mod cursor;
 mod handlers;
 mod input;
 mod ipc;
@@ -23,6 +24,7 @@ mod scale;
 mod session;
 
 pub use compositor::{ClientState, Compositor};
+pub use cursor::Themes;
 pub use input::Input;
 pub use scale::Scale;
 pub use session::Session;

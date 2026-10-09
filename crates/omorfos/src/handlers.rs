@@ -35,12 +35,13 @@ use smithay::wayland::shell::xdg::{
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::fractional_scale::FractionalScaleHandler;
+use smithay::wayland::tablet_manager::TabletSeatHandler;
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -355,6 +356,10 @@ impl XdgDecorationHandler for Compositor {
 // every surface alike, so there is nothing to do when one asks to be told.
 impl FractionalScaleHandler for Compositor {}
 
+// Naming a shape for the pointer is part of a protocol that also covers
+// drawing tablets, which are not supported; this is all it needs of them.
+impl TabletSeatHandler for Compositor {}
+
 impl WlrLayerShellHandler for Compositor {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell
@@ -391,7 +396,11 @@ impl SeatHandler for Compositor {
         set_primary_focus(&self.display, seat, client);
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        // Whether it is shown depends on where the pointer is; see
+        // `Compositor::cursor_wanted`.
+        self.cursor = image;
+    }
 }
 
 impl SelectionHandler for Compositor {
@@ -468,6 +477,7 @@ delegate_shm!(Compositor);
 delegate_seat!(Compositor);
 delegate_output!(Compositor);
 delegate_fractional_scale!(Compositor);
+delegate_cursor_shape!(Compositor);
 delegate_viewporter!(Compositor);
 
 #[cfg(test)]

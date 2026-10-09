@@ -72,9 +72,9 @@ prefers. Several screens and hotplug are the next roadmap item.
 - Applications can only give the compositor shared-memory buffers. Those
   that insist on the GPU need the dmabuf protocol, which is not offered
   yet.
-- The pointer is always our arrow. Applications cannot change it, and it
-  is drawn into the frame instead of on a hardware cursor plane, so moving
-  it redraws a little of the screen.
+- The pointer was at first always our arrow; ADR 12 gave applications and
+  cursor themes their say. It is drawn into the frame instead of on a
+  hardware cursor plane, so moving it redraws a little of the screen.
 - Touchpad settings from `config.yaml` are given to touchpads when they
   appear and again when the configuration changes. This is glue and
   untested like the rest of the file.

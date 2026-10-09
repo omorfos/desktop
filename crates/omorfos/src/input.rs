@@ -5,7 +5,7 @@ use omorfos_core::{Edges, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
-use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, MotionEvent};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
@@ -13,7 +13,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
-use crate::compositor::Compositor;
+use crate::compositor::{Compositor, Look};
 use omorfos_core::KeyOutcome;
 
 /// An input event, reduced to what the compositor acts on.
@@ -68,6 +68,19 @@ fn virtual_terminal(keysym: Keysym) -> Option<i32> {
     (first..first + 12)
         .position(|switch| switch == keysym.raw())
         .and_then(|index| i32::try_from(index + 1).ok())
+}
+
+/// The pointer shape that says a drag here resizes these edges.
+fn resize_icon(edges: Edges) -> CursorIcon {
+    let has = |edge| edges.contains(edge);
+    let (left, right) = (has(Edges::LEFT), has(Edges::RIGHT));
+    let (top, bottom) = (has(Edges::TOP), has(Edges::BOTTOM));
+    match (left || right, top || bottom) {
+        (true, false) => CursorIcon::EwResize,
+        (false, _) => CursorIcon::NsResize,
+        (true, true) if left == top => CursorIcon::NwseResize,
+        (true, true) => CursorIcon::NeswResize,
+    }
 }
 
 /// Linux input event codes for the pointer buttons.
@@ -342,6 +355,36 @@ impl Compositor {
     }
 
     /// Whether the pointer is on the problem notice.
+    /// What the pointer should look like where it is.
+    ///
+    /// Over an application's window it is what the application asked for.
+    /// Everywhere else it is the compositor's to choose: a shape that says
+    /// what a drag is doing or would do, or the ordinary pointer.
+    pub(crate) fn cursor_wanted(&self) -> Look {
+        match self.drag {
+            Some(Drag::Move { .. } | Drag::Tab { .. }) => {
+                return Look::Icon(CursorIcon::Grabbing);
+            }
+            Some(Drag::Resize { edges, .. }) => return Look::Icon(resize_icon(edges)),
+            None => {}
+        }
+        if self.over_notice() || self.menu.is_some() {
+            return Look::Icon(CursorIcon::Default);
+        }
+        match self.under() {
+            Some(Under::Frame(_, Hit::Part(Part::Border(edges)))) => Look::Icon(resize_icon(edges)),
+            Some(Under::Frame(_, Hit::Surface(..)) | Under::Layer { .. }) => match &self.cursor {
+                CursorImageStatus::Hidden => Look::Hidden,
+                CursorImageStatus::Named(icon) => Look::Icon(*icon),
+                CursorImageStatus::Surface(surface) if surface.is_alive() => {
+                    Look::Surface(surface.clone())
+                }
+                CursorImageStatus::Surface(_) => Look::Icon(CursorIcon::Default),
+            },
+            _ => Look::Icon(CursorIcon::Default),
+        }
+    }
+
     fn over_notice(&self) -> bool {
         let position = self.pointer_position();
         self.notice

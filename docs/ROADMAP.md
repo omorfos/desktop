@@ -69,8 +69,8 @@ Not done yet, and where it is planned:
 - Clipboard: done in milestone 7. Drag-and-drop: see its known gaps.
 - Popup grabs and the one-frame flash of rule-maximized windows: done in
   milestone 7.
-- The mouse cursor is the host's; drawing our own, and client-set cursors,
-  come with the hardware backend in milestone 8.
+- The mouse cursor was the host's; our own, and client-set cursors, were
+  done in milestone 8.
 - Problems (bad configuration, a program that would not start) were only
   printed to standard error; they are shown on screen since milestone 7.
 - The nested backend was run under GNOME with GTK applications and
@@ -119,8 +119,8 @@ Still open, carried forward:
   has redrawn at the new size.
 - Only the titlebar's top corners are rounded; rounding the window itself
   needs a shader and waits for the hardware backend (milestone 8).
-- Pointer cursor shapes (for example a resize arrow over a border) come
-  with our own cursor in milestone 8.
+- Pointer cursor shapes (for example a resize arrow over a border): done
+  in milestone 8.
 
 ## 7. IPC and ecosystem protocols
 
@@ -168,7 +168,8 @@ Known gaps:
 - [ ] Multi-monitor and hotplug
 - [x] Scaling, whole and fractional: automatic from the screen's density
       or set in `config.yaml` (ADR 11)
-- [ ] Our own pointer cursor, client-set cursors and cursor shapes
+- [x] Our own pointer cursor, client-set cursors and cursor shapes, from
+      the installed cursor theme (ADR 12)
 - [ ] idle-notify and session-lock (moved from milestone 7)
 - [ ] A `wayland-sessions` entry for login screens
 - [ ] Rounded window corners (needs a shader)
