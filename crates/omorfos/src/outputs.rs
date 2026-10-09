@@ -106,7 +106,7 @@ impl Compositor {
             output: output.clone(),
             transform,
             suggested,
-            scale: bridge::scale(self.config().general.output.scale, suggested),
+            scale: self.scale_for(name, suggested),
             blanked: Cell::new(false),
         };
         head.set_pixels(size);
@@ -221,31 +221,55 @@ impl Compositor {
         ))
     }
 
-    /// Settles each output's scale, from the configuration or else the
-    /// backend's suggestion, and if any changed lays the outputs out again.
+    /// The scale for the output called `name`: what the configuration says
+    /// for it by name, or else for every output, or else what the backend
+    /// suggested.
+    fn scale_for(&self, name: &str, suggested: Scale) -> Scale {
+        let general = &self.config().general;
+        let named = general.outputs.named(name).and_then(|output| output.scale);
+        bridge::scale(named.unwrap_or(general.output.scale), suggested)
+    }
+
+    /// Settles each output's scale and place, from the configuration and
+    /// the backend's suggestions, and lays the outputs out again.
     pub(crate) fn apply_scale(&mut self) {
-        let configured = self.config().general.output.scale;
-        let mut changed = false;
-        for head in &mut self.heads {
-            let scale = bridge::scale(configured, head.suggested);
-            changed |= scale != head.scale;
-            head.scale = scale;
-        }
-        if changed {
-            for head in &self.heads {
+        let scales = self.heads.iter();
+        let scales: Vec<Scale> = scales
+            .map(|head| self.scale_for(&head.output.name(), head.suggested))
+            .collect();
+        for (head, scale) in self.heads.iter_mut().zip(scales) {
+            if scale != head.scale {
+                head.scale = scale;
                 let pixels = head.pixels();
                 head.set_pixels((pixels.w, pixels.h));
             }
-            self.lay_out();
         }
+        self.lay_out();
     }
 
-    /// Stands the outputs side by side, left to right in the order they
-    /// were added, and brings everything that depends on where they are up
-    /// to date.
+    /// The outputs in the order they stand, from the left: those the
+    /// configuration lists, in the order it lists them, and then the rest
+    /// in the order they were added.
+    fn arranged(&self) -> Vec<usize> {
+        let listed = self.config().general.outputs.listed();
+        let place = |index: &usize| {
+            let name = self.heads[*index].output.name();
+            let place = listed.iter().position(|output| output.name == name);
+            // Those not listed come after all that are.
+            place.unwrap_or(usize::MAX)
+        };
+        let mut order: Vec<usize> = (0..self.heads.len()).collect();
+        // The sort is stable, so those not listed keep their order.
+        order.sort_by_key(place);
+        order
+    }
+
+    /// Stands the outputs side by side from the left, and brings everything
+    /// that depends on where they are up to date.
     fn lay_out(&mut self) {
         let mut left = 0;
-        for head in &self.heads {
+        for index in self.arranged() {
+            let head = &self.heads[index];
             let at = Point::from((left, 0));
             head.output.change_current_state(None, None, None, Some(at));
             self.space.map_output(&head.output, at);

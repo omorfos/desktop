@@ -186,7 +186,8 @@ Known gaps:
 
 - [x] Workspaces per monitor: each screen with its own set, so that
       switching workspace on one leaves the others as they are (ADR 17)
-- [ ] Settings for particular outputs, by name: where each stands, and its
-      scale
+- [x] Settings for particular outputs, by name: the order they stand in,
+      and each one's scale. Side by side only; one above another is not
+      done
 - [ ] XWayland behind a feature flag
 - [ ] Screen capture and portals
