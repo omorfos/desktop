@@ -64,14 +64,27 @@ struct Screen {
     /// Whether the seat is ours. It is not while the user is on another
     /// virtual terminal.
     active: bool,
-    /// Whether a frame has been handed to the screen and not yet shown.
-    queued: bool,
+    /// What the screen is showing, as far as drawing is concerned.
+    picture: Picture,
     /// Whether applications are already due to be told to draw again.
     ticking: bool,
     /// The touchpads plugged in, and the settings they were last given.
     touchpads: Vec<Device>,
     configured: Option<Touchpad>,
     reported: Vec<String>,
+}
+
+/// What the screen is showing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Picture {
+    /// Not ours: someone else's, or nothing yet. The next frame has to be
+    /// drawn in full, whatever has or has not changed.
+    Stale,
+    /// Our last frame.
+    Ours,
+    /// Our last frame, with the next one handed over and not yet shown.
+    /// Nothing more can be drawn until it is.
+    Queued,
 }
 
 /// Runs the compositor on the hardware until the session ends.
@@ -117,7 +130,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         frame: Duration::from_secs(1) / mode.vrefresh().max(1),
         started: Instant::now(),
         active: true,
-        queued: false,
+        picture: Picture::Stale,
         ticking: false,
         touchpads: Vec::new(),
         configured: None,
@@ -130,9 +143,69 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     devices
         .udev_assign_seat(&seat_name)
         .map_err(|()| "cannot find the keyboard and mouse")?;
-    let plugged = Rc::clone(&screen);
+    watch_devices(&session, &screen, devices.clone())?;
+
+    // Leaving for another virtual terminal, and coming back.
+    let switching = Rc::clone(&screen);
+    session
+        .handle()
+        .insert_source(seat_events, move |event, (), _| {
+            let mut screen = switching.borrow_mut();
+            match event {
+                SeatEvent::PauseSession => {
+                    devices.suspend();
+                    screen.card.pause();
+                    screen.active = false;
+                }
+                SeatEvent::ActivateSession => {
+                    let _ = devices.resume();
+                    let _ = screen.card.activate(false);
+                    // Whatever was on screen is gone, and nothing of ours
+                    // need have changed meanwhile, so the next frame is
+                    // drawn in full and shown regardless.
+                    screen.surface.reset_buffers();
+                    screen.picture = Picture::Stale;
+                    screen.active = true;
+                }
+            }
+        })?;
+
+    // A frame reaching the screen.
+    let shown = Rc::clone(&screen);
+    session
+        .handle()
+        .insert_source(card_events, move |event, _, compositor| {
+            let mut screen = shown.borrow_mut();
+            match event {
+                DrmEvent::VBlank(_) => {
+                    let _ = screen.surface.frame_submitted();
+                    // A frame from before the screen was taken away says
+                    // nothing about what is on it now.
+                    if screen.picture == Picture::Queued {
+                        screen.picture = Picture::Ours;
+                    }
+                    compositor.send_frames(screen.started.elapsed());
+                }
+                DrmEvent::Error(error) => {
+                    let _ = writeln!(stderr(), "omorfos: {error}");
+                }
+            }
+        })?;
+
+    let handle = session.handle();
+    session.run(move |compositor| turn(&screen, &handle, compositor))
+}
+
+/// Reads the keyboard, mice and touchpads, and keeps track of which
+/// touchpads there are so that they can be given their settings.
+fn watch_devices(
+    session: &Session,
+    screen: &Rc<RefCell<Screen>>,
+    devices: Libinput,
+) -> Result<(), Box<dyn Error>> {
+    let plugged = Rc::clone(screen);
     session.handle().insert_source(
-        LibinputInputBackend::new(devices.clone()),
+        LibinputInputBackend::new(devices),
         move |event, (), compositor| {
             match &event {
                 // A device that can count fingers tapping is a touchpad.
@@ -151,51 +224,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             on_input(compositor, event);
         },
     )?;
-
-    // Leaving for another virtual terminal, and coming back.
-    let switching = Rc::clone(&screen);
-    session
-        .handle()
-        .insert_source(seat_events, move |event, (), _| {
-            let mut screen = switching.borrow_mut();
-            match event {
-                SeatEvent::PauseSession => {
-                    devices.suspend();
-                    screen.card.pause();
-                    screen.active = false;
-                }
-                SeatEvent::ActivateSession => {
-                    let _ = devices.resume();
-                    let _ = screen.card.activate(false);
-                    // Whatever was on screen is gone. Buffers of no known
-                    // age are drawn in full.
-                    screen.surface.reset_buffers();
-                    screen.queued = false;
-                    screen.active = true;
-                }
-            }
-        })?;
-
-    // A frame reaching the screen.
-    let shown = Rc::clone(&screen);
-    session
-        .handle()
-        .insert_source(card_events, move |event, _, compositor| {
-            let mut screen = shown.borrow_mut();
-            match event {
-                DrmEvent::VBlank(_) => {
-                    let _ = screen.surface.frame_submitted();
-                    screen.queued = false;
-                    compositor.send_frames(screen.started.elapsed());
-                }
-                DrmEvent::Error(error) => {
-                    let _ = writeln!(stderr(), "omorfos: {error}");
-                }
-            }
-        })?;
-
-    let handle = session.handle();
-    session.run(move |compositor| turn(&screen, &handle, compositor))
+    Ok(())
 }
 
 /// What the screen does each turn of the loop: report, switch virtual
@@ -211,7 +240,7 @@ fn turn(
         let _ = now.seat.change_vt(terminal);
     }
     now.configure_touchpads(compositor.config().general.touchpad);
-    if !now.active || now.queued {
+    if !now.active || now.picture == Picture::Queued {
         return Ok(());
     }
     if now.draw(compositor)? || now.ticking {
@@ -320,6 +349,15 @@ impl Screen {
     /// was anything new to show.
     fn draw(&mut self, compositor: &mut Compositor) -> Result<bool, Box<dyn Error>> {
         let (mut buffer, age) = self.surface.next_buffer()?;
+        // A buffer that was taken and never shown, because nothing had
+        // changed, is handed out again with the age it had. After coming
+        // back from another virtual terminal that age means nothing: the
+        // screen holds someone else's picture. An age of zero draws it all.
+        let age = if self.picture == Picture::Stale {
+            0
+        } else {
+            age
+        };
         let mut renderer = self.gpus.single_renderer(&self.renderer)?;
         let drawn = {
             let mut framebuffer = renderer.bind(&mut buffer)?;
@@ -334,7 +372,7 @@ impl Screen {
         match drawn {
             Some((damage, sync)) => {
                 self.surface.queue_buffer(Some(sync), Some(damage), ())?;
-                self.queued = true;
+                self.picture = Picture::Queued;
                 Ok(true)
             }
             None => Ok(false),
