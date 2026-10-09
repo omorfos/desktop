@@ -93,6 +93,11 @@ Decorations and the menu are painted on the CPU by `paint` into a `Canvas`
 and uploaded as textures, repainted only when their appearance changes. See
 [adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md).
 
+Everything above is in units of layout, not pixels. The output has a
+scale, automatic or configured, that turns one into the other when
+drawing, and applications are told it so that they draw sharply. See
+[adr/0011-scaling.md](adr/0011-scaling.md).
+
 Because the renderer and the input source are both parameters, the tests in
 `crates/omorfos/tests/integration` run the whole compositor against a real
 Wayland client with the pixman software renderer and assert on pixels. See

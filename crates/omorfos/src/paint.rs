@@ -12,6 +12,8 @@ use cosmic_text::{
 use omorfos_config::{Color, Font, Theme};
 use omorfos_core::{Decoration, Item, Menu, Panel};
 
+use crate::Scale;
+
 /// Space between a tab's edge and its title, in pixels.
 const PADDING: u32 = 10;
 
@@ -24,28 +26,53 @@ const ARROW: u32 = 14;
 /// The height of the pointer arrow, in pixels.
 const POINTER: u32 = 16;
 
-/// A rectangle on a canvas: left, top, width, height.
+/// A rectangle on a canvas: left, top, width, height, in units of layout.
 type Area = (i32, i32, u32, u32);
 
 /// A rectangle of pixels being drawn, initially transparent.
+///
+/// What is drawn is described in units of layout, and the canvas has as
+/// many pixels to a unit as its scale says, so the same drawing comes out
+/// sharp on any screen.
 ///
 /// Pixels are stored as ARGB with premultiplied alpha, in the byte order
 /// renderers call `Argb8888`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Canvas {
+    /// The size in pixels.
     width: u32,
     height: u32,
+    /// The size in units of layout.
+    units: (u32, u32),
+    scale: Scale,
     pixels: Vec<u8>,
 }
 
 impl Canvas {
+    /// A canvas with one pixel to a unit.
+    #[cfg(test)]
     pub(crate) fn new(width: u32, height: u32) -> Self {
-        let bytes = usize::try_from(u64::from(width) * u64::from(height) * 4).unwrap_or(0);
+        Self::scaled(width, height, Scale::ONE)
+    }
+
+    /// A canvas `width` by `height` units, with `scale` pixels to a unit.
+    pub(crate) fn scaled(width: u32, height: u32, scale: Scale) -> Self {
+        let (_, pixels_wide) = span(scale, 0, width);
+        let (_, pixels_high) = span(scale, 0, height);
+        let bytes =
+            usize::try_from(u64::from(pixels_wide) * u64::from(pixels_high) * 4).unwrap_or(0);
         Self {
-            width,
-            height,
+            width: pixels_wide,
+            height: pixels_high,
+            units: (width, height),
+            scale,
             pixels: vec![0; bytes],
         }
+    }
+
+    /// The size in units of layout.
+    pub(crate) const fn units(&self) -> (u32, u32) {
+        self.units
     }
 
     pub(crate) const fn width(&self) -> u32 {
@@ -72,8 +99,9 @@ impl Canvas {
         self.pixels.get_mut(offset..offset.saturating_add(4))
     }
 
-    /// Draws `color` over the pixel at `(x, y)`, as opaque as `coverage`
-    /// says (`255` for fully). Does nothing off the canvas.
+    /// Draws `color` over the pixel at `(x, y)`, counted in pixels, as
+    /// opaque as `coverage` says (`255` for fully). Does nothing off the
+    /// canvas.
     pub(crate) fn blend(&mut self, x: i32, y: i32, color: Color, coverage: u8) {
         let alpha = u32::from(color.alpha) * u32::from(coverage) / 255;
         if let Some(pixel) = self.pixel_mut(x, y) {
@@ -88,6 +116,8 @@ impl Canvas {
 
     /// Fills a rectangle with `color`, clipped to the canvas.
     pub(crate) fn fill(&mut self, (x, y, width, height): Area, color: Color) {
+        let (x, width) = span(self.scale, x, width);
+        let (y, height) = span(self.scale, y, height);
         let end = |start: i32, length: u32, limit: u32| {
             let end = i64::from(start) + i64::from(length);
             i32::try_from(end.min(i64::from(limit))).unwrap_or(i32::MAX)
@@ -101,6 +131,7 @@ impl Canvas {
 
     /// Cuts the top two corners to a quarter circle of `radius`, smoothly.
     pub(crate) fn round_top_corners(&mut self, radius: u32) {
+        let (_, radius) = span(self.scale, 0, radius);
         let radius = radius.min(self.height).min(self.width / 2);
         for y in 0..radius {
             for x in 0..radius {
@@ -123,6 +154,18 @@ impl Canvas {
         let offset = usize::try_from((y * self.width + x) * 4).unwrap();
         u32::from_le_bytes(self.pixels[offset..offset + 4].try_into().unwrap())
     }
+}
+
+/// Where a length of `length` units starting at `start` falls in pixels:
+/// its first pixel and how many it covers.
+///
+/// Both ends are rounded, not the length, so that two lengths that meet in
+/// units still meet in pixels.
+fn span(scale: Scale, start: i32, length: u32) -> (i32, u32) {
+    let end = i64::from(start) + i64::from(length);
+    let end = scale.pixels(i32::try_from(end).unwrap_or(i32::MAX));
+    let start = scale.pixels(start);
+    (start, end.abs_diff(start))
 }
 
 /// Sub-pixel samples taken per pixel when smoothing a corner: a 4 by 4 grid.
@@ -178,10 +221,14 @@ impl Text {
         color: Color,
         font: &Font,
     ) {
-        let (left, top, width, height) = area;
+        let (left, width) = span(canvas.scale, area.0, area.2);
+        let (top, height) = span(canvas.scale, area.1, area.3);
         let float = |length: u32| f32::from(u16::try_from(length).unwrap_or(u16::MAX));
-        // Font sizes are in points, at the conventional 96 pixels per inch.
-        let size = float(font.size.get()) * 96.0 / 72.0;
+        // Font sizes are in points, at the conventional 96 units per inch.
+        // A scale is a few quarters, which an `f32` holds exactly.
+        #[expect(clippy::cast_possible_truncation, reason = "a scale is at most four")]
+        let scale = canvas.scale.factor() as f32;
+        let size = float(font.size.get()) * 96.0 / 72.0 * scale;
         let family = match font.family.as_str() {
             "sans-serif" => Family::SansSerif,
             "serif" => Family::Serif,
@@ -234,6 +281,7 @@ pub(crate) fn titlebar(
     titles: &[&str],
     active: usize,
     focused: bool,
+    scale: Scale,
 ) -> Canvas {
     let bar = decoration.titlebar();
     let (width, height) = (bar.size.width, bar.size.height);
@@ -245,7 +293,7 @@ pub(crate) fn titlebar(
     };
     let border = theme.border.width.get();
     let edge = border.cast_signed();
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::scaled(width, height, scale);
 
     canvas.fill((0, 0, width, height), palette.border);
     let inner_height = height.saturating_sub(border);
@@ -303,11 +351,12 @@ pub(crate) fn menu_panel<A: Clone>(
     theme: &Theme,
     menu: &Menu<A>,
     panel: &Panel<A>,
+    scale: Scale,
 ) -> Canvas {
     let bounds = menu.panel_rect(panel);
     let (width, height) = (bounds.size.width, bounds.size.height);
     let colors = &theme.colors;
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::scaled(width, height, scale);
     canvas.fill((0, 0, width, height), colors.unfocused.border);
     canvas.fill(
         (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
@@ -367,7 +416,13 @@ const NOTICE_LINES: usize = 6;
 
 /// Paints the notice that tells the user something is wrong: a heading and
 /// one line per problem, each cut short if it does not fit.
-pub(crate) fn notice(text: &mut Text, theme: &Theme, problems: &[String], width: u32) -> Canvas {
+pub(crate) fn notice(
+    text: &mut Text,
+    theme: &Theme,
+    problems: &[String],
+    width: u32,
+    scale: Scale,
+) -> Canvas {
     let hidden = problems.len().saturating_sub(NOTICE_LINES);
     let heading = "Problems (click to dismiss)".to_owned();
     let more = (hidden > 0).then(|| format!("\u{2026} and {hidden} more"));
@@ -379,7 +434,7 @@ pub(crate) fn notice(text: &mut Text, theme: &Theme, problems: &[String], width:
     let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
     let height = rows.saturating_mul(NOTICE_ROW).saturating_add(PADDING * 2);
     let colors = &theme.colors;
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::scaled(width, height, scale);
     canvas.fill((0, 0, width, height), colors.accent);
     canvas.fill(
         (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
@@ -407,13 +462,13 @@ pub(crate) fn notice(text: &mut Text, theme: &Theme, problems: &[String], width:
 
 /// Paints the pointer: a white arrow with a dark outline, whose tip is the
 /// top-left pixel, so that it shows on any background.
-pub(crate) fn pointer() -> Canvas {
+pub(crate) fn pointer(scale: Scale) -> Canvas {
     let outline = Color::rgb(0x14, 0x16, 0x1b);
     let inside = Color::rgb(0xff, 0xff, 0xff);
     // The arrow widens by a pixel a row down its left edge, then closes
     // twice as fast.
     let width = |row: u32| (row + 1).min((POINTER - row) * 2);
-    let mut canvas = Canvas::new(POINTER * 3 / 4, POINTER);
+    let mut canvas = Canvas::scaled(POINTER * 3 / 4, POINTER, scale);
     for row in 0..POINTER {
         canvas.fill((0, row.cast_signed(), width(row), 1), outline);
     }
@@ -440,7 +495,7 @@ mod tests {
 
     #[test]
     fn the_pointer_is_a_light_arrow_with_a_dark_edge_and_its_tip_at_the_corner() {
-        let arrow = pointer();
+        let arrow = pointer(Scale::ONE);
         let dark = 0xff14_161b;
         assert_eq!(arrow.at(0, 0), dark, "the tip");
         assert_eq!(arrow.at(0, 8), dark, "its left edge");
@@ -449,6 +504,42 @@ mod tests {
         assert_eq!(arrow.at(9, 8), 0, "clear beyond it");
         assert_eq!(arrow.at(5, 2), 0, "clear above the slant");
         assert_eq!(arrow.at(1, 15), dark, "closed at the bottom");
+    }
+
+    #[test]
+    fn a_scaled_canvas_has_as_many_pixels_to_a_unit_as_its_scale_says() {
+        let mut canvas = Canvas::scaled(10, 4, Scale::new(1.5));
+        assert_eq!(canvas.units(), (10, 4));
+        assert_eq!((canvas.width(), canvas.height()), (15, 6));
+
+        // Two halves that meet in units meet in pixels, with no gap and no
+        // overlap, although five units is seven and a half pixels.
+        canvas.fill((0, 0, 5, 4), RED);
+        canvas.fill((5, 0, 5, 4), BLUE);
+        let row: Vec<u32> = (0..15).map(|x| canvas.at(x, 5)).collect();
+        assert_eq!(row[..8], [0xffff_0000; 8]);
+        assert_eq!(row[8..], [0xff00_00ff; 7]);
+    }
+
+    #[test]
+    fn text_and_corners_grow_with_the_scale() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let mut paint =
+            |scale| titlebar(&mut text, &theme, &frame(1), &["Terminal"], 0, true, scale);
+        let plain = paint(Scale::ONE);
+        let doubled = paint(Scale::new(2.0));
+        assert_eq!((doubled.width(), doubled.height()), (800, 56));
+        assert_eq!(doubled.units(), (400, 28));
+
+        let background = argb(theme.colors.focused.titlebar);
+        let ink = |canvas: &Canvas, columns| inked(canvas, columns, background);
+        assert!(
+            ink(&doubled, 20..240) > ink(&plain, 10..120) * 3,
+            "letters twice as tall and twice as wide cover about four times as much"
+        );
+        assert_eq!(plain.at(1, 1), 0, "inside the rounded corner");
+        assert_eq!(doubled.at(3, 3), 0, "which is twice the size");
     }
 
     #[test]
@@ -691,7 +782,7 @@ mod tests {
         let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
 
         // Rows: Terminal at 4..32, the separator at 32..41, Session at 41..69.
-        let plain = menu_panel(&mut text, &theme, &menu, &menu.panels()[0]);
+        let plain = menu_panel(&mut text, &theme, &menu, &menu.panels()[0], Scale::ONE);
         assert_eq!((plain.width(), plain.height()), (200, 73));
         assert_eq!(plain.at(0, 30), argb(colors.unfocused.border), "outlined");
         assert_eq!(plain.at(190, 10), argb(colors.focused.titlebar));
@@ -711,7 +802,7 @@ mod tests {
         assert!(arrow_ink > 3, "the submenu row has an arrow");
 
         menu.hover(Point::new(350, 215));
-        let lit = menu_panel(&mut text, &theme, &menu, &menu.panels()[0]);
+        let lit = menu_panel(&mut text, &theme, &menu, &menu.panels()[0], Scale::ONE);
         assert_eq!(
             lit.at(190, 10),
             argb(colors.accent),
@@ -734,7 +825,7 @@ mod tests {
             "keys.yaml: no such key".to_owned(),
         ];
 
-        let canvas = notice(&mut text, &theme, &problems, 400);
+        let canvas = notice(&mut text, &theme, &problems, 400, Scale::ONE);
 
         // A heading and two problems, 22 pixels each, plus padding.
         assert_eq!((canvas.width(), canvas.height()), (400, 86));
@@ -761,8 +852,8 @@ mod tests {
         let mut text = Text::new();
         let few: Vec<String> = (0..6).map(|n| format!("problem {n}")).collect();
         let many: Vec<String> = (0..40).map(|n| format!("problem {n}")).collect();
-        let exactly = notice(&mut text, &Theme::default(), &few, 400);
-        let capped = notice(&mut text, &Theme::default(), &many, 400);
+        let exactly = notice(&mut text, &Theme::default(), &few, 400, Scale::ONE);
+        let capped = notice(&mut text, &Theme::default(), &many, 400, Scale::ONE);
         assert_eq!(exactly.height(), 7 * 22 + 20, "a heading and six problems");
         assert_eq!(
             capped.height(),
@@ -785,7 +876,15 @@ mod tests {
     fn a_titlebar_spans_the_frame_with_an_outline_and_rounded_corners() {
         let theme = Theme::default();
         let mut text = Text::new();
-        let canvas = titlebar(&mut text, &theme, &frame(1), &["Terminal"], 0, true);
+        let canvas = titlebar(
+            &mut text,
+            &theme,
+            &frame(1),
+            &["Terminal"],
+            0,
+            true,
+            Scale::ONE,
+        );
 
         assert_eq!((canvas.width(), canvas.height()), (400, 28));
         assert_eq!(canvas.at(0, 0), 0, "rounded");
@@ -816,7 +915,15 @@ mod tests {
     fn an_unfocused_titlebar_uses_the_unfocused_colours() {
         let theme = Theme::default();
         let mut text = Text::new();
-        let canvas = titlebar(&mut text, &theme, &frame(1), &["Terminal"], 0, false);
+        let canvas = titlebar(
+            &mut text,
+            &theme,
+            &frame(1),
+            &["Terminal"],
+            0,
+            false,
+            Scale::ONE,
+        );
         assert_eq!(canvas.at(200, 0), argb(theme.colors.unfocused.border));
         assert_eq!(canvas.at(300, 14), argb(theme.colors.unfocused.titlebar));
     }
@@ -827,7 +934,7 @@ mod tests {
         let colors = &theme.colors;
         let mut text = Text::new();
         let titles = ["one", "two"];
-        let focused = titlebar(&mut text, &theme, &frame(2), &titles, 1, true);
+        let focused = titlebar(&mut text, &theme, &frame(2), &titles, 1, true, Scale::ONE);
 
         // Tab 0 covers columns 0..200, tab 1 covers 200..400.
         assert_eq!(
@@ -848,7 +955,7 @@ mod tests {
         );
         assert_eq!(focused.at(150, 27), argb(colors.unfocused.titlebar));
 
-        let unfocused = titlebar(&mut text, &theme, &frame(2), &titles, 0, false);
+        let unfocused = titlebar(&mut text, &theme, &frame(2), &titles, 0, false, Scale::ONE);
         assert_eq!(
             unfocused.at(150, 27),
             argb(colors.unfocused.border),

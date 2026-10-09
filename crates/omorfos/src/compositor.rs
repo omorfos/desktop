@@ -30,7 +30,7 @@ use smithay::desktop::{PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::PointerHandle;
 use smithay::input::{Seat, SeatState};
-use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{
     Interest, LoopHandle, Mode as Trigger, PostAction, RegistrationToken,
@@ -39,8 +39,11 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::Sta
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform};
-use smithay::wayland::compositor::{CompositorClientState, CompositorState};
+use smithay::wayland::compositor::{
+    CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
+};
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState};
+use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fractional_scale};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
@@ -50,8 +53,10 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, ToplevelStateSet, ToplevelSurface, XdgShellState,
 };
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 
+use crate::Scale;
 use crate::bridge::{self, Bindings};
 use crate::input::Drag;
 use crate::ipc::Server;
@@ -59,6 +64,23 @@ use crate::paint::{self, Text};
 
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
+
+/// Starts watching the configuration directory, creating it if need be.
+/// Failing to is not fatal: it is returned as a problem to tell the user.
+fn watch(store: &Store) -> (Option<Watcher>, Vec<String>) {
+    let watching =
+        fs::create_dir_all(store.directory()).and_then(|()| Watcher::new(store.directory()));
+    match watching {
+        Ok(watcher) => (Some(watcher), Vec::new()),
+        Err(error) => {
+            let problem = format!(
+                "{}: changes will not be picked up automatically: {error}",
+                store.directory().display()
+            );
+            (None, vec![problem])
+        }
+    }
+}
 
 /// Per-client data the compositor attaches to every connection.
 #[derive(Debug, Default)]
@@ -95,6 +117,12 @@ pub struct Compositor {
     pub(crate) popups: PopupManager,
     output: Output,
     output_transform: Transform,
+    /// How many pixels the output draws to a unit of layout.
+    scale: Scale,
+    /// The scale the backend says suits the screen.
+    suggested_scale: Scale,
+    _fractional_scale: FractionalScaleManagerState,
+    _viewporter: ViewporterState,
     /// The output as the desktop was last told about it.
     screen: Screen,
     pub(crate) layer_shell: WlrLayerShellState,
@@ -138,7 +166,7 @@ pub struct Compositor {
     pub(crate) pointer_location: Point<f64, Logical>,
     /// The picture of the pointer, when the compositor is the one to draw
     /// it.
-    pointer_image: Option<MemoryRenderBuffer>,
+    pointer_image: Option<Painted>,
     /// The virtual terminal the user asked to switch to, until the backend
     /// collects it.
     pub(crate) terminal_wanted: Option<i32>,
@@ -180,21 +208,12 @@ impl Compositor {
         output_transform: Transform,
     ) -> Result<Self, Box<dyn Error>> {
         let store = Store::open(config_directory);
-        let watching =
-            fs::create_dir_all(store.directory()).and_then(|()| Watcher::new(store.directory()));
-        let mut startup_problems = Vec::new();
-        let watcher = match watching {
-            Ok(watcher) => Some(watcher),
-            Err(error) => {
-                startup_problems.push(format!(
-                    "{}: changes will not be picked up automatically: {error}",
-                    store.directory().display()
-                ));
-                None
-            }
-        };
+        let (watcher, startup_problems) = watch(&store);
 
-        let surfaces = CompositorState::new::<Self>(&display);
+        // Version 6 lets a surface be told the scale to draw at.
+        let surfaces = CompositorState::new_v6::<Self>(&display);
+        let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
+        let viewporter = ViewporterState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
@@ -239,6 +258,10 @@ impl Compositor {
                     popups: PopupManager::default(),
                     output,
                     output_transform,
+                    scale: Scale::ONE,
+                    suggested_scale: Scale::ONE,
+                    _fractional_scale: fractional_scale,
+                    _viewporter: viewporter,
                     screen: Screen::default(),
                     layer_shell,
                     data_device,
@@ -312,12 +335,65 @@ impl Compositor {
         self.output.change_current_state(
             Some(mode),
             Some(self.output_transform),
-            Some(Scale::Integer(1)),
+            Some(OutputScale::Fractional(self.scale.factor())),
             Some((0, 0).into()),
         );
         self.output.set_preferred(mode);
         layer_map_for_output(&self.output).arrange();
         self.update_screen();
+    }
+
+    /// Says what scale suits the screen, which a backend knows from how
+    /// dense it is. It is used unless the configuration names one.
+    pub fn suggest_scale(&mut self, scale: Scale) {
+        self.suggested_scale = scale;
+        self.apply_scale();
+    }
+
+    /// How many pixels the output draws to a unit of layout.
+    #[must_use]
+    pub const fn scale(&self) -> Scale {
+        self.scale
+    }
+
+    /// Settles the scale, from the configuration or else the backend's
+    /// suggestion, and if it changed lays the output out again at it.
+    fn apply_scale(&mut self) {
+        let scale = bridge::scale(self.config().general.output.scale, self.suggested_scale);
+        if scale != self.scale {
+            self.scale = scale;
+            let size = self.output_size();
+            self.resize_output((size.w, size.h));
+            // The pointer is the one picture that is not repainted as part
+            // of bringing the scene up to date.
+            if self.pointer_image.is_some() {
+                self.show_pointer();
+            }
+        }
+    }
+
+    /// Tells every surface the scale it is shown at, so that applications
+    /// draw at that size themselves and are not stretched. A surface is
+    /// told once, and again only if the scale changes.
+    fn announce_scale(&self) {
+        let tell = |surface: &WlSurface, states: &SurfaceData| {
+            send_surface_state(surface, states, self.scale.whole(), Transform::Normal);
+            with_fractional_scale(states, |fractional| {
+                fractional.set_preferred_scale(self.scale.factor());
+            });
+            self.output.enter(surface);
+        };
+        for toplevel in &self.unmapped {
+            with_states(toplevel.wl_surface(), |states| {
+                tell(toplevel.wl_surface(), states);
+            });
+        }
+        for mapped in &self.windows {
+            mapped.window.with_surfaces(tell);
+        }
+        for layer in layer_map_for_output(&self.output).layers() {
+            layer.with_surfaces(tell);
+        }
     }
 
     /// Tells the desktop how big the output is and how much of it panels
@@ -332,7 +408,7 @@ impl Compositor {
                 ),
             )
         };
-        let size = self.output_size().to_logical(1);
+        let size = self.logical_size();
         let screen = Screen {
             area: rect(Rectangle::from_size(size)),
             usable: rect(layer_map_for_output(&self.output).non_exclusive_zone()),
@@ -358,6 +434,14 @@ impl Compositor {
             .unwrap_or_default()
     }
 
+    /// The size of the output in units of layout, which is what windows
+    /// and the pointer are positioned in.
+    #[must_use]
+    pub fn logical_size(&self) -> Size<i32, Logical> {
+        let size = self.output_size();
+        (self.scale.units(size.w), self.scale.units(size.h)).into()
+    }
+
     // --- Lifecycle -----------------------------------------------------------
 
     /// Returns `false` once the session has been asked to end.
@@ -369,7 +453,7 @@ impl Compositor {
     /// Draws the pointer as part of the output from now on. For a backend
     /// that drives the screen itself, where nothing else would show it.
     pub fn show_pointer(&mut self) {
-        self.pointer_image = Some(buffer(&paint::pointer()));
+        self.pointer_image = Some(Painted::new(&paint::pointer(self.scale)));
     }
 
     /// The virtual terminal the user has asked to switch to since this was
@@ -477,6 +561,7 @@ impl Compositor {
         self.desktop.set_rules(bridge::rules(&config.rules));
         self.desktop
             .set_workspace_count(config.general.workspaces.names().len());
+        self.apply_scale();
 
         let keys_file = self.store.directory().join("keys.yaml");
         let (bindings, unknown_keys) = bridge::bindings(&config.keys, &keys_file);
@@ -540,7 +625,7 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
-        let size = self.output_size();
+        let size = self.logical_size();
         let area = Rect::new(
             DomainPoint::new(0, 0),
             DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs()),
@@ -603,6 +688,7 @@ impl Compositor {
     fn sync(&mut self) {
         layer_map_for_output(&self.output).cleanup();
         self.update_screen();
+        self.announce_scale();
         let focused = self.desktop.focused();
         let frames: Vec<FrameInfo> = self
             .desktop
@@ -648,7 +734,7 @@ impl Compositor {
                                 shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
                             })
                             .and_then(|index| previous.swap_remove(index).chrome);
-                        Chrome::paint(text, &config.theme, cached, frame, decoration)
+                        Chrome::paint(text, &config.theme, self.scale, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     scene.push((
@@ -694,6 +780,7 @@ impl Compositor {
                 && notice.problems == self.problems
                 && notice.theme == *theme
                 && notice.output_width == output_width
+                && notice.scale == self.scale
         });
         self.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
@@ -702,18 +789,20 @@ impl Compositor {
                 theme,
                 &self.problems,
                 output_width,
+                self.scale,
             )),
             (None, false) => None,
         };
 
         // Repaint the menu if it, or the theme, changed since it was drawn.
-        let current = self
-            .menu_chrome
-            .take()
-            .filter(|chrome| self.menu.as_ref() == Some(&chrome.menu) && chrome.theme == *theme);
+        let current = self.menu_chrome.take().filter(|chrome| {
+            self.menu.as_ref() == Some(&chrome.menu)
+                && chrome.theme == *theme
+                && chrome.scale == self.scale
+        });
         self.menu_chrome = match (current, &self.menu) {
             (Some(chrome), _) => Some(chrome),
-            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu)),
+            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu, self.scale)),
             (None, None) => None,
         };
     }
@@ -772,47 +861,22 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let unspecified = Kind::Unspecified;
+        let scale = self.scale;
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
         if let Some(image) = &self.pointer_image {
-            let pointer = MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                self.pointer_location.to_physical(1.0),
-                image,
-                None,
-                None,
-                None,
-                Kind::Cursor,
-            );
-            elements.extend(pointer.ok().map(Element::Memory));
+            elements.extend(image.element(renderer, self.pointer_location, scale, Kind::Cursor));
         }
         if let Some(notice) = &self.notice {
-            let at = (
-                f64::from(notice.area.origin.x),
-                f64::from(notice.area.origin.y),
+            let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
+            elements.extend(
+                notice
+                    .pixels
+                    .element(renderer, at.to_f64(), scale, unspecified),
             );
-            let notice = MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                at,
-                &notice.pixels,
-                None,
-                None,
-                None,
-                unspecified,
-            );
-            elements.extend(notice.ok().map(Element::Memory));
         }
         for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
-            let panel = MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                at.to_f64().to_physical(1.0),
-                panel,
-                None,
-                None,
-                None,
-                unspecified,
-            );
-            elements.extend(panel.ok().map(Element::Memory));
+            elements.extend(panel.element(renderer, at.to_f64(), scale, unspecified));
         }
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them.
@@ -838,6 +902,7 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let unspecified = Kind::Unspecified;
+        let scale = self.scale;
         for shown in self
             .scene
             .iter()
@@ -846,34 +911,29 @@ impl Compositor {
         {
             if let Some(chrome) = &shown.chrome {
                 let bar = chrome.decoration.titlebar().origin;
-                let at = (f64::from(bar.x), f64::from(bar.y));
-                // A texture that cannot be uploaded is skipped, not fatal.
-                let titlebar = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    at,
-                    &chrome.titlebar,
-                    None,
-                    None,
-                    None,
-                    unspecified,
-                );
-                elements.extend(titlebar.ok().map(Element::Memory));
+                let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
+                elements.extend(chrome.titlebar.element(renderer, at, scale, unspecified));
                 for (buffer, border) in chrome.borders.iter().zip(chrome.decoration.borders()) {
-                    let at = (border.origin.x, border.origin.y);
-                    let border =
-                        SolidColorRenderElement::from_buffer(buffer, at, 1.0, 1.0, unspecified);
+                    let at = (scale.pixels(border.origin.x), scale.pixels(border.origin.y));
+                    let border = SolidColorRenderElement::from_buffer(
+                        buffer,
+                        at,
+                        scale.factor(),
+                        1.0,
+                        unspecified,
+                    );
                     elements.push(Element::Solid(border));
                 }
             }
             // A window's surface may start above and left of its visible
             // geometry, where it draws its own shadows.
-            let location = (shown.origin - shown.window.geometry().loc).to_physical(1);
+            let location = shown.origin - shown.window.geometry().loc;
             let surfaces = shown
                 .window
                 .render_elements::<WaylandSurfaceRenderElement<R>>(
                     renderer,
-                    location,
-                    smithay::utils::Scale::from(1.0),
+                    (scale.pixels(location.x), scale.pixels(location.y)).into(),
+                    smithay::utils::Scale::from(scale.factor()),
                     1.0,
                 );
             elements.extend(surfaces.into_iter().map(Element::Surface));
@@ -888,15 +948,11 @@ impl Compositor {
     {
         let layers = layer_map_for_output(&self.output);
         for surface in layers.layers_on(layer).rev() {
-            let at = layers
-                .layer_geometry(surface)
-                .unwrap_or_default()
-                .loc
-                .to_physical(1);
+            let at = layers.layer_geometry(surface).unwrap_or_default().loc;
             let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
                 renderer,
-                at,
-                smithay::utils::Scale::from(1.0),
+                (self.scale.pixels(at.x), self.scale.pixels(at.y)).into(),
+                smithay::utils::Scale::from(self.scale.factor()),
                 1.0,
             );
             elements.extend(surfaces.into_iter().map(Element::Surface));
@@ -934,28 +990,37 @@ pub(crate) struct Notice {
     problems: Vec<String>,
     theme: Theme,
     output_width: u32,
+    scale: Scale,
     /// Where on the output the notice is: its top-right corner.
     pub(crate) area: Rect,
-    pixels: MemoryRenderBuffer,
+    pixels: Painted,
 }
 
 impl Notice {
-    fn paint(text: &mut Text, theme: &Theme, problems: &[String], output_width: u32) -> Self {
+    fn paint(
+        text: &mut Text,
+        theme: &Theme,
+        problems: &[String],
+        output_width: u32,
+        scale: Scale,
+    ) -> Self {
         let width = NOTICE_WIDTH.min(output_width.saturating_sub(NOTICE_MARGIN * 2));
-        let canvas = paint::notice(text, theme, problems, width);
+        let canvas = paint::notice(text, theme, problems, width, scale);
+        let (painted_width, painted_height) = canvas.units();
         let left = output_width
             .saturating_sub(width + NOTICE_MARGIN)
             .cast_signed();
         let area = Rect::new(
             DomainPoint::new(left, NOTICE_MARGIN.cast_signed()),
-            DomainSize::new(canvas.width(), canvas.height()),
+            DomainSize::new(painted_width, painted_height),
         );
         Self {
             problems: problems.to_vec(),
             theme: theme.clone(),
             output_width,
+            scale,
             area,
-            pixels: buffer(&canvas),
+            pixels: Painted::new(&canvas),
         }
     }
 }
@@ -972,40 +1037,88 @@ const MENU_PADDING: u32 = 4;
 struct MenuChrome {
     menu: Menu<Action>,
     theme: Theme,
+    scale: Scale,
     /// Each panel's position and pixels, from the root outwards.
-    panels: Vec<(Point<i32, Logical>, MemoryRenderBuffer)>,
+    panels: Vec<(Point<i32, Logical>, Painted)>,
 }
 
 impl MenuChrome {
-    fn paint(text: &mut Text, theme: &Theme, menu: &Menu<Action>) -> Self {
+    fn paint(text: &mut Text, theme: &Theme, menu: &Menu<Action>, scale: Scale) -> Self {
         let panels = menu
             .panels()
             .iter()
             .map(|panel| {
-                let canvas = paint::menu_panel(text, theme, menu, panel);
+                let canvas = paint::menu_panel(text, theme, menu, panel, scale);
                 let origin = menu.panel_rect(panel).origin;
-                (Point::from((origin.x, origin.y)), buffer(&canvas))
+                (Point::from((origin.x, origin.y)), Painted::new(&canvas))
             })
             .collect();
         Self {
             menu: menu.clone(),
             theme: theme.clone(),
+            scale,
             panels,
         }
     }
 }
 
-/// Uploads a canvas as a texture source.
-fn buffer(canvas: &paint::Canvas) -> MemoryRenderBuffer {
-    let size = (canvas.width().cast_signed(), canvas.height().cast_signed());
-    MemoryRenderBuffer::from_slice(
-        canvas.bytes(),
-        Fourcc::Argb8888,
-        size,
-        1,
-        Transform::Normal,
-        None,
-    )
+/// Something the compositor painted: its pixels, and the size it stands for
+/// on screen. The two differ by the scale it was painted at, at which it is
+/// drawn pixel for pixel.
+#[derive(Debug)]
+struct Painted {
+    pixels: MemoryRenderBuffer,
+    /// The size on screen, in units of layout.
+    size: Size<i32, Logical>,
+    /// All of the pixels, which is the part to draw.
+    whole: Rectangle<f64, Logical>,
+}
+
+impl Painted {
+    /// Readies a canvas to be drawn.
+    fn new(canvas: &paint::Canvas) -> Self {
+        let pixels = (canvas.width().cast_signed(), canvas.height().cast_signed());
+        let (width, height) = canvas.units();
+        Self {
+            pixels: MemoryRenderBuffer::from_slice(
+                canvas.bytes(),
+                Fourcc::Argb8888,
+                pixels,
+                1,
+                Transform::Normal,
+                None,
+            ),
+            size: (width.cast_signed(), height.cast_signed()).into(),
+            whole: Rectangle::from_size(Size::from(pixels).to_f64()),
+        }
+    }
+
+    /// The painting placed at `at` on an output of the given scale. If it
+    /// cannot be uploaded to the renderer it is left out, which is better
+    /// than failing the whole frame.
+    fn element<R>(
+        &self,
+        renderer: &mut R,
+        at: Point<f64, Logical>,
+        scale: Scale,
+        kind: Kind,
+    ) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            at.to_physical(scale.factor()),
+            &self.pixels,
+            None,
+            Some(self.whole),
+            Some(self.size),
+            kind,
+        )
+        .ok()
+        .map(Element::Memory)
+    }
 }
 
 /// A window on screen: where it is and the decoration drawn around it.
@@ -1033,7 +1146,7 @@ struct Chrome {
     tabs: Vec<WindowId>,
     appearance: Appearance,
     decoration: Decoration,
-    titlebar: MemoryRenderBuffer,
+    titlebar: Painted,
     borders: [SolidColorBuffer; 3],
 }
 
@@ -1046,6 +1159,7 @@ struct Appearance {
     focused: bool,
     size: DomainSize,
     theme: Theme,
+    scale: Scale,
 }
 
 impl Chrome {
@@ -1054,6 +1168,7 @@ impl Chrome {
     fn paint(
         text: &mut Text,
         theme: &Theme,
+        scale: Scale,
         cached: Option<Self>,
         frame: &FrameInfo,
         decoration: Decoration,
@@ -1064,6 +1179,7 @@ impl Chrome {
             focused: frame.focused,
             size: decoration.titlebar().size,
             theme: theme.clone(),
+            scale,
         };
         let (cached_titlebar, mut borders) = cached
             .map(|chrome| {
@@ -1075,13 +1191,14 @@ impl Chrome {
             .unwrap_or_default();
         let titlebar = cached_titlebar.unwrap_or_else(|| {
             let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
-            buffer(&paint::titlebar(
+            Painted::new(&paint::titlebar(
                 text,
                 theme,
                 &decoration,
                 &titles,
                 frame.active,
                 frame.focused,
+                scale,
             ))
         });
         let palette = if frame.focused {

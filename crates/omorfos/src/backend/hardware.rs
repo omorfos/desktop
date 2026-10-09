@@ -43,7 +43,7 @@ use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
 use super::winit::{listen, on_input};
-use crate::{Compositor, Session};
+use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
 /// several is also its only way to a GPU renderer without `unsafe`.
@@ -96,13 +96,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     })?;
     let seat_name = seat.seat();
 
-    let (card, card_events, surface, gpus, renderer, mode) = open_screen(&mut seat)?;
+    let (card, card_events, surface, gpus, renderer, mode, millimetres) = open_screen(&mut seat)?;
     let (width, height) = mode.size();
     let size = (i32::from(width), i32::from(height));
 
     let mut session = Session::new(config_directory, size, Transform::Normal)?;
     listen(&mut session)?;
-    session.compositor_mut().show_pointer();
+    let compositor = session.compositor_mut();
+    compositor.suggest_scale(Scale::for_screen(u32::from(width), millimetres));
+    compositor.show_pointer();
 
     let screen = Rc::new(RefCell::new(Screen {
         seat: seat.clone(),
@@ -236,6 +238,8 @@ type Opened = (
     Gpus,
     DrmNode,
     Mode,
+    // The width of the screen in millimetres, or 0 if it does not say.
+    u32,
 );
 
 /// Opens the seat's graphics card and sets up its first connected screen.
@@ -261,7 +265,7 @@ fn open_screen(seat: &mut LibSeatSession) -> Result<Opened, Box<dyn Error>> {
     let mut gpus: Gpus = GpuManager::new(GbmGlesBackend::default())?;
     gpus.as_mut().add_node(renderer, gbm.clone())?;
 
-    let (connector, mode, crtc) = connected_screen(&card)?;
+    let (connector, mode, crtc, millimetres) = connected_screen(&card)?;
     let scanout = card.create_surface(crtc, mode, &[connector])?;
     let allocator = GbmAllocator::new(gbm, GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
     let formats = gpus.single_renderer(&renderer)?.dmabuf_formats();
@@ -271,14 +275,22 @@ fn open_screen(seat: &mut LibSeatSession) -> Result<Opened, Box<dyn Error>> {
         &[Fourcc::Argb8888, Fourcc::Xrgb8888],
         formats,
     )?;
-    Ok((card, card_events, surface, gpus, renderer, mode))
+    Ok((
+        card,
+        card_events,
+        surface,
+        gpus,
+        renderer,
+        mode,
+        millimetres,
+    ))
 }
 
-/// Finds the first connected screen, the mode it prefers and something to
-/// drive it with.
+/// Finds the first connected screen, the mode it prefers, something to
+/// drive it with, and how wide it says it is in millimetres.
 fn connected_screen(
     card: &DrmDevice,
-) -> Result<(connector::Handle, Mode, crtc::Handle), Box<dyn Error>> {
+) -> Result<(connector::Handle, Mode, crtc::Handle, u32), Box<dyn Error>> {
     let resources = card.resource_handles()?;
     for handle in resources.connectors() {
         let screen = card.get_connector(*handle, true)?;
@@ -295,7 +307,8 @@ fn connected_screen(
             .flat_map(|encoder| resources.filter_crtcs(encoder.possible_crtcs()))
             .next();
         if let (Some(mode), Some(driver)) = (mode, driver) {
-            return Ok((*handle, *mode, driver));
+            let (millimetres, _) = screen.size().unwrap_or_default();
+            return Ok((*handle, *mode, driver, millimetres));
         }
     }
     Err("no screen is connected".into())

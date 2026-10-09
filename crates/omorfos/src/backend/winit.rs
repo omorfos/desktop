@@ -23,7 +23,7 @@ use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
-use crate::{Compositor, Input, Session};
+use crate::{Compositor, Input, Scale, Session};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
 const WHEEL_NOTCH: f64 = 15.0;
@@ -63,6 +63,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // OpenGL's origin is the bottom-left corner, so the picture is flipped.
     let mut session = Session::new(config_directory, (size.w, size.h), Transform::Flipped180)?;
 
+    // The host desktop knows how dense its screen is.
+    let density = backend.window().scale_factor();
+    session.compositor_mut().suggest_scale(Scale::new(density));
     listen(&mut session)?;
 
     let redraw = Rc::new(Cell::new(true));
@@ -70,8 +73,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     session
         .handle()
         .insert_source(winit, move |event, (), compositor| match event {
-            WinitEvent::Resized { size, .. } => {
+            WinitEvent::Resized { size, scale_factor } => {
                 compositor.resize_output((size.w, size.h));
+                compositor.suggest_scale(Scale::new(scale_factor));
                 wanted.set(true);
             }
             WinitEvent::Input(event) => on_input(compositor, event),
@@ -108,7 +112,7 @@ pub(super) fn listen(session: &mut Session) -> Result<(), Box<dyn Error>> {
 
 /// Hands an input event to the compositor, whichever backend it is from.
 pub(super) fn on_input<B: InputBackend>(compositor: &mut Compositor, event: InputEvent<B>) {
-    let size = compositor.output_size();
+    let size = compositor.logical_size();
     let (input, time) = match event {
         InputEvent::Keyboard { event } => {
             let pressed = event.state() == KeyState::Pressed;

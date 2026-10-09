@@ -78,8 +78,8 @@ prefers. Several screens and hotplug are the next roadmap item.
 - Touchpad settings from `config.yaml` are given to touchpads when they
   appear and again when the configuration changes. This is glue and
   untested like the rest of the file.
-- Everything is drawn at one pixel per pixel, so it is small on a dense
-  screen until scaling is done.
+- Everything was first drawn at one pixel per pixel, which is small on a
+  dense screen. ADR 11 added scaling.
 - The screen's refresh rate is reported to applications as 60 Hz whatever
   it is.
 - Applications get a shared-memory buffer back only when they attach the

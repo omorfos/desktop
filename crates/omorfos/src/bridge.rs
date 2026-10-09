@@ -6,9 +6,11 @@
 
 use std::path::Path;
 
-use omorfos_config::{Action, Config, Diagnostic, FocusModel, Keys, Modifiers, Rules};
+use omorfos_config::{Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Rules};
 use omorfos_core::{Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
+
+use crate::Scale;
 
 /// One step of a key binding: modifiers held while a key is pressed.
 ///
@@ -87,6 +89,16 @@ pub fn workspace_index(number: omorfos_config::WorkspaceNumber) -> usize {
     usize::try_from(number.get())
         .unwrap_or(usize::MAX)
         .saturating_sub(1)
+}
+
+/// Settles the scale to draw at: the configured one, or failing that what
+/// the backend `suggested` for the screen.
+#[must_use]
+pub fn scale(configured: OutputScale, suggested: Scale) -> Scale {
+    match configured {
+        OutputScale::Auto => suggested,
+        OutputScale::Quarters(quarters) => Scale::new(f64::from(quarters) / 4.0),
+    }
 }
 
 /// Converts configured key bindings into key chains.
@@ -306,6 +318,14 @@ items:
                 },
             ]
         );
+    }
+
+    #[test]
+    fn the_configured_scale_wins_over_what_suits_the_screen() {
+        let dense = Scale::new(2.0);
+        assert_eq!(scale(OutputScale::Auto, dense), dense);
+        assert_eq!(scale(OutputScale::Quarters(6), dense), Scale::new(1.5));
+        assert_eq!(scale(OutputScale::Quarters(4), dense), Scale::ONE);
     }
 
     #[test]
