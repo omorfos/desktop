@@ -1,0 +1,38 @@
+# Maintainer: Rafal Proszowski <foss@paroxp.org>
+#
+# The release workflow fills in pkgver and sha256sums and pushes this file
+# to the AUR. See docs/RELEASING.md.
+
+pkgname=omorfos
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='A lightweight Wayland compositor inspired by Fluxbox'
+arch=('x86_64' 'aarch64')
+url='https://github.com/omorfos/desktop'
+license=('MIT')
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libxkbcommon')
+makedepends=('cargo')
+optdepends=('foot: the terminal started by the default key bindings')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "desktop-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "desktop-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release -p omorfos
+}
+
+package() {
+  cd "desktop-$pkgver"
+  install -Dm755 target/release/omorfos "$pkgdir/usr/bin/omorfos"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"
+}
