@@ -91,7 +91,10 @@ windows, bottom layer, background layer. Pointer input follows the same
 order.
 Decorations and the menu are painted on the CPU by `paint` into a `Canvas`
 and uploaded as textures, repainted only when their appearance changes. See
-[adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md).
+[adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md). A
+frame's bottom corners are rounded by drawing its window in strips under a
+painted border, which any renderer can do; see
+[adr/0016-rounded-corners.md](adr/0016-rounded-corners.md).
 
 Everything above is in units of layout, not pixels, in one space that
 all the outputs show a part of. Each output has a position in it and a

@@ -9,6 +9,7 @@ mod activation;
 mod clipboard;
 mod common;
 mod config;
+mod corners;
 mod cursors;
 mod decorations;
 mod dragging;

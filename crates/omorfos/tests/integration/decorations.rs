@@ -53,7 +53,9 @@ fn a_decorated_window_is_drawn_inside_its_frame() {
         RED,
         "the window starts below the titlebar"
     );
-    assert_eq!(picture.at(BORDER + 199, TITLEBAR + 99), RED);
+    // Its bottom corners are rounded with the frame's; see `corners`.
+    assert_eq!(picture.at(BORDER + 199, TITLEBAR + 80), RED, "its far edge");
+    assert_eq!(picture.at(BORDER + 100, TITLEBAR + 99), RED, "its last row");
     assert_eq!(picture.at(BORDER + 210, TITLEBAR + 50), BACKGROUND);
 }
 
