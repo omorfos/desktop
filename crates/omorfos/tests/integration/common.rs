@@ -4,10 +4,12 @@
     reason = "test support code fails the test on any error"
 )]
 
+use std::cell::Cell;
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use omorfos::Compositor;
@@ -15,6 +17,8 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::pixman::PixmanRenderer;
 use smithay::backend::renderer::{Bind, ExportMem};
+use smithay::reexports::calloop::channel;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::pixman::{FormatCode, Image};
 use smithay::utils::{Rectangle, Transform};
 use tempfile::TempDir;
@@ -140,6 +144,48 @@ impl Session {
     /// Ends the session, keeping its configuration directory.
     pub(crate) fn end(self) -> TempDir {
         self.config
+    }
+
+    /// Adds a source that wakes the session each time something is sent to
+    /// it.
+    pub(crate) fn waker(&mut self) -> channel::Sender<()> {
+        let (sender, receiver) = channel::channel();
+        self.inner
+            .handle()
+            .insert_source(receiver, |_, (), _| {})
+            .unwrap();
+        sender
+    }
+
+    /// Runs the session as it runs in use, asleep until something happens,
+    /// until `done` says so.
+    ///
+    /// The compositor is not stepped by hand here, so this only returns if
+    /// whatever `done` waits for wakes the event loop by itself. If nothing
+    /// has after half a minute the test fails, since that is what a missed
+    /// wake-up looks like. The session has ended afterwards.
+    pub(crate) fn run_until(&mut self, mut done: impl FnMut(&mut Compositor) -> bool) {
+        let expired = Rc::new(Cell::new(false));
+        let alarm = Rc::clone(&expired);
+        self.inner
+            .handle()
+            .insert_source(
+                Timer::from_duration(Duration::from_secs(30)),
+                move |_, (), _| {
+                    alarm.set(true);
+                    TimeoutAction::Drop
+                },
+            )
+            .unwrap();
+        self.inner
+            .run(|compositor| {
+                if done(compositor) || expired.get() {
+                    compositor.perform(&omorfos_config::Action::Quit);
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert!(!expired.get(), "the event loop was never woken");
     }
 
     /// Writes a configuration file.

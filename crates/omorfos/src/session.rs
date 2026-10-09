@@ -20,11 +20,6 @@ use smithay::utils::Transform;
 
 use crate::Compositor;
 
-/// How often [`Session::run`] takes a turn when nothing else wakes it, so
-/// that configuration reloads, child processes and the IPC socket are
-/// attended to.
-const IDLE_INTERVAL: Duration = Duration::from_millis(100);
-
 /// A compositor and the event loop that drives it.
 #[derive(Debug)]
 pub struct Session {
@@ -57,6 +52,7 @@ impl Session {
             .and_then(|(event_loop, display)| {
                 Compositor::new(
                     display.handle(),
+                    event_loop.handle(),
                     config_directory,
                     output_size,
                     output_transform,
@@ -149,6 +145,10 @@ impl Session {
     /// is called, for a backend to draw, and clients are then sent anything
     /// it produced for them.
     ///
+    /// Between turns the session sleeps until something happens or the
+    /// compositor's [deadline](Compositor::deadline) arrives. When nothing
+    /// changes, nothing runs.
+    ///
     /// # Errors
     ///
     /// Returns the first error from [`Session::dispatch`] or from `turn`.
@@ -158,8 +158,12 @@ impl Session {
     ) -> Result<(), Box<dyn Error>> {
         let mut outcome = Ok(());
         while outcome.is_ok() && self.compositor.is_running() {
+            let asleep = Instant::now();
+            let deadline = self.compositor.deadline();
+            let timeout = deadline.map(|deadline| deadline.saturating_duration_since(asleep));
+            // The compositor is told the time it is once the wait is over.
             outcome = self
-                .dispatch(Some(IDLE_INTERVAL), Instant::now())
+                .dispatch(timeout, Instant::now())
                 .and_then(|()| turn(&mut self.compositor))
                 .and_then(|()| self.compositor.display.flush_clients().map_err(Box::from));
         }

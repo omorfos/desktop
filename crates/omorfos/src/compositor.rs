@@ -4,6 +4,7 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
@@ -13,6 +14,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
+use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
@@ -29,6 +31,10 @@ use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::PointerHandle;
 use smithay::input::{Seat, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::{
+    Interest, LoopHandle, Mode as Trigger, PostAction, RegistrationToken,
+};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
@@ -133,6 +139,10 @@ pub struct Compositor {
     pub(crate) hovered: Option<WindowId>,
     children: Vec<Child>,
     pub(crate) ipc: Option<Server>,
+    /// When IPC peers that could not be sent everything are tried again.
+    pub(crate) ipc_retry: Option<Instant>,
+    /// The event loop, to be woken by what the compositor waits for.
+    pub(crate) event_loop: LoopHandle<'static, Self>,
     socket_name: Option<OsString>,
     running: bool,
 }
@@ -140,6 +150,10 @@ pub struct Compositor {
 impl Compositor {
     /// Creates a compositor with one output of `output_size` pixels, reading
     /// its configuration from `config_directory`.
+    ///
+    /// `event_loop` is the loop that will drive the compositor. It is woken
+    /// by whatever the compositor waits for besides its clients: changes to
+    /// the configuration, IPC peers, and programs it started exiting.
     ///
     /// `output_transform` describes how the backend's framebuffer is
     /// oriented; a backend drawing through OpenGL into a window is flipped.
@@ -154,6 +168,7 @@ impl Compositor {
     /// data is missing from the system.
     pub fn new(
         display: DisplayHandle,
+        event_loop: LoopHandle<'static, Self>,
         config_directory: impl Into<PathBuf>,
         output_size: (i32, i32),
         output_transform: Transform,
@@ -246,11 +261,16 @@ impl Compositor {
                     hovered: None,
                     children: Vec::new(),
                     ipc: None,
+                    ipc_retry: None,
+                    event_loop,
                     socket_name: None,
                     running: true,
                 };
                 compositor.resize_output(output_size);
                 compositor.apply_config(startup_problems);
+                if let Some(watcher) = &compositor.watcher {
+                    compositor.wake_on(watcher);
+                }
                 compositor
             })
     }
@@ -357,6 +377,43 @@ impl Compositor {
         &self.problems
     }
 
+    /// Wakes the event loop whenever `source` has something to read, and
+    /// returns what is needed to stop doing so.
+    ///
+    /// The loop only wakes; [`Compositor::refresh`] then finds out why, and
+    /// has to read everything that is there, because the loop keeps waking
+    /// for as long as something is left.
+    pub(crate) fn wake_on(&self, source: impl AsFd) -> Option<RegistrationToken> {
+        let wake = |_, _: &mut _, _: &mut Self| Ok(PostAction::Continue);
+        let readable = source.as_fd().try_clone_to_owned().ok();
+        readable
+            .map(|readable| Generic::new(readable, Interest::READ, Trigger::Level))
+            .and_then(|readable| self.event_loop.insert_source(readable, wake).ok())
+    }
+
+    /// Wakes the event loop once, when `child` exits, so that it is
+    /// collected then and not whenever something else next happens.
+    fn wake_when_exited(&self, child: &Child) {
+        // A process stays readable once it has exited, so the source is
+        // removed the first time it fires.
+        let exited = |_, _: &mut _, _: &mut Self| Ok(PostAction::Remove);
+        let _ = pidfd_open(Pid::from_child(child), PidfdFlags::empty())
+            .ok()
+            .map(|process| Generic::new(process, Interest::READ, Trigger::Level))
+            .and_then(|process| self.event_loop.insert_source(process, exited).ok());
+    }
+
+    /// The time by which [`Compositor::refresh`] needs calling again even
+    /// if nothing else happens, if there is one. Whoever runs the event loop
+    /// should wait no longer than this.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Instant> {
+        [self.debouncer.deadline(), self.ipc_retry]
+            .into_iter()
+            .flatten()
+            .min()
+    }
+
     /// Brings everything up to date. Call after dispatching client requests
     /// and input, and before flushing clients and drawing.
     ///
@@ -380,7 +437,7 @@ impl Compositor {
         self.sync();
         self.space.refresh();
         self.popups.cleanup();
-        self.publish_ipc();
+        self.publish_ipc(now);
     }
 
     // --- Configuration -------------------------------------------------------
@@ -494,7 +551,10 @@ impl Compositor {
             process.env("OMORFOS_SOCKET", path);
         }
         match process.spawn() {
-            Ok(child) => self.children.push(child),
+            Ok(child) => {
+                self.wake_when_exited(&child);
+                self.children.push(child);
+            }
             Err(error) => {
                 self.problems
                     .push(format!("cannot start `{}`: {error}", command.program()));

@@ -155,13 +155,13 @@ Known gaps:
 
 - Drag-and-drop between applications is enabled through Smithay's defaults
   but has no test; treat it as unverified.
-- The IPC socket is polled each turn of the loop rather than waking it.
+- The IPC socket was polled each turn of the loop rather than waking it.
+  Fixed in milestone 8 with the event loop.
 
 ## 8. Real hardware
 
-- [ ] The event loop reworked so the core can register timers and
-      sources. Started: a tested `Session` owns it (ADR 9); the compositor
-      is still polled rather than woken
+- [x] The event loop reworked so the core can register timers and
+      sources: a tested `Session` owns it, and nothing is polled (ADR 9)
 - [ ] DRM/KMS, libinput and libseat backend
 - [ ] Multi-monitor and hotplug
 - [ ] Fractional scaling
