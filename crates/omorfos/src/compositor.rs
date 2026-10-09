@@ -31,7 +31,7 @@ use smithay::input::{Seat, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, DisplayHandle};
+use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
 use smithay::wayland::output::OutputManagerState;
@@ -101,6 +101,9 @@ pub struct Compositor {
     /// The root menu, while it is open.
     pub(crate) menu: Option<Menu<Action>>,
     menu_chrome: Option<MenuChrome>,
+    /// The layer surface that was clicked and accepts the keyboard, until
+    /// something else is clicked.
+    pub(crate) layer_focus: Option<WlSurface>,
     /// Popups, such as menus, that asked to be dismissed when the user
     /// clicks away from them, oldest first.
     pub(crate) grabbed_popups: Vec<PopupSurface>,
@@ -214,6 +217,7 @@ impl Compositor {
                     drag: None,
                     menu: None,
                     menu_chrome: None,
+                    layer_focus: None,
                     grabbed_popups: Vec::new(),
                     notice: None,
                     dismissed: Vec::new(),
@@ -627,6 +631,9 @@ impl Compositor {
             .grabbed_popups
             .last()
             .map(|popup| popup.wl_surface().clone());
+        // A panel that was clicked and accepts the keyboard comes next.
+        self.layer_focus = self.layer_focus.take().filter(Resource::is_alive);
+        let menu = menu.or_else(|| self.layer_focus.clone());
         let demanding = layer_map_for_output(&self.output)
             .layers()
             .rev()
