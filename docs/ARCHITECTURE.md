@@ -21,7 +21,7 @@ inwards: adapters depend on the domain, never the reverse.
 
 | Crate | Status | Responsibility |
 |---|---|---|
-| `omorfos-core` | started | Pure domain: geometry, windows, workspaces, tab groups, focus, placement, key-chain state machine, per-app rules. No I/O, no Smithay types. |
+| `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | planned | Versioned request, response and event types, plus a client library. |
 | `omorfos` | planned | The compositor binary. Translates Smithay events into domain commands and domain state into rendering. |
@@ -31,9 +31,12 @@ Crates are created when their first task starts, not before.
 
 ## Principles
 
-- **The domain is a state machine.** Adapters feed it commands (a key was
-  pressed, a window was mapped) and act on what it returns. This keeps window
-  management deterministic and testable without a display.
+- **The domain is a state machine.** Adapters call `Desktop` methods as
+  things happen (a window was mapped, a titlebar was clicked) and read back
+  what to show with `frames()` and `focused()`. This keeps window management
+  deterministic and testable without a display. The frame (a tab group of
+  one or more windows) is the unit of position, stacking and state. See
+  [adr/0004-domain-model.md](adr/0004-domain-model.md).
 - **Hardware sits behind traits.** DRM/KMS, libinput and the seat are
   adapters, so every policy decision can be tested against a headless
   backend.
