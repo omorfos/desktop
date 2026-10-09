@@ -22,14 +22,15 @@ of the following hold:
 3. The file is listed in the table below, with its reason, in the same
    commit that adds the exclusion.
 
-Exclusions are made by file path in the coverage command, never by scattering
-attributes through the code, so the full list is visible in one place.
+Exclusions are made by file path in the coverage command (the `coverage`
+alias in `.cargo/config.toml`), never by scattering attributes through the
+code, so the full list is visible in one place.
 
 ## Excluded files
 
 | File | Reason |
 |---|---|
-| _none_ | |
+| `crates/omorfos/src/backend/winit.rs` | Opens a window on a host display and draws with OpenGL; CI runners have neither. It translates winit events into `Input`, and calls `Compositor::refresh` and `Compositor::render`, all of which are covered through the software renderer. |
 
 ## Consequences
 

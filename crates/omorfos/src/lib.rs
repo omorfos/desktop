@@ -10,6 +10,7 @@
 //! [`Input`] in, calls [`Compositor::refresh`] after dispatching clients,
 //! and draws with [`Compositor::render`].
 
+pub mod backend;
 pub mod bridge;
 pub mod cli;
 mod compositor;

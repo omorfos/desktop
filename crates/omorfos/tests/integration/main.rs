@@ -7,5 +7,6 @@
 mod actions;
 mod common;
 mod config;
+mod executable;
 mod input;
 mod windows;
