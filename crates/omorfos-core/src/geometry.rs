@@ -18,6 +18,13 @@ impl Point {
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
+
+    /// Returns the point moved by `(dx, dy)`, stopping at the limits of the
+    /// coordinate space instead of wrapping.
+    #[must_use]
+    pub const fn offset(self, dx: i32, dy: i32) -> Self {
+        Self::new(self.x.saturating_add(dx), self.y.saturating_add(dy))
+    }
 }
 
 /// The dimensions of a rectangular area.
@@ -34,6 +41,12 @@ impl Size {
     #[must_use]
     pub const fn new(width: u32, height: u32) -> Self {
         Self { width, height }
+    }
+
+    /// The number of pixels covered.
+    #[must_use]
+    pub const fn area(self) -> u64 {
+        self.width as u64 * self.height as u64
     }
 
     /// Returns `true` if the size covers no area.
@@ -111,6 +124,24 @@ mod tests {
         assert!(Size::new(0, 10).is_empty());
         assert!(Size::new(10, 0).is_empty());
         assert!(!Size::new(1, 1).is_empty());
+    }
+
+    #[test]
+    fn offset_moves_a_point_and_saturates_at_the_limits() {
+        assert_eq!(Point::new(1, 2).offset(10, -20), Point::new(11, -18));
+        assert_eq!(
+            Point::new(i32::MAX, i32::MIN).offset(1, -1),
+            Point::new(i32::MAX, i32::MIN)
+        );
+    }
+
+    #[test]
+    fn area_is_width_times_height_without_overflow() {
+        assert_eq!(Size::new(3, 4).area(), 12);
+        assert_eq!(
+            Size::new(u32::MAX, u32::MAX).area(),
+            u64::from(u32::MAX).pow(2)
+        );
     }
 
     #[test]
