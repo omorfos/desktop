@@ -73,6 +73,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     if let Some(name) = socket.socket_name() {
         compositor.set_socket_name(name);
         let _ = writeln!(stderr(), "omorfos: listening on {}", name.display());
+        let runtime_directory = env::var_os("XDG_RUNTIME_DIR");
+        if let Some(path) = omorfos_ipc::socket_path(None, runtime_directory.as_deref(), Some(name))
+        {
+            compositor.listen_ipc(path)?;
+        }
     }
 
     let handle = event_loop.handle();

@@ -16,6 +16,7 @@ pub mod cli;
 mod compositor;
 mod handlers;
 mod input;
+mod ipc;
 mod paint;
 
 pub use compositor::{ClientState, Compositor};

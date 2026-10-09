@@ -151,6 +151,26 @@ impl Session {
         unreachable!("the expected state was never reached");
     }
 
+    /// Starts the IPC socket in the session's directory and returns its path.
+    pub(crate) fn listen(&mut self) -> std::path::PathBuf {
+        let path = self.config.path().join("ipc.sock");
+        self.compositor.listen_ipc(&path).unwrap();
+        path
+    }
+
+    /// Sends an IPC request and returns the compositor's answer.
+    pub(crate) fn ask(
+        &mut self,
+        peer: &mut omorfos_ipc::Client,
+        request: &omorfos_ipc::Request,
+    ) -> omorfos_ipc::Reply {
+        peer.send(request).unwrap();
+        // Accepting the connection and answering may take a step each.
+        self.step();
+        self.step();
+        peer.receive().unwrap()
+    }
+
     /// Connects a new client.
     pub(crate) fn connect(&mut self) -> Client {
         let (ours, theirs) = UnixStream::pair().unwrap();

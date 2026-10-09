@@ -11,5 +11,6 @@ mod decorations;
 mod dragging;
 mod executable;
 mod input;
+mod ipc;
 mod menu;
 mod windows;
