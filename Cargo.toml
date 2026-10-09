@@ -20,6 +20,9 @@ unused_qualifications = "warn"
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
+# Duplicate versions come from Smithay's dependency tree, which we do not
+# control. cargo-deny reports them without failing the build.
+multiple_crate_versions = "allow"
 dbg_macro = "warn"
 expect_used = "warn"
 panic = "warn"
