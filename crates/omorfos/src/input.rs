@@ -3,11 +3,12 @@
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Edges, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
-use smithay::desktop::WindowSurfaceType;
+use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
+use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::bridge::{self, Chord};
 use crate::compositor::Compositor;
@@ -87,7 +88,20 @@ pub(crate) enum Wanted {
     Nothing,
 }
 
-/// What the pointer is on.
+/// What is under the pointer.
+enum Under {
+    /// A window's frame.
+    Frame(WindowId, Hit),
+    /// A layer-shell surface, and where it is on the output. `wallpaper`
+    /// marks the background layer, which stands in for the bare desktop.
+    Layer {
+        surface: WlSurface,
+        origin: Point<f64, Logical>,
+        wallpaper: bool,
+    },
+}
+
+/// What the pointer is on, within a frame.
 enum Hit {
     /// Part of a frame's decoration.
     Part(Part),
@@ -226,17 +240,23 @@ impl Compositor {
             return;
         }
 
-        let target = self.target();
-        let hovered = target.as_ref().map(|(id, _)| *id);
+        let under = self.under();
+        let hovered = match &under {
+            Some(Under::Frame(id, _)) => Some(*id),
+            _ => None,
+        };
         if hovered != self.hovered {
             self.hovered = hovered;
             if let Some(id) = hovered {
                 self.desktop.pointer_entered(id);
             }
         }
-        let focus = target.and_then(|(_, hit)| match hit {
-            Hit::Surface(surface, origin) => Some((surface, origin)),
-            Hit::Part(_) => None,
+        let focus = under.and_then(|under| match under {
+            Under::Frame(_, Hit::Surface(surface, origin))
+            | Under::Layer {
+                surface, origin, ..
+            } => Some((surface, origin)),
+            Under::Frame(_, Hit::Part(_)) => None,
         });
         self.move_pointer(focus, time);
     }
@@ -252,11 +272,50 @@ impl Compositor {
         pointer.frame(self);
     }
 
-    /// What is under the pointer: the topmost window whose decoration or
-    /// surface is there, and which of the two.
+    /// What is under the pointer, in the order things are drawn: overlays,
+    /// fullscreen windows, panels and docks, ordinary windows, then the
+    /// layers behind them.
+    fn under(&self) -> Option<Under> {
+        let layers = layer_map_for_output(self.output());
+        let on_layer = |layer: Layer| {
+            let surface = layers.layer_under(layer, self.pointer_location)?;
+            let origin = layers.layer_geometry(surface).unwrap_or_default().loc;
+            let within = self.pointer_location - origin.to_f64();
+            let (surface, offset) = surface.surface_under(within, WindowSurfaceType::ALL)?;
+            let wallpaper = layer == Layer::Background;
+            Some(Under::Layer {
+                surface,
+                origin: (offset + origin).to_f64(),
+                wallpaper,
+            })
+        };
+        let on_frame = |fullscreen| {
+            self.frame_under(fullscreen)
+                .map(|(id, hit)| Under::Frame(id, hit))
+        };
+        on_layer(Layer::Overlay)
+            .or_else(|| on_frame(true))
+            .or_else(|| on_layer(Layer::Top))
+            .or_else(|| on_frame(false))
+            .or_else(|| on_layer(Layer::Bottom))
+            .or_else(|| on_layer(Layer::Background))
+    }
+
+    /// The frame under the pointer, whatever else may be in front of it.
     fn target(&self) -> Option<(WindowId, Hit)> {
+        self.frame_under(true).or_else(|| self.frame_under(false))
+    }
+
+    /// The topmost frame, among those that are or are not fullscreen, whose
+    /// decoration or surface is under the pointer, and which of the two.
+    fn frame_under(&self, fullscreen: bool) -> Option<(WindowId, Hit)> {
         let point = self.pointer_position();
-        self.scene.iter().rev().find_map(|shown| {
+        let frames = self
+            .scene
+            .iter()
+            .rev()
+            .filter(|shown| shown.fullscreen == fullscreen);
+        frames.into_iter().find_map(|shown| {
             let part = shown
                 .decoration()
                 .and_then(|decoration| decoration.hit(point))
@@ -300,14 +359,22 @@ impl Compositor {
             }
             return;
         }
-        let target = self.target();
-        if pressed && button == BUTTON_RIGHT && target.is_none() {
-            // A right click on the bare desktop opens the root menu.
+        let under = self.under();
+        let desktop = matches!(
+            under,
+            None | Some(Under::Layer {
+                wallpaper: true,
+                ..
+            })
+        );
+        if pressed && button == BUTTON_RIGHT && desktop {
+            // A right click on the bare desktop, or on a wallpaper covering
+            // it, opens the root menu.
             self.open_menu();
             self.move_pointer(None, time);
             return;
         }
-        if let (true, Some((id, hit))) = (pressed, target) {
+        if let (true, Some(Under::Frame(id, hit))) = (pressed, under) {
             let frame = self.frame_facts(id);
             let tab = |index: &usize| frame.tabs.get(*index).copied().unwrap_or(id);
             let alt = self.keyboard.modifier_state().alt;

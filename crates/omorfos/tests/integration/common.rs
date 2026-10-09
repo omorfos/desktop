@@ -30,6 +30,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 pub(crate) const WIDTH: i32 = 640;
 pub(crate) const HEIGHT: i32 = 480;
@@ -221,6 +222,26 @@ impl Session {
         window
     }
 
+    /// Puts up a layer-shell surface of `size` filled with `color`, and
+    /// waits until it is on screen.
+    pub(crate) fn open_layer(
+        &mut self,
+        client: &mut Client,
+        shape: &LayerShape,
+        size: (i32, i32),
+        color: u32,
+    ) -> (
+        wl_surface::WlSurface,
+        zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    ) {
+        let (surface, role) = client.layer(shape);
+        self.roundtrip(client);
+        client.fill(&surface, size, color);
+        self.roundtrip(client);
+        self.roundtrip(client);
+        (surface, role)
+    }
+
     /// Like [`Session::open`], for a window that asks the compositor to draw
     /// its titlebar and borders.
     pub(crate) fn open_decorated(
@@ -266,6 +287,10 @@ pub(crate) enum Event {
         states: Vec<xdg_toplevel::State>,
     },
     Close,
+    /// A layer-shell surface was told its size.
+    LayerConfigure {
+        size: (u32, u32),
+    },
     /// The compositor said who draws the decoration: `true` for itself.
     Decoration {
         server_side: bool,
@@ -310,6 +335,7 @@ pub(crate) struct ClientState {
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     decorations: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     seat: Option<wl_seat::WlSeat>,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
@@ -394,6 +420,34 @@ impl Client {
         let window = self.toplevel_uncommitted(app_id, title);
         window.surface.commit();
         window
+    }
+
+    /// Creates a layer-shell surface, such as a panel or a wallpaper, and
+    /// makes its initial commit. A `size` of zero along an axis means "as
+    /// wide (or tall) as the edges I am anchored to".
+    pub(crate) fn layer(
+        &self,
+        shape: &LayerShape,
+    ) -> (
+        wl_surface::WlSurface,
+        zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    ) {
+        let surface = self.surface();
+        let shell = self.state.layer_shell.as_ref().unwrap();
+        let role = shell.get_layer_surface(
+            &surface,
+            None,
+            shape.layer,
+            "test".to_owned(),
+            &self.handle(),
+            (),
+        );
+        role.set_anchor(shape.anchor);
+        role.set_size(shape.size.0, shape.size.1);
+        role.set_exclusive_zone(shape.exclusive_zone);
+        role.set_keyboard_interactivity(shape.keyboard);
+        surface.commit();
+        (surface, role)
     }
 
     /// Asks the compositor to negotiate who decorates a window.
@@ -488,6 +542,23 @@ impl Client {
         (surface, popup, positioner)
     }
 
+    /// Limits where a surface accepts the pointer to one rectangle.
+    pub(crate) fn input_region(
+        &self,
+        surface: &wl_surface::WlSurface,
+        (x, y, width, height): (i32, i32, i32, i32),
+    ) {
+        let region = self
+            .state
+            .compositor
+            .as_ref()
+            .unwrap()
+            .create_region(&self.handle(), ());
+        region.add(x, y, width, height);
+        surface.set_input_region(Some(&region));
+        surface.commit();
+    }
+
     /// Asks to be told when the next frame has been shown.
     pub(crate) fn request_frame(&self, surface: &wl_surface::WlSurface) {
         surface.frame(&self.handle(), Frame);
@@ -498,6 +569,15 @@ impl Client {
     pub(crate) fn seat(&self) -> &wl_seat::WlSeat {
         self.state.seat.as_ref().unwrap()
     }
+}
+
+/// How a layer-shell surface asks to be placed.
+pub(crate) struct LayerShape {
+    pub(crate) layer: zwlr_layer_shell_v1::Layer,
+    pub(crate) anchor: zwlr_layer_surface_v1::Anchor,
+    pub(crate) size: (u32, u32),
+    pub(crate) exclusive_zone: i32,
+    pub(crate) keyboard: zwlr_layer_surface_v1::KeyboardInteractivity,
 }
 
 /// Marks a `wl_callback` as a frame callback rather than a sync.
@@ -527,6 +607,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "zwlr_layer_shell_v1" => {
+                state.layer_shell = Some(registry.bind(name, version.min(4), handle, ()));
+            }
             "zxdg_decoration_manager_v1" => {
                 state.decorations = Some(registry.bind(name, version, handle, ()));
             }
@@ -665,6 +748,29 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for Cli
     }
 }
 
+impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        surface: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_layer_surface_v1::Event::Configure {
+            serial,
+            width,
+            height,
+        } = event
+        {
+            surface.ack_configure(serial);
+            state.events.push(Event::LayerConfigure {
+                size: (width, height),
+            });
+        }
+    }
+}
+
 impl Dispatch<xdg_popup::XdgPopup, ()> for ClientState {
     fn event(
         state: &mut Self,
@@ -779,6 +885,7 @@ delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);
 delegate_noop!(ClientState: wl_region::WlRegion);
 delegate_noop!(ClientState: xdg_positioner::XdgPositioner);
+delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);

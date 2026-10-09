@@ -50,6 +50,7 @@ smithay = { version = "0.7.0", default-features = false, features = ["renderer_p
 tempfile = "3.27.0"
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 
 [[test]]
 name = "integration"

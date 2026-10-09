@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, WindowId};
+use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
@@ -24,7 +24,7 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
-use smithay::desktop::{PopupManager, Space, Window};
+use smithay::desktop::{PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::PointerHandle;
 use smithay::input::{Seat, SeatState};
@@ -32,9 +32,10 @@ use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle};
-use smithay::utils::{Logical, Physical, Point, SERIAL_COUNTER, Size, Transform};
+use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState};
 use smithay::wayland::shm::ShmState;
@@ -80,6 +81,9 @@ pub struct Compositor {
     pub(crate) popups: PopupManager,
     output: Output,
     output_transform: Transform,
+    /// The output as the desktop was last told about it.
+    screen: Screen,
+    pub(crate) layer_shell: WlrLayerShellState,
 
     pub(crate) desktop: Desktop,
     /// Windows the desktop knows about.
@@ -152,6 +156,7 @@ impl Compositor {
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
         let decorations = XdgDecorationState::new::<Self>(&display);
+        let layer_shell = WlrLayerShellState::new::<Self>(&display);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -187,6 +192,8 @@ impl Compositor {
                     popups: PopupManager::default(),
                     output,
                     output_transform,
+                    screen: Screen::default(),
+                    layer_shell,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),
@@ -247,9 +254,31 @@ impl Compositor {
             Some((0, 0).into()),
         );
         self.output.set_preferred(mode);
-        let size = DomainSize::new(width.unsigned_abs(), height.unsigned_abs());
-        self.desktop
-            .set_outputs(vec![Rect::new(DomainPoint::new(0, 0), size)]);
+        layer_map_for_output(&self.output).arrange();
+        self.update_screen();
+    }
+
+    /// Tells the desktop how big the output is and how much of it panels
+    /// have left for windows, if either changed.
+    fn update_screen(&mut self) {
+        let rect = |rectangle: Rectangle<i32, Logical>| {
+            Rect::new(
+                DomainPoint::new(rectangle.loc.x, rectangle.loc.y),
+                DomainSize::new(
+                    rectangle.size.w.unsigned_abs(),
+                    rectangle.size.h.unsigned_abs(),
+                ),
+            )
+        };
+        let size = self.output_size().to_logical(1);
+        let screen = Screen {
+            area: rect(Rectangle::from_size(size)),
+            usable: rect(layer_map_for_output(&self.output).non_exclusive_zone()),
+        };
+        if screen != self.screen {
+            self.screen = screen;
+            self.desktop.set_outputs([screen]);
+        }
     }
 
     /// The output, for a backend to create a damage tracker from.
@@ -456,6 +485,8 @@ impl Compositor {
     /// are shown, where, in what order and state, and which has focus. Also
     /// repaints the decoration of any frame whose appearance changed.
     fn sync(&mut self) {
+        layer_map_for_output(&self.output).cleanup();
+        self.update_screen();
         let focused = self.desktop.focused();
         let frames: Vec<FrameInfo> = self
             .desktop
@@ -507,6 +538,7 @@ impl Compositor {
                         order,
                         Shown {
                             id: *id,
+                            fullscreen: frame.fullscreen,
                             window: window.clone(),
                             origin,
                             chrome,
@@ -536,9 +568,21 @@ impl Compositor {
             (None, None) => None,
         };
 
-        let focus = focused
-            .and_then(|id| self.mapped(id))
-            .map(|mapped| mapped.toplevel.wl_surface().clone());
+        // A launcher or lock prompt that demands the keyboard has it for as
+        // long as it is up; otherwise the focused window does.
+        let demanding = layer_map_for_output(&self.output)
+            .layers()
+            .rev()
+            .find(|layer| {
+                layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
+                    && matches!(layer.layer(), Layer::Top | Layer::Overlay)
+            })
+            .map(|layer| layer.wl_surface().clone());
+        let focus = demanding.or_else(|| {
+            focused
+                .and_then(|id| self.mapped(id))
+                .map(|mapped| mapped.toplevel.wl_surface().clone())
+        });
         let keyboard = self.keyboard.clone();
         if keyboard.current_focus() != focus {
             keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
@@ -581,7 +625,36 @@ impl Compositor {
             );
             elements.extend(panel.ok().map(Element::Memory));
         }
-        for shown in self.scene.iter().rev() {
+        // From the top down: overlays, fullscreen windows, panels and
+        // docks, ordinary windows, then whatever sits behind them.
+        self.layer_elements(renderer, Layer::Overlay, &mut elements);
+        self.frame_elements(renderer, true, &mut elements);
+        self.layer_elements(renderer, Layer::Top, &mut elements);
+        self.frame_elements(renderer, false, &mut elements);
+        self.layer_elements(renderer, Layer::Bottom, &mut elements);
+        self.layer_elements(renderer, Layer::Background, &mut elements);
+        tracker.render_output(
+            renderer,
+            framebuffer,
+            age,
+            &elements,
+            color(self.config().theme.colors.background),
+        )
+    }
+
+    /// Adds the frames that are, or are not, fullscreen, topmost first.
+    fn frame_elements<R>(&self, renderer: &mut R, fullscreen: bool, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let unspecified = Kind::Unspecified;
+        for shown in self
+            .scene
+            .iter()
+            .rev()
+            .filter(|shown| shown.fullscreen == fullscreen)
+        {
             if let Some(chrome) = &shown.chrome {
                 let bar = chrome.decoration.titlebar().origin;
                 let at = (f64::from(bar.x), f64::from(bar.y));
@@ -616,13 +689,29 @@ impl Compositor {
                 );
             elements.extend(surfaces.into_iter().map(Element::Surface));
         }
-        tracker.render_output(
-            renderer,
-            framebuffer,
-            age,
-            &elements,
-            color(self.config().theme.colors.background),
-        )
+    }
+
+    /// Adds the layer-shell surfaces of one layer, topmost first.
+    fn layer_elements<R>(&self, renderer: &mut R, layer: Layer, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let layers = layer_map_for_output(&self.output);
+        for surface in layers.layers_on(layer).rev() {
+            let at = layers
+                .layer_geometry(surface)
+                .unwrap_or_default()
+                .loc
+                .to_physical(1);
+            let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
+                renderer,
+                at,
+                smithay::utils::Scale::from(1.0),
+                1.0,
+            );
+            elements.extend(surfaces.into_iter().map(Element::Surface));
+        }
     }
 
     /// Tells the windows on screen that a frame was shown, so they draw the
@@ -697,6 +786,7 @@ fn buffer(canvas: &paint::Canvas) -> MemoryRenderBuffer {
 #[derive(Debug)]
 pub(crate) struct Shown {
     pub(crate) id: WindowId,
+    pub(crate) fullscreen: bool,
     pub(crate) window: Window,
     /// Where the window's visible geometry starts.
     pub(crate) origin: Point<i32, Logical>,
