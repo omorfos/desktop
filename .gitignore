@@ -54,3 +54,6 @@ ehthumbs.db
 [Dd]esktop.ini
 $RECYCLE.BIN/
 *.lnk
+
+### CI logs pasted in for debugging ###
+/.logs/
