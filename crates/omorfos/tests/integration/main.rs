@@ -7,6 +7,7 @@
 mod actions;
 mod common;
 mod config;
+mod decorations;
 mod executable;
 mod input;
 mod windows;

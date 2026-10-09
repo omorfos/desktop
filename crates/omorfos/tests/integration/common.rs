@@ -24,6 +24,9 @@ use wayland_client::protocol::{
     wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
@@ -176,6 +179,25 @@ impl Session {
         window
     }
 
+    /// Like [`Session::open`], for a window that asks the compositor to draw
+    /// its titlebar and borders.
+    pub(crate) fn open_decorated(
+        &mut self,
+        client: &mut Client,
+        app_id: &str,
+        size: (i32, i32),
+        color: u32,
+    ) -> Toplevel {
+        let window = client.toplevel_uncommitted(app_id, &format!("{app_id} window"));
+        client.decoration(&window);
+        window.surface.commit();
+        self.roundtrip(client);
+        client.fill(&window.surface, size, color);
+        self.roundtrip(client);
+        self.roundtrip(client);
+        window
+    }
+
     /// Draws a frame and returns what is on screen.
     pub(crate) fn draw(&mut self) -> Picture {
         let mut target = self.renderer.bind(&mut self.image).unwrap();
@@ -202,6 +224,10 @@ pub(crate) enum Event {
         states: Vec<xdg_toplevel::State>,
     },
     Close,
+    /// The compositor said who draws the decoration: `true` for itself.
+    Decoration {
+        server_side: bool,
+    },
     PopupConfigure {
         position: (i32, i32),
         size: (i32, i32),
@@ -241,6 +267,7 @@ pub(crate) struct ClientState {
     subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
+    decorations: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     seat: Option<wl_seat::WlSeat>,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
@@ -322,13 +349,28 @@ impl Client {
 
     /// Creates a toplevel and makes its initial, content-less commit.
     pub(crate) fn toplevel(&self, app_id: &str, title: &str) -> Toplevel {
+        let window = self.toplevel_uncommitted(app_id, title);
+        window.surface.commit();
+        window
+    }
+
+    /// Asks the compositor to negotiate who decorates a window.
+    pub(crate) fn decoration(
+        &self,
+        window: &Toplevel,
+    ) -> zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1 {
+        let manager = self.state.decorations.as_ref().unwrap();
+        manager.get_toplevel_decoration(&window.role, &self.handle(), ())
+    }
+
+    /// Creates a toplevel without committing it yet.
+    pub(crate) fn toplevel_uncommitted(&self, app_id: &str, title: &str) -> Toplevel {
         let surface = self.surface();
         let wm_base = self.state.wm_base.as_ref().unwrap();
         let xdg_surface = wm_base.get_xdg_surface(&surface, &self.handle(), ());
         let toplevel = xdg_surface.get_toplevel(&self.handle(), ());
         toplevel.set_app_id(app_id.to_owned());
         toplevel.set_title(title.to_owned());
-        surface.commit();
         Toplevel {
             surface,
             xdg_surface,
@@ -443,6 +485,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_shm" => state.shm = Some(registry.bind(name, version, handle, ())),
             "xdg_wm_base" => state.wm_base = Some(registry.bind(name, version, handle, ())),
+            "zxdg_decoration_manager_v1" => {
+                state.decorations = Some(registry.bind(name, version, handle, ()));
+            }
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "wl_output" => {
                 let _: wl_output::WlOutput = registry.bind(name, version, handle, ());
@@ -562,6 +607,22 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for ClientState {
     }
 }
 
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        event: zxdg_toplevel_decoration_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event {
+            let server_side = mode == WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+            state.events.push(Event::Decoration { server_side });
+        }
+    }
+}
+
 impl Dispatch<xdg_popup::XdgPopup, ()> for ClientState {
     fn event(
         state: &mut Self,
@@ -676,6 +737,7 @@ delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);
 delegate_noop!(ClientState: wl_region::WlRegion);
 delegate_noop!(ClientState: xdg_positioner::XdgPositioner);
+delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: ignore wl_surface::WlSurface);
