@@ -63,7 +63,9 @@ them.
 A chord is zero or more modifiers and a key, joined by `+`. Modifiers are
 `Ctrl`, `Alt`, `Shift` and `Super` (case does not matter; `Control`, `Mod1`
 and `Mod4` also work). Keys are XKB keysym names such as `Return`, `a`, `F1`
-or `XF86AudioMute`, and are case-sensitive.
+or `XF86AudioMute`. A binding names the key, not the symbol it types: write
+`Super+Shift+r`, not `Super+R`. A binding whose key name does not exist is
+ignored and reported.
 
 Two bindings may not use the same keys, and a chain may not begin with keys
 that are already bound on their own.

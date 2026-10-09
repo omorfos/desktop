@@ -24,7 +24,7 @@ inwards: adapters depend on the domain, never the reverse.
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | planned | Versioned request, response and event types, plus a client library. |
-| `omorfos` | planned | The compositor binary. Translates Smithay events into domain commands and domain state into rendering. |
+| `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
 | `omorfosctl` | planned | Command-line client for the IPC socket. |
 
 Crates are created when their first task starts, not before.
@@ -54,6 +54,24 @@ Crates are created when their first task starts, not before.
   IPC socket. Nothing third-party runs inside the compositor.
 - **IPC is least-privilege.** The socket lives in `$XDG_RUNTIME_DIR` with
   mode `0600`, and the peer's credentials are checked.
+
+## How the compositor is put together
+
+A backend owns the event loop and the screen. Each turn it:
+
+1. feeds input to `Compositor::input` as `Input` values, a small enum that
+   hides where input comes from;
+2. dispatches client requests, which reach the handlers in `handlers.rs` and
+   become `Desktop` method calls;
+3. calls `Compositor::refresh`, which reloads configuration if it changed
+   and then makes Smithay's view match the `Desktop`: which windows are
+   mapped, where, in what order and state, and which has keyboard focus;
+4. draws with `Compositor::render`, generic over the renderer.
+
+Because the renderer and the input source are both parameters, the tests in
+`crates/omorfos/tests/integration` run the whole compositor against a real
+Wayland client with the pixman software renderer and assert on pixels. See
+[adr/0005-compositor-adapter.md](adr/0005-compositor-adapter.md).
 
 ## Configuration
 

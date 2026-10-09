@@ -6,7 +6,8 @@ work on omorfos. Deeper detail lives in `docs/`.
 ## What this is
 
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
-Rust and inspired by Fluxbox. It is a fresh implementation, not a port: see
+Rust and inspired by Fluxbox. It needs the development files for
+libxkbcommon and pixman to build. It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 
 - Current state and next task: [docs/ROADMAP.md](docs/ROADMAP.md)
@@ -30,7 +31,7 @@ Rust and inspired by Fluxbox. It is a fresh implementation, not a port: see
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo llvm-cov --workspace --all-features --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo coverage
 cargo test --workspace --all-features --doc
 cargo deny check
 ```
@@ -39,11 +40,11 @@ All five must pass. CI runs the same commands.
 
 ## Rules
 
-- **Coverage is 100%** of lines, functions and regions. Do not lower the
-  gate. Code that cannot run in CI (real GPU, TTY, seat) goes behind a trait
-  and is listed in
+- **Coverage is 100%** of lines, functions and regions (`cargo coverage`, an
+  alias in `.cargo/config.toml`). Do not lower the gate. Code that cannot run
+  in CI (real GPU, TTY, seat) is kept free of decisions and listed in
   [docs/adr/0002-coverage-policy.md](docs/adr/0002-coverage-policy.md) before
-  it is excluded; nothing is excluded today.
+  it is excluded. One file is excluded today: the nested winit backend.
 - **Test behaviour, not implementation.** Test names read as sentences
   describing the behaviour.
 - **No panics in non-test code:** `unwrap`, `expect`, `panic!`, `todo!` and
@@ -53,9 +54,16 @@ All five must pass. CI runs the same commands.
   "...")]` with a real reason is acceptable; a blanket `allow` is not.
 - **New dependencies** must pass `cargo deny check` and be justified in the
   commit body. Prefer the standard library.
-- **Error paths count.** The region gate treats an untested `?` as uncovered.
-  Make the failure reachable from a test (a real error, not a mock, where
-  possible) rather than restructuring code to hide it.
+- **Error paths count.** The region gate treats an untested `?`, an untaken
+  `let ... else`, and the implicit else of an `if let` as uncovered. Make
+  the failure reachable from a test (a real error, not a mock, where
+  possible). Where it truly cannot happen, remove the branch by modelling
+  the data so the impossible case does not exist, instead of hiding it.
+- **Test the compositor through a real client.** `crates/omorfos/tests/integration`
+  runs the compositor and a scriptable Wayland client on one thread and draws
+  with the software renderer, so tests can assert on protocol events and on
+  pixels. A Smithay handler method only exists if a test makes a client
+  call it.
 - **Configuration types validate while deserializing** (`try_from`), so parser
   errors carry a line and column. After changing them, regenerate the JSON
   Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
