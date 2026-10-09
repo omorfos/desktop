@@ -6,8 +6,9 @@ keybindings, per-application rules and a small footprint, with a modern look.
 
 > **Status:** early development. The compositor runs in a window on an
 > existing desktop, with decorations, tabs, a root menu, the clipboard,
-> panels and wallpapers through layer-shell, and an IPC socket. It cannot
-> drive real hardware yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> panels, launchers and wallpapers through layer-shell, and an IPC socket.
+> It cannot drive real hardware yet, so it is not a login session. See
+> [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Goals
 
