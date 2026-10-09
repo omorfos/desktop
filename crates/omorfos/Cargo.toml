@@ -11,6 +11,27 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[package.metadata.deb]
+maintainer = "Rafal Proszowski <foss@paroxp.org>"
+copyright = "2026, Rafal Proszowski and the omorfos contributors"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+omorfos is a Wayland compositor in the spirit of Fluxbox: tabbed window \
+groups, chained key bindings, per-application rules and a small footprint. \
+It is configured with YAML files that are reloaded as you save them."""
+section = "x11"
+priority = "optional"
+# EGL and OpenGL ES are loaded at run time, so they are not found by the
+# automatic shared-library scan and are listed by hand.
+depends = "$auto, libegl1, libgles2"
+recommends = "foot"
+assets = [
+    ["target/release/omorfos", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/omorfos/", "644"],
+    ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
+    ["../../schemas/*.json", "usr/share/omorfos/schemas/", "644"],
+]
+
 [dependencies]
 omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
