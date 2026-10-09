@@ -12,21 +12,21 @@ use crate::windows::{BLUE, GREEN, RED};
 const LEFT: u32 = 0x110;
 
 fn click_at(session: &mut Session, x: i32, y: i32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Motion {
             x: f64::from(x),
             y: f64::from(y),
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT,
             pressed: true,
         },
         1,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT,
             pressed: false,
@@ -149,7 +149,7 @@ fn an_open_menu_has_the_keyboard_and_hands_it_back() {
         "{events:?}"
     );
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::A,
             pressed: true,

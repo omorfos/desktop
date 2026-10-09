@@ -36,7 +36,8 @@ fn the_socket_is_private_to_its_owner_and_removed_afterwards() {
 
     let keep = session.config.path().to_owned();
     assert!(keep.join("ipc.sock").exists());
-    drop(session.compositor);
+    // The directory outlives the compositor, so the check means something.
+    let _directory = session.end();
     assert!(
         !path.exists(),
         "the socket file does not outlive the compositor"
@@ -59,7 +60,7 @@ fn a_socket_left_behind_by_an_earlier_run_is_replaced() {
 fn a_socket_that_cannot_be_created_is_an_error() {
     let mut session = Session::new();
     let nowhere = session.config.path().join("missing").join("ipc.sock");
-    assert!(session.compositor.listen_ipc(nowhere).is_err());
+    assert!(session.compositor_mut().listen_ipc(nowhere).is_err());
 }
 
 #[test]
@@ -126,7 +127,7 @@ fn an_action_is_performed_exactly_as_a_key_binding_would() {
         },
     );
     assert_eq!(reply, Reply::Done);
-    assert_eq!(session.compositor.desktop().active_workspace(), 2);
+    assert_eq!(session.compositor().desktop().active_workspace(), 2);
 
     let reply = session.ask(
         &mut peer,
@@ -135,7 +136,7 @@ fn an_action_is_performed_exactly_as_a_key_binding_would() {
         },
     );
     assert_eq!(reply, Reply::Done);
-    assert_eq!(session.compositor.desktop().active_workspace(), 3);
+    assert_eq!(session.compositor().desktop().active_workspace(), 3);
 }
 
 #[test]
@@ -251,7 +252,7 @@ fn a_subscriber_is_sent_the_state_now_and_whenever_it_changes() {
     );
 
     session
-        .compositor
+        .compositor_mut()
         .perform(&omorfos_config::Action::Workspace(
             omorfos_config::WorkspaceNumber::clamped(2),
         ));
@@ -444,7 +445,7 @@ fn programs_started_by_the_compositor_are_told_where_the_socket_is() {
     let command = omorfos_config::Command::new("sh", ["-c", script.as_str()]).unwrap();
 
     session
-        .compositor
+        .compositor_mut()
         .perform(&omorfos_config::Action::Spawn(command));
 
     let deadline = Instant::now() + Duration::from_secs(10);

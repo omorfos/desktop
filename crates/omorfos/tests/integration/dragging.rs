@@ -16,7 +16,7 @@ fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
 }
 
 fn move_to(session: &mut Session, x: i32, y: i32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Motion {
             x: f64::from(x),
             y: f64::from(y),
@@ -26,7 +26,7 @@ fn move_to(session: &mut Session, x: i32, y: i32) {
 }
 
 fn press(session: &mut Session, button: u32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: true,
@@ -36,7 +36,7 @@ fn press(session: &mut Session, button: u32) {
 }
 
 fn release(session: &mut Session, button: u32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: false,
@@ -57,7 +57,7 @@ fn drag(session: &mut Session, button: u32, from: (i32, i32), to: (i32, i32)) {
 /// The geometry of each frame on screen, bottom to top.
 fn frames(session: &Session) -> Vec<Rect> {
     session
-        .compositor
+        .compositor()
         .desktop()
         .frames()
         .map(|frame| frame.geometry)
@@ -66,7 +66,7 @@ fn frames(session: &Session) -> Vec<Rect> {
 
 fn tab_counts(session: &Session) -> Vec<usize> {
     session
-        .compositor
+        .compositor()
         .desktop()
         .frames()
         .map(|frame| frame.tabs.len())
@@ -74,7 +74,7 @@ fn tab_counts(session: &Session) -> Vec<usize> {
 }
 
 fn shown_app(session: &Session) -> String {
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     desktop
         .frames()
         .last()
@@ -164,7 +164,7 @@ fn alt_and_the_left_button_move_a_window_from_anywhere_on_it() {
     session.open(&mut client, "plain", (200, 100), RED);
     client.take_events();
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::ALT,
             pressed: true,
@@ -172,7 +172,7 @@ fn alt_and_the_left_button_move_a_window_from_anywhere_on_it() {
         0,
     );
     drag(&mut session, LEFT, (100, 50), (300, 250));
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::ALT,
             pressed: false,
@@ -190,7 +190,7 @@ fn alt_and_the_right_button_resize_by_the_nearest_corner() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open(&mut client, "plain", (200, 100), RED);
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::ALT,
             pressed: true,
@@ -220,7 +220,7 @@ fn a_maximized_frame_stays_put() {
     assert_eq!(frames(&session), maximized);
     assert!(
         session
-            .compositor
+            .compositor()
             .desktop()
             .frames()
             .next()

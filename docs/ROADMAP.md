@@ -73,8 +73,10 @@ Not done yet, and where it is planned:
   come with the hardware backend in milestone 8.
 - Problems (bad configuration, a program that would not start) were only
   printed to standard error; they are shown on screen since milestone 7.
-- The nested backend has only been started under WSLg, not exercised with
-  real applications.
+- The nested backend was run under GNOME with GTK applications and
+  Firefox, driven over IPC, before milestone 8. Nobody has yet sat in front
+  of it: drawing, and input from a real keyboard and mouse, are unchecked.
+  It has not been run at all since the event loop moved into `Session`.
 
 ## 5. Release pipeline
 
@@ -157,8 +159,10 @@ Known gaps:
 
 ## 8. Real hardware
 
-- [ ] DRM/KMS, libinput and libseat backend, with the compositor's event
-      loop reworked so the core can register timers and sources
+- [ ] The event loop reworked so the core can register timers and
+      sources. Started: a tested `Session` owns it (ADR 9); the compositor
+      is still polled rather than woken
+- [ ] DRM/KMS, libinput and libseat backend
 - [ ] Multi-monitor and hotplug
 - [ ] Fractional scaling
 - [ ] Our own pointer cursor, client-set cursors and cursor shapes

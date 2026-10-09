@@ -16,7 +16,6 @@ use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::pixman::PixmanRenderer;
 use smithay::backend::renderer::{Bind, ExportMem};
 use smithay::reexports::pixman::{FormatCode, Image};
-use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Rectangle, Transform};
 use tempfile::TempDir;
 use wayland_client::protocol::{
@@ -66,8 +65,7 @@ pub(crate) mod key {
 /// A compositor with a software-rendered output and its own configuration
 /// directory.
 pub(crate) struct Session {
-    display: Display<Compositor>,
-    pub(crate) compositor: Compositor,
+    inner: omorfos::Session,
     renderer: PixmanRenderer,
     image: Image<'static, 'static>,
     tracker: OutputDamageTracker,
@@ -109,27 +107,39 @@ impl Session {
     /// Starts a compositor reading configuration from `directory`, or from
     /// the temporary directory itself when `None`.
     pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
-        let display = Display::new().unwrap();
         let directory = directory.unwrap_or(config.path()).to_owned();
-        let compositor = Compositor::new(
-            display.handle(),
-            directory,
-            (WIDTH, HEIGHT),
-            Transform::Normal,
-        )
-        .unwrap();
-        let tracker = OutputDamageTracker::from_output(compositor.output());
+        let inner = omorfos::Session::new(directory, (WIDTH, HEIGHT), Transform::Normal).unwrap();
+        let tracker = OutputDamageTracker::from_output(inner.compositor().output());
         let width = usize::try_from(WIDTH).unwrap();
         let height = usize::try_from(HEIGHT).unwrap();
         Self {
-            display,
-            compositor,
+            inner,
             renderer: PixmanRenderer::new().unwrap(),
             image: Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap(),
             tracker,
             config,
             now: Instant::now(),
         }
+    }
+
+    /// The compositor.
+    pub(crate) fn compositor(&self) -> &Compositor {
+        self.inner.compositor()
+    }
+
+    /// The compositor, to act on.
+    pub(crate) fn compositor_mut(&mut self) -> &mut Compositor {
+        self.inner.compositor_mut()
+    }
+
+    /// The session under test itself, for what the harness does not wrap.
+    pub(crate) fn inner(&mut self) -> &mut omorfos::Session {
+        &mut self.inner
+    }
+
+    /// Ends the session, keeping its configuration directory.
+    pub(crate) fn end(self) -> TempDir {
+        self.config
     }
 
     /// Writes a configuration file.
@@ -166,7 +176,7 @@ impl Session {
     /// Starts the IPC socket in the session's directory and returns its path.
     pub(crate) fn listen(&mut self) -> std::path::PathBuf {
         let path = self.config.path().join("ipc.sock");
-        self.compositor.listen_ipc(&path).unwrap();
+        self.compositor_mut().listen_ipc(&path).unwrap();
         path
     }
 
@@ -186,8 +196,14 @@ impl Session {
     /// Connects a new client.
     pub(crate) fn connect(&mut self) -> Client {
         let (ours, theirs) = UnixStream::pair().unwrap();
-        self.compositor.insert_client(ours).unwrap();
-        let mut client = Client::new(theirs);
+        self.compositor_mut().insert_client(ours).unwrap();
+        self.adopt(theirs)
+    }
+
+    /// Makes a client of a connection the compositor already has the other
+    /// end of.
+    pub(crate) fn adopt(&mut self, stream: UnixStream) -> Client {
+        let mut client = Client::new(stream);
         self.roundtrip(&mut client);
         self.roundtrip(&mut client);
         client
@@ -195,9 +211,7 @@ impl Session {
 
     /// Runs the compositor's side once: handle requests, update, reply.
     pub(crate) fn step(&mut self) {
-        self.display.dispatch_clients(&mut self.compositor).unwrap();
-        self.compositor.refresh(self.now);
-        self.display.flush_clients().unwrap();
+        self.inner.dispatch(Some(Duration::ZERO), self.now).unwrap();
     }
 
     /// Exchanges messages until the compositor has handled everything the
@@ -276,7 +290,8 @@ impl Session {
     pub(crate) fn draw(&mut self) -> Picture {
         let mut target = self.renderer.bind(&mut self.image).unwrap();
         let result = self
-            .compositor
+            .inner
+            .compositor_mut()
             .render(&mut self.renderer, &mut target, &mut self.tracker, 1)
             .unwrap();
         let damaged = result.damage.is_some();

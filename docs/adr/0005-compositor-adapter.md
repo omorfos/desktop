@@ -1,6 +1,7 @@
 # 5. Compositor adapter
 
-- Status: accepted
+- Status: accepted; who owns the event loop was changed by
+  [ADR 9](0009-session-and-event-loop.md)
 - Date: 2026-10-09
 
 ## Context

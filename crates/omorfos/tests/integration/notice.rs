@@ -17,21 +17,21 @@ const INSIDE: (i32, i32) = (WIDTH - 20, 16);
 const BROKEN: &str = "colors: { accent: nope }\n";
 
 fn click_at(session: &mut Session, (x, y): (i32, i32)) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Motion {
             x: f64::from(x),
             y: f64::from(y),
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT,
             pressed: true,
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT,
             pressed: false,
@@ -69,7 +69,7 @@ fn the_notice_goes_away_when_the_mistake_is_fixed() {
     assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), PANEL);
 
     session.write_config("theme.yaml", "colors: { accent: '#00ff00' }\n");
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
 
     assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), BACKGROUND);
@@ -79,7 +79,7 @@ fn the_notice_goes_away_when_the_mistake_is_fixed() {
 fn a_mistake_made_while_running_is_shown_and_the_old_settings_kept() {
     let mut session = Session::new();
     session.write_config("theme.yaml", "colors: { background: oops }\n");
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
 
     let picture = session.draw();
@@ -125,7 +125,7 @@ fn a_dismissed_notice_stays_away_until_the_problems_change() {
     let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
     session.step();
     click_at(&mut session, INSIDE);
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
     assert_eq!(
         session.draw().at(INSIDE.0, INSIDE.1),
@@ -134,7 +134,7 @@ fn a_dismissed_notice_stays_away_until_the_problems_change() {
     );
 
     session.write_config("keys.yaml", "bindings: nope\n");
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
     assert_eq!(
         session.draw().at(INSIDE.0, INSIDE.1),
@@ -150,10 +150,10 @@ fn a_problem_that_comes_back_after_being_fixed_is_shown_again() {
     click_at(&mut session, INSIDE);
 
     session.write_config("theme.yaml", "");
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
     session.write_config("theme.yaml", BROKEN);
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
 
     assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), PANEL);
@@ -163,12 +163,12 @@ fn a_problem_that_comes_back_after_being_fixed_is_shown_again() {
 fn the_notice_follows_the_output_and_the_theme() {
     let mut session = Session::with_config(&[("keys.yaml", "bindings: nope\n")]);
     session.step();
-    session.compositor.resize_output((400, 300));
+    session.compositor_mut().resize_output((400, 300));
     session.write_config(
         "theme.yaml",
         "colors: { focused: { border: '#000000', titlebar: '#00ff00', text: '#ffffff' } }\n",
     );
-    session.compositor.reload_config();
+    session.compositor_mut().reload_config();
     session.step();
     // On a 400 pixel output the notice cannot have its usual width: it
     // spans the output less a margin each side, so it now starts at 12.

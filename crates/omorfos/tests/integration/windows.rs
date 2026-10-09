@@ -32,7 +32,7 @@ fn a_new_window_is_shown_focused_and_told_so() {
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     let focused = desktop.focused().and_then(|id| desktop.window(id)).unwrap();
     assert_eq!(
         (focused.app_id.as_str(), focused.title.as_str()),
@@ -60,7 +60,7 @@ fn a_window_without_content_is_not_shown() {
     window.surface.commit();
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor.desktop().frames().count(), 0);
+    assert_eq!(session.compositor().desktop().frames().count(), 0);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn opening_a_second_window_moves_focus_to_it() {
         }),
         "the first window is told it is no longer active: {events:?}"
     );
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     let focused = desktop.focused().and_then(|id| desktop.window(id)).unwrap();
     assert_eq!(focused.app_id, "second");
 }
@@ -120,7 +120,7 @@ fn a_title_change_reaches_the_desktop() {
     window.role.set_title("notes.txt".to_owned());
     session.roundtrip(&mut client);
 
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     let title = desktop
         .focused()
         .and_then(|id| desktop.window(id))
@@ -186,11 +186,11 @@ fn a_maximized_window_follows_the_output_when_it_is_resized() {
     session.roundtrip(&mut client);
     client.take_events();
 
-    session.compositor.resize_output((800, 600));
+    session.compositor_mut().resize_output((800, 600));
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor.output_size(), (800, 600).into());
+    assert_eq!(session.compositor().output_size(), (800, 600).into());
     assert_eq!(client.last_configure().0, (800, 600));
 }
 
@@ -205,7 +205,7 @@ fn a_minimized_window_is_hidden_and_loses_focus() {
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor.desktop().focused(), None);
+    assert_eq!(session.compositor().desktop().focused(), None);
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
     let events = client.take_events();
     assert!(events.contains(&Event::KeyboardLeave), "{events:?}");
@@ -225,7 +225,7 @@ fn closing_a_window_removes_it_and_focuses_the_one_below() {
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
 
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     let focused = desktop.focused().and_then(|id| desktop.window(id)).unwrap();
     assert_eq!(focused.app_id, "below");
     assert_eq!(desktop.frames().count(), 1);
@@ -246,7 +246,7 @@ fn a_window_closed_before_it_showed_anything_leaves_no_trace() {
     // Content arriving for the dead window must not bring it back.
     client.fill(&window.surface, (10, 10), RED);
     session.roundtrip(&mut client);
-    assert_eq!(session.compositor.desktop().frames().count(), 0);
+    assert_eq!(session.compositor().desktop().frames().count(), 0);
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn a_disconnected_client_takes_its_windows_with_it() {
     session.open(&mut client, "doomed", (200, 100), RED);
 
     drop(client);
-    session.eventually(|session| session.compositor.desktop().frames().count() == 0);
+    session.eventually(|session| session.compositor().desktop().frames().count() == 0);
 
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
 }
@@ -325,7 +325,7 @@ fn clients_are_told_when_a_frame_has_been_shown() {
     assert!(!client.take_events().contains(&Event::FrameDone));
 
     session.draw();
-    session.compositor.send_frames(Duration::from_millis(16));
+    session.compositor().send_frames(Duration::from_millis(16));
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::FrameDone));
 }

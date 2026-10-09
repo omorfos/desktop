@@ -6,7 +6,7 @@ use crate::common::{Client, Session};
 use crate::windows::{BLUE, RED};
 
 fn focused_app(session: &Session) -> Option<String> {
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     desktop
         .focused()
         .and_then(|id| desktop.window(id))
@@ -32,7 +32,7 @@ fn a_launcher_the_user_clicked_can_bring_a_window_forward() {
 
     // The user presses a key in the launcher, which then asks for the
     // documents window to be shown.
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: crate::common::key::A,
             pressed: true,
@@ -67,7 +67,7 @@ fn activating_something_that_is_not_a_window_does_nothing() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: crate::common::key::A,
             pressed: true,

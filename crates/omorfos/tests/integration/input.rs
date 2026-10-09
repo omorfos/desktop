@@ -11,7 +11,7 @@ use crate::windows::{BLUE, RED};
 const LEFT_BUTTON: u32 = 0x110;
 
 fn press(session: &mut Session, code: Keycode) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code,
             pressed: true,
@@ -21,7 +21,7 @@ fn press(session: &mut Session, code: Keycode) {
 }
 
 fn release(session: &mut Session, code: Keycode) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code,
             pressed: false,
@@ -50,7 +50,7 @@ fn keys(events: &[Event]) -> Vec<(u32, bool)> {
 }
 
 fn focused_app(session: &Session) -> Option<String> {
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     desktop
         .focused()
         .and_then(|id| desktop.window(id))
@@ -65,13 +65,13 @@ fn the_pointer_enters_moves_within_and_leaves_a_window() {
     client.take_events();
 
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 10.0, y: 20.0 }, 1);
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 15.0, y: 25.0 }, 2);
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 500.0, y: 400.0 }, 3);
     session.roundtrip(&mut client);
 
@@ -97,16 +97,16 @@ fn clicking_a_window_focuses_and_raises_it_and_the_click_is_delivered() {
     client.take_events();
 
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 10.0, y: 10.0 }, 1);
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT_BUTTON,
             pressed: true,
         },
         2,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT_BUTTON,
             pressed: false,
@@ -139,9 +139,9 @@ fn clicking_the_desktop_changes_nothing() {
     session.open(&mut client, "app", (200, 100), RED);
 
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 500.0, y: 400.0 }, 1);
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button: LEFT_BUTTON,
             pressed: true,
@@ -161,7 +161,7 @@ fn hovering_does_not_focus_under_click_to_focus() {
     session.open(&mut client, "above", (200, 100), BLUE);
 
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 10.0, y: 10.0 }, 1);
     session.roundtrip(&mut client);
 
@@ -176,10 +176,10 @@ fn hovering_focuses_when_focus_follows_the_pointer() {
     session.open(&mut client, "above", (200, 100), BLUE);
 
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 10.0, y: 10.0 }, 1);
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 11.0, y: 10.0 }, 2);
     session.roundtrip(&mut client);
 
@@ -192,11 +192,11 @@ fn scrolling_is_delivered_to_the_window_under_the_pointer() {
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
     session
-        .compositor
+        .compositor_mut()
         .input(Input::Motion { x: 10.0, y: 10.0 }, 1);
     client.take_events();
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Scroll {
             horizontal: 0.0,
             vertical: 15.0,
@@ -257,7 +257,7 @@ fn shift_selects_a_different_binding_on_the_same_key() {
 
     // Super+2 switches workspace; Super+Shift+2 would move the window.
     super_tap(&mut session, key::TWO);
-    assert_eq!(session.compositor.desktop().active_workspace(), 1);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
 
     super_tap(&mut session, key::ONE);
     press(&mut session, key::SHIFT);
@@ -265,7 +265,7 @@ fn shift_selects_a_different_binding_on_the_same_key() {
     release(&mut session, key::SHIFT);
     session.roundtrip(&mut client);
 
-    let desktop = session.compositor.desktop();
+    let desktop = session.compositor().desktop();
     assert_eq!(desktop.active_workspace(), 0);
     assert_eq!(
         desktop.frames().count(),
@@ -284,7 +284,7 @@ fn a_chain_triggers_after_its_last_key_and_swallows_every_step() {
 
     super_tap(&mut session, key::X);
     assert_eq!(
-        session.compositor.desktop().active_workspace(),
+        session.compositor().desktop().active_workspace(),
         0,
         "the chain is not complete"
     );
@@ -292,7 +292,7 @@ fn a_chain_triggers_after_its_last_key_and_swallows_every_step() {
     release(&mut session, key::T);
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor.desktop().active_workspace(), 1);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
     assert_eq!(keys(&client.take_events()), [(125, true), (125, false)]);
 }
 
@@ -311,7 +311,7 @@ fn a_wrong_key_abandons_a_chain_without_reaching_the_window() {
     release(&mut session, key::T);
     session.roundtrip(&mut client);
 
-    assert_eq!(session.compositor.desktop().active_workspace(), 0);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
     assert_eq!(
         keys(&client.take_events()),
         [(125, true), (125, false), (20, true), (20, false)],
@@ -331,9 +331,9 @@ fn a_binding_can_start_a_program_that_can_find_the_compositor() {
             script.replace('"', "\\\"")
         ),
     );
-    session.compositor.reload_config();
-    assert_eq!(session.compositor.problems(), [""; 0]);
-    session.compositor.set_socket_name("wayland-test");
+    session.compositor_mut().reload_config();
+    assert_eq!(session.compositor().problems(), [""; 0]);
+    session.compositor_mut().set_socket_name("wayland-test");
 
     super_tap(&mut session, key::RETURN);
 

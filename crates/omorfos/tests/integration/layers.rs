@@ -48,7 +48,7 @@ fn corner(layer: Layer) -> LayerShape {
 }
 
 fn move_to(session: &mut Session, x: i32, y: i32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Motion {
             x: f64::from(x),
             y: f64::from(y),
@@ -58,14 +58,14 @@ fn move_to(session: &mut Session, x: i32, y: i32) {
 }
 
 fn click(session: &mut Session, button: u32) {
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: true,
         },
         0,
     );
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Button {
             button,
             pressed: false,
@@ -154,7 +154,7 @@ fn a_panel_follows_the_output_when_it_is_resized() {
     session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
     client.take_events();
 
-    session.compositor.resize_output((800, 600));
+    session.compositor_mut().resize_output((800, 600));
     session.roundtrip(&mut client);
 
     assert!(
@@ -358,7 +358,7 @@ fn a_launcher_that_demands_the_keyboard_has_it_until_it_closes() {
         "the launcher gains it: {events:?}"
     );
 
-    session.compositor.input(
+    session.compositor_mut().input(
         Input::Key {
             code: key::A,
             pressed: true,

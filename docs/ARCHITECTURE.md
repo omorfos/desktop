@@ -24,7 +24,7 @@ inwards: adapters depend on the domain, never the reverse.
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, and a small blocking client. Depends on no other workspace crate. |
-| `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
+| `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `Session` is the event loop around it. `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
 | `omorfosctl` | done | Command-line client for the IPC socket: state, actions, configuration check and reload. |
 
 Crates are created when their first task starts, not before.
@@ -60,16 +60,22 @@ Crates are created when their first task starts, not before.
 
 ## How the compositor is put together
 
-A backend owns the event loop and the screen. Each turn it:
+A `Session` owns the event loop, the Wayland display and the `Compositor`.
+A backend owns the screen and the input devices, and adds both to the
+session. Each turn:
 
-1. feeds input to `Compositor::input` as `Input` values, a small enum that
-   hides where input comes from;
-2. dispatches client requests, which reach the handlers in `handlers.rs` and
+1. the backend's input sources feed `Compositor::input` with `Input`
+   values, a small enum that hides where input comes from;
+2. client requests are dispatched, reach the handlers in `handlers.rs` and
    become `Desktop` method calls;
-3. calls `Compositor::refresh`, which reloads configuration if it changed
-   and then makes Smithay's view match the `Desktop`: which windows are
-   mapped, where, in what order and state, and which has keyboard focus;
-4. draws with `Compositor::render`, generic over the renderer.
+3. `Compositor::refresh` reloads configuration if it changed, answers IPC
+   peers, and then makes Smithay's view match the `Desktop`: which windows
+   are mapped, where, in what order and state, and which has keyboard
+   focus;
+4. clients are sent what they are owed, and the backend draws with
+   `Compositor::render`, generic over the renderer.
+
+See [adr/0009-session-and-event-loop.md](adr/0009-session-and-event-loop.md).
 
 The compositor draws, from its own scene rather than Smithay's `Space` so
 that decorations interleave with windows correctly: client surfaces, frame
