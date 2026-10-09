@@ -1,0 +1,12 @@
+[alias]
+# The coverage gate: 100% of lines, functions and regions. The one ignored
+# file is listed, with its reason, in docs/adr/0002-coverage-policy.md.
+coverage = [
+    "llvm-cov",
+    "--workspace",
+    "--all-features",
+    "--fail-under-lines=100",
+    "--fail-under-functions=100",
+    "--fail-under-regions=100",
+    "--ignore-filename-regex=crates/omorfos/src/backend/winit\\.rs",
+]
