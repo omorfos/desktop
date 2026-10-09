@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 4, compositor skeleton.
+**Next:** milestone 5, release pipeline.
 
 ## 1. Bootstrap
 
@@ -53,11 +53,33 @@ Deferred until the features that need them:
 
 ## 4. Compositor skeleton (`omorfos`)
 
-- [ ] Smithay event loop with winit and headless backends
-- [ ] `xdg-shell`, seat and input handling
-- [ ] Damage-tracked rendering
-- [ ] Integration harness driving real Wayland clients against the headless
-      backend
+- [x] `Compositor` on Smithay: `wl_compositor`, `wl_shm`, `xdg-shell`
+      (toplevels and popups), `wl_seat`, `wl_output`, `xdg-output`
+- [x] Nested winit backend (`cargo run -p omorfos`)
+- [x] Input: pointer focus, clicks, scrolling, keyboard, key bindings and
+      chains, every configured action
+- [x] Damage-tracked rendering, generic over the renderer
+- [x] Configuration wired in: settings, rules, bindings, keyboard layout,
+      background colour, live reload, key names checked against XKB
+- [x] End-to-end test harness: a real Wayland client against the software
+      renderer, asserting on protocol events and pixels
+
+Not done yet, and where it is planned:
+
+- Clipboard and drag-and-drop (`wl_data_device`): milestone 7.
+- Popup grabs (dismissing a menu by clicking elsewhere), interactive move
+  and resize, and decorations: milestone 6.
+- The window's size is taken once, when it first shows content. A window
+  that later resizes itself is drawn correctly, but restoring it from
+  maximized uses the original size: milestone 6.
+- A window that a rule maximizes shows one frame at its natural size before
+  it is told the new size: milestone 6.
+- The mouse cursor is the host's; drawing our own, and client-set cursors,
+  come with the hardware backend in milestone 8.
+- Problems (bad configuration, a program that would not start) are printed
+  to standard error; showing them on screen is milestone 7.
+- The nested backend has only been started under WSLg, not exercised with
+  real applications.
 
 ## 5. Release pipeline
 
