@@ -11,4 +11,5 @@ mod decorations;
 mod dragging;
 mod executable;
 mod input;
+mod menu;
 mod windows;

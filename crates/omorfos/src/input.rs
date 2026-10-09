@@ -1,10 +1,10 @@
 //! Input from the user.
 
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Edges, Part, WindowId, resize};
+use omorfos_core::{Edges, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::WindowSurfaceType;
-use smithay::input::keyboard::{FilterResult, Keycode};
+use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
@@ -163,6 +163,11 @@ impl Compositor {
             let keysym = key
                 .raw_latin_sym_or_raw_current_sym()
                 .unwrap_or(key.modified_sym());
+            if compositor.menu.is_some() && keysym == Keysym::Escape {
+                compositor.menu = None;
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
+            }
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a
                 // step in a chain.
@@ -210,6 +215,13 @@ impl Compositor {
                 Drag::Tab { .. } => {}
             }
             // The drag has the pointer; no window sees it meanwhile.
+            self.move_pointer(None, time);
+            return;
+        }
+
+        if let Some(menu) = &mut self.menu {
+            // An open menu has the pointer, like a drag.
+            menu.hover(position);
             self.move_pointer(None, time);
             return;
         }
@@ -271,7 +283,31 @@ impl Compositor {
             }
             return;
         }
-        if let (true, Some((id, hit))) = (pressed, self.target()) {
+        let position = self.pointer_position();
+        if let Some(menu) = &mut self.menu {
+            let outcome = if pressed {
+                menu.press(position)
+            } else {
+                MenuOutcome::Nothing
+            };
+            match outcome {
+                MenuOutcome::Activate(action) => {
+                    self.menu = None;
+                    self.perform(&action);
+                }
+                MenuOutcome::Dismiss => self.menu = None,
+                MenuOutcome::Nothing => {}
+            }
+            return;
+        }
+        let target = self.target();
+        if pressed && button == BUTTON_RIGHT && target.is_none() {
+            // A right click on the bare desktop opens the root menu.
+            self.open_menu();
+            self.move_pointer(None, time);
+            return;
+        }
+        if let (true, Some((id, hit))) = (pressed, target) {
             let frame = self.frame_facts(id);
             let tab = |index: &usize| frame.tabs.get(*index).copied().unwrap_or(id);
             let alt = self.keyboard.modifier_state().alt;

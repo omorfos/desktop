@@ -5,7 +5,7 @@
 //! key chains.
 
 use omorfos_config::{Action, Config, FocusModel, Keys, Modifiers, Rules};
-use omorfos_core::{Effects, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
+use omorfos_core::{Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
 /// One step of a key binding: modifiers held while a key is pressed.
@@ -60,6 +60,23 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
         },
     };
     rules.rules.iter().map(convert).collect()
+}
+
+/// Converts the configured root menu into the domain's menu items.
+#[must_use]
+pub fn menu_items(items: &[omorfos_config::MenuItem]) -> Vec<Item<Action>> {
+    let convert = |item: &omorfos_config::MenuItem| match item {
+        omorfos_config::MenuItem::Entry { label, action } => Item::Entry {
+            label: label.clone(),
+            action: action.clone(),
+        },
+        omorfos_config::MenuItem::Submenu { label, items } => Item::Submenu {
+            label: label.clone(),
+            items: menu_items(items),
+        },
+        omorfos_config::MenuItem::Separator => Item::Separator,
+    };
+    items.iter().map(convert).collect()
 }
 
 /// Converts a one-based workspace number into a zero-based index.
@@ -248,6 +265,37 @@ rules:
                         decorations: Some(false),
                         ..Effects::default()
                     },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn the_menu_carries_over_with_its_submenus() {
+        let yaml = "
+items:
+  - { label: Terminal, action: { spawn: [foot] } }
+  - separator
+  - label: Session
+    items:
+      - { label: Quit, action: quit }
+";
+        let quit = Item::Entry {
+            label: "Quit".to_owned(),
+            action: Action::Quit,
+        };
+        let spawn = Action::Spawn(Command::terminal());
+        assert_eq!(
+            menu_items(&config("menu.yaml", yaml).menu.items),
+            [
+                Item::Entry {
+                    label: "Terminal".to_owned(),
+                    action: spawn
+                },
+                Item::Separator,
+                Item::Submenu {
+                    label: "Session".to_owned(),
+                    items: vec![quit]
                 },
             ]
         );
