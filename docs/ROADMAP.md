@@ -3,7 +3,7 @@
 Work proceeds one milestone at a time, top to bottom. Tick items as they
 land and keep the "Next" pointer current.
 
-**Next:** milestone 3, core domain.
+**Next:** milestone 4, compositor skeleton.
 
 ## 1. Bootstrap
 
@@ -38,12 +38,19 @@ Deferred to later milestones, where the pieces they need exist:
 
 ## 3. Core domain (`omorfos-core`)
 
-- [ ] Windows, outputs and workspaces
-- [ ] Focus model and stacking order
-- [ ] Placement strategies
-- [ ] Tab groups
-- [ ] Key-chain state machine
-- [ ] Per-application rules
+- [x] Windows, outputs and workspaces (`Desktop`)
+- [x] Focus model and stacking order
+- [x] Placement strategies (`place`)
+- [x] Tab groups (attach, detach, cycle)
+- [x] Key-chain state machine (`KeyChains`)
+- [x] Per-application rules (`Rule`, `Pattern`, `resolve`)
+
+Deferred until the features that need them:
+
+- Mapping `omorfos-config` values onto the domain's settings, rules and key
+  chains (milestone 4, in the compositor).
+- Fullscreen frames stacking above others, usable area reduced by panels,
+  size constraints and always-on-top (milestones 6 and 7).
 
 ## 4. Compositor skeleton (`omorfos`)
 
