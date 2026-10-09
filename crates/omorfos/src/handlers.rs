@@ -4,7 +4,7 @@
 use omorfos_core::geometry::Size as DomainSize;
 use omorfos_core::{Desktop, Edges, WindowId};
 use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state};
-use smithay::desktop::{PopupKind, Window};
+use smithay::desktop::{LayerSurface, PopupKind, Window, WindowSurfaceType, layer_map_for_output};
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge;
@@ -20,6 +20,7 @@ use smithay::wayland::compositor::{
 };
 use smithay::wayland::output::OutputHandler;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
+use smithay::wayland::shell::wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
@@ -27,7 +28,7 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
-    delegate_compositor, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_layer_shell, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped};
@@ -78,6 +79,18 @@ impl CompositorHandler for Compositor {
         }
 
         self.map_if_ready(surface);
+
+        // A panel, dock or wallpaper: lay the layers out again and tell it
+        // the size it has been given.
+        let mut layers = layer_map_for_output(self.output());
+        let layer = layers
+            .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+            .cloned();
+        if let Some(layer) = layer {
+            layers.arrange();
+            layer.layer_surface().send_pending_configure();
+        }
+        drop(layers);
 
         self.popups.commit(surface);
         if let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface)
@@ -294,6 +307,25 @@ impl XdgDecorationHandler for Compositor {
     }
 }
 
+impl WlrLayerShellHandler for Compositor {
+    fn shell_state(&mut self) -> &mut WlrLayerShellState {
+        &mut self.layer_shell
+    }
+
+    fn new_layer_surface(
+        &mut self,
+        surface: WlrLayerSurface,
+        _output: Option<WlOutput>,
+        _layer: Layer,
+        namespace: String,
+    ) {
+        // Mapping fails only for a surface that is already mapped, which a
+        // new one cannot be.
+        let _ =
+            layer_map_for_output(self.output()).map_layer(&LayerSurface::new(surface, namespace));
+    }
+}
+
 impl SeatHandler for Compositor {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
@@ -322,6 +354,7 @@ impl OutputHandler for Compositor {}
 
 delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
+delegate_layer_shell!(Compositor);
 delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);

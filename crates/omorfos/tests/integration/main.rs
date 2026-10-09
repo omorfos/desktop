@@ -12,5 +12,6 @@ mod dragging;
 mod executable;
 mod input;
 mod ipc;
+mod layers;
 mod menu;
 mod windows;
