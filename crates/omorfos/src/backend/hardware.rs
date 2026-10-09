@@ -147,6 +147,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
     announce_session(compositor);
+    compositor.autostart();
 
     // The keyboard, mice and touchpads.
     let mut devices =

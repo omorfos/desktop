@@ -1,5 +1,13 @@
 {
   "$defs": {
+    "Command": {
+      "description": "A program followed by its arguments, run without a shell.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
     "Focus": {
       "additionalProperties": false,
       "description": "How windows gain focus.",
@@ -146,6 +154,13 @@
   "additionalProperties": false,
   "description": "The contents of `config.yaml`.",
   "properties": {
+    "autostart": {
+      "description": "Programs to start with the session, each as a program and its\narguments. They are started once, in order, and not again when the\nconfiguration is reloaded.",
+      "items": {
+        "$ref": "#/$defs/Command"
+      },
+      "type": "array"
+    },
     "focus": {
       "$ref": "#/$defs/Focus",
       "description": "How windows gain focus."

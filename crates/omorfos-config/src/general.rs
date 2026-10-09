@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::MAX_WORKSPACES;
+use crate::{Command, MAX_WORKSPACES};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -21,6 +21,10 @@ pub struct General {
     pub touchpad: Touchpad,
     /// How the screen is driven.
     pub output: Output,
+    /// Programs to start with the session, each as a program and its
+    /// arguments. They are started once, in order, and not again when the
+    /// configuration is reloaded.
+    pub autostart: Vec<Command>,
 }
 
 /// The names of the workspaces, in order. There is always at least one.
@@ -203,6 +207,21 @@ impl TryFrom<String> for OutputScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn programs_to_start_with_the_session_are_listed_with_their_arguments() {
+        assert_eq!(General::default().autostart, []);
+        let yaml = "autostart:\n  - [swayidle, -w]\n  - [waybar]\n";
+        let started = parse(yaml).unwrap().autostart;
+        assert_eq!(started.len(), 2);
+        assert_eq!(started[0].program(), "swayidle");
+        assert_eq!(started[0].arguments(), ["-w"]);
+        assert_eq!(started[1].program(), "waybar");
+        assert!(
+            parse("autostart: [[]]").is_err(),
+            "a program has to be named"
+        );
+    }
 
     #[test]
     fn the_scale_is_automatic_unless_a_number_is_given() {

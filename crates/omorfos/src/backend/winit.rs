@@ -78,6 +78,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let compositor = session.compositor_mut();
     compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
+    compositor.autostart();
 
     let redraw = Rc::new(Cell::new(true));
     let wanted = Rc::clone(&redraw);
