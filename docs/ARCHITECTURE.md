@@ -23,9 +23,9 @@ inwards: adapters depend on the domain, never the reverse.
 |---|---|---|
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
-| `omorfos-ipc` | planned | Versioned request, response and event types, plus a client library. |
+| `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, and a small blocking client. Depends on no other workspace crate. |
 | `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `bridge` maps configuration onto the domain. `backend::winit` runs it in a window. |
-| `omorfosctl` | planned | Command-line client for the IPC socket. |
+| `omorfosctl` | done | Command-line client for the IPC socket: state, actions, configuration check and reload. |
 
 Crates are created when their first task starts, not before.
 
@@ -53,7 +53,10 @@ Crates are created when their first task starts, not before.
   standard protocols (layer-shell, foreign-toplevel, ext-workspace) and the
   IPC socket. Nothing third-party runs inside the compositor.
 - **IPC is least-privilege.** The socket lives in `$XDG_RUNTIME_DIR` with
-  mode `0600`, and the peer's credentials are checked.
+  mode `0600`, and the peer's credentials are checked. Peers may act as the
+  user they are, but cannot make the compositor wait or grow: I/O is
+  non-blocking and sizes are capped. See [IPC.md](IPC.md) and
+  [adr/0008-ipc-and-components.md](adr/0008-ipc-and-components.md).
 
 ## How the compositor is put together
 
@@ -68,9 +71,13 @@ A backend owns the event loop and the screen. Each turn it:
    mapped, where, in what order and state, and which has keyboard focus;
 4. draws with `Compositor::render`, generic over the renderer.
 
-The compositor draws three kinds of thing, from its own scene (bottom to
-top) rather than Smithay's `Space`, so that decorations interleave with
-windows correctly: client surfaces, frame decorations, and the root menu.
+The compositor draws, from its own scene rather than Smithay's `Space` so
+that decorations interleave with windows correctly: client surfaces, frame
+decorations, layer-shell surfaces (panels, wallpapers), the root menu, and
+a notice listing configuration problems. The stacking order, top to bottom,
+is: notice, menu, overlay layer, fullscreen windows, top layer, ordinary
+windows, bottom layer, background layer. Pointer input follows the same
+order.
 Decorations and the menu are painted on the CPU by `paint` into a `Canvas`
 and uploaded as textures, repainted only when their appearance changes. See
 [adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md).

@@ -6,7 +6,8 @@ as you save.
 
 If a file has a mistake, omorfos keeps using that file's previous contents
 and reports the problem with its file, line and column. The other files
-still apply.
+still apply. Problems are shown in a notice at the top right of the screen
+(click it to dismiss) and printed by `omorfosctl config check`.
 
 General rules:
 
