@@ -129,13 +129,6 @@ fn actions_on_the_focused_window_do_nothing_without_one() {
 }
 
 #[test]
-fn show_menu_is_accepted_but_does_nothing_yet() {
-    let mut session = Session::new();
-    session.compositor.perform(&Action::ShowMenu);
-    assert!(session.compositor.is_running());
-}
-
-#[test]
 fn reload_config_applies_changes_immediately() {
     let mut session = Session::new();
     session.write_config("config.yaml", "workspaces: [only]\n");

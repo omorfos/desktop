@@ -38,6 +38,7 @@ pub(crate) const HEIGHT: i32 = 480;
 pub(crate) mod key {
     use smithay::input::keyboard::Keycode;
 
+    pub(crate) const ESCAPE: Keycode = Keycode::new(9);
     pub(crate) const ONE: Keycode = Keycode::new(10);
     pub(crate) const TWO: Keycode = Keycode::new(11);
     pub(crate) const Q: Keycode = Keycode::new(24);

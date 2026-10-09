@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Decoration, Desktop, Frame, WindowId};
+use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, WindowId};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
@@ -89,6 +89,9 @@ pub struct Compositor {
     pub(crate) scene: Vec<Shown>,
     /// The move, resize or tab drag in progress.
     pub(crate) drag: Option<Drag>,
+    /// The root menu, while it is open.
+    pub(crate) menu: Option<Menu<Action>>,
+    menu_chrome: Option<MenuChrome>,
     text: Text,
 
     store: Store,
@@ -187,6 +190,8 @@ impl Compositor {
                     unmapped: Vec::new(),
                     scene: Vec::new(),
                     drag: None,
+                    menu: None,
+                    menu_chrome: None,
                     text: Text::new(),
                     store,
                     watcher,
@@ -379,11 +384,28 @@ impl Compositor {
                 let workspace = bridge::workspace_index(*number);
                 self.on_focused(|desktop, id| desktop.move_to_workspace(id, workspace));
             }
-            // The root menu arrives with server-side decorations.
-            Action::ShowMenu => {}
+            Action::ShowMenu => self.open_menu(),
             Action::ReloadConfig => self.reload_config(),
             Action::Quit => self.running = false,
         }
+    }
+
+    /// Opens the root menu at the pointer.
+    pub(crate) fn open_menu(&mut self) {
+        let config = Arc::clone(self.store.current());
+        let size = self.output_size();
+        let area = Rect::new(
+            DomainPoint::new(0, 0),
+            DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs()),
+        );
+        let metrics = MenuMetrics {
+            width: MENU_WIDTH,
+            row: config.theme.titlebar.height.get(),
+            separator: MENU_SEPARATOR,
+            padding: MENU_PADDING,
+        };
+        let items = bridge::menu_items(&config.menu.items);
+        self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
     }
 
     /// Applies an operation to the focused window, if there is one.
@@ -494,6 +516,18 @@ impl Compositor {
                 .map_element(shown.window.clone(), shown.origin, false);
         }
 
+        // Repaint the menu if it, or the theme, changed since it was drawn.
+        let theme = &config.theme;
+        let current = self
+            .menu_chrome
+            .take()
+            .filter(|chrome| self.menu.as_ref() == Some(&chrome.menu) && chrome.theme == *theme);
+        self.menu_chrome = match (current, &self.menu) {
+            (Some(chrome), _) => Some(chrome),
+            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu)),
+            (None, None) => None,
+        };
+
         let focus = focused
             .and_then(|id| self.mapped(id))
             .map(|mapped| mapped.toplevel.wl_surface().clone());
@@ -527,6 +561,18 @@ impl Compositor {
         let unspecified = Kind::Unspecified;
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
+        for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
+            let panel = MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                at.to_f64().to_physical(1.0),
+                panel,
+                None,
+                None,
+                None,
+                unspecified,
+            );
+            elements.extend(panel.ok().map(Element::Memory));
+        }
         for shown in self.scene.iter().rev() {
             if let Some(chrome) = &shown.chrome {
                 let bar = chrome.decoration.titlebar().origin;
@@ -589,6 +635,54 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<R>,
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
+}
+
+/// The width of a menu panel, in pixels.
+const MENU_WIDTH: u32 = 220;
+/// The height of a separator row in a menu.
+const MENU_SEPARATOR: u32 = 9;
+/// The space above the first and below the last row of a menu panel.
+const MENU_PADDING: u32 = 4;
+
+/// The pixels of the open menu, kept until it or the theme changes.
+#[derive(Debug)]
+struct MenuChrome {
+    menu: Menu<Action>,
+    theme: Theme,
+    /// Each panel's position and pixels, from the root outwards.
+    panels: Vec<(Point<i32, Logical>, MemoryRenderBuffer)>,
+}
+
+impl MenuChrome {
+    fn paint(text: &mut Text, theme: &Theme, menu: &Menu<Action>) -> Self {
+        let panels = menu
+            .panels()
+            .iter()
+            .map(|panel| {
+                let canvas = paint::menu_panel(text, theme, menu, panel);
+                let origin = menu.panel_rect(panel).origin;
+                (Point::from((origin.x, origin.y)), buffer(&canvas))
+            })
+            .collect();
+        Self {
+            menu: menu.clone(),
+            theme: theme.clone(),
+            panels,
+        }
+    }
+}
+
+/// Uploads a canvas as a texture source.
+fn buffer(canvas: &paint::Canvas) -> MemoryRenderBuffer {
+    let size = (canvas.width().cast_signed(), canvas.height().cast_signed());
+    MemoryRenderBuffer::from_slice(
+        canvas.bytes(),
+        Fourcc::Argb8888,
+        size,
+        1,
+        Transform::Normal,
+        None,
+    )
 }
 
 /// A window on screen: where it is and the decoration drawn around it.
@@ -657,23 +751,14 @@ impl Chrome {
             .unwrap_or_default();
         let titlebar = cached_titlebar.unwrap_or_else(|| {
             let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
-            let canvas = paint::titlebar(
+            buffer(&paint::titlebar(
                 text,
                 theme,
                 &decoration,
                 &titles,
                 frame.active,
                 frame.focused,
-            );
-            let size = (canvas.width().cast_signed(), canvas.height().cast_signed());
-            MemoryRenderBuffer::from_slice(
-                canvas.bytes(),
-                Fourcc::Argb8888,
-                size,
-                1,
-                Transform::Normal,
-                None,
-            )
+            ))
         });
         let palette = if frame.focused {
             theme.colors.focused

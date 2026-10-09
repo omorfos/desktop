@@ -10,13 +10,16 @@ use cosmic_text::{
     SwashCache, Wrap,
 };
 use omorfos_config::{Color, Font, Theme};
-use omorfos_core::Decoration;
+use omorfos_core::{Decoration, Item, Menu, Panel};
 
 /// Space between a tab's edge and its title, in pixels.
 const PADDING: u32 = 10;
 
 /// The thickness of the line marking the shown tab, in pixels.
 const UNDERLINE: u32 = 2;
+
+/// The width set aside on a menu row for the arrow that marks a submenu.
+const ARROW: u32 = 14;
 
 /// A rectangle on a canvas: left, top, width, height.
 type Area = (i32, i32, u32, u32);
@@ -278,6 +281,69 @@ pub(crate) fn titlebar(
     canvas
 }
 
+/// Paints one panel of an open menu: its rows, the highlight on the row
+/// under the pointer, and an arrow on rows that open a submenu.
+pub(crate) fn menu_panel<A: Clone>(
+    text: &mut Text,
+    theme: &Theme,
+    menu: &Menu<A>,
+    panel: &Panel<A>,
+) -> Canvas {
+    let bounds = menu.panel_rect(panel);
+    let (width, height) = (bounds.size.width, bounds.size.height);
+    let colors = &theme.colors;
+    let mut canvas = Canvas::new(width, height);
+    canvas.fill((0, 0, width, height), colors.unfocused.border);
+    canvas.fill(
+        (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
+        colors.focused.titlebar,
+    );
+
+    let padding = PADDING.cast_signed();
+    let room = width.saturating_sub(PADDING * 2);
+    for (index, (item, row)) in panel.items().iter().zip(menu.rows(panel)).enumerate() {
+        let top = row.origin.y - bounds.origin.y;
+        let label = match item {
+            Item::Separator => {
+                let middle = top + (row.size.height / 2).cast_signed();
+                canvas.fill((padding, middle, room, 1), colors.unfocused.border);
+                continue;
+            }
+            Item::Entry { label, .. } | Item::Submenu { label, .. } => label,
+        };
+        let highlighted = panel.highlighted() == Some(index);
+        if highlighted {
+            canvas.fill(
+                (1, top, width.saturating_sub(2), row.size.height),
+                colors.accent,
+            );
+        }
+        let ink = if highlighted {
+            colors.background
+        } else {
+            colors.focused.text
+        };
+        let arrow = if matches!(item, Item::Submenu { .. }) {
+            ARROW
+        } else {
+            0
+        };
+        let area = (padding, top, room.saturating_sub(arrow), row.size.height);
+        text.draw(&mut canvas, label, area, ink, &theme.font);
+        if arrow > 0 {
+            let left = (width - PADDING - ARROW).cast_signed();
+            text.draw(
+                &mut canvas,
+                "\u{203a}",
+                (left, top, ARROW, row.size.height),
+                ink,
+                &theme.font,
+            );
+        }
+    }
+    canvas
+}
+
 #[cfg(test)]
 mod tests {
     use omorfos_core::Metrics as FrameMetrics;
@@ -469,6 +535,67 @@ mod tests {
             text.draw(&mut canvas, "Abc", (0, 0, 100, 28), RED, &font(family));
             assert!(inked(&canvas, 0..100, 0) > 5, "{family} drew nothing");
         }
+    }
+
+    #[test]
+    fn a_menu_panel_shows_its_rows_with_the_hovered_one_highlighted() {
+        use omorfos_core::MenuMetrics;
+
+        let theme = Theme::default();
+        let colors = &theme.colors;
+        let mut text = Text::new();
+        let items = vec![
+            Item::Entry {
+                label: "Terminal".to_owned(),
+                action: (),
+            },
+            Item::Separator,
+            Item::Submenu {
+                label: "Session".to_owned(),
+                items: Vec::new(),
+            },
+        ];
+        let metrics = MenuMetrics {
+            width: 200,
+            row: 28,
+            separator: 9,
+            padding: 4,
+        };
+        let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
+        let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
+
+        // Rows: Terminal at 4..32, the separator at 32..41, Session at 41..69.
+        let plain = menu_panel(&mut text, &theme, &menu, &menu.panels()[0]);
+        assert_eq!((plain.width(), plain.height()), (200, 73));
+        assert_eq!(plain.at(0, 30), argb(colors.unfocused.border), "outlined");
+        assert_eq!(plain.at(190, 10), argb(colors.focused.titlebar));
+        assert_eq!(
+            plain.at(100, 36),
+            argb(colors.unfocused.border),
+            "the separator's line"
+        );
+        assert!(
+            inked(&plain, 10..100, argb(colors.focused.titlebar)) > 40,
+            "labels"
+        );
+        let arrow = (176..190).flat_map(|x| (41..69).map(move |y| (x, y)));
+        let arrow_ink = arrow
+            .filter(|(x, y)| plain.at(*x, *y) != argb(colors.focused.titlebar))
+            .count();
+        assert!(arrow_ink > 3, "the submenu row has an arrow");
+
+        menu.hover(Point::new(350, 215));
+        let lit = menu_panel(&mut text, &theme, &menu, &menu.panels()[0]);
+        assert_eq!(
+            lit.at(190, 10),
+            argb(colors.accent),
+            "the hovered row is highlighted"
+        );
+        assert_eq!(
+            lit.at(190, 50),
+            argb(colors.focused.titlebar),
+            "the others are not"
+        );
     }
 
     const METRICS: FrameMetrics = FrameMetrics {
