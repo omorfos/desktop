@@ -67,3 +67,31 @@ fn an_empty_clipboard_offers_nothing() {
     session.open(&mut client, "app", (200, 100), RED);
     assert!(client.paste().is_none());
 }
+
+#[test]
+fn selected_text_can_be_pasted_elsewhere_with_the_middle_button() {
+    let mut session = Session::new();
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), RED);
+    editor.select("selected in the editor");
+    editor.copy("copied, which is a different thing");
+    session.roundtrip(&mut editor);
+
+    let mut terminal = session.connect();
+    session.open(&mut terminal, "terminal", (200, 100), BLUE);
+
+    let mut pipe = terminal.paste_selection().unwrap();
+    session.roundtrip(&mut terminal);
+    session.roundtrip(&mut editor);
+    let mut pasted = String::new();
+    pipe.read_to_string(&mut pasted).unwrap();
+    assert_eq!(pasted, "selected in the editor");
+}
+
+#[test]
+fn with_nothing_selected_there_is_nothing_to_paste() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    assert!(client.paste_selection().is_none());
+}

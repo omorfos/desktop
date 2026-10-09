@@ -20,6 +20,9 @@ use smithay::wayland::compositor::{
 };
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::selection::primary_selection::{
+    PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+};
 use smithay::wayland::selection::data_device::{
     ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler, set_data_device_focus,
 };
@@ -35,7 +38,7 @@ use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -364,9 +367,11 @@ impl SeatHandler for Compositor {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
-        // The clipboard is offered to whichever client has the keyboard.
+        // The clipboard, and the selection pasted with the middle button,
+        // are offered to whichever client has the keyboard.
         let client = focused.and_then(|surface| self.display.get_client(surface.id()).ok());
-        set_data_device_focus(&self.display, seat, client);
+        set_data_device_focus(&self.display, seat, client.clone());
+        set_primary_focus(&self.display, seat, client);
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
@@ -379,6 +384,12 @@ impl SelectionHandler for Compositor {
 impl DataDeviceHandler for Compositor {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device
+    }
+}
+
+impl PrimarySelectionHandler for Compositor {
+    fn primary_selection_state(&self) -> &PrimarySelectionState {
+        &self.primary_selection
     }
 }
 
@@ -426,6 +437,7 @@ delegate_compositor!(Compositor);
 delegate_xdg_shell!(Compositor);
 delegate_layer_shell!(Compositor);
 delegate_data_device!(Compositor);
+delegate_primary_selection!(Compositor);
 delegate_xdg_activation!(Compositor);
 delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
