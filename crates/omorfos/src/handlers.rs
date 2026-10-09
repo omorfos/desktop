@@ -97,7 +97,7 @@ impl Compositor {
         let size = DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs());
         let id = self
             .desktop
-            .add_window(app_id, title, size, self.pointer_position());
+            .add_window(app_id, title, size, self.pointer_position(), true);
         self.windows.push(Mapped {
             id,
             window,
