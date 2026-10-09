@@ -44,5 +44,5 @@ pub use menu::{Menu, MenuItem};
 pub use paths::config_dir;
 pub use rules::{Match, Rule, Rules};
 pub use store::Store;
-pub use theme::{Animations, Border, Colors, Decoration, Font, Theme, Titlebar};
+pub use theme::{Animations, Border, Colors, Cursor, Decoration, Font, Theme, Titlebar};
 pub use watcher::Watcher;

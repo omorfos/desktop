@@ -122,6 +122,7 @@ font: { family: sans-serif, size: 11 }      # size 6 to 72
 border: { width: 1, radius: 8 }             # width 0 to 16, radius 0 to 32
 titlebar: { height: 28 }                    # 16 to 64
 animations: { enabled: true, duration: 150 } # milliseconds, 0 to 1000
+cursor: { theme: default, size: 24 }        # size 8 to 128
 colors:
   background: "#14161b"
   accent: "#5b9cf5"
@@ -131,6 +132,11 @@ colors:
 
 These are the defaults. Anything you leave out keeps its default, except
 that `focused` and `unfocused` must each give all three colors.
+
+`cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
+`~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
+Shapes the theme lacks come from the themes it inherits from and then from
+`default`. If no theme has a shape, omorfos draws a plain arrow of its own.
 
 ## `menu.yaml`
 

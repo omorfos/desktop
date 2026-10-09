@@ -65,6 +65,24 @@
       },
       "type": "object"
     },
+    "Cursor": {
+      "additionalProperties": false,
+      "description": "The pictures used for the pointer.",
+      "properties": {
+        "size": {
+          "description": "The size of the pointer, before scaling.",
+          "maximum": 128,
+          "minimum": 8,
+          "type": "integer"
+        },
+        "theme": {
+          "default": "default",
+          "description": "The name of an installed cursor theme, such as `Adwaita`. `default`\nis whichever the system has set up as its default.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Decoration": {
       "additionalProperties": false,
       "description": "The colors of one window's decoration. All three are required.",
@@ -136,6 +154,10 @@
     "colors": {
       "$ref": "#/$defs/Colors",
       "description": "The color palette."
+    },
+    "cursor": {
+      "$ref": "#/$defs/Cursor",
+      "description": "The pointer."
     },
     "font": {
       "$ref": "#/$defs/Font",
