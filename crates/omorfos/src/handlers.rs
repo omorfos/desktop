@@ -34,12 +34,13 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceData,
 };
+use smithay::wayland::fractional_scale::FractionalScaleHandler;
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_foreign_toplevel_list, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -350,6 +351,10 @@ impl XdgDecorationHandler for Compositor {
     }
 }
 
+// Applications are told the scale from `Compositor::announce_scale`, for
+// every surface alike, so there is nothing to do when one asks to be told.
+impl FractionalScaleHandler for Compositor {}
+
 impl WlrLayerShellHandler for Compositor {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell
@@ -462,6 +467,8 @@ delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);
 delegate_output!(Compositor);
+delegate_fractional_scale!(Compositor);
+delegate_viewporter!(Compositor);
 
 #[cfg(test)]
 mod tests {

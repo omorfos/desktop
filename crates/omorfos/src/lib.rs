@@ -19,8 +19,10 @@ mod handlers;
 mod input;
 mod ipc;
 mod paint;
+mod scale;
 mod session;
 
 pub use compositor::{ClientState, Compositor};
 pub use input::Input;
+pub use scale::Scale;
 pub use session::Session;

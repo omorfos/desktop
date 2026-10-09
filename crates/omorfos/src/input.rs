@@ -29,15 +29,16 @@ pub enum Input {
         /// `true` for a press, `false` for a release.
         pressed: bool,
     },
-    /// The pointer moved to a position on the output, in pixels.
+    /// The pointer moved to a position on the output, in units of layout
+    /// (see [`Compositor::logical_size`]).
     Motion {
         /// Distance from the left edge.
         x: f64,
         /// Distance from the top edge.
         y: f64,
     },
-    /// The pointer moved by a distance, in pixels, as a mouse or touchpad
-    /// reports it. The pointer stops at the edges of the output.
+    /// The pointer moved by a distance, in units of layout, as a mouse or
+    /// touchpad reports it. The pointer stops at the edges of the output.
     MotionBy {
         /// Distance moved to the right.
         dx: f64,
@@ -171,7 +172,7 @@ impl Compositor {
             Input::Key { code, pressed } => self.key(code, pressed, time),
             Input::Motion { x, y } => self.motion(x, y, time),
             Input::MotionBy { dx, dy } => {
-                let size = self.output_size().to_f64();
+                let size = self.logical_size().to_f64();
                 let x = (self.pointer_location.x + dx).clamp(0.0, (size.w - 1.0).max(0.0));
                 let y = (self.pointer_location.y + dy).clamp(0.0, (size.h - 1.0).max(0.0));
                 self.motion(x, y, time);

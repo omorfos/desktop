@@ -31,12 +31,16 @@ use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, deleg
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1 as listed_handle, ext_foreign_toplevel_list_v1 as toplevel_list,
 };
+use wayland_protocols::wp::fractional_scale::v1::client::{
+    wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
+};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
     zwp_primary_selection_device_v1 as primary_device,
     zwp_primary_selection_offer_v1 as primary_offer,
     zwp_primary_selection_source_v1 as primary_source,
 };
+use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
@@ -419,6 +423,10 @@ pub(crate) struct ClientState {
     /// been told about them, in the order they were announced.
     pub(crate) taskbar: Vec<Task>,
     primaries: Option<primary_manager::ZwpPrimarySelectionDeviceManagerV1>,
+    fractions: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    viewporter: Option<wp_viewporter::WpViewporter>,
+    /// What the client's surfaces were last told about how they are shown.
+    pub(crate) told: Told,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
     /// What this client hands over when asked for the text it has selected.
     selected: String,
@@ -450,6 +458,18 @@ pub(crate) struct Client {
 }
 
 /// A toplevel window belonging to a [`Client`].
+/// What the compositor has told a client's surfaces about the screen. The
+/// tests that look at this use one surface, so it is not kept per surface.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Told {
+    /// The whole scale to draw buffers at.
+    pub(crate) buffer_scale: Option<i32>,
+    /// The exact scale, in units of 1/120, for a surface that asked.
+    pub(crate) scale: Option<u32>,
+    /// How many times a surface was told it is on an output.
+    pub(crate) entered: u32,
+}
+
 pub(crate) struct Toplevel {
     pub(crate) surface: wl_surface::WlSurface,
     pub(crate) xdg_surface: xdg_surface::XdgSurface,
@@ -576,6 +596,27 @@ impl Client {
         surface.attach(Some(&self.buffer(size, color)), 0, 0);
         surface.damage_buffer(0, 0, size.0, size.1);
         surface.commit();
+    }
+
+    /// Asks to be told the exact scale `surface` is shown at.
+    pub(crate) fn watch_scale(&self, surface: &wl_surface::WlSurface) {
+        let fractions = self.state.fractions.as_ref().unwrap();
+        fractions.get_fractional_scale(surface, &self.handle(), ());
+    }
+
+    /// Fills `surface` with a buffer of `pixels`, to be shown at `size`:
+    /// what an application does to draw sharply at a scale.
+    pub(crate) fn fill_scaled(
+        &self,
+        surface: &wl_surface::WlSurface,
+        pixels: (i32, i32),
+        size: (i32, i32),
+        color: u32,
+    ) {
+        let viewporter = self.state.viewporter.as_ref().unwrap();
+        let viewport = viewporter.get_viewport(surface, &self.handle(), ());
+        viewport.set_destination(size.0, size.1);
+        self.fill(surface, pixels, color);
     }
 
     fn buffer(&self, (width, height): (i32, i32), color: u32) -> wl_buffer::WlBuffer {
@@ -831,6 +872,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             "zxdg_decoration_manager_v1" => {
                 state.decorations = Some(registry.bind(name, version, handle, ()));
             }
+            "wp_fractional_scale_manager_v1" => {
+                state.fractions = Some(registry.bind(name, version, handle, ()));
+            }
+            "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "wl_output" => {
                 let _: wl_output::WlOutput = registry.bind(name, version, handle, ());
@@ -1275,5 +1320,41 @@ delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
-delegate_noop!(ClientState: ignore wl_surface::WlSurface);
+delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
+delegate_noop!(ClientState: wp_viewporter::WpViewporter);
+delegate_noop!(ClientState: wp_viewport::WpViewport);
+
+impl Dispatch<wl_surface::WlSurface, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wl_surface::WlSurface,
+        event: wl_surface::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_surface::Event::Enter { .. } => state.told.entered += 1,
+            wl_surface::Event::PreferredBufferScale { factor } => {
+                state.told.buffer_scale = Some(factor);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        event: wp_fractional_scale_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            state.told.scale = Some(scale);
+        }
+    }
+}
 delegate_noop!(ClientState: ignore wl_output::WlOutput);

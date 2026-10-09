@@ -166,7 +166,8 @@ Known gaps:
       pointer, virtual terminal switching and touchpad settings. Run by
       hand on one laptop with foot and Firefox
 - [ ] Multi-monitor and hotplug
-- [ ] Fractional scaling
+- [x] Scaling, whole and fractional: automatic from the screen's density
+      or set in `config.yaml` (ADR 11)
 - [ ] Our own pointer cursor, client-set cursors and cursor shapes
 - [ ] idle-notify and session-lock (moved from milestone 7)
 - [ ] A `wayland-sessions` entry for login screens
