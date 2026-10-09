@@ -1,6 +1,5 @@
 //! The compositor's state and its main operations.
 
-use std::cell::Cell;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
@@ -36,7 +35,7 @@ use smithay::input::pointer::{
     CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
 };
 use smithay::input::{Seat, SeatState};
-use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
+use smithay::output::Output;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{
     Interest, LoopHandle, Mode as Trigger, PostAction, RegistrationToken,
@@ -72,6 +71,7 @@ use crate::cursor::{self, Themes};
 use crate::input::Drag;
 use crate::ipc::Server;
 use crate::lock::Lock;
+use crate::outputs::Head;
 use crate::paint::{self, Text};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -82,22 +82,17 @@ pub const DESKTOP_NAME: &str = "omorfos";
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
 
-/// Creates the output and the space it shows, and offers the output to
-/// clients.
-fn new_output(display: &DisplayHandle) -> (Output, Space<Window>) {
-    let output = Output::new(
-        "omorfos-0".to_owned(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "omorfos".to_owned(),
-            model: "virtual".to_owned(),
-        },
-    );
-    let _global = output.create_global::<Compositor>(display);
-    let mut space = Space::default();
-    space.map_output(&output, (0, 0));
-    (output, space)
+/// Tells a surface the scale of the output it is on, and that it is on it.
+/// One that is on no output is told to draw at a scale of one.
+fn tell_scale(head: Option<&Head>, surface: &WlSurface, states: &SurfaceData) {
+    let scale = head.map_or(Scale::ONE, |head| head.scale);
+    send_surface_state(surface, states, scale.whole(), Transform::Normal);
+    with_fractional_scale(states, |fractional| {
+        fractional.set_preferred_scale(scale.factor());
+    });
+    if let Some(head) = head {
+        head.output.enter(surface);
+    }
 }
 
 /// Starts watching the configuration directory, creating it if need be.
@@ -150,16 +145,12 @@ pub struct Compositor {
     pub(crate) pointer: PointerHandle<Self>,
     pub(crate) space: Space<Window>,
     pub(crate) popups: PopupManager,
-    output: Output,
-    output_transform: Transform,
-    /// How many pixels the output draws to a unit of layout.
-    scale: Scale,
-    /// The scale the backend says suits the screen.
-    suggested_scale: Scale,
+    /// The outputs, left to right.
+    pub(crate) heads: Vec<Head>,
     _fractional_scale: FractionalScaleManagerState,
     _viewporter: ViewporterState,
-    /// The output as the desktop was last told about it.
-    screen: Screen,
+    /// The outputs as the desktop was last told about them.
+    pub(crate) screens: Vec<Screen>,
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
     pub(crate) activation: XdgActivationState,
@@ -215,10 +206,6 @@ pub struct Compositor {
     pub(crate) hovered: Option<WindowId>,
     /// The lock on the session, while it is locked.
     pub(crate) lock: Option<Lock>,
-    /// Whether a frame showing nothing of the session has been drawn since
-    /// it was locked. Set while drawing, which does not change anything
-    /// else.
-    pub(crate) blanked: Cell<bool>,
     pub(crate) lock_manager: SessionLockManagerState,
     /// Tells those who asked when the user has been away for a while.
     pub(crate) idle: IdleNotifierState<Self>,
@@ -237,15 +224,13 @@ pub struct Compositor {
 }
 
 impl Compositor {
-    /// Creates a compositor with one output of `output_size` pixels, reading
-    /// its configuration from `config_directory`.
+    /// Creates a compositor that reads its configuration from
+    /// `config_directory`. It has no output until one is added with
+    /// [`Compositor::add_output`].
     ///
     /// `event_loop` is the loop that will drive the compositor. It is woken
     /// by whatever the compositor waits for besides its clients: changes to
     /// the configuration, IPC peers, and programs it started exiting.
-    ///
-    /// `output_transform` describes how the backend's framebuffer is
-    /// oriented; a backend drawing through OpenGL into a window is flipped.
     ///
     /// The directory is created if it does not exist. Problems with it, or
     /// with the configuration, do not prevent startup; see
@@ -259,8 +244,6 @@ impl Compositor {
         display: DisplayHandle,
         event_loop: LoopHandle<'static, Self>,
         config_directory: impl Into<PathBuf>,
-        output_size: (i32, i32),
-        output_transform: Transform,
     ) -> Result<Self, Box<dyn Error>> {
         let store = Store::open(config_directory);
         let (watcher, startup_problems) = watch(&store);
@@ -287,8 +270,6 @@ impl Compositor {
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
 
-        let (output, space) = new_output(&display);
-
         seat.add_keyboard(XkbConfig::default(), 400, 30)
             .map_err(Box::from)
             .map(|keyboard| {
@@ -303,15 +284,12 @@ impl Compositor {
                     seat,
                     keyboard,
                     pointer,
-                    space,
+                    space: Space::default(),
                     popups: PopupManager::default(),
-                    output,
-                    output_transform,
-                    scale: Scale::ONE,
-                    suggested_scale: Scale::ONE,
+                    heads: Vec::new(),
                     _fractional_scale: fractional_scale,
                     _viewporter: viewporter,
-                    screen: Screen::default(),
+                    screens: Vec::new(),
                     layer_shell,
                     data_device,
                     activation,
@@ -345,7 +323,6 @@ impl Compositor {
                     terminal_wanted: None,
                     hovered: None,
                     lock: None,
-                    blanked: Cell::new(false),
                     lock_manager,
                     idle,
                     _idle_inhibit: idle_inhibit,
@@ -357,7 +334,6 @@ impl Compositor {
                     socket_name: None,
                     running: true,
                 };
-                compositor.resize_output(output_size);
                 compositor.apply_config(startup_problems);
                 if let Some(watcher) = &compositor.watcher {
                     compositor.wake_on(watcher);
@@ -386,124 +362,39 @@ impl Compositor {
 
     // --- Output --------------------------------------------------------------
 
-    /// Changes the size of the output, in pixels.
-    pub fn resize_output(&mut self, (width, height): (i32, i32)) {
-        let mode = Mode {
-            size: (width, height).into(),
-            refresh: 60_000,
-        };
-        self.output.change_current_state(
-            Some(mode),
-            Some(self.output_transform),
-            Some(OutputScale::Fractional(self.scale.factor())),
-            Some((0, 0).into()),
-        );
-        self.output.set_preferred(mode);
-        layer_map_for_output(&self.output).arrange();
-        self.update_screen();
-        self.configure_lock_surface();
-    }
-
-    /// Says what scale suits the screen, which a backend knows from how
-    /// dense it is. It is used unless the configuration names one.
-    pub fn suggest_scale(&mut self, scale: Scale) {
-        self.suggested_scale = scale;
-        self.apply_scale();
-    }
-
-    /// How many pixels the output draws to a unit of layout.
-    #[must_use]
-    pub const fn scale(&self) -> Scale {
-        self.scale
-    }
-
-    /// Settles the scale, from the configuration or else the backend's
-    /// suggestion, and if it changed lays the output out again at it.
-    fn apply_scale(&mut self) {
-        let scale = bridge::scale(self.config().general.output.scale, self.suggested_scale);
-        if scale != self.scale {
-            self.scale = scale;
-            let size = self.output_size();
-            self.resize_output((size.w, size.h));
-        }
-    }
-
-    /// Tells every surface the scale it is shown at, so that applications
-    /// draw at that size themselves and are not stretched. A surface is
-    /// told once, and again only if the scale changes.
+    /// Tells every surface the scale it is shown at and the output it is
+    /// on, so that applications draw at that size themselves and are not
+    /// stretched. A surface is told once, and again only if either changes.
+    ///
+    /// A window is shown at the scale of the output most of it is on.
     fn announce_scale(&self) {
-        let tell = |surface: &WlSurface, states: &SurfaceData| {
-            send_surface_state(surface, states, self.scale.whole(), Transform::Normal);
-            with_fractional_scale(states, |fractional| {
-                fractional.set_preferred_scale(self.scale.factor());
-            });
-            self.output.enter(surface);
-        };
+        // A window that has shown nothing yet will be placed by the pointer.
+        let at_pointer = self.pointer_head();
         for toplevel in &self.unmapped {
             with_states(toplevel.wl_surface(), |states| {
-                tell(toplevel.wl_surface(), states);
+                tell_scale(at_pointer, toplevel.wl_surface(), states);
             });
         }
         for mapped in &self.windows {
-            mapped.window.with_surfaces(tell);
+            let frame = self.scene.iter().find(|shown| shown.id == mapped.id);
+            let head = frame.map_or_else(|| self.heads.first(), |shown| self.head_for(shown.outer));
+            mapped
+                .window
+                .with_surfaces(|surface, states| tell_scale(head, surface, states));
         }
-        for layer in layer_map_for_output(&self.output).layers() {
-            layer.with_surfaces(tell);
+        for head in &self.heads {
+            let here = Some(head);
+            for layer in layer_map_for_output(&head.output).layers() {
+                layer.with_surfaces(|surface, states| tell_scale(here, surface, states));
+            }
+            if let Some(surface) = self.lock_surface_on(&head.output) {
+                with_states(surface, |states| tell_scale(here, surface, states));
+            }
         }
-        // The picture an application gave for the pointer is a surface too,
-        // and so is a locker's.
+        // The picture an application gave for the pointer is a surface too.
         if let Look::Surface(surface) = &self.shown {
-            with_states(surface, |states| tell(surface, states));
+            with_states(surface, |states| tell_scale(at_pointer, surface, states));
         }
-        if let Some(surface) = self.lock_surface() {
-            with_states(surface, |states| tell(surface, states));
-        }
-    }
-
-    /// Tells the desktop how big the output is and how much of it panels
-    /// have left for windows, if either changed.
-    fn update_screen(&mut self) {
-        let rect = |rectangle: Rectangle<i32, Logical>| {
-            Rect::new(
-                DomainPoint::new(rectangle.loc.x, rectangle.loc.y),
-                DomainSize::new(
-                    rectangle.size.w.unsigned_abs(),
-                    rectangle.size.h.unsigned_abs(),
-                ),
-            )
-        };
-        let size = self.logical_size();
-        let screen = Screen {
-            area: rect(Rectangle::from_size(size)),
-            usable: rect(layer_map_for_output(&self.output).non_exclusive_zone()),
-        };
-        if screen != self.screen {
-            self.screen = screen;
-            self.desktop.set_outputs([screen]);
-        }
-    }
-
-    /// The output, for a backend to create a damage tracker from.
-    #[must_use]
-    pub const fn output(&self) -> &Output {
-        &self.output
-    }
-
-    /// The size of the output in pixels.
-    #[must_use]
-    pub fn output_size(&self) -> Size<i32, Physical> {
-        self.output
-            .current_mode()
-            .map(|mode| mode.size)
-            .unwrap_or_default()
-    }
-
-    /// The size of the output in units of layout, which is what windows
-    /// and the pointer are positioned in.
-    #[must_use]
-    pub fn logical_size(&self) -> Size<i32, Logical> {
-        let size = self.output_size();
-        (self.scale.units(size.w), self.scale.units(size.h)).into()
     }
 
     // --- Lifecycle -----------------------------------------------------------
@@ -536,11 +427,12 @@ impl Compositor {
         self.shown = self.cursor_wanted();
         if let Look::Icon(icon) = self.shown {
             let theme = &self.store.current().theme.cursor;
+            let scale = self.pointer_scale();
             let current = self.pointer_image.take().filter(|image| {
-                image.icon == icon && image.scale == self.scale && image.theme == *theme
+                image.icon == icon && image.scale == scale && image.theme == *theme
             });
             self.pointer_image =
-                current.or_else(|| Some(PointerImage::load(&self.themes, theme, icon, self.scale)));
+                current.or_else(|| Some(PointerImage::load(&self.themes, theme, icon, scale)));
         }
     }
 
@@ -713,10 +605,11 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
-        let size = self.logical_size();
+        // The menu stays on the output the pointer is on.
+        let area = self.pointer_head().map(Head::area).unwrap_or_default();
         let area = Rect::new(
-            DomainPoint::new(0, 0),
-            DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs()),
+            DomainPoint::new(area.loc.x, area.loc.y),
+            DomainSize::new(area.size.w.unsigned_abs(), area.size.h.unsigned_abs()),
         );
         let metrics = MenuMetrics {
             width: MENU_WIDTH,
@@ -788,8 +681,11 @@ impl Compositor {
             let toplevel = shown.window.toplevel();
             toplevel.is_some_and(|toplevel| toplevel.wl_surface() == surface)
         };
-        let layers = layer_map_for_output(&self.output);
-        self.scene.iter().any(window) || layers.layers().any(|layer| layer.wl_surface() == surface)
+        let panel = |head: &Head| {
+            let layers = layer_map_for_output(&head.output);
+            layers.layers().any(|layer| layer.wl_surface() == surface)
+        };
+        self.scene.iter().any(window) || self.heads.iter().any(panel)
     }
 
     // --- Windows -------------------------------------------------------------
@@ -810,13 +706,20 @@ impl Compositor {
     /// are shown, where, in what order and state, and which has focus. Also
     /// repaints the decoration of any frame whose appearance changed.
     fn sync(&mut self) {
-        layer_map_for_output(&self.output).cleanup();
-        self.update_screen();
+        for head in &self.heads {
+            layer_map_for_output(&head.output).cleanup();
+        }
+        self.update_screens();
         let focused = self.desktop.focused();
+        // A frame's decoration is painted for the output most of it is on.
+        let scale_for = |geometry: Rect| {
+            self.head_for(geometry)
+                .map_or(Scale::ONE, |head| head.scale)
+        };
         let frames: Vec<FrameInfo> = self
             .desktop
             .frames()
-            .map(|frame| FrameInfo::of(&frame))
+            .map(|frame| FrameInfo::of(&frame, scale_for(frame.geometry)))
             .collect();
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
@@ -857,7 +760,7 @@ impl Compositor {
                                 shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
                             })
                             .and_then(|index| previous.swap_remove(index).chrome);
-                        Chrome::paint(text, &config.theme, self.scale, cached, frame, decoration)
+                        Chrome::paint(text, &config.theme, frame.scale, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     scene.push((
@@ -866,6 +769,7 @@ impl Compositor {
                             id: *id,
                             fullscreen: frame.fullscreen,
                             window: window.clone(),
+                            outer: frame.geometry,
                             origin,
                             chrome,
                         },
@@ -900,13 +804,17 @@ impl Compositor {
             self.dismissed.clear();
         }
         let wanted = !self.problems.is_empty() && self.problems != self.dismissed;
-        let output_width = self.screen.area.size.width;
+        // The notice is on the first output, which is where a session
+        // with one screen has it.
+        let first = self.heads.first();
+        let within = first.map(Head::area).unwrap_or_default();
+        let scale = first.map_or(Scale::ONE, |head| head.scale);
         let current = self.notice.take().filter(|notice| {
             wanted
                 && notice.problems == self.problems
                 && notice.theme == *theme
-                && notice.output_width == output_width
-                && notice.scale == self.scale
+                && notice.within == within
+                && notice.scale == scale
         });
         self.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
@@ -914,21 +822,22 @@ impl Compositor {
                 &mut self.text,
                 theme,
                 &self.problems,
-                output_width,
-                self.scale,
+                within,
+                scale,
             )),
             (None, false) => None,
         };
 
         // Repaint the menu if it, or the theme, changed since it was drawn.
+        let scale = self.pointer_scale();
         let current = self.menu_chrome.take().filter(|chrome| {
             self.menu.as_ref() == Some(&chrome.menu)
                 && chrome.theme == *theme
-                && chrome.scale == self.scale
+                && chrome.scale == scale
         });
         self.menu_chrome = match (current, &self.menu) {
             (Some(chrome), _) => Some(chrome),
-            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu, self.scale)),
+            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu, scale)),
             (None, None) => None,
         };
     }
@@ -938,7 +847,7 @@ impl Compositor {
         if self.is_locked() {
             // The lock surface has the keyboard, or nothing does. Nothing
             // below is consulted.
-            let focus = self.lock_surface().cloned();
+            let focus = self.lock_focus().cloned();
             let keyboard = self.keyboard.clone();
             if keyboard.current_focus() != focus {
                 keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
@@ -956,14 +865,14 @@ impl Compositor {
         // A panel that was clicked and accepts the keyboard comes next.
         self.layer_focus = self.layer_focus.take().filter(Resource::is_alive);
         let menu = menu.or_else(|| self.layer_focus.clone());
-        let demanding = layer_map_for_output(&self.output)
-            .layers()
-            .rev()
-            .find(|layer| {
+        let demanding = self.heads.iter().find_map(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let demanding = layers.layers().rev().find(|layer| {
                 layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
                     && matches!(layer.layer(), Layer::Top | Layer::Overlay)
-            })
-            .map(|layer| layer.wl_surface().clone());
+            });
+            demanding.map(|layer| layer.wl_surface().clone())
+        });
         let focus = demanding.or(menu).or_else(|| {
             focused
                 .and_then(|id| self.mapped(id))
@@ -977,7 +886,7 @@ impl Compositor {
 
     // --- Drawing -------------------------------------------------------------
 
-    /// Draws the output into `framebuffer`.
+    /// Draws what `output` shows into `framebuffer`.
     ///
     /// `age` is how many frames old the framebuffer's contents are, or `0`
     /// if unknown, and lets the damage tracker redraw only what changed.
@@ -987,6 +896,7 @@ impl Compositor {
     /// Returns an error if the renderer fails.
     pub fn render<'tracker, R>(
         &self,
+        output: &Output,
         renderer: &mut R,
         framebuffer: &mut R::Framebuffer<'_>,
         tracker: &'tracker mut OutputDamageTracker,
@@ -997,27 +907,33 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let unspecified = Kind::Unspecified;
-        let scale = self.scale;
+        let head = self.head(output);
+        let view = View {
+            origin: head.map(|head| head.area().loc).unwrap_or_default(),
+            scale: head.map_or(Scale::ONE, |head| head.scale),
+        };
         // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
-        self.pointer_elements(renderer, &mut elements);
+        self.pointer_elements(renderer, view, &mut elements);
         if self.is_locked() {
             // Nothing of the session is drawn while it is locked: only what
             // the locker shows, on black. This returns before anything
             // else is even looked at.
-            let surface = self.lock_surface().into_iter();
+            let surface = self.lock_surface_on(output).into_iter();
             let shown = surface.flat_map(|surface| {
                 render_elements_from_surface_tree(
                     renderer,
                     surface,
                     (0, 0),
-                    scale.factor(),
+                    view.scale.factor(),
                     1.0,
                     unspecified,
                 )
             });
             elements.extend(shown.map(Element::Surface));
-            self.blanked.set(true);
+            if let Some(head) = head {
+                head.blanked.set(true);
+            }
             return tracker.render_output(renderer, framebuffer, age, &elements, Color32F::BLACK);
         }
         if let Some(notice) = &self.notice {
@@ -1025,20 +941,20 @@ impl Compositor {
             elements.extend(
                 notice
                     .pixels
-                    .element(renderer, at.to_f64(), scale, unspecified),
+                    .element(renderer, at.to_f64(), view, unspecified),
             );
         }
         for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
-            elements.extend(panel.element(renderer, at.to_f64(), scale, unspecified));
+            elements.extend(panel.element(renderer, at.to_f64(), view, unspecified));
         }
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them.
-        self.layer_elements(renderer, Layer::Overlay, &mut elements);
-        self.frame_elements(renderer, true, &mut elements);
-        self.layer_elements(renderer, Layer::Top, &mut elements);
-        self.frame_elements(renderer, false, &mut elements);
-        self.layer_elements(renderer, Layer::Bottom, &mut elements);
-        self.layer_elements(renderer, Layer::Background, &mut elements);
+        Self::layer_elements(renderer, output, view, Layer::Overlay, &mut elements);
+        self.frame_elements(renderer, view, true, &mut elements);
+        Self::layer_elements(renderer, output, view, Layer::Top, &mut elements);
+        self.frame_elements(renderer, view, false, &mut elements);
+        Self::layer_elements(renderer, output, view, Layer::Bottom, &mut elements);
+        Self::layer_elements(renderer, output, view, Layer::Background, &mut elements);
         tracker.render_output(
             renderer,
             framebuffer,
@@ -1050,7 +966,7 @@ impl Compositor {
 
     /// Adds the pointer, if it is the compositor's to draw and is not
     /// hidden: a picture from the cursor theme, or one an application gave.
-    fn pointer_elements<R>(&self, renderer: &mut R, elements: &mut Vec<Element<R>>)
+    fn pointer_elements<R>(&self, renderer: &mut R, view: View, elements: &mut Vec<Element<R>>)
     where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
@@ -1061,11 +977,7 @@ impl Compositor {
         match (&self.shown, &self.pointer_image) {
             (Look::Icon(_), Some(image)) => {
                 let at = self.pointer_location - image.hotspot;
-                elements.extend(
-                    image
-                        .picture
-                        .element(renderer, at, self.scale, Kind::Cursor),
-                );
+                elements.extend(image.picture.element(renderer, at, view, Kind::Cursor));
             }
             (Look::Surface(surface), _) => {
                 let hotspot = with_states(surface, |states| {
@@ -1078,8 +990,8 @@ impl Compositor {
                 let picture = render_elements_from_surface_tree(
                     renderer,
                     surface,
-                    at.to_physical(self.scale.factor()).to_i32_round(),
-                    self.scale.factor(),
+                    view.pixel(at),
+                    view.scale.factor(),
                     1.0,
                     Kind::Cursor,
                 );
@@ -1090,13 +1002,17 @@ impl Compositor {
     }
 
     /// Adds the frames that are, or are not, fullscreen, topmost first.
-    fn frame_elements<R>(&self, renderer: &mut R, fullscreen: bool, elements: &mut Vec<Element<R>>)
-    where
+    fn frame_elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        fullscreen: bool,
+        elements: &mut Vec<Element<R>>,
+    ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let unspecified = Kind::Unspecified;
-        let scale = self.scale;
         for shown in self
             .scene
             .iter()
@@ -1106,13 +1022,13 @@ impl Compositor {
             if let Some(chrome) = &shown.chrome {
                 let bar = chrome.decoration.titlebar().origin;
                 let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
-                elements.extend(chrome.titlebar.element(renderer, at, scale, unspecified));
+                elements.extend(chrome.titlebar.element(renderer, at, view, unspecified));
                 for (buffer, border) in chrome.borders.iter().zip(chrome.decoration.borders()) {
-                    let at = (scale.pixels(border.origin.x), scale.pixels(border.origin.y));
+                    let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
                     let border = SolidColorRenderElement::from_buffer(
                         buffer,
-                        at,
-                        scale.factor(),
+                        view.pixel(at.to_f64()),
+                        view.scale.factor(),
                         1.0,
                         unspecified,
                     );
@@ -1126,8 +1042,8 @@ impl Compositor {
                 .window
                 .render_elements::<WaylandSurfaceRenderElement<R>>(
                     renderer,
-                    (scale.pixels(location.x), scale.pixels(location.y)).into(),
-                    smithay::utils::Scale::from(scale.factor()),
+                    view.pixel(location.to_f64()),
+                    smithay::utils::Scale::from(view.scale.factor()),
                     1.0,
                 );
             elements.extend(surfaces.into_iter().map(Element::Surface));
@@ -1135,52 +1051,83 @@ impl Compositor {
     }
 
     /// Adds the layer-shell surfaces of one layer, topmost first.
-    fn layer_elements<R>(&self, renderer: &mut R, layer: Layer, elements: &mut Vec<Element<R>>)
-    where
+    fn layer_elements<R>(
+        renderer: &mut R,
+        output: &Output,
+        view: View,
+        layer: Layer,
+        elements: &mut Vec<Element<R>>,
+    ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let layers = layer_map_for_output(&self.output);
+        let layers = layer_map_for_output(output);
         for surface in layers.layers_on(layer).rev() {
-            let at = layers.layer_geometry(surface).unwrap_or_default().loc;
+            // A panel is placed within its own output.
+            let at = layers.layer_geometry(surface).unwrap_or_default().loc + view.origin;
             let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
                 renderer,
-                (self.scale.pixels(at.x), self.scale.pixels(at.y)).into(),
-                smithay::utils::Scale::from(self.scale.factor()),
+                view.pixel(at.to_f64()),
+                smithay::utils::Scale::from(view.scale.factor()),
                 1.0,
             );
             elements.extend(surfaces.into_iter().map(Element::Surface));
         }
     }
 
-    /// Tells the windows on screen that a frame was shown, so they draw the
-    /// next one. `elapsed` is the time since the compositor started.
-    pub fn send_frames(&mut self, elapsed: Duration) {
+    /// Tells what is on `output` that a frame was shown there, so that it
+    /// draws the next one. `elapsed` is the time since the compositor
+    /// started.
+    ///
+    /// A window is told by the output most of it is on, so that it draws at
+    /// that output's pace and not at several at once.
+    pub fn send_frames(&mut self, output: &Output, elapsed: Duration) {
         self.confirm_lock();
-        if let Some(surface) = self.lock_surface() {
-            send_frames_surface_tree(
-                surface,
-                &self.output,
-                elapsed,
-                Some(Duration::ZERO),
-                |_, _| Some(self.output.clone()),
-            );
+        let shown = |surface: &WlSurface| {
+            send_frames_surface_tree(surface, output, elapsed, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        };
+        let here = |head: Option<&Head>| head.is_some_and(|head| head.output == *output);
+        if let Some(surface) = self.lock_surface_on(output) {
+            shown(surface);
         }
-        for window in self.space.elements() {
-            window.send_frame(&self.output, elapsed, Some(Duration::ZERO), |_, _| {
-                Some(self.output.clone())
+        for frame in &self.scene {
+            if here(self.head_for(frame.outer)) {
+                frame
+                    .window
+                    .send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
+                        Some(output.clone())
+                    });
+            }
+        }
+        for layer in layer_map_for_output(output).layers() {
+            layer.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
             });
         }
         // An application may animate the picture it gave for the pointer.
-        if let Look::Surface(surface) = &self.shown {
-            send_frames_surface_tree(
-                surface,
-                &self.output,
-                elapsed,
-                Some(Duration::ZERO),
-                |_, _| Some(self.output.clone()),
-            );
+        if let Look::Surface(surface) = &self.shown
+            && here(self.pointer_head())
+        {
+            shown(surface);
         }
+    }
+}
+
+/// One output's view of the space, for drawing on it.
+#[derive(Debug, Clone, Copy)]
+struct View {
+    /// Where in the space the output's top-left corner is.
+    origin: Point<i32, Logical>,
+    scale: Scale,
+}
+
+impl View {
+    /// The pixel of the output that a point of the space falls on.
+    fn pixel(self, at: Point<f64, Logical>) -> Point<i32, Physical> {
+        let within = at - self.origin.to_f64();
+        within.to_physical(self.scale.factor()).to_i32_round()
     }
 }
 
@@ -1256,9 +1203,10 @@ const NOTICE_MARGIN: u32 = 12;
 pub(crate) struct Notice {
     problems: Vec<String>,
     theme: Theme,
-    output_width: u32,
+    /// The output it was laid out on.
+    within: Rectangle<i32, Logical>,
     scale: Scale,
-    /// Where on the output the notice is: its top-right corner.
+    /// Where the notice is: the top-right corner of that output.
     pub(crate) area: Rect,
     pixels: Painted,
 }
@@ -1268,9 +1216,10 @@ impl Notice {
         text: &mut Text,
         theme: &Theme,
         problems: &[String],
-        output_width: u32,
+        within: Rectangle<i32, Logical>,
         scale: Scale,
     ) -> Self {
+        let output_width = within.size.w.unsigned_abs();
         let width = NOTICE_WIDTH.min(output_width.saturating_sub(NOTICE_MARGIN * 2));
         let canvas = paint::notice(text, theme, problems, width, scale);
         let (painted_width, painted_height) = canvas.units();
@@ -1278,13 +1227,16 @@ impl Notice {
             .saturating_sub(width + NOTICE_MARGIN)
             .cast_signed();
         let area = Rect::new(
-            DomainPoint::new(left, NOTICE_MARGIN.cast_signed()),
+            DomainPoint::new(
+                within.loc.x + left,
+                within.loc.y + NOTICE_MARGIN.cast_signed(),
+            ),
             DomainSize::new(painted_width, painted_height),
         );
         Self {
             problems: problems.to_vec(),
             theme: theme.clone(),
-            output_width,
+            within,
             scale,
             area,
             pixels: Painted::new(&canvas),
@@ -1374,14 +1326,14 @@ impl Painted {
         }
     }
 
-    /// The painting placed at `at` on an output of the given scale. If it
+    /// The painting placed at `at` in the space, as an output sees it. If it
     /// cannot be uploaded to the renderer it is left out, which is better
     /// than failing the whole frame.
     fn element<R>(
         &self,
         renderer: &mut R,
         at: Point<f64, Logical>,
-        scale: Scale,
+        view: View,
         kind: Kind,
     ) -> Option<Element<R>>
     where
@@ -1390,7 +1342,7 @@ impl Painted {
     {
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            at.to_physical(scale.factor()),
+            view.pixel(at).to_f64(),
             &self.pixels,
             None,
             Some(self.whole),
@@ -1408,6 +1360,8 @@ pub(crate) struct Shown {
     pub(crate) id: WindowId,
     pub(crate) fullscreen: bool,
     pub(crate) window: Window,
+    /// The whole frame, decoration included.
+    pub(crate) outer: Rect,
     /// Where the window's visible geometry starts.
     pub(crate) origin: Point<i32, Logical>,
     chrome: Option<Chrome>,
@@ -1504,6 +1458,9 @@ impl Chrome {
 /// What `sync` needs to know about a frame, copied out of the desktop.
 struct FrameInfo {
     shown: WindowId,
+    /// The scale of the output most of the frame is on.
+    scale: Scale,
+    geometry: Rect,
     client: Rect,
     maximized: bool,
     fullscreen: bool,
@@ -1515,9 +1472,11 @@ struct FrameInfo {
 }
 
 impl FrameInfo {
-    fn of(frame: &Frame<'_>) -> Self {
+    fn of(frame: &Frame<'_>, scale: Scale) -> Self {
         Self {
             shown: frame.window().id,
+            scale,
+            geometry: frame.geometry,
             client: frame.client(),
             maximized: frame.maximized,
             fullscreen: frame.fullscreen,

@@ -132,9 +132,7 @@ fn an_application_draws_the_pointer_itself_or_hides_it() {
 
     // The picture can be animated, so it is told when a frame is shown.
     client.take_events();
-    session
-        .compositor_mut()
-        .send_frames(std::time::Duration::from_millis(16));
+    session.send_frames(std::time::Duration::from_millis(16));
     session.roundtrip(&mut client);
     assert!(
         client
@@ -262,7 +260,7 @@ fn the_theme_and_size_come_from_the_configuration_and_the_scale() {
 
     // At twice the scale the picture is the same size in pixels, since it
     // is the only one the theme has, and is drawn pixel for pixel.
-    session.compositor_mut().suggest_scale(Scale::new(2.0));
+    session.suggest_scale(Scale::new(2.0));
     pointer_at(&mut session, 150, 150);
     let screen = session.draw();
     assert_eq!(screen.at(300, 300), YELLOW);

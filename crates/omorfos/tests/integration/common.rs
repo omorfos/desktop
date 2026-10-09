@@ -17,6 +17,7 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::pixman::PixmanRenderer;
 use smithay::backend::renderer::{Bind, ExportMem};
+use smithay::output::Output;
 use smithay::reexports::calloop::channel;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::pixman::{FormatCode, Image};
@@ -89,16 +90,26 @@ pub(crate) mod key {
 pub(crate) struct Session {
     inner: omorfos::Session,
     renderer: PixmanRenderer,
-    image: Image<'static, 'static>,
-    tracker: OutputDamageTracker,
+    /// The outputs, each with the picture it is drawn into. Tests that do
+    /// not care have one, [`WIDTH`] by [`HEIGHT`].
+    monitors: Vec<Monitor>,
     pub(crate) config: TempDir,
     /// The time the compositor is told it is. Tests advance it by hand.
     pub(crate) now: Instant,
 }
 
 /// What a frame looked like.
+/// An output drawn with the software renderer.
+struct Monitor {
+    output: Output,
+    image: Image<'static, 'static>,
+    tracker: OutputDamageTracker,
+    size: (i32, i32),
+}
+
 pub(crate) struct Picture {
     pixels: Vec<u8>,
+    width: i32,
     /// Whether anything had to be redrawn.
     pub(crate) damaged: bool,
 }
@@ -106,7 +117,7 @@ pub(crate) struct Picture {
 impl Picture {
     /// The colour at a position, as `0xAARRGGBB`.
     pub(crate) fn at(&self, x: i32, y: i32) -> u32 {
-        let offset = usize::try_from((y * WIDTH + x) * 4).unwrap();
+        let offset = usize::try_from((y * self.width + x) * 4).unwrap();
         u32::from_le_bytes(self.pixels[offset..offset + 4].try_into().unwrap())
     }
 }
@@ -130,18 +141,55 @@ impl Session {
     /// the temporary directory itself when `None`.
     pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
         let directory = directory.unwrap_or(config.path()).to_owned();
-        let inner = omorfos::Session::new(directory, (WIDTH, HEIGHT), Transform::Normal).unwrap();
-        let tracker = OutputDamageTracker::from_output(inner.compositor().output());
-        let width = usize::try_from(WIDTH).unwrap();
-        let height = usize::try_from(HEIGHT).unwrap();
-        Self {
+        let inner = omorfos::Session::new(directory).unwrap();
+        let mut session = Self {
             inner,
             renderer: PixmanRenderer::new().unwrap(),
-            image: Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap(),
-            tracker,
+            monitors: Vec::new(),
             config,
             now: Instant::now(),
-        }
+        };
+        session.add_output((WIDTH, HEIGHT));
+        session
+    }
+
+    /// Plugs in another output, to the right of those there are.
+    pub(crate) fn add_output(&mut self, size: (i32, i32)) -> Output {
+        let name = format!("test-{}", self.monitors.len());
+        let compositor = self.inner.compositor_mut();
+        let output = compositor.add_output(&name, size, Transform::Normal);
+        let width = usize::try_from(size.0).unwrap();
+        let height = usize::try_from(size.1).unwrap();
+        self.monitors.push(Monitor {
+            tracker: OutputDamageTracker::from_output(&output),
+            image: Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap(),
+            output: output.clone(),
+            size,
+        });
+        output
+    }
+
+    /// The first output, which is the only one unless a test adds more.
+    pub(crate) fn output(&self) -> Output {
+        self.monitors[0].output.clone()
+    }
+
+    /// Changes the size of the first output, in pixels.
+    pub(crate) fn resize_output(&mut self, size: (i32, i32)) {
+        let output = self.output();
+        self.inner.compositor_mut().resize_output(&output, size);
+    }
+
+    /// Says what scale suits the first output.
+    pub(crate) fn suggest_scale(&mut self, scale: omorfos::Scale) {
+        let output = self.output();
+        self.inner.compositor_mut().suggest_scale(&output, scale);
+    }
+
+    /// Tells what is on the first output that a frame was shown.
+    pub(crate) fn send_frames(&mut self, elapsed: Duration) {
+        let output = self.output();
+        self.inner.compositor_mut().send_frames(&output, elapsed);
     }
 
     /// The compositor.
@@ -377,20 +425,38 @@ impl Session {
 
     /// Draws a frame and returns what is on screen.
     pub(crate) fn draw(&mut self) -> Picture {
-        let mut target = self.renderer.bind(&mut self.image).unwrap();
+        self.draw_on(0)
+    }
+
+    /// Draws a frame on one of the outputs, counted in the order they were
+    /// added, and returns what is on it.
+    pub(crate) fn draw_on(&mut self, index: usize) -> Picture {
+        let monitor = &mut self.monitors[index];
+        let mut target = self.renderer.bind(&mut monitor.image).unwrap();
         let result = self
             .inner
             .compositor_mut()
-            .render(&mut self.renderer, &mut target, &mut self.tracker, 1)
+            .render(
+                &monitor.output,
+                &mut self.renderer,
+                &mut target,
+                &mut monitor.tracker,
+                1,
+            )
             .unwrap();
         let damaged = result.damage.is_some();
-        let region = Rectangle::from_size((WIDTH, HEIGHT).into());
+        let width = monitor.size.0;
+        let region = Rectangle::from_size(monitor.size.into());
         let mapping = self
             .renderer
             .copy_framebuffer(&target, region, Fourcc::Argb8888)
             .unwrap();
         let pixels = self.renderer.map_texture(&mapping).unwrap().to_vec();
-        Picture { pixels, damaged }
+        Picture {
+            pixels,
+            width,
+            damaged,
+        }
     }
 }
 
@@ -441,6 +507,8 @@ pub(crate) enum Event {
         pressed: bool,
     },
     FrameDone,
+    /// A panel was told it has nowhere to be any more.
+    LayerClosed,
     /// The session is locked, as this client asked.
     Locked,
     /// This client's request to lock the session was turned down.
@@ -477,7 +545,8 @@ pub(crate) struct ClientState {
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
     inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
-    output: Option<wl_output::WlOutput>,
+    /// The outputs the compositor offers, in the order they appeared.
+    pub(crate) screens: Vec<wl_output::WlOutput>,
     /// What the client's surfaces were last told about how they are shown.
     pub(crate) told: Told,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
@@ -602,11 +671,24 @@ impl Client {
         wl_surface::WlSurface,
         zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
     ) {
+        self.layer_on(shape, None)
+    }
+
+    /// As [`Client::layer`], on an output of the client's choosing, counted
+    /// in the order they appeared. Without one the compositor chooses.
+    pub(crate) fn layer_on(
+        &self,
+        shape: &LayerShape,
+        output: Option<usize>,
+    ) -> (
+        wl_surface::WlSurface,
+        zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    ) {
         let surface = self.surface();
         let shell = self.state.layer_shell.as_ref().unwrap();
         let role = shell.get_layer_surface(
             &surface,
-            None,
+            output.map(|index| &self.state.screens[index]),
             shape.layer,
             "test".to_owned(),
             &self.handle(),
@@ -662,8 +744,18 @@ impl Client {
         &self,
         lock: &ext_session_lock_v1::ExtSessionLockV1,
     ) -> wl_surface::WlSurface {
+        self.lock_surface_on(lock, 0)
+    }
+
+    /// Makes a surface the one shown on one output while the session is
+    /// locked. Outputs are counted in the order they appeared.
+    pub(crate) fn lock_surface_on(
+        &self,
+        lock: &ext_session_lock_v1::ExtSessionLockV1,
+        output: usize,
+    ) -> wl_surface::WlSurface {
         let surface = self.surface();
-        let output = self.state.output.as_ref().unwrap();
+        let output = &self.state.screens[output];
         lock.get_lock_surface(&surface, output, &self.handle(), ());
         surface
     }
@@ -983,7 +1075,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "wl_output" => {
-                state.output = Some(registry.bind(name, version, handle, ()));
+                state.screens.push(registry.bind(name, version, handle, ()));
                 state.outputs += 1;
             }
             "ext_session_lock_manager_v1" => {
@@ -1142,16 +1234,19 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for ClientState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let zwlr_layer_surface_v1::Event::Configure {
-            serial,
-            width,
-            height,
-        } = event
-        {
-            surface.ack_configure(serial);
-            state.events.push(Event::LayerConfigure {
-                size: (width, height),
-            });
+        match event {
+            zwlr_layer_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } => {
+                surface.ack_configure(serial);
+                state.events.push(Event::LayerConfigure {
+                    size: (width, height),
+                });
+            }
+            zwlr_layer_surface_v1::Event::Closed => state.events.push(Event::LayerClosed),
+            _ => {}
         }
     }
 }

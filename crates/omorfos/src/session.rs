@@ -16,7 +16,6 @@ use std::time::{Duration, Instant};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::wayland_server::{Display, ListeningSocket};
-use smithay::utils::Transform;
 
 use crate::Compositor;
 
@@ -28,19 +27,14 @@ pub struct Session {
 }
 
 impl Session {
-    /// Creates a session whose compositor has one output of `output_size`
-    /// pixels and reads its configuration from `config_directory`. See
-    /// [`Compositor::new`] for both and for `output_transform`.
+    /// Creates a session whose compositor reads its configuration from
+    /// `config_directory`. See [`Compositor::new`].
     ///
     /// # Errors
     ///
     /// Returns an error if the event loop or the Wayland display cannot be
     /// created, or if [`Compositor::new`] fails.
-    pub fn new(
-        config_directory: impl Into<PathBuf>,
-        output_size: (i32, i32),
-        output_transform: Transform,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new(config_directory: impl Into<PathBuf>) -> Result<Self, Box<dyn Error>> {
         let config_directory = config_directory.into();
         EventLoop::try_new()
             .map_err(Box::from)
@@ -50,14 +44,8 @@ impl Session {
                     .map_err(Box::from)
             })
             .and_then(|(event_loop, display)| {
-                Compositor::new(
-                    display.handle(),
-                    event_loop.handle(),
-                    config_directory,
-                    output_size,
-                    output_transform,
-                )
-                .map(|compositor| (event_loop, display, compositor))
+                Compositor::new(display.handle(), event_loop.handle(), config_directory)
+                    .map(|compositor| (event_loop, display, compositor))
             })
             .and_then(|(event_loop, mut display, compositor)| {
                 // The display is moved into its own event source, which is

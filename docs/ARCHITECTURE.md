@@ -93,10 +93,13 @@ Decorations and the menu are painted on the CPU by `paint` into a `Canvas`
 and uploaded as textures, repainted only when their appearance changes. See
 [adr/0007-decorations-and-menu.md](adr/0007-decorations-and-menu.md).
 
-Everything above is in units of layout, not pixels. The output has a
-scale, automatic or configured, that turns one into the other when
-drawing, and applications are told it so that they draw sharply. See
-[adr/0011-scaling.md](adr/0011-scaling.md).
+Everything above is in units of layout, not pixels, in one space that
+all the outputs show a part of. Each output has a position in it and a
+scale, automatic or configured, that turns units into pixels when drawing;
+applications are told the scale so that they draw sharply. Outputs come
+and go as screens are plugged in. See
+[adr/0011-scaling.md](adr/0011-scaling.md) and
+[adr/0015-several-outputs.md](adr/0015-several-outputs.md).
 
 Because the renderer and the input source are both parameters, the tests in
 `crates/omorfos/tests/integration` run the whole compositor against a real

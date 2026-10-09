@@ -11,7 +11,7 @@ const WHITE: u32 = 0xffff_ffff;
 /// A session on a screen that the backend says suits a scale of `factor`.
 fn at_scale(factor: f64) -> Session {
     let mut session = Session::new();
-    session.compositor_mut().suggest_scale(Scale::new(factor));
+    session.suggest_scale(Scale::new(factor));
     session.step();
     session
 }
@@ -19,7 +19,7 @@ fn at_scale(factor: f64) -> Session {
 #[test]
 fn a_scaled_screen_is_smaller_in_units_and_everything_on_it_is_drawn_larger() {
     let mut session = at_scale(2.0);
-    let size = session.compositor().logical_size();
+    let size = session.compositor().area_of(&session.output()).size;
     assert_eq!((size.w, size.h), (WIDTH / 2, HEIGHT / 2));
 
     let mut client = session.connect();
@@ -43,7 +43,7 @@ fn a_scaled_screen_is_smaller_in_units_and_everything_on_it_is_drawn_larger() {
 #[test]
 fn a_scale_need_not_be_whole() {
     let mut session = at_scale(1.5);
-    let size = session.compositor().logical_size();
+    let size = session.compositor().area_of(&session.output()).size;
     assert_eq!((size.w, size.h), (427, 320));
 
     let mut client = session.connect();
@@ -57,14 +57,23 @@ fn a_scale_need_not_be_whole() {
 #[test]
 fn the_configured_scale_is_used_whatever_suits_the_screen() {
     let mut session = Session::with_config(&[("config.yaml", "output: { scale: 2 }\n")]);
-    assert_eq!(session.compositor().scale(), Scale::new(2.0));
-    session.compositor_mut().suggest_scale(Scale::new(1.5));
-    assert_eq!(session.compositor().scale(), Scale::new(2.0));
+    assert_eq!(
+        session.compositor().scale_of(&session.output()),
+        Scale::new(2.0)
+    );
+    session.suggest_scale(Scale::new(1.5));
+    assert_eq!(
+        session.compositor().scale_of(&session.output()),
+        Scale::new(2.0)
+    );
 
     // Without one, the screen decides.
     session.write_config("config.yaml", "output: { scale: auto }\n");
     session.compositor_mut().reload_config();
-    assert_eq!(session.compositor().scale(), Scale::new(1.5));
+    assert_eq!(
+        session.compositor().scale_of(&session.output()),
+        Scale::new(1.5)
+    );
 }
 
 #[test]
@@ -104,7 +113,7 @@ fn applications_are_told_the_scale_so_that_they_can_draw_at_it() {
     assert_eq!(picture.at(150, 40), BACKGROUND);
 
     // A change of scale reaches it, once.
-    session.compositor_mut().suggest_scale(Scale::new(2.0));
+    session.suggest_scale(Scale::new(2.0));
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     assert_eq!(
@@ -236,7 +245,7 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
     assert_ne!(before.at(WIDTH - 20, 20), BACKGROUND, "the notice");
     assert_eq!(before.at(60, 20), BACKGROUND, "left of the notice");
 
-    session.compositor_mut().suggest_scale(Scale::new(2.0));
+    session.suggest_scale(Scale::new(2.0));
     session.step();
     let after = session.draw();
     assert_ne!(after.at(300, 200), BACKGROUND, "the menu, twice as wide");
