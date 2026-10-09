@@ -41,10 +41,18 @@ keyboard:
 touchpad:
   tap_to_click: true
   natural_scroll: false
+output:
+  scale: auto             # auto | 1 to 4 in steps of 0.25
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
 `["1", "2", "3", "4"]`.
+
+`output.scale` is how large everything is drawn. With `auto`, omorfos
+chooses from how dense the screen is, so that a laptop with a sharp panel
+is as readable as a desktop monitor. If the choice does not suit you, give
+a number: `1` is one pixel to a pixel, `1.5` half as large again, `2`
+twice the size.
 
 ## `keys.yaml`
 
