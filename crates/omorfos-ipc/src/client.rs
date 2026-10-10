@@ -1,8 +1,9 @@
-//! A blocking client for the socket.
+//! A client for the socket.
 
 use std::env;
 use std::ffi::OsStr;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, Read, Write};
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
@@ -46,7 +47,9 @@ pub fn socket_path_from_env() -> Option<PathBuf> {
 /// A connection to the compositor.
 #[derive(Debug)]
 pub struct Client {
-    stream: BufReader<UnixStream>,
+    stream: UnixStream,
+    /// What has been read and not yet handed out as a message.
+    pending: Vec<u8>,
 }
 
 impl Client {
@@ -64,7 +67,8 @@ impl Client {
     #[must_use]
     pub fn from_stream(stream: UnixStream) -> Self {
         Self {
-            stream: BufReader::new(stream),
+            stream,
+            pending: Vec::new(),
         }
     }
 
@@ -74,7 +78,7 @@ impl Client {
     ///
     /// Returns an error if the request cannot be written.
     pub fn send(&mut self, request: &Request) -> io::Result<()> {
-        self.stream.get_mut().write_all(encode(request).as_bytes())
+        self.stream.write_all(encode(request).as_bytes())
     }
 
     /// Waits for the next message from the compositor: the answer to a
@@ -85,18 +89,55 @@ impl Client {
     /// Returns an error if the connection is closed or fails, or if the
     /// compositor sends something that is not a [`Reply`].
     pub fn receive(&mut self) -> io::Result<Reply> {
-        let mut line = String::new();
-        let limit = u64::try_from(MAX_MESSAGE).unwrap_or(u64::MAX);
-        let read = self.stream.by_ref().take(limit).read_line(&mut line);
-        read.and_then(|length| {
-            if length == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "the compositor closed the connection",
-                ));
+        let message = self.try_receive();
+        message.and_then(|message| message.ok_or_else(|| io::ErrorKind::WouldBlock.into()))
+    }
+
+    /// Makes the connection one that never waits, or one that does again.
+    /// While it never waits, read with [`Client::try_receive`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection cannot be changed.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.stream.set_nonblocking(nonblocking)
+    }
+
+    /// The next message from the compositor, or `None` if a whole one has
+    /// not arrived yet and the connection was told not to wait
+    /// ([`Client::set_nonblocking`]). What has arrived of a message is kept
+    /// for the next call.
+    ///
+    /// A program with an event loop of its own waits for the connection to
+    /// be readable ([`AsFd`]) and then calls this until it returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Client::receive`].
+    pub fn try_receive(&mut self) -> io::Result<Option<Reply>> {
+        loop {
+            let within = self.pending.iter().take(MAX_MESSAGE);
+            if let Some(end) = within.into_iter().position(|byte| *byte == b'\n') {
+                let line: Vec<u8> = self.pending.drain(..=end).collect();
+                let reply = decode(&String::from_utf8_lossy(&line));
+                return reply.map(Some).map_err(invalid);
             }
-            decode(&line).map_err(|problem| io::Error::new(io::ErrorKind::InvalidData, problem))
-        })
+            if self.pending.len() >= MAX_MESSAGE {
+                return Err(invalid("the message is too long".to_owned()));
+            }
+            let mut chunk = [0; 4096];
+            match self.stream.read(&mut chunk) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "the compositor closed the connection",
+                    ));
+                }
+                Ok(length) => self.pending.extend(chunk.iter().take(length)),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     /// Sends a request and waits for its answer.
@@ -107,6 +148,17 @@ impl Client {
     pub fn request(&mut self, request: &Request) -> io::Result<Reply> {
         self.send(request).and_then(|()| self.receive())
     }
+}
+
+impl AsFd for Client {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.stream.as_fd()
+    }
+}
+
+/// The error for something that is not a message.
+fn invalid(problem: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, problem)
 }
 
 #[cfg(test)]
@@ -226,6 +278,55 @@ mod tests {
         );
         drop(client);
         writer.join().unwrap();
+    }
+
+    #[test]
+    fn a_client_told_not_to_wait_says_when_nothing_whole_has_arrived() {
+        let (mut client, mut compositor) = pair();
+        client.set_nonblocking(true).unwrap();
+        assert_eq!(client.try_receive().unwrap(), None);
+
+        // A message arriving in pieces is kept until it is whole.
+        compositor.write_all(b"\"do").unwrap();
+        assert_eq!(client.try_receive().unwrap(), None);
+        compositor.write_all(b"ne\"\n\"done\"\n\"do").unwrap();
+        assert_eq!(client.try_receive().unwrap(), Some(Reply::Done));
+        assert_eq!(client.try_receive().unwrap(), Some(Reply::Done));
+        assert_eq!(client.try_receive().unwrap(), None);
+
+        // Asked to wait for one all the same, it says that it would have to.
+        assert_eq!(
+            client.receive().unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        client.set_nonblocking(false).unwrap();
+        compositor.write_all(b"ne\"\n").unwrap();
+        assert_eq!(client.receive().unwrap(), Reply::Done);
+    }
+
+    #[test]
+    fn a_client_can_be_waited_on_by_an_event_loop() {
+        let (client, mut compositor) = pair();
+        // Its descriptor is the connection itself.
+        let same = client.as_fd().try_clone_to_owned().unwrap();
+        let mut copy = Client::from_stream(UnixStream::from(same));
+        copy.send(&Request::Version).unwrap();
+        let mut sent = [0; 10];
+        compositor.read_exact(&mut sent).unwrap();
+        assert_eq!(&sent, b"\"version\"\n");
+    }
+
+    #[test]
+    fn a_connection_that_breaks_is_an_error() {
+        let (mut client, compositor) = pair();
+        // The compositor goes away without reading what it was sent, which
+        // the kernel reports as the connection having been reset.
+        client.send(&Request::Version).unwrap();
+        drop(compositor);
+        assert_eq!(
+            client.receive().unwrap_err().kind(),
+            io::ErrorKind::ConnectionReset
+        );
     }
 
     #[test]
