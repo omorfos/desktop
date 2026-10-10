@@ -1,0 +1,19 @@
+[package]
+name = "omorfos-ui"
+description = "Drawing for the omorfos compositor and its shell components"
+keywords = ["wayland", "compositor", "drawing"]
+categories = ["rendering"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash", "fontconfig"] }
+omorfos-config = { path = "../omorfos-config" }
+
+[lints]
+workspace = true

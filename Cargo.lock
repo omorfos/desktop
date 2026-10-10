@@ -1251,6 +1251,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-core",
  "omorfos-ipc",
+ "omorfos-ui",
  "rustix 1.1.5",
  "serde",
  "serde_json",
@@ -1284,6 +1285,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "omorfos-ui"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "omorfos-config",
 ]
 
 [[package]]
