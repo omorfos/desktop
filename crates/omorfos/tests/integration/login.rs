@@ -68,6 +68,63 @@ fn the_login_screen_entry_starts_omorfos_under_the_name_programs_are_told() {
     assert_ne!(keys["Name"], "", "shown in the list of sessions");
 }
 
+/// A program that stands in for the panel, and leaves a mark in the
+/// session's directory when it is started.
+fn stand_in_panel() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/panel")
+}
+
+#[test]
+fn the_panel_is_started_with_the_session_and_told_where_the_session_is() {
+    let mut session = Session::new();
+    session.listen();
+    session.compositor_mut().set_socket_name("wayland-test");
+    let directory = session.config.path().to_owned();
+    let mark = |name: &str| std::fs::read_to_string(directory.join(name)).unwrap_or_default();
+
+    session.compositor_mut().set_panel(stand_in_panel());
+    assert_eq!(mark("panel-started"), "", "not before the backend is ready");
+    session.compositor_mut().autostart();
+
+    session.eventually(|_| mark("panel-display") == "wayland-test");
+    // Once, however often it is asked for.
+    session.compositor_mut().autostart();
+    session.advance(std::time::Duration::from_millis(50));
+    assert_eq!(mark("panel-started"), "x");
+    assert_eq!(session.compositor().problems(), [] as [&str; 0]);
+}
+
+#[test]
+fn the_panel_is_not_started_when_the_configuration_turns_it_off() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let after = directory.path().join("after");
+    let config = format!(
+        "panel: {{ enabled: false }}\nautostart:\n  - [sh, -c, \"printf x > '{}'\"]\n",
+        after.display()
+    );
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    session.listen();
+    let started = session.config.path().join("panel-started");
+
+    session.compositor_mut().set_panel(stand_in_panel());
+    session.compositor_mut().autostart();
+
+    // What is started after the panel has been, and the panel has not.
+    session.eventually(|_| after.exists());
+    assert!(!started.exists());
+}
+
+#[test]
+fn a_panel_that_is_not_installed_is_a_problem_the_user_is_told_of() {
+    let mut session = Session::new();
+    session.compositor_mut().set_panel("/no/such/panel");
+    session.compositor_mut().autostart();
+    assert_eq!(
+        session.compositor().problems(),
+        ["cannot start `/no/such/panel`: No such file or directory (os error 2)"]
+    );
+}
+
 #[test]
 fn the_programs_listed_are_started_with_the_session_and_only_once() {
     let directory = tempfile::TempDir::new().unwrap();

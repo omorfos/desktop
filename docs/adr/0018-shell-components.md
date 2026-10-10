@@ -76,8 +76,12 @@ panel as it runs in use, asleep on its descriptors in a thread of its own.
   any component with an event loop of its own needs. The connection a
   component subscribes on is used for nothing else, so what clicks ask for
   goes down a second one.
-- A component is not started for the user yet. Until that is decided it is
-  listed under `autostart`.
+- The compositor starts the panel with the session, before the programs
+  under `autostart`, unless `panel.enabled` is off. A backend says where
+  the panel is: beside the compositor's own executable if there is one
+  there, so that a build that was never installed does not start some
+  other installed panel, and otherwise by name from `PATH`. The compositor
+  does not start it again if it exits.
 - The panel shows the time, which neither the compositor nor the standard
   library knows in the user's time zone. `jiff` reads the system's zone
   database; on Linux it brings in one further crate. The time is handed to

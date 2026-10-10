@@ -149,6 +149,18 @@
       },
       "type": "array"
     },
+    "Panel": {
+      "additionalProperties": false,
+      "description": "The panel that comes with omorfos: a bar along the bottom of each\nscreen.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether it is started with the session. Turn it off to go without\na panel or to use another one.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Placement": {
       "description": "Where a new window appears when no rule positions it.",
       "oneOf": [
@@ -226,6 +238,10 @@
     "outputs": {
       "$ref": "#/$defs/Outputs",
       "description": "Particular screens, by name: where each stands and how it is\ndriven."
+    },
+    "panel": {
+      "$ref": "#/$defs/Panel",
+      "description": "The panel that comes with omorfos."
     },
     "placement": {
       "$ref": "#/$defs/Placement",

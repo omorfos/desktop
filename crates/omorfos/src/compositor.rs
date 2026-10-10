@@ -1,7 +1,7 @@
 //! The compositor's state and its main operations.
 
 use std::error::Error;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::os::fd::AsFd;
@@ -219,6 +219,9 @@ pub struct Compositor {
     children: Vec<Child>,
     /// Whether the programs to start with the session have been.
     started: bool,
+    /// The panel to start with the session, once a backend has said where
+    /// it is.
+    panel: Option<PathBuf>,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
     pub(crate) ipc_retry: Option<Instant>,
@@ -335,6 +338,7 @@ impl Compositor {
                     presence: Presence::default(),
                     children: Vec::new(),
                     started: false,
+                    panel: None,
                     ipc: None,
                     ipc_retry: None,
                     event_loop,
@@ -654,9 +658,15 @@ impl Compositor {
     }
 
     fn spawn(&mut self, command: &omorfos_config::Command) {
-        let mut process = std::process::Command::new(command.program());
+        self.start(command.program().as_ref(), command.arguments());
+    }
+
+    /// Starts a program in the session. One that cannot be started is a
+    /// problem to tell the user of.
+    fn start(&mut self, program: &OsStr, arguments: &[String]) {
+        let mut process = std::process::Command::new(program);
         process
-            .args(command.arguments())
+            .args(arguments)
             .stdin(Stdio::null())
             .envs(self.session_environment());
         match process.spawn() {
@@ -666,14 +676,23 @@ impl Compositor {
             }
             Err(error) => {
                 self.problems
-                    .push(format!("cannot start `{}`: {error}", command.program()));
+                    .push(format!("cannot start `{}`: {error}", program.display()));
             }
         }
     }
 
-    /// Starts the programs the configuration lists to be started with the
-    /// session. A backend calls this once it is ready for them: when the
-    /// sockets are open and there is a screen to show them on.
+    /// Says where the panel that comes with omorfos is: a name to look up
+    /// in `PATH`, or a path. It is then started with the session, unless
+    /// the configuration turns it off. Until this is called there is none
+    /// to start.
+    pub fn set_panel(&mut self, program: impl Into<PathBuf>) {
+        self.panel = Some(program.into());
+    }
+
+    /// Starts the panel, if there is one and it is wanted, and then the
+    /// programs the configuration lists to be started with the session. A
+    /// backend calls this once it is ready for them: when the sockets are
+    /// open and there is a screen to show them on.
     ///
     /// They are started once. Calling this again, or changing the list and
     /// reloading, starts nothing: what is already running would be started
@@ -683,6 +702,12 @@ impl Compositor {
             return;
         }
         let config = Arc::clone(self.store.current());
+        // The panel goes first, so that it has taken its edge of the screen
+        // before anything else is placed.
+        let panel = self.panel.clone();
+        if let Some(panel) = panel.filter(|_| config.general.panel.enabled) {
+            self.start(panel.as_os_str(), &[]);
+        }
         for command in &config.general.autostart {
             self.spawn(command);
         }

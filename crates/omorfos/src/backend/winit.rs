@@ -10,6 +10,7 @@ use std::cell::Cell;
 use std::env;
 use std::error::Error;
 use std::io::{Write, stderr};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -78,6 +79,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let compositor = session.compositor_mut();
     compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
+    compositor.set_panel(panel());
     compositor.autostart();
 
     let redraw = Rc::new(Cell::new(true));
@@ -109,6 +111,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 }
 
 /// Where cursor themes are installed, going by the environment.
+/// Where the panel that goes with this compositor is.
+pub(super) fn panel() -> PathBuf {
+    super::panel_program(env::current_exe().ok().as_deref())
+}
+
 pub(super) fn cursor_themes() -> Themes {
     Themes::conventional(
         env::var_os("XCURSOR_PATH").as_deref(),
