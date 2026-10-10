@@ -58,7 +58,7 @@ package builds from the release's source tarball.
 ## Trying the packaging locally
 
 ```sh
-cargo build --release --locked -p omorfos -p omorfosctl
+cargo build --release --locked -p omorfos -p omorfosctl -p omorfos-panel
 
 VERSION=0.1.0 TARGET=x86_64-unknown-linux-gnu packaging/package.sh /tmp/dist
 ```

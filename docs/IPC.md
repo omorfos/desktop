@@ -127,4 +127,4 @@ while let Ok(Reply::State(state)) = client.receive() {
 
 A program with an event loop of its own calls `set_nonblocking(true)`,
 waits for the client's descriptor to be readable, and then calls
-`try_receive` until it returns `None`.
+`try_receive` until it returns `None`. The panel does this.

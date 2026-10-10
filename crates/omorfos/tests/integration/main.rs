@@ -23,6 +23,7 @@ mod login;
 mod menu;
 mod notice;
 mod outputs;
+mod panel;
 mod popups;
 mod scaling;
 mod session;

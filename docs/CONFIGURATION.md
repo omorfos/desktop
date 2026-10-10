@@ -204,6 +204,28 @@ The menu opens with a right click on the desktop or the `show_menu` action
 (`Super+space` by default). Click an entry to choose it; click elsewhere or
 press Escape to close the menu.
 
+## The panel
+
+`omorfos-panel` puts a bar along the bottom of every screen: that screen's
+workspaces, then the windows on the one it is showing, and the time at the
+end. Click a workspace to show it, or a window to bring it up. The
+workspace being shown and the window with focus are underlined; a
+minimized window's title is in brackets. The time is the local time, in
+24 hours.
+
+It is a program of its own and is not started for you yet. To have it from
+login, list it in `config.yaml`:
+
+```yaml
+autostart:
+  - [omorfos-panel]
+```
+
+It takes its font, its height (`titlebar.height`) and its colours (those
+of the titlebars, and `accent`) from `theme.yaml`, and follows the file as
+you save it. Any other panel that speaks layer-shell, such as `waybar`,
+can be used in its place.
+
 ## Locking the screen
 
 omorfos does not lock by itself; it lets a screen locker do it, and tells
