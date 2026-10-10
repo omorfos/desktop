@@ -17,6 +17,12 @@ inwards: adapters depend on the domain, never the reverse.
            +--------------+  +------------+  +-------------+
 ```
 
+Beside these stands `omorfos-ui`, which draws: the compositor uses it for
+decorations and menus, and each shell component for its own surface. A
+component such as `omorfos-panel` is a client like any other. It depends
+on `omorfos-ipc`, `omorfos-config` and `omorfos-ui`, and never on the
+compositor or the domain.
+
 ## Crates
 
 | Crate | Status | Responsibility |
@@ -24,6 +30,8 @@ inwards: adapters depend on the domain, never the reverse.
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). Depends on no other workspace crate. |
 | `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, and a small blocking client. Depends on no other workspace crate. |
+| `omorfos-ui` | done | Drawing on the CPU, independent of where the pixels go: `Canvas` (fills, rounded corners, in units of layout at any `Scale`), `Text` (measuring and drawing a line), `Scale`. Depends only on `omorfos-config`, for colours and fonts. |
+| `omorfos-panel` | started | The panel. `Bar` decides what is on one screen's bar from an IPC `State`, where, how it is drawn and what a click asks for. `Panel` is the Wayland client around it: a layer-shell surface per screen, pictures handed over as shared memory, clicks sent back over the socket. |
 | `omorfos` | started | The compositor. `Compositor` holds the Smithay protocol state and the `Desktop`, translates client requests and `Input` into domain commands, and mirrors domain state back into Smithay (`sync`). `Session` is the event loop around it. `bridge` maps configuration onto the domain. `backend::winit` runs it in a window and `backend::hardware` on the screen itself. |
 | `omorfosctl` | done | Command-line client for the IPC socket: state, actions, configuration check and reload. |
 

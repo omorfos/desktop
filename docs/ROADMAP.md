@@ -181,7 +181,29 @@ Known gaps:
 
 ## 9. Shell components
 
-- [ ] Panel, launcher and notifications as separate clients
+Each component is a program of its own: a Wayland client that learns what
+to show over the IPC socket (ADR 18). In this order:
+
+- [x] `omorfos-ui`: the canvas, text and scale the compositor draws with,
+      shared with the components
+- [ ] Panel, themed from `theme.yaml`
+  - [x] The bar itself: a screen's workspaces and the windows on the one it
+        shows, how it is drawn and what a click asks for
+  - [x] The program, `omorfos-panel`: a bar on each screen through
+        layer-shell, kept up to date from an IPC subscription and following
+        the theme, tested against a real session, and packaged
+  - [x] A clock: the local time, from `jiff`, drawn again when the
+        minute turns
+  - [ ] Started with the session by default
+  - [x] Tried on real hardware
+  - [ ] Where it is and what is on it, by configuration
+- [ ] The theme as parts with states and properties (`panel`, `button`
+      that is `active`, and so on) rather than one palette, so that it maps
+      onto selectors
+- [ ] CSS as the theme format, in place of `theme.yaml`. No HTML: what is
+      on the screen stays decided by the components, CSS says how it looks
+- [ ] Launcher, built against the CSS theme from the start
+- [ ] Notifications, likewise
 - [ ] Theming polish and restrained animations
 
 ## 10. Later
