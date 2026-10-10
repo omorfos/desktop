@@ -47,6 +47,8 @@ outputs: []               # particular screens, by name
 idle:
   screen_off: 0           # seconds without input; 0 never
 autostart: []             # programs to start with the session
+panel:
+  enabled: true           # start the panel that comes with omorfos
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -213,18 +215,21 @@ workspace being shown and the window with focus are underlined; a
 minimized window's title is in brackets. The time is the local time, in
 24 hours.
 
-It is a program of its own and is not started for you yet. To have it from
-login, list it in `config.yaml`:
+It is a program of its own, started with the session. It takes its font,
+its height (`titlebar.height`) and its colours (those of the titlebars,
+and `accent`) from `theme.yaml`, and follows the file as you save it.
+
+To go without it, or to use another panel that speaks layer-shell, such as
+`waybar`, turn it off in `config.yaml`:
 
 ```yaml
+panel:
+  enabled: false
 autostart:
-  - [omorfos-panel]
+  - [waybar]
 ```
 
-It takes its font, its height (`titlebar.height`) and its colours (those
-of the titlebars, and `accent`) from `theme.yaml`, and follows the file as
-you save it. Any other panel that speaks layer-shell, such as `waybar`,
-can be used in its place.
+Like `autostart`, this takes effect the next time you log in.
 
 ## Locking the screen
 

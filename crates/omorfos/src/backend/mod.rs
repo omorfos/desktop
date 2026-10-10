@@ -6,9 +6,26 @@
 
 use std::error::Error;
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 pub mod hardware;
 pub mod winit;
+
+/// What the panel's executable is called.
+const PANEL: &str = "omorfos-panel";
+
+/// Where the panel is, for a compositor whose own executable is `own`.
+///
+/// When omorfos is run from where it was built, or from wherever else it
+/// was put without being installed, the panel is beside it, and is not to
+/// be mistaken for some other one installed on the system. Otherwise it is
+/// whichever `PATH` has.
+#[must_use]
+pub fn panel_program(own: Option<&Path>) -> PathBuf {
+    let beside = own.and_then(Path::parent).map(|folder| folder.join(PANEL));
+    let beside = beside.filter(|panel| panel.is_file());
+    beside.unwrap_or_else(|| PathBuf::from(PANEL))
+}
 
 /// A way of running the compositor until the session ends.
 pub type Launcher = fn() -> Result<(), Box<dyn Error>>;
@@ -51,6 +68,21 @@ mod tests {
     use std::ptr::fn_addr_eq;
 
     use super::*;
+
+    #[test]
+    fn the_panel_beside_the_compositor_is_the_one_to_start() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let own = folder.path().join("omorfos");
+        assert_eq!(panel_program(Some(&own)), Path::new(PANEL), "not there");
+        std::fs::write(folder.path().join(PANEL), "").unwrap();
+        assert_eq!(panel_program(Some(&own)), folder.path().join(PANEL));
+    }
+
+    #[test]
+    fn without_one_beside_it_the_panel_is_looked_up_by_name() {
+        assert_eq!(panel_program(None), Path::new(PANEL));
+        assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
+    }
 
     #[test]
     fn a_session_to_open_a_window_on_means_running_nested() {

@@ -194,7 +194,7 @@ to show over the IPC socket (ADR 18). In this order:
         the theme, tested against a real session, and packaged
   - [x] A clock: the local time, from `jiff`, drawn again when the
         minute turns
-  - [ ] Started with the session by default
+  - [x] Started with the session unless `panel.enabled` is off
   - [x] Tried on real hardware
   - [ ] Where it is and what is on it, by configuration
 - [ ] The theme as parts with states and properties (`panel`, `button`

@@ -30,6 +30,25 @@ pub struct General {
     /// arguments. They are started once, in order, and not again when the
     /// configuration is reloaded.
     pub autostart: Vec<Command>,
+    /// The panel that comes with omorfos.
+    pub panel: Panel,
+}
+
+/// The panel that comes with omorfos: a bar along the bottom of each
+/// screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Panel {
+    /// Whether it is started with the session. Turn it off to go without
+    /// a panel or to use another one.
+    pub enabled: bool,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// The names of the workspaces, in order. There is always at least one.
@@ -276,6 +295,14 @@ impl TryFrom<String> for OutputScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_panel_is_started_unless_it_is_turned_off() {
+        assert!(General::default().panel.enabled);
+        assert!(parse("panel: {}").unwrap().panel.enabled);
+        assert!(!parse("panel: { enabled: false }").unwrap().panel.enabled);
+        assert!(parse("panel: { position: top }").is_err());
+    }
 
     #[test]
     fn programs_to_start_with_the_session_are_listed_with_their_arguments() {
