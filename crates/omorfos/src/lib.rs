@@ -23,11 +23,10 @@ mod ipc;
 mod lock;
 mod outputs;
 mod paint;
-mod scale;
 mod session;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME};
 pub use cursor::Themes;
 pub use input::Input;
-pub use scale::Scale;
+pub use omorfos_ui::Scale;
 pub use session::Session;
