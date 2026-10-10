@@ -112,7 +112,7 @@ that stops listening are each disconnected. At most 32 peers are served.
 
 ## From Rust
 
-The `omorfos-ipc` crate has the message types and a small blocking client:
+The `omorfos-ipc` crate has the message types and a small client:
 
 ```rust
 use omorfos_ipc::{Client, Reply, Request};
@@ -124,3 +124,7 @@ while let Ok(Reply::State(state)) = client.receive() {
     // redraw from `state`
 }
 ```
+
+A program with an event loop of its own calls `set_nonblocking(true)`,
+waits for the client's descriptor to be readable, and then calls
+`try_receive` until it returns `None`.
