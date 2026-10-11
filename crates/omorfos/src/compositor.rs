@@ -11,7 +11,7 @@ use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Config, Debouncer, Store, Theme, Watcher};
+use omorfos_config::{Action, Config, Debouncer, Part, State, States, Store, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
@@ -642,7 +642,7 @@ impl Compositor {
         );
         let metrics = MenuMetrics {
             width: MENU_WIDTH,
-            row: config.theme.titlebar.height.get(),
+            row: config.theme.style(Part::MenuItem, States::NONE).height,
             separator: MENU_SEPARATOR,
             padding: MENU_PADDING,
         };
@@ -1028,7 +1028,12 @@ impl Compositor {
             framebuffer,
             age,
             &elements,
-            color(self.config().theme.colors.background),
+            color(
+                self.config()
+                    .theme
+                    .style(Part::Desktop, States::NONE)
+                    .background,
+            ),
         )
     }
 
@@ -1557,7 +1562,9 @@ impl Chrome {
         frame: &FrameInfo,
         decoration: Decoration,
     ) -> Self {
-        let radius = corners::radius(&decoration, theme.border.radius.get());
+        let states = States::NONE.when(State::Focused, frame.focused);
+        let outline = theme.style(Part::Window, states).border.color;
+        let radius = corners::radius(&decoration, theme.style(Part::Window, states).radius);
         let appearance = Appearance {
             titles: frame.titles.clone(),
             active: frame.active,
@@ -1566,11 +1573,6 @@ impl Chrome {
             radius,
             theme: theme.clone(),
             scale,
-        };
-        let palette = if frame.focused {
-            theme.colors.focused
-        } else {
-            theme.colors.unfocused
         };
         let straight = corners::straight_borders(&decoration, radius);
         // Everything painted is kept for as long as it would look the same.
@@ -1588,7 +1590,7 @@ impl Chrome {
             );
             let border = straight[0].size.width;
             let corner = |mirrored| {
-                let canvas = paint::corner(palette.border, radius, border, mirrored, scale);
+                let canvas = paint::corner(outline, radius, border, mirrored, scale);
                 Painted::new(&canvas)
             };
             Self {
@@ -1604,7 +1606,7 @@ impl Chrome {
         });
         for (buffer, border) in chrome.borders.iter_mut().zip(straight) {
             // Updating with an unchanged size and colour is not damage.
-            buffer.update(logical_size(border.size), color(palette.border));
+            buffer.update(logical_size(border.size), color(outline));
         }
         chrome.tabs.clone_from(&frame.tabs);
         chrome.decoration = decoration;

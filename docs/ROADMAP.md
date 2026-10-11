@@ -197,9 +197,9 @@ to show over the IPC socket (ADR 18). In this order:
   - [x] Started with the session unless `panel.enabled` is off
   - [x] Tried on real hardware
   - [ ] Where it is and what is on it, by configuration
-- [ ] The theme as parts with states and properties (`panel`, `button`
+- [x] The theme as parts with states and properties (`panel`, `button`
       that is `active`, and so on) rather than one palette, so that it maps
-      onto selectors
+      onto selectors (ADR 19). Still read from `theme.yaml`
 - [ ] CSS as the theme format, in place of `theme.yaml`. No HTML: what is
       on the screen stays decided by the components, CSS says how it looks
 - [ ] Launcher, built against the CSS theme from the start
