@@ -1,7 +1,7 @@
 //! The bar: what is on it, where, how it is drawn, and what a click on it
 //! asks for.
 
-use omorfos_config::Theme;
+use omorfos_config::{Part, States, Theme};
 use omorfos_ipc::{Request, State, Window, Workspace};
 use omorfos_ui::{Canvas, Scale, Text};
 use serde_json::json;
@@ -10,8 +10,6 @@ use serde_json::json;
 const PADDING: u32 = 10;
 /// The widest a window's button gets.
 const WIDEST_TASK: u32 = 240;
-/// How thick the line under a lit button is.
-const LINE: u32 = 2;
 
 /// What a button stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +70,7 @@ impl Bar {
         theme: &Theme,
         text: &mut Text,
     ) -> Self {
-        let height = theme.titlebar.height.get();
+        let height = theme.style(Part::Panel, States::NONE).height;
         let mut buttons = Vec::new();
         let mut left: u32 = 0;
 
@@ -153,28 +151,27 @@ impl Bar {
     /// Draws the bar, with `scale` pixels to a unit of layout.
     #[must_use]
     pub fn paint(&self, text: &mut Text, theme: &Theme, scale: Scale) -> Canvas {
-        let colors = &theme.colors;
+        let panel = theme.style(Part::Panel, States::NONE);
         let mut canvas = Canvas::scaled(self.width, self.height, scale);
-        canvas.fill((0, 0, self.width, self.height), colors.unfocused.titlebar);
+        canvas.fill((0, 0, self.width, self.height), panel.background);
         for button in &self.buttons {
             let left = button.left.cast_signed();
-            let mut palette = colors.unfocused;
-            if button.lit {
-                palette = colors.focused;
-                let line = self.height.saturating_sub(LINE);
-                canvas.fill((left, 0, button.width, line), palette.titlebar);
-                canvas.fill(
-                    (left, line.cast_signed(), button.width, LINE),
-                    colors.accent,
-                );
-            }
+            let states = States::NONE.when(omorfos_config::State::Active, button.lit);
+            let style = theme.style(Part::PanelButton, states);
+            let line = style.underline;
+            let top = self.height.saturating_sub(line.width);
+            canvas.fill((left, 0, button.width, top), style.background);
+            canvas.fill(
+                (left, top.cast_signed(), button.width, line.width),
+                line.color,
+            );
             let label = (
                 left.saturating_add_unsigned(PADDING),
                 0,
                 button.width.saturating_sub(PADDING * 2),
                 self.height,
             );
-            text.draw(&mut canvas, &button.label, label, palette.text, &theme.font);
+            text.draw(&mut canvas, &button.label, label, style.color, &theme.font);
         }
         let clock = &self.clock;
         let time = (
@@ -183,13 +180,8 @@ impl Bar {
             clock.width.saturating_sub(PADDING * 2),
             self.height,
         );
-        text.draw(
-            &mut canvas,
-            &clock.time,
-            time,
-            colors.focused.text,
-            &theme.font,
-        );
+        let ink = theme.style(Part::Clock, States::NONE).color;
+        text.draw(&mut canvas, &clock.time, time, ink, &theme.font);
         canvas
     }
 }
@@ -236,6 +228,9 @@ fn window_label(window: &Window) -> String {
 #[cfg(test)]
 mod tests {
     use omorfos_config::Color;
+
+    /// How thick the default theme makes the line under a lit button.
+    const LINE: u32 = 2;
 
     use super::*;
 

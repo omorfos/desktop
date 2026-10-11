@@ -5,7 +5,7 @@
 //! code runs on a GPU and in tests, and it only happens when what is drawn
 //! changes, not every frame.
 
-use omorfos_config::{Color, Theme};
+use omorfos_config::{Color, Part, State, States, Theme};
 use omorfos_core::{Decoration, Item, Menu, Panel};
 pub(crate) use omorfos_ui::{Canvas, Text};
 
@@ -13,9 +13,6 @@ use crate::Scale;
 
 /// Space between a tab's edge and its title, in pixels.
 const PADDING: u32 = 10;
-
-/// The thickness of the line marking the shown tab, in pixels.
-const UNDERLINE: u32 = 2;
 
 /// The width set aside on a menu row for the arrow that marks a submenu.
 const ARROW: u32 = 14;
@@ -54,62 +51,46 @@ pub(crate) fn titlebar(
 ) -> Canvas {
     let bar = decoration.titlebar();
     let (width, height) = (bar.size.width, bar.size.height);
-    let colors = &theme.colors;
-    let palette = if focused {
-        colors.focused
-    } else {
-        colors.unfocused
-    };
-    let border = theme.border.width.get();
+    let states = States::NONE.when(State::Focused, focused);
+    let frame = theme.style(Part::Window, states);
+    let border = frame.border.width;
     let edge = border.cast_signed();
     let mut canvas = Canvas::scaled(width, height, scale);
 
-    canvas.fill((0, 0, width, height), palette.border);
+    canvas.fill((0, 0, width, height), frame.border.color);
     let inner_height = height.saturating_sub(border);
     canvas.fill(
         (edge, edge, width.saturating_sub(border * 2), inner_height),
-        palette.titlebar,
+        theme.style(Part::Titlebar, states).background,
     );
 
     let tabbed = titles.len() > 1;
     for (index, title) in titles.iter().enumerate() {
         let tab = decoration.tab(index);
         let left = tab.origin.x - bar.origin.x;
-        let shown = index == active;
-        if tabbed && !shown {
-            canvas.fill(
-                (left, edge, tab.size.width, inner_height),
-                colors.unfocused.titlebar,
-            );
-        }
-        if tabbed && shown {
-            let line = if focused {
-                colors.accent
-            } else {
-                palette.border
-            };
-            let top = height.saturating_sub(UNDERLINE).cast_signed();
-            canvas.fill((left, top, tab.size.width, UNDERLINE), line);
+        let style = theme.style(Part::Tab, states.when(State::Active, index == active));
+        // A title alone in its titlebar is not set apart as a tab.
+        if tabbed {
+            canvas.fill((left, edge, tab.size.width, inner_height), style.background);
+            let line = style.underline;
+            let top = height.saturating_sub(line.width).cast_signed();
+            canvas.fill((left, top, tab.size.width, line.width), line.color);
         }
         if index > 0 {
-            canvas.fill((left, edge, 1, inner_height), palette.border);
+            let line = style.border;
+            canvas.fill((left, edge, line.width, inner_height), line.color);
         }
-        let ink = if shown {
-            palette.text
-        } else {
-            colors.unfocused.text
-        };
         let room = tab.size.width.saturating_sub(PADDING * 2);
         text.draw(
             &mut canvas,
             title,
             (left + PADDING.cast_signed(), 0, room, height),
-            ink,
+            style.color,
             &theme.font,
         );
     }
 
-    canvas.round_top_corners(theme.border.radius.get());
+    canvas.round_top_corners(frame.radius);
     canvas
 }
 
@@ -124,12 +105,15 @@ pub(crate) fn menu_panel<A: Clone>(
 ) -> Canvas {
     let bounds = menu.panel_rect(panel);
     let (width, height) = (bounds.size.width, bounds.size.height);
-    let colors = &theme.colors;
+    let style = theme.style(Part::Menu, States::NONE);
+    let border = style.border.width;
+    let edge = border.cast_signed();
+    let inner = width.saturating_sub(border * 2);
     let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.fill((0, 0, width, height), colors.unfocused.border);
+    canvas.fill((0, 0, width, height), style.border.color);
     canvas.fill(
-        (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
-        colors.focused.titlebar,
+        (edge, edge, inner, height.saturating_sub(border * 2)),
+        style.background,
     );
 
     let padding = PADDING.cast_signed();
@@ -139,23 +123,17 @@ pub(crate) fn menu_panel<A: Clone>(
         let label = match item {
             Item::Separator => {
                 let middle = top + (row.size.height / 2).cast_signed();
-                canvas.fill((padding, middle, room, 1), colors.unfocused.border);
+                let line = theme.style(Part::MenuSeparator, States::NONE);
+                canvas.fill((padding, middle, room, 1), line.color);
                 continue;
             }
             Item::Entry { label, .. } | Item::Submenu { label, .. } => label,
         };
         let highlighted = panel.highlighted() == Some(index);
-        if highlighted {
-            canvas.fill(
-                (1, top, width.saturating_sub(2), row.size.height),
-                colors.accent,
-            );
-        }
-        let ink = if highlighted {
-            colors.background
-        } else {
-            colors.focused.text
-        };
+        let states = States::NONE.when(State::Hovered, highlighted);
+        let style = theme.style(Part::MenuItem, states);
+        canvas.fill((edge, top, inner, row.size.height), style.background);
+        let ink = style.color;
         let arrow = if matches!(item, Item::Submenu { .. }) {
             ARROW
         } else {
@@ -202,20 +180,24 @@ pub(crate) fn notice(
 
     let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
     let height = rows.saturating_mul(NOTICE_ROW).saturating_add(PADDING * 2);
-    let colors = &theme.colors;
-    let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.fill((0, 0, width, height), colors.accent);
-    canvas.fill(
-        (1, 1, width.saturating_sub(2), height.saturating_sub(2)),
-        colors.focused.titlebar,
+    let style = theme.style(Part::Notice, States::NONE);
+    let border = style.border.width;
+    let edge = border.cast_signed();
+    let inner = (
+        width.saturating_sub(border * 2),
+        height.saturating_sub(border * 2),
     );
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.fill((0, 0, width, height), style.border.color);
+    canvas.fill((edge, edge, inner.0, inner.1), style.background);
     let room = width.saturating_sub(PADDING * 2);
     let mut top = PADDING.cast_signed();
     for (index, line) in lines.into_iter().enumerate() {
+        let heading = theme.style(Part::NoticeHeading, States::NONE);
         let ink = if index == 0 {
-            colors.accent
+            heading.color
         } else {
-            colors.focused.text
+            style.color
         };
         text.draw(
             &mut canvas,

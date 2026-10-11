@@ -13,7 +13,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
-use omorfos_config::{Store, Theme, Watcher};
+use omorfos_config::{Part, States, Store, Theme, Watcher};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State};
 use omorfos_ui::{Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -390,7 +390,7 @@ impl Face {
     /// windows.
     fn open(tools: &Tools<'_>, screen: &Screen) -> Self {
         let handle = tools.handle;
-        let height = tools.theme.titlebar.height.get();
+        let height = tools.theme.style(Part::Panel, States::NONE).height;
         let surface = tools.compositor.create_surface(handle, ());
         let layer = tools.layers.get_layer_surface(
             &surface,

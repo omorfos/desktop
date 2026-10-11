@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use omorfos_config::{Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Rules};
+use omorfos_config::{
+    Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
+};
 use omorfos_core::{Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
@@ -32,6 +34,7 @@ pub type Bindings = KeyChains<Chord, Action>;
 #[must_use]
 pub fn settings(config: &Config) -> Settings {
     let general = &config.general;
+    let theme = &config.theme;
     Settings {
         focus_follows_pointer: general.focus.model == FocusModel::Sloppy,
         raise_on_focus: general.focus.raise_on_focus,
@@ -41,8 +44,8 @@ pub fn settings(config: &Config) -> Settings {
             omorfos_config::Placement::Pointer => Placement::Pointer,
         },
         decoration: Metrics {
-            border: config.theme.border.width.get(),
-            titlebar: config.theme.titlebar.height.get(),
+            border: theme.style(Part::Window, States::NONE).border.width,
+            titlebar: theme.style(Part::Titlebar, States::NONE).height,
         },
     }
 }
