@@ -21,7 +21,7 @@ use omorfos_launcher::{App, Launcher, Picker};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{HEIGHT, Session, WIDTH, half_way, key};
+use crate::common::{Event, HEIGHT, Session, WIDTH, half_way, key};
 use crate::windows::{BACKGROUND, RED};
 
 const LEFT: u32 = 0x110;
@@ -396,6 +396,36 @@ fn a_click_beside_the_launcher_closes_it_and_starts_nothing() {
     for name in ["files", "firefox", "lens"] {
         assert_eq!(mark(&session, name), "");
     }
+}
+
+#[test]
+fn a_click_closes_the_launcher_though_the_pointer_has_not_moved_since_it_opened() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (WIDTH, HEIGHT), RED);
+    // The pointer rests on the window, which the launcher then covers.
+    let rest = Input::Motion { x: 5.0, y: 5.0 };
+    session.compositor_mut().input(rest, 0);
+    session.roundtrip(&mut client);
+    client.take_events();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+
+    assert!(settle(&mut session, &mut launcher), "closed by the click");
+    session.roundtrip(&mut client);
+    let told = client.take_events();
+    let pressed = told
+        .iter()
+        .any(|event| matches!(event, Event::PointerButton { .. }));
+    assert!(!pressed, "the window underneath saw none of it: {told:?}");
 }
 
 #[test]
