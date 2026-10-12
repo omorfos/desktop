@@ -30,6 +30,7 @@ pub mod schema;
 mod store;
 mod style;
 mod theme;
+mod value;
 mod watcher;
 
 pub use action::{Action, Command, MAX_WORKSPACES, WorkspaceNumber};
@@ -47,6 +48,6 @@ pub use menu::{Menu, MenuItem};
 pub use paths::config_dir;
 pub use rules::{Match, Rule, Rules};
 pub use store::Store;
-pub use style::{Line, Part, State, States, Style};
+pub use style::{Edges, Line, Part, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
 pub use watcher::Watcher;

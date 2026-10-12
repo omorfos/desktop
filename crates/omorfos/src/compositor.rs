@@ -1563,7 +1563,7 @@ impl Chrome {
         decoration: Decoration,
     ) -> Self {
         let states = States::NONE.when(State::Focused, frame.focused);
-        let outline = theme.style(Part::Window, states).border.color;
+        let outline = theme.style(Part::Window, states).border.top.color;
         let radius = corners::radius(&decoration, theme.style(Part::Window, states).radius);
         let appearance = Appearance {
             titles: frame.titles.clone(),

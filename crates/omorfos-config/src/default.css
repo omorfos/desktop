@@ -23,8 +23,7 @@ desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state. */
 window {
-  border-width: 1px;
-  border-color: var(--border);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 window:focus { border-color: var(--accent); }
@@ -39,19 +38,16 @@ titlebar:focus {
   color: var(--text);
 }
 
-/* A title in a titlebar that has several. The border is the line between
- * one tab and the next. */
+/* A title in a titlebar. Where there are several, the border on the left
+ * is the line between one tab and the next. */
 tab {
+  padding: 0 10px;
   background: var(--surface-dim);
   color: var(--text-dim);
-  border-width: 1px;
-  border-color: var(--border);
+  border-left: 1px solid var(--border);
 }
-tab:focus { border-color: var(--accent); }
-tab:active {
-  border-bottom-width: 2px;
-  border-bottom-color: var(--border);
-}
+tab:focus { border-left-color: var(--accent); }
+tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
   background: var(--surface);
   color: var(--text);
@@ -61,11 +57,11 @@ tab:active:focus {
 menu {
   background: var(--surface);
   color: var(--text);
-  border-width: 1px;
-  border-color: var(--border);
+  border: 1px solid var(--border);
 }
 menu-item {
   height: 28px;
+  padding: 0 10px;
   color: var(--text);
 }
 menu-item:hover {
@@ -75,26 +71,33 @@ menu-item:hover {
 menu-separator { color: var(--border); }
 
 notice {
+  padding: 10px;
   background: var(--surface);
   color: var(--text);
-  border-width: 1px;
-  border-color: var(--accent);
+  border: 1px solid var(--accent);
 }
 notice-heading { color: var(--accent); }
 
+/* The panel, and what is on it: the workspaces, a task for each window on
+ * the one being shown, and the clock. A margin on the panel moves it in
+ * from the edges of the screen. */
 panel {
   height: 28px;
   background: var(--surface-dim);
   color: var(--text-dim);
 }
-panel-button {
-  background: var(--surface-dim);
+workspace, task {
+  padding: 0 10px;
   color: var(--text-dim);
 }
-panel-button:active {
+workspace { min-width: 28px; }
+task { max-width: 240px; }
+workspace:active, task:active {
   background: var(--surface);
   color: var(--text);
-  border-bottom-width: 2px;
-  border-bottom-color: var(--accent);
+  border-bottom: 2px solid var(--accent);
 }
-clock { color: var(--text); }
+clock {
+  padding: 0 10px;
+  color: var(--text);
+}

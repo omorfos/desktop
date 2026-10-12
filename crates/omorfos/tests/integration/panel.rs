@@ -312,7 +312,7 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
     session.write_config(
         "theme.css",
         "panel { height: 40px; background: #102030; }\n\
-         panel-button { background: #102030; }\n",
+         workspace, task { background: #102030; }\n",
     );
 
     session.eventually(|session| {
@@ -323,6 +323,39 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
         let themed = |y: i32| picture.at(WIDTH - 1, y) == 0xff10_2030;
         rows.clone().all(themed) && !themed(HEIGHT - 41)
     });
+}
+
+#[test]
+fn a_bar_with_a_margin_floats_clear_of_the_edge_and_windows_keep_clear_of_both() {
+    let mut session = Session::with_config(&[(
+        "theme.css",
+        "panel { margin: 0 20px 6px 20px; border-radius: 8px; }\n",
+    )]);
+    let mut panel = panel(&mut session);
+    settle(&mut session, &mut panel);
+
+    let picture = session.draw();
+    // The desktop shows below the bar and at either end of it.
+    assert_eq!(picture.at(WIDTH / 2, HEIGHT - 1), BACKGROUND);
+    assert_eq!(picture.at(WIDTH / 2, HEIGHT - 6), BACKGROUND);
+    assert_eq!(picture.at(WIDTH / 2, HEIGHT - 7), plain());
+    assert_eq!(picture.at(WIDTH / 2, HEIGHT - 6 - BAR), plain());
+    assert_eq!(picture.at(WIDTH / 2, HEIGHT - 7 - BAR), BACKGROUND);
+    assert_eq!(picture.at(19, HEIGHT - 20), BACKGROUND);
+    assert_eq!(picture.at(WIDTH - 20, HEIGHT - 20), BACKGROUND);
+    // Its corners are rounded, where no button is in them.
+    assert_eq!(picture.at(WIDTH - 21, HEIGHT - 7), BACKGROUND);
+    assert_eq!(picture.at(WIDTH - 21, HEIGHT - 6 - BAR), BACKGROUND);
+
+    // A maximized window stops above the bar and its margin.
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Maximize);
+    session.roundtrip(&mut client);
+    let ((_, height), _) = client.last_configure();
+    assert!(height <= HEIGHT - BAR - 6, "{height}");
 }
 
 /// Whether anything is written at the right-hand end of the first screen's

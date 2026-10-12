@@ -32,6 +32,24 @@ fn examples(guide: &str) -> Vec<(String, String)> {
 }
 
 #[test]
+fn every_stylesheet_in_the_guide_is_a_theme() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
+    let guide = fs::read_to_string(path).unwrap();
+    let blocks = guide.split("```css\n").skip(1);
+    let stylesheets: Vec<&str> = blocks
+        .filter_map(|block| block.split("```").next())
+        .collect();
+    assert!(
+        stylesheets.len() >= 3,
+        "the built-in theme and two examples"
+    );
+    for stylesheet in stylesheets {
+        let theme = omorfos_config::Theme::parse(stylesheet);
+        assert!(theme.is_ok(), "{theme:?}\n{stylesheet}");
+    }
+}
+
+#[test]
 fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
     let examples = examples(&fs::read_to_string(path).unwrap());

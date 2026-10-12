@@ -203,8 +203,21 @@ to show over the IPC socket (ADR 18). In this order:
 - [x] CSS as the theme format, `theme.css`, in place of `theme.yaml`
       (ADR 20). No HTML: what is on the screen stays decided by the
       components, CSS says how it looks
-- [ ] More of CSS as themes come to want it: `border` shorthands, named
-      colours, `rgb()`, padding
+- [x] Values as CSS writes them (`rgb()`, `hsl()`, named colours,
+      `opacity`, the `border` shorthand, font weight and style), and every
+      part a box with a margin, per-side borders, padding and rounded
+      corners (ADR 21)
+- [ ] More of CSS: `box-shadow`, gradients, a background image, and
+      transitions once there is something to animate
+- [ ] Blur behind what is see-through (`backdrop-filter: blur()`), the
+      frosted-glass look. The compositor has to do it, not the component:
+      draw what is below to a buffer, blur it in a shader, draw the part
+      over it. It is the first drawing that only the GPU can do, so decide
+      first, in an ADR, how it is tested (a slow equivalent on the CPU, or
+      an exclusion), how what changes behind a blurred part is redrawn, and
+      how other programs ask for it (the background-effect protocol).
+      `filter: blur()` of a part's own picture is small and can come with
+      it
 - [ ] Launcher, built against the CSS theme from the start
 - [ ] Notifications, likewise
 - [ ] Theming polish and restrained animations

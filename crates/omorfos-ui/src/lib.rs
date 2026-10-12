@@ -9,5 +9,5 @@
 mod canvas;
 mod scale;
 
-pub use canvas::{Area, Canvas, Text};
+pub use canvas::{Area, Canvas, Text, inset};
 pub use scale::Scale;
