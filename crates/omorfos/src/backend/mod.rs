@@ -22,9 +22,24 @@ const PANEL: &str = "omorfos-panel";
 /// whichever `PATH` has.
 #[must_use]
 pub fn panel_program(own: Option<&Path>) -> PathBuf {
-    let beside = own.and_then(Path::parent).map(|folder| folder.join(PANEL));
-    let beside = beside.filter(|panel| panel.is_file());
-    beside.unwrap_or_else(|| PathBuf::from(PANEL))
+    beside(own, PANEL)
+}
+
+/// What the launcher's executable is called.
+const LAUNCHER: &str = "omorfos-launcher";
+
+/// Where the launcher is, found as [`panel_program`] finds the panel.
+#[must_use]
+pub fn launcher_program(own: Option<&Path>) -> PathBuf {
+    beside(own, LAUNCHER)
+}
+
+/// The program called `name` beside the executable `own`, if there is one
+/// there, and otherwise just its name, to be looked up in `PATH`.
+fn beside(own: Option<&Path>, name: &str) -> PathBuf {
+    let beside = own.and_then(Path::parent).map(|folder| folder.join(name));
+    let beside = beside.filter(|program| program.is_file());
+    beside.unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// A way of running the compositor until the session ends.
@@ -81,6 +96,7 @@ mod tests {
     #[test]
     fn without_one_beside_it_the_panel_is_looked_up_by_name() {
         assert_eq!(panel_program(None), Path::new(PANEL));
+        assert_eq!(launcher_program(None), Path::new(LAUNCHER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

@@ -107,6 +107,11 @@
           "type": "string"
         },
         {
+          "const": "show_launcher",
+          "description": "Open the launcher, to start a program by typing its name.",
+          "type": "string"
+        },
+        {
           "const": "reload_config",
           "description": "Re-read the configuration now.",
           "type": "string"

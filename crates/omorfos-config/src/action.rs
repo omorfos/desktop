@@ -50,6 +50,8 @@ pub enum Action {
     MoveToNextOutput,
     /// Open the root menu at the pointer.
     ShowMenu,
+    /// Open the launcher, to start a program by typing its name.
+    ShowLauncher,
     /// Re-read the configuration now.
     ReloadConfig,
     /// End the session.
@@ -138,6 +140,7 @@ mod tests {
             Ok(Action::MoveToWorkspace(two))
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
+        assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
     }
 
     #[test]

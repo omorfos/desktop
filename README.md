@@ -40,7 +40,7 @@ the same from a build, put the binaries on the system's path and install
 the entry:
 
 ```sh
-sudo install -m755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel /usr/local/bin/
+sudo install -m755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher /usr/local/bin/
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
 ``` Start a program inside it with, for example,
 `WAYLAND_DISPLAY=wayland-1 foot`. Key bindings using Super may be taken by

@@ -109,6 +109,23 @@
       },
       "type": "object"
     },
+    "Launcher": {
+      "additionalProperties": false,
+      "description": "The launcher that comes with omorfos: what it shows of each program\nbesides its name.",
+      "properties": {
+        "descriptions": {
+          "default": false,
+          "description": "Whether what each program says of itself is shown after its name,\nand looked through for what is typed.",
+          "type": "boolean"
+        },
+        "icons": {
+          "default": false,
+          "description": "Whether each program's icon is shown beside its name.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "NamedOutput": {
       "additionalProperties": false,
       "description": "One screen, by the name of the socket it is plugged into.",
@@ -252,6 +269,10 @@
     "keyboard": {
       "$ref": "#/$defs/Keyboard",
       "description": "Keyboard layout and key repeat."
+    },
+    "launcher": {
+      "$ref": "#/$defs/Launcher",
+      "description": "The launcher that comes with omorfos."
     },
     "output": {
       "$ref": "#/$defs/Output",

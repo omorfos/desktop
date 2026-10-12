@@ -26,6 +26,7 @@ impl Default for Menu {
         Self {
             items: vec![
                 entry("Terminal", Action::Spawn(Command::terminal())),
+                entry("Run\u{2026}", Action::ShowLauncher),
                 MenuItem::Separator,
                 entry("Reload configuration", Action::ReloadConfig),
                 entry("Quit", Action::Quit),
@@ -125,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn the_built_in_menu_opens_a_terminal_and_ends_the_session() {
+    fn the_built_in_menu_starts_programs_and_ends_the_session() {
         let menu = Menu::default();
         let labels: Vec<&str> = menu
             .items
@@ -135,8 +136,11 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(labels, ["Terminal", "Reload configuration", "Quit"]);
-        assert_eq!(menu.items[1], MenuItem::Separator);
+        assert_eq!(
+            labels,
+            ["Terminal", "Run\u{2026}", "Reload configuration", "Quit"]
+        );
+        assert_eq!(menu.items[2], MenuItem::Separator);
     }
 
     #[test]

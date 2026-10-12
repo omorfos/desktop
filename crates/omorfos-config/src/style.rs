@@ -45,11 +45,24 @@ pub enum Part {
     Task,
     /// The time on the panel.
     Clock,
+    /// The launcher: the box that programs are picked from.
+    Launcher,
+    /// Where what is being looked for is typed in the launcher.
+    LauncherInput,
+    /// A program in the launcher's list. It is [`State::Active`] when it
+    /// is the one that would be started.
+    LauncherItem,
+    /// What a program in the launcher's list says of itself, after its
+    /// name. It is [`State::Active`] with its program.
+    LauncherDescription,
+    /// The whole of the screen behind the launcher while it is open. Only
+    /// its background is used.
+    LauncherBackdrop,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 18] = [
         Self::Desktop,
         Self::Window,
         Self::Titlebar,
@@ -63,6 +76,11 @@ impl Part {
         Self::Workspace,
         Self::Task,
         Self::Clock,
+        Self::Launcher,
+        Self::LauncherInput,
+        Self::LauncherItem,
+        Self::LauncherDescription,
+        Self::LauncherBackdrop,
     ];
 
     /// What the part is called in a stylesheet.
@@ -82,6 +100,11 @@ impl Part {
             Self::Workspace => "workspace",
             Self::Task => "task",
             Self::Clock => "clock",
+            Self::Launcher => "launcher",
+            Self::LauncherInput => "launcher-input",
+            Self::LauncherItem => "launcher-item",
+            Self::LauncherDescription => "launcher-description",
+            Self::LauncherBackdrop => "launcher-backdrop",
         }
     }
 }
@@ -424,7 +447,12 @@ mod tests {
                 "panel",
                 "workspace",
                 "task",
-                "clock"
+                "clock",
+                "launcher",
+                "launcher-input",
+                "launcher-item",
+                "launcher-description",
+                "launcher-backdrop"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();
