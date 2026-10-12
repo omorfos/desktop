@@ -24,6 +24,7 @@ mod ipc;
 mod lock;
 mod outputs;
 mod paint;
+mod restarts;
 mod session;
 mod x11;
 

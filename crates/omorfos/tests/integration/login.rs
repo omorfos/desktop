@@ -139,6 +139,127 @@ fn the_panel_is_not_started_when_the_configuration_turns_it_off() {
     assert!(!started.exists());
 }
 
+/// A program that stands in for one that runs for the whole session, and
+/// does what the session's directory tells it to.
+fn stand_in_component() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/component")
+}
+
+/// A session whose panel is the stand-in, told to do `what`, and how many
+/// times it has been started.
+fn session_whose_panel_will(what: &str, config: &str) -> Session {
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    session.listen();
+    session.write_config("component-does", what);
+    session.compositor_mut().set_panel(stand_in_component());
+    session.compositor_mut().autostart();
+    session
+}
+
+/// How many times the stand-in has been started.
+fn starts(session: &Session) -> usize {
+    let started = session.config.path().join("component-started");
+    std::fs::read_to_string(started).unwrap_or_default().len()
+}
+
+/// The process the stand-in is, once it has said.
+fn standing_in(session: &Session) -> Option<u32> {
+    let process = session.config.path().join("component-process");
+    std::fs::read_to_string(process).ok()?.parse().ok()
+}
+
+fn kill(process: u32) {
+    let killed = std::process::Command::new("kill")
+        .args(["-9", &process.to_string()])
+        .status();
+    assert!(killed.is_ok_and(|status| status.success()));
+}
+
+#[test]
+fn a_panel_that_crashes_is_started_again() {
+    let mut session = session_whose_panel_will("stay", "");
+    session.eventually(|session| standing_in(session).is_some());
+    let first = standing_in(&session).unwrap();
+    assert_eq!(starts(&session), 1);
+
+    kill(first);
+
+    session.eventually(|session| standing_in(session).is_some_and(|now| now != first));
+    assert_eq!(starts(&session), 2);
+    assert_eq!(session.compositor().problems(), [] as [&str; 0]);
+    // The session ending takes it down, which is not a crash.
+    kill(standing_in(&session).unwrap());
+}
+
+#[test]
+fn a_panel_that_keeps_crashing_is_given_up_on_and_the_user_is_told() {
+    let mut session = session_whose_panel_will("fail", "");
+
+    // Once with the session, and three times more.
+    session.eventually(|session| !session.compositor().problems().is_empty());
+    assert_eq!(starts(&session), 4);
+    let problems = session.compositor().problems().join("\n");
+    assert!(problems.contains("keeps stopping"), "{problems}");
+    assert!(problems.contains("fixtures/component"), "{problems}");
+    session.advance(std::time::Duration::from_millis(50));
+    assert_eq!(starts(&session), 4, "and no more");
+}
+
+#[test]
+fn a_panel_that_stops_of_its_own_accord_is_left_stopped() {
+    let mut session = session_whose_panel_will("stop", "");
+    session.eventually(|session| starts(session) == 1);
+    for _ in 0..20 {
+        session.advance(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(starts(&session), 1);
+    assert_eq!(session.compositor().problems(), [] as [&str; 0]);
+}
+
+#[test]
+fn a_panel_turned_off_since_it_was_started_is_not_started_again() {
+    let mut session = session_whose_panel_will("stay", "");
+    session.eventually(|session| standing_in(session).is_some());
+    session.write_config("config.yaml", "panel: { enabled: false }\n");
+    session.compositor_mut().reload_config();
+
+    kill(standing_in(&session).unwrap());
+
+    for _ in 0..20 {
+        session.advance(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(starts(&session), 1);
+}
+
+#[test]
+fn the_notifications_are_started_again_if_they_crash_and_other_programs_are_not() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let crashed = directory.path().join("crashed");
+    // A program of the user's that fails as soon as it is started.
+    let config = format!(
+        "autostart:\n  - [sh, -c, \"printf x >> '{}'; exit 1\"]\n",
+        crashed.display()
+    );
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    session.listen();
+    session.write_config("component-does", "stay");
+    session.compositor_mut().set_notifier(stand_in_component());
+    session.compositor_mut().autostart();
+    session.eventually(|session| standing_in(session).is_some());
+    let first = standing_in(&session).unwrap();
+
+    kill(first);
+
+    session.eventually(|session| standing_in(session).is_some_and(|now| now != first));
+    // The user's program has failed by now, and was started the once.
+    session.eventually(|_| crashed.exists());
+    session.advance(std::time::Duration::from_millis(50));
+    assert_eq!(std::fs::read_to_string(&crashed).unwrap(), "x", "once");
+    kill(standing_in(&session).unwrap());
+}
+
 #[test]
 fn a_panel_that_is_not_installed_is_a_problem_the_user_is_told_of() {
     let mut session = Session::new();

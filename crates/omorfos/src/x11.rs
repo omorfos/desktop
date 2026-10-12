@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Desktop, WindowId};
@@ -33,6 +33,7 @@ use smithay::xwayland::{X11Surface, X11Wm, XWayland, XwmHandler};
 
 use crate::compositor::{Compositor, Mapped, logical_size, set};
 use crate::input::Wanted;
+use crate::restarts::Restarts;
 
 /// What a window is to the program it belongs to.
 #[derive(Debug, Clone, PartialEq)]
@@ -213,13 +214,6 @@ struct Server {
     waking: Option<RegistrationToken>,
 }
 
-/// How many times the X server is started again after stopping, within
-/// [`LATELY`], before it is given up on.
-const RESTARTS: usize = 3;
-
-/// How long a restart of the X server counts against the next.
-const LATELY: Duration = Duration::from_secs(60);
-
 /// The X server and what the compositor keeps as its window manager.
 #[derive(Debug)]
 pub(crate) struct X11 {
@@ -227,7 +221,7 @@ pub(crate) struct X11 {
     /// The X server, once it has been started.
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
-    restarts: Vec<Instant>,
+    restarts: Restarts,
     /// The number to start the X server again with, once the window
     /// manager of the one that stopped has heard the last of it.
     again: Option<u32>,
@@ -244,7 +238,7 @@ impl X11 {
         Self {
             shell: XWaylandShellState::new::<Compositor>(display),
             server: None,
-            restarts: Vec::new(),
+            restarts: Restarts::default(),
             again: None,
             wm: None,
             apart: Vec::new(),
@@ -360,10 +354,7 @@ impl Compositor {
         }
         self.x11.apart.clear();
 
-        let restarts = &mut self.x11.restarts;
-        restarts.retain(|at| now.saturating_duration_since(*at) < LATELY);
-        if restarts.len() < RESTARTS {
-            restarts.push(now);
+        if self.x11.restarts.allow(now) {
             let said = "the X server stopped and has been started again; programs written for \
                         X11 that were running have closed";
             self.problems.push(said.to_owned());
