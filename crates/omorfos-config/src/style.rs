@@ -5,7 +5,7 @@
 //! answer comes from: a stylesheet, in which rules written for parts and
 //! states give them these properties.
 
-use crate::Color;
+use crate::{Color, Transition};
 
 /// A part of the desktop that a theme gives a look to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -310,6 +310,8 @@ pub struct Style {
     pub min_width: u32,
     /// The widest it is made, in units of layout, or 0 for no limit.
     pub max_width: u32,
+    /// How its colours get here from those of the state it was in before.
+    pub transition: Transition,
 }
 
 impl Style {
@@ -324,6 +326,7 @@ impl Style {
         height: 0,
         min_width: 0,
         max_width: 0,
+        transition: Transition::NONE,
     };
 
     /// The room its border and padding take on each side: how far in from
