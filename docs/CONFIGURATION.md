@@ -6,8 +6,11 @@ as you save.
 
 If a file has a mistake, omorfos keeps using that file's previous contents
 and reports the problem with its file, line and column. The other files
-still apply. Problems are shown in a notice at the top right of the screen
-(click it to dismiss) and printed by `omorfosctl config check`.
+still apply. Problems are shown among the notifications, at the top right
+of the screen, each until you click it away or put it right, and are
+printed by `omorfosctl config check`. Where no notifications are being
+shown by omorfos, they are in a notice of the compositor's own in the same
+corner.
 
 General rules:
 
@@ -560,6 +563,13 @@ notification brings up its tab; a click with the right button dismisses it
 without that. Otherwise it goes after as long as its sender asked for, or
 after `notifications.timeout` seconds. One its sender marked as critical
 stays until it is clicked.
+
+What omorfos itself has to say is wrong, such as a mistake in a
+configuration file, is shown here too, headed `omorfos` and looking as a
+critical notification does. It is given up to six lines, stays until you
+click it away or put it right, and is never the one to go when there are
+too many. If you turn these notifications off, or use another program for
+them, the compositor shows what is wrong in a notice of its own.
 
 A picture may be a PNG or an SVG, given by its path, or an icon by name.
 Icons are looked for in the `hicolor` and `Adwaita` themes; where a theme

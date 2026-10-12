@@ -23,6 +23,11 @@ pub enum Request {
     /// Ask to be sent the [`State`] now and again whenever it changes. The
     /// connection is then used for nothing else.
     Subscribe,
+    /// As [`Request::Subscribe`], from a program that shows the user what
+    /// is in [`State::problems`], as the notifications that come with
+    /// omorfos do. For as long as such a program is connected, the
+    /// compositor does not show them itself.
+    ShowProblems,
     /// Re-read the configuration now.
     Reload,
     /// Perform an action, written exactly as in `keys.yaml`: a string such
@@ -155,6 +160,7 @@ mod tests {
     fn requests_without_arguments_are_plain_strings() {
         assert_eq!(encode(&Request::Version), "\"version\"\n");
         assert_eq!(encode(&Request::Subscribe), "\"subscribe\"\n");
+        assert_eq!(encode(&Request::ShowProblems), "\"show_problems\"\n");
         assert_eq!(decode("\"state\""), Ok(Request::State));
         assert_eq!(decode("  \"reload\"\n"), Ok(Request::Reload));
     }
@@ -180,6 +186,7 @@ mod tests {
             Request::Version,
             Request::State,
             Request::Subscribe,
+            Request::ShowProblems,
             Request::Reload,
             Request::Perform {
                 action: json!("close"),

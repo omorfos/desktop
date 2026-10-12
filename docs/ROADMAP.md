@@ -274,12 +274,13 @@ to show over the IPC socket (ADR 18). In this order:
         change there
   - [x] The panel and the notifications started again if they crash, as
         the X server is (ADR 28)
-- [ ] What omorfos itself has to say shown among the notifications, in
+- [x] What is wrong with the session shown among the notifications, in
       the same stack and the same style, so that it and they cannot cover
-      one another and each is there until it is clicked away. What is
-      wrong stays until it is put right; what merely happened, such as the
-      X server having been started again, goes by itself. The notice the
-      compositor draws stays as what is fallen back on when nothing is
-      showing notifications, which is also when it has to say that the
-      notifications have stopped
+      one another and each is there until it is clicked away or put right
+      (ADR 29). The notice the compositor draws is what is fallen back on
+      when nothing is showing notifications, which is also when it has to
+      say that the notifications have stopped
+  - [ ] What merely happened, such as the X server having been started
+        again, told apart from what is wrong, and gone by itself after a
+        while
 - [ ] Screen capture and portals

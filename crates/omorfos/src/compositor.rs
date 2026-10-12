@@ -1056,7 +1056,12 @@ impl Compositor {
         if self.problems.is_empty() {
             self.dismissed.clear();
         }
-        let wanted = !self.problems.is_empty() && self.problems != self.dismissed;
+        // What is wrong is shown here only if no program is showing it:
+        // the notifications that come with omorfos do, among what other
+        // programs have to say, where neither covers the other.
+        let wanted = !self.problems.is_empty()
+            && self.problems != self.dismissed
+            && !self.problems_shown_elsewhere();
         // The notice is on the first output, which is where a session
         // with one screen has it.
         let first = self.heads.first();
