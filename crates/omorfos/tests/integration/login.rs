@@ -195,8 +195,16 @@ fn a_panel_that_crashes_is_started_again() {
 fn a_panel_that_keeps_crashing_is_given_up_on_and_the_user_is_told() {
     let mut session = session_whose_panel_will("fail", "");
 
-    // Once with the session, and three times more.
-    session.eventually(|session| !session.compositor().problems().is_empty());
+    // Once with the session, and three times more. No time passes for the
+    // compositor meanwhile: how often it starts something again goes by
+    // the clock.
+    for _ in 0..20_000 {
+        session.step();
+        if !session.compositor().problems().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
     assert_eq!(starts(&session), 4);
     let problems = session.compositor().problems().join("\n");
     assert!(problems.contains("keeps stopping"), "{problems}");
