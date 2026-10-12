@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn saving_by_renaming_a_temporary_file_is_a_change() {
         let directory = TempDir::new().unwrap();
-        let temporary = directory.path().join(".theme.yaml.tmp");
+        let temporary = directory.path().join(".theme.css.tmp");
         let mut watcher = Watcher::new(directory.path()).unwrap();
 
         fs::write(&temporary, "").unwrap();
@@ -136,7 +136,7 @@ mod tests {
             "the temporary file is not configuration"
         );
 
-        fs::rename(&temporary, directory.path().join("theme.yaml")).unwrap();
+        fs::rename(&temporary, directory.path().join("theme.css")).unwrap();
         assert!(changed(&mut watcher));
     }
 

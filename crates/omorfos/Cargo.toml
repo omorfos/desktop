@@ -32,6 +32,8 @@ assets = [
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
+    # The built-in theme, to copy from.
+    ["../omorfos-config/src/default.css", "usr/share/doc/omorfos/theme.css", "644"],
     ["../../schemas/*.json", "usr/share/omorfos/schemas/", "644"],
     ["../../packaging/omorfos.desktop", "usr/share/wayland-sessions/", "644"],
 ]

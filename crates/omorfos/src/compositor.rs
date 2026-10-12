@@ -443,7 +443,7 @@ impl Compositor {
         }
         self.shown = self.cursor_wanted();
         if let Look::Icon(icon) = self.shown {
-            let theme = &self.store.current().theme.cursor;
+            let theme = &self.store.current().general.cursor;
             let scale = self.pointer_scale();
             let current = self.pointer_image.take().filter(|image| {
                 image.icon == icon && image.scale == scale && image.theme == *theme
@@ -722,7 +722,7 @@ impl Compositor {
     /// programs on the user's behalf.
     #[must_use]
     pub fn session_environment(&self) -> Vec<(&'static str, OsString)> {
-        let cursor = &self.store.current().theme.cursor;
+        let cursor = &self.store.current().general.cursor;
         let display = self.socket_name.clone();
         let socket = self.ipc_path().map(|path| path.as_os_str().to_owned());
         let fixed = [

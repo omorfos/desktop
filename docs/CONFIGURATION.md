@@ -1,7 +1,7 @@
 # Configuration
 
-omorfos reads YAML files from `$XDG_CONFIG_HOME/omorfos/`, which is usually
-`~/.config/omorfos/`. Every file is optional. Changes are picked up as soon
+omorfos reads YAML files, and a stylesheet for the theme, from
+`$XDG_CONFIG_HOME/omorfos/`, which is usually `~/.config/omorfos/`. Every file is optional. Changes are picked up as soon
 as you save.
 
 If a file has a mistake, omorfos keeps using that file's previous contents
@@ -13,7 +13,6 @@ General rules:
 
 - Unknown settings are errors, so typos are caught.
 - Booleans are `true` or `false` only.
-- Colors are `"#rrggbb"` or `"#rrggbbaa"`, quoted.
 - Files larger than 1 MiB are refused.
 
 For completion and inline validation in editors that use
@@ -49,6 +48,9 @@ idle:
 autostart: []             # programs to start with the session
 panel:
   enabled: true           # start the panel that comes with omorfos
+cursor:
+  theme: default          # a cursor theme by name
+  size: 24                # 8 to 128
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -71,6 +73,11 @@ autostart:
 They are started once, in order. Changing the list takes effect the next
 time you log in; reloading the configuration does not start them again. A
 program that cannot be started is reported like any other problem.
+
+`cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
+`~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
+Shapes the theme lacks come from the themes it inherits from and then from
+`default`. If no theme has a shape, omorfos draws a plain arrow of its own.
 
 With more than one screen, they are placed side by side from left to
 right in the order they were plugged in, a laptop's own first. To say
@@ -163,28 +170,162 @@ characters. Every matching rule applies, in order. Properties are
 `workspace`, `maximized`, `fullscreen` and `decorations`. Without a
 `decorations` rule, a window is framed if it asks omorfos to decorate it.
 
-## `theme.yaml`
+## `theme.css`
 
-```yaml
-font: { family: sans-serif, size: 11 }      # size 6 to 72
-border: { width: 1, radius: 8 }             # width 0 to 16, radius 0 to 32
-titlebar: { height: 28 }                    # 16 to 64
-animations: { enabled: true, duration: 150 } # milliseconds, 0 to 1000
-cursor: { theme: default, size: 24 }        # size 8 to 128
-colors:
-  background: "#14161b"
-  accent: "#5b9cf5"
-  focused: { border: "#5b9cf5", titlebar: "#23262e", text: "#e6e8ee" }
-  unfocused: { border: "#2c303a", titlebar: "#1b1d23", text: "#8b90a0" }
+The theme is a stylesheet, in a small part of CSS. A rule names parts of
+the desktop, perhaps in some state, and gives them properties. Yours is
+laid over the built-in theme, so you only write what you want changed. A
+rule of yours always wins over a built-in one; among your own, the one that
+names more states wins, and then the later one.
+
+This is the whole built-in theme, which is also every part there is:
+
+```css
+/* The built-in theme of omorfos.
+ *
+ * Your own theme.css is laid over this one: a rule of yours always wins
+ * over a rule here, so you only write what you want changed. The quickest
+ * change is to give the variables below other values. */
+
+:root {
+  --background: #14161b;   /* behind everything */
+  --accent: #5b9cf5;       /* what has focus, and what is picked out */
+  --surface: #23262e;      /* titlebars, menus and what is lit */
+  --surface-dim: #1b1d23;  /* the same, where focus is elsewhere */
+  --text: #e6e8ee;
+  --text-dim: #8b90a0;
+  --border: #2c303a;
+}
+
+* {
+  font-family: sans-serif;
+  font-size: 11pt;
+}
+
+desktop { background: var(--background); }
+
+/* A window's frame. Its sizes are taken from the rule without a state. */
+window {
+  border-width: 1px;
+  border-color: var(--border);
+  border-radius: 8px;
+}
+window:focus { border-color: var(--accent); }
+
+titlebar {
+  height: 28px;
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+titlebar:focus {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* A title in a titlebar that has several. The border is the line between
+ * one tab and the next. */
+tab {
+  background: var(--surface-dim);
+  color: var(--text-dim);
+  border-width: 1px;
+  border-color: var(--border);
+}
+tab:focus { border-color: var(--accent); }
+tab:active {
+  border-bottom-width: 2px;
+  border-bottom-color: var(--border);
+}
+tab:active:focus {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+menu {
+  background: var(--surface);
+  color: var(--text);
+  border-width: 1px;
+  border-color: var(--border);
+}
+menu-item {
+  height: 28px;
+  color: var(--text);
+}
+menu-item:hover {
+  background: var(--accent);
+  color: var(--background);
+}
+menu-separator { color: var(--border); }
+
+notice {
+  background: var(--surface);
+  color: var(--text);
+  border-width: 1px;
+  border-color: var(--accent);
+}
+notice-heading { color: var(--accent); }
+
+panel {
+  height: 28px;
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+panel-button {
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+panel-button:active {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-width: 2px;
+  border-bottom-color: var(--accent);
+}
+clock { color: var(--text); }
 ```
 
-These are the defaults. Anything you leave out keeps its default, except
-that `focused` and `unfocused` must each give all three colors.
+The quickest change is to give the built-in theme's variables other
+values:
 
-`cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
-`~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
-Shapes the theme lacks come from the themes it inherits from and then from
-`default`. If no theme has a shape, omorfos draws a plain arrow of its own.
+```css
+:root {
+  --accent: #e0af68;
+  --background: #101014;
+}
+```
+
+**Parts** are `desktop`, `window`, `titlebar`, `tab`, `menu`, `menu-item`,
+`menu-separator`, `notice`, `notice-heading`, `panel`, `panel-button` and
+`clock`. `*` is every part. Several can share a rule: `tab, clock { ... }`.
+
+**States** follow a part: `:focus` (it has the keyboard, or its window
+has), `:active` (the tab or workspace being shown, or the window with
+focus on the panel) and `:hover` (the pointer is over it). A part can be in
+several: `tab:active:focus`.
+
+**Properties:**
+
+| Property | Value | Notes |
+|---|---|---|
+| `background` | a color | also written `background-color` |
+| `color` | a color | text; for `menu-separator`, the line |
+| `border-color`, `border-width` | a color; `0` to `16px` | the line around a part; for `tab`, the line between tabs |
+| `border-bottom-color`, `border-bottom-width` | a color; `0` to `16px` | a line along the bottom, inside the part |
+| `border-radius` | `0` to `32px` | of `window` |
+| `height` | `16px` to `64px` | of `titlebar`, `menu-item` and `panel` |
+| `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
+
+Colors are `#rgb` or `#rrggbb`, with opacity as a fourth digit or pair, or
+`transparent`. Sizes are whole numbers. A variable is declared in `:root`
+with a name beginning `--` and used as `var(--name)`; it can stand for
+another variable.
+
+The sizes of a window's frame and titlebar are taken from the rules without
+a state, since a window does not change size when it gains focus.
+
+Nothing is passed over in silence: a part, state, property or value that
+is not understood is a mistake, reported with its line and column, and the
+previous theme stays in use. A `theme.yaml` from an earlier version is no
+longer read, and omorfos says so while it is there.
 
 ## `menu.yaml`
 
@@ -215,9 +356,9 @@ workspace being shown and the window with focus are underlined; a
 minimized window's title is in brackets. The time is the local time, in
 24 hours.
 
-It is a program of its own, started with the session. It takes its font,
-its height (`titlebar.height`) and its colours (those of the titlebars,
-and `accent`) from `theme.yaml`, and follows the file as you save it.
+It is a program of its own, started with the session. How it looks is in
+`theme.css`, under `panel`, `panel-button` and `clock`, and it follows the
+file as you save it.
 
 To go without it, or to use another panel that speaks layer-shell, such as
 `waybar`, turn it off in `config.yaml`:

@@ -35,6 +35,7 @@ package() {
   install -Dm755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel -t "$pkgdir/usr/bin/"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"
   install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"
   install -Dm644 packaging/omorfos.desktop -t "$pkgdir/usr/share/wayland-sessions/"
 }

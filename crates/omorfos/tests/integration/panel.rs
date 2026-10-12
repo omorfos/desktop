@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use omorfos::{Input, Scale};
-use omorfos_config::{Color, Theme};
+use omorfos_config::{Color, Part, States, Theme};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Workspace, encode};
 use omorfos_panel::{Bar, Panel};
 use omorfos_ui::Text;
@@ -38,12 +38,16 @@ fn argb(color: Color) -> u32 {
 
 /// The colour of a bar where there is nothing on it.
 fn plain() -> u32 {
-    argb(Theme::default().colors.unfocused.titlebar)
+    argb(Theme::default().style(Part::Panel, States::NONE).background)
 }
 
 /// The colour of the line under what is lit.
 fn accent() -> u32 {
-    argb(Theme::default().colors.accent)
+    argb(
+        Theme::default()
+            .style(Part::NoticeHeading, States::NONE)
+            .color,
+    )
 }
 
 /// A panel connected to the session over `wayland` and to these two ends
@@ -306,9 +310,9 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
     let panel = RefCell::new(panel);
 
     session.write_config(
-        "theme.yaml",
-        "titlebar: { height: 40 }\n\
-         colors: { unfocused: { border: '#000000', titlebar: '#102030', text: '#ffffff' } }\n",
+        "theme.css",
+        "panel { height: 40px; background: #102030; }\n\
+         panel-button { background: #102030; }\n",
     );
 
     session.eventually(|session| {
@@ -493,7 +497,7 @@ fn the_panel_runs_by_itself_in_the_session_it_is_started_in() {
     let ipc = session.listen();
     // The configuration is looked for where the session would have it.
     std::fs::create_dir(runtime.join("omorfos")).unwrap();
-    let theme = runtime.join("omorfos/theme.yaml");
+    let theme = runtime.join("omorfos/theme.css");
 
     let panel = std::thread::spawn(move || {
         let runtime = Some(runtime.as_os_str());
@@ -514,7 +518,7 @@ fn the_panel_runs_by_itself_in_the_session_it_is_started_in() {
     });
 
     // And follows the theme.
-    std::fs::write(theme, "titlebar: { height: 36 }\n").unwrap();
+    std::fs::write(theme, "panel { height: 36px; }\n").unwrap();
     session.eventually(|session| bar_height(&session.draw(), (WIDTH, HEIGHT)) == 36);
 
     // It ends with the session, saying why.

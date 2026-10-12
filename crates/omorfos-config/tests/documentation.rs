@@ -6,7 +6,8 @@ use std::{fs, mem};
 use omorfos_config::{Config, FILES};
 use tempfile::TempDir;
 
-/// Returns the first YAML example under each heading that names a file.
+/// Returns the first example under each heading that names a file, in the
+/// language that file is written in.
 fn examples(guide: &str) -> Vec<(String, String)> {
     let mut examples: Vec<(String, String)> = Vec::new();
     let mut file = None;
@@ -14,8 +15,10 @@ fn examples(guide: &str) -> Vec<(String, String)> {
     for line in guide.lines() {
         if let Some(heading) = line.strip_prefix("## `") {
             file = heading.strip_suffix('`').map(str::to_owned);
-        } else if line == "```yaml" {
-            block = Some(String::new());
+        } else if line == "```yaml" || line == "```css" {
+            let language = line.trim_start_matches('`');
+            let wanted = file.as_ref().is_some_and(|name| name.ends_with(language));
+            block = wanted.then(String::new);
         } else if line == "```" {
             if let (Some(name), Some(text)) = (file.take(), block.take()) {
                 examples.push((name, text));
@@ -47,7 +50,7 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     let (mut config, diagnostics) = Config::load(directory.path(), &defaults);
     assert_eq!(diagnostics, [], "an example in the guide is invalid");
 
-    // The guide says the theme example shows the defaults.
+    // The guide says the theme example is the built-in theme.
     assert_eq!(config.theme, defaults.theme);
 
     // ... and that `config.yaml` does too, apart from the workspace names.

@@ -502,7 +502,7 @@ mod tests {
     #[test]
     fn config_check_lists_problems_and_fails() {
         let problems = [
-            "theme.yaml:2:11: invalid color `nope`",
+            "theme.css:2:13: `nope` is not a color",
             "keys.yaml: `Super+Retrun` names no key",
         ];
         let outcome = invoke(&["config", "check"], vec![Reply::State(state(&problems))]);

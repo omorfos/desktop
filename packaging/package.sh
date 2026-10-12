@@ -24,6 +24,8 @@ mkdir "${stage}/${name}"
 cp target/release/omorfos target/release/omorfosctl target/release/omorfos-panel LICENSE README.md docs/CONFIGURATION.md \
   packaging/omorfos.desktop "${stage}/${name}/"
 cp -r schemas "${stage}/${name}/"
+# The built-in theme, to copy from.
+cp crates/omorfos-config/src/default.css "${stage}/${name}/theme.css"
 tar -C "${stage}" -czf "${out}/${name}.tar.gz" "${name}"
 
 cd "${out}"

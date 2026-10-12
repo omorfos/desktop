@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::{Command, MAX_WORKSPACES};
+use crate::{Bounded, Command, MAX_WORKSPACES};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -32,6 +32,29 @@ pub struct General {
     pub autostart: Vec<Command>,
     /// The panel that comes with omorfos.
     pub panel: Panel,
+    /// The pointer.
+    pub cursor: Cursor,
+}
+
+/// The pictures used for the pointer.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Cursor {
+    /// The name of an installed cursor theme, such as `Adwaita`. `default`
+    /// is whichever the system has set up as its default.
+    pub theme: String,
+    /// The size of the pointer, before scaling.
+    pub size: Bounded<8, 128>,
+}
+
+impl Default for Cursor {
+    fn default() -> Self {
+        Self {
+            theme: "default".to_owned(),
+            size: Bounded::clamped(24),
+        }
+    }
 }
 
 /// The panel that comes with omorfos: a bar along the bottom of each
@@ -295,6 +318,17 @@ impl TryFrom<String> for OutputScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pointer_is_the_systems_default_unless_a_theme_and_size_are_named() {
+        assert_eq!(General::default().cursor.theme, "default");
+        assert_eq!(General::default().cursor.size.get(), 24);
+        let cursor = parse("cursor: { theme: Adwaita, size: 32 }")
+            .unwrap()
+            .cursor;
+        assert_eq!((cursor.theme.as_str(), cursor.size.get()), ("Adwaita", 32));
+        assert!(parse("cursor: { size: 4 }").is_err());
+    }
 
     #[test]
     fn the_panel_is_started_unless_it_is_turned_off() {

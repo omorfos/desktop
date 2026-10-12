@@ -98,7 +98,7 @@ fn a_locker_is_told_the_session_is_locked_only_once_nothing_of_it_shows() {
 
 #[test]
 fn the_lockers_surface_covers_the_screen_and_is_all_that_is_drawn() {
-    let mut session = Session::with_config(&[("theme.yaml", "colors: { accent: nope }\n")]);
+    let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     let mut app = session.connect();
     session.open(&mut app, "app", (200, 100), RED);
     session.compositor_mut().perform(&Action::ShowMenu);

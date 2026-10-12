@@ -14,7 +14,7 @@ const ACCENT: u32 = 0xff5b_9cf5;
 /// the padding above the first line.
 const INSIDE: (i32, i32) = (WIDTH - 20, 16);
 
-const BROKEN: &str = "colors: { accent: nope }\n";
+const BROKEN: &str = ":root { --accent: nope; }\n";
 
 fn click_at(session: &mut Session, (x, y): (i32, i32)) {
     session.compositor_mut().input(
@@ -49,7 +49,7 @@ fn nothing_is_shown_when_nothing_is_wrong() {
 
 #[test]
 fn a_configuration_mistake_is_shown_on_screen() {
-    let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
     session.step();
     let picture = session.draw();
     assert_eq!(
@@ -64,11 +64,11 @@ fn a_configuration_mistake_is_shown_on_screen() {
 
 #[test]
 fn the_notice_goes_away_when_the_mistake_is_fixed() {
-    let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
     session.step();
     assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), PANEL);
 
-    session.write_config("theme.yaml", "colors: { accent: '#00ff00' }\n");
+    session.write_config("theme.css", ":root { --accent: #00ff00; }\n");
     session.compositor_mut().reload_config();
     session.step();
 
@@ -78,7 +78,7 @@ fn the_notice_goes_away_when_the_mistake_is_fixed() {
 #[test]
 fn a_mistake_made_while_running_is_shown_and_the_old_settings_kept() {
     let mut session = Session::new();
-    session.write_config("theme.yaml", "colors: { background: oops }\n");
+    session.write_config("theme.css", "desktop { background: oops; }\n");
     session.compositor_mut().reload_config();
     session.step();
 
@@ -93,7 +93,7 @@ fn a_mistake_made_while_running_is_shown_and_the_old_settings_kept() {
 
 #[test]
 fn a_click_dismisses_the_notice_without_reaching_the_window_beneath() {
-    let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
     let mut client = session.connect();
     session.open(&mut client, "app", (WIDTH, 100), RED);
     assert_eq!(
@@ -122,7 +122,7 @@ fn a_click_dismisses_the_notice_without_reaching_the_window_beneath() {
 
 #[test]
 fn a_dismissed_notice_stays_away_until_the_problems_change() {
-    let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
     session.step();
     click_at(&mut session, INSIDE);
     session.compositor_mut().reload_config();
@@ -145,14 +145,14 @@ fn a_dismissed_notice_stays_away_until_the_problems_change() {
 
 #[test]
 fn a_problem_that_comes_back_after_being_fixed_is_shown_again() {
-    let mut session = Session::with_config(&[("theme.yaml", BROKEN)]);
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
     session.step();
     click_at(&mut session, INSIDE);
 
-    session.write_config("theme.yaml", "");
+    session.write_config("theme.css", "");
     session.compositor_mut().reload_config();
     session.step();
-    session.write_config("theme.yaml", BROKEN);
+    session.write_config("theme.css", BROKEN);
     session.compositor_mut().reload_config();
     session.step();
 
@@ -165,8 +165,8 @@ fn the_notice_follows_the_output_and_the_theme() {
     session.step();
     session.resize_output((400, 300));
     session.write_config(
-        "theme.yaml",
-        "colors: { focused: { border: '#000000', titlebar: '#00ff00', text: '#ffffff' } }\n",
+        "theme.css",
+        "notice { background: #00ff00; color: #ffffff; }\n",
     );
     session.compositor_mut().reload_config();
     session.step();

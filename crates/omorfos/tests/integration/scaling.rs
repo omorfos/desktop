@@ -229,7 +229,7 @@ fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
 
 #[test]
 fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
-    let mut session = Session::with_config(&[("theme.yaml", "colors: { accent: nope }\n")]);
+    let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     session.compositor_mut().show_pointer();
     session
         .compositor_mut()

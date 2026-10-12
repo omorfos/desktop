@@ -78,7 +78,8 @@ impl Bar {
         let workspaces = workspaces.filter(|workspace| workspace.output == output);
         for workspace in workspaces.clone() {
             let label = workspace_label(workspace);
-            let needed = text.measure(&label, &theme.font);
+            let lit = States::NONE.when(omorfos_config::State::Active, workspace.active);
+            let needed = text.measure(&label, theme.font(Part::PanelButton, lit));
             // Never narrower than it is tall, so a short name is easy to hit.
             let wide = needed.saturating_add(PADDING * 2).max(height);
             buttons.push(Button {
@@ -171,7 +172,8 @@ impl Bar {
                 button.width.saturating_sub(PADDING * 2),
                 self.height,
             );
-            text.draw(&mut canvas, &button.label, label, style.color, &theme.font);
+            let font = theme.font(Part::PanelButton, states);
+            text.draw(&mut canvas, &button.label, label, style.color, font);
         }
         let clock = &self.clock;
         let time = (
@@ -181,7 +183,8 @@ impl Bar {
             self.height,
         );
         let ink = theme.style(Part::Clock, States::NONE).color;
-        text.draw(&mut canvas, &clock.time, time, ink, &theme.font);
+        let font = theme.font(Part::Clock, States::NONE);
+        text.draw(&mut canvas, &clock.time, time, ink, font);
         canvas
     }
 }
@@ -190,7 +193,7 @@ impl Clock {
     /// A clock showing `time` at the end of a bar `width` wide: as wide as
     /// the time needs, or nothing at all if there is no time to show.
     fn new(time: &str, width: u32, theme: &Theme, text: &mut Text) -> Self {
-        let needed = text.measure(time, &theme.font);
+        let needed = text.measure(time, theme.font(Part::Clock, States::NONE));
         let room = needed.saturating_add(PADDING * 2);
         let wide = if time.is_empty() { 0 } else { room };
         Self {
@@ -233,6 +236,30 @@ mod tests {
     const LINE: u32 = 2;
 
     use super::*;
+
+    /// The colours of a theme, by what the built-in theme uses them for.
+    struct Palette {
+        accent: Color,
+        focused: Tone,
+        unfocused: Tone,
+    }
+
+    /// The colours of a frame and its titlebar, with focus or without.
+    #[derive(Clone, Copy)]
+    struct Tone {
+        titlebar: Color,
+    }
+
+    fn palette(theme: &Theme) -> Palette {
+        let tone = |states| Tone {
+            titlebar: theme.style(Part::Titlebar, states).background,
+        };
+        Palette {
+            accent: theme.style(Part::NoticeHeading, States::NONE).color,
+            focused: tone(States::NONE.with(omorfos_config::State::Focused)),
+            unfocused: tone(States::NONE),
+        }
+    }
 
     const WIDTH: u32 = 800;
 
@@ -360,9 +387,9 @@ mod tests {
         assert_eq!(requests(&bar), []);
         // It is still a bar: as tall as the theme says and drawn all over.
         let theme = Theme::default();
-        assert_eq!(bar.height(), theme.titlebar.height.get());
+        assert_eq!(bar.height(), theme.style(Part::Panel, States::NONE).height);
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
-        let background = theme.colors.unfocused.titlebar;
+        let background = palette(&theme).unfocused.titlebar;
         let all = usize::try_from(WIDTH * bar.height()).unwrap();
         assert_eq!(count(&canvas, 0..WIDTH, 0..bar.height(), background), all);
     }
@@ -451,7 +478,7 @@ mod tests {
     #[test]
     fn what_is_shown_and_what_has_focus_are_lit_and_underlined() {
         let theme = Theme::default();
-        let colors = theme.colors;
+        let colors = palette(&theme);
         let bar = bar(&state(), "left");
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
         let stretches = stretches(&bar);
@@ -523,7 +550,7 @@ mod tests {
     #[test]
     fn the_time_is_at_the_right_hand_end_and_is_not_a_button() {
         let theme = Theme::default();
-        let background = theme.colors.unfocused.titlebar;
+        let background = palette(&theme).unfocused.titlebar;
         let bar = timed(&state(), "left", "14:05");
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
         let height = bar.height();

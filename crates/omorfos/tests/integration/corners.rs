@@ -68,7 +68,7 @@ fn what_is_behind_a_frame_shows_past_its_corners() {
 
 #[test]
 fn a_radius_of_nothing_leaves_the_corners_square() {
-    let mut session = Session::with_config(&[("theme.yaml", "border: { radius: 0 }\n")]);
+    let mut session = Session::with_config(&[("theme.css", "window { border-radius: 0; }\n")]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();

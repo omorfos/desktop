@@ -17,6 +17,7 @@ mod action;
 mod bounded;
 mod color;
 mod config;
+mod css;
 mod debounce;
 mod diagnostic;
 mod general;
@@ -38,8 +39,8 @@ pub use config::{Config, FILES, MAX_FILE_SIZE};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Focus, FocusModel, General, Idle, Keyboard, NamedOutput, Output, OutputScale, Outputs, Panel,
-    Placement, Touchpad, Workspaces,
+    Cursor, Focus, FocusModel, General, Idle, Keyboard, NamedOutput, Output, OutputScale, Outputs,
+    Panel, Placement, Touchpad, Workspaces,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
@@ -47,5 +48,5 @@ pub use paths::config_dir;
 pub use rules::{Match, Rule, Rules};
 pub use store::Store;
 pub use style::{Line, Part, State, States, Style};
-pub use theme::{Animations, Border, Colors, Cursor, Decoration, Font, Theme, Titlebar};
+pub use theme::{Font, Theme, ThemeError};
 pub use watcher::Watcher;
