@@ -148,6 +148,34 @@ fn the_menu_comes_onto_the_screen_over_the_time_the_theme_gives() {
 }
 
 #[test]
+fn the_menu_goes_from_the_screen_over_the_time_the_theme_gives() {
+    let theme = "menu { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    open_menu(&mut session);
+    session.step();
+    session.advance(Duration::from_millis(100));
+    assert_eq!(session.draw().at(510, 255), PANEL);
+
+    for pressed in [true, false] {
+        let code = key::ESCAPE;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+    assert_eq!(session.draw().at(510, 255), PANEL, "still all there");
+
+    session.advance(Duration::from_millis(50));
+    let half = session.draw().at(510, 255);
+    assert!(between(half, BACKGROUND, PANEL), "{half:#x}");
+
+    session.advance(Duration::from_millis(50));
+    assert_eq!(session.draw().at(510, 255), BACKGROUND, "gone");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
+}
+
+#[test]
 fn choosing_an_entry_performs_its_action_and_closes_the_menu() {
     let mut session = session();
     open_menu(&mut session);

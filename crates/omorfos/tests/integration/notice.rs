@@ -2,7 +2,9 @@
 
 use omorfos::Input;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH};
+use std::time::Duration;
+
+use crate::common::{Event, HEIGHT, Session, WIDTH, between};
 use crate::windows::{BACKGROUND, RED};
 
 const LEFT: u32 = 0x110;
@@ -180,4 +182,25 @@ fn the_notice_follows_the_output_and_the_theme() {
         "restyled, and reaching to the left margin"
     );
     assert_eq!(picture.at(5, 16), BACKGROUND);
+}
+
+#[test]
+fn the_notice_comes_and_goes_over_the_time_the_theme_gives() {
+    let theme = "notice { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme), ("keys.yaml", "nonsense: [")]);
+    let notice = |session: &mut Session| session.draw().at(INSIDE.0, INSIDE.1);
+    session.step();
+    assert_eq!(notice(&mut session), BACKGROUND, "not there yet");
+    session.advance(Duration::from_millis(100));
+    assert_eq!(notice(&mut session), PANEL);
+
+    session.write_config("keys.yaml", "");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(notice(&mut session), PANEL, "still all there");
+    session.advance(Duration::from_millis(50));
+    let half = notice(&mut session);
+    assert!(between(half, BACKGROUND, PANEL), "{half:#x}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(notice(&mut session), BACKGROUND, "gone");
 }

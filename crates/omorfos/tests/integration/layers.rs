@@ -7,7 +7,9 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Event, HEIGHT, LayerShape, Session, WIDTH, key};
+use std::time::Duration;
+
+use crate::common::{Event, HEIGHT, LayerShape, Session, WIDTH, between, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
@@ -106,6 +108,32 @@ fn a_panel_of_another_program_is_there_at_once_whatever_the_theme_says() {
     session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
 
     assert_eq!(session.draw().at(100, 10), YELLOW);
+}
+
+#[test]
+fn a_panel_named_after_a_part_comes_and_goes_over_the_time_that_part_is_given() {
+    let theme = "panel { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    client.layer_name = "panel";
+    let bar = |session: &mut Session| session.draw().at(100, 10);
+
+    let (surface, role) = session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
+    assert_eq!(bar(&mut session), BACKGROUND, "not there yet");
+    session.advance(Duration::from_millis(100));
+    assert_eq!(bar(&mut session), YELLOW);
+
+    role.destroy();
+    surface.destroy();
+    session.roundtrip(&mut client);
+    assert_eq!(bar(&mut session), YELLOW, "still all there");
+    session.advance(Duration::from_millis(50));
+    let half = bar(&mut session);
+    assert!(between(half, BACKGROUND, YELLOW), "{half:#x}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(bar(&mut session), BACKGROUND, "gone");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
 }
 
 #[test]
