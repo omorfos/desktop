@@ -5,7 +5,7 @@ use omorfos_config::Action;
 
 use std::time::Duration;
 
-use crate::common::{Event, Session, half_way, key};
+use crate::common::{Event, Session, between, half_way, key};
 use crate::windows::{BACKGROUND, RED};
 
 const LEFT: u32 = 0x110;
@@ -125,6 +125,24 @@ fn a_row_gets_to_the_colour_of_being_pointed_at_over_the_time_the_theme_gives() 
     session.now = start + Duration::from_millis(100);
     session.step();
     assert_eq!(session.draw().at(510, 218), blue, "arrived");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
+}
+
+#[test]
+fn the_menu_comes_onto_the_screen_over_the_time_the_theme_gives() {
+    let theme = "menu { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    open_menu(&mut session);
+    session.step();
+    assert_eq!(session.draw().at(510, 255), BACKGROUND, "not there yet");
+
+    session.advance(Duration::from_millis(50));
+    let half = session.draw().at(510, 255);
+    assert!(between(half, BACKGROUND, PANEL), "{half:#x}");
+
+    session.advance(Duration::from_millis(50));
+    assert_eq!(session.draw().at(510, 255), PANEL);
     session.step();
     assert!(!session.draw().damaged, "and not drawn again");
 }

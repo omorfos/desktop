@@ -322,7 +322,7 @@ impl Shell {
                 &surface,
                 None,
                 zwlr_layer_shell_v1::Layer::Overlay,
-                "notifications".to_owned(),
+                "notification".to_owned(),
                 handle,
                 (),
             );

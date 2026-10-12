@@ -433,6 +433,17 @@ pointer, and a `transition` names no property: all the colours of a part
 go together. Something drawn for the first time has its colours from the
 start.
 
+**What comes onto the screen fades in**, over the same time: a window
+with its frame over `window`'s `transition`, the menu over `menu`'s, the
+notice over `notice`'s, and the panel, the launcher with what is behind
+it, and the notifications over `panel`'s, `launcher`'s,
+`launcher-backdrop`'s and `notification`'s. A window comes in again each
+time it is shown: when its workspace is switched to, or when it is brought
+back from being minimized. Showing another tab of a frame is not a coming
+in. `window { transition: none; }` has windows there at once and leaves
+everything else as it was. What goes away still goes at once, and so does
+a panel of a program that is not part of omorfos.
+
 Not every part uses every property yet:
 
 - `margin` is honoured by `panel` (it moves the bar in from the edges of

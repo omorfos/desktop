@@ -22,7 +22,7 @@ use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{HEIGHT, Picture, Session, WIDTH, half_way};
+use crate::common::{HEIGHT, Picture, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -226,6 +226,25 @@ fn a_workspace_gets_to_the_colour_of_being_shown_over_the_time_the_theme_gives()
 
     assert_eq!(settle(&mut session, at(1100)), None, "at rest");
     assert_eq!(buttons(&mut session), (red, blue), "arrived");
+}
+
+#[test]
+fn the_bar_comes_onto_the_screen_over_the_time_the_theme_gives_the_panel() {
+    let theme = "panel { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut panel = panel(&mut session);
+    // Between the workspaces and the time, where the bar is bare.
+    let bar = |session: &mut Session| session.draw().at(WIDTH / 2, HEIGHT - 10);
+
+    settle(&mut session, &mut panel);
+    assert_eq!(bar(&mut session), BACKGROUND, "not there yet");
+
+    session.advance(Duration::from_millis(50));
+    let half = bar(&mut session);
+    assert!(between(half, BACKGROUND, plain()), "{half:#x}");
+
+    session.advance(Duration::from_millis(50));
+    assert_eq!(bar(&mut session), plain());
 }
 
 #[test]

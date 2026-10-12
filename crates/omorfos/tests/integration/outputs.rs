@@ -293,7 +293,7 @@ fn a_window_draws_at_the_pace_of_the_output_it_is_on() {
 fn the_notice_is_on_the_first_output_and_the_menu_on_the_pointers() {
     let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     session.add_output((800, 600));
-    session.step();
+    session.settle();
     assert_ne!(
         session.draw_on(0).at(WIDTH - 20, 20),
         BACKGROUND,
@@ -305,7 +305,7 @@ fn the_notice_is_on_the_first_output_and_the_menu_on_the_pointers() {
     // within it.
     pointer_to(&mut session, WIDTH + 790, 590);
     perform(&mut session, &Action::ShowMenu);
-    session.step();
+    session.settle();
     assert_ne!(session.draw_on(1).at(700, 560), BACKGROUND, "the menu");
     assert_eq!(session.draw_on(0).at(600, 440), BACKGROUND);
 }

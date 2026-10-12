@@ -236,7 +236,7 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
         .input(Input::Motion { x: 40.0, y: 40.0 }, 1);
     let menu = serde_json::from_value(serde_json::json!("show_menu")).unwrap();
     session.compositor_mut().perform(&menu);
-    session.step();
+    session.settle();
     let before = session.draw();
     // The menu opens at the pointer and is 220 wide; the notice of the
     // broken theme is at the top right.
@@ -246,7 +246,7 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
     assert_eq!(before.at(60, 20), BACKGROUND, "left of the notice");
 
     session.suggest_scale(Scale::new(2.0));
-    session.step();
+    session.settle();
     let after = session.draw();
     assert_ne!(after.at(300, 200), BACKGROUND, "the menu, twice as wide");
     assert_eq!(after.at(60, 200), BACKGROUND, "left of where it now starts");
