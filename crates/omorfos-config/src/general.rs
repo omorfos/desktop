@@ -38,6 +38,25 @@ pub struct General {
     pub launcher: Launcher,
     /// The notifications that come with omorfos.
     pub notifications: Notifications,
+    /// Programs written for X11.
+    pub xwayland: Xwayland,
+}
+
+/// Programs written for X11, which run through `Xwayland`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Xwayland {
+    /// Whether `Xwayland` is started with the session. Turn it off to do
+    /// without programs written for X11: they can read each other's
+    /// windows and keys, which programs written for Wayland cannot.
+    pub enabled: bool,
+}
+
+impl Default for Xwayland {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// The notifications that come with omorfos: what programs have to tell
@@ -391,6 +410,19 @@ mod tests {
         assert!(!notifications.enabled);
         assert_eq!(notifications.timeout.get(), 0);
         assert!(parse("notifications: { timeout: 99999 }").is_err());
+    }
+
+    #[test]
+    fn programs_written_for_x11_can_run_unless_that_is_turned_off() {
+        assert!(General::default().xwayland.enabled);
+        assert!(parse("xwayland: {}").unwrap().xwayland.enabled);
+        assert!(
+            !parse("xwayland: { enabled: false }")
+                .unwrap()
+                .xwayland
+                .enabled
+        );
+        assert!(parse("xwayland: { display: 3 }").is_err());
     }
 
     #[test]

@@ -259,6 +259,18 @@
       "maxItems": 32,
       "minItems": 1,
       "type": "array"
+    },
+    "Xwayland": {
+      "additionalProperties": false,
+      "description": "Programs written for X11, which run through `Xwayland`.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether `Xwayland` is started with the session. Turn it off to do\nwithout programs written for X11: they can read each other's\nwindows and keys, which programs written for Wayland cannot.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -319,6 +331,10 @@
     "workspaces": {
       "$ref": "#/$defs/Workspaces",
       "description": "The workspaces of the session, as a list of names."
+    },
+    "xwayland": {
+      "$ref": "#/$defs/Xwayland",
+      "description": "Programs written for X11."
     }
   },
   "title": "General",
