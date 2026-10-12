@@ -5,10 +5,10 @@
 //! code runs on a GPU and in tests, and it only happens when what is drawn
 //! changes, not every frame.
 
-use omorfos_config::{Color, Edges, Line, Part, State, States, Theme};
+use omorfos_config::{Color, Edges, Line, Part, State, States, Style, Theme};
 use omorfos_core::{Decoration, Item, Menu, Panel};
 use omorfos_ui::inset;
-pub(crate) use omorfos_ui::{Canvas, Text};
+pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
 use crate::Scale;
 
@@ -33,26 +33,72 @@ pub(crate) fn corner(
     canvas
 }
 
+/// How a frame's decoration looks at the moment, which while it is gaining
+/// or losing focus is somewhere between how it looks with and without.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Looks {
+    /// Whether the frame has keyboard focus.
+    pub(crate) focused: bool,
+    /// Which tab is the one being shown.
+    pub(crate) active: usize,
+    /// The frame: its border and how far its corners are rounded.
+    pub(crate) window: Style,
+    pub(crate) titlebar: Style,
+    /// Each tab, in order.
+    pub(crate) tabs: Vec<Style>,
+}
+
+impl Looks {
+    /// The states of a frame's tab.
+    fn tab_states(focused: bool, active: bool) -> States {
+        let states = States::NONE.when(State::Focused, focused);
+        states.when(State::Active, active)
+    }
+
+    /// How the frame showing the window numbered `shown` looks, with a tab
+    /// for each of the windows numbered `tabs`, of which `active` is the
+    /// one being shown. Whatever has just changed state is as far on its
+    /// way as `motion` has it.
+    pub(crate) fn of(
+        theme: &Theme,
+        motion: &mut Motion,
+        shown: u64,
+        tabs: impl Iterator<Item = u64>,
+        active: usize,
+        focused: bool,
+    ) -> Self {
+        let states = States::NONE.when(State::Focused, focused);
+        let tabs = tabs.enumerate().map(|(index, window)| {
+            let states = Self::tab_states(focused, index == active);
+            motion.style(theme, Part::Tab, window, states)
+        });
+        Self {
+            focused,
+            active,
+            tabs: tabs.collect(),
+            window: motion.style(theme, Part::Window, shown, states),
+            titlebar: motion.style(theme, Part::Titlebar, shown, states),
+        }
+    }
+}
+
 /// Paints a frame's titlebar: one tab per window with its title, and the
 /// outline that continues the border around the top.
 ///
-/// `titles` are the tabs' titles in order, `active` is the tab being shown,
-/// and `focused` is whether the frame has keyboard focus.
+/// `titles` are the tabs' titles in order, and `looks` is how the frame
+/// and each of them looks.
 pub(crate) fn titlebar(
     text: &mut Text,
     theme: &Theme,
     decoration: &Decoration,
     titles: &[&str],
-    active: usize,
-    focused: bool,
+    looks: &Looks,
     scale: Scale,
 ) -> Canvas {
     let bar = decoration.titlebar();
     let (width, height) = (bar.size.width, bar.size.height);
-    let states = States::NONE.when(State::Focused, focused);
-    let frame = theme.style(Part::Window, states);
     // A frame's border is the same all round; the top stands for it.
-    let outline = frame.border.top;
+    let outline = looks.window.border.top;
     let border = outline.width;
     let edge = border.cast_signed();
     let mut canvas = Canvas::scaled(width, height, scale);
@@ -61,15 +107,15 @@ pub(crate) fn titlebar(
     let inner_height = height.saturating_sub(border);
     canvas.fill(
         (edge, edge, width.saturating_sub(border * 2), inner_height),
-        theme.style(Part::Titlebar, states).background,
+        looks.titlebar.background,
     );
 
     let tabbed = titles.len() > 1;
-    for (index, title) in titles.iter().enumerate() {
+    for (index, (title, style)) in titles.iter().zip(&looks.tabs).enumerate() {
         let tab = decoration.tab(index);
         let left = tab.origin.x - bar.origin.x;
-        let tab_states = states.when(State::Active, index == active);
-        let mut style = theme.style(Part::Tab, tab_states);
+        let tab_states = Looks::tab_states(looks.focused, index == looks.active);
+        let mut style = *style;
         // The line on a tab's left is the line between it and the tab
         // before, which the first has none of. A title alone in its
         // titlebar is not set apart as a tab at all.
@@ -93,17 +139,41 @@ pub(crate) fn titlebar(
         );
     }
 
-    canvas.round_top_corners(frame.radius);
+    canvas.round_top_corners(looks.window.radius);
     canvas
 }
 
-/// Paints one panel of an open menu: its rows, the highlight on the row
-/// under the pointer, and an arrow on rows that open a submenu.
+/// How each row of each panel of an open menu looks, from the root panel
+/// outwards. A row the pointer has just come onto or left is as far on its
+/// way as `motion` has it.
+pub(crate) fn menu_looks<A: Clone>(
+    theme: &Theme,
+    motion: &mut Motion,
+    menu: &Menu<A>,
+) -> Vec<Vec<Style>> {
+    let panels = menu.panels().iter().zip(0_u64..);
+    let looks = panels.map(|(panel, depth)| {
+        let rows = (0..panel.items().len()).zip(0_u64..);
+        let looks = rows.map(|(index, row)| {
+            let highlighted = panel.highlighted() == Some(index);
+            let states = States::NONE.when(State::Hovered, highlighted);
+            // A row is told from the others by its panel and its place.
+            motion.style(theme, Part::MenuItem, depth << 32 | row, states)
+        });
+        looks.collect()
+    });
+    looks.collect()
+}
+
+/// Paints one panel of an open menu: its rows, each as `looks` has it,
+/// which is how the row under the pointer comes to be highlighted, and an
+/// arrow on rows that open a submenu.
 pub(crate) fn menu_panel<A: Clone>(
     text: &mut Text,
     theme: &Theme,
     menu: &Menu<A>,
     panel: &Panel<A>,
+    looks: &[Style],
     scale: Scale,
 ) -> Canvas {
     let bounds = menu.panel_rect(panel);
@@ -115,7 +185,8 @@ pub(crate) fn menu_panel<A: Clone>(
     // Rows run from one side of the menu to the other, inside its border.
     let (edge, _, inner, _) = inset(whole, style.border.widths());
 
-    for (index, (item, row)) in panel.items().iter().zip(menu.rows(panel)).enumerate() {
+    let rows = panel.items().iter().zip(menu.rows(panel)).zip(looks);
+    for (index, ((item, row), style)) in rows.enumerate() {
         let top = row.origin.y - bounds.origin.y;
         let area = (edge, top, inner, row.size.height);
         let label = match item {
@@ -132,9 +203,8 @@ pub(crate) fn menu_panel<A: Clone>(
         };
         let highlighted = panel.highlighted() == Some(index);
         let states = States::NONE.when(State::Hovered, highlighted);
-        let style = theme.style(Part::MenuItem, states);
         let font = theme.font(Part::MenuItem, states);
-        canvas.draw_box(area, &style);
+        canvas.draw_box(area, style);
         let (left, top, room, tall) = inset(area, style.inset());
         let arrow = if matches!(item, Item::Submenu { .. }) {
             ARROW
@@ -256,6 +326,27 @@ mod tests {
         }
     }
 
+    /// A titlebar with nothing on its way anywhere.
+    fn titlebar(
+        text: &mut Text,
+        theme: &Theme,
+        decoration: &Decoration,
+        titles: &[&str],
+        active: usize,
+        focused: bool,
+        scale: Scale,
+    ) -> Canvas {
+        let tabs = (0_u64..).take(titles.len());
+        let looks = Looks::of(theme, &mut Motion::new(), 0, tabs, active, focused);
+        super::titlebar(text, theme, decoration, titles, &looks, scale)
+    }
+
+    /// The first panel of a menu with nothing on its way anywhere.
+    fn menu_panel(text: &mut Text, theme: &Theme, menu: &Menu<()>) -> Canvas {
+        let looks = menu_looks(theme, &mut Motion::new(), menu);
+        super::menu_panel(text, theme, menu, &menu.panels()[0], &looks[0], Scale::ONE)
+    }
+
     fn argb(color: Color) -> u32 {
         u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
     }
@@ -330,7 +421,7 @@ mod tests {
         let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
 
         // Rows: Terminal at 4..32, the separator at 32..41, Session at 41..69.
-        let plain = menu_panel(&mut text, &theme, &menu, &menu.panels()[0], Scale::ONE);
+        let plain = menu_panel(&mut text, &theme, &menu);
         assert_eq!((plain.width(), plain.height()), (200, 73));
         assert_eq!(plain.at(0, 30), argb(colors.unfocused.border), "outlined");
         assert_eq!(plain.at(190, 10), argb(colors.focused.titlebar));
@@ -350,7 +441,7 @@ mod tests {
         assert!(arrow_ink > 3, "the submenu row has an arrow");
 
         menu.hover(Point::new(350, 215));
-        let lit = menu_panel(&mut text, &theme, &menu, &menu.panels()[0], Scale::ONE);
+        let lit = menu_panel(&mut text, &theme, &menu);
         assert_eq!(
             lit.at(190, 10),
             argb(colors.accent),

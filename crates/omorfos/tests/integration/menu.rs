@@ -3,7 +3,9 @@
 use omorfos::Input;
 use omorfos_config::Action;
 
-use crate::common::{Event, Session, key};
+use std::time::Duration;
+
+use crate::common::{Event, Session, half_way, key};
 use crate::windows::{BACKGROUND, RED};
 
 const LEFT: u32 = 0x110;
@@ -93,6 +95,38 @@ fn the_row_under_the_pointer_is_highlighted() {
     session.step();
 
     assert_eq!(session.draw().at(510, 218), ACCENT);
+}
+
+#[test]
+fn a_row_gets_to_the_colour_of_being_pointed_at_over_the_time_the_theme_gives() {
+    let theme = "menu-item { background: #ff0000; transition: 100ms linear; }\n\
+                 menu-item:hover { background: #0000ff; }\n";
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    let (red, blue) = (0xffff_0000, 0xff00_00ff);
+    open_menu(&mut session);
+    session.step();
+    assert_eq!(session.draw().at(510, 218), red);
+
+    let start = session.now;
+    move_to(&mut session, 400, 218);
+    session.step();
+    assert_eq!(session.draw().at(510, 218), red, "setting out");
+
+    session.now = start + Duration::from_millis(50);
+    session.step();
+    let row = session.draw().at(510, 218);
+    assert!(half_way(row), "{row:#x}");
+    assert_eq!(
+        session.draw().at(510, 255),
+        red,
+        "the other row is as it was"
+    );
+
+    session.now = start + Duration::from_millis(100);
+    session.step();
+    assert_eq!(session.draw().at(510, 218), blue, "arrived");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
 }
 
 #[test]
