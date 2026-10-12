@@ -1,5 +1,6 @@
 //! The compositor's state and its main operations.
 
+use std::cell::RefCell;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -72,6 +73,7 @@ use crate::Scale;
 use crate::bridge::{self, Bindings};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
+use crate::ghost::{Ghost, Noted, Noting};
 use crate::input::Drag;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
@@ -928,8 +930,9 @@ impl Compositor {
             self.space
                 .map_element(shown.window.clone(), shown.origin, false);
         }
+        self.animation.leave(previous, &self.scene);
 
-        self.bring_in_layers(&config.theme);
+        self.fade_layers(&config.theme);
         self.repaint_overlays();
         self.update_pointer();
         self.announce_scale();
@@ -938,11 +941,14 @@ impl Compositor {
     }
 
     /// Works out how much there is to see of each panel that a shell
-    /// component has just put up: one that is named after a part of the
-    /// theme comes in over the time that part's colours take to change.
-    /// A panel of any other program is there at once.
-    fn bring_in_layers(&mut self, theme: &Theme) {
-        self.animation.coming.clear();
+    /// component has put up or taken down: one that is named after a part
+    /// of the theme comes in, and goes, over the time that part's colours
+    /// take to change. A panel of any other program is there at once and
+    /// gone at once.
+    fn fade_layers(&mut self, theme: &Theme) {
+        let animation = &mut self.animation;
+        std::mem::swap(&mut animation.layers, &mut animation.before);
+        animation.layers.clear();
         for head in &self.heads {
             let layers = layer_map_for_output(&head.output);
             for layer in layers.layers() {
@@ -955,13 +961,31 @@ impl Compositor {
                 let mut hasher = DefaultHasher::new();
                 surface.id().hash(&mut hasher);
                 let key = hasher.finish();
-                let share = part.map(|part| self.animation.motion.presence(theme, part, key));
-                let coming = share.filter(|share| *share < 1.0);
-                self.animation
-                    .coming
-                    .extend(coming.map(|share| (surface.clone(), share)));
+                let present = part.map(|part| Present {
+                    surface: surface.clone(),
+                    part,
+                    layer: layer.layer(),
+                    share: animation.motion.presence(theme, part, key),
+                });
+                animation.layers.extend(present);
             }
         }
+        let mut before = std::mem::take(&mut animation.before);
+        for was in before.drain(..) {
+            let mut now = animation.layers.iter();
+            let still = now.any(|now| now.surface == was.surface);
+            let pieces = (!still).then(|| animation.noted(&was.surface));
+            let gone = pieces.flatten().map(|pieces| Gone {
+                part: was.part,
+                since: animation.clock,
+                from: was.share,
+                opacity: was.share,
+                level: Level::Layer(was.layer),
+                what: What::Surface(None, pieces),
+            });
+            animation.gone.extend(gone);
+        }
+        animation.before = before;
     }
 
     /// Brings the problem notice and the root menu up to date, repainting
@@ -980,9 +1004,14 @@ impl Compositor {
         let first = self.heads.first();
         let within = first.map(Head::area).unwrap_or_default();
         let scale = first.map_or(Scale::ONE, |head| head.scale);
-        let current = self.notice.take().filter(|notice| {
-            wanted
-                && notice.problems == self.problems
+        // One that is no longer wanted fades out as it was.
+        let had = self.notice.take();
+        let (had, closed) = if wanted { (had, None) } else { (None, had) };
+        let closed =
+            closed.map(|notice| self.animation.closing(Part::Notice, What::Notice(notice)));
+        self.animation.gone.extend(closed);
+        let current = had.filter(|notice| {
+            notice.problems == self.problems
                 && notice.theme == *theme
                 && notice.within == within
                 && notice.scale == scale
@@ -1007,7 +1036,16 @@ impl Compositor {
         let scale = self.pointer_scale();
         let menu = self.menu.as_ref();
         let looks = menu.map(|menu| paint::menu_looks(theme, &mut self.animation.motion, menu));
-        let current = self.menu_chrome.take().filter(|chrome| {
+        // One that has been closed fades out as it was.
+        let had = self.menu_chrome.take();
+        let (had, closed) = if menu.is_some() {
+            (had, None)
+        } else {
+            (None, had)
+        };
+        let closed = closed.map(|chrome| self.animation.closing(Part::Menu, What::Menu(chrome)));
+        self.animation.gone.extend(closed);
+        let current = had.filter(|chrome| {
             menu == Some(&chrome.menu)
                 && Some(&chrome.looks) == looks.as_ref()
                 && chrome.theme == *theme
@@ -1022,8 +1060,10 @@ impl Compositor {
         };
         let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
         self.animation.menu_opacity = share.unwrap_or(1.0);
-        // Everything that changes colour or comes in has been asked after
-        // by now.
+        let locked = self.is_locked();
+        self.animation.fade_out(theme, &self.scene, locked);
+        // Everything that changes colour, comes in or goes has been asked
+        // after by now.
         self.animation.motion.end();
     }
 
@@ -1138,14 +1178,20 @@ impl Compositor {
                 self.animation.menu_opacity,
             ));
         }
+        self.gone_elements(renderer, view, Level::Over, &mut elements);
         // From the top down: overlays, fullscreen windows, panels and
-        // docks, ordinary windows, then whatever sits behind them.
-        self.layer_elements(renderer, output, view, Layer::Overlay, &mut elements);
-        self.frame_elements(renderer, view, true, &mut elements);
-        self.layer_elements(renderer, output, view, Layer::Top, &mut elements);
-        self.frame_elements(renderer, view, false, &mut elements);
-        self.layer_elements(renderer, output, view, Layer::Bottom, &mut elements);
-        self.layer_elements(renderer, output, view, Layer::Background, &mut elements);
+        // docks, ordinary windows, then whatever sits behind them. What
+        // has gone from among each of them is over those that are left.
+        let layers = [Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background];
+        let frames = [Some(true), Some(false), None, None];
+        for (layer, fullscreen) in layers.into_iter().zip(frames) {
+            self.gone_elements(renderer, view, Level::Layer(layer), &mut elements);
+            self.layer_elements(renderer, output, view, layer, &mut elements);
+            if let Some(fullscreen) = fullscreen {
+                self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
+                self.frame_elements(renderer, view, fullscreen, &mut elements);
+            }
+        }
         tracker.render_output(
             renderer,
             framebuffer,
@@ -1197,6 +1243,43 @@ impl Compositor {
         }
     }
 
+    /// Adds what has gone from one level of what is drawn and is still
+    /// fading, the last to go first.
+    fn gone_elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        level: Level,
+        elements: &mut Vec<Element<R>>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let gone = self.animation.gone.iter().rev();
+        for gone in gone.filter(|gone| gone.level == level) {
+            let opacity = gone.opacity;
+            match &gone.what {
+                What::Surface(chrome, pieces) => {
+                    if let Some(chrome) = chrome {
+                        Self::chrome_elements(renderer, view, chrome, opacity, elements);
+                    }
+                    let pieces = pieces.elements(view.origin, view.scale.factor(), opacity);
+                    elements.extend(pieces.map(Element::Ghost));
+                }
+                What::Menu(chrome) => {
+                    for (at, panel) in &chrome.panels {
+                        elements.extend(panel.element(renderer, at.to_f64(), view, opacity));
+                    }
+                }
+                What::Notice(notice) => {
+                    let at = (notice.area.origin.x, notice.area.origin.y);
+                    let at = Point::<i32, Logical>::from(at).to_f64();
+                    elements.extend(notice.pixels.element(renderer, at, view, opacity));
+                }
+            }
+        }
+    }
+
     /// Adds the frames that are, or are not, fullscreen, topmost first.
     fn frame_elements<R>(
         &self,
@@ -1208,7 +1291,6 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let unspecified = Kind::Unspecified;
         for shown in self
             .scene
             .iter()
@@ -1216,33 +1298,48 @@ impl Compositor {
             .filter(|shown| shown.fullscreen == fullscreen)
         {
             if let Some(chrome) = &shown.chrome {
-                let bar = chrome.decoration.titlebar().origin;
-                let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
-                elements.extend(chrome.titlebar.element(renderer, at, view, shown.opacity));
-                let straight = corners::straight_borders(&chrome.decoration, chrome.radius);
-                for (buffer, border) in chrome.borders.iter().zip(straight) {
-                    let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
-                    let border = SolidColorRenderElement::from_buffer(
-                        buffer,
-                        view.pixel(at.to_f64()),
-                        view.scale.factor(),
-                        shown.opacity,
-                        unspecified,
-                    );
-                    elements.push(Element::Solid(border));
-                }
-                // Where the border turns the bottom corners.
-                let outer = chrome.decoration.outer();
-                let size = logical_size(outer.size);
-                let radius = chrome.radius.cast_signed();
-                let top = outer.origin.y + size.h - radius;
-                let lefts = [outer.origin.x, outer.origin.x + size.w - radius];
-                for (corner, left) in chrome.corners.iter().zip(lefts) {
-                    let at = Point::<i32, Logical>::from((left, top)).to_f64();
-                    elements.extend(corner.element(renderer, at, view, shown.opacity));
-                }
+                Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);
             }
-            Self::window_elements(renderer, view, shown, elements);
+            self.window_elements(renderer, view, shown, elements);
+        }
+    }
+
+    /// Adds a frame's decoration: its titlebar, its borders and where they
+    /// turn the bottom corners.
+    fn chrome_elements<R>(
+        renderer: &mut R,
+        view: View,
+        chrome: &Chrome,
+        opacity: f32,
+        elements: &mut Vec<Element<R>>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let bar = chrome.decoration.titlebar().origin;
+        let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
+        elements.extend(chrome.titlebar.element(renderer, at, view, opacity));
+        let straight = corners::straight_borders(&chrome.decoration, chrome.radius);
+        for (buffer, border) in chrome.borders.iter().zip(straight) {
+            let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
+            let border = SolidColorRenderElement::from_buffer(
+                buffer,
+                view.pixel(at.to_f64()),
+                view.scale.factor(),
+                opacity,
+                Kind::Unspecified,
+            );
+            elements.push(Element::Solid(border));
+        }
+        // Where the border turns the bottom corners.
+        let outer = chrome.decoration.outer();
+        let size = logical_size(outer.size);
+        let radius = chrome.radius.cast_signed();
+        let top = outer.origin.y + size.h - radius;
+        let lefts = [outer.origin.x, outer.origin.x + size.w - radius];
+        for (corner, left) in chrome.corners.iter().zip(lefts) {
+            let at = Point::<i32, Logical>::from((left, top)).to_f64();
+            elements.extend(corner.element(renderer, at, view, opacity));
         }
     }
 
@@ -1250,6 +1347,7 @@ impl Compositor {
     /// picture, which is cut to the frame if the frame's bottom corners are
     /// rounded.
     fn window_elements<R>(
+        &self,
         renderer: &mut R,
         view: View,
         shown: &Shown,
@@ -1259,6 +1357,8 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let scale = smithay::utils::Scale::from(view.scale.factor());
+        // What it is drawn from is noted, to fade it out by when it goes.
+        let mut noting = self.noting(view, Part::Window);
         // A window's surface may start above and left of its visible
         // geometry, where it draws its own shadows.
         let location = shown.origin - shown.window.geometry().loc;
@@ -1272,13 +1372,17 @@ impl Compositor {
                     scale,
                     shown.opacity,
                 );
+            for surface in &surfaces {
+                noting.add(surface, noting.paint(surface.texture()));
+            }
             elements.extend(surfaces.into_iter().map(Element::Surface));
+            self.animation.note(&shown.surface, noting.done());
             return;
         };
         // Pop-ups reach beyond the frame and are not cut to it.
         for (popup, offset) in PopupManager::popups_for_surface(&shown.surface) {
             let at = location + shown.window.geometry().loc + offset - popup.geometry().loc;
-            let picture = render_elements_from_surface_tree(
+            let picture: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
                 renderer,
                 popup.wl_surface(),
                 view.pixel(at.to_f64()),
@@ -1286,6 +1390,9 @@ impl Compositor {
                 shown.opacity,
                 Kind::Unspecified,
             );
+            for surface in &picture {
+                noting.add(surface, noting.paint(surface.texture()));
+            }
             elements.extend(picture.into_iter().map(Element::Surface));
         }
         let pixels = |area: Rect| {
@@ -1309,11 +1416,23 @@ impl Compositor {
                 shown.opacity,
                 Kind::Unspecified,
             );
-            let strips = whole.into_iter().filter_map(|picture| {
-                Strip::of(picture, view.scale.factor(), area, strip, &chrome.strips)
-            });
-            elements.extend(strips.map(Element::Strip));
+            for picture in whole {
+                let paint = noting.paint(picture.texture());
+                let cut = Strip::of(picture, view.scale.factor(), area, strip, &chrome.strips);
+                if let Some(cut) = cut {
+                    noting.add(&cut, paint);
+                    elements.push(Element::Strip(cut));
+                }
+            }
         }
+        self.animation.note(&shown.surface, noting.done());
+    }
+
+    /// Begins noting what something is drawn from, if it is a `part` that
+    /// takes time to go.
+    fn noting<T: Clone + 'static>(&self, view: View, part: Part) -> Noting<T> {
+        let going = self.config().theme.style(part, States::NONE).transition;
+        Noting::new(going.duration > 0, view.origin, view.scale.factor())
     }
 
     /// Adds the layer-shell surfaces of one layer, topmost first.
@@ -1332,14 +1451,23 @@ impl Compositor {
         for surface in layers.layers_on(layer).rev() {
             // A panel is placed within its own output.
             let at = layers.layer_geometry(surface).unwrap_or_default().loc + view.origin;
-            let mut coming = self.animation.coming.iter();
-            let coming = coming.find(|(coming, _)| coming == surface.wl_surface());
+            // A panel of a shell component may be coming in, and what it
+            // is drawn from is noted, to fade it out by when it goes.
+            let mut known = self.animation.layers.iter();
+            let known = known.find(|known| known.surface == *surface.wl_surface());
             let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
                 renderer,
                 view.pixel(at.to_f64()),
                 smithay::utils::Scale::from(view.scale.factor()),
-                coming.map_or(1.0, |(_, share)| *share),
+                known.map_or(1.0, |known| known.share),
             );
+            if let Some(known) = known {
+                let mut noting = self.noting(view, known.part);
+                for surface in &surfaces {
+                    noting.add(surface, noting.paint(surface.texture()));
+                }
+                self.animation.note(&known.surface, noting.done());
+            }
             elements.extend(surfaces.into_iter().map(Element::Surface));
         }
     }
@@ -1459,6 +1587,7 @@ render_elements! {
     Element<R> where R: ImportAll + ImportMem;
     Surface=WaylandSurfaceRenderElement<R>,
     Strip=Strip<WaylandSurfaceRenderElement<R>>,
+    Ghost=Ghost<R>,
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
 }
@@ -1521,7 +1650,7 @@ const MENU_SEPARATOR: u32 = 9;
 /// The space above the first and below the last row of a menu panel.
 const MENU_PADDING: u32 = 4;
 
-/// What is changing colour or coming in.
+/// What is changing colour, coming in or going.
 #[derive(Debug)]
 struct Animation {
     /// The frames and menu rows that are on their way from one look to
@@ -1535,9 +1664,61 @@ struct Animation {
     /// is coming in, from 0 to 1.
     menu_opacity: f32,
     notice_opacity: f32,
-    /// The same for each panel of a shell component that is not all there
-    /// yet.
-    coming: Vec<(WlSurface, f32)>,
+    /// The panels of shell components that are on the screen, and those
+    /// that were when this was last worked out.
+    layers: Vec<Present>,
+    before: Vec<Present>,
+    /// What each window and panel was last drawn from, noted while
+    /// drawing, which does not change anything else.
+    drawn: RefCell<Vec<(WlSurface, Noted)>>,
+    /// What has gone from the screen and is still fading, oldest first.
+    gone: Vec<Gone>,
+}
+
+/// A panel of a shell component that is on the screen.
+#[derive(Debug)]
+struct Present {
+    surface: WlSurface,
+    /// The part of the theme it is named after.
+    part: Part,
+    layer: Layer,
+    /// How much of it there is to see, from 0 to 1.
+    share: f32,
+}
+
+/// Something that has gone from the screen, while it fades.
+#[derive(Debug)]
+struct Gone {
+    /// The part of the theme whose time it takes.
+    part: Part,
+    /// When it went, and how much of it there was to see then.
+    since: Duration,
+    from: f32,
+    /// How much of it there is to see now.
+    opacity: f32,
+    /// Where among what is drawn it belongs.
+    level: Level,
+    what: What,
+}
+
+/// Where among what is drawn something that has gone belongs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Level {
+    /// With the menu and the notice, over everything.
+    Over,
+    /// With the frames that are, or are not, fullscreen.
+    Frames(bool),
+    /// With the panels of a layer.
+    Layer(Layer),
+}
+
+/// What it was that has gone.
+#[derive(Debug)]
+enum What {
+    /// A window, with the decoration it had, or a panel, which has none.
+    Surface(Option<Box<Chrome>>, Noted),
+    Menu(MenuChrome),
+    Notice(Notice),
 }
 
 impl Animation {
@@ -1548,8 +1729,81 @@ impl Animation {
             epoch: None,
             menu_opacity: 1.0,
             notice_opacity: 1.0,
-            coming: Vec::new(),
+            layers: Vec::new(),
+            before: Vec::new(),
+            drawn: RefCell::new(Vec::new()),
+            gone: Vec::new(),
         }
+    }
+
+    /// Keeps what a window or a panel was drawn from in the frame being
+    /// drawn, in place of what it was drawn from before.
+    fn note(&self, surface: &WlSurface, noted: Option<Noted>) {
+        if let Some(noted) = noted {
+            let mut drawn = self.drawn.borrow_mut();
+            drawn.retain(|(known, _)| known != surface);
+            drawn.push((surface.clone(), noted));
+        }
+    }
+
+    /// Takes what a window or a panel was last drawn from, if it ever was,
+    /// now that it has gone.
+    fn noted(&self, surface: &WlSurface) -> Option<Noted> {
+        let mut drawn = self.drawn.borrow_mut();
+        let found = drawn.iter().position(|(known, _)| known == surface);
+        found.map(|index| drawn.swap_remove(index).1.left())
+    }
+
+    /// Has the windows that were on the screen and no longer are go on
+    /// being drawn, as they last were, while they fade.
+    fn leave(&mut self, previous: Vec<Shown>, scene: &[Shown]) {
+        for shown in previous {
+            let still = scene.iter().any(|now| now.id == shown.id);
+            let pieces = (!still).then(|| self.noted(&shown.surface));
+            let gone = pieces.flatten().map(|pieces| Gone {
+                part: Part::Window,
+                since: self.clock,
+                from: shown.opacity,
+                opacity: shown.opacity,
+                level: Level::Frames(shown.fullscreen),
+                what: What::Surface(shown.chrome.map(Box::new), pieces),
+            });
+            self.gone.extend(gone);
+        }
+    }
+
+    /// The menu or the notice, now that it has been closed.
+    fn closing(&self, part: Part, what: What) -> Gone {
+        // How much of it there was to see was worked out when it was
+        // last there.
+        let from = match what {
+            What::Notice(_) => self.notice_opacity,
+            What::Menu(_) | What::Surface(..) => self.menu_opacity,
+        };
+        Gone {
+            part,
+            since: self.clock,
+            from,
+            opacity: from,
+            level: Level::Over,
+            what,
+        }
+    }
+
+    /// Works out how much is left to see of everything that has gone,
+    /// lets go of what has gone altogether, and of what was noted of
+    /// anything that is neither on the screen, as `scene` has it, nor
+    /// fading. Nothing of the session lingers once it is `locked`.
+    fn fade_out(&mut self, theme: &Theme, scene: &[Shown], locked: bool) {
+        for gone in &mut self.gone {
+            gone.opacity = gone.from * self.motion.leaving(theme, gone.part, gone.since);
+        }
+        self.gone.retain(|gone| gone.opacity > 0.0 && !locked);
+        let layers = &self.layers;
+        self.drawn.get_mut().retain(|(surface, _)| {
+            let window = scene.iter().any(|shown| shown.surface == *surface);
+            window || layers.iter().any(|layer| layer.surface == *surface)
+        });
     }
 }
 

@@ -598,6 +598,8 @@ pub(crate) struct Client {
     connection: Connection,
     queue: EventQueue<ClientState>,
     pub(crate) state: ClientState,
+    /// What the layer-shell surfaces it creates say they are.
+    pub(crate) layer_name: &'static str,
 }
 
 /// A toplevel window belonging to a [`Client`].
@@ -628,6 +630,7 @@ impl Client {
             connection,
             queue,
             state: ClientState::default(),
+            layer_name: "test",
         }
     }
 
@@ -711,7 +714,7 @@ impl Client {
             &surface,
             output.map(|index| &self.state.screens[index]),
             shape.layer,
-            "test".to_owned(),
+            self.layer_name.to_owned(),
             &self.handle(),
             (),
         );

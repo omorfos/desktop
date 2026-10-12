@@ -117,6 +117,19 @@ impl Motion {
         shown(to, changing.from, now)
     }
 
+    /// How much there is still to see of a `part` that went from the
+    /// picture at `since`: from 1, all of it, at that moment, to 0 once the
+    /// time the theme gives the part's colours to change has gone by.
+    ///
+    /// Whoever asks keeps drawing what has gone, this much of it, and stops
+    /// asking when there is nothing left.
+    pub fn leaving(&mut self, theme: &Theme, part: Part, since: Duration) -> f32 {
+        let going = theme.style(part, States::NONE).transition;
+        let left = 1.0 - going.progress(self.now.saturating_sub(since));
+        self.moving |= left > 0.0;
+        left
+    }
+
     /// Ends the picture, forgetting the parts that were not in it. Returns
     /// whether anything in it is still on its way, so that it has to be
     /// drawn again shortly: see [`Motion::deadline`].
@@ -297,6 +310,31 @@ mod tests {
     fn something_whose_theme_gives_it_no_time_is_all_there_at_once() {
         let mut motion = Motion::new();
         assert_eq!(present(&mut motion, Part::Clock, 0), (100, false));
+    }
+
+    #[test]
+    fn something_that_has_gone_is_seen_less_and_less_until_nothing_is_left() {
+        let (theme, mut motion) = (theme(), Motion::new());
+        let mut left = |now: u64| {
+            motion.begin(millis(now));
+            let left = motion.leaving(&theme, Part::Task, millis(1000));
+            (left, motion.end())
+        };
+        let (all, moving) = left(1000);
+        assert!((all - 1.0).abs() < 0.01 && moving);
+        let (half, moving) = left(1050);
+        assert!((half - 0.5).abs() < 0.01 && moving);
+        let (none, moving) = left(1100);
+        assert!(none.abs() < f32::EPSILON && !moving);
+    }
+
+    #[test]
+    fn something_whose_theme_gives_it_no_time_has_gone_at_once() {
+        let mut motion = Motion::new();
+        motion.begin(millis(1000));
+        let left = motion.leaving(&theme(), Part::Clock, millis(1000));
+        assert!(left.abs() < f32::EPSILON);
+        assert!(!motion.end());
     }
 
     #[test]

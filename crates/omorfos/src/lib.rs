@@ -17,6 +17,7 @@ pub mod cli;
 mod compositor;
 mod corners;
 mod cursor;
+mod ghost;
 mod handlers;
 mod input;
 mod ipc;

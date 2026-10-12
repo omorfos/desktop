@@ -309,9 +309,89 @@ fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
 }
 
 #[test]
-fn a_window_shown_again_on_its_workspace_comes_in_afresh() {
+fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     use omorfos_config::Action;
 
+    let theme = "window { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    // The titlebar, the border down the left and the window itself.
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        [picture.at(190, 14), picture.at(0, 100), picture.at(100, 80)]
+    };
+    let whole = [FOCUSED_TITLEBAR, ACCENT, RED];
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    session.advance(Duration::from_millis(100));
+    assert_eq!(seen(&mut session), whole);
+
+    // Its workspace is left, which takes it from the screen.
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+    assert_eq!(seen(&mut session), whole, "still all there");
+    let start = session.now;
+    let again = session.compositor_mut().deadline();
+    assert_eq!(again, Some(start + Duration::from_millis(16)));
+
+    session.advance(Duration::from_millis(50));
+    let [titlebar, border, window] = seen(&mut session);
+    assert!(
+        between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
+        "{titlebar:#x}"
+    );
+    assert!(between(border, BACKGROUND, ACCENT), "{border:#x}");
+    assert!(between(window, BACKGROUND, RED), "{window:#x}");
+
+    session.advance(Duration::from_millis(50));
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "gone");
+    assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
+
+    // Shown again, it comes in afresh.
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.step();
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "coming back");
+    session.advance(Duration::from_millis(100));
+    assert_eq!(seen(&mut session), whole);
+}
+
+#[test]
+fn a_window_that_closes_fades_out_as_it_last_was() {
+    let theme = "window { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    let window = session.open_decorated(&mut client, "first", (200, 100), RED);
+    session.advance(Duration::from_millis(100));
+    assert_eq!(session.draw().at(100, 80), RED);
+
+    // The program takes its window away, and keeps what it drew it from.
+    window.role.destroy();
+    window.xdg_surface.destroy();
+    window.surface.destroy();
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw().at(100, 80), RED, "still all there");
+
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    let (titlebar, inside) = (picture.at(190, 14), picture.at(100, 80));
+    assert!(
+        between(titlebar, BACKGROUND, UNFOCUSED_TITLEBAR)
+            || between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
+        "{titlebar:#x}"
+    );
+    assert!(between(inside, BACKGROUND, RED), "{inside:#x}");
+
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(190, 14), picture.at(100, 80)),
+        (BACKGROUND, BACKGROUND)
+    );
+}
+
+#[test]
+fn a_window_whose_program_has_gone_does_not_stop_the_screen_being_drawn() {
     let theme = "window { transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
@@ -319,14 +399,44 @@ fn a_window_shown_again_on_its_workspace_comes_in_afresh() {
     session.advance(Duration::from_millis(100));
     assert_eq!(session.draw().at(100, 80), RED);
 
-    session.compositor_mut().perform(&Action::NextWorkspace);
+    // Everything the program had goes with it, the memory its window was
+    // drawn from included. Its frame is the compositor's and still fades.
+    drop(client);
+    session.eventually(|session| session.compositor().desktop().frames().count() == 0);
+    let start = session.now;
+    session.now = start + Duration::from_millis(50);
     session.step();
-    assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone at once");
-    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    let titlebar = session.draw().at(190, 14);
+    assert_ne!(titlebar, BACKGROUND, "{titlebar:#x}");
+
+    session.now = start + Duration::from_millis(200);
     session.step();
-    assert_eq!(session.draw().at(100, 80), BACKGROUND, "and coming back");
+    assert_eq!(session.draw().at(190, 14), BACKGROUND);
+}
+
+#[test]
+fn a_window_of_one_colour_fades_out_too() {
+    let theme = "window { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    let window = client.toplevel("plain", "plain window");
+    session.roundtrip(&mut client);
+    client.fill_plain(&window.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
     session.advance(Duration::from_millis(100));
-    assert_eq!(session.draw().at(100, 80), RED);
+    let inside = |session: &mut Session| session.draw().at(20, 20);
+    assert_eq!(inside(&mut session), RED);
+
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::NextWorkspace);
+    session.step();
+    session.advance(Duration::from_millis(50));
+    let half = inside(&mut session);
+    assert!(between(half, BACKGROUND, RED), "{half:#x}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(inside(&mut session), BACKGROUND);
 }
 
 #[test]
