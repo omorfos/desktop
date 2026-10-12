@@ -25,9 +25,11 @@ mod lock;
 mod outputs;
 mod paint;
 mod session;
+mod x11;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME};
 pub use cursor::Themes;
 pub use input::Input;
 pub use omorfos_ui::Scale;
 pub use session::Session;
+pub use x11::Focus;

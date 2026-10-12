@@ -156,6 +156,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_panel(panel());
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
+    compositor.start_xwayland(None);
     compositor.autostart();
 
     // The keyboard, mice and touchpads.

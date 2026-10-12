@@ -31,3 +31,4 @@ mod scaling;
 mod session;
 mod taskbar;
 mod windows;
+mod x11;
