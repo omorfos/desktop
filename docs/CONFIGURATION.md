@@ -620,10 +620,14 @@ in the notice. Programs you start afterwards find it where the last one
 was. An X server that stops more than three times in a minute is given up
 on until you next log in.
 
-Two things are not there yet. Copy and paste does not cross between
-programs written for X11 and programs written for Wayland. And on a screen
-with a scale, such programs are drawn at one pixel to a unit and
-stretched, and so are blurred.
+What is copied in one kind of program can be pasted in the other, and so
+can what is selected and pasted with the middle button. As between
+programs written for Wayland, a program is given what was copied only
+while it has the keyboard.
+
+One thing is not there yet: on a screen with a scale, programs written
+for X11 are drawn at one pixel to a unit and stretched, and so are
+blurred.
 
 Programs written for X11 can read each other's windows and what is typed
 into each other, which programs written for Wayland cannot do to anything.

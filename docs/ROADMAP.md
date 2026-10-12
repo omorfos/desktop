@@ -259,7 +259,8 @@ to show over the IPC socket (ADR 18). In this order:
       windows are windows like any other, framed, focused, moved, tabbed
       and closed by the desktop; their menus and tooltips are shown where
       they put them. On unless `xwayland.enabled` is turned off
-  - [ ] Copy and paste between programs written for X11 and for Wayland
+  - [x] Copy and paste between programs written for X11 and for Wayland,
+        and what is selected and pasted with the middle button
   - [ ] Drawn sharply on a screen with a scale: they are drawn at one
         pixel to a unit and stretched, and so are blurred there
   - [ ] Dialogs kept with the window they belong to, and windows that
@@ -273,4 +274,12 @@ to show over the IPC socket (ADR 18). In this order:
         change there
   - [x] The panel and the notifications started again if they crash, as
         the X server is (ADR 28)
+- [ ] What omorfos itself has to say shown among the notifications, in
+      the same stack and the same style, so that it and they cannot cover
+      one another and each is there until it is clicked away. What is
+      wrong stays until it is put right; what merely happened, such as the
+      X server having been started again, goes by itself. The notice the
+      compositor draws stays as what is fallen back on when nothing is
+      showing notifications, which is also when it has to say that the
+      notifications have stopped
 - [ ] Screen capture and portals
