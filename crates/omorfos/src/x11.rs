@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fmt::Display;
+use std::os::fd::OwnedFd;
 use std::process::Stdio;
 use std::time::Instant;
 
@@ -26,6 +27,15 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle};
 use smithay::utils::{IsAlive, Logical, Rectangle, Serial};
 use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::selection::SelectionTarget;
+use smithay::wayland::selection::data_device::{
+    clear_data_device_selection, current_data_device_selection_userdata,
+    request_data_device_client_selection, set_data_device_selection,
+};
+use smithay::wayland::selection::primary_selection::{
+    clear_primary_selection, current_primary_selection_userdata, request_primary_client_selection,
+    set_primary_selection,
+};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, XwmId};
@@ -378,6 +388,24 @@ impl Compositor {
         }
     }
 
+    /// Tells programs written for X11 what a program written for Wayland
+    /// has copied or selected, in what forms, or that it no longer has.
+    pub(crate) fn offer_to_x11(&mut self, which: SelectionTarget, kinds: Option<Vec<String>>) {
+        let manager = self.x11.wm.as_mut();
+        // The only failure is the X server having gone.
+        let _ = manager.map(|manager| manager.new_selection(which, kinds));
+    }
+
+    /// Has what a program written for X11 copied or selected written to
+    /// `to`, in the form `kind`, for a program written for Wayland that is
+    /// pasting it.
+    pub(crate) fn send_from_x11(&mut self, which: SelectionTarget, kind: String, to: OwnedFd) {
+        let handle = self.event_loop.clone();
+        let manager = self.x11.wm.as_mut();
+        // A failure leaves the program that asked with nothing to read.
+        let _ = manager.map(|manager| manager.send_selection(which, kind, to, handle));
+    }
+
     /// The window of a program written for X11 that is part of the desktop.
     fn managed(&self, window: &X11Surface) -> Option<&Mapped> {
         let role = Role::X11(window.clone());
@@ -553,6 +581,53 @@ impl XwmHandler for Compositor {
 
     fn move_request(&mut self, _: XwmId, window: X11Surface, _: u32) {
         self.begin_x11(&window, |_, _| Wanted::Move);
+    }
+
+    fn allow_selection_access(&mut self, _: XwmId, _: SelectionTarget) -> bool {
+        // As for programs written for Wayland: what has been copied is for
+        // whoever has the keyboard, and no one else. Programs written for
+        // X11 share it among themselves, which cannot be helped.
+        matches!(self.keyboard.current_focus(), Some(Focus::X11(_)))
+    }
+
+    fn send_selection(&mut self, _: XwmId, which: SelectionTarget, kind: String, to: OwnedFd) {
+        // A program written for X11 is pasting what a program written for
+        // Wayland copied, which that program is asked for. If it has gone,
+        // there is nothing to paste.
+        match which {
+            SelectionTarget::Clipboard => {
+                let _ = request_data_device_client_selection(&self.seat, kind, to);
+            }
+            SelectionTarget::Primary => {
+                let _ = request_primary_client_selection(&self.seat, kind, to);
+            }
+        }
+    }
+
+    fn new_selection(&mut self, _: XwmId, which: SelectionTarget, kinds: Vec<String>) {
+        // What a program written for X11 has copied or selected is offered
+        // by the compositor on its behalf.
+        match which {
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display, &self.seat, kinds, ());
+            }
+            SelectionTarget::Primary => set_primary_selection(&self.display, &self.seat, kinds, ()),
+        }
+    }
+
+    fn cleared_selection(&mut self, _: XwmId, which: SelectionTarget) {
+        // It is taken back only if it is still what is on offer: a
+        // selection of ours is one made on behalf of the X server.
+        match which {
+            SelectionTarget::Clipboard => {
+                let ours = current_data_device_selection_userdata(&self.seat).is_some();
+                let _ = ours.then(|| clear_data_device_selection(&self.display, &self.seat));
+            }
+            SelectionTarget::Primary => {
+                let ours = current_primary_selection_userdata(&self.seat).is_some();
+                let _ = ours.then(|| clear_primary_selection(&self.display, &self.seat));
+            }
+        }
     }
 
     fn disconnected(&mut self, _: XwmId) {

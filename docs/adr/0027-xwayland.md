@@ -90,8 +90,12 @@ requests only after asking the compositor something.
 - They can read each other's windows and keystrokes. That is X11, and
   nothing here can prevent it. They cannot read those of programs written
   for Wayland. The setting is there for whoever would sooner do without.
-- Copy and paste does not yet cross between the two kinds of program.
-  Smithay's window manager has the hooks; they are not answered yet.
+- Copy and paste crosses between the two kinds of program, both the
+  clipboard and what is selected. What a program written for X11 holds is
+  offered by the compositor on its behalf, and what a program written for
+  Wayland holds is handed to one written for X11 only while an X11 window
+  has the keyboard, which is the rule programs written for Wayland live
+  by. Among themselves programs written for X11 share it regardless.
 - On a screen with a scale, programs written for X11 are drawn at one pixel
   to a unit and stretched to size, and are blurred. Telling the X server
   the scale, and scaling what it is told about positions, is still to do.
@@ -102,4 +106,9 @@ requests only after asking the compositor something.
   uses it.
 - For the moment between an X server stopping and the next being ready to
   listen, a program started then is refused.
+- The X server that stopped is kept until the instant the next is started,
+  because it holds the number the next is to have. The number is free
+  between the two for no longer than it takes to ask for it again. The
+  tests, which start X servers side by side all the time, keep others from
+  starting while one is being replaced; nothing else needs to.
 - `Xwayland` is recommended by the packages, not required.

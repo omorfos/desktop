@@ -20,7 +20,8 @@ use smithay::wayland::compositor::{
 };
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelListHandler, ForeignToplevelListState};
 use smithay::wayland::output::OutputHandler;
-use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
+use std::os::fd::OwnedFd;
 use smithay::wayland::selection::primary_selection::{
     PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
 };
@@ -432,6 +433,30 @@ impl SeatHandler for Compositor {
 
 impl SelectionHandler for Compositor {
     type SelectionUserData = ();
+
+    fn new_selection(
+        &mut self,
+        which: SelectionTarget,
+        source: Option<SelectionSource>,
+        _: Seat<Self>,
+    ) {
+        // What a program written for Wayland has copied or selected is
+        // there for programs written for X11 as well.
+        self.offer_to_x11(which, source.map(|source| source.mime_types()));
+    }
+
+    fn send_selection(
+        &mut self,
+        which: SelectionTarget,
+        kind: String,
+        to: OwnedFd,
+        _: Seat<Self>,
+        (): &(),
+    ) {
+        // The only selections that are ours to send are those of programs
+        // written for X11, which the X server is asked for.
+        self.send_from_x11(which, kind, to);
+    }
 }
 
 impl DataDeviceHandler for Compositor {

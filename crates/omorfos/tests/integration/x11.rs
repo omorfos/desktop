@@ -8,6 +8,9 @@
     reason = "test support code fails the test on any error"
 )]
 
+use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
 use std::time::Duration;
 
 use omorfos::Input;
@@ -17,12 +20,12 @@ use x11rb::connection::Connection;
 use x11rb::protocol::Event as Told;
 use x11rb::protocol::xproto::{
     AtomEnum, ClientMessageEvent, ConfigureWindowAux, ConnectionExt, CreateWindowAux, EventMask,
-    KeyButMask, PropMode, WindowClass,
+    KeyButMask, PropMode, SELECTION_NOTIFY_EVENT, SelectionNotifyEvent, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
-use crate::common::{HEIGHT, Session, WIDTH, key};
+use crate::common::{Client, HEIGHT, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
@@ -57,10 +60,31 @@ fn connect(session: &mut Session) -> RustConnection {
     })
 }
 
+/// Held, to read, while a test starts an X server, and to write for the
+/// whole of a test in which one is started again.
+///
+/// An X server takes the first number that no other has. One that is
+/// started again takes the number it had, which is free for an instant
+/// first. The tests run side by side and start X servers all the time, so
+/// one of them would now and then take that number in that instant. On a
+/// machine in use nothing else is starting X servers.
+static STARTING: RwLock<()> = RwLock::new(());
+
+/// Starts the session's X server, with whatever number is free.
+fn start(session: &mut Session) {
+    let _starting = STARTING.read().unwrap_or_else(PoisonError::into_inner);
+    session.compositor_mut().start_xwayland(None);
+}
+
+/// Keeps other tests from starting X servers until it is let go of.
+fn alone() -> RwLockWriteGuard<'static, ()> {
+    STARTING.write().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// A session with an X server, and a program connected to it.
 fn session() -> (Session, RustConnection) {
     let mut session = Session::new();
-    session.compositor_mut().start_xwayland(None);
+    start(&mut session);
     let program = connect(&mut session);
     (session, program)
 }
@@ -258,6 +282,10 @@ fn a_window_of_a_program_written_for_x11_is_a_window_like_any_other() {
 fn what_is_typed_goes_to_the_window_of_a_program_written_for_x11_that_has_focus() {
     let (mut session, program) = session();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    // The X server says when the window has the keyboard, which is a
+    // moment after the compositor gave it.
+    let gained = |event: &Told| matches!(event, Told::FocusIn(_)).then_some(());
+    told(&mut session, &program, gained);
     let pressed = |event: &Told| match event {
         Told::KeyPress(key) => Some((key.detail, key.state)),
         _ => None,
@@ -578,27 +606,52 @@ fn server(session: &Session) -> Option<u32> {
     process.file_name().to_str()?.parse().ok()
 }
 
+/// Lets the compositor carry on until something is so, without time
+/// passing for it: how often an X server may be started again goes by
+/// the clock.
+fn wait(session: &mut Session, so: impl Fn(&Session) -> bool) {
+    for _ in 0..20_000 {
+        session.step();
+        if so(session) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let problems = session.compositor().problems();
+    unreachable!("what was waited for never came about: {problems:?}");
+}
+
 /// Kills the session's X server, and waits for it to be gone.
 fn kill_server(session: &mut Session) {
-    session.eventually(|session| server(session).is_some());
+    wait(session, |session| server(session).is_some());
     let process = server(session).unwrap();
     let killed = std::process::Command::new("kill")
         .args(["-9", &process.to_string()])
         .status();
     assert!(killed.unwrap().success());
-    session.eventually(|session| server(session) != Some(process));
+    wait(session, |session| server(session) != Some(process));
 }
 
 /// Kills the session's X server, and waits for another to have been
 /// started in its place.
 fn kill_and_recover(session: &mut Session) {
     kill_server(session);
-    session.eventually(|session| server(session).is_some());
+    wait(session, |session| server(session).is_some());
+}
+
+/// A session with an X server and a program connected to it, with no
+/// other test starting an X server for as long as the guard is kept.
+fn session_alone() -> (Session, RustConnection, RwLockWriteGuard<'static, ()>) {
+    let alone = alone();
+    let mut session = Session::new();
+    session.compositor_mut().start_xwayland(None);
+    let program = connect(&mut session);
+    (session, program, alone)
 }
 
 #[test]
 fn an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it() {
-    let (mut session, program) = session();
+    let (mut session, program, _alone) = session_alone();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
     let mut other = session.connect();
     session.open(&mut other, "app", (50, 50), GREEN);
@@ -623,6 +676,7 @@ fn an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it() {
 
 #[test]
 fn an_x_server_that_dies_before_it_is_ready_is_started_again_too() {
+    let _alone = alone();
     let mut session = Session::new();
     session.compositor_mut().start_xwayland(None);
 
@@ -635,13 +689,13 @@ fn an_x_server_that_dies_before_it_is_ready_is_started_again_too() {
 
 #[test]
 fn an_x_server_that_keeps_dying_is_given_up_on() {
-    let (mut session, _program) = session();
+    let (mut session, _program, _alone) = session_alone();
     for _ in 0..3 {
         kill_and_recover(&mut session);
     }
 
     kill_server(&mut session);
-    session.eventually(|session| display(session).is_none());
+    wait(&mut session, |session| display(session).is_none());
     let problems = session.compositor().problems().join("\n");
     assert!(problems.contains("keeps stopping"), "{problems}");
 
@@ -652,4 +706,205 @@ fn an_x_server_that_keeps_dying_is_given_up_on() {
     kill_and_recover(&mut session);
     let program = connect(&mut session);
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+}
+
+/// What a program written for X11 calls the clipboard, or what is
+/// selected and pasted with the middle button.
+fn selection(primary: bool) -> &'static str {
+    if primary { "PRIMARY" } else { "CLIPBOARD" }
+}
+
+/// Lets the compositor and a program written for Wayland carry on until
+/// `done`, as `meanwhile` does for the compositor alone.
+fn until(
+    session: &mut Session,
+    client: &mut Client,
+    mut done: impl FnMut(&mut Session, &mut Client) -> bool,
+) {
+    for _ in 0..5000 {
+        session.roundtrip(client);
+        if done(session, client) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("what was waited for never came about");
+}
+
+/// Has a program written for X11 hold `text` as the clipboard or the
+/// selection, answering whoever asks for it, until told to `stop`, when
+/// it lets go of it.
+fn hold(program: &RustConnection, window: u32, names: [u32; 3], text: &str, stop: &AtomicBool) {
+    let [which, targets, plain] = names;
+    program
+        .set_selection_owner(window, which, x11rb::CURRENT_TIME)
+        .unwrap();
+    program.flush().unwrap();
+    while !stop.load(Ordering::Relaxed) {
+        while let Some(event) = program.poll_for_event().unwrap() {
+            let Told::SelectionRequest(asked) = event else {
+                continue;
+            };
+            let (to, property) = (asked.requestor, asked.property);
+            if asked.target == targets {
+                // What forms it can be had in: as text.
+                let forms = [targets, plain];
+                program
+                    .change_property32(PropMode::REPLACE, to, property, AtomEnum::ATOM, &forms)
+                    .unwrap();
+            } else {
+                program
+                    .change_property8(
+                        PropMode::REPLACE,
+                        to,
+                        property,
+                        asked.target,
+                        text.as_bytes(),
+                    )
+                    .unwrap();
+            }
+            let answer = SelectionNotifyEvent {
+                response_type: SELECTION_NOTIFY_EVENT,
+                sequence: 0,
+                time: asked.time,
+                requestor: to,
+                selection: asked.selection,
+                target: asked.target,
+                property,
+            };
+            program
+                .send_event(false, to, EventMask::NO_EVENT, answer)
+                .unwrap();
+            program.flush().unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    program
+        .set_selection_owner(x11rb::NONE, which, x11rb::CURRENT_TIME)
+        .unwrap();
+    program.flush().unwrap();
+}
+
+/// Has a program written for X11 ask for the clipboard or the selection
+/// as text, and returns what it is given, if anything.
+fn fetch(program: &RustConnection, window: u32, names: [u32; 3]) -> Option<String> {
+    let [which, plain, into] = names;
+    program
+        .convert_selection(window, which, plain, into, x11rb::CURRENT_TIME)
+        .unwrap();
+    program.flush().unwrap();
+    for _ in 0..5000 {
+        while let Some(event) = program.poll_for_event().unwrap() {
+            let Told::SelectionNotify(answer) = event else {
+                continue;
+            };
+            if answer.property == x11rb::NONE {
+                return None;
+            }
+            let given = program
+                .get_property(false, window, into, AtomEnum::ANY, 0, 1024)
+                .unwrap();
+            return String::from_utf8(given.reply().unwrap().value).ok();
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("the program was never answered");
+}
+
+/// Whether a program written for Wayland is being offered the clipboard,
+/// or the selection.
+fn offered(client: &Client, primary: bool) -> bool {
+    if primary {
+        client.state.primary.is_some()
+    } else {
+        client.state.selection.is_some()
+    }
+}
+
+#[test]
+fn what_a_program_written_for_x11_copies_or_selects_can_be_pasted_by_any_other() {
+    for primary in [false, true] {
+        let (mut session, program) = session();
+        let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+        let names = [selection(primary), "TARGETS", "UTF8_STRING"];
+        let names = names.map(|name| atom(&mut session, &program, name));
+        let stop = AtomicBool::new(false);
+
+        std::thread::scope(|scope| {
+            scope.spawn(|| hold(&program, window, names, "from x11", &stop));
+            // A program written for Wayland opens, takes the keyboard, and
+            // is offered what the other holds.
+            let mut client = session.connect();
+            session.open(&mut client, "app", (50, 50), GREEN);
+            until(&mut session, &mut client, |_, client| {
+                offered(client, primary)
+            });
+
+            let pipe = if primary {
+                client.paste_selection()
+            } else {
+                client.paste()
+            };
+            let mut pipe = pipe.unwrap();
+            let reading = scope.spawn(move || {
+                let mut pasted = String::new();
+                pipe.read_to_string(&mut pasted).unwrap();
+                pasted
+            });
+            until(&mut session, &mut client, |_, _| reading.is_finished());
+            assert_eq!(reading.join().unwrap(), "from x11");
+
+            // When the program lets go of it, it is no longer on offer.
+            stop.store(true, Ordering::Relaxed);
+            until(&mut session, &mut client, |_, client| {
+                !offered(client, primary)
+            });
+        });
+    }
+}
+
+#[test]
+fn what_any_other_program_copies_or_selects_can_be_pasted_by_one_written_for_x11() {
+    for primary in [false, true] {
+        let (mut session, program) = session();
+        let mut client = session.connect();
+        session.open(&mut client, "app", (50, 50), GREEN);
+        if primary {
+            client.select("from wayland");
+        } else {
+            client.copy("from wayland");
+        }
+        session.roundtrip(&mut client);
+
+        // A program written for X11 opens, takes the keyboard, and asks.
+        let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+        let names = [selection(primary), "UTF8_STRING", "PASTED"];
+        let names = names.map(|name| atom(&mut session, &program, name));
+        let pasted = std::thread::scope(|scope| {
+            let fetching = scope.spawn(|| fetch(&program, window, names));
+            until(&mut session, &mut client, |_, _| fetching.is_finished());
+            fetching.join().unwrap()
+        });
+        assert_eq!(pasted.as_deref(), Some("from wayland"));
+    }
+}
+
+#[test]
+fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied() {
+    let (mut session, program) = session();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    // Another program has the keyboard, and copies something.
+    let mut client = session.connect();
+    session.open(&mut client, "app", (50, 50), GREEN);
+    client.copy("private to whoever is focused");
+    session.roundtrip(&mut client);
+
+    let names = ["CLIPBOARD", "UTF8_STRING", "PASTED"];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    let pasted = std::thread::scope(|scope| {
+        let fetching = scope.spawn(|| fetch(&program, window, names));
+        until(&mut session, &mut client, |_, _| fetching.is_finished());
+        fetching.join().unwrap()
+    });
+    assert_eq!(pasted, None);
 }
