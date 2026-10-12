@@ -225,7 +225,7 @@ to show over the IPC socket (ADR 18). In this order:
         screen
   - [x] Icons and descriptions, each a setting (`launcher.icons`,
         `launcher.descriptions`)
-  - [ ] Keys that repeat when held
+  - [x] Keys that repeat when held
   - [ ] Icons from the icon theme in use and not only `hicolor`; looser
         matching; translated names
 - [x] Notifications, `omorfos-notifications`: the desktop notification

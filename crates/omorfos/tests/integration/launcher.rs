@@ -12,6 +12,7 @@
 use std::ffi::OsString;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use omorfos::{Input, Scale};
 use omorfos_config::{Action, Color, Part, State, States, Theme};
@@ -92,7 +93,7 @@ fn launcher(session: &mut Session) -> Launcher {
 fn settle(session: &mut Session, launcher: &mut Launcher) -> bool {
     let mut done = false;
     for _ in 0..20 {
-        done |= launcher.turn().unwrap();
+        done |= launcher.turn(Duration::ZERO).unwrap();
         session.step();
     }
     done
@@ -200,6 +201,94 @@ fn the_arrows_and_backspace_work_as_they_do_in_any_list() {
     session.eventually(|session| mark(session, "firefox") == "x");
 }
 
+/// Lets the launcher and the compositor talk at the time `now`.
+fn settle_at(session: &mut Session, launcher: &mut Launcher, now: Duration) {
+    for _ in 0..20 {
+        launcher.turn(now).unwrap();
+        session.step();
+    }
+}
+
+/// Which row of the list is lit: the program that would be started.
+fn chosen(session: &mut Session) -> Option<i32> {
+    let picture = session.draw();
+    (0..8).find(|place| {
+        let (x, y) = row(*place);
+        picture.at(x, y) == lit()
+    })
+}
+
+fn hold(session: &mut Session, code: Keycode, pressed: bool) {
+    session
+        .compositor_mut()
+        .input(Input::Key { code, pressed }, 0);
+}
+
+#[test]
+fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    let ms = Duration::from_millis;
+
+    hold(&mut session, DOWN, true);
+    settle_at(&mut session, &mut launcher, ms(0));
+    assert_eq!(chosen(&mut session), Some(1), "once, when it goes down");
+    assert_eq!(launcher.deadline(), Some(ms(400)), "then after a pause");
+    settle_at(&mut session, &mut launcher, ms(399));
+    assert_eq!(chosen(&mut session), Some(1));
+    settle_at(&mut session, &mut launcher, ms(400));
+    assert_eq!(chosen(&mut session), Some(2), "and then steadily");
+
+    hold(&mut session, DOWN, false);
+    hold(&mut session, UP, true);
+    settle_at(&mut session, &mut launcher, ms(500));
+    assert_eq!(chosen(&mut session), Some(1));
+    // Thirty times a second: one more by a little after the pause.
+    settle_at(&mut session, &mut launcher, ms(500 + 400 + 5));
+    assert_eq!(chosen(&mut session), Some(0));
+    // Another key coming up does not stop the one that is held.
+    hold(&mut session, key::SHIFT, true);
+    hold(&mut session, key::SHIFT, false);
+    settle_at(&mut session, &mut launcher, ms(950));
+    assert!(launcher.deadline().is_some());
+    hold(&mut session, UP, false);
+    settle_at(&mut session, &mut launcher, ms(960));
+    assert_eq!(launcher.deadline(), None, "let go, it stops");
+}
+
+#[test]
+fn a_launcher_left_waiting_does_not_type_a_screenful_when_it_wakes() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    hold(&mut session, F, true);
+    settle_at(&mut session, &mut launcher, Duration::ZERO);
+    // A minute later, in one turn, only so many are taken, and it carries
+    // on from then.
+    let later = Duration::from_secs(60);
+    launcher.turn(later).unwrap();
+    let due = launcher.deadline().unwrap();
+    assert!(
+        due > later && due < later + Duration::from_millis(100),
+        "{due:?}"
+    );
+}
+
+#[test]
+fn keys_do_not_repeat_when_the_keyboard_is_set_not_to() {
+    let settings = "keyboard: { repeat_rate: 0 }\n";
+    let mut session = Session::with_config(&[("config.yaml", settings)]);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    hold(&mut session, DOWN, true);
+    settle_at(&mut session, &mut launcher, Duration::ZERO);
+    assert_eq!(chosen(&mut session), Some(1));
+    assert_eq!(launcher.deadline(), None);
+    settle_at(&mut session, &mut launcher, Duration::from_secs(5));
+    assert_eq!(chosen(&mut session), Some(1));
+}
+
 #[test]
 fn escape_closes_the_launcher_and_starts_nothing() {
     let mut session = Session::new();
@@ -210,7 +299,7 @@ fn escape_closes_the_launcher_and_starts_nothing() {
     press(&mut session, key::ESCAPE);
 
     assert!(settle(&mut session, &mut launcher));
-    session.advance(std::time::Duration::from_millis(50));
+    session.advance(Duration::from_millis(50));
     assert_eq!(mark(&session, "files"), "");
     assert_eq!(mark(&session, "firefox"), "");
 }
@@ -271,7 +360,7 @@ fn a_click_beside_the_launcher_closes_it_and_starts_nothing() {
     // Beside it, where the window underneath shows.
     click(&mut session, 5, 5);
     assert!(settle(&mut session, &mut launcher));
-    session.advance(std::time::Duration::from_millis(50));
+    session.advance(Duration::from_millis(50));
     for name in ["files", "firefox", "lens"] {
         assert_eq!(mark(&session, name), "");
     }
@@ -375,8 +464,8 @@ fn the_launcher_gives_up_when_the_compositor_has_gone() {
 
     // The connection closing can take a moment to be seen.
     let gone = (0..5000).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        launcher.turn().is_err()
+        std::thread::sleep(Duration::from_millis(1));
+        launcher.turn(Duration::ZERO).is_err()
     });
     assert!(gone);
 }
@@ -401,7 +490,7 @@ fn the_compositor_opens_the_launcher_when_asked_and_only_one_at_a_time() {
 
     // Asked again while it is open, the compositor leaves it be.
     session.compositor_mut().perform(&show);
-    session.advance(std::time::Duration::from_millis(100));
+    session.advance(Duration::from_millis(100));
     assert_eq!(mark(&session, "launcher-opened"), "x");
 
     // Once it has gone, it can be opened again.
@@ -514,6 +603,14 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
 
     let (x, y) = row(0);
     session.eventually(|session| session.draw().at(x, y) == lit());
+    // A key held for a while is taken again by the launcher's own clock,
+    // with nothing prodding it. There is one program, so it stays chosen.
+    hold(&mut session, DOWN, true);
+    for _ in 0..60 {
+        session.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    hold(&mut session, DOWN, false);
     press(&mut session, key::RETURN);
     session.eventually(|_| marker.exists());
     assert_eq!(launcher.join().unwrap(), Ok(()));

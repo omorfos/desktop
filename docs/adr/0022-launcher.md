@@ -78,8 +78,10 @@ looked up, and each once.
 - The launcher needs nothing the IPC protocol did not already have.
 - It is as large as the theme makes it and does not grow or shrink with
   what matches, which keeps it still while typing.
-- A key held down does not repeat: repeating is for the client to do, and
-  it is not done yet.
+- A key held down repeats, which under Wayland is for the client to do:
+  the compositor says how soon and how often, and the launcher takes the
+  key again by its own clock. The time is passed in, as for the
+  notifications, so that the tests need not wait.
 - A name matches only as a run of letters and not loosely, and only the
   entry's untranslated name and comment are looked at.
 - Reading every desktop entry each time it opens takes a moment on a system

@@ -12,12 +12,13 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use omorfos_config::{Part, States, Store, Theme};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Canvas, Scale, Text};
-use rustix::event::{PollFd, PollFlags, poll};
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -38,6 +39,10 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
+
+/// The most times a held key is taken again in one turn. A program that
+/// was kept from running for a while does not then type a screenful.
+const MOST_REPEATS: usize = 8;
 
 /// The most of a keyboard layout that is read, in bytes. Real ones are
 /// some tens of kilobytes.
@@ -85,16 +90,18 @@ impl Launcher {
         })
     }
 
-    /// Does whatever there is to do, without waiting: takes in the keys
-    /// the compositor reports and draws the launcher if it changed.
-    /// Returns whether the launcher is done with: a program was picked, or
-    /// it was dismissed.
+    /// Does whatever there is to do, without waiting, at the time `now`,
+    /// counted from when the program started: takes in the keys the
+    /// compositor reports, takes a key that is being held again if it is
+    /// time to, and draws the launcher if it changed. Returns whether the
+    /// launcher is done with: a program was picked, or it was dismissed.
     ///
     /// # Errors
     ///
     /// Returns an error once the compositor has gone or stopped making
     /// sense.
-    pub fn turn(&mut self) -> Result<bool, Failure> {
+    pub fn turn(&mut self, now: Duration) -> Result<bool, Failure> {
+        self.shell.now = now;
         // Whether reading with nothing to read counts as a failure depends
         // on how the library was built, so the outcome is not looked at
         // here. A real failure is kept by the connection and comes back
@@ -102,6 +109,7 @@ impl Launcher {
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
         let handled = self.queue.dispatch_pending(&mut self.shell);
         let handled = handled.map(drop).map_err(Failure::from);
+        self.shell.repeat(now);
         handled
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle());
@@ -122,15 +130,26 @@ impl Launcher {
     ///
     /// As for [`Launcher::turn`].
     pub fn serve(&mut self) -> Result<(), Failure> {
+        let started = Instant::now();
         loop {
-            if self.turn()? {
+            let now = started.elapsed();
+            if self.turn(now)? {
                 return Ok(());
             }
             let mut sources = [PollFd::new(&self.connection, PollFlags::IN)];
+            let longest = self.deadline().map(|due| due.saturating_sub(now));
+            let longest = longest.and_then(|longest| Timespec::try_from(longest).ok());
             // A wait that is interrupted is a wake-up like any other, and
             // anything worse shows in the turn that follows.
-            let _ = poll(&mut sources, None);
+            let _ = poll(&mut sources, longest.as_ref());
         }
+    }
+
+    /// When there will next be something to do without anything having
+    /// happened: when a key that is being held is due to be taken again.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Duration> {
+        self.shell.held.map(|(_, due)| due)
     }
 }
 
@@ -174,6 +193,13 @@ struct Shell {
     /// The keyboard layout, for telling what a key types.
     layouts: xkb::Context,
     typing: Option<xkb::State>,
+    /// What the time is, as whoever runs the launcher last said.
+    now: Duration,
+    /// How long a key is held before it is taken again, and how long
+    /// between each time after that, if held keys repeat at all.
+    repeating: Option<(Duration, Duration)>,
+    /// The key that is being held, and when it is next taken again.
+    held: Option<(u32, Duration)>,
     /// Where on the launcher the pointer is.
     over: (i32, i32),
     /// Where what was picked is asked for.
@@ -270,6 +296,9 @@ impl Shell {
             text: Text::new(),
             layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
             typing: None,
+            now: Duration::ZERO,
+            repeating: None,
+            held: None,
             over: (-1, -1),
             commands,
             sent: Ok(()),
@@ -316,6 +345,45 @@ impl Shell {
         // A launcher that cannot be typed in, nor dismissed with a key, is
         // worse than none.
         self.done |= self.typing.is_none();
+    }
+
+    /// Takes in a key going down: it is taken once now, and again and
+    /// again while it stays down, if it is a key that repeats.
+    fn pressed(&mut self, code: u32) {
+        self.press(code);
+        let repeats = self.typing.as_ref().is_some_and(|typing| {
+            let layout = typing.get_keymap();
+            layout.key_repeats(xkb::Keycode::new(code.saturating_add(8)))
+        });
+        let repeating = self.repeating.filter(|_| repeats);
+        let held = repeating.map(|(delay, _)| (code, self.now.saturating_add(delay)));
+        // A key that does not repeat, such as Shift, going down leaves the
+        // one that is being held as it is.
+        self.held = held.or(self.held);
+    }
+
+    /// Takes in a key coming up.
+    fn released(&mut self, code: u32) {
+        self.held = self.held.filter(|(held, _)| *held != code);
+    }
+
+    /// Takes the key that is being held again, as often as is due by
+    /// `now`.
+    fn repeat(&mut self, now: Duration) {
+        let interval = self
+            .repeating
+            .map_or(Duration::MAX, |(_, interval)| interval);
+        for _ in 0..MOST_REPEATS {
+            let Some((code, due)) = self.held.filter(|(_, due)| *due <= now && !self.done) else {
+                return;
+            };
+            self.press(code);
+            self.held = Some((code, due.saturating_add(interval)));
+        }
+        // Too far behind to catch up: carry on from now.
+        self.held = self
+            .held
+            .map(|(code, _)| (code, now.saturating_add(interval)));
     }
 
     /// Takes a key that was pressed, by its number.
@@ -569,7 +637,19 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 key,
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
                 ..
-            } => shell.press(key),
+            } => shell.pressed(key),
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Released),
+                ..
+            } => shell.released(key),
+            wl_keyboard::Event::RepeatInfo { rate, delay } => {
+                // So many times a second, after so many milliseconds. No
+                // times a second is not at all.
+                let delay = Duration::from_millis(u64::from(delay.unsigned_abs()));
+                let rate = u32::try_from(rate).ok().filter(|rate| *rate > 0);
+                shell.repeating = rate.map(|rate| (delay, Duration::from_secs(1) / rate));
+            }
             // The keyboard went elsewhere: something else wants the user.
             wl_keyboard::Event::Leave { .. } => shell.done = true,
             _ => {}
