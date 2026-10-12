@@ -159,6 +159,36 @@ impl Canvas {
         }
     }
 
+    /// Draws a picture in `area`, as large as fits with its shape kept, in
+    /// the middle. A picture with more pixels than it is given room for is
+    /// smoothed down; one with fewer is drawn blocky.
+    pub fn draw_image(&mut self, area: Area, image: &Image) {
+        let (left, width) = span(self.scale, area.0, area.2);
+        let (top, height) = span(self.scale, area.1, area.3);
+        let (wide, tall) = (u64::from(image.width), u64::from(image.height));
+        // The largest size of the picture's shape that fits the room.
+        let fits_across = u64::from(width) * tall <= u64::from(height) * wide;
+        let (across, down) = if fits_across {
+            (u64::from(width), u64::from(width) * tall / wide)
+        } else {
+            (u64::from(height) * wide / tall, u64::from(height))
+        };
+        let (across, down) = (
+            u32::try_from(across).unwrap_or(width),
+            u32::try_from(down).unwrap_or(height),
+        );
+        let left = left.saturating_add_unsigned((width - across) / 2);
+        let top = top.saturating_add_unsigned((height - down) / 2);
+        let columns = visible(left, across, self.width);
+        for row in visible(top, down, self.height) {
+            for column in columns.clone() {
+                let within = (column.abs_diff(left), row.abs_diff(top));
+                let (color, opacity) = image.sample(within, (across, down));
+                self.blend(column, row, color, opacity);
+            }
+        }
+    }
+
     /// Cuts the top two corners to a quarter circle of `radius`, smoothly.
     pub fn round_top_corners(&mut self, radius: u32) {
         let (_, radius) = span(self.scale, 0, radius);
@@ -208,6 +238,72 @@ impl Canvas {
         let bytes = offset.and_then(|offset| self.pixels.get(offset..offset.saturating_add(4)));
         let bytes = bytes.and_then(|bytes| <[u8; 4]>::try_from(bytes).ok());
         bytes.map_or(0, u32::from_le_bytes)
+    }
+}
+
+/// A picture, such as an icon: rows of pixels, each a red, a green, a blue
+/// and an opacity that the colours have not been multiplied by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Image {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+impl Image {
+    /// A picture `width` by `height` pixels from four bytes for each. It
+    /// is nothing if it has no size or the bytes are not that many.
+    #[must_use]
+    pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Option<Self> {
+        let needed = u64::from(width) * u64::from(height) * 4;
+        let sized = width > 0 && height > 0 && u64::try_from(pixels.len()) == Ok(needed);
+        sized.then_some(Self {
+            width,
+            height,
+            pixels,
+        })
+    }
+
+    /// How many pixels wide and tall it is.
+    #[must_use]
+    pub const fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// The colour of the picture at one pixel of it drawn `across` by
+    /// `down` pixels, and how opaque it is there: the average of the
+    /// picture's own pixels that fall on that one.
+    fn sample(&self, (x, y): (u32, u32), (across, down): (u32, u32)) -> (Color, u8) {
+        let from = |at: u32, of: u32, own: u32| u64::from(at) * u64::from(own) / u64::from(of);
+        let run = |at: u32, of: u32, own: u32| {
+            let start = from(at, of, own);
+            // At least one pixel, where the picture is being drawn larger.
+            start..from(at + 1, of, own).max(start + 1)
+        };
+        let (columns, rows) = (run(x, across, self.width), run(y, down, self.height));
+        let places = rows.flat_map(|row| columns.clone().map(move |column| (column, row)));
+        let mut sums = [0_u64; 4];
+        let mut count = 0_u64;
+        for (column, row) in places {
+            let offset = (row * u64::from(self.width) + column) * 4;
+            let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+            let pixel = self.pixels.get(offset..offset.saturating_add(4));
+            let [red, green, blue, alpha] = pixel.map_or([0; 4], |pixel| {
+                <[u8; 4]>::try_from(pixel).unwrap_or_default()
+            });
+            // Colours count for as much as they are opaque, so that a
+            // clear pixel's colour does not tint its neighbours.
+            let weight = u64::from(alpha);
+            sums[0] += u64::from(red) * weight;
+            sums[1] += u64::from(green) * weight;
+            sums[2] += u64::from(blue) * weight;
+            sums[3] += weight;
+            count += 1;
+        }
+        let byte = |value: u64| u8::try_from(value).unwrap_or(u8::MAX);
+        let channel = |sum: u64| byte(sum.checked_div(sums[3]).unwrap_or(0));
+        let color = Color::rgb(channel(sums[0]), channel(sums[1]), channel(sums[2]));
+        (color, byte(sums[3].checked_div(count).unwrap_or(0)))
     }
 }
 
@@ -736,6 +832,98 @@ mod tests {
         assert_eq!(canvas.at(5, 0), argb(WHITE));
         assert_eq!(canvas.at(0, 5), argb(WHITE));
         assert_eq!(canvas.at(20, 5), argb(WHITE));
+    }
+
+    /// A picture of one colour.
+    fn plain(width: u32, height: u32, color: Color) -> Image {
+        let pixel = [color.red, color.green, color.blue, color.alpha];
+        let count = usize::try_from(width * height).unwrap();
+        Image::new(width, height, pixel.repeat(count)).unwrap()
+    }
+
+    #[test]
+    fn a_picture_needs_a_size_and_four_bytes_for_each_pixel() {
+        assert_eq!(plain(3, 2, RED).size(), (3, 2));
+        assert_eq!(Image::new(2, 2, vec![0; 15]), None);
+        assert_eq!(Image::new(2, 2, vec![0; 17]), None);
+        assert_eq!(Image::new(0, 2, Vec::new()), None);
+        assert_eq!(Image::new(2, 0, Vec::new()), None);
+    }
+
+    #[test]
+    fn a_picture_is_drawn_in_the_middle_of_its_room_with_its_shape_kept() {
+        let mut canvas = Canvas::new(40, 40);
+        // Twice as wide as tall, in a square: it fills the width.
+        canvas.draw_image((10, 10, 20, 20), &plain(8, 4, RED));
+        assert_eq!(canvas.at(10, 20), argb(RED));
+        assert_eq!(canvas.at(29, 20), argb(RED));
+        assert_eq!(canvas.at(20, 15), argb(RED));
+        assert_eq!(canvas.at(20, 24), argb(RED));
+        assert_eq!(canvas.at(20, 14), 0, "above it");
+        assert_eq!(canvas.at(20, 25), 0, "below it");
+        assert_eq!(canvas.at(9, 20), 0);
+        assert_eq!(canvas.at(30, 20), 0);
+        // Twice as tall as wide: it fills the height.
+        let mut canvas = Canvas::new(40, 40);
+        canvas.draw_image((10, 10, 20, 20), &plain(4, 8, BLUE));
+        assert_eq!(canvas.at(20, 10), argb(BLUE));
+        assert_eq!(canvas.at(20, 29), argb(BLUE));
+        assert_eq!(canvas.at(14, 20), 0);
+        assert_eq!(canvas.at(15, 20), argb(BLUE));
+        assert_eq!(canvas.at(24, 20), argb(BLUE));
+        assert_eq!(canvas.at(25, 20), 0);
+    }
+
+    #[test]
+    fn a_picture_drawn_smaller_is_smoothed_and_one_drawn_larger_is_not() {
+        // A chequerboard of red and blue.
+        let mut pixels = Vec::new();
+        for y in 0..8_u32 {
+            for x in 0..8_u32 {
+                let color = if (x + y) % 2 == 0 { RED } else { BLUE };
+                pixels.extend([color.red, color.green, color.blue, 255]);
+            }
+        }
+        let board = Image::new(8, 8, pixels).unwrap();
+        let mut small = Canvas::new(4, 4);
+        small.draw_image((0, 0, 4, 4), &board);
+        assert_eq!(small.at(1, 1), 0xff7f_007f, "half of each");
+        let mut large = Canvas::new(32, 32);
+        large.draw_image((0, 0, 32, 32), &board);
+        assert_eq!(large.at(0, 0), argb(RED));
+        assert_eq!(large.at(3, 3), argb(RED));
+        assert_eq!(large.at(4, 0), argb(BLUE));
+    }
+
+    #[test]
+    fn a_picture_is_as_see_through_as_its_pixels_and_clear_ones_do_not_tint() {
+        let mut canvas = Canvas::new(10, 10);
+        canvas.fill((0, 0, 10, 10), BLUE);
+        canvas.draw_image((0, 0, 10, 10), &plain(2, 2, Color::rgba(255, 0, 0, 0)));
+        assert_eq!(canvas.at(5, 5), argb(BLUE), "a clear picture shows nothing");
+        // One opaque red pixel and three clear green ones, drawn as one.
+        let pixels = [
+            [255, 0, 0, 255],
+            [0, 255, 0, 0],
+            [0, 255, 0, 0],
+            [0, 255, 0, 0],
+        ];
+        let mixed = Image::new(2, 2, pixels.concat()).unwrap();
+        let mut canvas = Canvas::new(1, 1);
+        canvas.draw_image((0, 0, 1, 1), &mixed);
+        // A quarter red, and no green at all.
+        assert_eq!(canvas.at(0, 0), 0x3f3f_0000);
+    }
+
+    #[test]
+    fn a_picture_is_clipped_to_the_canvas_and_scaled_with_it() {
+        let mut canvas = Canvas::scaled(10, 10, Scale::new(2.0));
+        canvas.draw_image((5, 5, 10, 10), &plain(4, 4, RED));
+        assert_eq!(canvas.at(9, 9), 0);
+        assert_eq!(canvas.at(10, 10), argb(RED));
+        assert_eq!(canvas.at(19, 19), argb(RED));
+        canvas.draw_image((-50, -50, 10, 10), &plain(4, 4, BLUE));
+        assert_eq!(canvas.at(0, 0), 0);
     }
 
     #[test]
