@@ -41,7 +41,7 @@ strip = "symbols"
 # compiled in parallel, without link-time optimisation and keeping what did
 # not change, so that it is quick to build again. Packages are built with
 # `release`.
-[profile.quick]
+[profile.nightly]
 inherits = "release"
 codegen-units = 16
 lto = false
