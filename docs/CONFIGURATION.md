@@ -520,7 +520,8 @@ another key, bind `show_launcher` in `keys.yaml`.
 ## Notifications
 
 What programs have to tell you is shown in the top right-hand corner of the
-screen the pointer is on, the newest first: a title, a few lines, and a
+screen the pointer is on, the newest first: a title, up to three lines
+broken to fit, and a
 picture or the program's icon if it sent one. A click dismisses one, and
 tells the program that sent it, which is how clicking a browser's
 notification brings up its tab; a click with the right button dismisses it

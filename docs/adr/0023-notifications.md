@@ -91,6 +91,7 @@ whether what is said is well formed, which no stand-in of ours could be.
   component into `omorfos-shell`, now that three programs need both.
 - Themes gain a state, `:urgent`, and three parts: `notification`,
   `notification-title` and `notification-body`.
-- A body's lines are cut short, not wrapped, since text is drawn a line at
-  a time. Buttons for actions beyond the click, sounds, pictures that are
-  JPEG, and keeping a notification after it has gone are not there.
+- A body is broken into lines at its spaces to fit, up to three, keeping
+  the breaks its sender made; what is left over is cut short. Buttons for
+  actions beyond the click, sounds, pictures that are JPEG, and keeping a
+  notification after it has gone are not there.

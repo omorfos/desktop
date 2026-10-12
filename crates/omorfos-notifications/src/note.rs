@@ -84,6 +84,10 @@ pub enum Reason {
 struct Shown {
     id: u32,
     title: String,
+    /// What it says, as its sender broke it into lines.
+    said: Vec<String>,
+    /// What it says, as it is drawn: broken again to fit, if it has been
+    /// fitted to a theme.
     lines: Vec<String>,
     picture: Picture,
     urgent: bool,
@@ -142,12 +146,14 @@ impl Stack {
         // a time itself.
         let usual = self.usual.filter(|_| !note.urgent);
         let lasts = stays.map_or(usual, |stays| Some(stays).filter(|stays| !stays.is_zero()));
-        let lines = plain(&note.body);
-        let lines = lines.lines().map(str::trim).filter(|line| !line.is_empty());
+        let said = plain(&note.body);
+        let said = said.lines().map(str::trim).filter(|line| !line.is_empty());
+        let said: Vec<String> = said.take(LINES).map(clipped).collect();
         let shown = Shown {
             id: note.id,
             title: clipped(plain(&note.title).trim()),
-            lines: lines.take(LINES).map(clipped).collect(),
+            lines: said.clone(),
+            said,
             picture: note.picture,
             urgent: note.urgent,
             acts: note.acts,
@@ -163,6 +169,35 @@ impl Stack {
             .then(|| self.shown.pop())
             .flatten()
             .map(|gone| gone.id)
+    }
+
+    /// Breaks what each notification says into lines that fit it under
+    /// `theme`, at the spaces between words, keeping the breaks its sender
+    /// made. To be called before the notifications are measured or drawn,
+    /// when what is showing or the theme has changed.
+    pub fn fit(&mut self, theme: &Theme, text: &mut Text) {
+        let fitted = self.shown.iter().map(|shown| {
+            let states = self.states(shown);
+            let style = theme.style(Part::Notification, states);
+            let font = theme.font(Part::NotificationBody, states);
+            let pictured = shown.picture != Picture::None;
+            let taken = style.inset().across() + if pictured { PICTURE + GAP } else { 0 };
+            let room = width(&style).saturating_sub(taken);
+            let mut lines: Vec<String> = Vec::new();
+            for words in &shown.said {
+                // Once the lines there may be are full, the rest is left
+                // out.
+                let left = LINES.saturating_sub(lines.len());
+                if left > 0 {
+                    lines.extend(text.wrap(words, room, font, left));
+                }
+            }
+            lines
+        });
+        let fitted: Vec<Vec<String>> = fitted.collect();
+        for (shown, lines) in self.shown.iter_mut().zip(fitted) {
+            shown.lines = lines;
+        }
     }
 
     /// Takes a notification away. Returns whether it was showing.
@@ -564,6 +599,64 @@ mod tests {
         stack.show(note(2, &long, &long), START);
         assert_eq!(stack.shown[0].title.chars().count(), LONGEST);
         assert_eq!(stack.shown[0].lines[0].chars().count(), LONGEST);
+    }
+
+    #[test]
+    fn a_long_body_is_broken_to_fit_once_it_is_fitted_to_a_theme() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let mut stack = Stack::new(5);
+        let long = "The quick brown fox jumps over the lazy dog and keeps on running \
+                    through the fields until it is quite out of sight";
+        stack.show(note(1, "Long", long), START);
+        assert_eq!(stack.shown[0].lines.len(), 1, "as its sender wrote it");
+        let before = stack.size(&theme).1;
+
+        stack.fit(&theme, &mut text);
+
+        let lines = stack.shown[0].lines.clone();
+        assert!(lines.len() > 1 && lines.len() <= LINES, "{lines:?}");
+        assert_eq!(
+            lines.join(" "),
+            long.split_whitespace().collect::<Vec<_>>().join(" ")
+        );
+        let more = u32::try_from(lines.len() - 1).unwrap();
+        assert_eq!(stack.size(&theme).1, before + 18 * more);
+        // Each line but the last fits the room there is for words.
+        let style = theme.style(Part::Notification, States::NONE);
+        let room = 340 - style.inset().across();
+        let font = theme.font(Part::NotificationBody, States::NONE);
+        for line in &lines[..lines.len() - 1] {
+            assert!(text.measure(line, font) <= room, "{line:?}");
+        }
+
+        // The breaks its sender made are kept, and there are still only so
+        // many lines; a picture leaves less room for words.
+        stack.show(note(2, "Broken", "one\ntwo\nthree\nfour"), START);
+        stack.fit(&theme, &mut text);
+        assert_eq!(stack.shown[0].lines, ["one", "two", "three"]);
+        let picture = Image::new(1, 1, vec![0, 0, 0, 255]).unwrap();
+        let pictured = Note {
+            picture: Picture::Pixels(picture),
+            ..note(1, "Long", long)
+        };
+        stack.show(pictured, START);
+        stack.fit(&theme, &mut text);
+        let narrower = &stack.shown[1].lines;
+        assert!(text.measure(&narrower[0], font) <= room - PICTURE - GAP);
+        // What its sender put on a later line is left out when the lines
+        // before it have filled the room.
+        stack.show(
+            note(3, "Both", &format!("{long} {long}\nand a last line")),
+            START,
+        );
+        stack.fit(&theme, &mut text);
+        assert_eq!(stack.shown[0].lines.len(), LINES);
+        assert!(!stack.shown[0].lines.concat().contains("last line"));
+        // Fitted again with nothing changed, it comes out the same.
+        let once = stack.clone();
+        stack.fit(&theme, &mut text);
+        assert_eq!(stack, once);
     }
 
     #[test]

@@ -501,6 +501,29 @@ impl Text {
         width
     }
 
+    /// Breaks `text` into lines no wider than `width` units of layout when
+    /// set in `font`, at the spaces between its words. There are at most
+    /// `most` lines, and at least one: what is left over stays on the last,
+    /// to be cut short when it is drawn. A word wider than a line has a
+    /// line to itself.
+    pub fn wrap(&mut self, text: &str, width: u32, font: &Font, most: usize) -> Vec<String> {
+        let mut lines: Vec<String> = Vec::new();
+        let mut line = String::new();
+        for word in text.split_whitespace() {
+            let longer = format!("{line} {word}");
+            let last = lines.len() + 1 >= most;
+            if line.is_empty() {
+                word.clone_into(&mut line);
+            } else if last || self.measure(&longer, font) <= width {
+                line = longer;
+            } else {
+                lines.push(std::mem::replace(&mut line, word.to_owned()));
+            }
+        }
+        lines.extend((!line.is_empty()).then_some(line));
+        lines
+    }
+
     /// Draws one line of `text` in `area`, vertically centred and cut short
     /// with an ellipsis if it does not fit.
     pub fn draw(&mut self, canvas: &mut Canvas, text: &str, area: Area, color: Color, font: &Font) {
@@ -636,6 +659,50 @@ mod tests {
         let ink = |columns: std::ops::Range<u32>| inked(&canvas, columns, 0);
         assert!(ink(0..long) > 0);
         assert_eq!(ink(long..long + 10), 0, "and none of it lies beyond");
+    }
+
+    #[test]
+    fn text_is_broken_into_lines_at_spaces_to_fit_a_width() {
+        let mut text = Text::new();
+        let font = Font::default();
+        let words = "one two three four five six seven eight nine ten eleven twelve";
+        let width = text.measure("one two three four", &font);
+        let lines = text.wrap(words, width, &font, 10);
+        assert!(lines.len() >= 3, "{lines:?}");
+        for line in &lines {
+            assert!(text.measure(line, &font) <= width, "{line:?} in {width}");
+        }
+        assert_eq!(lines.join(" "), words, "nothing is lost or reordered");
+        // Room for it all on one line leaves it on one.
+        assert_eq!(text.wrap("  one   two ", 10_000, &font, 10), ["one two"]);
+        assert_eq!(text.wrap("", 100, &font, 10), [""; 0]);
+        assert_eq!(text.wrap("   ", 100, &font, 10), [""; 0]);
+    }
+
+    #[test]
+    fn what_does_not_fit_the_lines_allowed_stays_on_the_last() {
+        let mut text = Text::new();
+        let font = Font::default();
+        let words = "one two three four five six seven eight nine ten eleven twelve";
+        let width = text.measure("one two three", &font);
+        let lines = text.wrap(words, width, &font, 2);
+        assert_eq!(lines.len(), 2);
+        assert!(text.measure(&lines[0], &font) <= width);
+        assert!(
+            text.measure(&lines[1], &font) > width,
+            "the rest is all there"
+        );
+        assert_eq!(lines.join(" "), words);
+        assert_eq!(text.wrap(words, width, &font, 1), [words]);
+        assert_eq!(
+            text.wrap(words, width, &font, 0),
+            [words],
+            "never fewer than one"
+        );
+        // A word too wide for a line is not broken.
+        let long = "supercalifragilisticexpialidocious";
+        let lines = text.wrap(&format!("a {long} b"), 30, &font, 10);
+        assert_eq!(lines, ["a", long, "b"]);
     }
 
     #[test]
