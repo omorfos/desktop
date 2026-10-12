@@ -46,7 +46,9 @@ use smithay::reexports::calloop::{
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform};
+use smithay::utils::{
+    IsAlive, Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform,
+};
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
 };
@@ -79,6 +81,7 @@ use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
+use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
 /// one desktop to another. The same name is in the login session entry,
@@ -131,7 +134,10 @@ impl smithay::reexports::wayland_server::backend::ClientData for ClientState {}
 pub(crate) struct Mapped {
     pub(crate) id: WindowId,
     pub(crate) window: Window,
-    pub(crate) toplevel: ToplevelSurface,
+    /// The window's own surface.
+    pub(crate) surface: WlSurface,
+    /// What it is to its program, which is how the program is told things.
+    pub(crate) role: Role,
     /// The window's entry in the list offered to taskbars.
     pub(crate) listed: ForeignToplevelHandle,
 }
@@ -192,7 +198,7 @@ pub struct Compositor {
     watcher: Option<Watcher>,
     debouncer: Debouncer,
     pub(crate) bindings: Bindings,
-    problems: Vec<String>,
+    pub(crate) problems: Vec<String>,
 
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed_keys: Vec<Keycode>,
@@ -222,6 +228,8 @@ pub struct Compositor {
     pub(crate) inhibitors: Vec<WlSurface>,
     /// Whether the user is there, and so whether the screens are on.
     pub(crate) presence: Presence,
+    /// Programs written for X11, and the X server they run through.
+    pub(crate) x11: X11,
     children: Vec<Child>,
     /// Whether the programs to start with the session have been.
     started: bool,
@@ -274,7 +282,6 @@ impl Compositor {
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let viewporter = ViewporterState::new::<Self>(&display);
-        let single_pixels = SinglePixelBufferState::new::<Self>(&display);
         let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
         // Any client may lock the session: locking gives nothing away.
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, |_| true);
@@ -297,6 +304,8 @@ impl Compositor {
             .map_err(Box::from)
             .map(|keyboard| {
                 let mut compositor = Self {
+                    _single_pixels: SinglePixelBufferState::new::<Self>(&display),
+                    x11: X11::new(&display),
                     display,
                     surfaces,
                     xdg_shell,
@@ -312,7 +321,6 @@ impl Compositor {
                     heads: Vec::new(),
                     _fractional_scale: fractional_scale,
                     _viewporter: viewporter,
-                    _single_pixels: single_pixels,
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -568,6 +576,7 @@ impl Compositor {
         self.children
             .retain_mut(|child| child.try_wait().is_ok_and(|status| status.is_none()));
         self.serve_ipc();
+        self.manage_x11(now);
         self.sync();
         self.rest_or_wake(now);
         self.space.refresh();
@@ -626,7 +635,7 @@ impl Compositor {
             Action::Spawn(command) => self.spawn(command),
             Action::Close => {
                 if let Some(mapped) = self.desktop.focused().and_then(|id| self.mapped(id)) {
-                    mapped.toplevel.send_close();
+                    mapped.role.close();
                 }
             }
             Action::Maximize => self.on_focused(Desktop::toggle_maximized),
@@ -798,7 +807,11 @@ impl Compositor {
                 OsString::from(cursor.size.get().to_string()),
             ),
         ];
-        let located = [("WAYLAND_DISPLAY", display), ("OMORFOS_SOCKET", socket)];
+        let located = [
+            ("WAYLAND_DISPLAY", display),
+            ("OMORFOS_SOCKET", socket),
+            ("DISPLAY", self.x11.display()),
+        ];
         let located = located
             .into_iter()
             .filter_map(|(name, value)| value.map(|value| (name, value)));
@@ -808,10 +821,7 @@ impl Compositor {
     /// Whether `surface` is the main surface of a window or panel that is
     /// on screen now.
     pub(crate) fn is_shown(&self, surface: &WlSurface) -> bool {
-        let window = |shown: &Shown| {
-            let toplevel = shown.window.toplevel();
-            toplevel.is_some_and(|toplevel| toplevel.wl_surface() == surface)
-        };
+        let window = |shown: &Shown| shown.surface == *surface;
         let panel = |head: &Head| {
             let layers = layer_map_for_output(&head.output);
             layers.layers().any(|layer| layer.wl_surface() == surface)
@@ -829,7 +839,7 @@ impl Compositor {
     pub(crate) fn window_id(&self, surface: &WlSurface) -> Option<WindowId> {
         self.windows
             .iter()
-            .find(|mapped| mapped.toplevel.wl_surface() == surface)
+            .find(|mapped| mapped.surface == *surface)
             .map(|mapped| mapped.id)
     }
 
@@ -862,7 +872,8 @@ impl Compositor {
         for Mapped {
             id,
             window,
-            toplevel,
+            surface,
+            role,
             ..
         } in &self.windows
         {
@@ -870,20 +881,12 @@ impl Compositor {
                 .iter()
                 .enumerate()
                 .find(|(_, frame)| frame.shown == *id);
-            let activated = Some(*id) == focused;
-            toplevel.with_pending_state(|state| {
-                set(&mut state.states, ToplevelState::Activated, activated);
-                if let Some((_, frame)) = frame {
-                    set(&mut state.states, ToplevelState::Maximized, frame.maximized);
-                    set(
-                        &mut state.states,
-                        ToplevelState::Fullscreen,
-                        frame.fullscreen,
-                    );
-                    state.size = Some(logical_size(frame.client.size));
-                }
+            let placed = frame.map(|(_, frame)| Placed {
+                client: frame.client,
+                maximized: frame.maximized,
+                fullscreen: frame.fullscreen,
             });
-            toplevel.send_pending_configure();
+            role.arrange(Some(*id) == focused, placed);
             match frame {
                 Some((order, frame)) => {
                     let chrome = frame.decoration.map(|decoration| {
@@ -913,7 +916,7 @@ impl Compositor {
                             opacity,
                             fullscreen: frame.fullscreen,
                             window: window.clone(),
-                            surface: toplevel.wl_surface().clone(),
+                            surface: surface.clone(),
                             outer: frame.geometry,
                             origin,
                             chrome,
@@ -1072,7 +1075,7 @@ impl Compositor {
         if self.is_locked() {
             // The lock surface has the keyboard, or nothing does. Nothing
             // below is consulted.
-            let focus = self.lock_focus().cloned();
+            let focus = self.lock_focus().cloned().map(Focus::Surface);
             let keyboard = self.keyboard.clone();
             if keyboard.current_focus() != focus {
                 keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
@@ -1098,13 +1101,15 @@ impl Compositor {
             });
             demanding.map(|layer| layer.wl_surface().clone())
         });
-        let focus = demanding.or(menu).or_else(|| {
-            focused
-                .and_then(|id| self.mapped(id))
-                .map(|mapped| mapped.toplevel.wl_surface().clone())
+        let focus = demanding.or(menu).map(Focus::Surface).or_else(|| {
+            let window = focused.and_then(|id| self.mapped(id));
+            window.map(|mapped| mapped.role.focus(&mapped.surface))
         });
+        // What has just gone cannot be given the keyboard.
+        let focus = focus.filter(IsAlive::alive);
         let keyboard = self.keyboard.clone();
         if keyboard.current_focus() != focus {
+            self.raise_x11(focus.as_ref());
             keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
         }
     }
@@ -1188,6 +1193,11 @@ impl Compositor {
             self.gone_elements(renderer, view, Level::Layer(layer), &mut elements);
             self.layer_elements(renderer, output, view, layer, &mut elements);
             if let Some(fullscreen) = fullscreen {
+                if fullscreen {
+                    // Menus and tooltips of programs written for X11 are
+                    // over every window, and under what is over all.
+                    self.unmanaged_elements(renderer, view, &mut elements);
+                }
                 self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
                 self.frame_elements(renderer, view, fullscreen, &mut elements);
             }
@@ -1240,6 +1250,27 @@ impl Compositor {
                 elements.extend(picture.into_iter().map(Element::Surface));
             }
             (Look::Hidden | Look::Icon(_), _) => {}
+        }
+    }
+
+    /// Adds the windows of programs written for X11 that manage
+    /// themselves, the last to come first.
+    fn unmanaged_elements<R>(&self, renderer: &mut R, view: View, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        for (window, surface) in self.x11.unmanaged().rev() {
+            let at = window.geometry().loc.to_f64();
+            let picture = render_elements_from_surface_tree(
+                renderer,
+                surface,
+                view.pixel(at),
+                view.scale.factor(),
+                1.0,
+                Kind::Unspecified,
+            );
+            elements.extend(picture.into_iter().map(Element::Surface));
         }
     }
 

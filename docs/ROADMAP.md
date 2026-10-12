@@ -255,5 +255,22 @@ to show over the IPC socket (ADR 18). In this order:
 - [x] Settings for particular outputs, by name: the order they stand in,
       and each one's scale. Side by side only; one above another is not
       done
-- [ ] XWayland behind a feature flag
+- [x] Programs written for X11, through `Xwayland` (ADR 27): their
+      windows are windows like any other, framed, focused, moved, tabbed
+      and closed by the desktop; their menus and tooltips are shown where
+      they put them. On unless `xwayland.enabled` is turned off
+  - [ ] Copy and paste between programs written for X11 and for Wayland
+  - [ ] Drawn sharply on a screen with a scale: they are drawn at one
+        pixel to a unit and stretched, and so are blurred there
+  - [ ] Dialogs kept with the window they belong to, and windows that
+        are docks, splash screens and the like treated as such
+  - [x] The X server started again if it stops, where programs expect
+        to find it, and given up on if it keeps stopping
+  - [ ] The X server started when the first program asks for it, and not
+        with the session. The sockets a program connects to have to be
+        handed to `Xwayland` when it is started, and Smithay makes them
+        itself and keeps what it needs to itself, so this waits on a
+        change there
+  - [ ] The panel and the notifications started again if they stop, as
+        the X server is
 - [ ] Screen capture and portals

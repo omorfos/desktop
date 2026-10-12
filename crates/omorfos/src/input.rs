@@ -181,7 +181,7 @@ enum Hit {
 }
 
 #[derive(Default)]
-struct FrameFacts {
+pub(crate) struct FrameFacts {
     outer: Rect,
     movable: bool,
     tabs: Vec<WindowId>,
@@ -190,7 +190,7 @@ struct FrameFacts {
 impl FrameFacts {
     /// The corner of the frame nearest `point`, as the two edges meeting
     /// there.
-    fn nearest_corner(&self, point: DomainPoint) -> Edges {
+    pub(crate) fn nearest_corner(&self, point: DomainPoint) -> Edges {
         let middle = |start: i32, length: u32| i64::from(start) + i64::from(length / 2);
         let left = i64::from(point.x) < middle(self.outer.origin.x, self.outer.size.width);
         let top = i64::from(point.y) < middle(self.outer.origin.y, self.outer.size.height);
@@ -475,7 +475,23 @@ impl Compositor {
             self.frame_under(fullscreen)
                 .map(|(id, hit)| Under::Frame(id, hit))
         };
+        // A menu or a tooltip of a program written for X11, which is a
+        // window that manages itself, is over every other window.
+        let on_unmanaged = || {
+            let point = self.pointer_location;
+            let mut top_first = self.x11.unmanaged().rev();
+            top_first.find_map(|(window, surface)| {
+                let area = window.geometry().to_f64();
+                area.contains(point).then(|| Under::Layer {
+                    surface: surface.clone(),
+                    origin: area.loc,
+                    wallpaper: false,
+                    takes_keyboard: None,
+                })
+            })
+        };
         on_layer(Layer::Overlay)
+            .or_else(on_unmanaged)
             .or_else(|| on_frame(true))
             .or_else(|| on_layer(Layer::Top))
             .or_else(|| on_frame(false))
@@ -668,7 +684,7 @@ impl Compositor {
     }
 
     /// The facts about the frame holding `window` that dragging needs.
-    fn frame_facts(&self, window: WindowId) -> FrameFacts {
+    pub(crate) fn frame_facts(&self, window: WindowId) -> FrameFacts {
         self.desktop
             .frames()
             .find(|frame| frame.tabs.iter().any(|tab| tab.id == window))

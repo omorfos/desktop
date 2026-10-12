@@ -46,7 +46,11 @@ use smithay::{
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
+use smithay::wayland::seat::WaylandFocus;
+use smithay::xwayland::XWaylandClientData;
+
 use crate::input::Wanted;
+use crate::x11::{Focus, Role};
 
 impl CompositorHandler for Compositor {
     fn compositor_state(&mut self) -> &mut CompositorState {
@@ -54,14 +58,18 @@ impl CompositorHandler for Compositor {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        let own = client.get_data::<ClientState>();
+        let own = own.map(|state| &state.compositor);
+        // The X server is a client that Smithay inserts, with its own state.
+        let x11 = || client.get_data::<XWaylandClientData>();
         #[expect(
             clippy::expect_used,
-            reason = "every client is inserted with a `ClientState`"
+            reason = "every client is inserted with a `ClientState`, but for the X server"
         )]
-        let state = client
-            .get_data::<ClientState>()
+        let state = own
+            .or_else(|| x11().map(|state| &state.compositor_state))
             .expect("client without state");
-        &state.compositor
+        state
     }
 
     fn commit(&mut self, surface: &WlSurface) {
@@ -71,11 +79,7 @@ impl CompositorHandler for Compositor {
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        if let Some(mapped) = self
-            .windows
-            .iter()
-            .find(|mapped| *mapped.toplevel.wl_surface() == root)
-        {
+        if let Some(mapped) = self.windows.iter().find(|mapped| mapped.surface == root) {
             mapped.window.on_commit();
             // A window may resize itself. Believe its size only once it has
             // acknowledged the size we last asked for; before that, a
@@ -85,7 +89,11 @@ impl CompositorHandler for Compositor {
                 .frames()
                 .find(|frame| frame.window().id == mapped.id)
                 .map(|frame| frame.client().size);
-            let acknowledged = mapped.toplevel.current_state().size.map(domain_size);
+            // A program written for X11 asks before it changes size.
+            let acknowledged = match &mapped.role {
+                Role::Xdg(toplevel) => toplevel.current_state().size.map(domain_size),
+                Role::X11(_) => None,
+            };
             let actual = domain_size(mapped.window.geometry().size);
             if asked.is_some() && acknowledged == asked && asked != Some(actual) {
                 self.desktop.set_client_size(mapped.id, actual);
@@ -93,6 +101,7 @@ impl CompositorHandler for Compositor {
         }
 
         self.map_if_ready(surface);
+        self.map_x11_if_ready(surface);
 
         // A panel, dock or wallpaper: lay the layers out again and tell it
         // the size it has been given.
@@ -176,8 +185,22 @@ impl Compositor {
         self.windows.push(Mapped {
             id,
             window,
-            toplevel,
+            surface: surface.clone(),
+            role: Role::Xdg(toplevel),
             listed,
+        });
+    }
+
+    /// Takes a window that has gone out of the desktop.
+    pub(crate) fn remove_window(&mut self, id: WindowId) {
+        self.desktop.remove_window(id);
+        self.windows.retain(|mapped| {
+            let keep = mapped.id != id;
+            if !keep {
+                self.space.unmap_elem(&mapped.window);
+                self.foreign_toplevels.remove_toplevel(&mapped.listed);
+            }
+            keep
         });
     }
 
@@ -228,15 +251,7 @@ impl XdgShellHandler for Compositor {
         self.unmapped
             .retain(|unmapped| unmapped.wl_surface() != surface);
         if let Some(id) = self.window_id(surface) {
-            self.desktop.remove_window(id);
-            self.windows.retain(|mapped| {
-                let keep = mapped.id != id;
-                if !keep {
-                    self.space.unmap_elem(&mapped.window);
-                    self.foreign_toplevels.remove_toplevel(&mapped.listed);
-                }
-                keep
-            });
+            self.remove_window(id);
         }
     }
 
@@ -245,7 +260,7 @@ impl XdgShellHandler for Compositor {
         if let Some(mapped) = self
             .windows
             .iter()
-            .find(|mapped| mapped.toplevel == surface)
+            .find(|mapped| mapped.role == Role::Xdg(surface.clone()))
         {
             mapped.listed.send_title(&title);
             mapped.listed.send_done();
@@ -391,7 +406,7 @@ impl WlrLayerShellHandler for Compositor {
 }
 
 impl SeatHandler for Compositor {
-    type KeyboardFocus = WlSurface;
+    type KeyboardFocus = Focus;
     type PointerFocus = WlSurface;
     type TouchFocus = WlSurface;
 
@@ -399,10 +414,11 @@ impl SeatHandler for Compositor {
         &mut self.seats
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&Focus>) {
         // The clipboard, and the selection pasted with the middle button,
         // are offered to whichever client has the keyboard.
-        let client = focused.and_then(|surface| self.display.get_client(surface.id()).ok());
+        let surface = focused.and_then(WaylandFocus::wl_surface);
+        let client = surface.and_then(|surface| self.display.get_client(surface.id()).ok());
         set_data_device_focus(&self.display, seat, client.clone());
         set_primary_focus(&self.display, seat, client);
     }

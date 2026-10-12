@@ -57,6 +57,8 @@ launcher:
 notifications:
   enabled: true           # show what programs have to tell you
   timeout: 5              # seconds one stays; 0 until it is clicked
+xwayland:
+  enabled: true           # run programs written for X11
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -600,6 +602,38 @@ bindings:
 The second starts the daemon that locks after five minutes. To have it
 running from login, list it under `autostart` in `config.yaml` instead. While the screen is locked nothing else
 is shown and no key binding works, except Ctrl+Alt+F1 to F12.
+
+## Programs written for X11
+
+Programs that have not been written for Wayland run through `Xwayland`,
+which omorfos starts with the session if it is installed. Their windows
+are windows like any other: they get a frame, can be moved, resized,
+maximized, grouped as tabs and matched by rules, where `app_id` is the
+window's class. Programs started from omorfos are told where the X server
+is, in `DISPLAY`.
+
+If the X server stops, the programs using it close, since they cannot
+outlive it, and omorfos starts another in its place at once and says so
+in the notice. Programs you start afterwards find it where the last one
+was. An X server that stops more than three times in a minute is given up
+on until you next log in.
+
+Two things are not there yet. Copy and paste does not cross between
+programs written for X11 and programs written for Wayland. And on a screen
+with a scale, such programs are drawn at one pixel to a unit and
+stretched, and so are blurred.
+
+Programs written for X11 can read each other's windows and what is typed
+into each other, which programs written for Wayland cannot do to anything.
+To do without them:
+
+```yaml
+xwayland:
+  enabled: false
+```
+
+This takes effect the next time you log in. If it is on and `Xwayland` is
+not installed, omorfos says so in the notice and carries on.
 
 ## Using windows
 
