@@ -141,8 +141,8 @@ const INSIDE: (i32, i32) = (WIDTH - 20, 50);
 
 #[test]
 fn a_notification_gets_to_the_colour_of_being_pointed_at_over_time() {
-    let theme = "notification { background: #ff0000; transition: 100ms linear; }\n\
-                 notification:hover { background: #0000ff; }\n";
+    let theme = "notification { background: #ff0000; }\n\
+                 notification:hover { background: #0000ff; transition: 100ms linear; }\n";
     let daemon = Daemon::start();
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut notifier = notifier(&mut session, &daemon);

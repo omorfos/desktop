@@ -3,6 +3,7 @@
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
@@ -27,6 +28,7 @@ use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{PopupManager, Space, Window, layer_map_for_output};
@@ -228,12 +230,8 @@ pub struct Compositor {
     /// its process.
     launcher: Option<PathBuf>,
     launched: Option<u32>,
-    /// The frames and menu rows that are on their way from one look to
-    /// another, and the time they go by: how long it is since the first
-    /// [`Compositor::refresh`], and when that was.
-    motion: Motion,
-    clock: Duration,
-    epoch: Option<Instant>,
+    /// What is changing colour or coming in, and the time it goes by.
+    animation: Animation,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
     pub(crate) ipc_retry: Option<Instant>,
@@ -354,9 +352,7 @@ impl Compositor {
                     notifier: None,
                     launcher: None,
                     launched: None,
-                    motion: Motion::new(),
-                    clock: Duration::ZERO,
-                    epoch: None,
+                    animation: Animation::new(),
                     ipc: None,
                     ipc_retry: None,
                     event_loop,
@@ -531,7 +527,7 @@ impl Compositor {
         // Once the screens are off there is nothing more to wait for.
         let screens_off = self.screens_off_at().filter(|_| self.screens_on());
         // What is changing colour is drawn again a moment later.
-        let moving = self.epoch.zip(self.motion.deadline());
+        let moving = self.animation.epoch.zip(self.animation.motion.deadline());
         let moving = moving.map(|(epoch, due)| epoch + due);
         [
             self.debouncer.deadline(),
@@ -550,8 +546,8 @@ impl Compositor {
     /// `now` drives the delay between a configuration file changing and its
     /// reload, and how far what is changing colour has got.
     pub fn refresh(&mut self, now: Instant) {
-        let epoch = *self.epoch.get_or_insert(now);
-        self.clock = now.saturating_duration_since(epoch);
+        let epoch = *self.animation.epoch.get_or_insert(now);
+        self.animation.clock = now.saturating_duration_since(epoch);
         if self
             .watcher
             .as_mut()
@@ -853,8 +849,8 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
         let text = &mut self.text;
-        let motion = &mut self.motion;
-        motion.begin(self.clock);
+        let motion = &mut self.animation.motion;
+        motion.begin(self.animation.clock);
 
         let mut scene = Vec::new();
         for Mapped {
@@ -895,10 +891,20 @@ impl Compositor {
                         Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
+                    // Every window of the frame is in the picture, so that
+                    // showing another of its tabs is not a coming in.
+                    let mut opacity = 1.0;
+                    for tab in &frame.tabs {
+                        let share = motion.presence(&config.theme, Part::Window, tab.raw());
+                        if tab == id {
+                            opacity = share;
+                        }
+                    }
                     scene.push((
                         order,
                         Shown {
                             id: *id,
+                            opacity,
                             fullscreen: frame.fullscreen,
                             window: window.clone(),
                             surface: toplevel.wl_surface().clone(),
@@ -919,11 +925,39 @@ impl Compositor {
                 .map_element(shown.window.clone(), shown.origin, false);
         }
 
+        self.bring_in_layers(&config.theme);
         self.repaint_overlays();
         self.update_pointer();
         self.announce_scale();
         self.update_idle_inhibition();
         self.sync_keyboard_focus(focused);
+    }
+
+    /// Works out how much there is to see of each panel that a shell
+    /// component has just put up: one that is named after a part of the
+    /// theme comes in over the time that part's colours take to change.
+    /// A panel of any other program is there at once.
+    fn bring_in_layers(&mut self, theme: &Theme) {
+        self.animation.coming.clear();
+        for head in &self.heads {
+            let layers = layer_map_for_output(&head.output);
+            for layer in layers.layers() {
+                let surface = layer.wl_surface();
+                // Until it has drawn something it is not in the picture.
+                let drawn = with_renderer_surface_state(surface, |state| state.buffer().is_some());
+                let mut parts = Part::ALL.into_iter();
+                let part = parts.find(|part| part.name() == layer.namespace());
+                let part = part.filter(|_| drawn == Some(true));
+                let mut hasher = DefaultHasher::new();
+                surface.id().hash(&mut hasher);
+                let key = hasher.finish();
+                let share = part.map(|part| self.animation.motion.presence(theme, part, key));
+                let coming = share.filter(|share| *share < 1.0);
+                self.animation
+                    .coming
+                    .extend(coming.map(|share| (surface.clone(), share)));
+            }
+        }
     }
 
     /// Brings the problem notice and the root menu up to date, repainting
@@ -960,12 +994,15 @@ impl Compositor {
             )),
             (None, false) => None,
         };
+        let notice = self.notice.as_ref();
+        let share = notice.map(|_| self.animation.motion.presence(theme, Part::Notice, 0));
+        self.animation.notice_opacity = share.unwrap_or(1.0);
 
         // Repaint the menu if it, how its rows look, or the theme changed
         // since it was drawn.
         let scale = self.pointer_scale();
         let menu = self.menu.as_ref();
-        let looks = menu.map(|menu| paint::menu_looks(theme, &mut self.motion, menu));
+        let looks = menu.map(|menu| paint::menu_looks(theme, &mut self.animation.motion, menu));
         let current = self.menu_chrome.take().filter(|chrome| {
             menu == Some(&chrome.menu)
                 && Some(&chrome.looks) == looks.as_ref()
@@ -979,8 +1016,11 @@ impl Compositor {
             }
             (None, None) => None,
         };
-        // Everything that changes colour has been asked after by now.
-        self.motion.end();
+        let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
+        self.animation.menu_opacity = share.unwrap_or(1.0);
+        // Everything that changes colour or comes in has been asked after
+        // by now.
+        self.animation.motion.end();
     }
 
     /// Gives the keyboard to whoever should have it now.
@@ -1079,23 +1119,29 @@ impl Compositor {
         }
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
-            elements.extend(
-                notice
-                    .pixels
-                    .element(renderer, at.to_f64(), view, unspecified),
-            );
+            elements.extend(notice.pixels.element(
+                renderer,
+                at.to_f64(),
+                view,
+                self.animation.notice_opacity,
+            ));
         }
         for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
-            elements.extend(panel.element(renderer, at.to_f64(), view, unspecified));
+            elements.extend(panel.element(
+                renderer,
+                at.to_f64(),
+                view,
+                self.animation.menu_opacity,
+            ));
         }
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them.
-        Self::layer_elements(renderer, output, view, Layer::Overlay, &mut elements);
+        self.layer_elements(renderer, output, view, Layer::Overlay, &mut elements);
         self.frame_elements(renderer, view, true, &mut elements);
-        Self::layer_elements(renderer, output, view, Layer::Top, &mut elements);
+        self.layer_elements(renderer, output, view, Layer::Top, &mut elements);
         self.frame_elements(renderer, view, false, &mut elements);
-        Self::layer_elements(renderer, output, view, Layer::Bottom, &mut elements);
-        Self::layer_elements(renderer, output, view, Layer::Background, &mut elements);
+        self.layer_elements(renderer, output, view, Layer::Bottom, &mut elements);
+        self.layer_elements(renderer, output, view, Layer::Background, &mut elements);
         tracker.render_output(
             renderer,
             framebuffer,
@@ -1123,7 +1169,7 @@ impl Compositor {
         match (&self.shown, &self.pointer_image) {
             (Look::Icon(_), Some(image)) => {
                 let at = self.pointer_location - image.hotspot;
-                elements.extend(image.picture.element(renderer, at, view, Kind::Cursor));
+                elements.extend(image.picture.cursor(renderer, at, view));
             }
             (Look::Surface(surface), _) => {
                 let hotspot = with_states(surface, |states| {
@@ -1168,7 +1214,7 @@ impl Compositor {
             if let Some(chrome) = &shown.chrome {
                 let bar = chrome.decoration.titlebar().origin;
                 let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
-                elements.extend(chrome.titlebar.element(renderer, at, view, unspecified));
+                elements.extend(chrome.titlebar.element(renderer, at, view, shown.opacity));
                 let straight = corners::straight_borders(&chrome.decoration, chrome.radius);
                 for (buffer, border) in chrome.borders.iter().zip(straight) {
                     let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
@@ -1176,7 +1222,7 @@ impl Compositor {
                         buffer,
                         view.pixel(at.to_f64()),
                         view.scale.factor(),
-                        1.0,
+                        shown.opacity,
                         unspecified,
                     );
                     elements.push(Element::Solid(border));
@@ -1189,7 +1235,7 @@ impl Compositor {
                 let lefts = [outer.origin.x, outer.origin.x + size.w - radius];
                 for (corner, left) in chrome.corners.iter().zip(lefts) {
                     let at = Point::<i32, Logical>::from((left, top)).to_f64();
-                    elements.extend(corner.element(renderer, at, view, unspecified));
+                    elements.extend(corner.element(renderer, at, view, shown.opacity));
                 }
             }
             Self::window_elements(renderer, view, shown, elements);
@@ -1220,7 +1266,7 @@ impl Compositor {
                     renderer,
                     view.pixel(location.to_f64()),
                     scale,
-                    1.0,
+                    shown.opacity,
                 );
             elements.extend(surfaces.into_iter().map(Element::Surface));
             return;
@@ -1233,7 +1279,7 @@ impl Compositor {
                 popup.wl_surface(),
                 view.pixel(at.to_f64()),
                 scale,
-                1.0,
+                shown.opacity,
                 Kind::Unspecified,
             );
             elements.extend(picture.into_iter().map(Element::Surface));
@@ -1256,7 +1302,7 @@ impl Compositor {
                 &shown.surface,
                 view.pixel(location.to_f64()),
                 scale,
-                1.0,
+                shown.opacity,
                 Kind::Unspecified,
             );
             let strips = whole.into_iter().filter_map(|picture| {
@@ -1268,6 +1314,7 @@ impl Compositor {
 
     /// Adds the layer-shell surfaces of one layer, topmost first.
     fn layer_elements<R>(
+        &self,
         renderer: &mut R,
         output: &Output,
         view: View,
@@ -1281,11 +1328,13 @@ impl Compositor {
         for surface in layers.layers_on(layer).rev() {
             // A panel is placed within its own output.
             let at = layers.layer_geometry(surface).unwrap_or_default().loc + view.origin;
+            let mut coming = self.animation.coming.iter();
+            let coming = coming.find(|(coming, _)| coming == surface.wl_surface());
             let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
                 renderer,
                 view.pixel(at.to_f64()),
                 smithay::utils::Scale::from(view.scale.factor()),
-                1.0,
+                coming.map_or(1.0, |(_, share)| *share),
             );
             elements.extend(surfaces.into_iter().map(Element::Surface));
         }
@@ -1468,6 +1517,38 @@ const MENU_SEPARATOR: u32 = 9;
 /// The space above the first and below the last row of a menu panel.
 const MENU_PADDING: u32 = 4;
 
+/// What is changing colour or coming in.
+#[derive(Debug)]
+struct Animation {
+    /// The frames and menu rows that are on their way from one look to
+    /// another, and what has just come into the picture.
+    motion: Motion,
+    /// The time they go by: how long it is since the first
+    /// [`Compositor::refresh`], and when that was.
+    clock: Duration,
+    epoch: Option<Instant>,
+    /// How much of the menu and of the notice there is to see while each
+    /// is coming in, from 0 to 1.
+    menu_opacity: f32,
+    notice_opacity: f32,
+    /// The same for each panel of a shell component that is not all there
+    /// yet.
+    coming: Vec<(WlSurface, f32)>,
+}
+
+impl Animation {
+    fn new() -> Self {
+        Self {
+            motion: Motion::new(),
+            clock: Duration::ZERO,
+            epoch: None,
+            menu_opacity: 1.0,
+            notice_opacity: 1.0,
+            coming: Vec::new(),
+        }
+    }
+}
+
 /// The pixels of the open menu, kept until it, how its rows look or the
 /// theme changes.
 #[derive(Debug)]
@@ -1554,15 +1635,40 @@ impl Painted {
         }
     }
 
-    /// The painting placed at `at` in the space, as an output sees it. If it
-    /// cannot be uploaded to the renderer it is left out, which is better
-    /// than failing the whole frame.
+    /// The painting placed at `at` in the space, as an output sees it, as
+    /// see-through as `opacity` says, where 1 is not at all. If it cannot
+    /// be uploaded to the renderer it is left out, which is better than
+    /// failing the whole frame.
     fn element<R>(
         &self,
         renderer: &mut R,
         at: Point<f64, Logical>,
         view: View,
-        kind: Kind,
+        opacity: f32,
+    ) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        self.placed(renderer, at, view, (opacity, Kind::Unspecified))
+    }
+
+    /// The painting as the pointer, which a backend may show by other
+    /// means than drawing it.
+    fn cursor<R>(&self, renderer: &mut R, at: Point<f64, Logical>, view: View) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        self.placed(renderer, at, view, (1.0, Kind::Cursor))
+    }
+
+    fn placed<R>(
+        &self,
+        renderer: &mut R,
+        at: Point<f64, Logical>,
+        view: View,
+        (opacity, kind): (f32, Kind),
     ) -> Option<Element<R>>
     where
         R: Renderer + ImportAll + ImportMem,
@@ -1572,7 +1678,7 @@ impl Painted {
             renderer,
             view.pixel(at).to_f64(),
             &self.pixels,
-            None,
+            Some(opacity),
             Some(self.whole),
             Some(self.size),
             kind,
@@ -1594,6 +1700,8 @@ pub(crate) struct Shown {
     pub(crate) outer: Rect,
     /// Where the window's visible geometry starts.
     pub(crate) origin: Point<i32, Logical>,
+    /// How much of it there is to see while it is coming in, from 0 to 1.
+    opacity: f32,
     chrome: Option<Chrome>,
 }
 

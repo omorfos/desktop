@@ -5,7 +5,7 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
 use std::time::Duration;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH, half_way};
+use crate::common::{Event, HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, RED};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
@@ -248,7 +248,9 @@ fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
         (picture.at(190, 14), picture.at(0, 100))
     };
     session.open_decorated(&mut client, "first", (200, 100), RED);
-    assert_eq!(frame(&mut session), (blue, blue), "as it opens, at once");
+    // A window comes in over the same time, which is another test's.
+    session.advance(Duration::from_millis(100));
+    assert_eq!(frame(&mut session), (blue, blue), "in the colours of focus");
     assert_eq!(session.compositor_mut().deadline(), None);
 
     let start = session.now;
@@ -272,6 +274,59 @@ fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
     assert_eq!(frame(&mut session), (red, red), "arrived");
     assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
     assert!(!session.draw().damaged, "and not drawn again");
+}
+
+#[test]
+fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
+    let theme = "window { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    // The titlebar, the border down the left and the window itself.
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        [picture.at(190, 14), picture.at(0, 100), picture.at(100, 80)]
+    };
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not there yet");
+    let start = session.now;
+    let again = session.compositor_mut().deadline();
+    assert_eq!(again, Some(start + Duration::from_millis(16)));
+
+    session.advance(Duration::from_millis(50));
+    let [titlebar, border, window] = seen(&mut session);
+    assert!(
+        between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
+        "{titlebar:#x}"
+    );
+    assert!(between(border, BACKGROUND, ACCENT), "{border:#x}");
+    assert!(between(window, BACKGROUND, RED), "{window:#x}");
+
+    session.advance(Duration::from_millis(50));
+    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, ACCENT, RED]);
+    assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
+    session.step();
+    assert!(!session.draw().damaged, "and not drawn again");
+}
+
+#[test]
+fn a_window_shown_again_on_its_workspace_comes_in_afresh() {
+    use omorfos_config::Action;
+
+    let theme = "window { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    session.advance(Duration::from_millis(100));
+    assert_eq!(session.draw().at(100, 80), RED);
+
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone at once");
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 80), BACKGROUND, "and coming back");
+    session.advance(Duration::from_millis(100));
+    assert_eq!(session.draw().at(100, 80), RED);
 }
 
 #[test]

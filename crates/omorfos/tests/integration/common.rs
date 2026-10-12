@@ -134,13 +134,10 @@ impl Session {
         for (name, contents) in files {
             std::fs::write(config.path().join(name), contents).unwrap();
         }
-        // Colours change at once, so that a test which is not about how
-        // long they take need not wait. One that is says how long itself,
-        // for the parts it is about, which outranks this.
+        // Nothing takes time unless the test says so.
         let theme = files.iter().find(|(name, _)| *name == "theme.css");
         let theme = theme.map_or("", |(_, contents)| contents);
-        let still = format!("{theme}\n* {{ transition: none; }}\n");
-        std::fs::write(config.path().join("theme.css"), still).unwrap();
+        std::fs::write(config.path().join("theme.css"), still(theme)).unwrap();
         Self::in_directory(config, None)
     }
 
@@ -286,9 +283,24 @@ impl Session {
         assert!(!expired.get(), "the event loop was never woken");
     }
 
-    /// Writes a configuration file.
+    /// Writes a configuration file. A theme changes colours at once and
+    /// has things there at once, as the one the session started with does.
     pub(crate) fn write_config(&self, name: &str, contents: &str) {
+        let contents = if name == "theme.css" {
+            still(contents)
+        } else {
+            contents.to_owned()
+        };
         std::fs::write(self.config.path().join(name), contents).unwrap();
+    }
+
+    /// Lets whatever is coming onto the screen, or changing colour, get
+    /// there. Needed where the built-in theme is in use, which takes its
+    /// time over both.
+    pub(crate) fn settle(&mut self) {
+        // What is new is first seen now, and is all there a second on.
+        self.step();
+        self.advance(Duration::from_secs(1));
     }
 
     /// Lets time pass for the compositor.
@@ -1637,9 +1649,30 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for ClientState {
 }
 delegate_noop!(ClientState: ignore wl_output::WlOutput);
 
+/// A theme with a rule after it that has every part change colour, and
+/// come onto the screen, at once. A theme that says how long some part
+/// takes outranks it for that part.
+///
+/// A theme that is broken is not read at all, and the built-in one, which
+/// takes its time, is used: a test of that lets time pass.
+fn still(theme: &str) -> String {
+    format!("{theme}\n* {{ transition: none; }}\n")
+}
+
 /// Whether a colour on the screen is about half way from red to blue, as
 /// something changing from the one to the other is in the middle of it.
 pub(crate) fn half_way(color: u32) -> bool {
     let [_, red, _, blue] = color.to_be_bytes();
     (100..160).contains(&red) && (100..160).contains(&blue)
+}
+
+/// Whether a colour on the screen is somewhere between two others, and
+/// neither of them, as something half there is over what is behind it.
+pub(crate) fn between(color: u32, one: u32, other: u32) -> bool {
+    let channels = color.to_be_bytes().into_iter();
+    let ends = one.to_be_bytes().into_iter().zip(other.to_be_bytes());
+    let within = channels
+        .zip(ends)
+        .all(|(channel, (one, other))| (one.min(other)..=one.max(other)).contains(&channel));
+    within && color != one && color != other
 }

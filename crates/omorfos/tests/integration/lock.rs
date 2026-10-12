@@ -102,7 +102,7 @@ fn the_lockers_surface_covers_the_screen_and_is_all_that_is_drawn() {
     let mut app = session.connect();
     session.open(&mut app, "app", (200, 100), RED);
     session.compositor_mut().perform(&Action::ShowMenu);
-    session.step();
+    session.settle();
     assert_ne!(session.draw().at(WIDTH - 20, 20), BACKGROUND, "a notice");
 
     let mut locker = session.connect();

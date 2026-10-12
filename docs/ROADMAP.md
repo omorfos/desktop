@@ -212,9 +212,16 @@ to show over the IPC socket (ADR 18). In this order:
       menu and in the panel, the launcher and the notifications (ADR 24)
 - [ ] More of CSS: `box-shadow`, gradients, a background image, and a
       transition's delay and `cubic-bezier()`
-- [ ] Things that come and go over time: a window, the menu, the launcher
-      or a notification fading in and out, which needs the whole of one
-      drawn part see-through and not only its colours
+- [x] What comes onto the screen fades in: windows with their frames, the
+      menu, the notice, and the panels of the shell components, each over
+      its part's `transition` (ADR 25)
+- [ ] What goes away fading out. The compositor has to keep a picture of
+      a window or a panel after its program has taken it away, which means
+      drawing it to a texture when it goes: decide how a backend lends its
+      renderer for that outside drawing a frame. The menu and the notice
+      are the compositor's own and can go with it
+- [ ] A notification coming in beside others that are already showing,
+      which is the notifier's to do: its surface is already there
 - [ ] Blur behind what is see-through (`backdrop-filter: blur()`), the
       frosted-glass look. The compositor has to do it, not the component:
       draw what is below to a buffer, blur it in a shader, draw the part

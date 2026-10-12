@@ -23,6 +23,9 @@ pub struct Motion {
     /// When the picture is to be drawn again, if anything in it is still
     /// on its way.
     again: Option<Duration>,
+    /// What is in the picture, by when it first was, and whether it is in
+    /// the one being drawn.
+    present: HashMap<(Part, u64), (Duration, bool)>,
     parts: HashMap<(Part, u64), Changing>,
 }
 
@@ -64,6 +67,26 @@ impl Motion {
         for part in self.parts.values_mut() {
             part.seen = false;
         }
+        for (_, seen) in self.present.values_mut() {
+            *seen = false;
+        }
+    }
+
+    /// How much of the `part` that goes by `key` there is to see in the
+    /// picture being drawn: from 0, nothing, when it is first in a picture,
+    /// to 1, all of it, once the time the theme gives the part's colours to
+    /// change has gone by.
+    ///
+    /// It is asked of whatever comes and goes, in every picture it is in.
+    /// Something left out of a picture comes in afresh the next time.
+    pub fn presence(&mut self, theme: &Theme, part: Part, key: u64) -> f32 {
+        let now = self.now;
+        let (since, seen) = self.present.entry((part, key)).or_insert((now, true));
+        *seen = true;
+        let coming = theme.style(part, States::NONE).transition;
+        let share = coming.progress(now.saturating_sub(*since));
+        self.moving |= share < 1.0;
+        share
     }
 
     /// How the `part` that goes by `key` looks in the picture being drawn,
@@ -99,6 +122,7 @@ impl Motion {
     /// drawn again shortly: see [`Motion::deadline`].
     pub fn end(&mut self) -> bool {
         self.parts.retain(|_, part| part.seen);
+        self.present.retain(|_, (_, seen)| *seen);
         self.again = self.moving.then(|| self.now.saturating_add(Self::FRAME));
         self.moving
     }
@@ -236,6 +260,43 @@ mod tests {
 
         drawn(&mut motion, Part::Task, HOVERED, 1100);
         assert_eq!(motion.deadline(), None, "it has arrived");
+    }
+
+    /// How much of one part there is to see in a picture drawn at `now`,
+    /// in hundredths, and whether the picture has to be drawn again.
+    fn present(motion: &mut Motion, part: Part, now: u64) -> (i32, bool) {
+        motion.begin(millis(now));
+        let share = motion.presence(&theme(), part, 7);
+        #[expect(clippy::cast_possible_truncation, reason = "it is from 0 to 100")]
+        let hundredths = (share * 100.0).round() as i32;
+        (hundredths, motion.end())
+    }
+
+    #[test]
+    fn something_that_comes_into_the_picture_is_all_there_after_a_while() {
+        let mut motion = Motion::new();
+        assert_eq!(present(&mut motion, Part::Task, 1000), (0, true));
+        assert_eq!(motion.deadline(), Some(millis(1016)));
+        assert_eq!(present(&mut motion, Part::Task, 1050), (50, true));
+        assert_eq!(present(&mut motion, Part::Task, 1100), (100, false));
+        assert_eq!(present(&mut motion, Part::Task, 5000), (100, false));
+        assert_eq!(motion.deadline(), None);
+    }
+
+    #[test]
+    fn something_that_was_out_of_the_picture_comes_in_afresh() {
+        let mut motion = Motion::new();
+        present(&mut motion, Part::Task, 0);
+        present(&mut motion, Part::Task, 500);
+        motion.begin(millis(600));
+        motion.end();
+        assert_eq!(present(&mut motion, Part::Task, 700), (0, true));
+    }
+
+    #[test]
+    fn something_whose_theme_gives_it_no_time_is_all_there_at_once() {
+        let mut motion = Motion::new();
+        assert_eq!(present(&mut motion, Part::Clock, 0), (100, false));
     }
 
     #[test]

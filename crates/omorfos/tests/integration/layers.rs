@@ -98,6 +98,17 @@ fn a_panel_is_given_the_width_of_the_edge_it_is_anchored_to_and_drawn_there() {
 }
 
 #[test]
+fn a_panel_of_another_program_is_there_at_once_whatever_the_theme_says() {
+    let theme = "panel, window, menu { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+
+    session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
+
+    assert_eq!(session.draw().at(100, 10), YELLOW);
+}
+
+#[test]
 fn windows_keep_clear_of_a_panel() {
     let mut session = Session::new();
     let mut client = session.connect();
