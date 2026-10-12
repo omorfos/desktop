@@ -235,7 +235,7 @@ impl Picker {
                 let down = (room.3 - side) / 2;
                 let square = (room.0, room.1.saturating_add_unsigned(down), side, side);
                 let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
-                if let Some(icon) = icons.get(&app.icon, pixels) {
+                if let Some(icon) = icons.get(&app.icon, pixels, style.color) {
                     canvas.draw_image(square, icon);
                 }
                 room = inset(room, on_the_left(side.saturating_add(GAP)));
@@ -648,8 +648,9 @@ mod tests {
     #[test]
     fn icons_are_shown_beside_the_names_only_if_asked_for() {
         let root = tempfile::TempDir::new().unwrap();
-        let green = crate::icons::tests::png_of(32, [0, 255, 0, 255]);
-        std::fs::write(root.path().join("files.png"), green).unwrap();
+        let green = "<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'>\
+                     <rect width='8' height='8' fill='#00ff00'/></svg>";
+        std::fs::write(root.path().join("files.svg"), green).unwrap();
         let mut icons = Icons::new(vec![root.path().to_owned()]);
         let theme = Theme::default();
         let names = ["Calculator", "Files"];

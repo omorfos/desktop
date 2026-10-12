@@ -95,6 +95,31 @@ fn the_panel_is_started_with_the_session_and_told_where_the_session_is() {
 }
 
 #[test]
+fn the_notifications_are_started_with_the_session_unless_turned_off() {
+    let mut session = Session::new();
+    session.listen();
+    let directory = session.config.path().to_owned();
+    let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
+    // The stand-in leaves the same mark whatever it stands in for.
+    session.compositor_mut().set_notifier(stand_in_panel());
+    session.compositor_mut().autostart();
+    session.eventually(|_| started() == "x");
+
+    let off = "notifications: { enabled: false }\n";
+    let mut session = Session::with_config(&[("config.yaml", off)]);
+    session.listen();
+    let directory = session.config.path().to_owned();
+    session.compositor_mut().set_notifier(stand_in_panel());
+    session.compositor_mut().set_panel(stand_in_panel());
+    session.compositor_mut().autostart();
+    let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
+    // The panel is, and nothing else.
+    session.eventually(|_| started() == "x");
+    session.advance(std::time::Duration::from_millis(100));
+    assert_eq!(started(), "x");
+}
+
+#[test]
 fn the_panel_is_not_started_when_the_configuration_turns_it_off() {
     let directory = tempfile::TempDir::new().unwrap();
     let after = directory.path().join("after");

@@ -208,8 +208,9 @@ impl<'a> Reader<'a> {
             let name = self.name();
             let known = State::ALL.into_iter().find(|state| state.name() == name);
             let unknown = || {
-                let message =
-                    format!("`:{name}` is not a state; the states are :focus, :active and :hover");
+                let message = format!(
+                    "`:{name}` is not a state; the states are :focus, :active, :hover and :urgent"
+                );
                 Fault::new(start, message)
             };
             states = states.with(known.ok_or_else(unknown)?);
@@ -375,7 +376,7 @@ mod tests {
     fn an_unknown_part_is_answered_with_the_ones_there_are() {
         let (_, _, message) = fault("toolbar { }");
         assert!(
-            message.contains("launcher-item, launcher-description, launcher-backdrop"),
+            message.contains("notification, notification-title, notification-body"),
             "{message}"
         );
     }

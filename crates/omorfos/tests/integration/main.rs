@@ -23,6 +23,7 @@ mod lock;
 mod login;
 mod menu;
 mod notice;
+mod notifications;
 mod outputs;
 mod panel;
 mod popups;

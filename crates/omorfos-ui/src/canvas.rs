@@ -270,6 +270,24 @@ impl Image {
         (self.width, self.height)
     }
 
+    /// The same picture all in one colour: every pixel `color`, as opaque
+    /// as it was, and no more opaque than the colour. For pictures that
+    /// are a shape to be drawn in the colour of the text beside them.
+    #[must_use]
+    pub fn tinted(&self, color: Color) -> Self {
+        let pixels = self.pixels.as_chunks::<4>().0.iter().flat_map(|pixel| {
+            let [_, _, _, own] = *pixel;
+            let alpha = u16::from(own) * u16::from(color.alpha) / u16::from(u8::MAX);
+            let alpha = u8::try_from(alpha).unwrap_or(u8::MAX);
+            [color.red, color.green, color.blue, alpha]
+        });
+        Self {
+            width: self.width,
+            height: self.height,
+            pixels: pixels.collect(),
+        }
+    }
+
     /// The colour of the picture at one pixel of it drawn `across` by
     /// `down` pixels, and how opaque it is there: the average of the
     /// picture's own pixels that fall on that one.
@@ -848,6 +866,35 @@ mod tests {
         assert_eq!(Image::new(2, 2, vec![0; 17]), None);
         assert_eq!(Image::new(0, 2, Vec::new()), None);
         assert_eq!(Image::new(2, 0, Vec::new()), None);
+    }
+
+    #[test]
+    fn a_picture_can_be_made_all_one_colour_keeping_its_shape() {
+        let pixels = [
+            [0, 0, 0, 255],
+            [9, 9, 9, 128],
+            [200, 0, 0, 0],
+            [1, 2, 3, 255],
+        ];
+        let shape = Image::new(2, 2, pixels.concat()).unwrap();
+        let red = shape.tinted(RED);
+        assert_eq!(red.size(), (2, 2));
+        let expected = [
+            [255, 0, 0, 255],
+            [255, 0, 0, 128],
+            [255, 0, 0, 0],
+            [255, 0, 0, 255],
+        ];
+        assert_eq!(red, Image::new(2, 2, expected.concat()).unwrap());
+        // A colour that is itself see-through makes it more so.
+        let faint = shape.tinted(Color::rgba(0, 0, 255, 128));
+        let expected = [
+            [0, 0, 255, 128],
+            [0, 0, 255, 64],
+            [0, 0, 255, 0],
+            [0, 0, 255, 128],
+        ];
+        assert_eq!(faint, Image::new(2, 2, expected.concat()).unwrap());
     }
 
     #[test]

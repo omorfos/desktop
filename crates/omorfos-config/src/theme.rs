@@ -674,8 +674,16 @@ mod tests {
     fn every_part_is_written_in_the_same_font_unless_told_otherwise() {
         let theme = Theme::default();
         for part in Part::ALL {
-            assert_eq!(theme.font(part, States::NONE), &Font::default());
+            let font = theme.font(part, States::NONE);
+            assert_eq!(font.family, Font::default().family, "{part:?}");
+            assert_eq!(font.size, Font::default().size, "{part:?}");
         }
+        // Only a notification's title is heavier than the rest.
+        let heavy = Part::ALL.into_iter();
+        let heavy: Vec<Part> = heavy
+            .filter(|part| theme.font(*part, States::NONE).weight != 400)
+            .collect();
+        assert_eq!(heavy, [Part::NotificationTitle]);
         let theme = Theme::parse(
             "* { font-family: \"DejaVu Sans\"; }\n\
              panel { font-size: 9pt; }\n\

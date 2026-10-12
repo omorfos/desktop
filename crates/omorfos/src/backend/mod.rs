@@ -34,6 +34,16 @@ pub fn launcher_program(own: Option<&Path>) -> PathBuf {
     beside(own, LAUNCHER)
 }
 
+/// What the executable that shows notifications is called.
+const NOTIFIER: &str = "omorfos-notifications";
+
+/// Where the program that shows notifications is, found as
+/// [`panel_program`] finds the panel.
+#[must_use]
+pub fn notifier_program(own: Option<&Path>) -> PathBuf {
+    beside(own, NOTIFIER)
+}
+
 /// The program called `name` beside the executable `own`, if there is one
 /// there, and otherwise just its name, to be looked up in `PATH`.
 fn beside(own: Option<&Path>, name: &str) -> PathBuf {
@@ -97,6 +107,7 @@ mod tests {
     fn without_one_beside_it_the_panel_is_looked_up_by_name() {
         assert_eq!(panel_program(None), Path::new(PANEL));
         assert_eq!(launcher_program(None), Path::new(LAUNCHER));
+        assert_eq!(notifier_program(None), Path::new(NOTIFIER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

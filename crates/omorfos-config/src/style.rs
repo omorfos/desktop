@@ -58,11 +58,20 @@ pub enum Part {
     /// The whole of the screen behind the launcher while it is open. Only
     /// its background is used.
     LauncherBackdrop,
+    /// A notification: what a program has to tell the user. It is
+    /// [`State::Urgent`] when the program marked it critical, and
+    /// [`State::Hovered`] under the pointer. Its margin is room kept
+    /// between it, the next one and the edges of the screen.
+    Notification,
+    /// The first line of a notification, which says what it is about.
+    NotificationTitle,
+    /// The rest of what a notification says.
+    NotificationBody,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 21] = [
         Self::Desktop,
         Self::Window,
         Self::Titlebar,
@@ -81,6 +90,9 @@ impl Part {
         Self::LauncherItem,
         Self::LauncherDescription,
         Self::LauncherBackdrop,
+        Self::Notification,
+        Self::NotificationTitle,
+        Self::NotificationBody,
     ];
 
     /// What the part is called in a stylesheet.
@@ -105,6 +117,9 @@ impl Part {
             Self::LauncherItem => "launcher-item",
             Self::LauncherDescription => "launcher-description",
             Self::LauncherBackdrop => "launcher-backdrop",
+            Self::Notification => "notification",
+            Self::NotificationTitle => "notification-title",
+            Self::NotificationBody => "notification-body",
         }
     }
 }
@@ -119,11 +134,13 @@ pub enum State {
     Active,
     /// The pointer is over it.
     Hovered,
+    /// It wants attention now, as a notification marked critical does.
+    Urgent,
 }
 
 impl State {
     /// Every state there is.
-    pub const ALL: [Self; 3] = [Self::Focused, Self::Active, Self::Hovered];
+    pub const ALL: [Self; 4] = [Self::Focused, Self::Active, Self::Hovered, Self::Urgent];
 
     /// What the state is called in a stylesheet, after a `:`.
     #[must_use]
@@ -132,6 +149,7 @@ impl State {
             Self::Focused => "focus",
             Self::Active => "active",
             Self::Hovered => "hover",
+            Self::Urgent => "urgent",
         }
     }
 
@@ -452,11 +470,14 @@ mod tests {
                 "launcher-input",
                 "launcher-item",
                 "launcher-description",
-                "launcher-backdrop"
+                "launcher-backdrop",
+                "notification",
+                "notification-title",
+                "notification-body"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();
-        assert_eq!(states, ["focus", "active", "hover"]);
+        assert_eq!(states, ["focus", "active", "hover", "urgent"]);
         // The table of looks is laid out by a part's place in the list.
         for (index, part) in Part::ALL.into_iter().enumerate() {
             assert_eq!(part as usize, index);

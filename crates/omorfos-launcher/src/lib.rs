@@ -12,7 +12,6 @@
 
 mod apps;
 mod client;
-mod icons;
 mod picker;
 
 use std::ffi::OsString;
@@ -20,7 +19,7 @@ use std::path::Path;
 
 pub use apps::{App, directories, installed};
 pub use client::{Failure, Launcher};
-pub use icons::Icons;
+pub use omorfos_icons::Icons;
 pub use picker::{Key, Outcome, Picker};
 
 /// Runs the launcher in the session the environment describes, until a

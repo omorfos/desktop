@@ -31,6 +31,7 @@ assets = [
     ["target/release/omorfosctl", "usr/bin/", "755"],
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
+    ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
     # The built-in theme, to copy from.
@@ -71,6 +72,9 @@ smithay = { version = "0.7.0", default-features = false, features = [
 # a real one. It does not depend on the compositor, so nothing goes round.
 omorfos-panel = { path = "../omorfos-panel" }
 omorfos-launcher = { path = "../omorfos-launcher" }
+omorfos-notifications = { path = "../omorfos-notifications" }
+# Sends notifications in the tests, as a program would.
+zbus = "5.19.0"
 serde_json = "1.0"
 # The software renderer lets the tests draw without a GPU. It is enabled here
 # only, so the shipped binary does not link pixman.
