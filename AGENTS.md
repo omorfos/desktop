@@ -41,13 +41,13 @@ cargo deny check
 
 All five must pass. CI runs the same commands.
 
-To try a change by hand on real hardware, build with the `quick` profile
-and install from `target/quick/`. It is optimised like a release but skips
+To try a change by hand on real hardware, build with the `nightly` profile
+and install from `target/nightly/`. It is optimised like a release but skips
 link-time optimisation and keeps what did not change, so building again
 after a change takes seconds where `--release` takes many minutes:
 
 ```sh
-cargo build --profile quick -p omorfos -p omorfosctl -p omorfos-panel \
+cargo build --profile nightly -p omorfos -p omorfosctl -p omorfos-panel \
   -p omorfos-launcher -p omorfos-notifications
 ```
 
