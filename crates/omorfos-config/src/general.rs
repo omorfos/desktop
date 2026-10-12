@@ -51,12 +51,33 @@ pub struct Xwayland {
     /// without programs written for X11: they can read each other's
     /// windows and keys, which programs written for Wayland cannot.
     pub enabled: bool,
+    /// How they are drawn on a screen with a scale.
+    pub scaling: X11Scaling,
 }
 
 impl Default for Xwayland {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            scaling: X11Scaling::default(),
+        }
     }
+}
+
+/// How programs written for X11 are drawn on a screen with a scale. X11
+/// has no notion of one, so something has to give.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum X11Scaling {
+    /// They draw at one pixel to a unit of layout and are stretched to
+    /// size. All of them are the right size, and blurred.
+    #[default]
+    Stretched,
+    /// They draw with as many pixels as the screen has, and are told how
+    /// dense it is. Those that take that in are sharp and the right size;
+    /// those that do not are sharp and small.
+    Native,
 }
 
 /// The notifications that come with omorfos: what programs have to tell
@@ -423,6 +444,15 @@ mod tests {
                 .enabled
         );
         assert!(parse("xwayland: { display: 3 }").is_err());
+        assert_eq!(
+            General::default().xwayland.scaling,
+            X11Scaling::Stretched,
+            "the right size unless told otherwise"
+        );
+        let native = parse("xwayland: { scaling: native }").unwrap().xwayland;
+        assert_eq!(native.scaling, X11Scaling::Native);
+        assert!(native.enabled);
+        assert!(parse("xwayland: { scaling: blurry }").is_err());
     }
 
     #[test]
