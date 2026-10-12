@@ -45,7 +45,7 @@ use smithay::reexports::input::{Device, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
-use super::winit::{cursor_themes, launcher, listen, on_input, panel};
+use super::winit::{cursor_themes, launcher, listen, notifier, on_input, panel};
 use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -92,6 +92,8 @@ struct Screen {
     picture: Picture,
     /// Whether applications are already due to be told to draw again.
     ticking: bool,
+    /// Whether the last attempt to draw on it failed, and that was said.
+    failing: bool,
 }
 
 /// What a screen is showing.
@@ -153,6 +155,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     announce_session(compositor);
     compositor.set_panel(panel());
     compositor.set_launcher(launcher());
+    compositor.set_notifier(notifier());
     compositor.autostart();
 
     // The keyboard, mice and touchpads.
@@ -310,7 +313,27 @@ fn turn(
         if screen.picture == Picture::Queued {
             continue;
         }
-        if screen.draw(gpus, renderer, compositor)? || screen.ticking {
+        // A screen that cannot be drawn on just now is no reason to end
+        // the session. The commonest cause is another virtual terminal
+        // having taken the screen a moment before we are told so, and it
+        // comes back. It is said once, and tried again the next turn.
+        let drawn = match screen.draw(gpus, renderer, compositor) {
+            Ok(drawn) => {
+                screen.failing = false;
+                drawn
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut screen.failing, true) {
+                    let name = screen.output.name();
+                    let _ = writeln!(stderr(), "omorfos: cannot draw on {name}: {error}");
+                }
+                screen.picture = Picture::Stale;
+                // As though something had been drawn: nothing is to be
+                // told to draw again on the strength of this.
+                true
+            }
+        };
+        if drawn || screen.ticking {
             continue;
         }
         // Nothing changed, so no frame will reach the screen to pace the
@@ -464,6 +487,7 @@ impl Hardware {
             frame: Duration::from_secs(1) / mode.vrefresh().max(1),
             picture: Picture::Stale,
             ticking: false,
+            failing: false,
         })
     }
 
