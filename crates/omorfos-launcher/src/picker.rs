@@ -5,7 +5,7 @@
 
 use omorfos_config::{Command, Edges, Launcher as Show, Part, State, States, Theme};
 use omorfos_ipc::Request;
-use omorfos_ui::{Area, Canvas, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
 use crate::{App, Icons};
@@ -195,9 +195,17 @@ impl Picker {
 
     /// Draws the launcher, with `scale` pixels to a unit of layout. The
     /// icons of the programs in sight are looked up in `icons`, if icons
-    /// are shown.
+    /// are shown. A row that has just been chosen, or has just stopped
+    /// being, is as far on its way to its new colours as `motion` has it.
     #[must_use]
-    pub fn paint(&self, text: &mut Text, theme: &Theme, scale: Scale, icons: &mut Icons) -> Canvas {
+    pub fn paint(
+        &self,
+        text: &mut Text,
+        theme: &Theme,
+        scale: Scale,
+        icons: &mut Icons,
+        motion: &mut Motion,
+    ) -> Canvas {
         let layout = Layout::new(theme);
         let (_, _, width, height) = layout.whole;
         let mut canvas = Canvas::scaled(width, height, scale);
@@ -224,7 +232,9 @@ impl Picker {
         let listed = self.listed().enumerate().skip(self.first()).take(ROWS);
         for (place, (row, app)) in listed.enumerate() {
             let states = States::NONE.when(State::Active, row == self.chosen);
-            let style = theme.style(Part::LauncherItem, states);
+            // A row is the same row whichever program is in it.
+            let key = u64::try_from(row).unwrap_or(u64::MAX);
+            let style = motion.style(theme, Part::LauncherItem, key, states);
             let area = inset(layout.row(place), style.margin);
             canvas.draw_box(area, &style);
             let mut room = inset(area, style.inset());
@@ -245,7 +255,8 @@ impl Picker {
             if self.show.descriptions {
                 let named = text.measure(&app.name, font).saturating_add(GAP);
                 let rest = inset(room, on_the_left(named.min(room.2)));
-                let ink = theme.style(Part::LauncherDescription, states).color;
+                let said = motion.style(theme, Part::LauncherDescription, key, states);
+                let ink = said.color;
                 let font = theme.font(Part::LauncherDescription, states);
                 text.draw(&mut canvas, &app.description, rest, ink, font);
             }
@@ -351,7 +362,12 @@ mod tests {
     /// The launcher's picture under the built-in theme.
     fn painted(picker: &Picker) -> Canvas {
         let (theme, mut icons) = (Theme::default(), Icons::default());
-        picker.paint(&mut Text::new(), &theme, Scale::ONE, &mut icons)
+        still(picker, &theme, Scale::ONE, &mut icons)
+    }
+
+    /// The launcher's picture with nothing on its way anywhere.
+    fn still(picker: &Picker, theme: &Theme, scale: Scale, icons: &mut Icons) -> Canvas {
+        picker.paint(&mut Text::new(), theme, scale, icons, &mut Motion::new())
     }
 
     fn several() -> Picker {
@@ -558,12 +574,7 @@ mod tests {
         let canvas = painted(&picker);
         assert_eq!((canvas.width(), canvas.height()), Picker::size(&theme));
         typed(&mut picker, "zzz");
-        let canvas = picker.paint(
-            &mut Text::new(),
-            &theme,
-            Scale::new(2.0),
-            &mut Icons::default(),
-        );
+        let canvas = still(&picker, &theme, Scale::new(2.0), &mut Icons::default());
         let (width, height) = Picker::size(&theme);
         assert_eq!((canvas.width(), canvas.height()), (width * 2, height * 2));
     }
@@ -659,7 +670,7 @@ mod tests {
             ..Show::default()
         };
         let with = Picker::new(names.iter().map(|name| app(name)).collect(), show);
-        let canvas = with.paint(&mut Text::new(), &theme, Scale::ONE, &mut icons);
+        let canvas = still(&with, &theme, Scale::ONE, &mut icons);
         let green = |canvas: &Canvas, place: i32| {
             let y = row(place).1.unsigned_abs();
             let columns = 0..canvas.width();
@@ -679,7 +690,7 @@ mod tests {
 
         // Without icons asked for, none is drawn and the name starts there.
         let without = picker(&names);
-        let canvas = without.paint(&mut Text::new(), &theme, Scale::ONE, &mut icons);
+        let canvas = still(&without, &theme, Scale::ONE, &mut icons);
         assert_eq!(green(&canvas, 1), 0);
         assert!(beside.into_iter().any(|x| canvas.at(x, y) != chosen));
     }

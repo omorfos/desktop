@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Part, States, Store, Theme};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::{picture, whole};
-use omorfos_ui::{Canvas, Scale, Text};
+use omorfos_ui::{Canvas, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -110,6 +110,8 @@ impl Launcher {
         let handled = self.queue.dispatch_pending(&mut self.shell);
         let handled = handled.map(drop).map_err(Failure::from);
         self.shell.repeat(now);
+        // A row on its way to another look is drawn again as it goes.
+        self.shell.stale |= self.shell.motion.due(now);
         handled
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle());
@@ -146,10 +148,13 @@ impl Launcher {
     }
 
     /// When there will next be something to do without anything having
-    /// happened: when a key that is being held is due to be taken again.
+    /// happened: when a key that is being held is due to be taken again,
+    /// or a row that is changing colour is due to be drawn again.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
-        self.shell.held.map(|(_, due)| due)
+        let held = self.shell.held.map(|(_, due)| due);
+        let drawn = self.shell.motion.deadline();
+        held.into_iter().chain(drawn).min()
     }
 }
 
@@ -206,6 +211,8 @@ struct Shell {
     commands: Ipc,
     /// Whether it could be asked for.
     sent: io::Result<()>,
+    /// The rows that are on their way from one look to another.
+    motion: Motion,
     /// Whether the launcher may look different from what is on the screen.
     stale: bool,
     /// Whether the launcher is done with.
@@ -302,6 +309,7 @@ impl Shell {
             over: (-1, -1),
             commands,
             sent: Ok(()),
+            motion: Motion::new(),
             // Worth trying to show from the very first turn.
             stale: true,
             done: false,
@@ -484,7 +492,11 @@ impl Shell {
             return behind;
         }
         let (text, icons) = (&mut self.text, &mut self.icons);
-        let canvas = self.picker.paint(text, &self.theme, face.scale, icons);
+        self.motion.begin(self.now);
+        let canvas = self
+            .picker
+            .paint(text, &self.theme, face.scale, icons, &mut self.motion);
+        self.motion.end();
         behind.and(picture(shm, &canvas, handle)).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
             // However many pixels the picture has, it covers this much.

@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use omorfos_config::{Edges, Part, State, States, Style, Theme};
 use omorfos_icons::Icons;
-use omorfos_ui::{Area, Canvas, Image, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Image, Motion, Scale, Text, inset};
 
 /// The most notifications kept at once. When there are more, the oldest
 /// goes.
@@ -261,14 +261,24 @@ impl Stack {
     }
 
     /// Draws the notifications, with `scale` pixels to a unit of layout.
-    /// Pictures that are named are looked up in `icons`.
+    /// Pictures that are named are looked up in `icons`. A notification
+    /// the pointer has just come onto or left is as far on its way to its
+    /// new colours as `motion` has it.
     #[must_use]
-    pub fn paint(&self, text: &mut Text, theme: &Theme, scale: Scale, icons: &mut Icons) -> Canvas {
+    pub fn paint(
+        &self,
+        text: &mut Text,
+        theme: &Theme,
+        scale: Scale,
+        icons: &mut Icons,
+        motion: &mut Motion,
+    ) -> Canvas {
         let (width, height) = self.size(theme);
         let mut canvas = Canvas::scaled(width, height, scale);
         for (shown, area) in self.places(theme) {
             let states = self.states(shown);
-            let style = theme.style(Part::Notification, states);
+            let key = u64::from(shown.id);
+            let style = motion.style(theme, Part::Notification, key, states);
             canvas.draw_box(area, &style);
             let mut room = inset(area, style.inset());
             let pixels = scale.pixels(PICTURE.cast_signed()).unsigned_abs();
@@ -281,7 +291,7 @@ impl Stack {
                 canvas.draw_image((room.0, room.1, PICTURE, PICTURE), picture);
                 room = inset(room, on_the_left(PICTURE + GAP));
             }
-            let title = theme.style(Part::NotificationTitle, states);
+            let title = motion.style(theme, Part::NotificationTitle, key, states);
             let font = theme.font(Part::NotificationTitle, states);
             let tall = line(font.size.get());
             text.draw(
@@ -291,7 +301,7 @@ impl Stack {
                 title.color,
                 font,
             );
-            let body = theme.style(Part::NotificationBody, states);
+            let body = motion.style(theme, Part::NotificationBody, key, states);
             let font = theme.font(Part::NotificationBody, states);
             let mut top = room.1.saturating_add_unsigned(tall);
             for words in &shown.lines {
@@ -440,7 +450,8 @@ mod tests {
     }
 
     fn painted(stack: &Stack, theme: &Theme) -> Canvas {
-        stack.paint(&mut Text::new(), theme, Scale::ONE, &mut Icons::default())
+        let (mut text, mut icons) = (Text::new(), Icons::default());
+        stack.paint(&mut text, theme, Scale::ONE, &mut icons, &mut Motion::new())
     }
 
     /// The numbers of the notifications showing, from the top.
