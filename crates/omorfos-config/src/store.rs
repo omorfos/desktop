@@ -152,7 +152,7 @@ mod tests {
         let directory = TempDir::new().unwrap();
         let mut store = Store::open(directory.path());
 
-        write(&directory, "theme.yaml", "font: { size: 0 }\n");
+        write(&directory, "theme.css", "* { font-size: 0; }\n");
         write(&directory, "config.yaml", "focus: { model: sloppy }\n");
 
         assert!(store.reload());

@@ -28,7 +28,7 @@ compositor or the domain.
 | Crate | Status | Responsibility |
 |---|---|---|
 | `omorfos-core` | done | Pure domain: `Desktop` (windows, tab groups, workspaces, stacking, focus), `Decoration` (frame layout and hit testing), `Menu` (pop-up menu layout and behaviour), placement, per-app rules, key-chain state machine, geometry. No I/O, no dependencies. |
-| `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). The theme answers how a `Part` looks in its `States` with a `Style`, which is all that anything drawing asks of it. Depends on no other workspace crate. |
+| `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation (`schema` feature). The theme is a stylesheet in a small part of CSS, laid over a built-in one and worked out when loaded; it answers how a `Part` looks in its `States` with a `Style` and a `Font`, which is all that anything drawing asks of it. Depends on no other workspace crate. |
 | `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, and a small blocking client. Depends on no other workspace crate. |
 | `omorfos-ui` | done | Drawing on the CPU, independent of where the pixels go: `Canvas` (fills, rounded corners, in units of layout at any `Scale`), `Text` (measuring and drawing a line), `Scale`. Depends only on `omorfos-config`, for colours and fonts. |
 | `omorfos-panel` | started | The panel. `Bar` decides what is on one screen's bar from an IPC `State`, where, how it is drawn and what a click asks for. `Panel` is the Wayland client around it: a layer-shell surface per screen, pictures handed over as shared memory, clicks sent back over the socket. |
@@ -120,7 +120,7 @@ Wayland client with the pixman software renderer and assert on pixels. See
 ## Configuration
 
 Files live in `$XDG_CONFIG_HOME/omorfos/` (default `~/.config/omorfos/`):
-`config.yaml`, `keys.yaml`, `rules.yaml`, `theme.yaml`, `menu.yaml`. All are
+`config.yaml`, `keys.yaml`, `rules.yaml`, `theme.css`, `menu.yaml`. All are
 optional; built-in defaults apply when a file is absent. The format is
 described in [CONFIGURATION.md](CONFIGURATION.md).
 

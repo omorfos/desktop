@@ -224,8 +224,8 @@ mod tests {
     #[test]
     fn decoration_sizes_come_from_the_theme() {
         let theme = config(
-            "theme.yaml",
-            "border: { width: 3 }\ntitlebar: { height: 40 }\n",
+            "theme.css",
+            "window { border-width: 3px; }\ntitlebar { height: 40px; }\n",
         );
         assert_eq!(
             settings(&theme).decoration,

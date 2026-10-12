@@ -1,0 +1,100 @@
+/* The built-in theme of omorfos.
+ *
+ * Your own theme.css is laid over this one: a rule of yours always wins
+ * over a rule here, so you only write what you want changed. The quickest
+ * change is to give the variables below other values. */
+
+:root {
+  --background: #14161b;   /* behind everything */
+  --accent: #5b9cf5;       /* what has focus, and what is picked out */
+  --surface: #23262e;      /* titlebars, menus and what is lit */
+  --surface-dim: #1b1d23;  /* the same, where focus is elsewhere */
+  --text: #e6e8ee;
+  --text-dim: #8b90a0;
+  --border: #2c303a;
+}
+
+* {
+  font-family: sans-serif;
+  font-size: 11pt;
+}
+
+desktop { background: var(--background); }
+
+/* A window's frame. Its sizes are taken from the rule without a state. */
+window {
+  border-width: 1px;
+  border-color: var(--border);
+  border-radius: 8px;
+}
+window:focus { border-color: var(--accent); }
+
+titlebar {
+  height: 28px;
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+titlebar:focus {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* A title in a titlebar that has several. The border is the line between
+ * one tab and the next. */
+tab {
+  background: var(--surface-dim);
+  color: var(--text-dim);
+  border-width: 1px;
+  border-color: var(--border);
+}
+tab:focus { border-color: var(--accent); }
+tab:active {
+  border-bottom-width: 2px;
+  border-bottom-color: var(--border);
+}
+tab:active:focus {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+menu {
+  background: var(--surface);
+  color: var(--text);
+  border-width: 1px;
+  border-color: var(--border);
+}
+menu-item {
+  height: 28px;
+  color: var(--text);
+}
+menu-item:hover {
+  background: var(--accent);
+  color: var(--background);
+}
+menu-separator { color: var(--border); }
+
+notice {
+  background: var(--surface);
+  color: var(--text);
+  border-width: 1px;
+  border-color: var(--accent);
+}
+notice-heading { color: var(--accent); }
+
+panel {
+  height: 28px;
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+panel-button {
+  background: var(--surface-dim);
+  color: var(--text-dim);
+}
+panel-button:active {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-width: 2px;
+  border-bottom-color: var(--accent);
+}
+clock { color: var(--text); }

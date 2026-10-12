@@ -12,8 +12,8 @@ use crate::keys::RawKeys;
 use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
-    Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem,
-    NamedOutput, OutputScale, Outputs, Rules, Theme, Workspaces,
+    Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
+    OutputScale, Outputs, Rules, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -21,12 +21,11 @@ use crate::{
 /// Returns pairs of the schema's file name, such as `keys.schema.json`, and
 /// its pretty-printed JSON.
 #[must_use]
-pub fn schemas() -> [(&'static str, String); 5] {
+pub fn schemas() -> [(&'static str, String); 4] {
     [
         ("config.schema.json", render::<General>()),
         ("keys.schema.json", render::<Keys>()),
         ("rules.schema.json", render::<Rules>()),
-        ("theme.schema.json", render::<Theme>()),
         ("menu.schema.json", render::<Menu>()),
     ]
 }
@@ -51,20 +50,6 @@ impl<const MIN: u32, const MAX: u32> JsonSchema for Bounded<MIN, MAX> {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({ "type": "integer", "minimum": MIN, "maximum": MAX })
-    }
-}
-
-impl JsonSchema for Color {
-    fn schema_name() -> Cow<'static, str> {
-        "Color".into()
-    }
-
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({
-            "description": "A color written as `#rrggbb` or `#rrggbbaa`.",
-            "type": "string",
-            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-        })
     }
 }
 
@@ -197,9 +182,11 @@ mod tests {
     }
 
     #[test]
-    fn there_is_one_schema_per_configuration_file() {
+    fn there_is_one_schema_per_configuration_file_written_in_yaml() {
         let names = schemas().map(|(name, _)| name.replace(".schema.json", ".yaml"));
-        assert_eq!(names, crate::FILES);
+        let files = crate::FILES.into_iter();
+        let yaml: Vec<&str> = files.filter(|name| *name != "theme.css").collect();
+        assert_eq!(names.as_slice(), yaml);
     }
 
     #[test]
@@ -219,10 +206,9 @@ mod tests {
 
     #[test]
     fn value_constraints_are_part_of_the_schema() {
-        let theme = schema("theme.schema.json");
-        assert!(theme.contains("\"maximum\": 72"), "{theme}");
-        assert!(theme.contains("[0-9a-fA-F]{6}"), "{theme}");
-        assert!(schema("config.schema.json").contains("\"maxItems\": 32"));
+        let config = schema("config.schema.json");
+        assert!(config.contains("\"maximum\": 128"), "{config}");
+        assert!(config.contains("\"maxItems\": 32"));
         assert!(schema("rules.schema.json").contains("\"minProperties\": 1"));
         assert!(schema("keys.schema.json").contains("\"minItems\": 1"));
         assert!(schema("keys.schema.json").contains("\"pattern\": \"\\\\S\""));

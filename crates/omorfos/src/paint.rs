@@ -68,7 +68,8 @@ pub(crate) fn titlebar(
     for (index, title) in titles.iter().enumerate() {
         let tab = decoration.tab(index);
         let left = tab.origin.x - bar.origin.x;
-        let style = theme.style(Part::Tab, states.when(State::Active, index == active));
+        let tab_states = states.when(State::Active, index == active);
+        let style = theme.style(Part::Tab, tab_states);
         // A title alone in its titlebar is not set apart as a tab.
         if tabbed {
             canvas.fill((left, edge, tab.size.width, inner_height), style.background);
@@ -86,7 +87,7 @@ pub(crate) fn titlebar(
             title,
             (left + PADDING.cast_signed(), 0, room, height),
             style.color,
-            &theme.font,
+            theme.font(Part::Tab, tab_states),
         );
     }
 
@@ -132,6 +133,7 @@ pub(crate) fn menu_panel<A: Clone>(
         let highlighted = panel.highlighted() == Some(index);
         let states = States::NONE.when(State::Hovered, highlighted);
         let style = theme.style(Part::MenuItem, states);
+        let font = theme.font(Part::MenuItem, states);
         canvas.fill((edge, top, inner, row.size.height), style.background);
         let ink = style.color;
         let arrow = if matches!(item, Item::Submenu { .. }) {
@@ -140,7 +142,7 @@ pub(crate) fn menu_panel<A: Clone>(
             0
         };
         let area = (padding, top, room.saturating_sub(arrow), row.size.height);
-        text.draw(&mut canvas, label, area, ink, &theme.font);
+        text.draw(&mut canvas, label, area, ink, font);
         if arrow > 0 {
             let left = (width - PADDING - ARROW).cast_signed();
             text.draw(
@@ -148,7 +150,7 @@ pub(crate) fn menu_panel<A: Clone>(
                 "\u{203a}",
                 (left, top, ARROW, row.size.height),
                 ink,
-                &theme.font,
+                font,
             );
         }
     }
@@ -193,18 +195,20 @@ pub(crate) fn notice(
     let room = width.saturating_sub(PADDING * 2);
     let mut top = PADDING.cast_signed();
     for (index, line) in lines.into_iter().enumerate() {
-        let heading = theme.style(Part::NoticeHeading, States::NONE);
-        let ink = if index == 0 {
-            heading.color
+        // The first line is the heading.
+        let part = if index == 0 {
+            Part::NoticeHeading
         } else {
-            style.color
+            Part::Notice
         };
+        let ink = theme.style(part, States::NONE).color;
+        let font = theme.font(part, States::NONE);
         text.draw(
             &mut canvas,
             line,
             (PADDING.cast_signed(), top, room, NOTICE_ROW),
             ink,
-            &theme.font,
+            font,
         );
         top += NOTICE_ROW.cast_signed();
     }
@@ -237,6 +241,32 @@ mod tests {
 
     use super::*;
 
+    /// The colours of a theme, by what the built-in theme uses them for.
+    struct Palette {
+        accent: Color,
+        focused: Tone,
+        unfocused: Tone,
+    }
+
+    /// The colours of a frame and its titlebar, with focus or without.
+    #[derive(Clone, Copy)]
+    struct Tone {
+        border: Color,
+        titlebar: Color,
+    }
+
+    fn palette(theme: &Theme) -> Palette {
+        let tone = |states| Tone {
+            border: theme.style(Part::Window, states).border.color,
+            titlebar: theme.style(Part::Titlebar, states).background,
+        };
+        Palette {
+            accent: theme.style(Part::NoticeHeading, States::NONE).color,
+            focused: tone(States::NONE.with(State::Focused)),
+            unfocused: tone(States::NONE),
+        }
+    }
+
     fn argb(color: Color) -> u32 {
         u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
     }
@@ -265,7 +295,7 @@ mod tests {
         assert_eq!((doubled.width(), doubled.height()), (800, 56));
         assert_eq!(doubled.units(), (400, 28));
 
-        let background = argb(theme.colors.focused.titlebar);
+        let background = argb(palette(&theme).focused.titlebar);
         let ink = |canvas: &Canvas, columns| inked(canvas, columns, background);
         assert!(
             ink(&doubled, 20..240) > ink(&plain, 10..120) * 3,
@@ -288,7 +318,7 @@ mod tests {
         use omorfos_core::MenuMetrics;
 
         let theme = Theme::default();
-        let colors = &theme.colors;
+        let colors = palette(&theme);
         let mut text = Text::new();
         let items = vec![
             Item::Entry {
@@ -347,10 +377,10 @@ mod tests {
     #[test]
     fn a_notice_lists_each_problem_under_a_heading() {
         let theme = Theme::default();
-        let colors = &theme.colors;
+        let colors = palette(&theme);
         let mut text = Text::new();
         let problems = vec![
-            "theme.yaml:2:11: invalid color".to_owned(),
+            "theme.css:2:13: `nope` is not a color".to_owned(),
             "keys.yaml: no such key".to_owned(),
         ];
 
@@ -419,23 +449,23 @@ mod tests {
         assert_eq!(canvas.at(0, 0), 0, "rounded");
         assert_eq!(
             canvas.at(200, 0),
-            argb(theme.colors.focused.border),
+            argb(palette(&theme).focused.border),
             "outline along the top"
         );
         assert_eq!(
             canvas.at(0, 20),
-            argb(theme.colors.focused.border),
+            argb(palette(&theme).focused.border),
             "and down the side"
         );
-        assert_eq!(canvas.at(399, 20), argb(theme.colors.focused.border));
-        assert_eq!(canvas.at(300, 14), argb(theme.colors.focused.titlebar));
+        assert_eq!(canvas.at(399, 20), argb(palette(&theme).focused.border));
+        assert_eq!(canvas.at(300, 14), argb(palette(&theme).focused.titlebar));
         assert_eq!(
             canvas.at(300, 27),
-            argb(theme.colors.focused.titlebar),
+            argb(palette(&theme).focused.titlebar),
             "no underline"
         );
         assert!(
-            inked(&canvas, 10..120, argb(theme.colors.focused.titlebar)) > 20,
+            inked(&canvas, 10..120, argb(palette(&theme).focused.titlebar)) > 20,
             "the title"
         );
     }
@@ -453,14 +483,14 @@ mod tests {
             false,
             Scale::ONE,
         );
-        assert_eq!(canvas.at(200, 0), argb(theme.colors.unfocused.border));
-        assert_eq!(canvas.at(300, 14), argb(theme.colors.unfocused.titlebar));
+        assert_eq!(canvas.at(200, 0), argb(palette(&theme).unfocused.border));
+        assert_eq!(canvas.at(300, 14), argb(palette(&theme).unfocused.titlebar));
     }
 
     #[test]
     fn tabs_are_separated_and_the_shown_one_is_marked() {
         let theme = Theme::default();
-        let colors = &theme.colors;
+        let colors = palette(&theme);
         let mut text = Text::new();
         let titles = ["one", "two"];
         let focused = titlebar(&mut text, &theme, &frame(2), &titles, 1, true, Scale::ONE);

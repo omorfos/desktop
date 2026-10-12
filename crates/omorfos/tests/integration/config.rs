@@ -62,12 +62,11 @@ fn rules_from_the_configuration_apply_to_new_windows() {
 
 #[test]
 fn a_mistake_in_a_file_is_reported_with_its_location() {
-    let session = Session::with_config(&[("theme.yaml", "colors:\n  accent: nope\n")]);
+    let session = Session::with_config(&[("theme.css", ":root {\n  --accent: nope;\n}\n")]);
     let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1);
     assert!(
-        problems[0]
-            .ends_with("theme.yaml:2:11: invalid color `nope`: expected `#rrggbb` or `#rrggbbaa`"),
+        problems[0].contains("theme.css:2:13: `nope` is not a color"),
         "{problems:?}"
     );
 }
@@ -101,7 +100,7 @@ fn a_saved_change_is_applied_once_the_directory_goes_quiet() {
     let mut session = Session::new();
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
 
-    session.write_config("theme.yaml", "colors: { background: '#ff0000' }\n");
+    session.write_config("theme.css", "desktop { background: #ff0000; }\n");
     session.step();
     assert_eq!(
         session.draw().at(5, 5),
@@ -114,10 +113,9 @@ fn a_saved_change_is_applied_once_the_directory_goes_quiet() {
 
 #[test]
 fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
-    let mut session =
-        Session::with_config(&[("theme.yaml", "colors: { background: '#ff0000' }\n")]);
+    let mut session = Session::with_config(&[("theme.css", "desktop { background: #ff0000; }\n")]);
 
-    session.write_config("theme.yaml", "colors: { background: oops }\n");
+    session.write_config("theme.css", "desktop { background: oops; }\n");
     session.eventually(|session| session.compositor().problems().len() == 1);
     assert_eq!(
         session.draw().at(5, 5),
@@ -125,7 +123,7 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
         "the previous colour is still in effect"
     );
 
-    session.write_config("theme.yaml", "colors: { background: '#ff0000' }\n");
+    session.write_config("theme.css", "desktop { background: #ff0000; }\n");
     session.eventually(|session| session.compositor().problems().is_empty());
 }
 

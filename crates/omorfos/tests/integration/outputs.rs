@@ -291,7 +291,7 @@ fn a_window_draws_at_the_pace_of_the_output_it_is_on() {
 
 #[test]
 fn the_notice_is_on_the_first_output_and_the_menu_on_the_pointers() {
-    let mut session = Session::with_config(&[("theme.yaml", "colors: { accent: nope }\n")]);
+    let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     session.add_output((800, 600));
     session.step();
     assert_ne!(

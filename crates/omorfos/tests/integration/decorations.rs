@@ -252,7 +252,12 @@ fn a_theme_change_restyles_existing_frames() {
     let mut client = session.connect();
     session.open_decorated(&mut client, "foot", (200, 100), RED);
 
-    session.write_config("theme.yaml", "colors: { accent: '#00ff00', focused: { border: '#00ff00', titlebar: '#0000ff', text: '#ffffff' } }\nborder: { width: 4, radius: 0 }\n");
+    session.write_config(
+        "theme.css",
+        "window { border-width: 4px; border-radius: 0; }\n\
+         window:focus { border-color: #00ff00; }\n\
+         titlebar:focus { background: #0000ff; color: #ffffff; }\n",
+    );
     session.compositor_mut().reload_config();
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);

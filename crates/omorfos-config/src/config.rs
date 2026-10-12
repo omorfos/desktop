@@ -16,7 +16,10 @@ pub const FILES: [&str; 5] = [GENERAL, KEYS, RULES, THEME, MENU];
 const GENERAL: &str = "config.yaml";
 const KEYS: &str = "keys.yaml";
 const RULES: &str = "rules.yaml";
-const THEME: &str = "theme.yaml";
+const THEME: &str = "theme.css";
+
+/// Where themes were written before they were stylesheets.
+const OLD_THEME: &str = "theme.yaml";
 const MENU: &str = "menu.yaml";
 
 /// The largest configuration file that will be read, in bytes.
@@ -34,7 +37,7 @@ pub struct Config {
     pub keys: Keys,
     /// Per-application rules, from `rules.yaml`.
     pub rules: Rules,
-    /// Appearance, from `theme.yaml`.
+    /// Appearance, from `theme.css`.
     pub theme: Theme,
     /// The root menu, from `menu.yaml`.
     pub menu: Menu,
@@ -60,7 +63,7 @@ impl Config {
             general: section(directory, GENERAL, &fallback.general, &mut diagnostics),
             keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
             rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: section(directory, THEME, &fallback.theme, &mut diagnostics),
+            theme: theme(directory, &fallback.theme, &mut diagnostics),
             menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
         };
         (config, diagnostics)
@@ -78,6 +81,29 @@ where
             diagnostics.push(diagnostic);
             fallback.clone()
         })
+}
+
+/// Loads the theme, which is a stylesheet and not YAML like the rest.
+fn theme(directory: &Path, fallback: &Theme, diagnostics: &mut Vec<Diagnostic>) -> Theme {
+    let old = directory.join(OLD_THEME);
+    if old.exists() {
+        // Left where it is, it would look as though it were in use.
+        let message = format!("this file is no longer read: themes are written in `{THEME}` now");
+        diagnostics.push(Diagnostic::new(&old, message));
+    }
+    let path = directory.join(THEME);
+    let loaded = read(&path).and_then(|text| {
+        let parsed = Theme::parse(&text);
+        parsed.map_err(|error| Diagnostic {
+            file: path.clone(),
+            position: error.position,
+            message: error.message,
+        })
+    });
+    loaded.unwrap_or_else(|diagnostic| {
+        diagnostics.push(diagnostic);
+        fallback.clone()
+    })
 }
 
 /// Reads a file, treating one that does not exist as empty.
@@ -119,7 +145,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{Color, FocusModel, Position};
+    use crate::{Color, FocusModel, Part, Position, States};
 
     fn directory(files: &[(&str, &str)]) -> TempDir {
         let directory = TempDir::new().unwrap();
@@ -166,14 +192,15 @@ mod tests {
                 "rules.yaml",
                 "rules:\n  - match: { app_id: mpv }\n    fullscreen: true\n",
             ),
-            ("theme.yaml", "colors: { accent: '#ff0000' }\n"),
+            ("theme.css", "clock { color: #ff0000; }\n"),
             ("menu.yaml", "items: [separator]\n"),
         ]);
         assert_eq!(diagnostics, [""; 0]);
         assert_eq!(config.general.focus.model, FocusModel::Sloppy);
         assert_eq!(config.keys.bindings(), []);
         assert_eq!(config.rules.rules.len(), 1);
-        assert_eq!(config.theme.colors.accent, Color::rgb(255, 0, 0));
+        let clock = config.theme.style(Part::Clock, States::NONE);
+        assert_eq!(clock.color, Color::rgb(255, 0, 0));
         assert_eq!(config.menu.items.len(), 1);
     }
 
@@ -181,21 +208,42 @@ mod tests {
     fn an_invalid_file_falls_back_while_the_valid_ones_still_apply() {
         let directory = directory(&[
             ("config.yaml", "focus: { model: sloppy }\n"),
-            ("theme.yaml", "font:\n  size: huge\n"),
+            ("theme.css", "* {\n  font-size: huge;\n}\n"),
         ]);
-        let mut fallback = Config::default();
-        fallback.theme.font.family = "Previous".to_owned();
+        let fallback = Config {
+            theme: Theme::parse("clock { color: #ff0000; }").unwrap(),
+            ..Config::default()
+        };
 
         let (config, diagnostics) = Config::load(directory.path(), &fallback);
 
         assert_eq!(config.general.focus.model, FocusModel::Sloppy);
         assert_eq!(config.theme, fallback.theme);
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].file, directory.path().join("theme.yaml"));
+        assert_eq!(diagnostics[0].file, directory.path().join("theme.css"));
         assert_eq!(
             diagnostics[0].position,
-            Some(Position { line: 2, column: 9 })
+            Some(Position {
+                line: 2,
+                column: 14
+            })
         );
+        assert!(diagnostics[0].message.contains("`huge` is not a size"));
+    }
+
+    #[test]
+    fn a_theme_left_over_from_before_stylesheets_is_pointed_out() {
+        let (config, diagnostics) = load(&[
+            ("theme.yaml", "colors: { accent: '#ff0000' }\n"),
+            ("theme.css", "clock { color: #00ff00; }\n"),
+        ]);
+        assert_eq!(
+            diagnostics,
+            ["theme.yaml: this file is no longer read: themes are written in `theme.css` now"]
+        );
+        // The stylesheet beside it is in use all the same.
+        let clock = config.theme.style(Part::Clock, States::NONE);
+        assert_eq!(clock.color, Color::rgb(0, 255, 0));
     }
 
     #[test]
@@ -271,7 +319,7 @@ mod tests {
     #[test]
     fn a_file_that_is_not_text_is_reported() {
         let directory = TempDir::new().unwrap();
-        fs::write(directory.path().join("theme.yaml"), [0xff, 0xfe, 0x00]).unwrap();
+        fs::write(directory.path().join("theme.css"), [0xff, 0xfe, 0x00]).unwrap();
         let (config, diagnostics) = Config::load(directory.path(), &Config::default());
         assert_eq!(config, Config::default());
         assert!(

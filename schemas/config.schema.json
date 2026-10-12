@@ -8,6 +8,24 @@
       "minItems": 1,
       "type": "array"
     },
+    "Cursor": {
+      "additionalProperties": false,
+      "description": "The pictures used for the pointer.",
+      "properties": {
+        "size": {
+          "description": "The size of the pointer, before scaling.",
+          "maximum": 128,
+          "minimum": 8,
+          "type": "integer"
+        },
+        "theme": {
+          "default": "default",
+          "description": "The name of an installed cursor theme, such as `Adwaita`. `default`\nis whichever the system has set up as its default.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Focus": {
       "additionalProperties": false,
       "description": "How windows gain focus.",
@@ -218,6 +236,10 @@
         "$ref": "#/$defs/Command"
       },
       "type": "array"
+    },
+    "cursor": {
+      "$ref": "#/$defs/Cursor",
+      "description": "The pointer."
     },
     "focus": {
       "$ref": "#/$defs/Focus",

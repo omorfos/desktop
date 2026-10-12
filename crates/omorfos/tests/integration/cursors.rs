@@ -220,7 +220,7 @@ fn the_pointer_shows_a_drag_for_as_long_as_it_lasts() {
 
 #[test]
 fn the_menu_and_the_notice_have_the_ordinary_pointer() {
-    let mut session = Session::with_config(&[("theme.yaml", "colors: { accent: nope }\n")]);
+    let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     let themes = session.install_cursors("default", &[("default", 8, GREEN), ("text", 8, BLUE)]);
     session.compositor_mut().set_cursor_themes(themes);
     session.compositor_mut().show_pointer();
@@ -253,7 +253,7 @@ fn the_theme_and_size_come_from_the_configuration_and_the_scale() {
     assert_eq!(pointer_at(&mut session, 300, 300), GREEN);
     assert_eq!(session.draw().at(321, 321), GREEN, "24 pixels across");
 
-    session.write_config("theme.yaml", "cursor: { theme: fine }\n");
+    session.write_config("config.yaml", "cursor: { theme: fine }\n");
     session.compositor_mut().reload_config();
     assert_eq!(color_at(&mut session, 300, 300), YELLOW);
     assert_eq!(session.draw().at(312, 312), BACKGROUND, "12 pixels across");
@@ -271,7 +271,7 @@ fn the_theme_and_size_come_from_the_configuration_and_the_scale() {
 #[test]
 fn programs_started_are_told_the_cursor_theme_and_size() {
     let mut session =
-        Session::with_config(&[("theme.yaml", "cursor: { theme: Fancy, size: 32 }\n")]);
+        Session::with_config(&[("config.yaml", "cursor: { theme: Fancy, size: 32 }\n")]);
     let marker = session.config.path().join("spawned");
     let script = format!(
         "printf '%s %s' \"$XCURSOR_THEME\" \"$XCURSOR_SIZE\" > '{}'",

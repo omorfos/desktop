@@ -186,7 +186,7 @@ to show over the IPC socket (ADR 18). In this order:
 
 - [x] `omorfos-ui`: the canvas, text and scale the compositor draws with,
       shared with the components
-- [ ] Panel, themed from `theme.yaml`
+- [ ] Panel
   - [x] The bar itself: a screen's workspaces and the windows on the one it
         shows, how it is drawn and what a click asks for
   - [x] The program, `omorfos-panel`: a bar on each screen through
@@ -199,9 +199,12 @@ to show over the IPC socket (ADR 18). In this order:
   - [ ] Where it is and what is on it, by configuration
 - [x] The theme as parts with states and properties (`panel`, `button`
       that is `active`, and so on) rather than one palette, so that it maps
-      onto selectors (ADR 19). Still read from `theme.yaml`
-- [ ] CSS as the theme format, in place of `theme.yaml`. No HTML: what is
-      on the screen stays decided by the components, CSS says how it looks
+      onto selectors (ADR 19)
+- [x] CSS as the theme format, `theme.css`, in place of `theme.yaml`
+      (ADR 20). No HTML: what is on the screen stays decided by the
+      components, CSS says how it looks
+- [ ] More of CSS as themes come to want it: `border` shorthands, named
+      colours, `rgb()`, padding
 - [ ] Launcher, built against the CSS theme from the start
 - [ ] Notifications, likewise
 - [ ] Theming polish and restrained animations

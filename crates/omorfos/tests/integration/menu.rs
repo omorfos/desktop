@@ -239,8 +239,8 @@ fn the_menu_follows_a_theme_change_while_open() {
     let mut session = session();
     open_menu(&mut session);
     session.write_config(
-        "theme.yaml",
-        "colors: { focused: { border: '#000000', titlebar: '#00ff00', text: '#ffffff' } }\n",
+        "theme.css",
+        "menu { background: #00ff00; color: #ffffff; }\n",
     );
     session.compositor_mut().reload_config();
     session.step();
