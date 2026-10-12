@@ -12,8 +12,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::value::{color, fraction, size, words};
-use crate::{Bounded, Color, Edges, Part, Position, States, Style};
+use crate::value::{color, fraction, size, time, words};
+use crate::{Bounded, Color, Easing, Edges, Part, Position, States, Style, Transition};
 
 /// The stylesheet every theme starts from.
 const BUILT_IN: &str = include_str!("default.css");
@@ -204,13 +204,16 @@ enum Setting {
     FontSize(u32),
     FontWeight(u16),
     FontItalic(bool),
+    TransitionDuration(u32),
+    TransitionEasing(Easing),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
 /// another.
 const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
                           border-radius, padding, margin, height, min-width, max-width, \
-                          font-family, font-size, font-weight and font-style; border, padding \
+                          font-family, font-size, font-weight, font-style, transition, \
+                          transition-duration and transition-timing-function; border, padding \
                           and margin may name a side, as in border-bottom-color";
 
 /// The variables a stylesheet declares.
@@ -338,6 +341,8 @@ impl Look {
             Setting::FontSize(size) => self.font.size = Bounded::clamped(*size),
             Setting::FontWeight(weight) => self.font.weight = *weight,
             Setting::FontItalic(italic) => self.font.italic = *italic,
+            Setting::TransitionDuration(millis) => style.transition.duration = *millis,
+            Setting::TransitionEasing(easing) => style.transition.easing = *easing,
         }
     }
 
@@ -385,6 +390,9 @@ fn settings(
         ("font-size", None) => one(size(value, "pt", 6, 72).map(Setting::FontSize)),
         ("font-weight", None) => one(weight(value)),
         ("font-style", None) => one(slant(value)),
+        ("transition", None) => transition(value),
+        ("transition-duration", None) => one(lasting(value).map(Setting::TransitionDuration)),
+        ("transition-timing-function", None) => one(easing(value).map(Setting::TransitionEasing)),
         _ => {
             let name = &declaration.name;
             let message = format!("`{name}` is not a property; the properties are {PROPERTIES}");
@@ -525,6 +533,53 @@ fn slant(value: &str) -> Result<Setting, String> {
     }
 }
 
+/// How long a change of colours takes.
+fn lasting(value: &str) -> Result<u32, String> {
+    time(value, Transition::LONGEST)
+}
+
+/// How a change of colours gathers and loses speed, by its name.
+fn easing(value: &str) -> Result<Easing, String> {
+    let named = Easing::ALL
+        .into_iter()
+        .find(|easing| easing.name() == value);
+    named.ok_or_else(|| {
+        format!(
+            "`{value}` is not a way for colours to change; write linear, ease, ease-in, \
+             ease-out or ease-in-out"
+        )
+    })
+}
+
+/// A change of colours all at once: how long it takes and perhaps how it
+/// goes, or `none`. What is left out is as it would be had nothing been
+/// said, as in CSS.
+fn transition(value: &str) -> Result<Vec<Setting>, String> {
+    let mut change = Transition::NONE;
+    for word in words(value) {
+        match word {
+            // Every colour of a part changes together.
+            "none" | "all" => {}
+            timed if timed.starts_with(|first: char| first.is_ascii_digit() || first == '.') => {
+                change.duration = lasting(timed)?;
+            }
+            other => {
+                change.easing = easing(other).map_err(|_| {
+                    format!(
+                        "`{other}` is not part of a transition; write how long the colours of \
+                         the part take to change, as in `150ms` or `0.2s`, and perhaps how: \
+                         linear, ease, ease-in, ease-out or ease-in-out"
+                    )
+                })?;
+            }
+        }
+    }
+    Ok(vec![
+        Setting::TransitionDuration(change.duration),
+        Setting::TransitionEasing(change.easing),
+    ])
+}
+
 /// The name of a font family, with or without quotation marks.
 fn family(value: &str) -> Result<String, String> {
     let name = value.trim_matches(['"', '\'']).trim();
@@ -562,6 +617,82 @@ mod tests {
     /// How a part looks under a theme of one rule, in no state.
     fn styled(part: Part, stylesheet: &str) -> Style {
         Theme::parse(stylesheet).unwrap().style(part, States::NONE)
+    }
+
+    #[test]
+    fn colours_change_over_the_time_and_in_the_way_a_theme_says() {
+        let change = |stylesheet: &str| styled(Part::Tab, stylesheet).transition;
+        let gentle = Transition {
+            duration: 150,
+            easing: Easing::EaseOut,
+        };
+        assert_eq!(change("tab { transition: 150ms ease-out; }"), gentle);
+        assert_eq!(change("tab { transition: all ease-out 0.15s; }"), gentle);
+        assert_eq!(change("* { transition: .15s ease-out; }"), gentle);
+        assert_eq!(
+            change("tab { transition: 150ms; }").easing,
+            Easing::Ease,
+            "as CSS does when it is not told"
+        );
+        assert_eq!(
+            change("tab { transition-duration: 150ms; transition-timing-function: ease-out; }"),
+            gentle
+        );
+        assert_eq!(
+            change("* { transition: 1s linear; } tab { transition: none; }"),
+            Transition::NONE,
+            "said all at once, what is left out is as if never said"
+        );
+        assert_eq!(
+            change("* { transition: 1s linear; } tab { transition-duration: 0s; }").easing,
+            Easing::Linear
+        );
+    }
+
+    #[test]
+    fn a_state_can_have_a_change_of_its_own() {
+        let theme = Theme::parse("tab { transition: 300ms; } tab:active { transition: 50ms; }");
+        let theme = theme.unwrap();
+        assert_eq!(
+            theme.style(Part::Tab, States::NONE).transition.duration,
+            300
+        );
+        assert_eq!(theme.style(Part::Tab, ACTIVE).transition.duration, 50);
+    }
+
+    #[test]
+    fn colours_take_a_moment_to_change_unless_a_theme_says_otherwise() {
+        let gentle = Transition {
+            duration: 120,
+            easing: Easing::EaseOut,
+        };
+        let theme = Theme::default();
+        for part in Part::ALL {
+            assert_eq!(theme.style(part, States::NONE).transition, gentle);
+            assert_eq!(theme.style(part, HOVERED).transition, gentle);
+        }
+        let still = Theme::parse("* { transition: none; }").unwrap();
+        for part in Part::ALL {
+            assert_eq!(still.style(part, FOCUSED).transition, Transition::NONE);
+        }
+    }
+
+    #[test]
+    fn a_change_that_is_not_understood_is_an_error() {
+        let message = problem("tab { transition: background 150ms; }");
+        assert!(
+            message.contains("`background` is not part of a transition"),
+            "{message}"
+        );
+        let message = problem("tab { transition: 11s; }");
+        assert!(message.contains("`11s` is not a time"), "{message}");
+        let message = problem("tab { transition-duration: soon; }");
+        assert!(message.contains("`soon` is not a time"), "{message}");
+        let message = problem("tab { transition-timing-function: bouncy; }");
+        assert!(
+            message.contains("`bouncy` is not a way for colours to change"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -846,6 +977,7 @@ mod tests {
                margin-left: 9px;\n\
                min-width: 40px;\n\
                max-width: 400px;\n\
+               transition: 80ms linear;\n\
              }",
         );
         let style = theme.unwrap().style(Part::Task, States::NONE);
@@ -873,6 +1005,10 @@ mod tests {
             height: 18,
             min_width: 40,
             max_width: 400,
+            transition: Transition {
+                duration: 80,
+                easing: Easing::Linear,
+            },
         };
         assert_eq!(style, expected);
     }

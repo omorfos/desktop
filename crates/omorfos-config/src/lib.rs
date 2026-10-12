@@ -30,6 +30,7 @@ pub mod schema;
 mod store;
 mod style;
 mod theme;
+mod transition;
 mod value;
 mod watcher;
 
@@ -50,4 +51,5 @@ pub use rules::{Match, Rule, Rules};
 pub use store::Store;
 pub use style::{Edges, Line, Part, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
+pub use transition::{Easing, Transition};
 pub use watcher::Watcher;

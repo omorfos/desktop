@@ -132,7 +132,7 @@ pub(crate) fn fraction(text: &str) -> Option<u8> {
 }
 
 /// The nearest byte to a value from 0 to 255.
-fn byte(value: f32) -> u8 {
+pub(crate) fn byte(value: f32) -> u8 {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -150,6 +150,29 @@ pub(crate) fn size(value: &str, unit: &str, least: u32, most: u32) -> Result<u32
     let number = number.filter(|number| (least..=most).contains(number));
     number.ok_or_else(|| {
         format!("`{value}` is not a size from {least}{unit} to {most}{unit}, in whole {unit}")
+    })
+}
+
+/// How long something takes, in milliseconds: `150ms` or `0.2s`, up to
+/// `most`.
+pub(crate) fn time(value: &str, most: u32) -> Result<u32, String> {
+    let millis = match (value.strip_suffix("ms"), value.strip_suffix('s')) {
+        (Some(millis), _) => number(millis),
+        (None, Some(seconds)) => number(seconds).map(|seconds| seconds * 1000.0),
+        // Nothing takes no time whatever it is counted in.
+        (None, None) => number(value).filter(|none| *none == 0.0),
+    };
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "the value is from nothing to `most`, which is small"
+    )]
+    let millis = millis
+        .filter(|millis| *millis <= most as f32)
+        .map(|millis| millis.round() as u32);
+    millis.ok_or_else(|| {
+        format!("`{value}` is not a time from 0 to {most}ms; write it as `150ms` or `0.2s`")
     })
 }
 
@@ -429,6 +452,20 @@ mod tests {
         assert_eq!(fraction("100%"), Some(255));
         for wrong in ["1.5", "150%", "-0.5", "half", "", "%", "0.5.5", "inf"] {
             assert_eq!(fraction(wrong), None, "{wrong}");
+        }
+    }
+
+    #[test]
+    fn a_time_is_written_in_seconds_or_thousandths_of_one() {
+        assert_eq!(time("150ms", 10_000), Ok(150));
+        assert_eq!(time("0.2s", 10_000), Ok(200));
+        assert_eq!(time("2s", 10_000), Ok(2000));
+        assert_eq!(time("0", 10_000), Ok(0));
+        assert_eq!(time("0s", 10_000), Ok(0));
+        assert_eq!(time("10000ms", 10_000), Ok(10_000));
+        for wrong in ["150", "11s", "10001ms", "-1s", "fast", "", "s", "ms", "1m"] {
+            let message = time(wrong, 10_000).unwrap_err();
+            assert!(message.contains("from 0 to 10000ms"), "{wrong}: {message}");
         }
     }
 
