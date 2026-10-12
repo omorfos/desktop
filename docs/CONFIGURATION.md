@@ -54,6 +54,9 @@ cursor:
 launcher:
   icons: false            # show each program's icon
   descriptions: false     # show, and search, what each program says of itself
+notifications:
+  enabled: true           # show what programs have to tell you
+  timeout: 5              # seconds one stays; 0 until it is clicked
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -323,6 +326,26 @@ launcher-description:active { color: var(--background); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }
+
+/* A notification. The margin is the room between one and the next, and
+ * between them and the edges of the screen. One a program marks critical
+ * is :urgent. */
+notification {
+  min-width: 340px;
+  margin: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+notification:hover { border-color: var(--accent); }
+notification:urgent { border-color: #e06c75; }
+notification-title {
+  color: var(--text);
+  font-weight: bold;
+}
+notification-body { color: var(--text-dim); }
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -354,14 +377,15 @@ workspace:active, task:active { border-bottom: none; }
 **Parts** are `desktop`, `window`, `titlebar`, `tab`, `menu`, `menu-item`,
 `menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
-`launcher-description` and `launcher-backdrop`. `*` is every part. Several can share a rule:
+`launcher-description`, `launcher-backdrop`, `notification`,
+`notification-title` and `notification-body`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
 has), `:active` (the tab or workspace being shown, or the task of the
-window with focus, or the program the launcher would start) and `:hover`
-(the pointer is over it). A part can be in
-several: `tab:active:focus`.
+window with focus, or the program the launcher would start), `:hover` (the
+pointer is over it) and `:urgent` (a notification its sender marked as
+critical). A part can be in several: `tab:active:focus`.
 
 **Every part is a box.** From the outside in it has a margin, which is room
 kept clear around it; a border; padding, which is room between the border
@@ -482,6 +506,7 @@ launcher:
 `icons` puts each program's icon before its name. Icons are looked for by
 name in the `hicolor` theme of `~/.local/share/icons` and the system's
 `icons` directories, and in `/usr/share/pixmaps`; PNG and SVG are read.
+Icons a program does not bring itself are taken from `Adwaita`.
 `descriptions` writes what each program says of itself after its name, and
 has that searched too, after the names. Both take effect the next time the
 launcher is opened.
@@ -491,6 +516,41 @@ How it looks is in `theme.css`, under `launcher`, `launcher-input`,
 of the screen while it is open: give it a see-through background, such as
 `rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with
 another key, bind `show_launcher` in `keys.yaml`.
+
+## Notifications
+
+What programs have to tell you is shown in the top right-hand corner of the
+screen the pointer is on, the newest first: a title, a few lines, and a
+picture or the program's icon if it sent one. A click dismisses one, and
+tells the program that sent it, which is how clicking a browser's
+notification brings up its tab; a click with the right button dismisses it
+without that. Otherwise it goes after as long as its sender asked for, or
+after `notifications.timeout` seconds. One its sender marked as critical
+stays until it is clicked.
+
+A picture may be a PNG or an SVG, given by its path, or an icon by name.
+Icons are looked for in the `hicolor` and `Adwaita` themes; where a theme
+has one only as a shape, it is drawn in the colour of the text.
+
+`omorfos-notifications` is a program of its own, started with the session.
+It answers to the usual desktop notification service, so `notify-send` and
+applications work with it as they are. It needs the session's D-Bus, which
+a session started from a login manager has.
+
+How notifications look is in `theme.css`, under `notification`,
+`notification-title` and `notification-body`; a critical one is
+`notification:urgent`. Their width is `min-width`, and `margin` is the
+room between them and around them.
+
+Only one program can show notifications. To use another, or none, turn this
+one off in `config.yaml`:
+
+```yaml
+notifications:
+  enabled: false
+```
+
+Like `autostart`, this takes effect the next time you log in.
 
 ## Locking the screen
 

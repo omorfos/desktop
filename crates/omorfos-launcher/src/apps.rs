@@ -109,27 +109,18 @@ fn arguments(exec: &str) -> Vec<String> {
     words
 }
 
-/// A variable of the environment that was given a value.
-fn set(value: Option<&OsStr>) -> Option<&OsStr> {
-    value.filter(|value| !value.is_empty())
-}
-
 /// Where desktop entries are installed, the user's own first: the
-/// `applications` directory of `data_home` (`XDG_DATA_HOME`, or
-/// `.local/share` in `home`) and of each of `data_dirs` (`XDG_DATA_DIRS`,
-/// or `/usr/local/share` and `/usr/share`).
+/// `applications` directory of each place programs install what they
+/// share (see [`omorfos_icons::data_directories`]).
 #[must_use]
 pub fn directories(
     data_home: Option<&OsStr>,
     home: Option<&OsStr>,
     data_dirs: Option<&OsStr>,
 ) -> Vec<PathBuf> {
-    let own = set(data_home).map(PathBuf::from);
-    let own = own.or_else(|| set(home).map(|home| Path::new(home).join(".local/share")));
-    let shared = set(data_dirs).unwrap_or(OsStr::new("/usr/local/share:/usr/share"));
-    let shared = std::env::split_paths(shared).filter(|path| path.is_absolute());
-    let all = own.into_iter().chain(shared);
-    all.map(|path| path.join("applications")).collect()
+    let data = omorfos_icons::data_directories(data_home, home, data_dirs).into_iter();
+    data.map(|directory| directory.join("applications"))
+        .collect()
 }
 
 /// The programs installed in `directories`, by name. Where two directories

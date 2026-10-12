@@ -222,6 +222,8 @@ pub struct Compositor {
     /// The panel to start with the session, once a backend has said where
     /// it is.
     panel: Option<PathBuf>,
+    /// The program that shows notifications, likewise.
+    notifier: Option<PathBuf>,
     /// The launcher, likewise, and the one that is open, by the number of
     /// its process.
     launcher: Option<PathBuf>,
@@ -343,6 +345,7 @@ impl Compositor {
                     children: Vec::new(),
                     started: false,
                     panel: None,
+                    notifier: None,
                     launcher: None,
                     launched: None,
                     ipc: None,
@@ -717,8 +720,17 @@ impl Compositor {
         self.panel = Some(program.into());
     }
 
-    /// Starts the panel, if there is one and it is wanted, and then the
-    /// programs the configuration lists to be started with the session. A
+    /// Says where the program that shows notifications is: a name to look
+    /// up in `PATH`, or a path. It is then started with the session,
+    /// unless the configuration turns it off. Until this is called there
+    /// is none to start.
+    pub fn set_notifier(&mut self, program: impl Into<PathBuf>) {
+        self.notifier = Some(program.into());
+    }
+
+    /// Starts the panel and the notifications, each if there is one and it
+    /// is wanted, and then the programs the configuration lists to be
+    /// started with the session. A
     /// backend calls this once it is ready for them: when the sockets are
     /// open and there is a screen to show them on.
     ///
@@ -732,9 +744,12 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         // The panel goes first, so that it has taken its edge of the screen
         // before anything else is placed.
-        let panel = self.panel.clone();
-        if let Some(panel) = panel.filter(|_| config.general.panel.enabled) {
-            self.start(panel.as_os_str(), &[]);
+        let general = &config.general;
+        let panel = self.panel.clone().filter(|_| general.panel.enabled);
+        let notifier = self.notifier.clone();
+        let notifier = notifier.filter(|_| general.notifications.enabled);
+        for component in panel.into_iter().chain(notifier) {
+            self.start(component.as_os_str(), &[]);
         }
         for command in &config.general.autostart {
             self.spawn(command);

@@ -36,6 +36,31 @@ pub struct General {
     pub cursor: Cursor,
     /// The launcher that comes with omorfos.
     pub launcher: Launcher,
+    /// The notifications that come with omorfos.
+    pub notifications: Notifications,
+}
+
+/// The notifications that come with omorfos: what programs have to tell
+/// the user, shown in a corner of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Notifications {
+    /// Whether they are shown by omorfos. Turn it off to go without, or
+    /// to use another program for them.
+    pub enabled: bool,
+    /// How long one stays, in seconds, when the program that sent it does
+    /// not say. `0` leaves it until it is clicked.
+    pub timeout: Bounded<0, 3600>,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout: Bounded::clamped(5),
+        }
+    }
 }
 
 /// The launcher that comes with omorfos: what it shows of each program
@@ -354,6 +379,18 @@ mod tests {
         let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
+    }
+
+    #[test]
+    fn notifications_are_shown_for_five_seconds_unless_told_otherwise() {
+        let notifications = General::default().notifications;
+        assert!(notifications.enabled);
+        assert_eq!(notifications.timeout.get(), 5);
+        let yaml = "notifications: { enabled: false, timeout: 0 }";
+        let notifications = parse(yaml).unwrap().notifications;
+        assert!(!notifications.enabled);
+        assert_eq!(notifications.timeout.get(), 0);
+        assert!(parse("notifications: { timeout: 99999 }").is_err());
     }
 
     #[test]

@@ -5,19 +5,17 @@
 //! out, clicks go back.
 
 use std::error::Error;
-use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::mem;
-use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
 use omorfos_config::{Store, Theme, Watcher};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State};
-use omorfos_ui::{Canvas, Scale, Text};
+use omorfos_shell::{picture, whole};
+use omorfos_ui::{Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
-use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -459,37 +457,6 @@ impl Face {
             self.shown = Some(wanted);
         })
     }
-}
-
-/// Hands a canvas to the compositor as a buffer it can read.
-fn picture(
-    shm: &wl_shm::WlShm,
-    canvas: &Canvas,
-    handle: &QueueHandle<Shell>,
-) -> io::Result<wl_buffer::WlBuffer> {
-    let bytes = canvas.bytes();
-    let memory = memfd_create("omorfos-panel", MemfdFlags::CLOEXEC);
-    let memory = memory.map(File::from).map_err(io::Error::from);
-    let written = memory.and_then(|mut memory| memory.write_all(bytes).map(|()| memory));
-    written.map(|memory| {
-        let length = i32::try_from(bytes.len()).unwrap_or(i32::MAX);
-        let (width, height) = (canvas.width().cast_signed(), canvas.height().cast_signed());
-        let pool = shm.create_pool(memory.as_fd(), length, handle, ());
-        let format = wl_shm::Format::Argb8888;
-        let buffer = pool.create_buffer(0, width, height, width * 4, format, handle, ());
-        pool.destroy();
-        buffer
-    })
-}
-
-/// The whole unit of layout a position falls in.
-fn whole(position: f64) -> i32 {
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "a position on a surface is far within range, and a cast saturates"
-    )]
-    let whole = position.floor() as i32;
-    whole
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for Shell {

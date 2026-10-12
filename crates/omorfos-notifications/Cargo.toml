@@ -1,0 +1,35 @@
+[package]
+name = "omorfos-notifications"
+description = "Notifications for the omorfos desktop: what programs have to tell the user"
+keywords = ["wayland", "compositor", "notifications"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+omorfos-config = { path = "../omorfos-config" }
+omorfos-icons = { path = "../omorfos-icons" }
+omorfos-shell = { path = "../omorfos-shell" }
+omorfos-ui = { path = "../omorfos-ui" }
+# Already in the tree through Smithay. Waits on several descriptors at once
+# (`event`), and makes the pipe by which the thread listening to the bus
+# wakes the rest (`pipe`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "pipe"] }
+# The notifications are a Wayland client. All three are already in the tree
+# through Smithay's nested backend.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# Programs send notifications over D-Bus. This speaks it, in safe Rust.
+zbus = "5.19.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

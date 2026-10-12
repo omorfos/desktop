@@ -136,3 +136,23 @@ launcher-description:active { color: var(--background); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }
+
+/* A notification. The margin is the room between one and the next, and
+ * between them and the edges of the screen. One a program marks critical
+ * is :urgent. */
+notification {
+  min-width: 340px;
+  margin: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+notification:hover { border-color: var(--accent); }
+notification:urgent { border-color: #e06c75; }
+notification-title {
+  color: var(--text);
+  font-weight: bold;
+}
+notification-body { color: var(--text-dim); }

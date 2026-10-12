@@ -151,6 +151,24 @@
       ],
       "type": "object"
     },
+    "Notifications": {
+      "additionalProperties": false,
+      "description": "The notifications that come with omorfos: what programs have to tell\nthe user, shown in a corner of the screen.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether they are shown by omorfos. Turn it off to go without, or\nto use another program for them.",
+          "type": "boolean"
+        },
+        "timeout": {
+          "description": "How long one stays, in seconds, when the program that sent it does\nnot say. `0` leaves it until it is clicked.",
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Output": {
       "additionalProperties": false,
       "description": "How the screen is driven.",
@@ -273,6 +291,10 @@
     "launcher": {
       "$ref": "#/$defs/Launcher",
       "description": "The launcher that comes with omorfos."
+    },
+    "notifications": {
+      "$ref": "#/$defs/Notifications",
+      "description": "The notifications that come with omorfos."
     },
     "output": {
       "$ref": "#/$defs/Output",

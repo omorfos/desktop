@@ -1,0 +1,27 @@
+[package]
+name = "omorfos-icons"
+description = "Finds and reads the icons of programs for the omorfos shell components"
+keywords = ["wayland", "compositor", "icons"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+omorfos-config = { path = "../omorfos-config" }
+omorfos-ui = { path = "../omorfos-ui" }
+# Reads the icons that are PNG.
+png = "0.18.1"
+# Draws the icons that are SVG, which most are. Without its default
+# features it reads no text and no pictures inside a drawing.
+resvg = { version = "0.48.1", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

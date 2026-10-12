@@ -13,17 +13,13 @@ publish.workspace = true
 
 [dependencies]
 omorfos-config = { path = "../omorfos-config" }
+omorfos-icons = { path = "../omorfos-icons" }
 omorfos-ipc = { path = "../omorfos-ipc" }
+omorfos-shell = { path = "../omorfos-shell" }
 omorfos-ui = { path = "../omorfos-ui" }
-# Reads the icons that are PNG.
-png = "0.18.1"
-# Draws the icons that are SVG, which most are. Without its default
-# features it reads no text and no pictures inside a drawing.
-resvg = { version = "0.48.1", default-features = false }
 # Already in the tree through Smithay. Waits for the compositor to say
-# something (`event`) and makes the memory a picture is handed over in
-# (`fs`).
-rustix = { version = "1.1.5", default-features = false, features = ["event", "fs"] }
+# something (`event`).
+rustix = { version = "1.1.5", default-features = false, features = ["event"] }
 serde_json = "1.0"
 # The launcher is a Wayland client. All three are already in the tree
 # through Smithay's nested backend.
