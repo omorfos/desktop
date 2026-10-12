@@ -204,9 +204,12 @@ This is the whole built-in theme, which is also every part there is:
   --border: #2c303a;
 }
 
+/* Colours take a moment to change when a part's state does. To have them
+ * change at once, write `* { transition: none; }` in your theme. */
 * {
   font-family: sans-serif;
   font-size: 11pt;
+  transition: 120ms ease-out;
 }
 
 desktop { background: var(--background); }
@@ -405,6 +408,7 @@ is measured to the outside of its border.
 | `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width` |
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
+| `transition` | a time up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out` or `ease-in-out`; or `none` | how long the part's colours take to change when its state does, and how; also `transition-duration` and `transition-timing-function` |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -415,6 +419,19 @@ as a fourth digit or pair; `rgb(91, 156, 245)` and `rgba(91, 156, 245,
 Sizes are whole numbers of `px`, and of `pt` for a font. A variable is
 declared in `:root` with a name beginning `--` and used as `var(--name)`,
 alone or as part of a value: `border: 1px solid var(--accent)`.
+
+**Colours change over time.** When a part changes state, as a window does
+on gaining focus or a menu row when the pointer comes onto it, its
+background, text and border colours go from the old to the new over the
+time its `transition` gives, written as `150ms` or `0.2s`. It is the
+`transition` of the state being entered that counts, so
+`menu-item:hover { transition: none; }` lights a row at once and lets it
+fade when the pointer leaves. Everything takes 120ms unless you say
+otherwise; `* { transition: none; }` turns it all off. Only colours
+change this way. Sizes change at once, so that nothing moves under the
+pointer, and a `transition` names no property: all the colours of a part
+go together. Something drawn for the first time has its colours from the
+start.
 
 Not every part uses every property yet:
 
@@ -429,8 +446,9 @@ Not every part uses every property yet:
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
   focus.
-- Layout (`display`, `position`, `flex`), gradients, shadows and
-  transitions are not there.
+- Layout (`display`, `position`, `flex`), gradients and shadows are not
+  there, and nor are a transition's delay, `cubic-bezier()` or
+  `@keyframes`.
 
 Nothing is passed over in silence: a part, state, property or value that
 is not understood is a mistake, reported with its line and column, and the

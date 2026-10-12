@@ -21,7 +21,7 @@ use omorfos_launcher::{App, Launcher, Picker};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{HEIGHT, Session, WIDTH, key};
+use crate::common::{HEIGHT, Session, WIDTH, half_way, key};
 use crate::windows::{BACKGROUND, RED};
 
 const LEFT: u32 = 0x110;
@@ -287,6 +287,38 @@ fn keys_do_not_repeat_when_the_keyboard_is_set_not_to() {
     assert_eq!(launcher.deadline(), None);
     settle_at(&mut session, &mut launcher, Duration::from_secs(5));
     assert_eq!(chosen(&mut session), Some(1));
+}
+
+#[test]
+fn a_row_gets_to_the_colour_of_being_chosen_over_the_time_the_theme_gives() {
+    let theme = "launcher-item { background: #ff0000; transition: 100ms linear; }\n\
+                 launcher-item:active { background: #0000ff; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut launcher = launcher(&mut session);
+    let at = Duration::from_millis;
+    let (red, blue) = (0xffff_0000, 0xff00_00ff);
+    let rows = |session: &mut Session| {
+        let picture = session.draw();
+        let color = |place| picture.at(row(place).0, row(place).1);
+        (color(0), color(1))
+    };
+    settle_at(&mut session, &mut launcher, at(1000));
+    assert_eq!(rows(&mut session), (blue, red), "as it opens, at once");
+    assert_eq!(launcher.deadline(), None, "and nothing to wait for");
+
+    press(&mut session, DOWN);
+    settle_at(&mut session, &mut launcher, at(1000));
+    assert_eq!(rows(&mut session), (blue, red), "setting out");
+    assert_eq!(launcher.deadline(), Some(at(1016)));
+
+    settle_at(&mut session, &mut launcher, at(1050));
+    let (first, second) = rows(&mut session);
+    assert!(half_way(first), "{first:#x}");
+    assert!(half_way(second), "{second:#x}");
+
+    settle_at(&mut session, &mut launcher, at(1100));
+    assert_eq!(rows(&mut session), (red, blue), "arrived");
+    assert_eq!(launcher.deadline(), None, "and at rest");
 }
 
 #[test]

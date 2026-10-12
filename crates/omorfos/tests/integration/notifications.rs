@@ -27,7 +27,7 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::Value;
 
-use crate::common::{HEIGHT, Session, WIDTH};
+use crate::common::{HEIGHT, Session, WIDTH, half_way};
 use crate::windows::BACKGROUND;
 
 const LEFT: u32 = 0x110;
@@ -138,6 +138,44 @@ fn until(
 /// A point inside the first notification, towards its lower right-hand
 /// corner, clear of what is written on it.
 const INSIDE: (i32, i32) = (WIDTH - 20, 50);
+
+#[test]
+fn a_notification_gets_to_the_colour_of_being_pointed_at_over_time() {
+    let theme = "notification { background: #ff0000; transition: 100ms linear; }\n\
+                 notification:hover { background: #0000ff; }\n";
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    let at = Duration::from_millis;
+    let (red, blue) = (0xffff_0000, 0xff00_00ff);
+    // Up and to the left of the pointer, which is drawn from its tip down.
+    let seen = |session: &mut Session| session.draw().at(INSIDE.0 - 6, INSIDE.1 - 6);
+    notify(&peer, "Point at me", 0, HashMap::new());
+    until(&mut session, &mut notifier, at(1000), |session| {
+        seen(session) == red
+    });
+    let mut settle = |session: &mut Session, now: Duration| {
+        for _ in 0..20 {
+            notifier.turn(now).unwrap();
+            session.step();
+        }
+        notifier.deadline()
+    };
+    assert_eq!(settle(&mut session, at(1000)), None, "nothing to wait for");
+
+    let (x, y) = (f64::from(INSIDE.0), f64::from(INSIDE.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    assert_eq!(settle(&mut session, at(1000)), Some(at(1016)));
+    assert_eq!(seen(&mut session), red, "setting out");
+
+    settle(&mut session, at(1050));
+    let between = seen(&mut session);
+    assert!(half_way(between), "{between:#x}");
+
+    assert_eq!(settle(&mut session, at(1100)), None, "at rest");
+    assert_eq!(seen(&mut session), blue, "arrived");
+}
 
 fn showing(session: &mut Session) -> bool {
     session.draw().at(INSIDE.0, INSIDE.1) == surface()

@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Store, Watcher};
 use omorfos_icons::Icons;
 use omorfos_shell::{picture, whole};
-use omorfos_ui::{Scale, Text};
+use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -94,20 +94,26 @@ impl Notifier {
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
         let handled = self.queue.dispatch_pending(&mut self.shell);
         let handled = handled.map(drop).map_err(Failure::from);
+        // A notification on its way to another look is drawn again as it
+        // goes.
+        self.shell.stale |= self.shell.motion.due(now);
         handled
             .and_then(|()| self.hear(now))
             .and_then(|()| {
-                let shown = self.shell.show(&self.queue.handle());
+                let shown = self.shell.show(&self.queue.handle(), now);
                 shown.map_err(Failure::from)
             })
             .and_then(|()| self.connection.flush().map_err(Failure::from))
     }
 
     /// When there will next be something to do without anything having
-    /// happened: when the next notification's time runs out.
+    /// happened: when the next notification's time runs out, or one that
+    /// is changing colour is due to be drawn again.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
-        self.shell.stack.deadline()
+        let gone = self.shell.stack.deadline();
+        let drawn = self.shell.motion.deadline();
+        gone.into_iter().chain(drawn).min()
     }
 
     /// Runs the notifications, asleep until there is something to do,
@@ -215,6 +221,8 @@ struct Shell {
     /// The notifications that are no longer showing and that programs have
     /// yet to be told of, with why.
     gone: Vec<(u32, Reason)>,
+    /// The notifications that are on their way from one look to another.
+    motion: Motion,
     /// Whether what is showing may differ from what is on the screen.
     stale: bool,
 }
@@ -264,6 +272,7 @@ impl Shell {
             over: (-1, -1),
             clicked: Vec::new(),
             gone: Vec::new(),
+            motion: Motion::new(),
             stale: false,
         }
     }
@@ -285,7 +294,7 @@ impl Shell {
     /// Puts the notifications on the screen, takes the surface away when
     /// there are none, and draws them if they no longer show what they
     /// should.
-    fn show(&mut self, handle: &QueueHandle<Self>) -> io::Result<()> {
+    fn show(&mut self, handle: &QueueHandle<Self>, now: Duration) -> io::Result<()> {
         if !mem::take(&mut self.stale) {
             return Ok(());
         }
@@ -345,7 +354,11 @@ impl Shell {
             return Ok(());
         }
         let (text, icons) = (&mut self.text, &mut self.icons);
-        let canvas = self.stack.paint(text, theme, face.scale, icons);
+        self.motion.begin(now);
+        let canvas = self
+            .stack
+            .paint(text, theme, face.scale, icons, &mut self.motion);
+        self.motion.end();
         picture(shm, &canvas, handle).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
             // However many pixels the picture has, it covers this much.

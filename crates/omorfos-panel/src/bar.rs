@@ -3,7 +3,7 @@
 
 use omorfos_config::{Part, States, Theme};
 use omorfos_ipc::{Request, State, Window, Workspace};
-use omorfos_ui::{Area, Canvas, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
 /// What a button stands for.
@@ -214,15 +214,29 @@ impl Bar {
         }
     }
 
-    /// Draws the bar, with `scale` pixels to a unit of layout.
+    /// Draws the bar, with `scale` pixels to a unit of layout. A button
+    /// whose workspace has just been shown or whose window has just been
+    /// given focus, or has just stopped being, is as far on its way to its
+    /// new colours as `motion` has it.
     #[must_use]
-    pub fn paint(&self, text: &mut Text, theme: &Theme, scale: Scale) -> Canvas {
+    pub fn paint(
+        &self,
+        text: &mut Text,
+        theme: &Theme,
+        scale: Scale,
+        motion: &mut Motion,
+    ) -> Canvas {
         let panel = theme.style(Part::Panel, States::NONE);
         let mut canvas = Canvas::scaled(self.width, self.height, scale);
         let whole = (0, 0, self.width, self.height);
         canvas.draw_box(inset(whole, panel.margin), &panel);
         for item in &self.items {
-            let style = theme.style(item.part, item.states);
+            let key = match item.target {
+                Target::Workspace(number) => u64::from(number),
+                Target::Window(id) => id,
+                Target::Nothing => 0,
+            };
+            let style = motion.style(theme, item.part, key, item.states);
             canvas.draw_box(item.area, &style);
             let label = inset(item.area, style.inset());
             let font = theme.font(item.part, item.states);
@@ -423,7 +437,7 @@ mod tests {
         // It is still a bar: as tall as the theme says and drawn all over.
         let theme = Theme::default();
         assert_eq!(bar.height(), theme.style(Part::Panel, States::NONE).height);
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let background = palette(&theme).unfocused.titlebar;
         let all = usize::try_from(WIDTH * bar.height()).unwrap();
         assert_eq!(count(&canvas, 0..WIDTH, 0..bar.height(), background), all);
@@ -506,7 +520,12 @@ mod tests {
                 .all(|request| request != Request::Activate { window: 2 })
         );
         // Drawing it stays within the bar.
-        let canvas = narrow.paint(&mut Text::new(), &Theme::default(), Scale::ONE);
+        let canvas = narrow.paint(
+            &mut Text::new(),
+            &Theme::default(),
+            Scale::ONE,
+            &mut Motion::new(),
+        );
         assert_eq!(canvas.width(), 10);
     }
 
@@ -515,7 +534,7 @@ mod tests {
         let theme = Theme::default();
         let colors = palette(&theme);
         let bar = bar(&state(), "left");
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let stretches = stretches(&bar);
         let starts: Vec<u32> = stretches.iter().map(|(start, _)| *start).collect();
         let end = starts[3] + (starts[3] - starts[2]);
@@ -562,7 +581,12 @@ mod tests {
     #[test]
     fn a_bar_is_drawn_with_as_many_pixels_as_the_screen_has() {
         let bar = bar(&state(), "left");
-        let canvas = bar.paint(&mut Text::new(), &Theme::default(), Scale::new(2.0));
+        let canvas = bar.paint(
+            &mut Text::new(),
+            &Theme::default(),
+            Scale::new(2.0),
+            &mut Motion::new(),
+        );
         assert_eq!(
             (canvas.width(), canvas.height()),
             (WIDTH * 2, bar.height() * 2)
@@ -587,7 +611,7 @@ mod tests {
         let theme = Theme::default();
         let background = palette(&theme).unfocused.titlebar;
         let bar = timed(&state(), "left", "14:05");
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let height = bar.height();
         let blank = |columns: std::ops::Range<u32>| {
             let all = usize::try_from((columns.end - columns.start) * height).unwrap();
@@ -604,12 +628,17 @@ mod tests {
         assert!(blank(last.unwrap() + 1..WIDTH - 100));
         // A longer time takes more room.
         let longer = timed(&state(), "left", "14:05:09 on a Saturday");
-        let canvas = longer.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = longer.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let all = usize::try_from(40 * height).unwrap();
         assert!(count(&canvas, WIDTH - 140..WIDTH - 100, 0..height, background) < all);
 
         // A bar with no time has nothing there.
-        let canvas = self::bar(&state(), "left").paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = self::bar(&state(), "left").paint(
+            &mut Text::new(),
+            &theme,
+            Scale::ONE,
+            &mut Motion::new(),
+        );
         let all = usize::try_from(100 * height).unwrap();
         assert_eq!(
             count(&canvas, WIDTH - 100..WIDTH, 0..height, background),
@@ -678,7 +707,7 @@ mod tests {
         let (bar, theme) = styled("panel { margin: 4px 6px 8px 10px; }");
         assert_eq!(Bar::thickness(&theme), 28 + 4 + 8);
         assert_eq!(bar.height(), 40);
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let background = argb(theme.style(Part::Panel, States::NONE).background);
         // Nothing is drawn in the margin, so the screen shows through.
         for (x, y) in [(400, 3), (400, 32), (9, 20), (WIDTH - 6, 20), (0, 0)] {
@@ -704,7 +733,7 @@ mod tests {
         let width = |span: (u32, u32)| span.1 - span.0;
         assert_eq!(width(spaced[0]), width(plain[0]), "the button is as wide");
         // It is drawn shorter, with the bar showing above and below it.
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let lit = argb(
             theme
                 .style(Part::Workspace, States::NONE.with(ACTIVE))
@@ -746,7 +775,7 @@ mod tests {
             "panel { border-radius: 12px; border: 2px solid #ff0000; }\n\
              workspace { border-radius: 6px; margin: 2px; }",
         );
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         assert_eq!(canvas.at(0, 0), 0, "the corner is cut away");
         assert_eq!(canvas.at(WIDTH - 1, 27), 0);
         assert_eq!(canvas.at(400, 0), argb(Color::rgb(255, 0, 0)));
@@ -764,7 +793,7 @@ mod tests {
     #[test]
     fn the_clock_is_a_box_like_any_other() {
         let (bar, theme) = styled("clock { background: #00ff00; margin: 0 7px 0 0; }");
-        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let green = argb(Color::rgb(0, 255, 0));
         assert_eq!(canvas.at(WIDTH - 8, 1), green);
         assert_ne!(canvas.at(WIDTH - 7, 1), green, "its margin is the bar's");

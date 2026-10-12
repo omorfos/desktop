@@ -207,8 +207,14 @@ to show over the IPC socket (ADR 18). In this order:
       `opacity`, the `border` shorthand, font weight and style), and every
       part a box with a margin, per-side borders, padding and rounded
       corners (ADR 21)
-- [ ] More of CSS: `box-shadow`, gradients, a background image, and
-      transitions once there is something to animate
+- [x] Transitions: a part's colours take the time its `transition`
+      gives to change when its state does, in the compositor's frames and
+      menu and in the panel, the launcher and the notifications (ADR 24)
+- [ ] More of CSS: `box-shadow`, gradients, a background image, and a
+      transition's delay and `cubic-bezier()`
+- [ ] Things that come and go over time: a window, the menu, the launcher
+      or a notification fading in and out, which needs the whole of one
+      drawn part see-through and not only its colours
 - [ ] Blur behind what is see-through (`backdrop-filter: blur()`), the
       frosted-glass look. The compositor has to do it, not the component:
       draw what is below to a buffer, blur it in a shader, draw the part

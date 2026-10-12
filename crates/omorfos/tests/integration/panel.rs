@@ -22,7 +22,7 @@ use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{HEIGHT, Picture, Session, WIDTH};
+use crate::common::{HEIGHT, Picture, Session, WIDTH, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -71,7 +71,7 @@ fn panel(session: &mut Session) -> Panel {
 /// say to each other.
 fn settle(session: &mut Session, panel: &mut Panel) {
     for _ in 0..20 {
-        panel.turn(TIME).unwrap();
+        panel.turn(TIME, Duration::ZERO).unwrap();
         session.step();
     }
 }
@@ -188,6 +188,44 @@ fn clicking_a_workspace_on_the_bar_shows_it() {
     let picture = session.draw();
     assert_eq!(picture.at(second, HEIGHT - 1), accent());
     assert_eq!(picture.at(3, HEIGHT - 1), plain());
+}
+
+#[test]
+fn a_workspace_gets_to_the_colour_of_being_shown_over_the_time_the_theme_gives() {
+    let theme = "workspace { background: #ff0000; transition: 100ms linear; }\n\
+                 workspace:active { background: #0000ff; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut panel = panel(&mut session);
+    let at = Duration::from_millis;
+    let (red, blue) = (0xffff_0000, 0xff00_00ff);
+    let mut settle = |session: &mut Session, now: Duration| {
+        for _ in 0..20 {
+            panel.turn(TIME, now).unwrap();
+            session.step();
+        }
+        panel.deadline()
+    };
+    assert_eq!(settle(&mut session, at(1000)), None, "nothing to wait for");
+    let second = button(&mut session, &workspace(2));
+    let buttons = |session: &mut Session| {
+        let picture = session.draw();
+        (picture.at(3, HEIGHT - 6), picture.at(second, HEIGHT - 6))
+    };
+    assert_eq!(buttons(&mut session), (blue, red), "as it opens, at once");
+
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::NextWorkspace);
+    assert_eq!(settle(&mut session, at(1000)), Some(at(1016)));
+    assert_eq!(buttons(&mut session), (blue, red), "setting out");
+
+    settle(&mut session, at(1050));
+    let (first, other) = buttons(&mut session);
+    assert!(half_way(first), "{first:#x}");
+    assert!(half_way(other), "{other:#x}");
+
+    assert_eq!(settle(&mut session, at(1100)), None, "at rest");
+    assert_eq!(buttons(&mut session), (red, blue), "arrived");
 }
 
 #[test]
@@ -316,7 +354,7 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
     );
 
     session.eventually(|session| {
-        panel.borrow_mut().turn(TIME).unwrap();
+        panel.borrow_mut().turn(TIME, Duration::ZERO).unwrap();
         session.step();
         let picture = session.draw();
         let rows = (HEIGHT - 40..HEIGHT).rev();
@@ -380,7 +418,7 @@ fn every_bar_has_a_clock_that_is_drawn_again_only_when_the_time_changes() {
 
     // The minute turns.
     for _ in 0..20 {
-        panel.turn("14:06").unwrap();
+        panel.turn("14:06", Duration::ZERO).unwrap();
         session.step();
     }
     let after = session.draw();
@@ -477,7 +515,7 @@ fn the_panel_gives_up_when_the_compositor_stops_telling_it_anything() {
 
     drop(news);
 
-    assert!(panel.turn(TIME).is_err());
+    assert!(panel.turn(TIME, Duration::ZERO).is_err());
 }
 
 #[test]
@@ -501,7 +539,7 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
     click(&mut session, LEFT);
     session.step();
 
-    let turns = (0..20).map(|_| panel.turn(TIME));
+    let turns = (0..20).map(|_| panel.turn(TIME, Duration::ZERO));
     assert!(turns.into_iter().any(|turn| turn.is_err()));
 }
 
@@ -516,7 +554,7 @@ fn the_panel_gives_up_when_the_compositor_has_gone() {
     // The connection closing can take a moment to be seen.
     let gone = (0..5000).any(|_| {
         std::thread::sleep(Duration::from_millis(1));
-        panel.turn(TIME).is_err()
+        panel.turn(TIME, Duration::ZERO).is_err()
     });
     assert!(gone);
 }

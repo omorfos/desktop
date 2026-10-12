@@ -9,12 +9,12 @@ use std::io;
 use std::mem;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos_config::{Store, Theme, Watcher};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State};
 use omorfos_shell::{picture, whole};
-use omorfos_ui::{Scale, Text};
+use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -96,14 +96,18 @@ impl Panel {
     ///
     /// `time` is what the clock on each bar is to read, which is for
     /// whoever calls this to know. Nothing is drawn again while it stays
-    /// the same.
+    /// the same. `now` is how long the panel has been running, which is
+    /// what a button changing colour goes by.
     ///
     /// # Errors
     ///
     /// Returns an error once the compositor has gone or stopped making
     /// sense. The panel is of no use after that.
-    pub fn turn(&mut self, time: &str) -> Result<(), Failure> {
+    pub fn turn(&mut self, time: &str, now: Duration) -> Result<(), Failure> {
         self.shell.timed(time);
+        self.shell.now = now;
+        // A button on its way to another look is drawn again as it goes.
+        self.shell.stale |= self.deadline().is_some_and(|due| due <= now);
         self.hear()
             .and_then(|()| self.learn().map_err(Failure::from))
             .and_then(|()| {
@@ -116,13 +120,30 @@ impl Panel {
     /// Runs the panel, asleep until there is something to do, until it
     /// cannot go on. Returns why.
     pub fn serve(&mut self) -> Failure {
+        let started = Instant::now();
         loop {
             let (time, changes) = clock::now();
-            if let Err(failure) = self.turn(&time) {
+            let now = started.elapsed();
+            if let Err(failure) = self.turn(&time, now) {
                 return failure;
             }
-            self.wait(changes);
+            let drawn = self.deadline().map(|due| due.saturating_sub(now));
+            let soonest = [Some(changes), drawn].into_iter().flatten().min();
+            self.wait(soonest.unwrap_or(changes));
         }
+    }
+
+    /// When there will next be something to do without anything having
+    /// happened, other than the time changing: when a button that is
+    /// changing colour is due to be drawn again.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Duration> {
+        let faces = self
+            .shell
+            .screens
+            .iter()
+            .filter_map(|screen| screen.face.as_ref());
+        faces.filter_map(|face| face.motion.deadline()).min()
     }
 
     /// Sleeps until one of the connections has something to read, the
@@ -214,6 +235,8 @@ struct Shell {
     commands: Ipc,
     /// Whether everything asked for so far could be sent.
     sent: io::Result<()>,
+    /// How long the panel has been running, as of this turn.
+    now: Duration,
     /// Whether anything happened that may change what a bar shows.
     stale: bool,
 }
@@ -242,6 +265,8 @@ struct Face {
     scale: Scale,
     /// What is on it now.
     shown: Option<(Bar, Scale)>,
+    /// The buttons that are on their way from one look to another.
+    motion: Motion,
     /// The picture of that, which the compositor is reading from.
     buffer: Option<wl_buffer::WlBuffer>,
 }
@@ -256,6 +281,7 @@ struct Tools<'a> {
     handle: &'a QueueHandle<Shell>,
     state: &'a State,
     time: &'a str,
+    now: Duration,
     theme: &'a Theme,
     text: &'a mut Text,
 }
@@ -277,6 +303,7 @@ impl Shell {
             text: Text::new(),
             commands,
             sent: Ok(()),
+            now: Duration::ZERO,
             stale: false,
         }
     }
@@ -369,6 +396,7 @@ impl Shell {
             handle,
             state: &self.state,
             time: &self.time,
+            now: self.now,
             theme: &self.store.current().theme,
             text: &mut self.text,
         };
@@ -417,6 +445,7 @@ impl Face {
             width: 0,
             scale: Scale::ONE,
             shown: None,
+            motion: Motion::new(),
             buffer: None,
         }
     }
@@ -439,11 +468,15 @@ impl Face {
         let (state, time) = (tools.state, tools.time);
         let bar = Bar::new(state, name, self.width, time, tools.theme, tools.text);
         let wanted = (bar, self.scale);
-        if self.shown.as_ref() == Some(&wanted) {
+        // The same bar is drawn again while a button on it changes colour.
+        let again = self.motion.due(tools.now);
+        if self.shown.as_ref() == Some(&wanted) && !again {
             return Ok(());
         }
         let (bar, scale) = &wanted;
-        let canvas = bar.paint(tools.text, tools.theme, *scale);
+        self.motion.begin(tools.now);
+        let canvas = bar.paint(tools.text, tools.theme, *scale, &mut self.motion);
+        self.motion.end();
         let size = (self.width.cast_signed(), bar.height().cast_signed());
         picture(tools.shm, &canvas, tools.handle).map(|buffer| {
             self.surface.attach(Some(&buffer), 0, 0);
