@@ -222,9 +222,10 @@ pub(crate) struct X11 {
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
-    /// The number to start the X server again with, once the window
-    /// manager of the one that stopped has heard the last of it.
-    again: Option<u32>,
+    /// An X server that has stopped and is to be replaced, once its window
+    /// manager has heard the last of it. It is kept until then because it
+    /// holds its number, which the next is to have.
+    stopped: Option<Server>,
     /// The window manager, once the X server is ready for one.
     wm: Option<X11Wm>,
     /// Windows that are to be shown and are not part of the desktop, the
@@ -239,7 +240,7 @@ impl X11 {
             shell: XWaylandShellState::new::<Compositor>(display),
             server: None,
             restarts: Restarts::default(),
-            again: None,
+            stopped: None,
             wm: None,
             apart: Vec::new(),
         }
@@ -255,7 +256,8 @@ impl X11 {
     /// What programs written for X11 are to be told to connect to, once
     /// the X server has been started.
     pub(crate) fn display(&self) -> Option<OsString> {
-        let server = self.server.as_ref();
+        // One that is about to be replaced is replaced where it was.
+        let server = self.server.as_ref().or(self.stopped.as_ref());
         server.map(|server| format!(":{}", server.process.display_number()).into())
     }
 }
@@ -311,7 +313,11 @@ impl Compositor {
         // has heard everything that X server had still to say. Only then
         // is there room for another.
         let free = self.x11.wm.is_none();
-        if let Some(number) = self.x11.again.take_if(|_| free) {
+        if let Some(stopped) = self.x11.stopped.take_if(|_| free) {
+            // Its number is free the moment it is let go of, and is taken
+            // again at once, before anything else can have it.
+            let number = stopped.process.display_number();
+            drop(stopped);
             self.start_xwayland(Some(number));
         }
         let x11 = &mut self.x11;
@@ -340,11 +346,8 @@ impl Compositor {
     /// Clears up after an X server that has stopped, and starts another in
     /// its place, with the same number so that programs already told where
     /// it is can still find it. One that keeps stopping is given up on.
-    fn recover_x11(&mut self, server: Server, now: Instant) {
-        let number = server.process.display_number();
-        self.stop_waking(server.waking);
-        // Its number is free again once it is let go of.
-        drop(server);
+    fn recover_x11(&mut self, mut server: Server, now: Instant) {
+        self.stop_waking(server.waking.take());
         // Every window it had has gone with it.
         let gone = self.windows.iter();
         let gone = gone.filter(|mapped| matches!(mapped.role, Role::X11(_)));
@@ -358,7 +361,7 @@ impl Compositor {
             let said = "the X server stopped and has been started again; programs written for \
                         X11 that were running have closed";
             self.problems.push(said.to_owned());
-            self.x11.again = Some(number);
+            self.x11.stopped = Some(server);
         } else {
             let said = "the X server keeps stopping; programs written for X11 will not run \
                         until you log in again";
