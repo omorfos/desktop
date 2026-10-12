@@ -302,6 +302,7 @@ impl Shell {
             return Ok(());
         };
         let theme = &self.store.current().theme;
+        self.stack.fit(theme, &mut self.text);
         let size = self.stack.size(theme);
         let face = self.face.take().unwrap_or_else(|| {
             let surface = compositor.create_surface(handle, ());

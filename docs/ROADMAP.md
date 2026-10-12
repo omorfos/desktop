@@ -231,8 +231,9 @@ to show over the IPC socket (ADR 18). In this order:
 - [x] Notifications, `omorfos-notifications`: the desktop notification
       service over D-Bus, shown in a corner of the screen (ADR 23)
   - [x] Tried on real hardware, with Firefox
-  - [ ] Bodies that wrap, buttons for actions beyond the click, JPEG
-        pictures, and a way to see what has gone
+  - [x] Bodies that wrap
+  - [ ] Buttons for actions beyond the click, JPEG pictures, and a way to
+        see what has gone
 - [ ] Theming polish and restrained animations
 
 ## 10. Later
