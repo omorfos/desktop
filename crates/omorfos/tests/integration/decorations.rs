@@ -3,7 +3,9 @@
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH};
+use std::time::Duration;
+
+use crate::common::{Event, HEIGHT, Session, WIDTH, half_way};
 use crate::windows::{BACKGROUND, RED};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
@@ -229,6 +231,47 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
     let picture = session.draw();
     assert_eq!(picture.at(190, 14), UNFOCUSED_TITLEBAR);
     assert_eq!(picture.at(0, 100), UNFOCUSED_BORDER);
+}
+
+#[test]
+fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
+    let theme = "window, titlebar { transition: 100ms linear; }\n\
+                 window { border-color: #ff0000; }\n\
+                 window:focus { border-color: #0000ff; }\n\
+                 titlebar { background: #ff0000; }\n\
+                 titlebar:focus { background: #0000ff; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    let (red, blue) = (0xffff_0000, 0xff00_00ff);
+    let frame = |session: &mut Session| {
+        let picture = session.draw();
+        (picture.at(190, 14), picture.at(0, 100))
+    };
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    assert_eq!(frame(&mut session), (blue, blue), "as it opens, at once");
+    assert_eq!(session.compositor_mut().deadline(), None);
+
+    let start = session.now;
+    session.open(&mut client, "second", (50, 50), RED);
+    session
+        .compositor_mut()
+        .input(omorfos::Input::Motion { x: 600.0, y: 400.0 }, 0);
+    session.step();
+    assert_eq!(frame(&mut session), (blue, blue), "setting out");
+    let again = session.compositor_mut().deadline();
+    assert_eq!(again, Some(start + Duration::from_millis(16)));
+
+    session.now = start + Duration::from_millis(50);
+    session.step();
+    let (titlebar, border) = frame(&mut session);
+    assert!(half_way(titlebar), "{titlebar:#x}");
+    assert!(half_way(border), "{border:#x}");
+
+    session.now = start + Duration::from_millis(100);
+    session.step();
+    assert_eq!(frame(&mut session), (red, red), "arrived");
+    assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
+    assert!(!session.draw().damaged, "and not drawn again");
 }
 
 #[test]

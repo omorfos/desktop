@@ -11,7 +11,7 @@ use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Config, Debouncer, Part, State, States, Store, Theme, Watcher};
+use omorfos_config::{Action, Config, Debouncer, Part, States, Store, Style, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
@@ -73,7 +73,7 @@ use crate::input::Drag;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
-use crate::paint::{self, Text};
+use crate::paint::{self, Motion, Text};
 
 /// What the desktop calls itself to programs that behave differently from
 /// one desktop to another. The same name is in the login session entry,
@@ -228,6 +228,12 @@ pub struct Compositor {
     /// its process.
     launcher: Option<PathBuf>,
     launched: Option<u32>,
+    /// The frames and menu rows that are on their way from one look to
+    /// another, and the time they go by: how long it is since the first
+    /// [`Compositor::refresh`], and when that was.
+    motion: Motion,
+    clock: Duration,
+    epoch: Option<Instant>,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
     pub(crate) ipc_retry: Option<Instant>,
@@ -348,6 +354,9 @@ impl Compositor {
                     notifier: None,
                     launcher: None,
                     launched: None,
+                    motion: Motion::new(),
+                    clock: Duration::ZERO,
+                    epoch: None,
                     ipc: None,
                     ipc_retry: None,
                     event_loop,
@@ -521,18 +530,28 @@ impl Compositor {
     pub fn deadline(&self) -> Option<Instant> {
         // Once the screens are off there is nothing more to wait for.
         let screens_off = self.screens_off_at().filter(|_| self.screens_on());
-        [self.debouncer.deadline(), self.ipc_retry, screens_off]
-            .into_iter()
-            .flatten()
-            .min()
+        // What is changing colour is drawn again a moment later.
+        let moving = self.epoch.zip(self.motion.deadline());
+        let moving = moving.map(|(epoch, due)| epoch + due);
+        [
+            self.debouncer.deadline(),
+            self.ipc_retry,
+            screens_off,
+            moving,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// Brings everything up to date. Call after dispatching client requests
     /// and input, and before flushing clients and drawing.
     ///
     /// `now` drives the delay between a configuration file changing and its
-    /// reload.
+    /// reload, and how far what is changing colour has got.
     pub fn refresh(&mut self, now: Instant) {
+        let epoch = *self.epoch.get_or_insert(now);
+        self.clock = now.saturating_duration_since(epoch);
         if self
             .watcher
             .as_mut()
@@ -834,6 +853,8 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
         let text = &mut self.text;
+        let motion = &mut self.motion;
+        motion.begin(self.clock);
 
         let mut scene = Vec::new();
         for Mapped {
@@ -870,7 +891,8 @@ impl Compositor {
                                 shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
                             })
                             .and_then(|index| previous.swap_remove(index).chrome);
-                        Chrome::paint(text, &config.theme, frame.scale, cached, frame, decoration)
+                        let tools = (&mut *text, &mut *motion);
+                        Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     scene.push((
@@ -939,18 +961,26 @@ impl Compositor {
             (None, false) => None,
         };
 
-        // Repaint the menu if it, or the theme, changed since it was drawn.
+        // Repaint the menu if it, how its rows look, or the theme changed
+        // since it was drawn.
         let scale = self.pointer_scale();
+        let menu = self.menu.as_ref();
+        let looks = menu.map(|menu| paint::menu_looks(theme, &mut self.motion, menu));
         let current = self.menu_chrome.take().filter(|chrome| {
-            self.menu.as_ref() == Some(&chrome.menu)
+            menu == Some(&chrome.menu)
+                && Some(&chrome.looks) == looks.as_ref()
                 && chrome.theme == *theme
                 && chrome.scale == scale
         });
-        self.menu_chrome = match (current, &self.menu) {
+        self.menu_chrome = match (current, menu.zip(looks)) {
             (Some(chrome), _) => Some(chrome),
-            (None, Some(menu)) => Some(MenuChrome::paint(&mut self.text, theme, menu, scale)),
+            (None, Some((menu, looks))) => {
+                Some(MenuChrome::paint(&mut self.text, theme, menu, looks, scale))
+            }
             (None, None) => None,
         };
+        // Everything that changes colour has been asked after by now.
+        self.motion.end();
     }
 
     /// Gives the keyboard to whoever should have it now.
@@ -1438,10 +1468,13 @@ const MENU_SEPARATOR: u32 = 9;
 /// The space above the first and below the last row of a menu panel.
 const MENU_PADDING: u32 = 4;
 
-/// The pixels of the open menu, kept until it or the theme changes.
+/// The pixels of the open menu, kept until it, how its rows look or the
+/// theme changes.
 #[derive(Debug)]
 struct MenuChrome {
     menu: Menu<Action>,
+    /// How each row of each panel looked when it was painted.
+    looks: Vec<Vec<Style>>,
     theme: Theme,
     scale: Scale,
     /// Each panel's position and pixels, from the root outwards.
@@ -1449,18 +1482,26 @@ struct MenuChrome {
 }
 
 impl MenuChrome {
-    fn paint(text: &mut Text, theme: &Theme, menu: &Menu<Action>, scale: Scale) -> Self {
+    fn paint(
+        text: &mut Text,
+        theme: &Theme,
+        menu: &Menu<Action>,
+        looks: Vec<Vec<Style>>,
+        scale: Scale,
+    ) -> Self {
         let panels = menu
             .panels()
             .iter()
-            .map(|panel| {
-                let canvas = paint::menu_panel(text, theme, menu, panel, scale);
+            .zip(&looks)
+            .map(|(panel, looks)| {
+                let canvas = paint::menu_panel(text, theme, menu, panel, looks, scale);
                 let origin = menu.panel_rect(panel).origin;
                 (Point::from((origin.x, origin.y)), Painted::new(&canvas))
             })
             .collect();
         Self {
             menu: menu.clone(),
+            looks,
             theme: theme.clone(),
             scale,
             panels,
@@ -1585,8 +1626,9 @@ struct Chrome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Appearance {
     titles: Vec<String>,
-    active: usize,
-    focused: bool,
+    /// How the frame and its tabs look, which says which tab is shown and
+    /// whether the frame has focus.
+    looks: paint::Looks,
     size: DomainSize,
     /// How far the bottom corners are rounded.
     radius: u32,
@@ -1598,20 +1640,21 @@ impl Chrome {
     /// Brings a frame's decoration up to date, reusing `cached` pixels when
     /// nothing they depend on has changed.
     fn paint(
-        text: &mut Text,
+        (text, motion): (&mut Text, &mut Motion),
         theme: &Theme,
-        scale: Scale,
         cached: Option<Self>,
         frame: &FrameInfo,
         decoration: Decoration,
     ) -> Self {
-        let states = States::NONE.when(State::Focused, frame.focused);
-        let outline = theme.style(Part::Window, states).border.top.color;
-        let radius = corners::radius(&decoration, theme.style(Part::Window, states).radius);
+        let scale = frame.scale;
+        let tabs = frame.tabs.iter().map(|window| window.raw());
+        let shown = frame.shown.raw();
+        let looks = paint::Looks::of(theme, motion, shown, tabs, frame.active, frame.focused);
+        let outline = looks.window.border.top.color;
+        let radius = corners::radius(&decoration, looks.window.radius);
         let appearance = Appearance {
             titles: frame.titles.clone(),
-            active: frame.active,
-            focused: frame.focused,
+            looks,
             size: decoration.titlebar().size,
             radius,
             theme: theme.clone(),
@@ -1622,15 +1665,8 @@ impl Chrome {
         let kept = cached.filter(|chrome| chrome.appearance == appearance);
         let mut chrome = kept.unwrap_or_else(|| {
             let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
-            let titlebar = paint::titlebar(
-                text,
-                theme,
-                &decoration,
-                &titles,
-                frame.active,
-                frame.focused,
-                scale,
-            );
+            let looks = &appearance.looks;
+            let titlebar = paint::titlebar(text, theme, &decoration, &titles, looks, scale);
             let border = straight[0].size.width;
             let corner = |mirrored| {
                 let canvas = paint::corner(outline, radius, border, mirrored, scale);

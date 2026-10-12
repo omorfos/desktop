@@ -134,6 +134,13 @@ impl Session {
         for (name, contents) in files {
             std::fs::write(config.path().join(name), contents).unwrap();
         }
+        // Colours change at once, so that a test which is not about how
+        // long they take need not wait. One that is says how long itself,
+        // for the parts it is about, which outranks this.
+        let theme = files.iter().find(|(name, _)| *name == "theme.css");
+        let theme = theme.map_or("", |(_, contents)| contents);
+        let still = format!("{theme}\n* {{ transition: none; }}\n");
+        std::fs::write(config.path().join("theme.css"), still).unwrap();
         Self::in_directory(config, None)
     }
 
@@ -1629,3 +1636,10 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for ClientState {
     }
 }
 delegate_noop!(ClientState: ignore wl_output::WlOutput);
+
+/// Whether a colour on the screen is about half way from red to blue, as
+/// something changing from the one to the other is in the middle of it.
+pub(crate) fn half_way(color: u32) -> bool {
+    let [_, red, _, blue] = color.to_be_bytes();
+    (100..160).contains(&red) && (100..160).contains(&blue)
+}
