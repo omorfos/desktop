@@ -271,6 +271,6 @@ to show over the IPC socket (ADR 18). In this order:
         handed to `Xwayland` when it is started, and Smithay makes them
         itself and keeps what it needs to itself, so this waits on a
         change there
-  - [ ] The panel and the notifications started again if they stop, as
-        the X server is
+  - [x] The panel and the notifications started again if they crash, as
+        the X server is (ADR 28)
 - [ ] Screen capture and portals

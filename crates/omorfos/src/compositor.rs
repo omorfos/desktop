@@ -81,6 +81,7 @@ use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
+use crate::restarts::Restarts;
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -233,12 +234,11 @@ pub struct Compositor {
     children: Vec<Child>,
     /// Whether the programs to start with the session have been.
     started: bool,
-    /// The panel to start with the session, once a backend has said where
-    /// it is.
-    panel: Option<PathBuf>,
-    /// The program that shows notifications, likewise.
-    notifier: Option<PathBuf>,
-    /// The launcher, likewise, and the one that is open, by the number of
+    /// The programs that come with omorfos and run for the whole session,
+    /// once a backend has said where each is: the panel first.
+    components: Vec<Component>,
+    /// The launcher, once a backend has said where it is, and the one that
+    /// is open, by the number of
     /// its process.
     launcher: Option<PathBuf>,
     launched: Option<u32>,
@@ -362,8 +362,7 @@ impl Compositor {
                     presence: Presence::default(),
                     children: Vec::new(),
                     started: false,
-                    panel: None,
-                    notifier: None,
+                    components: Vec::new(),
                     launcher: None,
                     launched: None,
                     animation: Animation::new(),
@@ -572,9 +571,19 @@ impl Compositor {
         if self.debouncer.fire(now) {
             self.reload_config();
         }
-        // Collect children that have exited so they do not linger as zombies.
-        self.children
-            .retain_mut(|child| child.try_wait().is_ok_and(|status| status.is_none()));
+        // Collect children that have exited so they do not linger as
+        // zombies, noting those that did not exit as they should have.
+        let mut failed = Vec::new();
+        self.children.retain_mut(|child| {
+            // One that cannot even be asked is taken to have failed.
+            let waited = child.try_wait();
+            let exited = waited.map_or(Some(false), |status| status.map(|status| status.success()));
+            if exited == Some(false) {
+                failed.push(child.id());
+            }
+            exited.is_none()
+        });
+        self.revive(&failed, now);
         self.serve_ipc();
         self.manage_x11(now);
         self.sync();
@@ -747,7 +756,7 @@ impl Compositor {
     /// the configuration turns it off. Until this is called there is none
     /// to start.
     pub fn set_panel(&mut self, program: impl Into<PathBuf>) {
-        self.panel = Some(program.into());
+        self.set_component(Program::Panel, program.into());
     }
 
     /// Says where the program that shows notifications is: a name to look
@@ -755,7 +764,22 @@ impl Compositor {
     /// unless the configuration turns it off. Until this is called there
     /// is none to start.
     pub fn set_notifier(&mut self, program: impl Into<PathBuf>) {
-        self.notifier = Some(program.into());
+        self.set_component(Program::Notifier, program.into());
+    }
+
+    /// Says where one of the programs that run for the whole session is,
+    /// in place of wherever it was said to be before.
+    fn set_component(&mut self, kind: Program, program: PathBuf) {
+        self.components.retain(|component| component.kind != kind);
+        self.components.push(Component {
+            kind,
+            program,
+            process: None,
+            restarts: Restarts::default(),
+        });
+        // The panel goes first, so that it has taken its edge of the screen
+        // before anything else is placed.
+        self.components.sort_by_key(|component| component.kind);
     }
 
     /// Starts the panel and the notifications, each if there is one and it
@@ -772,18 +796,49 @@ impl Compositor {
             return;
         }
         let config = Arc::clone(self.store.current());
-        // The panel goes first, so that it has taken its edge of the screen
-        // before anything else is placed.
-        let general = &config.general;
-        let panel = self.panel.clone().filter(|_| general.panel.enabled);
-        let notifier = self.notifier.clone();
-        let notifier = notifier.filter(|_| general.notifications.enabled);
-        for component in panel.into_iter().chain(notifier) {
-            self.start(component.as_os_str(), &[]);
+        let mut components = std::mem::take(&mut self.components);
+        for component in &mut components {
+            if component.kind.wanted(&config.general) {
+                component.process = self.start(component.program.as_os_str(), &[]);
+            }
         }
+        self.components = components;
         for command in &config.general.autostart {
             self.spawn(command);
         }
+    }
+
+    /// Starts again the panel or the notifications if either is among the
+    /// processes that have just `failed`: that stopped without being asked
+    /// to, as a program does when it crashes. One that the configuration
+    /// has since turned off is left stopped, and one that keeps stopping
+    /// is given up on, which the user is told.
+    ///
+    /// One that stops of its own accord, without failing, is taken to have
+    /// meant to.
+    fn revive(&mut self, failed: &[u32], now: Instant) {
+        if failed.is_empty() {
+            return;
+        }
+        let config = Arc::clone(self.store.current());
+        let mut components = std::mem::take(&mut self.components);
+        for component in &mut components {
+            let process = component
+                .process
+                .take_if(|process| failed.contains(process));
+            if process.is_none() || !component.kind.wanted(&config.general) {
+                continue;
+            }
+            if component.restarts.allow(now) {
+                component.process = self.start(component.program.as_os_str(), &[]);
+            } else {
+                self.problems.push(format!(
+                    "`{}` keeps stopping, and will not be started again until you log in",
+                    component.program.display()
+                ));
+            }
+        }
+        self.components = components;
     }
 
     /// What a program has to be told to take part in the session: where
@@ -1680,6 +1735,35 @@ const MENU_WIDTH: u32 = 220;
 const MENU_SEPARATOR: u32 = 9;
 /// The space above the first and below the last row of a menu panel.
 const MENU_PADDING: u32 = 4;
+
+/// Which of the programs that run for the whole session one is. The panel
+/// is the first to be started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Program {
+    Panel,
+    Notifier,
+}
+
+impl Program {
+    /// Whether the configuration has it running.
+    const fn wanted(self, general: &omorfos_config::General) -> bool {
+        match self {
+            Self::Panel => general.panel.enabled,
+            Self::Notifier => general.notifications.enabled,
+        }
+    }
+}
+
+/// A program that comes with omorfos and runs for the whole session.
+#[derive(Debug)]
+struct Component {
+    kind: Program,
+    /// A name to look up in `PATH`, or a path.
+    program: PathBuf,
+    /// The number of its process, while it is running.
+    process: Option<u32>,
+    restarts: Restarts,
+}
 
 /// What is changing colour, coming in or going.
 #[derive(Debug)]

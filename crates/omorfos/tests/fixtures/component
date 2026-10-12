@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stands in for a program that runs for the whole session, where a test
+# wants to see what the compositor does when it stops. It leaves a mark
+# beside the session's socket each time it is started, and then does what
+# the file `component-does` there says: `fail` stops at once as a program
+# that has crashed does, `stay` carries on until it is killed, having said
+# which process it is, and anything else stops at once of its own accord.
+directory="$(dirname "$OMORFOS_SOCKET")"
+printf x >> "$directory/component-started"
+case "$(cat "$directory/component-does" 2>/dev/null)" in
+    fail) exit 1 ;;
+    stay)
+        printf '%s' "$$" > "$directory/component-process"
+        exec sleep 1000
+        ;;
+esac

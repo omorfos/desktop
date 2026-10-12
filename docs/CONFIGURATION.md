@@ -498,9 +498,9 @@ workspace being shown and the window with focus are underlined; a
 minimized window's title is in brackets. The time is the local time, in
 24 hours.
 
-It is a program of its own, started with the session. How it looks is in
-`theme.css`, under `panel`, `workspace`, `task` and `clock`, and it follows
-the file as you save it.
+It is a program of its own, started with the session, and started again if
+it crashes. How it looks is in `theme.css`, under `panel`, `workspace`,
+`task` and `clock`, and it follows the file as you save it.
 
 To go without it, or to use another panel that speaks layer-shell, such as
 `waybar`, turn it off in `config.yaml`:
@@ -565,8 +565,10 @@ A picture may be a PNG or an SVG, given by its path, or an icon by name.
 Icons are looked for in the `hicolor` and `Adwaita` themes; where a theme
 has one only as a shape, it is drawn in the colour of the text.
 
-`omorfos-notifications` is a program of its own, started with the session.
-It answers to the usual desktop notification service, so `notify-send` and
+`omorfos-notifications` is a program of its own, started with the session,
+and started again if it crashes. If it stops more than three times in a
+minute, as it will when another program is already showing notifications,
+omorfos leaves it stopped and says so. It answers to the usual desktop notification service, so `notify-send` and
 applications work with it as they are. It needs the session's D-Bus, which
 a session started from a login manager has.
 
