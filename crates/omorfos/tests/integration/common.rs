@@ -53,6 +53,7 @@ use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_offer_v1 as primary_offer,
     zwp_primary_selection_source_v1 as primary_source,
 };
+use wayland_protocols::wp::single_pixel_buffer::v1::client::wp_single_pixel_buffer_manager_v1;
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -560,6 +561,7 @@ pub(crate) struct ClientState {
     primaries: Option<primary_manager::ZwpPrimarySelectionDeviceManagerV1>,
     fractions: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     viewporter: Option<wp_viewporter::WpViewporter>,
+    single_pixels: Option<wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1>,
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
@@ -832,6 +834,24 @@ impl Client {
         self.fill(surface, pixels, color);
     }
 
+    /// Gives a surface content of one colour (`0xAARRGGBB`) by way of a
+    /// buffer that is a single pixel of it, stretched to `size`: what a
+    /// toolkit does for a plain background.
+    pub(crate) fn fill_plain(&self, surface: &wl_surface::WlSurface, size: (i32, i32), color: u32) {
+        let viewporter = self.state.viewporter.as_ref().unwrap();
+        let viewport = viewporter.get_viewport(surface, &self.handle(), ());
+        viewport.set_destination(size.0, size.1);
+        // Each channel is given as a share of all thirty-two bits.
+        let [alpha, red, green, blue] = color
+            .to_be_bytes()
+            .map(|byte| u32::from(byte) * 0x0101_0101);
+        let pixels = self.state.single_pixels.as_ref().unwrap();
+        let buffer = pixels.create_u32_rgba_buffer(red, green, blue, alpha, &self.handle(), ());
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, 1, 1);
+        surface.commit();
+    }
+
     fn buffer(&self, (width, height): (i32, i32), color: u32) -> wl_buffer::WlBuffer {
         let pixels = usize::try_from(width * height).unwrap();
         let mut file = tempfile::tempfile().unwrap();
@@ -1089,6 +1109,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.fractions = Some(registry.bind(name, version, handle, ()));
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
+            "wp_single_pixel_buffer_manager_v1" => {
+                state.single_pixels = Some(registry.bind(name, version, handle, ()));
+            }
             "wp_cursor_shape_manager_v1" => {
                 state.shapes = Some(registry.bind(name, version, handle, ()));
             }
@@ -1550,6 +1573,7 @@ delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(ClientState: wp_viewporter::WpViewporter);
+delegate_noop!(ClientState: wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1);
 delegate_noop!(ClientState: ext_session_lock_manager_v1::ExtSessionLockManagerV1);
 delegate_noop!(ClientState: ext_idle_notifier_v1::ExtIdleNotifierV1);
 delegate_noop!(ClientState: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
