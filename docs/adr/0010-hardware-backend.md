@@ -87,3 +87,11 @@ prefers. ADR 15 added the rest, and hotplug.
   second buffer because of it; foot says so in a warning.
 - A graphics card plugged in later is not noticed. Screens are, since
   ADR 15.
+- Leaving for another virtual terminal is a race the backend has to lose
+  gracefully. The login manager takes the screen away at once and tells the
+  compositor afterwards, so a frame drawn in between is refused by the
+  kernel ("Permission denied"). Nothing can close that window from our
+  side. A frame that cannot be drawn is therefore said once and tried again,
+  never passed up as the session's failure. This went unnoticed while
+  little was drawn: with a browser open a frame is drawn many times a
+  second, and the session ended on nearly every switch.
