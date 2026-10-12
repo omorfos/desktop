@@ -42,7 +42,7 @@ use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_single_pixel_buffer, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -490,6 +490,7 @@ delegate_output!(Compositor);
 delegate_fractional_scale!(Compositor);
 delegate_cursor_shape!(Compositor);
 delegate_viewporter!(Compositor);
+delegate_single_pixel_buffer!(Compositor);
 
 #[cfg(test)]
 mod tests {

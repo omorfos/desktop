@@ -330,3 +330,19 @@ fn clients_are_told_when_a_frame_has_been_shown() {
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::FrameDone));
 }
+
+#[test]
+fn a_window_may_be_one_pixel_of_a_colour_stretched_to_its_size() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = client.toplevel("plain", "plain window");
+    session.roundtrip(&mut client);
+
+    client.fill_plain(&window.surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+
+    let picture = session.draw();
+    assert_eq!(picture.at(0, 0), GREEN);
+    assert_eq!(picture.at(WIDTH - 1, HEIGHT - 1), GREEN);
+}

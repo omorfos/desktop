@@ -64,6 +64,7 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, ToplevelStateSet, ToplevelSurface, XdgShellState,
 };
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 
@@ -152,6 +153,7 @@ pub struct Compositor {
     pub(crate) heads: Vec<Head>,
     _fractional_scale: FractionalScaleManagerState,
     _viewporter: ViewporterState,
+    _single_pixels: SinglePixelBufferState,
     /// The outputs as the desktop was last told about them.
     pub(crate) screens: Vec<Screen>,
     pub(crate) layer_shell: WlrLayerShellState,
@@ -270,6 +272,7 @@ impl Compositor {
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let viewporter = ViewporterState::new::<Self>(&display);
+        let single_pixels = SinglePixelBufferState::new::<Self>(&display);
         let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
         // Any client may lock the session: locking gives nothing away.
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, |_| true);
@@ -307,6 +310,7 @@ impl Compositor {
                     heads: Vec::new(),
                     _fractional_scale: fractional_scale,
                     _viewporter: viewporter,
+                    _single_pixels: single_pixels,
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
