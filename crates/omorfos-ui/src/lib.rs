@@ -7,7 +7,9 @@
 //! the window frames beside it.
 
 mod canvas;
+mod motion;
 mod scale;
 
 pub use canvas::{Area, Canvas, Image, Text, inset};
+pub use motion::Motion;
 pub use scale::Scale;
