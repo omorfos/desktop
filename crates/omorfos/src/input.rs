@@ -151,6 +151,19 @@ enum Under {
 
 impl Under {
     /// The client surface this is, if it is one rather than a decoration.
+    /// The surface that has the pointer when this is under it, and where
+    /// that surface is. The compositor's own parts of a frame are no
+    /// surface's.
+    fn focus(&self) -> Option<(WlSurface, Point<f64, Logical>)> {
+        match self {
+            Self::Frame(_, Hit::Surface(surface, origin))
+            | Self::Layer {
+                surface, origin, ..
+            } => Some((surface.clone(), *origin)),
+            Self::Frame(_, Hit::Part(_)) => None,
+        }
+    }
+
     const fn surface(&self) -> Option<&WlSurface> {
         match self {
             Self::Frame(_, Hit::Surface(surface, _)) | Self::Layer { surface, .. } => Some(surface),
@@ -347,14 +360,7 @@ impl Compositor {
                 self.desktop.pointer_entered(id);
             }
         }
-        let focus = under.and_then(|under| match under {
-            Under::Frame(_, Hit::Surface(surface, origin))
-            | Under::Layer {
-                surface, origin, ..
-            } => Some((surface, origin)),
-            Under::Frame(_, Hit::Part(_)) => None,
-        });
-        self.move_pointer(focus, time);
+        self.move_pointer(under.as_ref().and_then(Under::focus), time);
     }
 
     pub(crate) fn move_pointer(
@@ -548,6 +554,15 @@ impl Compositor {
         }
         let under = self.under();
         if pressed {
+            // Something may have come or gone under a pointer that has not
+            // moved since, as a launcher does when it opens. The press is
+            // for what is there now, which is told the pointer is on it
+            // first.
+            let focus = under.as_ref().and_then(Under::focus);
+            let on = focus.as_ref().map(|(surface, _)| surface);
+            if on != self.pointer.current_focus().as_ref() {
+                self.move_pointer(focus, time);
+            }
             self.dismiss_popups(under.as_ref());
             // A panel that accepts the keyboard, such as one with a search
             // box, has it from a click on it until a click elsewhere.
