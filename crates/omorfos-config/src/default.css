@@ -101,3 +101,38 @@ clock {
   padding: 0 10px;
   color: var(--text);
 }
+
+/* The launcher: where a name is typed, and the programs that match. The
+ * launcher is as wide as its min-width. */
+launcher {
+  min-width: 480px;
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+launcher-input {
+  height: 32px;
+  margin: 0 0 8px 0;
+  padding: 0 10px;
+  background: var(--surface-dim);
+  color: var(--text);
+  border-radius: 6px;
+}
+launcher-item {
+  height: 28px;
+  padding: 0 10px;
+  color: var(--text);
+  border-radius: 6px;
+}
+launcher-item:active {
+  background: var(--accent);
+  color: var(--background);
+}
+/* What a program says of itself, where the launcher is set to show it. */
+launcher-description { color: var(--text-dim); }
+launcher-description:active { color: var(--background); }
+/* The rest of the screen while the launcher is open. A click on it closes
+ * the launcher. Give it a see-through colour to dim what is behind. */
+launcher-backdrop { background: transparent; }

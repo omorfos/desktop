@@ -40,8 +40,8 @@ pub use config::{Config, FILES, MAX_FILE_SIZE};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Cursor, Focus, FocusModel, General, Idle, Keyboard, NamedOutput, Output, OutputScale, Outputs,
-    Panel, Placement, Touchpad, Workspaces,
+    Cursor, Focus, FocusModel, General, Idle, Keyboard, Launcher, NamedOutput, Output, OutputScale,
+    Outputs, Panel, Placement, Touchpad, Workspaces,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};

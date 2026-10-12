@@ -51,6 +51,9 @@ panel:
 cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
+launcher:
+  icons: false            # show each program's icon
+  descriptions: false     # show, and search, what each program says of itself
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -147,6 +150,7 @@ that are already bound on their own.
 | `move_to_workspace: N` | Send the focused window to workspace N of its screen. |
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
+| `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
 | `quit` | End the session. |
 
@@ -284,6 +288,41 @@ clock {
   padding: 0 10px;
   color: var(--text);
 }
+
+/* The launcher: where a name is typed, and the programs that match. The
+ * launcher is as wide as its min-width. */
+launcher {
+  min-width: 480px;
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+launcher-input {
+  height: 32px;
+  margin: 0 0 8px 0;
+  padding: 0 10px;
+  background: var(--surface-dim);
+  color: var(--text);
+  border-radius: 6px;
+}
+launcher-item {
+  height: 28px;
+  padding: 0 10px;
+  color: var(--text);
+  border-radius: 6px;
+}
+launcher-item:active {
+  background: var(--accent);
+  color: var(--background);
+}
+/* What a program says of itself, where the launcher is set to show it. */
+launcher-description { color: var(--text-dim); }
+launcher-description:active { color: var(--background); }
+/* The rest of the screen while the launcher is open. A click on it closes
+ * the launcher. Give it a see-through colour to dim what is behind. */
+launcher-backdrop { background: transparent; }
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -313,13 +352,15 @@ workspace:active, task:active { border-bottom: none; }
 ```
 
 **Parts** are `desktop`, `window`, `titlebar`, `tab`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`
-and `clock`. `*` is every part. Several can share a rule:
+`menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`,
+`clock`, `launcher`, `launcher-input`, `launcher-item`,
+`launcher-description` and `launcher-backdrop`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
 has), `:active` (the tab or workspace being shown, or the task of the
-window with focus) and `:hover` (the pointer is over it). A part can be in
+window with focus, or the program the launcher would start) and `:hover`
+(the pointer is over it). A part can be in
 several: `tab:active:focus`.
 
 **Every part is a box.** From the outside in it has a margin, which is room
@@ -336,8 +377,8 @@ is measured to the outside of its border.
 | `border-color`, `border-width` | a color; `0` to `16px` | |
 | `border-radius` | `0` to `32px` | rounds the corners of the box |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left |
-| `height` | `16px` to `64px` | of `titlebar`, `menu-item` and `panel` |
-| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit |
+| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width` |
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 
@@ -416,6 +457,40 @@ autostart:
 ```
 
 Like `autostart`, this takes effect the next time you log in.
+
+## The launcher
+
+`Super+d`, or **Run…** in the root menu, opens the launcher: a box in the
+middle of the screen the pointer is on. Type part of a program's name and
+the list narrows to the programs that have it, those that begin with it
+first. Up and Down choose among them, Enter starts the chosen one, and
+Escape closes the launcher. A click on a program starts it too, and a
+click anywhere beside the launcher closes it.
+
+The programs are those with a desktop entry installed, in
+`~/.local/share/applications` and the system's `applications` directories.
+One that needs a terminal is started in `foot`.
+
+It shows names alone unless `config.yaml` asks for more:
+
+```yaml
+launcher:
+  icons: true
+  descriptions: true
+```
+
+`icons` puts each program's icon before its name. Icons are looked for by
+name in the `hicolor` theme of `~/.local/share/icons` and the system's
+`icons` directories, and in `/usr/share/pixmaps`; PNG and SVG are read.
+`descriptions` writes what each program says of itself after its name, and
+has that searched too, after the names. Both take effect the next time the
+launcher is opened.
+
+How it looks is in `theme.css`, under `launcher`, `launcher-input`,
+`launcher-item` and `launcher-description`. `launcher-backdrop` is the rest
+of the screen while it is open: give it a see-through background, such as
+`rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with
+another key, bind `show_launcher` in `keys.yaml`.
 
 ## Locking the screen
 

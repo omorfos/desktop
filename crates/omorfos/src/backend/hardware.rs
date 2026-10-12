@@ -45,7 +45,7 @@ use smithay::reexports::input::{Device, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
-use super::winit::{cursor_themes, listen, on_input, panel};
+use super::winit::{cursor_themes, launcher, listen, on_input, panel};
 use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -152,6 +152,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.show_pointer();
     announce_session(compositor);
     compositor.set_panel(panel());
+    compositor.set_launcher(launcher());
     compositor.autostart();
 
     // The keyboard, mice and touchpads.

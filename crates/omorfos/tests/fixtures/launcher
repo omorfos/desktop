@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stands in for the launcher where a test wants to see the compositor open
+# it: it leaves a mark beside the session's socket and stays open until it
+# is told to close, or for a few seconds at most.
+directory="$(dirname "$OMORFOS_SOCKET")"
+printf x >> "$directory/launcher-opened"
+tries=0
+while [ ! -e "$directory/launcher-close" ] && [ "$tries" -lt 100 ]; do
+  sleep 0.05
+  tries=$((tries + 1))
+done

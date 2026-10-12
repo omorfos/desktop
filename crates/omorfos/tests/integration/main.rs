@@ -17,6 +17,7 @@ mod executable;
 mod idle;
 mod input;
 mod ipc;
+mod launcher;
 mod layers;
 mod lock;
 mod login;

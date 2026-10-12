@@ -34,6 +34,21 @@ pub struct General {
     pub panel: Panel,
     /// The pointer.
     pub cursor: Cursor,
+    /// The launcher that comes with omorfos.
+    pub launcher: Launcher,
+}
+
+/// The launcher that comes with omorfos: what it shows of each program
+/// besides its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Launcher {
+    /// Whether each program's icon is shown beside its name.
+    pub icons: bool,
+    /// Whether what each program says of itself is shown after its name,
+    /// and looked through for what is typed.
+    pub descriptions: bool,
 }
 
 /// The pictures used for the pointer.
@@ -328,6 +343,17 @@ mod tests {
             .cursor;
         assert_eq!((cursor.theme.as_str(), cursor.size.get()), ("Adwaita", 32));
         assert!(parse("cursor: { size: 4 }").is_err());
+    }
+
+    #[test]
+    fn the_launcher_shows_names_alone_unless_more_is_asked_for() {
+        let launcher = General::default().launcher;
+        assert!(!launcher.icons && !launcher.descriptions);
+        let launcher = parse("launcher: { icons: true }").unwrap().launcher;
+        assert!(launcher.icons && !launcher.descriptions);
+        let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
+        assert!(!launcher.icons && launcher.descriptions);
+        assert!(parse("launcher: { fuzzy: true }").is_err());
     }
 
     #[test]

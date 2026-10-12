@@ -218,7 +218,16 @@ to show over the IPC socket (ADR 18). In this order:
       how other programs ask for it (the background-effect protocol).
       `filter: blur()` of a part's own picture is small and can come with
       it
-- [ ] Launcher, built against the CSS theme from the start
+- [x] Launcher, `omorfos-launcher`: type a name, pick from the programs
+      that match, opened with `Super+d` or from the menu (ADR 22)
+  - [x] Tried on real hardware
+  - [x] Closing with a click beside it, with a backdrop that can dim the
+        screen
+  - [x] Icons and descriptions, each a setting (`launcher.icons`,
+        `launcher.descriptions`)
+  - [ ] Keys that repeat when held
+  - [ ] Icons from the icon theme in use and not only `hicolor`; looser
+        matching; translated names
 - [ ] Notifications, likewise
 - [ ] Theming polish and restrained animations
 

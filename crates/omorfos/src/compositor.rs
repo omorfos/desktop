@@ -222,6 +222,10 @@ pub struct Compositor {
     /// The panel to start with the session, once a backend has said where
     /// it is.
     panel: Option<PathBuf>,
+    /// The launcher, likewise, and the one that is open, by the number of
+    /// its process.
+    launcher: Option<PathBuf>,
+    launched: Option<u32>,
     pub(crate) ipc: Option<Server>,
     /// When IPC peers that could not be sent everything are tried again.
     pub(crate) ipc_retry: Option<Instant>,
@@ -339,6 +343,8 @@ impl Compositor {
                     children: Vec::new(),
                     started: false,
                     panel: None,
+                    launcher: None,
+                    launched: None,
                     ipc: None,
                     ipc_retry: None,
                     event_loop,
@@ -626,6 +632,7 @@ impl Compositor {
                 self.on_focused(|desktop, id| desktop.move_to_workspace(id, workspace));
             }
             Action::ShowMenu => self.open_menu(),
+            Action::ShowLauncher => self.open_launcher(),
             Action::ReloadConfig => self.reload_config(),
             Action::Quit => self.running = false,
         }
@@ -661,9 +668,27 @@ impl Compositor {
         self.start(command.program().as_ref(), command.arguments());
     }
 
-    /// Starts a program in the session. One that cannot be started is a
-    /// problem to tell the user of.
-    fn start(&mut self, program: &OsStr, arguments: &[String]) {
+    /// Says where the launcher that comes with omorfos is: a name to look
+    /// up in `PATH`, or a path. Until this is called there is none to
+    /// open.
+    pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
+        self.launcher = Some(program.into());
+    }
+
+    /// Opens the launcher, unless one is open already.
+    fn open_launcher(&mut self) {
+        let open = self.launched;
+        let open = open.is_some_and(|open| self.children.iter().any(|child| child.id() == open));
+        let program = self.launcher.clone().filter(|_| !open);
+        if let Some(program) = program {
+            self.launched = self.start(program.as_os_str(), &[]);
+        }
+    }
+
+    /// Starts a program in the session, and returns the number of its
+    /// process. One that cannot be started is a problem to tell the user
+    /// of.
+    fn start(&mut self, program: &OsStr, arguments: &[String]) -> Option<u32> {
         let mut process = std::process::Command::new(program);
         process
             .args(arguments)
@@ -672,11 +697,14 @@ impl Compositor {
         match process.spawn() {
             Ok(child) => {
                 self.wake_when_exited(&child);
+                let process = child.id();
                 self.children.push(child);
+                Some(process)
             }
             Err(error) => {
                 self.problems
                     .push(format!("cannot start `{}`: {error}", program.display()));
+                None
             }
         }
     }
