@@ -33,7 +33,8 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 /// `variable` looks a variable of the environment up. It is passed in so
 /// that this can be used and tested without touching the environment. The
 /// Wayland socket is `WAYLAND_DISPLAY` in `XDG_RUNTIME_DIR`, the bus is at
-/// `DBUS_SESSION_BUS_ADDRESS`, the configuration directory is found as the
+/// `DBUS_SESSION_BUS_ADDRESS`, the compositor's own socket is at
+/// `OMORFOS_SOCKET`, the configuration directory is found as the
 /// compositor finds it, and icons are looked for where `XDG_DATA_HOME` and
 /// `XDG_DATA_DIRS` say.
 #[must_use]
@@ -49,8 +50,14 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let icons = Icons::directories(data.0.as_deref(), home.as_deref(), data.1.as_deref());
     let address = get("DBUS_SESSION_BUS_ADDRESS");
     let address = address.as_deref().and_then(|address| address.to_str());
+    let socket = get("OMORFOS_SOCKET");
+    let socket =
+        omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
     match wayland.zip(config) {
-        Some((wayland, config)) => client::run(&wayland, address, &config, Icons::new(icons)),
+        Some((wayland, config)) => {
+            let icons = Icons::new(icons);
+            client::run(&wayland, address, socket.as_deref(), &config, icons)
+        }
         None => "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
                  not set"
             .into(),

@@ -48,6 +48,7 @@ and reads one reply.
 | `"version"` | `{"version": {"protocol": 1, "compositor": "0.1.0"}}` |
 | `"state"` | `{"state": {...}}` |
 | `"subscribe"` | `{"state": {...}}` now, and again whenever it changes |
+| `"show_problems"` | as `"subscribe"`, from a program that shows the user what is in `problems` |
 | `"reload"` | `"done"` |
 | `{"perform": {"action": ...}}` | `"done"` |
 | `{"activate": {"window": 7}}` | `"done"` |
@@ -65,6 +66,13 @@ An action is written exactly as in `keys.yaml`: `"close"`,
 After `"subscribe"` the connection carries updates only. Each update is the
 whole state, not a difference, so a client never has to reconstruct
 anything.
+
+`"show_problems"` is `"subscribe"` with a promise: that the program shows
+the user what is in `problems`, each until it is dismissed or put right.
+For as long as such a program is connected the compositor does not show
+them itself, and it shows them again the moment the last one goes. The
+notifications that come with omorfos ask this. A notification program of
+your own may too; one that only wants to know the state asks `"subscribe"`.
 
 ### State
 

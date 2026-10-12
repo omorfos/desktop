@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use omorfos::Input;
 use omorfos_config::{Color, Part, State, States, Theme};
+use omorfos_ipc::{Client as Ipc, Reply, State as Told, encode};
 use omorfos_launcher::Icons;
 use omorfos_notifications::{Bus, Notifier};
 use smithay::reexports::wayland_server::ListeningSocket;
@@ -95,7 +96,7 @@ fn notifier(session: &mut Session, daemon: &Daemon) -> Notifier {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session.compositor_mut().insert_client(ours).unwrap();
     let config = session.config.path().to_owned();
-    Notifier::new(theirs, bus, &config, Icons::default()).unwrap()
+    Notifier::new(theirs, bus, None, &config, Icons::default()).unwrap()
 }
 
 /// Sends a notification as a program would, and returns its number.
@@ -451,6 +452,9 @@ fn the_notifications_run_by_themselves_in_the_session_they_are_started_in() {
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
     session.inner().serve(socket).unwrap();
+    // The compositor's own socket is where a session has it.
+    let own = runtime.join("omorfos-wayland-test.sock");
+    session.compositor_mut().listen_ipc(own).unwrap();
     std::fs::create_dir(runtime.join("omorfos")).unwrap();
     let variables = [
         ("XDG_RUNTIME_DIR", runtime.clone().into_os_string()),
@@ -521,4 +525,135 @@ fn the_notifications_run_by_themselves_in_the_session_they_are_started_in() {
     // It ends with the session, saying why.
     drop(session);
     assert_ne!(running.join().unwrap(), "");
+}
+
+/// The colour of the line around something that wants attention now.
+fn alarming() -> u32 {
+    let urgent = States::NONE.with(State::Urgent);
+    argb(
+        Theme::default()
+            .style(Part::Notification, urgent)
+            .border
+            .left
+            .color,
+    )
+}
+
+/// A point on the left-hand edge of the topmost notification, and one in
+/// the compositor's own notice where no notification reaches.
+const EDGE: (i32, i32) = (WIDTH - 8 - 340, 30);
+const NOTICE: (i32, i32) = (150, 30);
+
+/// Something wrong with the session that is not its theme.
+const BROKEN: (&str, &str) = ("keys.yaml", "nonsense: [");
+
+/// Notifications in the session that are told what is wrong with it.
+fn informed(session: &mut Session, daemon: &Daemon) -> Notifier {
+    let socket = session.listen();
+    let bus = Bus::open(Some(&daemon.address)).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session.compositor_mut().insert_client(ours).unwrap();
+    let config = session.config.path().to_owned();
+    let news = Ipc::connect(&socket).unwrap();
+    Notifier::new(theirs, bus, Some(news), &config, Icons::default()).unwrap()
+}
+
+#[test]
+fn what_is_wrong_with_the_session_is_shown_among_the_notifications() {
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[BROKEN]);
+    session.step();
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        (picture.at(EDGE.0, EDGE.1), picture.at(NOTICE.0, NOTICE.1))
+    };
+    assert_ne!(seen(&mut session).1, BACKGROUND, "the compositor says so");
+
+    // With the notifications there, they say it, and the compositor does
+    // not as well.
+    let mut notifier = informed(&mut session, &daemon);
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        seen(session) == (alarming(), BACKGROUND)
+    });
+
+    // It stays until it is clicked away.
+    let (x, y) = (f64::from(EDGE.0 + 40), f64::from(EDGE.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        seen(session) == (BACKGROUND, BACKGROUND)
+    });
+
+    // Put right and broken again, it is said again.
+    session.write_config(BROKEN.0, "");
+    session.compositor_mut().reload_config();
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    session.write_config(BROKEN.0, BROKEN.1);
+    session.compositor_mut().reload_config();
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        seen(session) == (alarming(), BACKGROUND)
+    });
+
+    // And when the notifications are gone, the compositor says it again.
+    drop(notifier);
+    session.eventually(|session| seen(session).1 != BACKGROUND);
+}
+
+#[test]
+fn the_notifications_take_only_the_state_of_the_session_from_what_they_are_told() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let bus = Bus::open(Some(&daemon.address)).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session.compositor_mut().insert_client(ours).unwrap();
+    let config = session.config.path().to_owned();
+    let (news, mut compositor) = UnixStream::pair().unwrap();
+    let news = Some(Ipc::from_stream(news));
+    let mut notifier = Notifier::new(theirs, bus, news, &config, Icons::default()).unwrap();
+
+    // It asks to be told what is wrong, as one that will show it.
+    let mut asked = String::new();
+    BufReader::new(&compositor).read_line(&mut asked).unwrap();
+    assert_eq!(asked, "\"show_problems\"\n");
+
+    // An answer to nothing it asked is passed over.
+    let wrong = Told {
+        problems: vec!["something is wrong".to_owned()],
+        ..Told::default()
+    };
+    let said = [encode(&Reply::Done), encode(&Reply::State(wrong))].concat();
+    std::io::Write::write_all(&mut compositor, said.as_bytes()).unwrap();
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        session.draw().at(EDGE.0, EDGE.1) == alarming()
+    });
+
+    // Once the compositor has gone, so are the notifications.
+    drop(compositor);
+    let failed = (0..50).any(|_| notifier.turn(Duration::ZERO).is_err());
+    assert!(failed);
+}
+
+#[test]
+fn notifications_that_cannot_ask_what_is_wrong_leave_it_to_the_compositor() {
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[BROKEN]);
+    session.step();
+    let bus = Bus::open(Some(&daemon.address)).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session.compositor_mut().insert_client(ours).unwrap();
+    let config = session.config.path().to_owned();
+    // The other end of what it was to ask on has gone.
+    let (news, gone) = UnixStream::pair().unwrap();
+    drop(gone);
+    let news = Some(Ipc::from_stream(news));
+    let mut notifier = Notifier::new(theirs, bus, news, &config, Icons::default()).unwrap();
+
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    assert_ne!(session.draw().at(NOTICE.0, NOTICE.1), BACKGROUND);
 }

@@ -47,6 +47,15 @@ pub(crate) struct Server {
     published: Option<State>,
 }
 
+/// What a peer that is sent the state whenever it changes wants it for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Follows {
+    /// To know it.
+    State,
+    /// To show the user what is wrong, so that the compositor need not.
+    Problems,
+}
+
 #[derive(Debug)]
 struct Peer {
     stream: UnixStream,
@@ -54,7 +63,8 @@ struct Peer {
     inbox: Vec<u8>,
     /// Bytes still to be sent.
     outbox: Vec<u8>,
-    subscribed: bool,
+    /// Whether it is sent the state whenever that changes, and what for.
+    follows: Option<Follows>,
     /// Subscribed, but not yet sent the state for the first time.
     waiting: bool,
     alive: bool,
@@ -100,7 +110,7 @@ impl Server {
                 stream,
                 inbox: Vec::new(),
                 outbox: Vec::new(),
-                subscribed: false,
+                follows: None,
                 waiting: false,
                 alive: true,
             }));
@@ -188,6 +198,13 @@ impl Compositor {
         })
     }
 
+    /// Whether a program is connected that shows the user what is wrong.
+    pub(crate) fn problems_shown_elsewhere(&self) -> bool {
+        let peers = self.ipc.iter().flat_map(|server| &server.peers);
+        let mut showing = peers.filter(|peer| peer.follows == Some(Follows::Problems));
+        showing.any(|peer| peer.alive)
+    }
+
     /// Where the IPC socket is, if one is being served.
     pub(crate) fn ipc_path(&self) -> Option<&Path> {
         self.ipc.as_ref().map(|server| server.path.as_path())
@@ -208,7 +225,11 @@ impl Compositor {
                     // Answered when the state is next published, moments
                     // from now, so that it is sent once and not twice.
                     Ok(Request::Subscribe) => {
-                        peer.subscribed = true;
+                        peer.follows = peer.follows.or(Some(Follows::State));
+                        peer.waiting = true;
+                    }
+                    Ok(Request::ShowProblems) => {
+                        peer.follows = Some(Follows::Problems);
                         peer.waiting = true;
                     }
                     Ok(request) => peer.queue(&self.answer(request)),
@@ -231,7 +252,11 @@ impl Compositor {
         let state = self.ipc_state();
         let changed = server.published.as_ref() != Some(&state);
         let update = Reply::State(state.clone());
-        for peer in server.peers.iter_mut().filter(|peer| peer.subscribed) {
+        for peer in server
+            .peers
+            .iter_mut()
+            .filter(|peer| peer.follows.is_some())
+        {
             if changed || peer.waiting {
                 peer.queue(&update);
                 peer.waiting = false;
@@ -258,7 +283,9 @@ impl Compositor {
             },
             // A subscription is answered in `publish_ipc`; should one get
             // here it is treated as asking for the state once.
-            Request::State | Request::Subscribe => Reply::State(self.ipc_state()),
+            Request::State | Request::Subscribe | Request::ShowProblems => {
+                Reply::State(self.ipc_state())
+            }
             Request::Reload => {
                 self.reload_config();
                 Reply::Done
