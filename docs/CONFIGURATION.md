@@ -206,8 +206,7 @@ desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state. */
 window {
-  border-width: 1px;
-  border-color: var(--border);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 window:focus { border-color: var(--accent); }
@@ -222,19 +221,16 @@ titlebar:focus {
   color: var(--text);
 }
 
-/* A title in a titlebar that has several. The border is the line between
- * one tab and the next. */
+/* A title in a titlebar. Where there are several, the border on the left
+ * is the line between one tab and the next. */
 tab {
+  padding: 0 10px;
   background: var(--surface-dim);
   color: var(--text-dim);
-  border-width: 1px;
-  border-color: var(--border);
+  border-left: 1px solid var(--border);
 }
-tab:focus { border-color: var(--accent); }
-tab:active {
-  border-bottom-width: 2px;
-  border-bottom-color: var(--border);
-}
+tab:focus { border-left-color: var(--accent); }
+tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
   background: var(--surface);
   color: var(--text);
@@ -244,11 +240,11 @@ tab:active:focus {
 menu {
   background: var(--surface);
   color: var(--text);
-  border-width: 1px;
-  border-color: var(--border);
+  border: 1px solid var(--border);
 }
 menu-item {
   height: 28px;
+  padding: 0 10px;
   color: var(--text);
 }
 menu-item:hover {
@@ -258,29 +254,36 @@ menu-item:hover {
 menu-separator { color: var(--border); }
 
 notice {
+  padding: 10px;
   background: var(--surface);
   color: var(--text);
-  border-width: 1px;
-  border-color: var(--accent);
+  border: 1px solid var(--accent);
 }
 notice-heading { color: var(--accent); }
 
+/* The panel, and what is on it: the workspaces, a task for each window on
+ * the one being shown, and the clock. A margin on the panel moves it in
+ * from the edges of the screen. */
 panel {
   height: 28px;
   background: var(--surface-dim);
   color: var(--text-dim);
 }
-panel-button {
-  background: var(--surface-dim);
+workspace, task {
+  padding: 0 10px;
   color: var(--text-dim);
 }
-panel-button:active {
+workspace { min-width: 28px; }
+task { max-width: 240px; }
+workspace:active, task:active {
   background: var(--surface);
   color: var(--text);
-  border-bottom-width: 2px;
-  border-bottom-color: var(--accent);
+  border-bottom: 2px solid var(--accent);
 }
-clock { color: var(--text); }
+clock {
+  padding: 0 10px;
+  color: var(--text);
+}
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -293,34 +296,76 @@ values:
 }
 ```
 
+A panel that floats clear of the screen's edges, see-through, with rounded
+buttons, is a few rules more:
+
+```css
+panel {
+  margin: 6px 8px;
+  border-radius: 10px;
+  background: rgba(27, 29, 35, 0.8);
+}
+workspace, task {
+  margin: 3px 2px;
+  border-radius: 6px;
+}
+workspace:active, task:active { border-bottom: none; }
+```
+
 **Parts** are `desktop`, `window`, `titlebar`, `tab`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `panel`, `panel-button` and
-`clock`. `*` is every part. Several can share a rule: `tab, clock { ... }`.
+`menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`
+and `clock`. `*` is every part. Several can share a rule:
+`workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
-has), `:active` (the tab or workspace being shown, or the window with
-focus on the panel) and `:hover` (the pointer is over it). A part can be in
+has), `:active` (the tab or workspace being shown, or the task of the
+window with focus) and `:hover` (the pointer is over it). A part can be in
 several: `tab:active:focus`.
 
-**Properties:**
+**Every part is a box.** From the outside in it has a margin, which is room
+kept clear around it; a border; padding, which is room between the border
+and what the part holds; and its content. Its height, where it has one,
+is measured to the outside of its border.
 
 | Property | Value | Notes |
 |---|---|---|
 | `background` | a color | also written `background-color` |
 | `color` | a color | text; for `menu-separator`, the line |
-| `border-color`, `border-width` | a color; `0` to `16px` | the line around a part; for `tab`, the line between tabs |
-| `border-bottom-color`, `border-bottom-width` | a color; `0` to `16px` | a line along the bottom, inside the part |
-| `border-radius` | `0` to `32px` | of `window` |
+| `opacity` | `0` to `1`, or a percentage | of everything the part draws |
+| `border` | a width, `solid` or `none`, a color | any of them, in any order |
+| `border-color`, `border-width` | a color; `0` to `16px` | |
+| `border-radius` | `0` to `32px` | rounds the corners of the box |
+| `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item` and `panel` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit |
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
+| `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 
-Colors are `#rgb` or `#rrggbb`, with opacity as a fourth digit or pair, or
-`transparent`. Sizes are whole numbers. A variable is declared in `:root`
-with a name beginning `--` and used as `var(--name)`; it can stand for
-another variable.
+`border`, `padding` and `margin` can name one side: `border-bottom`,
+`border-left-color`, `padding-top`, `margin-right`.
 
-The sizes of a window's frame and titlebar are taken from the rules without
-a state, since a window does not change size when it gains focus.
+Colors are written as CSS writes them: `#rgb` or `#rrggbb`, with opacity
+as a fourth digit or pair; `rgb(91, 156, 245)` and `rgba(91, 156, 245,
+0.5)`; `hsl(215, 89%, 66%)`; a name such as `steelblue`; or `transparent`.
+Sizes are whole numbers of `px`, and of `pt` for a font. A variable is
+declared in `:root` with a name beginning `--` and used as `var(--name)`,
+alone or as part of a value: `border: 1px solid var(--accent)`.
+
+Not every part uses every property yet:
+
+- `margin` is honoured by `panel` (it moves the bar in from the edges of
+  the screen), and by `workspace`, `task` and `clock` (room around each on
+  the bar).
+- `padding` is honoured by `tab`, `menu-item`, `notice`, `panel`,
+  `workspace`, `task` and `clock`.
+- `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
+  `notice`, `panel`, `workspace`, `task` and `clock`.
+- A window's border is the same on every side: its `border-top` stands for
+  all four. The sizes of a window's frame and titlebar are taken from the
+  rules without a state, since a window does not change size when it gains
+  focus.
+- Layout (`display`, `position`, `flex`), gradients, shadows and
+  transitions are not there.
 
 Nothing is passed over in silence: a part, state, property or value that
 is not understood is a mistake, reported with its line and column, and the
@@ -357,8 +402,8 @@ minimized window's title is in brackets. The time is the local time, in
 24 hours.
 
 It is a program of its own, started with the session. How it looks is in
-`theme.css`, under `panel`, `panel-button` and `clock`, and it follows the
-file as you save it.
+`theme.css`, under `panel`, `workspace`, `task` and `clock`, and it follows
+the file as you save it.
 
 To go without it, or to use another panel that speaks layer-shell, such as
 `waybar`, turn it off in `config.yaml`:

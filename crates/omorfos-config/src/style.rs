@@ -34,18 +34,22 @@ pub enum Part {
     Notice,
     /// The first line of the notice.
     NoticeHeading,
-    /// The panel's bar along the edge of a screen.
+    /// The panel's bar along the edge of a screen. Its margin is room
+    /// left between it and the edges of the screen.
     Panel,
-    /// A workspace or a window on the panel. It is [`State::Active`] when
-    /// it is the workspace being shown or the window with focus.
-    PanelButton,
+    /// A workspace on the panel. It is [`State::Active`] when it is the
+    /// one being shown.
+    Workspace,
+    /// A window on the panel. It is [`State::Active`] when it is the one
+    /// with focus.
+    Task,
     /// The time on the panel.
     Clock,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Desktop,
         Self::Window,
         Self::Titlebar,
@@ -56,7 +60,8 @@ impl Part {
         Self::Notice,
         Self::NoticeHeading,
         Self::Panel,
-        Self::PanelButton,
+        Self::Workspace,
+        Self::Task,
         Self::Clock,
     ];
 
@@ -74,7 +79,8 @@ impl Part {
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
             Self::Panel => "panel",
-            Self::PanelButton => "panel-button",
+            Self::Workspace => "workspace",
+            Self::Task => "task",
             Self::Clock => "clock",
         }
     }
@@ -181,22 +187,88 @@ impl Line {
 /// Nothing: fully transparent.
 pub(crate) const CLEAR: Color = Color::rgba(0, 0, 0, 0);
 
+/// Something a part has on each of its four sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Edges<T> {
+    /// Along the top.
+    pub top: T,
+    /// Down the right-hand side.
+    pub right: T,
+    /// Along the bottom.
+    pub bottom: T,
+    /// Down the left-hand side.
+    pub left: T,
+}
+
+impl<T: Copy> Edges<T> {
+    /// The same on every side.
+    #[must_use]
+    pub const fn all(each: T) -> Self {
+        Self {
+            top: each,
+            right: each,
+            bottom: each,
+            left: each,
+        }
+    }
+}
+
+impl Edges<u32> {
+    /// Nothing on any side.
+    pub const NONE: Self = Self::all(0);
+
+    /// What the left and right sides come to together.
+    #[must_use]
+    pub const fn across(&self) -> u32 {
+        self.left.saturating_add(self.right)
+    }
+
+    /// What the top and bottom come to together.
+    #[must_use]
+    pub const fn down(&self) -> u32 {
+        self.top.saturating_add(self.bottom)
+    }
+}
+
+impl Edges<Line> {
+    /// How thick the line on each side is.
+    #[must_use]
+    pub const fn widths(&self) -> Edges<u32> {
+        Edges {
+            top: self.top.width,
+            right: self.right.width,
+            bottom: self.bottom.width,
+            left: self.left.width,
+        }
+    }
+}
+
 /// How a part looks. What does not apply to a part is left as nothing: a
 /// transparent colour, no line, no size.
+///
+/// A part is a box. From the outside in it has a margin, which is room
+/// kept clear around it; a border; padding, which is room between the
+/// border and what the part holds; and its content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
-    /// What it is filled with.
+    /// What it is filled with, inside its border.
     pub background: Color,
     /// What its text is written in.
     pub color: Color,
-    /// The line around it.
-    pub border: Line,
-    /// The line along its bottom edge, inside it.
-    pub underline: Line,
+    /// The line along each side.
+    pub border: Edges<Line>,
+    /// The room between its border and what it holds.
+    pub padding: Edges<u32>,
+    /// The room kept clear around it.
+    pub margin: Edges<u32>,
     /// How far its corners are rounded, in units of layout.
     pub radius: u32,
     /// How tall it is, in units of layout, if that is fixed.
     pub height: u32,
+    /// The narrowest it is made, in units of layout.
+    pub min_width: u32,
+    /// The widest it is made, in units of layout, or 0 for no limit.
+    pub max_width: u32,
 }
 
 impl Style {
@@ -204,11 +276,40 @@ impl Style {
     pub const NONE: Self = Self {
         background: CLEAR,
         color: CLEAR,
-        border: Line::NONE,
-        underline: Line::NONE,
+        border: Edges::all(Line::NONE),
+        padding: Edges::NONE,
+        margin: Edges::NONE,
         radius: 0,
         height: 0,
+        min_width: 0,
+        max_width: 0,
     };
+
+    /// The room its border and padding take on each side: how far in from
+    /// its edges what it holds begins.
+    #[must_use]
+    pub const fn inset(&self) -> Edges<u32> {
+        let (border, padding) = (self.border.widths(), self.padding);
+        Edges {
+            top: border.top.saturating_add(padding.top),
+            right: border.right.saturating_add(padding.right),
+            bottom: border.bottom.saturating_add(padding.bottom),
+            left: border.left.saturating_add(padding.left),
+        }
+    }
+
+    /// `width` kept within the narrowest and widest the part is made.
+    #[must_use]
+    pub fn fit(&self, width: u32) -> u32 {
+        let widest = if self.max_width == 0 {
+            u32::MAX
+        } else {
+            self.max_width
+        };
+        // Where the two disagree, the narrowest has the last word, as in
+        // CSS.
+        width.min(widest).max(self.min_width)
+    }
 }
 
 #[cfg(test)]
@@ -255,6 +356,57 @@ mod tests {
     }
 
     #[test]
+    fn a_box_is_inset_by_its_border_and_its_padding() {
+        let line = |width| Line {
+            color: CLEAR,
+            width,
+        };
+        let style = Style {
+            border: Edges {
+                top: line(1),
+                right: line(2),
+                bottom: line(3),
+                left: line(4),
+            },
+            padding: Edges {
+                top: 10,
+                right: 20,
+                bottom: 30,
+                left: 40,
+            },
+            ..Style::NONE
+        };
+        let inset = style.inset();
+        assert_eq!(
+            (inset.top, inset.right, inset.bottom, inset.left),
+            (11, 22, 33, 44)
+        );
+        assert_eq!((inset.across(), inset.down()), (66, 44));
+        assert_eq!(Style::NONE.inset(), Edges::NONE);
+        assert_eq!(Edges::all(7).across(), 14);
+    }
+
+    #[test]
+    fn a_width_is_kept_within_the_narrowest_and_widest_a_part_is_made() {
+        assert_eq!(Style::NONE.fit(500), 500, "no limits");
+        let style = Style {
+            min_width: 28,
+            max_width: 240,
+            ..Style::NONE
+        };
+        assert_eq!(
+            (style.fit(10), style.fit(100), style.fit(500)),
+            (28, 100, 240)
+        );
+        let contrary = Style {
+            min_width: 300,
+            max_width: 240,
+            ..Style::NONE
+        };
+        assert_eq!(contrary.fit(100), 300);
+    }
+
+    #[test]
     fn parts_and_states_have_the_names_a_stylesheet_calls_them_by() {
         let parts: Vec<&str> = Part::ALL.iter().map(|part| part.name()).collect();
         assert_eq!(
@@ -270,7 +422,8 @@ mod tests {
                 "notice",
                 "notice-heading",
                 "panel",
-                "panel-button",
+                "workspace",
+                "task",
                 "clock"
             ]
         );

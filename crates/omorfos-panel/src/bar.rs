@@ -3,13 +3,8 @@
 
 use omorfos_config::{Part, States, Theme};
 use omorfos_ipc::{Request, State, Window, Workspace};
-use omorfos_ui::{Canvas, Scale, Text};
+use omorfos_ui::{Area, Canvas, Scale, Text, inset};
 use serde_json::json;
-
-/// The room left and right of a label, in units of layout.
-const PADDING: u32 = 10;
-/// The widest a window's button gets.
-const WIDEST_TASK: u32 = 240;
 
 /// What a button stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,29 +13,27 @@ enum Target {
     Workspace(u32),
     /// A window, by its identifier.
     Window(u64),
+    /// Nothing: the clock is only read.
+    Nothing,
 }
 
-/// A button on the bar.
+/// Something on the bar: a workspace, a window or the clock.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Button {
-    left: u32,
-    width: u32,
+struct Item {
+    /// The box it is drawn as, which is also where it is clicked.
+    area: Area,
     label: String,
+    part: Part,
     /// Whether it is the workspace being shown or the window with focus.
-    lit: bool,
+    states: States,
     target: Target,
-}
-
-/// The time, at the right-hand end of the bar.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Clock {
-    left: u32,
-    width: u32,
-    time: String,
 }
 
 /// The bar of one output: a button for each of its workspaces, then one for
 /// each window on the workspace it is showing, and the time at the end.
+///
+/// Each of these, and the bar itself, is a box as the theme describes it,
+/// with its margin, border and padding.
 ///
 /// Two bars are equal when they would be drawn alike under one theme, so a
 /// bar made from news that changed nothing on it need not be drawn again.
@@ -48,19 +41,59 @@ struct Clock {
 pub struct Bar {
     width: u32,
     height: u32,
-    buttons: Vec<Button>,
-    clock: Clock,
+    items: Vec<Item>,
+}
+
+/// Lays boxes out along the inside of the bar.
+struct Row<'a> {
+    theme: &'a Theme,
+    text: &'a mut Text,
+    /// The top of the row and how tall it is.
+    top: i32,
+    height: u32,
+}
+
+impl Row<'_> {
+    /// How wide a part's box is to hold `label`, before any limit the theme
+    /// puts on it.
+    fn needed(&mut self, part: Part, states: States, label: &str) -> u32 {
+        let style = self.theme.style(part, states);
+        let wide = self.text.measure(label, self.theme.font(part, states));
+        wide.saturating_add(style.inset().across())
+    }
+
+    /// The box of a part whose margin begins at `left`, `width` wide inside
+    /// its margin, and where the margin of the next one begins.
+    fn place(&self, part: Part, states: States, left: i32, width: u32) -> (Area, i32) {
+        let margin = self.theme.style(part, states).margin;
+        let area = (
+            left.saturating_add_unsigned(margin.left),
+            self.top.saturating_add_unsigned(margin.top),
+            width,
+            self.height.saturating_sub(margin.down()),
+        );
+        let next = area.0.saturating_add_unsigned(width);
+        (area, next.saturating_add_unsigned(margin.right))
+    }
 }
 
 impl Bar {
+    /// How tall a bar is under `theme`, with the room its margin keeps
+    /// clear above and below it.
+    #[must_use]
+    pub fn thickness(theme: &Theme) -> u32 {
+        let panel = theme.style(Part::Panel, States::NONE);
+        panel.height.saturating_add(panel.margin.down())
+    }
+
     /// The bar for the output called `output`, `width` units of layout
     /// wide, showing what `state` says of that output, and `time` as the
     /// time. The time is whatever is to be read there, such as `14:05`; a
     /// bar told none has no clock.
     ///
     /// A workspace's button is as wide as its name needs, and the clock as
-    /// wide as the time. The windows share what room is left, up to a
-    /// width each.
+    /// wide as the time. The windows share what room is left. The theme
+    /// may hold any of them to a narrowest or a widest.
     #[must_use]
     pub fn new(
         state: &State,
@@ -70,27 +103,55 @@ impl Bar {
         theme: &Theme,
         text: &mut Text,
     ) -> Self {
-        let height = theme.style(Part::Panel, States::NONE).height;
-        let mut buttons = Vec::new();
-        let mut left: u32 = 0;
+        let height = Self::thickness(theme);
+        let panel = theme.style(Part::Panel, States::NONE);
+        let inside = inset(inset((0, 0, width, height), panel.margin), panel.inset());
+        let mut row = Row {
+            theme,
+            text,
+            top: inside.1,
+            height: inside.3,
+        };
+        let mut items = Vec::new();
+        let mut left = inside.0;
+        let lit = |active: bool| States::NONE.when(omorfos_config::State::Active, active);
 
         let workspaces = state.workspaces.iter();
         let workspaces = workspaces.filter(|workspace| workspace.output == output);
         for workspace in workspaces.clone() {
+            let (part, states) = (Part::Workspace, lit(workspace.active));
             let label = workspace_label(workspace);
-            let lit = States::NONE.when(omorfos_config::State::Active, workspace.active);
-            let needed = text.measure(&label, theme.font(Part::PanelButton, lit));
-            // Never narrower than it is tall, so a short name is easy to hit.
-            let wide = needed.saturating_add(PADDING * 2).max(height);
-            buttons.push(Button {
-                left,
-                width: wide,
+            let wide = theme
+                .style(part, states)
+                .fit(row.needed(part, states, &label));
+            let (area, next) = row.place(part, states, left, wide);
+            left = next;
+            items.push(Item {
+                area,
                 label,
-                lit: workspace.active,
+                part,
+                states,
                 target: Target::Workspace(workspace.number),
             });
-            left = left.saturating_add(wide);
         }
+
+        // The clock stands at the far end, and the windows stop short of it.
+        let mut end = inside.0.saturating_add_unsigned(inside.2);
+        let clock = (!time.is_empty()).then(|| {
+            let (part, states) = (Part::Clock, States::NONE);
+            let style = theme.style(part, states);
+            let wide = style.fit(row.needed(part, states, time));
+            let outer = wide.saturating_add(style.margin.across());
+            end = end.saturating_sub_unsigned(outer);
+            let (area, _) = row.place(part, states, end, wide);
+            Item {
+                area,
+                label: time.to_owned(),
+                part,
+                states,
+                target: Target::Nothing,
+            }
+        });
 
         let mut workspaces = workspaces;
         let shown = workspaces.find(|workspace| workspace.active);
@@ -100,29 +161,32 @@ impl Bar {
             .filter(|window| window.output == output && Some(window.workspace) == shown)
             .collect();
         let count = u32::try_from(windows.len()).unwrap_or(u32::MAX);
-        let clock = Clock::new(time, width, theme, text);
-        let room = clock.left.saturating_sub(left);
-        let each = room.checked_div(count).unwrap_or(0).min(WIDEST_TASK);
+        let room = u32::try_from(end.saturating_sub(left)).unwrap_or(0);
+        let share = room.checked_div(count).unwrap_or(0);
         for window in windows {
-            buttons.push(Button {
-                left,
-                width: each,
+            let (part, states) = (Part::Task, lit(window.focused));
+            let style = theme.style(part, states);
+            let wide = style.fit(share.saturating_sub(style.margin.across()));
+            let (area, next) = row.place(part, states, left, wide);
+            left = next;
+            items.push(Item {
+                area,
                 label: window_label(window),
-                lit: window.focused,
+                part,
+                states,
                 target: Target::Window(window.id),
             });
-            left = left.saturating_add(each);
         }
+        items.extend(clock);
 
         Self {
             width,
             height,
-            buttons,
-            clock,
+            items,
         }
     }
 
-    /// How tall the bar is, in units of layout.
+    /// How tall the bar is, in units of layout, with its margin.
     #[must_use]
     pub fn height(&self) -> u32 {
         self.height
@@ -133,20 +197,21 @@ impl Bar {
     /// button is there. Nothing where there is no button.
     #[must_use]
     pub fn click(&self, x: i32) -> Option<Request> {
-        let x = u32::try_from(x).ok()?;
-        let mut buttons = self.buttons.iter();
-        let button = buttons.find(|button| {
-            let along = x.checked_sub(button.left);
-            along.is_some_and(|along| along < button.width)
+        let mut items = self.items.iter();
+        let item = items.find(|item| {
+            let (left, _, width, _) = item.area;
+            let along = u32::try_from(x.saturating_sub(left)).ok();
+            along.is_some_and(|along| along < width)
         })?;
-        Some(match button.target {
+        match item.target {
             // The compositor switches workspace on the screen the pointer
             // is on, which for a click on this bar is this bar's screen.
-            Target::Workspace(number) => Request::Perform {
+            Target::Workspace(number) => Some(Request::Perform {
                 action: json!({ "workspace": number }),
-            },
-            Target::Window(window) => Request::Activate { window },
-        })
+            }),
+            Target::Window(window) => Some(Request::Activate { window }),
+            Target::Nothing => None,
+        }
     }
 
     /// Draws the bar, with `scale` pixels to a unit of layout.
@@ -154,53 +219,16 @@ impl Bar {
     pub fn paint(&self, text: &mut Text, theme: &Theme, scale: Scale) -> Canvas {
         let panel = theme.style(Part::Panel, States::NONE);
         let mut canvas = Canvas::scaled(self.width, self.height, scale);
-        canvas.fill((0, 0, self.width, self.height), panel.background);
-        for button in &self.buttons {
-            let left = button.left.cast_signed();
-            let states = States::NONE.when(omorfos_config::State::Active, button.lit);
-            let style = theme.style(Part::PanelButton, states);
-            let line = style.underline;
-            let top = self.height.saturating_sub(line.width);
-            canvas.fill((left, 0, button.width, top), style.background);
-            canvas.fill(
-                (left, top.cast_signed(), button.width, line.width),
-                line.color,
-            );
-            let label = (
-                left.saturating_add_unsigned(PADDING),
-                0,
-                button.width.saturating_sub(PADDING * 2),
-                self.height,
-            );
-            let font = theme.font(Part::PanelButton, states);
-            text.draw(&mut canvas, &button.label, label, style.color, font);
+        let whole = (0, 0, self.width, self.height);
+        canvas.draw_box(inset(whole, panel.margin), &panel);
+        for item in &self.items {
+            let style = theme.style(item.part, item.states);
+            canvas.draw_box(item.area, &style);
+            let label = inset(item.area, style.inset());
+            let font = theme.font(item.part, item.states);
+            text.draw(&mut canvas, &item.label, label, style.color, font);
         }
-        let clock = &self.clock;
-        let time = (
-            clock.left.cast_signed().saturating_add_unsigned(PADDING),
-            0,
-            clock.width.saturating_sub(PADDING * 2),
-            self.height,
-        );
-        let ink = theme.style(Part::Clock, States::NONE).color;
-        let font = theme.font(Part::Clock, States::NONE);
-        text.draw(&mut canvas, &clock.time, time, ink, font);
         canvas
-    }
-}
-
-impl Clock {
-    /// A clock showing `time` at the end of a bar `width` wide: as wide as
-    /// the time needs, or nothing at all if there is no time to show.
-    fn new(time: &str, width: u32, theme: &Theme, text: &mut Text) -> Self {
-        let needed = text.measure(time, theme.font(Part::Clock, States::NONE));
-        let room = needed.saturating_add(PADDING * 2);
-        let wide = if time.is_empty() { 0 } else { room };
-        Self {
-            left: width.saturating_sub(wide),
-            width: wide,
-            time: time.to_owned(),
-        }
     }
 }
 
@@ -231,6 +259,13 @@ fn window_label(window: &Window) -> String {
 #[cfg(test)]
 mod tests {
     use omorfos_config::Color;
+
+    /// The room the default theme leaves either side of a label.
+    const PADDING: u32 = 10;
+    /// The widest the default theme makes a window's button.
+    const WIDEST_TASK: u32 = 240;
+
+    const ACTIVE: omorfos_config::State = omorfos_config::State::Active;
 
     /// How thick the default theme makes the line under a lit button.
     const LINE: u32 = 2;
@@ -615,6 +650,126 @@ mod tests {
             timed(&state, "left", "14:05"),
             timed(&state, "left", "14:06")
         );
+    }
+
+    /// The first screen's bar under the built-in theme with `stylesheet`
+    /// laid over it.
+    fn styled(stylesheet: &str) -> (Bar, Theme) {
+        let theme = Theme::parse(stylesheet).unwrap();
+        let bar = Bar::new(&state(), "left", WIDTH, "14:05", &theme, &mut Text::new());
+        (bar, theme)
+    }
+
+    /// Where each stretch of the bar that asks for something begins and
+    /// ends.
+    fn spans(bar: &Bar) -> Vec<(u32, u32)> {
+        let asked = |x: &u32| bar.click(x.cast_signed());
+        let starts = stretches(bar).into_iter().map(|(start, _)| start);
+        let spans = starts.map(|start| {
+            let request = asked(&start);
+            let end = (start..WIDTH).find(|x| asked(x) != request);
+            (start, end.unwrap_or(WIDTH))
+        });
+        spans.collect()
+    }
+
+    #[test]
+    fn a_margin_moves_the_bar_in_from_the_edges_of_the_screen() {
+        let (bar, theme) = styled("panel { margin: 4px 6px 8px 10px; }");
+        assert_eq!(Bar::thickness(&theme), 28 + 4 + 8);
+        assert_eq!(bar.height(), 40);
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let background = argb(theme.style(Part::Panel, States::NONE).background);
+        // Nothing is drawn in the margin, so the screen shows through.
+        for (x, y) in [(400, 3), (400, 32), (9, 20), (WIDTH - 6, 20), (0, 0)] {
+            assert_eq!(canvas.at(x, y), 0, "({x}, {y})");
+        }
+        assert_eq!(canvas.at(WIDTH - 7, 4), background);
+        assert_eq!(canvas.at(WIDTH - 7, 31), background);
+        // And the buttons begin where the bar does.
+        assert_eq!(spans(&bar)[0].0, 10);
+    }
+
+    #[test]
+    fn room_kept_around_a_button_is_not_part_of_it() {
+        let (plain, _) = styled("");
+        let (bar, theme) = styled("workspace { margin: 3px 5px; }");
+        let (plain, spaced) = (spans(&plain), spans(&bar));
+        assert_eq!(spaced[0].0, 5);
+        assert_eq!(
+            spaced[1].0 - spaced[0].1,
+            10,
+            "a margin each side of the gap"
+        );
+        let width = |span: (u32, u32)| span.1 - span.0;
+        assert_eq!(width(spaced[0]), width(plain[0]), "the button is as wide");
+        // It is drawn shorter, with the bar showing above and below it.
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let lit = argb(
+            theme
+                .style(Part::Workspace, States::NONE.with(ACTIVE))
+                .background,
+        );
+        let panel = argb(theme.style(Part::Panel, States::NONE).background);
+        let middle = spaced[1].0 + 2;
+        assert_eq!(canvas.at(middle, 2), panel);
+        assert_eq!(canvas.at(middle, 3), lit);
+        assert_eq!(canvas.at(middle, 25), panel);
+    }
+
+    #[test]
+    fn padding_makes_a_button_wider_than_its_label() {
+        let (plain, _) = styled("");
+        let (padded, _) = styled("workspace { padding: 0 30px; }");
+        let width = |bar: &Bar, index: usize| {
+            let span = spans(bar)[index];
+            span.1 - span.0
+        };
+        // Twenty a side more than the ten the theme has.
+        assert_eq!(width(&padded, 1), width(&plain, 1) + 40);
+    }
+
+    #[test]
+    fn a_button_is_held_to_its_narrowest_and_its_widest() {
+        let (bar, _) = styled("workspace { min-width: 100px; } task { max-width: 50px; }");
+        let widths: Vec<u32> = spans(&bar).iter().map(|span| span.1 - span.0).collect();
+        assert_eq!(widths, [100, 100, 50, 50]);
+        // With no limit, the windows share all the room there is.
+        let (bar, _) = styled("task { max-width: 0; }");
+        let spans = spans(&bar);
+        assert!(spans[3].1 - spans[3].0 > 240, "{spans:?}");
+    }
+
+    #[test]
+    fn a_bar_and_its_buttons_can_have_rounded_corners_and_borders() {
+        let (bar, theme) = styled(
+            "panel { border-radius: 12px; border: 2px solid #ff0000; }\n\
+             workspace { border-radius: 6px; margin: 2px; }",
+        );
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        assert_eq!(canvas.at(0, 0), 0, "the corner is cut away");
+        assert_eq!(canvas.at(WIDTH - 1, 27), 0);
+        assert_eq!(canvas.at(400, 0), argb(Color::rgb(255, 0, 0)));
+        assert_eq!(canvas.at(400, 27), argb(Color::rgb(255, 0, 0)));
+        let panel = argb(theme.style(Part::Panel, States::NONE).background);
+        assert_eq!(
+            canvas.at(WIDTH - 150, 14),
+            panel,
+            "between the windows and the clock"
+        );
+        // The buttons are inside the bar's border.
+        assert_eq!(spans(&bar)[0].0, 2 + 2);
+    }
+
+    #[test]
+    fn the_clock_is_a_box_like_any_other() {
+        let (bar, theme) = styled("clock { background: #00ff00; margin: 0 7px 0 0; }");
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE);
+        let green = argb(Color::rgb(0, 255, 0));
+        assert_eq!(canvas.at(WIDTH - 8, 1), green);
+        assert_ne!(canvas.at(WIDTH - 7, 1), green, "its margin is the bar's");
+        // It is read, not clicked.
+        assert_eq!(bar.click((WIDTH - 20).cast_signed()), None);
     }
 
     #[test]

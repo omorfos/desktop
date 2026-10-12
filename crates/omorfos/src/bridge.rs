@@ -44,7 +44,7 @@ pub fn settings(config: &Config) -> Settings {
             omorfos_config::Placement::Pointer => Placement::Pointer,
         },
         decoration: Metrics {
-            border: theme.style(Part::Window, States::NONE).border.width,
+            border: theme.style(Part::Window, States::NONE).border.top.width,
             titlebar: theme.style(Part::Titlebar, States::NONE).height,
         },
     }

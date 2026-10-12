@@ -8,9 +8,9 @@
 
 use cosmic_text::{
     Attrs, Buffer, Ellipsize, EllipsizeHeightLimit, Family, FontSystem, Metrics, Shaping,
-    SwashCache, Wrap,
+    Style as Slant, SwashCache, Weight, Wrap,
 };
-use omorfos_config::{Color, Font};
+use omorfos_config::{Color, Edges, Font, Style};
 
 use crate::Scale;
 
@@ -124,6 +124,41 @@ impl Canvas {
         }
     }
 
+    /// Draws a part as a box filling `area`: its border along each side
+    /// and its background within, with the corners rounded as far as the
+    /// style says. Margin and padding are for whoever lays the box out;
+    /// see [`inset`].
+    ///
+    /// Where two sides with borders meet at a rounded corner, the border
+    /// goes round it as thick as the thicker of the two and in its colour.
+    pub fn draw_box(&mut self, area: Area, style: &Style) {
+        let (left, width) = span(self.scale, area.0, area.2);
+        let (top, height) = span(self.scale, area.1, area.3);
+        let pixels = |units: u32| span(self.scale, 0, units).1;
+        let border = style.border;
+        let lines = [border.top, border.right, border.bottom, border.left];
+        let widths = lines.map(|line| pixels(line.width));
+        if style.background.alpha == 0 && widths == [0; 4] {
+            return;
+        }
+        let shape = Shape {
+            width,
+            height,
+            radius: pixels(style.radius).min(width / 2).min(height / 2),
+            widths,
+        };
+        let columns = visible(left, width, self.width);
+        for row in visible(top, height, self.height) {
+            for column in columns.clone() {
+                let within = (column.abs_diff(left), row.abs_diff(top));
+                let (side, edge, fill) = shape.at(within);
+                let line = lines.get(side).map_or(style.background, |line| line.color);
+                self.blend(column, row, line, edge);
+                self.blend(column, row, style.background, fill);
+            }
+        }
+    }
+
     /// Cuts the top two corners to a quarter circle of `radius`, smoothly.
     pub fn round_top_corners(&mut self, radius: u32) {
         let (_, radius) = span(self.scale, 0, radius);
@@ -174,6 +209,80 @@ impl Canvas {
         let bytes = bytes.and_then(|bytes| <[u8; 4]>::try_from(bytes).ok());
         bytes.map_or(0, u32::from_le_bytes)
     }
+}
+
+/// The outline of a box in pixels: its size, how far its corners are
+/// rounded, and how thick its border is on the top, right, bottom and left.
+struct Shape {
+    width: u32,
+    height: u32,
+    radius: u32,
+    widths: [u32; 4],
+}
+
+impl Shape {
+    /// What is at a pixel of the box, counted from its top-left corner:
+    /// which side's border, how much of the pixel that border covers, and
+    /// how much the background does, each out of 255.
+    fn at(&self, (x, y): (u32, u32)) -> (usize, u8, u8) {
+        let [top, right, bottom, left] = self.widths;
+        // How far in from each side the pixel is.
+        let (from_right, from_bottom) = (self.width - 1 - x, self.height - 1 - y);
+        // The corner it is in, if it is in one: how far in from the two
+        // sides that meet there, and which sides they are.
+        let (across, level) = if x < self.radius {
+            (x, 3)
+        } else {
+            (from_right, 1)
+        };
+        let (down, upright) = if y < self.radius {
+            (y, 0)
+        } else {
+            (from_bottom, 2)
+        };
+        let cornered = across < self.radius && down < self.radius;
+        let outer = if cornered {
+            corner_coverage(across, down, self.radius)
+        } else {
+            SAMPLES
+        };
+        let share = |samples: u32| u8::try_from(samples * 255 / SAMPLES).unwrap_or(u8::MAX);
+
+        let banded = [y < top, from_right < right, from_bottom < bottom, x < left];
+        // The top and bottom borders run the whole width.
+        let band = [0, 2, 3, 1].into_iter().find(|side| banded[*side]);
+        if let Some(side) = band {
+            return (side, share(outer), 0);
+        }
+        let (beside, above) = (self.widths[level], self.widths[upright]);
+        if !cornered || beside == 0 || above == 0 {
+            return (upright, 0, share(outer));
+        }
+        // Round a corner where two borders meet, the border is a ring.
+        let thick = beside.max(above);
+        let side = if above >= beside { upright } else { level };
+        let inner = self.radius.saturating_sub(thick);
+        let (inward, downward) = (across - beside, down - above);
+        let hollow = if inward < inner && downward < inner {
+            corner_coverage(inward, downward, inner)
+        } else {
+            SAMPLES
+        };
+        let hollow = hollow.min(outer);
+        (side, share(outer - hollow), share(hollow))
+    }
+}
+
+/// The part of `area` left inside `edges`: a box less its border and
+/// padding, or the room for a box less its margin.
+#[must_use]
+pub fn inset((x, y, width, height): Area, edges: Edges<u32>) -> Area {
+    (
+        x.saturating_add_unsigned(edges.left),
+        y.saturating_add_unsigned(edges.top),
+        width.saturating_sub(edges.across()),
+        height.saturating_sub(edges.down()),
+    )
 }
 
 /// Where a length of `length` units starting at `start` falls in pixels:
@@ -266,8 +375,7 @@ impl Text {
         let size = f32::from(u16::try_from(font.size.get()).unwrap_or(u16::MAX)) * 96.0 / 72.0;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, size));
         buffer.set_wrap(Wrap::None);
-        let attributes = Attrs::new().family(family(font));
-        buffer.set_text(text, &attributes, Shaping::Advanced, None);
+        buffer.set_text(text, &attributes(font), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.fonts, false);
         let widest = buffer.layout_runs().map(|run| run.line_w);
         #[expect(
@@ -290,12 +398,11 @@ impl Text {
         #[expect(clippy::cast_possible_truncation, reason = "a scale is at most four")]
         let scale = canvas.scale.factor() as f32;
         let size = float(font.size.get()) * 96.0 / 72.0 * scale;
-        let family = family(font);
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, float(height)));
         buffer.set_wrap(Wrap::None);
         buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(1)));
         buffer.set_size(Some(float(width)), Some(float(height)));
-        buffer.set_text(text, &Attrs::new().family(family), Shaping::Advanced, None);
+        buffer.set_text(text, &attributes(font), Shaping::Advanced, None);
         let ink = cosmic_text::Color::rgba(color.red, color.green, color.blue, color.alpha);
         buffer.draw(
             &mut self.fonts,
@@ -315,6 +422,18 @@ impl Text {
             },
         );
     }
+}
+
+/// How text in a font is to be set: its family, its weight and whether it
+/// slants.
+fn attributes(font: &Font) -> Attrs<'_> {
+    let slant = if font.italic {
+        Slant::Italic
+    } else {
+        Slant::Normal
+    };
+    let attributes = Attrs::new().family(family(font));
+    attributes.weight(Weight(font.weight)).style(slant)
 }
 
 /// The font family a font names: one of the generic ones, or a family by
@@ -411,6 +530,245 @@ mod tests {
         let mut text = Text::default();
         text.draw(&mut canvas, "Abc", (0, 0, 60, 20), RED, &Font::default());
         assert!((0..60).any(|x| (0..20).any(|y| canvas.at(x, y) != 0)));
+    }
+
+    const GREEN: Color = Color::rgb(0, 255, 0);
+    const WHITE: Color = Color::rgb(255, 255, 255);
+
+    fn line(color: Color, width: u32) -> omorfos_config::Line {
+        omorfos_config::Line { color, width }
+    }
+
+    /// A style with a background and the same border on every side.
+    fn boxed(background: Color, border: Color, width: u32, radius: u32) -> Style {
+        Style {
+            background,
+            border: Edges::all(line(border, width)),
+            radius,
+            ..Style::NONE
+        }
+    }
+
+    #[test]
+    fn a_box_is_its_background_inside_a_border_on_each_side() {
+        let style = Style {
+            background: WHITE,
+            border: Edges {
+                top: line(RED, 1),
+                right: line(GREEN, 2),
+                bottom: line(BLUE, 3),
+                left: line(Color::rgb(9, 9, 9), 4),
+            },
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((5, 5, 30, 20), &style);
+
+        assert_eq!(canvas.at(4, 15), 0, "nothing outside it");
+        assert_eq!(canvas.at(35, 15), 0);
+        assert_eq!(canvas.at(20, 4), 0);
+        assert_eq!(canvas.at(20, 25), 0);
+        assert_eq!(canvas.at(20, 5), argb(RED));
+        assert_eq!(canvas.at(20, 6), argb(WHITE));
+        assert_eq!(canvas.at(33, 15), argb(GREEN));
+        assert_eq!(canvas.at(32, 15), argb(WHITE));
+        assert_eq!(canvas.at(20, 22), argb(BLUE));
+        assert_eq!(canvas.at(20, 21), argb(WHITE));
+        assert_eq!(canvas.at(8, 15), argb(Color::rgb(9, 9, 9)));
+        assert_eq!(canvas.at(9, 15), argb(WHITE));
+        // The top and bottom run the whole width.
+        assert_eq!(canvas.at(5, 5), argb(RED));
+        assert_eq!(canvas.at(34, 5), argb(RED));
+        assert_eq!(canvas.at(5, 24), argb(BLUE));
+        assert_eq!(canvas.at(34, 24), argb(BLUE));
+    }
+
+    #[test]
+    fn a_box_with_nothing_to_show_draws_nothing() {
+        let mut canvas = Canvas::new(20, 20);
+        canvas.fill((0, 0, 20, 20), RED);
+        let before = canvas.clone();
+        canvas.draw_box((2, 2, 10, 10), &Style::NONE);
+        assert_eq!(canvas, before);
+        // A border of no thickness is not one, whatever its colour.
+        canvas.draw_box((2, 2, 10, 10), &boxed(Color::rgba(0, 0, 0, 0), BLUE, 0, 4));
+        assert_eq!(canvas, before);
+    }
+
+    #[test]
+    fn a_box_is_clipped_to_the_canvas() {
+        let mut canvas = Canvas::new(10, 10);
+        canvas.draw_box((-5, -5, 100, 100), &boxed(WHITE, RED, 2, 0));
+        assert_eq!(canvas.at(0, 0), argb(WHITE), "its border is off the canvas");
+        assert_eq!(canvas.at(9, 9), argb(WHITE));
+        canvas.draw_box((50, 50, 5, 5), &boxed(BLUE, RED, 1, 0));
+        assert_eq!(canvas.at(9, 9), argb(WHITE));
+    }
+
+    #[test]
+    fn a_box_has_as_many_pixels_to_a_unit_as_the_canvas() {
+        let mut canvas = Canvas::scaled(20, 20, Scale::new(2.0));
+        canvas.draw_box((5, 5, 10, 10), &boxed(WHITE, RED, 1, 0));
+        assert_eq!(canvas.at(9, 20), 0);
+        assert_eq!(canvas.at(10, 20), argb(RED));
+        assert_eq!(canvas.at(11, 20), argb(RED));
+        assert_eq!(canvas.at(12, 20), argb(WHITE));
+        assert_eq!(canvas.at(29, 20), argb(RED));
+        assert_eq!(canvas.at(30, 20), 0);
+    }
+
+    #[test]
+    fn a_rounded_box_has_smooth_corners_and_shows_what_is_under_them() {
+        let mut canvas = Canvas::new(40, 40);
+        canvas.fill((0, 0, 40, 40), BLUE);
+        canvas.draw_box((0, 0, 40, 40), &boxed(WHITE, WHITE, 0, 10));
+
+        for (x, y) in [(0, 0), (39, 0), (0, 39), (39, 39)] {
+            assert_eq!(canvas.at(x, y), argb(BLUE), "the corner is left alone");
+        }
+        for (x, y) in [
+            (20, 0),
+            (0, 20),
+            (39, 20),
+            (20, 39),
+            (20, 20),
+            (4, 4),
+            (35, 35),
+        ] {
+            assert_eq!(canvas.at(x, y), argb(WHITE), "({x}, {y})");
+        }
+        // Along the curve the two are mixed, the same in every corner.
+        let mixed = canvas.at(1, 4);
+        assert!(mixed != argb(BLUE) && mixed != argb(WHITE), "{mixed:#x}");
+        assert_eq!(canvas.at(38, 4), mixed);
+        assert_eq!(canvas.at(1, 35), mixed);
+        assert_eq!(canvas.at(38, 35), mixed);
+    }
+
+    #[test]
+    fn the_border_of_a_rounded_box_goes_round_its_corners() {
+        let mut canvas = Canvas::new(40, 40);
+        canvas.draw_box((0, 0, 40, 40), &boxed(WHITE, RED, 2, 12));
+
+        assert_eq!(canvas.at(0, 0), 0, "outside the corner");
+        assert_eq!(canvas.at(20, 0), argb(RED));
+        assert_eq!(canvas.at(20, 1), argb(RED));
+        assert_eq!(canvas.at(20, 2), argb(WHITE));
+        assert_eq!(canvas.at(0, 20), argb(RED));
+        // On the diagonal of the corner: nothing, then border, then
+        // background, with no gap and no background reaching the outside.
+        let diagonal: Vec<u32> = (0..12).map(|step| canvas.at(step, step)).collect();
+        let red = diagonal
+            .iter()
+            .position(|pixel| *pixel == argb(RED))
+            .unwrap();
+        let white = diagonal.iter().position(|pixel| *pixel == argb(WHITE));
+        let white = white.unwrap();
+        assert!(red >= 2 && white > red, "{diagonal:x?}");
+        assert!(
+            white - red <= 3,
+            "about as thick as the border: {diagonal:x?}"
+        );
+        assert!(diagonal[..red].iter().all(|pixel| *pixel != argb(WHITE)));
+        // The same in the opposite corner.
+        let opposite: Vec<u32> = (0..12)
+            .map(|step| canvas.at(39 - step, 39 - step))
+            .collect();
+        assert_eq!(opposite, diagonal);
+    }
+
+    #[test]
+    fn where_borders_of_two_thicknesses_meet_the_corner_takes_the_thicker() {
+        let style = Style {
+            background: WHITE,
+            border: Edges {
+                top: line(RED, 1),
+                right: line(RED, 1),
+                bottom: line(BLUE, 4),
+                left: line(GREEN, 6),
+            },
+            radius: 12,
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 40);
+        canvas.draw_box((0, 0, 40, 40), &style);
+        // Top left: the left is thicker. Bottom left: the left still.
+        // Bottom right: the bottom.
+        let found = |x: u32, y: u32, color: Color| {
+            let around = (0..3).flat_map(|dx| (0..3).map(move |dy| (x + dx, y + dy)));
+            around
+                .into_iter()
+                .any(|(x, y)| canvas.at(x, y) == argb(color))
+        };
+        assert!(found(6, 1, GREEN));
+        assert!(found(3, 33, GREEN));
+        assert!(found(33, 35, BLUE));
+        assert_eq!(canvas.at(20, 20), argb(WHITE));
+    }
+
+    #[test]
+    fn a_rounded_box_with_a_line_only_along_the_bottom_keeps_it_straight() {
+        let style = Style {
+            background: WHITE,
+            border: Edges {
+                bottom: line(RED, 3),
+                ..Edges::all(line(RED, 0))
+            },
+            radius: 10,
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 40);
+        canvas.draw_box((0, 0, 40, 40), &style);
+        assert_eq!(canvas.at(20, 38), argb(RED));
+        assert_eq!(canvas.at(20, 36), argb(WHITE));
+        // No ring up the sides of the corner.
+        assert_eq!(canvas.at(1, 32), argb(WHITE));
+        assert_eq!(canvas.at(0, 39), 0, "and the corner is still cut");
+        assert_ne!(canvas.at(5, 38), 0, "with the line clipped to it");
+    }
+
+    #[test]
+    fn rounding_is_limited_by_the_size_of_the_box() {
+        let mut canvas = Canvas::new(40, 10);
+        canvas.draw_box((0, 0, 40, 10), &boxed(WHITE, RED, 0, 30));
+        // A pill: rounded as far as half its height and no further.
+        assert_eq!(canvas.at(0, 0), 0);
+        assert_eq!(canvas.at(5, 0), argb(WHITE));
+        assert_eq!(canvas.at(0, 5), argb(WHITE));
+        assert_eq!(canvas.at(20, 5), argb(WHITE));
+    }
+
+    #[test]
+    fn what_a_box_holds_starts_inside_its_edges() {
+        let edges = Edges {
+            top: 1,
+            right: 2,
+            bottom: 3,
+            left: 4,
+        };
+        assert_eq!(inset((10, 20, 100, 50), edges), (14, 21, 94, 46));
+        assert_eq!(inset((10, 20, 100, 50), Edges::NONE), (10, 20, 100, 50));
+        assert_eq!(
+            inset((0, 0, 5, 3), Edges::all(4)),
+            (4, 4, 0, 0),
+            "never less than nothing"
+        );
+    }
+
+    #[test]
+    fn text_can_be_bold_or_slanted() {
+        let mut text = Text::new();
+        for (weight, italic) in [(700, false), (400, true), (900, true)] {
+            let font = Font {
+                weight,
+                italic,
+                ..Font::default()
+            };
+            assert!(text.measure("heavy", &font) > 0);
+            let mut canvas = Canvas::new(120, 24);
+            text.draw(&mut canvas, "heavy", (0, 0, 120, 24), RED, &font);
+            assert!(inked(&canvas, 0..120, 0) > 0);
+        }
     }
 
     #[test]

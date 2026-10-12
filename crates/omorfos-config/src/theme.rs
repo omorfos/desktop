@@ -12,15 +12,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::style::CLEAR;
-use crate::{Bounded, Color, Part, Position, States, Style};
+use crate::value::{color, fraction, size, words};
+use crate::{Bounded, Color, Edges, Part, Position, States, Style};
 
 /// The stylesheet every theme starts from.
 const BUILT_IN: &str = include_str!("default.css");
-
-/// How many times a variable may stand for another before the theme is
-/// taken to be going round in a circle.
-const DEPTH: usize = 8;
 
 /// A font: a family and a size.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +25,11 @@ pub struct Font {
     pub family: String,
     /// Size in points.
     pub size: Bounded<6, 72>,
+    /// How heavy it is, from 100 to 900. A regular font is 400 and a bold
+    /// one 700.
+    pub weight: u16,
+    /// Whether it slants.
+    pub italic: bool,
 }
 
 impl Default for Font {
@@ -36,6 +37,8 @@ impl Default for Font {
         Self {
             family: "sans-serif".to_owned(),
             size: Bounded::clamped(11),
+            weight: 400,
+            italic: false,
         }
     }
 }
@@ -165,26 +168,50 @@ struct Variable<'a> {
 /// The variables in effect, by name.
 type Variables<'a> = HashMap<&'a str, Variable<'a>>;
 
-/// One property of a part, understood.
+/// A side of a part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+/// The sides, by the word a property names them with.
+const SIDES: [(&str, Side); 4] = [
+    ("top", Side::Top),
+    ("right", Side::Right),
+    ("bottom", Side::Bottom),
+    ("left", Side::Left),
+];
+
+/// One property of a part, understood. Where there is a side, `None` is
+/// every side.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Setting {
     Background(Color),
     Color(Color),
-    BorderColor(Color),
-    BorderWidth(u32),
-    BorderRadius(u32),
-    UnderlineColor(Color),
-    UnderlineWidth(u32),
+    Opacity(u8),
+    BorderColor(Option<Side>, Color),
+    BorderWidth(Option<Side>, u32),
+    Padding(Option<Side>, u32),
+    Margin(Option<Side>, u32),
+    Radius(u32),
     Height(u32),
+    MinWidth(u32),
+    MaxWidth(u32),
     FontFamily(String),
     FontSize(u32),
+    FontWeight(u16),
+    FontItalic(bool),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
 /// another.
-const PROPERTIES: &str = "background, color, border-color, border-width, border-radius, \
-                          border-bottom-color, border-bottom-width, height, font-family and \
-                          font-size";
+const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
+                          border-radius, padding, margin, height, min-width, max-width, \
+                          font-family, font-size, font-weight and font-style; border, padding \
+                          and margin may name a side, as in border-bottom-color";
 
 /// The variables a stylesheet declares.
 fn declared(sheet: &Sheet, by_user: bool) -> impl Iterator<Item = Variable<'_>> {
@@ -220,11 +247,11 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     let mut understood: Vec<(bool, &[Selector], Vec<Setting>)> = Vec::new();
     for (by_user, sheet) in [(false, built_in), (true, own)] {
         for rule in &sheet.rules {
-            let settings = rule.declarations.iter();
-            let settings: Result<Vec<Setting>, Problem> = settings
-                .map(|declaration| setting(declaration, by_user, &variables))
-                .collect();
-            understood.push((by_user, &rule.selectors, settings?));
+            let mut all = Vec::new();
+            for declaration in &rule.declarations {
+                all.extend(settings(declaration, by_user, &variables)?);
+            }
+            understood.push((by_user, &rule.selectors, all));
         }
     }
     let ranked = understood
@@ -247,13 +274,17 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
                 style: Style::NONE,
                 font: Font::default(),
             };
+            let mut opacity = u8::MAX;
             let applies = |rule: &&Ranked| {
                 let selector = rule.selector;
                 selector.part.is_none_or(|named| named == part) && selector.states.within(states)
             };
             for rule in ranked.iter().filter(applies) {
-                rule.settings.iter().for_each(|setting| look.set(setting));
+                for setting in rule.settings {
+                    look.set(setting, &mut opacity);
+                }
             }
+            look.fade(opacity);
             looks.push(look);
         }
     }
@@ -263,110 +294,235 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     })
 }
 
-impl Look {
-    fn set(&mut self, setting: &Setting) {
-        let style = &mut self.style;
-        match setting {
-            Setting::Background(color) => style.background = *color,
-            Setting::Color(color) => style.color = *color,
-            Setting::BorderColor(color) => style.border.color = *color,
-            Setting::BorderWidth(width) => style.border.width = *width,
-            Setting::BorderRadius(radius) => style.radius = *radius,
-            Setting::UnderlineColor(color) => style.underline.color = *color,
-            Setting::UnderlineWidth(width) => style.underline.width = *width,
-            Setting::Height(height) => style.height = *height,
-            Setting::FontFamily(family) => self.font.family.clone_from(family),
-            Setting::FontSize(size) => self.font.size = Bounded::clamped(*size),
+/// Applies `change` to the side named, or to every side.
+fn on<T>(edges: &mut Edges<T>, side: Option<Side>, mut change: impl FnMut(&mut T)) {
+    let Edges {
+        top,
+        right,
+        bottom,
+        left,
+    } = edges;
+    let each = [
+        (Side::Top, top),
+        (Side::Right, right),
+        (Side::Bottom, bottom),
+        (Side::Left, left),
+    ];
+    for (which, edge) in each {
+        if side.is_none_or(|named| named == which) {
+            change(edge);
         }
     }
 }
 
-/// Understands one property and its value.
-fn setting(
+impl Look {
+    fn set(&mut self, setting: &Setting, opacity: &mut u8) {
+        let style = &mut self.style;
+        match setting {
+            Setting::Background(color) => style.background = *color,
+            Setting::Color(color) => style.color = *color,
+            Setting::Opacity(share) => *opacity = *share,
+            Setting::BorderColor(side, color) => {
+                on(&mut style.border, *side, |line| line.color = *color);
+            }
+            Setting::BorderWidth(side, width) => {
+                on(&mut style.border, *side, |line| line.width = *width);
+            }
+            Setting::Padding(side, room) => on(&mut style.padding, *side, |edge| *edge = *room),
+            Setting::Margin(side, room) => on(&mut style.margin, *side, |edge| *edge = *room),
+            Setting::Radius(radius) => style.radius = *radius,
+            Setting::Height(height) => style.height = *height,
+            Setting::MinWidth(width) => style.min_width = *width,
+            Setting::MaxWidth(width) => style.max_width = *width,
+            Setting::FontFamily(family) => self.font.family.clone_from(family),
+            Setting::FontSize(size) => self.font.size = Bounded::clamped(*size),
+            Setting::FontWeight(weight) => self.font.weight = *weight,
+            Setting::FontItalic(italic) => self.font.italic = *italic,
+        }
+    }
+
+    /// Makes everything of the part as see-through as its opacity says.
+    fn fade(&mut self, opacity: u8) {
+        let faded = |color: &mut Color| {
+            let alpha = u16::from(color.alpha) * u16::from(opacity) / u16::from(u8::MAX);
+            color.alpha = u8::try_from(alpha).unwrap_or(u8::MAX);
+        };
+        let style = &mut self.style;
+        faded(&mut style.background);
+        faded(&mut style.color);
+        on(&mut style.border, None, |line| faded(&mut line.color));
+    }
+}
+
+/// Understands one property and its value, which may come to several
+/// settings.
+fn settings(
     declaration: &Declaration,
     by_user: bool,
     variables: &Variables,
-) -> Result<Setting, Problem> {
+) -> Result<Vec<Setting>, Problem> {
     let written = by_user.then_some(declaration.offset);
     let (value, origin) = resolve(&declaration.value, written, variables)?;
-    let understood = match declaration.name.as_str() {
-        "background" | "background-color" => color(value).map(Setting::Background),
-        "color" => color(value).map(Setting::Color),
-        "border-color" => color(value).map(Setting::BorderColor),
-        "border-width" => size(value, "px", 0, 16).map(Setting::BorderWidth),
-        "border-radius" => size(value, "px", 0, 32).map(Setting::BorderRadius),
-        "border-bottom-color" => color(value).map(Setting::UnderlineColor),
-        "border-bottom-width" => size(value, "px", 0, 16).map(Setting::UnderlineWidth),
-        "height" => size(value, "px", 16, 64).map(Setting::Height),
-        "font-family" => family(value).map(Setting::FontFamily),
-        "font-size" => size(value, "pt", 6, 72).map(Setting::FontSize),
-        other => {
-            let message = format!("`{other}` is not a property; the properties are {PROPERTIES}");
+    let value = value.as_str();
+    let (property, side) = sided(&declaration.name);
+    let one = |setting: Result<Setting, String>| setting.map(|setting| vec![setting]);
+    let understood = match (property.as_str(), side) {
+        ("background" | "background-color", None) => one(color(value).map(Setting::Background)),
+        ("color", None) => one(color(value).map(Setting::Color)),
+        ("opacity", None) => one(opacity(value)),
+        ("border", side) => border(value, side),
+        ("border-color", side) => one(color(value).map(|color| Setting::BorderColor(side, color))),
+        ("border-width", side) => {
+            one(size(value, "px", 0, 16).map(|width| Setting::BorderWidth(side, width)))
+        }
+        ("border-radius", None) => one(size(value, "px", 0, 32).map(Setting::Radius)),
+        ("padding", side) => around(value, side, Setting::Padding),
+        ("margin", side) => around(value, side, Setting::Margin),
+        ("height", None) => one(size(value, "px", 16, 64).map(Setting::Height)),
+        ("min-width", None) => one(size(value, "px", 0, 4096).map(Setting::MinWidth)),
+        ("max-width", None) => one(size(value, "px", 0, 4096).map(Setting::MaxWidth)),
+        ("font-family", None) => one(family(value).map(Setting::FontFamily)),
+        ("font-size", None) => one(size(value, "pt", 6, 72).map(Setting::FontSize)),
+        ("font-weight", None) => one(weight(value)),
+        ("font-style", None) => one(slant(value)),
+        _ => {
+            let name = &declaration.name;
+            let message = format!("`{name}` is not a property; the properties are {PROPERTIES}");
             return Err((by_user.then_some(declaration.at), message));
         }
     };
     understood.map_err(|message| (origin, message))
 }
 
-/// Follows a value through the variables it stands for, to what is meant
-/// and where that was written.
-fn resolve<'a>(
-    value: &'a str,
+/// Takes the side out of a property's name: `border-bottom-color` is
+/// `border-color` of the bottom.
+fn sided(name: &str) -> (String, Option<Side>) {
+    let found = SIDES.iter().find_map(|(word, side)| {
+        let marked = format!("-{word}");
+        let named = name.contains(&marked);
+        named.then(|| (name.replacen(&marked, "", 1), Some(*side)))
+    });
+    found.unwrap_or_else(|| (name.to_owned(), None))
+}
+
+/// How many variables a value may be made of, one inside another or side
+/// by side, before the theme is taken to be going round in a circle.
+const SUBSTITUTIONS: usize = 32;
+
+/// The longest a value may grow as its variables are filled in.
+const LONGEST: usize = 1024;
+
+/// Fills in the variables of a value, to what is meant and where that was
+/// written.
+fn resolve(
+    value: &str,
     written: Option<usize>,
-    variables: &Variables<'a>,
-) -> Result<(&'a str, Option<usize>), Problem> {
-    let mut meant = (value, written);
-    for _ in 0..DEPTH {
-        let Some(name) = variable(meant.0) else {
-            return Ok(meant);
+    variables: &Variables,
+) -> Result<(String, Option<usize>), Problem> {
+    let mut meant = value.to_owned();
+    let mut origin = written;
+    for _ in 0..SUBSTITUTIONS {
+        let Some(start) = meant.find("var(") else {
+            return Ok((meant, origin));
         };
+        let inside = meant.get(start + 4..).unwrap_or_default();
+        let Some(length) = inside.find(')') else {
+            return Err((origin, "this `var(` is never closed with `)`".to_owned()));
+        };
+        let name = inside.get(..length).unwrap_or_default().trim();
         let Some(found) = variables.get(name) else {
-            return Err((meant.1, format!("there is no variable `{name}`")));
+            return Err((origin, format!("there is no variable `{name}`")));
         };
-        meant = (found.value, found.origin);
+        if meant.len() + found.value.len() > LONGEST {
+            let message = "this value grows too long as its variables are filled in";
+            return Err((origin, message.to_owned()));
+        }
+        // What went wrong from here on went wrong where the variable was
+        // given its value, if that was in the user's stylesheet.
+        origin = found.origin.or(origin);
+        meant.replace_range(start..=start + 4 + length, found.value);
     }
     let message = "this variable stands for itself, by way of others or directly";
-    Err((meant.1, message.to_owned()))
+    Err((origin, message.to_owned()))
 }
 
-/// The name in `var(--name)`, if that is what a value is.
-fn variable(value: &str) -> Option<&str> {
-    let inside = value.strip_prefix("var(");
-    let inside = inside.and_then(|rest| rest.strip_suffix(')'));
-    inside.map(str::trim)
+/// How see-through a part is: from `0` to `1`, or a percentage.
+fn opacity(value: &str) -> Result<Setting, String> {
+    let share = fraction(value).map(Setting::Opacity);
+    share.ok_or_else(|| format!("`{value}` is not an opacity from 0 to 1, or from 0% to 100%"))
 }
 
-/// A colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` or `transparent`.
-fn color(value: &str) -> Result<Color, String> {
-    if value == "transparent" {
-        return Ok(CLEAR);
-    }
-    let digits = value.strip_prefix('#').unwrap_or_default();
-    // The short forms give each digit once.
-    let doubled: String = digits.chars().flat_map(|digit| [digit, digit]).collect();
-    let long = if matches!(digits.len(), 3 | 4) {
-        format!("#{doubled}")
-    } else {
-        value.to_owned()
+/// A border all at once: a width, `solid` or `none`, and a colour, any of
+/// them and in any order.
+fn border(value: &str, side: Option<Side>) -> Result<Vec<Setting>, String> {
+    let understood = words(value).into_iter().map(|word| match word {
+        // The only kind of line there is.
+        "solid" => Ok(None),
+        "none" | "hidden" => Ok(Some(Setting::BorderWidth(side, 0))),
+        sized if sized.starts_with(|first: char| first.is_ascii_digit()) => {
+            let width = size(sized, "px", 0, 16);
+            width.map(|width| Some(Setting::BorderWidth(side, width)))
+        }
+        other => color(other).map(|color| Some(Setting::BorderColor(side, color))),
+    });
+    let understood: Result<Vec<Option<Setting>>, String> = understood.collect();
+    understood.map(|settings| settings.into_iter().flatten().collect())
+}
+
+/// Padding or a margin: for one side, or for all at once as one to four
+/// sizes.
+fn around(
+    value: &str,
+    side: Option<Side>,
+    setting: fn(Option<Side>, u32) -> Setting,
+) -> Result<Vec<Setting>, String> {
+    let sizes = words(value).into_iter().map(|word| size(word, "px", 0, 64));
+    let sizes: Vec<u32> = sizes.collect::<Result<_, _>>()?;
+    let [top, right, bottom, left] = match (sizes.as_slice(), side) {
+        ([all], Some(_)) => return Ok(vec![setting(side, *all)]),
+        ([all], None) => [*all; 4],
+        ([upright, level], None) => [*upright, *level, *upright, *level],
+        ([top, level, bottom], None) => [*top, *level, *bottom, *level],
+        ([top, right, bottom, left], None) => [*top, *right, *bottom, *left],
+        _ => {
+            let message = "give one size for a side, or for all of them one to four: all; top \
+                           and bottom, then the sides; top, the sides, bottom; or top, right, \
+                           bottom, left";
+            return Err(message.to_owned());
+        }
     };
-    let unknown = |_| {
-        format!(
-            "`{value}` is not a color; write `#rgb`, `#rrggbb`, either with opacity as a \
-             further digit or pair, or `transparent`"
-        )
-    };
-    long.parse().map_err(unknown)
+    let each = [
+        (Side::Top, top),
+        (Side::Right, right),
+        (Side::Bottom, bottom),
+        (Side::Left, left),
+    ];
+    Ok(each.map(|(side, size)| setting(Some(side), size)).into())
 }
 
-/// A whole number of `unit` from `least` to `most`. The unit may be left
-/// off.
-fn size(value: &str, unit: &str, least: u32, most: u32) -> Result<u32, String> {
-    let digits = value.strip_suffix(unit).unwrap_or(value);
-    let number = digits.parse::<u32>().ok();
-    let number = number.filter(|number| (least..=most).contains(number));
-    number.ok_or_else(|| {
-        format!("`{value}` is not a size from {least}{unit} to {most}{unit}, in whole {unit}")
+/// How heavy a font is: `normal`, `bold`, or a number from 100 to 900.
+fn weight(value: &str) -> Result<Setting, String> {
+    let number = match value {
+        "normal" => Some(400),
+        "bold" => Some(700),
+        other => other.parse::<u16>().ok(),
+    };
+    let number = number.filter(|number| (100..=900).contains(number));
+    let weight = number.map(Setting::FontWeight);
+    weight.ok_or_else(|| {
+        format!("`{value}` is not a font weight; write `normal`, `bold` or 100 to 900")
     })
+}
+
+/// Whether a font slants: `normal` or `italic`.
+fn slant(value: &str) -> Result<Setting, String> {
+    match value {
+        "normal" => Ok(Setting::FontItalic(false)),
+        "italic" | "oblique" => Ok(Setting::FontItalic(true)),
+        _ => Err(format!(
+            "`{value}` is not a font style; write `normal` or `italic`"
+        )),
+    }
 }
 
 /// The name of a font family, with or without quotation marks.
@@ -379,6 +535,7 @@ fn family(value: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::CLEAR;
     use crate::{Line, State};
 
     const FOCUSED: States = States::NONE.with(State::Focused);
@@ -402,6 +559,11 @@ mod tests {
         Theme::parse(stylesheet).unwrap_err().to_string()
     }
 
+    /// How a part looks under a theme of one rule, in no state.
+    fn styled(part: Part, stylesheet: &str) -> Style {
+        Theme::parse(stylesheet).unwrap().style(part, States::NONE)
+    }
+
     #[test]
     fn the_built_in_stylesheet_is_sound() {
         let sheet = Sheet::parse(BUILT_IN).unwrap();
@@ -417,11 +579,11 @@ mod tests {
     fn a_frame_has_a_border_in_the_colour_of_its_focus() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, line(ACCENT, 1));
+        assert_eq!(focused.border, Edges::all(line(ACCENT, 1)));
         assert_eq!(focused.radius, 8);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
-        assert_eq!(other.border, line(BORDER, 1));
+        assert_eq!(other.border, Edges::all(line(BORDER, 1)));
         assert_eq!(other.radius, 8);
     }
 
@@ -433,7 +595,7 @@ mod tests {
         assert_eq!(focused.height, 28);
         let other = theme.style(Part::Titlebar, States::NONE);
         assert_eq!((other.background, other.color), (SURFACE_DIM, TEXT_DIM));
-        assert_eq!(focused.border, Line::NONE, "the frame has the border");
+        assert_eq!(focused.border.widths(), Edges::NONE, "the frame has it");
     }
 
     #[test]
@@ -441,18 +603,20 @@ mod tests {
         let theme = Theme::default();
         let shown = theme.style(Part::Tab, FOCUSED.with(State::Active));
         assert_eq!((shown.background, shown.color), (SURFACE, TEXT));
-        assert_eq!(shown.underline, line(ACCENT, 2));
-        assert_eq!(shown.border, line(ACCENT, 1));
+        assert_eq!(shown.border.bottom, line(ACCENT, 2));
+        assert_eq!(shown.border.left, line(ACCENT, 1));
+        assert_eq!((shown.border.top.width, shown.border.right.width), (0, 0));
+        assert_eq!(shown.padding.across(), 20);
 
         // In a frame without focus the line is there but does not stand out.
         let shown = theme.style(Part::Tab, ACTIVE);
         assert_eq!((shown.background, shown.color), (SURFACE_DIM, TEXT_DIM));
-        assert_eq!(shown.underline, line(BORDER, 2));
+        assert_eq!(shown.border.bottom, line(BORDER, 2));
 
         let behind = theme.style(Part::Tab, FOCUSED);
         assert_eq!((behind.background, behind.color), (SURFACE_DIM, TEXT_DIM));
-        assert_eq!(behind.underline.width, 0);
-        assert_eq!(behind.border, line(ACCENT, 1));
+        assert_eq!(behind.border.bottom.width, 0);
+        assert_eq!(behind.border.left, line(ACCENT, 1));
     }
 
     #[test]
@@ -460,9 +624,10 @@ mod tests {
         let theme = Theme::default();
         let menu = theme.style(Part::Menu, States::NONE);
         assert_eq!((menu.background, menu.color), (SURFACE, TEXT));
-        assert_eq!(menu.border, line(BORDER, 1));
+        assert_eq!(menu.border, Edges::all(line(BORDER, 1)));
         let row = theme.style(Part::MenuItem, States::NONE);
         assert_eq!((row.background, row.color), (CLEAR, TEXT));
+        assert_eq!((row.padding.left, row.padding.right), (10, 10));
         let under = theme.style(Part::MenuItem, HOVERED);
         assert_eq!((under.background, under.color), (ACCENT, BACKGROUND));
         assert_eq!((row.height, under.height), (28, 28));
@@ -475,7 +640,8 @@ mod tests {
         let theme = Theme::default();
         let notice = theme.style(Part::Notice, States::NONE);
         assert_eq!((notice.background, notice.color), (SURFACE, TEXT));
-        assert_eq!(notice.border, line(ACCENT, 1));
+        assert_eq!(notice.border, Edges::all(line(ACCENT, 1)));
+        assert_eq!(notice.padding, Edges::all(10));
         let heading = theme.style(Part::NoticeHeading, States::NONE);
         assert_eq!(heading.color, ACCENT);
     }
@@ -485,12 +651,20 @@ mod tests {
         let theme = Theme::default();
         let panel = theme.style(Part::Panel, States::NONE);
         assert_eq!((panel.background, panel.height), (SURFACE_DIM, 28));
-        let button = theme.style(Part::PanelButton, States::NONE);
-        assert_eq!((button.background, button.color), (SURFACE_DIM, TEXT_DIM));
-        assert_eq!(button.underline.width, 0);
-        let lit = theme.style(Part::PanelButton, ACTIVE);
-        assert_eq!((lit.background, lit.color), (SURFACE, TEXT));
-        assert_eq!(lit.underline, line(ACCENT, 2));
+        assert_eq!(panel.margin, Edges::NONE);
+        for part in [Part::Workspace, Part::Task] {
+            let button = theme.style(part, States::NONE);
+            assert_eq!((button.background, button.color), (CLEAR, TEXT_DIM));
+            assert_eq!(button.border.bottom.width, 0);
+            assert_eq!(button.padding.across(), 20);
+            let lit = theme.style(part, ACTIVE);
+            assert_eq!((lit.background, lit.color), (SURFACE, TEXT));
+            assert_eq!(lit.border.bottom, line(ACCENT, 2));
+        }
+        let workspace = theme.style(Part::Workspace, States::NONE);
+        assert_eq!((workspace.min_width, workspace.max_width), (28, 0));
+        let task = theme.style(Part::Task, States::NONE);
+        assert_eq!((task.min_width, task.max_width), (0, 240));
         assert_eq!(theme.style(Part::Clock, States::NONE).color, TEXT);
         let desktop = theme.style(Part::Desktop, FOCUSED);
         assert_eq!(desktop.background, BACKGROUND);
@@ -505,30 +679,46 @@ mod tests {
         let theme = Theme::parse(
             "* { font-family: \"DejaVu Sans\"; }\n\
              panel { font-size: 9pt; }\n\
-             clock { font-family: 'monospace' }\n\
+             clock { font-family: 'monospace'; font-weight: bold; }\n\
+             notice-heading { font-weight: 600; font-style: italic; }\n\
+             task:active { font-style: oblique; }\n\
+             task { font-style: normal; font-weight: normal; }\n\
              tab:active { font-size: 14 }",
         );
         let theme = theme.unwrap();
         let font = |part, states| {
             let font = theme.font(part, states);
-            (font.family.as_str(), font.size.get())
+            (
+                font.family.as_str(),
+                font.size.get(),
+                font.weight,
+                font.italic,
+            )
         };
-        assert_eq!(font(Part::Menu, States::NONE), ("DejaVu Sans", 11));
-        assert_eq!(font(Part::Panel, States::NONE), ("DejaVu Sans", 9));
-        assert_eq!(font(Part::Clock, States::NONE), ("monospace", 11));
-        assert_eq!(font(Part::Tab, States::NONE), ("DejaVu Sans", 11));
+        let plain = States::NONE;
+        assert_eq!(font(Part::Menu, plain), ("DejaVu Sans", 11, 400, false));
+        assert_eq!(font(Part::Panel, plain), ("DejaVu Sans", 9, 400, false));
+        assert_eq!(font(Part::Clock, plain), ("monospace", 11, 700, false));
         assert_eq!(
-            font(Part::Tab, ACTIVE.with(State::Focused)),
-            ("DejaVu Sans", 14)
+            font(Part::NoticeHeading, plain),
+            ("DejaVu Sans", 11, 600, true)
         );
+        assert_eq!(font(Part::Task, plain), ("DejaVu Sans", 11, 400, false));
+        assert_eq!(font(Part::Task, ACTIVE), ("DejaVu Sans", 11, 400, true));
+        assert_eq!(font(Part::Tab, plain), ("DejaVu Sans", 11, 400, false));
+        assert_eq!(font(Part::Tab, ACTIVE).1, 14);
     }
 
     #[test]
     fn a_rule_of_ones_own_changes_only_what_it_names() {
         let theme = Theme::parse("window { border-radius: 0; border-width: 3px }").unwrap();
         let frame = theme.style(Part::Window, States::NONE);
-        assert_eq!((frame.border.width, frame.radius), (3, 0));
-        assert_eq!(frame.border.color, BORDER, "left as it was");
+        assert_eq!(
+            frame.border,
+            Edges::all(line(BORDER, 3)),
+            "its colour is left"
+        );
+        assert_eq!(frame.radius, 0);
         assert_eq!(
             theme.style(Part::Titlebar, FOCUSED),
             Theme::default().style(Part::Titlebar, FOCUSED)
@@ -539,25 +729,32 @@ mod tests {
     #[test]
     fn giving_a_variable_another_value_changes_everything_that_uses_it() {
         let theme = Theme::parse(":root { --accent: #f00; }").unwrap();
-        assert_eq!(theme.style(Part::Window, FOCUSED).border.color, RED);
+        assert_eq!(theme.style(Part::Window, FOCUSED).border.top.color, RED);
         assert_eq!(theme.style(Part::MenuItem, HOVERED).background, RED);
         assert_eq!(theme.style(Part::NoticeHeading, States::NONE).color, RED);
-        assert_eq!(theme.style(Part::PanelButton, ACTIVE).underline.color, RED);
-        assert_eq!(theme.style(Part::Window, States::NONE).border.color, BORDER);
+        assert_eq!(theme.style(Part::Task, ACTIVE).border.bottom.color, RED);
+        let plain = theme.style(Part::Window, States::NONE);
+        assert_eq!(plain.border.top.color, BORDER);
     }
 
     #[test]
-    fn a_theme_may_have_variables_of_its_own_standing_for_others() {
+    fn a_variable_may_stand_for_others_and_be_part_of_a_value() {
         let theme = Theme::parse(
-            ":root { --loud: var( --accent ); --mine: var(--loud); }\n\
-             clock { color: var(--mine); background-color: transparent; }",
+            ":root { --loud: var( --accent ); --mine: var(--loud); --thick: 3px; }\n\
+             clock { color: var(--mine); background-color: transparent; }\n\
+             task { border: var(--thick) solid var(--mine); padding: 0 var(--thick); }",
         );
-        let clock = theme.unwrap().style(Part::Clock, States::NONE);
+        let theme = theme.unwrap();
+        let clock = theme.style(Part::Clock, States::NONE);
         assert_eq!((clock.color, clock.background), (ACCENT, CLEAR));
+        let task = theme.style(Part::Task, States::NONE);
+        assert_eq!(task.border, Edges::all(line(ACCENT, 3)));
+        assert_eq!((task.padding.left, task.padding.top), (3, 0));
         // The last word on a variable is the one that counts.
-        let theme =
-            Theme::parse(":root { --mine: #f00; --mine: #00f; } clock { color: var(--mine) }");
-        let clock = theme.unwrap().style(Part::Clock, States::NONE);
+        let clock = styled(
+            Part::Clock,
+            ":root { --mine: #f00; --mine: #00f; } clock { color: var(--mine) }",
+        );
         assert_eq!(clock.color, Color::rgb(0, 0, 255));
     }
 
@@ -585,20 +782,16 @@ mod tests {
         );
         let theme = theme.unwrap();
         let color = |part, states| theme.style(part, states).color;
-        assert_eq!(
-            color(Part::Tab, FOCUSED.with(State::Active)),
-            Color::rgb(0, 0, 255)
-        );
+        let blue = Color::rgb(0, 0, 255);
+        assert_eq!(color(Part::Tab, FOCUSED.with(State::Active)), blue);
         assert_eq!(color(Part::Tab, ACTIVE), Color::rgb(0, 255, 0));
         assert_eq!(color(Part::Tab, FOCUSED), RED);
         assert_eq!(color(Part::Menu, States::NONE), Color::rgb(255, 255, 255));
         assert_eq!(color(Part::Clock, States::NONE), Color::rgb(0, 255, 0));
         // A rule for every part still loses to one for the part.
         assert_eq!(theme.style(Part::Tab, States::NONE).color, RED);
-        assert_eq!(
-            theme.style(Part::Menu, States::NONE).background,
-            Color::rgb(0, 0, 0)
-        );
+        let menu = theme.style(Part::Menu, States::NONE);
+        assert_eq!(menu.background, Color::rgb(0, 0, 0));
     }
 
     #[test]
@@ -611,27 +804,27 @@ mod tests {
     }
 
     #[test]
-    fn colours_may_be_written_short_or_long_with_or_without_opacity() {
-        let background = |value: &str| {
-            let theme = Theme::parse(&format!("panel {{ background: {value}; }}"));
-            theme.map(|theme| theme.style(Part::Panel, States::NONE).background)
-        };
-        assert_eq!(background("#f00"), Ok(RED));
-        assert_eq!(background("#F00"), Ok(RED));
-        assert_eq!(background("#ff0000"), Ok(RED));
-        assert_eq!(background("#f008"), Ok(Color::rgba(255, 0, 0, 0x88)));
-        assert_eq!(background("#ff000080"), Ok(Color::rgba(255, 0, 0, 0x80)));
-        assert_eq!(background("transparent"), Ok(CLEAR));
-        for wrong in ["red", "#ff", "#ff000", "#gggggg", "ff0000", "#"] {
-            let message = background(wrong).unwrap_err().to_string();
-            assert!(message.contains("is not a color"), "{wrong}: {message}");
+    fn a_colour_may_be_written_any_way_css_writes_one() {
+        for red in [
+            "#f00",
+            "#ff0000",
+            "red",
+            "rgb(255, 0, 0)",
+            "hsl(0, 100%, 50%)",
+        ] {
+            let panel = styled(Part::Panel, &format!("panel {{ background: {red}; }}"));
+            assert_eq!(panel.background, RED, "{red}");
         }
+        let panel = styled(Part::Panel, "panel { background: rgba(20, 22, 27, 0.5); }");
+        assert_eq!(panel.background, Color::rgba(20, 22, 27, 128));
+        let message = problem("panel { background: banana; }");
+        assert!(message.contains("`banana` is not a color"), "{message}");
     }
 
     #[test]
     fn every_property_can_be_set() {
         let theme = Theme::parse(
-            "panel-button {\n\
+            "task {\n\
                background: #010101;\n\
                color: #020202;\n\
                border-color: #030303;\n\
@@ -640,18 +833,118 @@ mod tests {
                border-bottom-color: #060606;\n\
                border-bottom-width: 7px;\n\
                height: 18px;\n\
+               padding: 1px 2px 3px 4px;\n\
+               margin: 5px 6px;\n\
+               margin-left: 9px;\n\
+               min-width: 40px;\n\
+               max-width: 400px;\n\
              }",
         );
-        let style = theme.unwrap().style(Part::PanelButton, States::NONE);
+        let style = theme.unwrap().style(Part::Task, States::NONE);
+        let side = line(Color::rgb(3, 3, 3), 4);
         let expected = Style {
             background: Color::rgb(1, 1, 1),
             color: Color::rgb(2, 2, 2),
-            border: line(Color::rgb(3, 3, 3), 4),
-            underline: line(Color::rgb(6, 6, 6), 7),
+            border: Edges {
+                bottom: line(Color::rgb(6, 6, 6), 7),
+                ..Edges::all(side)
+            },
+            padding: Edges {
+                top: 1,
+                right: 2,
+                bottom: 3,
+                left: 4,
+            },
+            margin: Edges {
+                top: 5,
+                right: 6,
+                bottom: 5,
+                left: 9,
+            },
             radius: 5,
             height: 18,
+            min_width: 40,
+            max_width: 400,
         };
         assert_eq!(style, expected);
+    }
+
+    #[test]
+    fn padding_and_margins_take_one_to_four_sizes_or_one_for_a_side() {
+        let padding = |value: &str| {
+            let edges = styled(Part::Clock, &format!("clock {{ padding: {value}; }}")).padding;
+            (edges.top, edges.right, edges.bottom, edges.left)
+        };
+        assert_eq!(padding("4px"), (4, 4, 4, 4));
+        assert_eq!(padding("1px 2px"), (1, 2, 1, 2));
+        assert_eq!(padding("1px 2px 3px"), (1, 2, 3, 2));
+        assert_eq!(padding("1px 2px 3px 4px"), (1, 2, 3, 4));
+        let clock = styled(Part::Clock, "clock { padding: 0; padding-top: 7px; }");
+        assert_eq!((clock.padding.top, clock.padding.left), (7, 0));
+        let clock = styled(Part::Clock, "clock { margin: 2px; margin-right: 8px }");
+        assert_eq!((clock.margin.top, clock.margin.right), (2, 8));
+
+        let message = problem("clock { padding: 1px 2px 3px 4px 5px; }");
+        assert!(message.contains("one to four"), "{message}");
+        let message = problem("clock { margin-top: 1px 2px; }");
+        assert!(message.contains("one size for a side"), "{message}");
+        let message = problem("clock { padding: 1px wide; }");
+        assert!(message.contains("`wide` is not a size"), "{message}");
+        let message = problem("clock { margin: 65px; }");
+        assert!(message.contains("from 0px to 64px"), "{message}");
+    }
+
+    #[test]
+    fn a_border_may_be_given_all_at_once_for_every_side_or_for_one() {
+        let task = styled(Part::Task, "task { border: 2px solid red; }");
+        assert_eq!(task.border, Edges::all(line(RED, 2)));
+        let task = styled(Part::Task, "task { border: rgb(255, 0, 0) 3px; }");
+        assert_eq!(task.border, Edges::all(line(RED, 3)));
+        let task = styled(
+            Part::Task,
+            "task { border: 2px solid red; border-top: none; }",
+        );
+        assert_eq!((task.border.top.width, task.border.left.width), (0, 2));
+        let task = styled(Part::Task, "task { border-left: 5px solid #f00; }");
+        assert_eq!(task.border.left, line(RED, 5));
+        assert_eq!(task.border.right.width, 0);
+        let task = styled(
+            Part::Task,
+            "task { border: 1px solid red; border-right-width: 6px; border-top: hidden; }",
+        );
+        assert_eq!(task.border.right, line(RED, 6));
+        assert_eq!(task.border.top, line(RED, 0));
+        // Naming only the kind of line changes nothing.
+        assert_eq!(
+            styled(Part::Task, "task { border: solid; }"),
+            Theme::default().style(Part::Task, States::NONE)
+        );
+
+        let message = problem("task { border: 99px solid red; }");
+        assert!(message.contains("from 0px to 16px"), "{message}");
+        let message = problem("task { border: 1px dotted red; }");
+        assert!(message.contains("`dotted` is not a color"), "{message}");
+    }
+
+    #[test]
+    fn opacity_makes_everything_of_a_part_see_through() {
+        let theme = Theme::parse("panel { opacity: 0.5; border: 1px solid #fff; }").unwrap();
+        let panel = theme.style(Part::Panel, States::NONE);
+        assert_eq!(panel.background.alpha, 128);
+        assert_eq!(panel.color.alpha, 128);
+        assert_eq!(panel.border.top.color, Color::rgba(255, 255, 255, 128));
+        // It is the part's alone.
+        assert_eq!(theme.style(Part::Clock, States::NONE).color.alpha, 255);
+
+        let panel = styled(
+            Part::Panel,
+            "panel { opacity: 50%; background: #ffffff80; }",
+        );
+        assert_eq!(panel.background.alpha, 64, "on top of the colour's own");
+        let panel = styled(Part::Panel, "panel { opacity: 0; }");
+        assert_eq!((panel.background.alpha, panel.color.alpha), (0, 0));
+        let message = problem("panel { opacity: 2; }");
+        assert!(message.contains("`2` is not an opacity"), "{message}");
     }
 
     #[test]
@@ -664,14 +957,35 @@ mod tests {
             ("titlebar { height: 1.5px }", "in whole px"),
             ("titlebar { height: 2em }", "`2em` is not a size"),
             ("titlebar { height: -20px }", "`-20px` is not a size"),
+            ("task { min-width: 5000px }", "from 0px to 4096px"),
+            ("task { max-width: wide }", "`wide` is not a size"),
             ("* { font-size: 200pt }", "from 6pt to 72pt"),
             ("* { font-size: 12px }", "in whole pt"),
+            ("* { font-weight: 50 }", "`50` is not a font weight"),
+            ("* { font-weight: heavy }", "`heavy` is not a font weight"),
+            ("* { font-style: wobbly }", "`wobbly` is not a font style"),
+            ("* { font-family: \"\" }", "needs a name"),
         ];
         for (stylesheet, expected) in cases {
             let message = problem(stylesheet);
             assert!(message.contains(expected), "{stylesheet}: {message}");
         }
-        assert!(problem("* { font-family: \"\" }").contains("needs a name"));
+    }
+
+    #[test]
+    fn a_property_that_takes_no_side_is_not_one_with_a_side() {
+        for stylesheet in [
+            "tab { color-left: #fff; }",
+            "tab { height-top: 20px; }",
+            "tab { border-top-left-radius: 4px; }",
+            "tab { font-size-bottom: 12pt; }",
+        ] {
+            let message = problem(stylesheet);
+            assert!(
+                message.contains("is not a property"),
+                "{stylesheet}: {message}"
+            );
+        }
     }
 
     #[test]
@@ -685,7 +999,10 @@ mod tests {
             problem("clock { color: var(--nope); }"),
             "1:16: there is no variable `--nope`"
         );
-        assert!(problem("clock { color: var(--accent; }").starts_with("1:16: `var(--accent`"));
+        assert_eq!(
+            problem("clock { color: var(--accent; }"),
+            "1:16: this `var(` is never closed with `)`"
+        );
         assert!(problem("gadget { }").starts_with("1:1: `gadget` is not a part"));
     }
 
@@ -700,6 +1017,13 @@ mod tests {
         );
         let message = problem(":root { --mine: var(--gone); }\nclock { color: var(--mine); }");
         assert_eq!(message, "1:17: there is no variable `--gone`");
+        // A built-in variable put to a use it does not fit is the fault of
+        // the rule that did so.
+        let message = problem("\nclock { height: var(--accent); }");
+        assert!(
+            message.starts_with("2:17: `#5b9cf5` is not a size"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -710,10 +1034,18 @@ mod tests {
         // A long way round that does end is no circle.
         let chain = ":root { --a: #f00; --b: var(--a); --c: var(--b); --d: var(--c); }\n\
                      clock { color: var(--d) }";
-        let clock = Theme::parse(chain)
-            .unwrap()
-            .style(Part::Clock, States::NONE);
-        assert_eq!(clock.color, RED);
+        assert_eq!(styled(Part::Clock, chain).color, RED);
+    }
+
+    #[test]
+    fn a_value_that_grows_without_end_is_refused() {
+        let long = "x".repeat(600);
+        let stylesheet = format!(
+            ":root {{ --long: {long}; --twice: var(--long) var(--long); }}\n\
+             clock {{ font-family: var(--twice); }}"
+        );
+        let message = problem(&stylesheet);
+        assert!(message.contains("grows too long"), "{message}");
     }
 
     #[test]
@@ -732,10 +1064,8 @@ mod tests {
         stylesheet.push_str("clock { color: #f00; }");
         let theme = Theme::parse(&stylesheet).unwrap();
         assert_eq!(theme.style(Part::Clock, States::NONE).color, RED);
-        assert_eq!(
-            theme.style(Part::Menu, States::NONE).color,
-            Color::rgb(0, 0, 0)
-        );
+        let menu = theme.style(Part::Menu, States::NONE);
+        assert_eq!(menu.color, Color::rgb(0, 0, 0));
     }
 
     #[test]
@@ -743,7 +1073,7 @@ mod tests {
         let theme = Theme::parse("clock { color: #f00 }").unwrap();
         let copy = theme.clone();
         assert_eq!(theme, copy);
-        assert_eq!(theme, Theme::parse("clock{color:#ff0000;}").unwrap());
+        assert_eq!(theme, Theme::parse("clock{color:red;}").unwrap());
         assert_ne!(theme, Theme::parse("clock { color: #f01 }").unwrap());
     }
 

@@ -374,7 +374,10 @@ mod tests {
     #[test]
     fn an_unknown_part_is_answered_with_the_ones_there_are() {
         let (_, _, message) = fault("toolbar { }");
-        assert!(message.contains("panel, panel-button, clock"), "{message}");
+        assert!(
+            message.contains("panel, workspace, task, clock"),
+            "{message}"
+        );
     }
 
     #[test]

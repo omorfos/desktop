@@ -5,14 +5,12 @@
 //! code runs on a GPU and in tests, and it only happens when what is drawn
 //! changes, not every frame.
 
-use omorfos_config::{Color, Part, State, States, Theme};
+use omorfos_config::{Color, Edges, Line, Part, State, States, Theme};
 use omorfos_core::{Decoration, Item, Menu, Panel};
+use omorfos_ui::inset;
 pub(crate) use omorfos_ui::{Canvas, Text};
 
 use crate::Scale;
-
-/// Space between a tab's edge and its title, in pixels.
-const PADDING: u32 = 10;
 
 /// The width set aside on a menu row for the arrow that marks a submenu.
 const ARROW: u32 = 14;
@@ -53,11 +51,13 @@ pub(crate) fn titlebar(
     let (width, height) = (bar.size.width, bar.size.height);
     let states = States::NONE.when(State::Focused, focused);
     let frame = theme.style(Part::Window, states);
-    let border = frame.border.width;
+    // A frame's border is the same all round; the top stands for it.
+    let outline = frame.border.top;
+    let border = outline.width;
     let edge = border.cast_signed();
     let mut canvas = Canvas::scaled(width, height, scale);
 
-    canvas.fill((0, 0, width, height), frame.border.color);
+    canvas.fill((0, 0, width, height), outline.color);
     let inner_height = height.saturating_sub(border);
     canvas.fill(
         (edge, edge, width.saturating_sub(border * 2), inner_height),
@@ -69,25 +69,27 @@ pub(crate) fn titlebar(
         let tab = decoration.tab(index);
         let left = tab.origin.x - bar.origin.x;
         let tab_states = states.when(State::Active, index == active);
-        let style = theme.style(Part::Tab, tab_states);
-        // A title alone in its titlebar is not set apart as a tab.
+        let mut style = theme.style(Part::Tab, tab_states);
+        // The line on a tab's left is the line between it and the tab
+        // before, which the first has none of. A title alone in its
+        // titlebar is not set apart as a tab at all.
+        if index == 0 {
+            style.border.left.width = 0;
+        }
+        if !tabbed {
+            style.border = Edges::all(Line::NONE);
+        }
+        let area = (left, edge, tab.size.width, inner_height);
         if tabbed {
-            canvas.fill((left, edge, tab.size.width, inner_height), style.background);
-            let line = style.underline;
-            let top = height.saturating_sub(line.width).cast_signed();
-            canvas.fill((left, top, tab.size.width, line.width), line.color);
+            canvas.draw_box(area, &style);
         }
-        if index > 0 {
-            let line = style.border;
-            canvas.fill((left, edge, line.width, inner_height), line.color);
-        }
-        let room = tab.size.width.saturating_sub(PADDING * 2);
+        let font = theme.font(Part::Tab, tab_states);
         text.draw(
             &mut canvas,
             title,
-            (left + PADDING.cast_signed(), 0, room, height),
+            inset(area, style.inset()),
             style.color,
-            theme.font(Part::Tab, tab_states),
+            font,
         );
     }
 
@@ -107,25 +109,23 @@ pub(crate) fn menu_panel<A: Clone>(
     let bounds = menu.panel_rect(panel);
     let (width, height) = (bounds.size.width, bounds.size.height);
     let style = theme.style(Part::Menu, States::NONE);
-    let border = style.border.width;
-    let edge = border.cast_signed();
-    let inner = width.saturating_sub(border * 2);
+    let whole = (0, 0, width, height);
     let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.fill((0, 0, width, height), style.border.color);
-    canvas.fill(
-        (edge, edge, inner, height.saturating_sub(border * 2)),
-        style.background,
-    );
+    canvas.draw_box(whole, &style);
+    // Rows run from one side of the menu to the other, inside its border.
+    let (edge, _, inner, _) = inset(whole, style.border.widths());
 
-    let padding = PADDING.cast_signed();
-    let room = width.saturating_sub(PADDING * 2);
     for (index, (item, row)) in panel.items().iter().zip(menu.rows(panel)).enumerate() {
         let top = row.origin.y - bounds.origin.y;
+        let area = (edge, top, inner, row.size.height);
         let label = match item {
             Item::Separator => {
+                // As long as the labels of the rows around it.
+                let plain = theme.style(Part::MenuItem, States::NONE);
+                let (left, _, room, _) = inset(area, plain.inset());
                 let middle = top + (row.size.height / 2).cast_signed();
                 let line = theme.style(Part::MenuSeparator, States::NONE);
-                canvas.fill((padding, middle, room, 1), line.color);
+                canvas.fill((left, middle, room, 1), line.color);
                 continue;
             }
             Item::Entry { label, .. } | Item::Submenu { label, .. } => label,
@@ -134,24 +134,25 @@ pub(crate) fn menu_panel<A: Clone>(
         let states = States::NONE.when(State::Hovered, highlighted);
         let style = theme.style(Part::MenuItem, states);
         let font = theme.font(Part::MenuItem, states);
-        canvas.fill((edge, top, inner, row.size.height), style.background);
-        let ink = style.color;
+        canvas.draw_box(area, &style);
+        let (left, top, room, tall) = inset(area, style.inset());
         let arrow = if matches!(item, Item::Submenu { .. }) {
             ARROW
         } else {
             0
         };
-        let area = (padding, top, room.saturating_sub(arrow), row.size.height);
-        text.draw(&mut canvas, label, area, ink, font);
+        let room = room.saturating_sub(arrow);
+        text.draw(
+            &mut canvas,
+            label,
+            (left, top, room, tall),
+            style.color,
+            font,
+        );
         if arrow > 0 {
-            let left = (width - PADDING - ARROW).cast_signed();
-            text.draw(
-                &mut canvas,
-                "\u{203a}",
-                (left, top, ARROW, row.size.height),
-                ink,
-                font,
-            );
+            let left = left.saturating_add_unsigned(room);
+            let area = (left, top, ARROW, tall);
+            text.draw(&mut canvas, "\u{203a}", area, style.color, font);
         }
     }
     canvas
@@ -180,20 +181,14 @@ pub(crate) fn notice(
         .chain(more.iter())
         .collect();
 
-    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
-    let height = rows.saturating_mul(NOTICE_ROW).saturating_add(PADDING * 2);
     let style = theme.style(Part::Notice, States::NONE);
-    let border = style.border.width;
-    let edge = border.cast_signed();
-    let inner = (
-        width.saturating_sub(border * 2),
-        height.saturating_sub(border * 2),
-    );
+    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    let height = rows.saturating_mul(NOTICE_ROW);
+    let height = height.saturating_add(style.inset().down());
+    let whole = (0, 0, width, height);
     let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.fill((0, 0, width, height), style.border.color);
-    canvas.fill((edge, edge, inner.0, inner.1), style.background);
-    let room = width.saturating_sub(PADDING * 2);
-    let mut top = PADDING.cast_signed();
+    canvas.draw_box(whole, &style);
+    let (left, mut top, room, _) = inset(whole, style.inset());
     for (index, line) in lines.into_iter().enumerate() {
         // The first line is the heading.
         let part = if index == 0 {
@@ -203,13 +198,7 @@ pub(crate) fn notice(
         };
         let ink = theme.style(part, States::NONE).color;
         let font = theme.font(part, States::NONE);
-        text.draw(
-            &mut canvas,
-            line,
-            (PADDING.cast_signed(), top, room, NOTICE_ROW),
-            ink,
-            font,
-        );
+        text.draw(&mut canvas, line, (left, top, room, NOTICE_ROW), ink, font);
         top += NOTICE_ROW.cast_signed();
     }
     canvas
@@ -257,7 +246,7 @@ mod tests {
 
     fn palette(theme: &Theme) -> Palette {
         let tone = |states| Tone {
-            border: theme.style(Part::Window, states).border.color,
+            border: theme.style(Part::Window, states).border.top.color,
             titlebar: theme.style(Part::Titlebar, states).background,
         };
         Palette {
@@ -386,8 +375,9 @@ mod tests {
 
         let canvas = notice(&mut text, &theme, &problems, 400, Scale::ONE);
 
-        // A heading and two problems, 22 pixels each, plus padding.
-        assert_eq!((canvas.width(), canvas.height()), (400, 86));
+        // A heading and two problems, 22 pixels each, inside the padding
+        // and the border.
+        assert_eq!((canvas.width(), canvas.height()), (400, 88));
         assert_eq!(
             canvas.at(0, 40),
             argb(colors.accent),
@@ -413,10 +403,10 @@ mod tests {
         let many: Vec<String> = (0..40).map(|n| format!("problem {n}")).collect();
         let exactly = notice(&mut text, &Theme::default(), &few, 400, Scale::ONE);
         let capped = notice(&mut text, &Theme::default(), &many, 400, Scale::ONE);
-        assert_eq!(exactly.height(), 7 * 22 + 20, "a heading and six problems");
+        assert_eq!(exactly.height(), 7 * 22 + 22, "a heading and six problems");
         assert_eq!(
             capped.height(),
-            8 * 22 + 20,
+            8 * 22 + 22,
             "the same, and a line counting the rest"
         );
     }
