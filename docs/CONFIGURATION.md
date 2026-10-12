@@ -62,6 +62,7 @@ notifications:
   timeout: 5              # seconds one stays; 0 until it is clicked
 xwayland:
   enabled: true           # run programs written for X11
+  scaling: stretched      # stretched | native, on a screen with a scale
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -635,9 +636,23 @@ can what is selected and pasted with the middle button. As between
 programs written for Wayland, a program is given what was copied only
 while it has the keyboard.
 
-One thing is not there yet: on a screen with a scale, programs written
-for X11 are drawn at one pixel to a unit and stretched, and so are
-blurred.
+X11 has no notion of a screen with a scale, so on one something has to
+give, and `xwayland.scaling` says what:
+
+- `stretched`, which is the default, has them draw at one pixel to a unit
+  and stretches what they draw. All of them are the right size, and
+  blurred.
+- `native` has such programs draw with as many pixels as the screen has,
+  and tells them how dense it is. Those that take that in are sharp and
+  the right size: programs made with GTK or Qt, and browsers. Those that
+  do not are sharp and small, by as much as the screen is dense: `xterm`
+  with its usual font is one, and on a screen at 2.5 it is two fifths of
+  the size it should be.
+
+Under `native`, with several screens, they draw for the densest and are
+scaled down on the others; a program that is already running when the
+scale changes may not notice until it is started again; and over a window
+of such a program the pointer may be drawn smaller than elsewhere.
 
 Programs written for X11 can read each other's windows and what is typed
 into each other, which programs written for Wayland cannot do to anything.

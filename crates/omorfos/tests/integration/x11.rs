@@ -561,6 +561,9 @@ fn a_menu_of_a_program_written_for_x11_is_shown_where_the_program_puts_it() {
 
     show(&mut session, &program, menu, false);
     session.eventually(|session| session.draw().at(310, 210) == RED);
+    // By the time the window manager hears of another window, it has
+    // heard that the menu is gone.
+    open(&mut session, &program, "after", (50, 50), 0x0000_ff00);
 }
 
 #[test]
@@ -907,4 +910,140 @@ fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied()
         fetching.join().unwrap()
     });
     assert_eq!(pasted, None);
+}
+
+/// A session set up as `config` says, with an X server and a program
+/// connected to it.
+fn session_with(config: &str) -> (Session, RustConnection) {
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    start(&mut session);
+    let program = connect(&mut session);
+    (session, program)
+}
+
+/// A screen that draws two pixels to a unit, with programs written for
+/// X11 drawing for it.
+const NATIVE: &str = "output: { scale: 2 }\nxwayland: { scaling: native }\n";
+
+/// What the X server keeps for programs to read about how things are to
+/// look, which is where older programs learn how dense the screen is.
+fn resources(session: &mut Session, program: &RustConnection) -> String {
+    meanwhile(session, || {
+        let root = program.setup().roots[0].root;
+        let (kind, text) = (AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING);
+        let kept = program.get_property(false, root, kind, text, 0, 4096);
+        String::from_utf8(kept.unwrap().reply().unwrap().value).unwrap()
+    })
+}
+
+/// The settings toolkits follow, as the window manager publishes them.
+fn settings(session: &mut Session, program: &RustConnection) -> Vec<u8> {
+    let published = atom(session, program, "_XSETTINGS_S0");
+    let kept = atom(session, program, "_XSETTINGS_SETTINGS");
+    meanwhile(session, || {
+        let owner = program.get_selection_owner(published).unwrap();
+        let owner = owner.reply().unwrap();
+        let settings = program.get_property(false, owner.owner, kept, AtomEnum::ANY, 0, 4096);
+        settings.unwrap().reply().unwrap().value
+    })
+}
+
+/// Whether some bytes have others among them.
+fn has(all: &[u8], some: &[u8]) -> bool {
+    all.windows(some.len()).any(|window| window == some)
+}
+
+#[test]
+fn on_a_dense_screen_a_program_written_for_x11_draws_with_as_many_pixels_as_it_has() {
+    let (mut session, program) = session_with(NATIVE);
+
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+
+    // Its two hundred pixels are a hundred units, in a frame of ours.
+    let (frame, ..) = frame(&session);
+    assert_eq!((frame.size.width, frame.size.height), (100 + 2, 50 + 29));
+    assert_eq!(size_of(&mut session, &program, window), (200, 100));
+    // And each of them is a pixel of the screen: the window is drawn from
+    // 2 to 202 across and from 56 to 156 down.
+    session.eventually(|session| session.draw().at(100, 100) == RED);
+    let picture = session.draw();
+    assert_eq!(picture.at(3, 57), RED, "its first pixel");
+    assert_eq!(picture.at(200, 100), RED, "its last column");
+    assert_eq!(picture.at(100, 154), RED, "its last rows");
+    assert_eq!(picture.at(210, 100), BACKGROUND, "beside it");
+    assert_eq!(picture.at(100, 164), BACKGROUND, "below it");
+}
+
+#[test]
+fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_changes() {
+    let (mut session, program) = session_with(NATIVE);
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+
+    // Older programs read it once, where the X server keeps such things.
+    let mut told = String::new();
+    for _ in 0..5000 {
+        told = resources(&mut session, &program);
+        if !told.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(told, "Xft.dpi:\t192\n");
+    // Toolkits follow it as it changes.
+    let followed = settings(&mut session, &program);
+    let names = [
+        "Xft/DPI",
+        "Gdk/WindowScalingFactor",
+        "Gdk/UnscaledDPI",
+        "Gtk/CursorThemeSize",
+    ];
+    for name in names {
+        assert!(has(&followed, name.as_bytes()), "{name}");
+    }
+
+    // What else is kept there is left as it is.
+    meanwhile(&mut session, || {
+        let root = program.setup().roots[0].root;
+        let (kind, text) = (AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING);
+        let with = b"Other.thing:\t1\nXft.dpi:\t192\n";
+        program
+            .change_property8(PropMode::REPLACE, root, kind, text, with)
+            .unwrap();
+        program.flush().unwrap();
+    });
+
+    // The screen becomes less dense. The window is as large as it was,
+    // which is now half as many pixels, and programs are told. A window
+    // of a program written for Wayland is told in its own way.
+    let mut other = session.connect();
+    session.open(&mut other, "app", (50, 50), GREEN);
+    let less = "output: { scale: 1 }\nxwayland: { scaling: native }\n";
+    session.write_config("config.yaml", less);
+    session.compositor_mut().reload_config();
+    session.step();
+    for _ in 0..5000 {
+        told = resources(&mut session, &program);
+        if told.contains("96") {
+            break;
+        }
+    }
+    assert_eq!(told, "Other.thing:\t1\nXft.dpi:\t96\n");
+    assert_eq!(size_of(&mut session, &program, window), (100, 50));
+    session.roundtrip(&mut other);
+}
+
+#[test]
+fn programs_written_for_x11_are_stretched_to_size_unless_asked_to_draw_for_the_screen() {
+    let (mut session, program) = session_with("output: { scale: 2 }\n");
+
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+
+    // Its two hundred pixels are two hundred units, each drawn as four.
+    let (frame, ..) = frame(&session);
+    assert_eq!((frame.size.width, frame.size.height), (200 + 2, 100 + 29));
+    assert_eq!(size_of(&mut session, &program, window), (200, 100));
+    session.eventually(|session| session.draw().at(300, 200) == RED);
+    for _ in 0..50 {
+        session.step();
+    }
+    assert_eq!(resources(&mut session, &program), "Xft.dpi:\t96\n");
 }

@@ -96,9 +96,8 @@ requests only after asking the compositor something.
   Wayland holds is handed to one written for X11 only while an X11 window
   has the keyboard, which is the rule programs written for Wayland live
   by. Among themselves programs written for X11 share it regardless.
-- On a screen with a scale, programs written for X11 are drawn at one pixel
-  to a unit and stretched to size, and are blurred. Telling the X server
-  the scale, and scaling what it is told about positions, is still to do.
+- On a screen with a scale, programs written for X11 draw with as many
+  pixels as the screen has: see ADR 30.
 - Every window that does not manage itself is treated as an ordinary one:
   a dialog is not kept with its parent, and a dock or a splash screen gets
   a frame.

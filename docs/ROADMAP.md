@@ -261,8 +261,13 @@ to show over the IPC socket (ADR 18). In this order:
       they put them. On unless `xwayland.enabled` is turned off
   - [x] Copy and paste between programs written for X11 and for Wayland,
         and what is selected and pasted with the middle button
-  - [ ] Drawn sharply on a screen with a scale: they are drawn at one
-        pixel to a unit and stretched, and so are blurred there
+  - [x] Drawn sharply on a screen with a scale, for whoever sets
+        `xwayland.scaling` to `native`: they draw with as many pixels as
+        the densest screen has and are told how dense it is. Stretched
+        otherwise, since programs that take no notice are then too small
+        to use
+  - [ ] The pointer the right size over a program written for X11 on a
+        screen with a scale, whatever toolkit the program uses
   - [ ] Dialogs kept with the window they belong to, and windows that
         are docks, splash screens and the like treated as such
   - [x] The X server started again if it stops, where programs expect

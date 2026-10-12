@@ -14,6 +14,7 @@ use std::os::fd::OwnedFd;
 use std::process::Stdio;
 use std::time::Instant;
 
+use omorfos_config::X11Scaling;
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Desktop, WindowId};
 use smithay::backend::input::KeyState;
@@ -38,8 +39,13 @@ use smithay::wayland::selection::primary_selection::{
 };
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
+use smithay::xwayland::xwm::settings::Value;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, XwmId};
-use smithay::xwayland::{X11Surface, X11Wm, XWayland, XwmHandler};
+use smithay::xwayland::{X11Surface, X11Wm, XWayland, XWaylandClientData, XwmHandler};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, PropMode};
+use x11rb::rust_connection::RustConnection;
+use x11rb::wrapper::ConnectionExt as _;
 
 use crate::compositor::{Compositor, Mapped, logical_size, set};
 use crate::input::Wanted;
@@ -224,6 +230,43 @@ struct Server {
     waking: Option<RegistrationToken>,
 }
 
+/// The nearest whole number to a value that is small and not negative.
+fn rounded(value: f64) -> i32 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the value is a few hundred thousand at most, and a cast saturates"
+    )]
+    let rounded = value.round() as i32;
+    rounded
+}
+
+/// Leaves how many dots there are to an inch, `Xft.dpi`, among the
+/// resources the X server at `display` keeps for programs to read, in
+/// place of what was there for it and beside whatever else is.
+///
+/// Nothing depends on this having worked: a program that is not told
+/// draws small.
+fn set_density(display: &str, density: i32) {
+    let (kind, text) = (AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING);
+    let connected = RustConnection::connect(Some(display)).ok();
+    let _ = connected.and_then(|(server, screen)| {
+        let root = server.setup().roots.get(screen).map(|screen| screen.root);
+        root.and_then(|root| {
+            let had = server.get_property(false, root, kind, text, 0, u32::MAX);
+            let had = had.ok().and_then(|had| had.reply().ok());
+            let had = had.map(|had| String::from_utf8_lossy(&had.value).into_owned());
+            let had = had.unwrap_or_default();
+            let ours = format!("Xft.dpi:\t{density}");
+            let others = had.lines().filter(|line| !line.starts_with("Xft.dpi"));
+            let lines: Vec<&str> = others.chain([ours.as_str()]).collect();
+            let resources = format!("{}\n", lines.join("\n"));
+            let set =
+                server.change_property8(PropMode::REPLACE, root, kind, text, resources.as_bytes());
+            set.ok().and_then(|set| set.check().ok())
+        })
+    });
+}
+
 /// The X server and what the compositor keeps as its window manager.
 #[derive(Debug)]
 pub(crate) struct X11 {
@@ -232,6 +275,9 @@ pub(crate) struct X11 {
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
+    /// How dense programs written for X11 have been told the screen is,
+    /// once the X server could be told.
+    told: Option<f64>,
     /// An X server that has stopped and is to be replaced, once its window
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
@@ -250,6 +296,7 @@ impl X11 {
             shell: XWaylandShellState::new::<Compositor>(display),
             server: None,
             restarts: Restarts::default(),
+            told: None,
             stopped: None,
             wm: None,
             apart: Vec::new(),
@@ -296,6 +343,74 @@ impl Compositor {
             process,
             client,
         });
+        // It is to know how many of its pixels there are to a unit of
+        // layout before any program draws with it.
+        self.x11.told = None;
+        self.size_x11_pixels(self.x11_scale());
+    }
+
+    /// How many pixels programs written for X11 draw to a unit of layout:
+    /// as many as the densest screen has, so that they are sharp on it, or
+    /// one if the configuration has them stretched.
+    fn x11_scale(&self) -> f64 {
+        let native = self.config().general.xwayland.scaling == X11Scaling::Native;
+        let densest = self.heads.iter().map(|head| head.scale.factor());
+        let densest = densest.fold(1.0, f64::max);
+        if native { densest } else { 1.0 }
+    }
+
+    /// Says how many pixels of the X server's there are to a unit of
+    /// layout. Smithay goes by this for the size of everything the X
+    /// server draws and for where everything of its is.
+    fn size_x11_pixels(&self, scale: f64) {
+        let server = self.x11.server.as_ref();
+        let known = server.and_then(|server| server.client.get_data::<XWaylandClientData>());
+        let _ = known.map(|known| known.compositor_state.set_client_scale(scale));
+    }
+
+    /// Tells programs written for X11 how dense the screen is, when the X
+    /// server is first there to tell and whenever it changes. They are
+    /// told in the two places such programs look: the settings toolkits
+    /// follow as they change, and the resources older programs read once.
+    fn scale_x11(&mut self) {
+        let scale = self.x11_scale();
+        if self.x11.wm.is_none() || self.x11.told == Some(scale) {
+            return;
+        }
+        self.x11.told = Some(scale);
+        self.size_x11_pixels(scale);
+        // Windows that are there already are as large as they were, which
+        // is now a different number of the X server's pixels.
+        for mapped in &self.windows {
+            if let Role::X11(window) = &mapped.role {
+                let _ = window.configure(None);
+            }
+        }
+        // Toolkits scale what they draw by whole numbers, and their text
+        // by the rest.
+        let whole = scale.floor().max(1.0);
+        let dots = 96.0 * 1024.0;
+        let pointer = f64::from(self.config().general.cursor.size.get());
+        let settings = [
+            ("Xft/DPI", dots * scale),
+            ("Gdk/UnscaledDPI", dots * scale / whole),
+            ("Gdk/WindowScalingFactor", whole),
+            // The pointer is as many of the X server's pixels as it takes
+            // to be the size it is everywhere else.
+            ("Gtk/CursorThemeSize", pointer * scale),
+        ];
+        let settings = settings.map(|(name, value)| (name.to_owned(), Value::from(rounded(value))));
+        let manager = self.x11.wm.as_mut();
+        // The only failure is the X server having gone.
+        let _ = manager.map(|manager| manager.set_xsettings(settings.into_iter()));
+        let density = rounded(96.0 * scale);
+        let display = self
+            .x11
+            .display()
+            .and_then(|display| display.into_string().ok());
+        // Asked of the X server from a thread of its own: it may not
+        // answer until it has had an answer from here.
+        let _ = display.map(|display| std::thread::spawn(move || set_density(&display, density)));
     }
 
     /// What a step that can fail came to, the failure being told to the
@@ -344,6 +459,7 @@ impl Compositor {
             let manager = X11Wm::start_wm(self.event_loop.clone(), socket, client);
             self.x11.wm = self.or_problem("cannot manage programs written for X11", manager);
         }
+        self.scale_x11();
     }
 
     /// Stops waking the loop for what an X server has to say.
@@ -366,6 +482,7 @@ impl Compositor {
             self.remove_window(id);
         }
         self.x11.apart.clear();
+        self.x11.told = None;
 
         if self.x11.restarts.allow(now) {
             let said = "the X server stopped and has been started again; programs written for \

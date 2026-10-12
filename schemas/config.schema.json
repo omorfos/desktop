@@ -260,6 +260,21 @@
       "minItems": 1,
       "type": "array"
     },
+    "X11Scaling": {
+      "description": "How programs written for X11 are drawn on a screen with a scale. X11\nhas no notion of one, so something has to give.",
+      "oneOf": [
+        {
+          "const": "stretched",
+          "description": "They draw at one pixel to a unit of layout and are stretched to\nsize. All of them are the right size, and blurred.",
+          "type": "string"
+        },
+        {
+          "const": "native",
+          "description": "They draw with as many pixels as the screen has, and are told how\ndense it is. Those that take that in are sharp and the right size;\nthose that do not are sharp and small.",
+          "type": "string"
+        }
+      ]
+    },
     "Xwayland": {
       "additionalProperties": false,
       "description": "Programs written for X11, which run through `Xwayland`.",
@@ -268,6 +283,10 @@
           "default": true,
           "description": "Whether `Xwayland` is started with the session. Turn it off to do\nwithout programs written for X11: they can read each other's\nwindows and keys, which programs written for Wayland cannot.",
           "type": "boolean"
+        },
+        "scaling": {
+          "$ref": "#/$defs/X11Scaling",
+          "description": "How they are drawn on a screen with a scale."
         }
       },
       "type": "object"
