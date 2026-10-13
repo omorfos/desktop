@@ -75,14 +75,13 @@ Small, independent, and each an improvement the day it lands.
 Each is an ADR, written and agreed before the code that depends on it.
 Most are a day of thought and no code.
 
-- [ ] **The design language** (wish 10), in `docs/DESIGN.md`: the default
-      font, sizes and spacing, radii, a light and a dark palette with one
-      accent, how much is see-through, what moves and how, the icons and
-      the pointer. Recommended here: Inter for the interface, since it
-      was drawn for screens at small sizes and is under the Open Font
-      Licence; packages recommend it and fall back to `sans-serif`. A
-      monospace to go with it. Reduced motion and high contrast as
-      settings from the start, not as afterthoughts.
+- [x] **The design language** (wish 10), in `docs/DESIGN.md` (ADR 32):
+      Inter and JetBrains Mono, sizes and spacing, radii, a dark and a
+      light palette with one accent and the contrast measured, glass with
+      a floor to how see-through it may be, what moves and how, signs
+      from Lucide, and reduced motion, reduced transparency and high
+      contrast as settings from the start. What is someone else's is
+      credited in `CREDITS.md`.
 - [ ] **How effects are drawn**: blur, shadows and anything else that
       only a GPU can do, how such drawing is tested when the tests draw
       in software, and what it costs when nothing changes. Blur cannot
@@ -183,9 +182,16 @@ Stage 2 says what it is to be; this builds it.
 - [ ] Gradients and a picture as a background, a transition's delay, and
       `cubic-bezier()`.
 - [ ] The built-in theme redrawn in the design language: light and dark,
-      following the time of day if asked, with the accent a setting.
+      with the accent a setting, and the settings under `appearance`.
+- [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
+      out from a latitude and longitude the user gives, or fixed hours
+      without one.
 - [ ] The default font and icons, and a pointer that is the same size
       everywhere, including over programs written for X11.
+- [ ] A pointer of our own, built in as shapes so that it is sharp at any
+      size and there when no cursor theme is installed.
+- [ ] "About" shows `CREDITS.md`, and packages carry the licence texts
+      it names.
 - [ ] Icons in menus: a glyph before each entry of the titlebar's menu
       and of the root menu (a program's own icon there), and a tick
       beside what is on in place of wording that changes. It waits for
