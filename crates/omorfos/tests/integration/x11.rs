@@ -858,22 +858,6 @@ fn offered(client: &Client, primary: bool) -> bool {
 fn what_a_program_written_for_x11_copies_or_selects_can_be_pasted_by_any_other() {
     for primary in [false, true] {
         let (mut session, program) = session();
-/// Waits until the X server has someone to ask for the clipboard or the
-/// selection: the window manager, on behalf of a program written for
-/// Wayland that holds it.
-fn held(session: &mut Session, program: &RustConnection, which: u32) {
-    meanwhile(session, || {
-        for _ in 0..5000 {
-            let owner = program.get_selection_owner(which).unwrap();
-            if owner.reply().unwrap().owner != x11rb::NONE {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        unreachable!("no one ever held it");
-    });
-}
-
         let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
         let names = [selection(primary), "TARGETS", "UTF8_STRING"];
         let names = names.map(|name| atom(&mut session, &program, name));
@@ -944,7 +928,6 @@ fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied()
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
     // Another program has the keyboard, and copies something.
-        held(&mut session, &program, names[0]);
     let mut client = session.connect();
     session.open(&mut client, "app", (50, 50), GREEN);
     client.copy("private to whoever is focused");
@@ -968,8 +951,6 @@ fn session_with(config: &str) -> (Session, RustConnection) {
     let mut session = Session::with_config(&[("config.yaml", config)]);
     start(&mut session);
     let program = connect(&mut session);
-    // There is someone to ask, who says no.
-    held(&mut session, &program, names[0]);
     (session, program)
 }
 
