@@ -304,6 +304,62 @@ pub struct Line {
     pub across: bool,
 }
 
+/// A way for up to four windows to share a workspace: how it is cut into
+/// parts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Arrangement {
+    /// Two, side by side.
+    SideBySide,
+    /// Two, one above the other.
+    Stacked,
+    /// One on the left, and two on the right, one above the other.
+    OneBesideTwo,
+    /// Two on the left, one above the other, and one on the right.
+    TwoBesideOne,
+    /// One across the top, and two side by side under it.
+    OneAboveTwo,
+    /// Two side by side, and one across the bottom.
+    TwoAboveOne,
+    /// Four, a quarter each.
+    Quarters,
+}
+
+impl Arrangement {
+    /// Every arrangement, from the fewest parts to the most.
+    pub const ALL: [Self; 7] = [
+        Self::SideBySide,
+        Self::Stacked,
+        Self::OneBesideTwo,
+        Self::TwoBesideOne,
+        Self::OneAboveTwo,
+        Self::TwoAboveOne,
+        Self::Quarters,
+    ];
+
+    /// Whether its two sides are one above the other, and which of them
+    /// is cut again.
+    const fn cuts(self) -> (bool, [bool; 2]) {
+        match self {
+            Self::SideBySide => (false, [false, false]),
+            Self::Stacked => (true, [false, false]),
+            Self::OneBesideTwo => (false, [false, true]),
+            Self::TwoBesideOne => (false, [true, false]),
+            Self::OneAboveTwo => (true, [false, true]),
+            Self::TwoAboveOne => (true, [true, false]),
+            Self::Quarters => (false, [true, true]),
+        }
+    }
+
+    /// Where its parts are on a rectangle, in the order they are read in:
+    /// down the first side, then down the second.
+    #[must_use]
+    pub fn parts(self, area: Rect) -> Vec<Rect> {
+        let cut = Tiling::arranged(WorkspaceId(0), self, None);
+        let parts = cut.slots().filter(|(_, part)| *part != Part::None);
+        parts.map(|(at, _)| cut.rect(at, area)).collect()
+    }
+}
+
 /// A part of a workspace made for windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Part {
@@ -406,6 +462,35 @@ impl Tiling {
             split: WHOLE / 2,
             sides: [Side::of(Part::Tile(frame)), Side::NONE],
         }
+    }
+
+    /// A workspace cut up as an arrangement has it, with nothing in its
+    /// parts but, if one is given, a frame in the part so far along in
+    /// the order they are read in.
+    fn arranged(origin: WorkspaceId, arrangement: Arrangement, tile: Option<(usize, u64)>) -> Self {
+        let (stacked, cuts) = arrangement.cuts();
+        let side = |cut: bool| {
+            if cut {
+                Side::cut(Part::Empty, Part::Empty)
+            } else {
+                Side::of(Part::Empty)
+            }
+        };
+        let empty = Self {
+            origin,
+            stacked,
+            split: WHOLE / 2,
+            sides: cuts.map(side),
+        };
+        let mut along = 0;
+        empty.with(|_, part| {
+            let here = along;
+            along += usize::from(part != Part::None);
+            match tile {
+                Some((at, frame)) if part != Part::None && at == here => Part::Tile(frame),
+                _ => part,
+            }
+        })
     }
 
     /// Every part there could be, in the order they are read in: where it
@@ -1379,6 +1464,24 @@ impl Desktop {
         let made = WorkspaceId(self.serial());
         self.solo(at, made, |origin, frame| {
             Tiling::alone(origin, frame).halved((0, 0), frame, half)
+        });
+    }
+
+    /// Puts a window's frame in a workspace made for it and cut up as an
+    /// arrangement has it, in the part so far along in the order they are
+    /// read in, or the last if there are not so many. The other parts
+    /// have nothing in them until windows open there. The workspace is
+    /// directly after the one the window was on, and is shown if that one
+    /// was. A frame that is fullscreen, or fills a part elsewhere, leaves
+    /// that first.
+    pub fn arrange(&mut self, id: WindowId, arrangement: Arrangement, part: usize) {
+        let Some(at) = self.locate(id) else { return };
+        let at = self.grounded(id, at);
+        let made = WorkspaceId(self.serial());
+        let (_, cuts) = arrangement.cuts();
+        let last = 1 + usize::from(cuts[0]) + usize::from(cuts[1]);
+        self.solo(at, made, |origin, frame| {
+            Tiling::arranged(origin, arrangement, Some((part.min(last), frame)))
         });
     }
 
@@ -3113,6 +3216,47 @@ mod tests {
     }
 
     #[test]
+    fn a_window_is_put_in_any_part_of_any_arrangement() {
+        let wide = Rect::new(Point::new(0, 0), Size::new(1920, 1080));
+        let quarter = |x: i32, y: i32| Rect::new(Point::new(x, y), Size::new(960, 540));
+        let parts = Arrangement::OneBesideTwo.parts(wide);
+        let left = Rect::new(Point::new(0, 0), Size::new(960, 1080));
+        assert_eq!(parts, [left, quarter(960, 0), quarter(960, 540)]);
+        let counts: Vec<usize> = Arrangement::ALL
+            .iter()
+            .map(|arrangement| arrangement.parts(wide).len())
+            .collect();
+        assert_eq!(counts, [2, 2, 3, 3, 3, 3, 4]);
+
+        // Every part of every arrangement is where its picture has it.
+        for arrangement in Arrangement::ALL {
+            for (index, expected) in arrangement.parts(wide).into_iter().enumerate() {
+                let mut desktop = desktop();
+                let id = open(&mut desktop, "app");
+                desktop.arrange(id, arrangement, index);
+                assert_eq!(frame(&desktop, id).geometry, expected, "{arrangement:?}");
+                assert_eq!(frame(&desktop, id).home, Home::Shared);
+                assert_eq!(desktop.active_workspace(), 1);
+            }
+        }
+
+        // The other parts are filled as windows open, in order; a part
+        // past the last is the last; and a window that is fullscreen
+        // leaves that to be arranged.
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        desktop.set_fullscreen(first, true);
+        desktop.arrange(first, Arrangement::Quarters, 99);
+        desktop.arrange(WindowId(999), Arrangement::Quarters, 0);
+        assert_eq!(desktop.workspaces().count(), 4, "one made for it, not two");
+        assert_eq!(frame(&desktop, first).geometry, quarter(960, 540));
+        let second = open(&mut desktop, "second");
+        let third = open(&mut desktop, "third");
+        assert_eq!(frame(&desktop, second).geometry, quarter(0, 0));
+        assert_eq!(frame(&desktop, third).geometry, quarter(0, 540));
+    }
+
+    #[test]
     fn a_window_changes_places_with_what_is_beside_it() {
         let mut desktop = desktop();
         let editor = open(&mut desktop, "editor");
@@ -4752,7 +4896,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(37) {
+            match random(38) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -4772,6 +4916,7 @@ mod tests {
                 33 => desktop.swap_toward(id, HALVES[random(4)]),
                 34 => desktop.focus_toward(HALVES[random(4)]),
                 35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400))),
+                37 => desktop.arrange(id, Arrangement::ALL[random(7)], random(4)),
                 36 => {
                     let places: Vec<Place> = desktop.workspaces().collect();
                     desktop.join(id, places[random(places.len())].id);

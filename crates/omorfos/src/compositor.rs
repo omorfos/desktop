@@ -87,6 +87,7 @@ use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
+use crate::palette::{self, Palette};
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::tiles::Lines;
@@ -592,6 +593,7 @@ impl Compositor {
             self.ipc_retry,
             self.x11.deadline(),
             self.hover.reveal.deadline(),
+            self.hover.palette.deadline(),
             screens_off,
             moving,
             said,
@@ -637,6 +639,7 @@ impl Compositor {
         self.serve_ipc();
         self.manage_x11(now);
         self.reveal(now);
+        self.offer_arrangements(now);
         self.sync();
         self.rest_or_wake(now);
         self.space.refresh();
@@ -843,6 +846,12 @@ impl Compositor {
             },
         ];
         self.open_menu_of(items);
+    }
+
+    /// Has something painted with the compositor's text and theme.
+    pub(crate) fn paint_with<T>(&mut self, paint: impl FnOnce(&mut Text, &Theme) -> T) -> T {
+        let config = Arc::clone(self.store.current());
+        paint(&mut self.text, &config.theme)
     }
 
     /// What a workspace is called: as the configuration names it, or by
@@ -1427,6 +1436,12 @@ impl Compositor {
                 self.animation.menu_opacity,
             ));
         }
+        if let Some(shown) = &self.hover.palette.shown {
+            // Its arrow stands above it, up into the titlebar.
+            let up = shown.area.origin.offset(0, -palette::ARROW.cast_signed());
+            let at = Point::<i32, Logical>::from((up.x, up.y));
+            elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
+        }
         self.gone_elements(renderer, view, Level::Over, &mut elements);
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them. What
@@ -1998,6 +2013,9 @@ pub(crate) struct Hover {
     pub(crate) reveal: Reveal,
     /// The lines between windows that share a workspace, which it drags.
     pub(crate) lines: Lines,
+    /// The arrangements a window can be put in, offered when it rests on
+    /// the second button of a titlebar.
+    pub(crate) palette: Palette,
 }
 
 /// What is changing colour, coming in or going.
@@ -2202,7 +2220,7 @@ impl MenuChrome {
 /// on screen. The two differ by the scale it was painted at, at which it is
 /// drawn pixel for pixel.
 #[derive(Debug)]
-struct Painted {
+pub(crate) struct Painted {
     pixels: MemoryRenderBuffer,
     /// The size on screen, in units of layout.
     size: Size<i32, Logical>,
@@ -2212,7 +2230,7 @@ struct Painted {
 
 impl Painted {
     /// Readies a canvas to be drawn.
-    fn new(canvas: &paint::Canvas) -> Self {
+    pub(crate) fn new(canvas: &paint::Canvas) -> Self {
         let pixels = (canvas.width().cast_signed(), canvas.height().cast_signed());
         let (width, height) = canvas.units();
         let size = (width.cast_signed(), height.cast_signed());

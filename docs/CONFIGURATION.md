@@ -144,6 +144,14 @@ other, one beside two, one above or below two, and four in quarters.
 Asked for a half it cannot take, a window goes to that half instead,
 changing places with what was there.
 
+Rest the pointer on the second button of a window's titlebar and small
+pictures of the seven arrangements come up under it, with an arrow to
+the button they belong to and a line of words that says what the part
+under the pointer is. Click a part of one
+and a workspace is made cut up that way, with the window in that part and
+the others waiting for windows to open in them. A click on the button
+itself is still for fullscreen.
+
 A window that is open already is put beside a fullscreen one, or into a
 part that has nothing in it, from the menu of its own titlebar: under
 "Send to workspace", each workspace that has room is listed as "Beside"
@@ -784,7 +792,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 | To | Do this |
 |---|---|
 | Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
-| Put two windows side by side | Right-click the titlebar of one, choose Tile and a half, then open the other |
+| Put two windows side by side | Rest the pointer on the second button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
 | Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |

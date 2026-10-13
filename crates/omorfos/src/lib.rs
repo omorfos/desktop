@@ -24,6 +24,7 @@ mod ipc;
 mod lock;
 mod outputs;
 mod paint;
+mod palette;
 mod restarts;
 mod reveal;
 mod session;

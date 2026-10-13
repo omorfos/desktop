@@ -319,6 +319,7 @@ impl Compositor {
             // A key sends away what was brought back over a fullscreen
             // window, and is the window's all the same.
             compositor.hover.reveal.dismiss();
+            compositor.hover.palette.dismiss();
             if compositor.menu.is_some() && keysym == Keysym::Escape {
                 compositor.menu = None;
                 compositor.suppressed_keys.push(code);
@@ -403,8 +404,9 @@ impl Compositor {
             self.move_pointer(None, time);
             return;
         }
-        if self.over_line().is_some() {
-            // The line between two windows is ours, and neither window's.
+        if self.over_line().is_some() || self.over_palette() {
+            // The line between two windows is ours, and neither window's;
+            // and so are the pictures of arrangements.
             self.move_pointer(None, time);
             return;
         }
@@ -548,7 +550,7 @@ impl Compositor {
             Some(Drag::Line { across, .. }) => return Look::Icon(line_icon(across)),
             None => {}
         }
-        if self.over_notice() || self.menu.is_some() {
+        if self.over_notice() || self.menu.is_some() || self.over_palette() {
             return Look::Icon(CursorIcon::Default);
         }
         if let Some((.., across)) = self.over_line() {
@@ -643,6 +645,39 @@ impl Compositor {
             .or_else(|| on_layer(Layer::Background))
     }
 
+    /// Takes a press or a release that is for something of ours laid over
+    /// the windows, the pictures of arrangements or a line between two
+    /// windows, and says whether it was: nothing under them sees it.
+    fn press_ours(&mut self, button: u32, pressed: bool, time: u32) -> bool {
+        if self.over_palette() {
+            // A press on a part of a picture chooses it; anywhere else on
+            // them it only takes them away.
+            if pressed {
+                self.choose_arrangement();
+                self.move_pointer(None, time);
+            }
+            return true;
+        }
+        let Some((output, which, across)) = self.over_line() else {
+            return false;
+        };
+        // The line between two windows is taken hold of and dragged.
+        // Pressed twice in quick succession, it goes back to the middle.
+        if pressed && button == BUTTON_LEFT {
+            let before = self.hover.lines.pressed.replace(time);
+            let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
+            if twice {
+                self.hover.lines.pressed = None;
+                self.desktop.move_line(output, which, None);
+            } else {
+                let line = (output, which);
+                self.drag = Some(Drag::Line { line, across });
+            }
+            self.move_pointer(None, time);
+        }
+        true
+    }
+
     /// Whether the pointer is on the titlebar of a window that fills a
     /// workspace made for it, or its part of one: a titlebar that was
     /// brought back.
@@ -722,22 +757,7 @@ impl Compositor {
             }
             return;
         }
-        if let Some((output, which, across)) = self.over_line() {
-            // The line between two windows is taken hold of and dragged.
-            // Pressed twice in quick succession, it goes back to the
-            // middle. Nothing under it sees any of this.
-            if pressed && button == BUTTON_LEFT {
-                let before = self.hover.lines.pressed.replace(time);
-                let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
-                if twice {
-                    self.hover.lines.pressed = None;
-                    self.desktop.move_line(output, which, None);
-                } else {
-                    let line = (output, which);
-                    self.drag = Some(Drag::Line { line, across });
-                }
-                self.move_pointer(None, time);
-            }
+        if self.press_ours(button, pressed, time) {
             return;
         }
         let under = self.under();
