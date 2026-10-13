@@ -48,12 +48,12 @@ revisited when stage 5 is done and it is no longer the whole truth.
 
 Small, independent, and each an improvement the day it lands.
 
-- [ ] The launcher on `Super+Space` (wish 2). That key opens the root menu
-      today, which needs another: `Super+Escape`, or none once the bar
-      has its menu.
-- [ ] Mouse and touchpad set apart (wish 4): the touchpad scrolls the
+- [x] The launcher on `Super+Space` (wish 2). The root menu, which had
+      that key, is on `Super+Escape` until the bar has its menu.
+- [x] Mouse and touchpad set apart (wish 4): the touchpad scrolls the
       natural way by default and the mouse does not, each with its own
-      settings, as well as pointer speed and acceleration for each.
+      setting.
+- [ ] Pointer speed and acceleration, for the mouse and for the touchpad.
 - [ ] Titlebar buttons: close, maximize, minimize, at the left, coloured,
       each a part of the theme (wish 3). Double-click on a titlebar
       maximizes.
