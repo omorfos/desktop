@@ -154,7 +154,7 @@ calls for them.
       open there.
 - [x] A window that is open already put beside one that is tiled or
       fullscreen, without opening it there.
-- [ ] Pictures of the arrangements at the titlebar's second button,
+- [x] Pictures of the arrangements at the titlebar's second button,
       when the pointer rests on it.
 - [ ] A window dragged to an edge of the screen put in a tiled
       workspace, with the half it would take shown before it is let go.

@@ -25,6 +25,7 @@ mod menu;
 mod notice;
 mod notifications;
 mod outputs;
+mod palette;
 mod panel;
 mod popups;
 mod reveal;

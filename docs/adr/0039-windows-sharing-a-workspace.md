@@ -202,6 +202,22 @@ needs a titlebar that can be dragged where it is laid over a window, and
 the second has been less wanted since what is brought back stays while
 the pointer moves.
 
+The pictures of arrangements came next: all seven in a row under the
+button, each part a block, the one under the pointer picked out as a
+menu's row is. They come after the pointer has rested on the button for
+four tenths of a second, stay while it is on them, a little way off
+them, or on the button, and go at a key or a press. A press on a part
+makes a new workspace cut up that way with the window in that part. They
+are offered for a window on a desktop only: on a titlebar brought back
+over a window that fills a workspace, the button is the way out, and
+`tile` in the menu is how that window takes a half of where it is. They
+are drawn from the menu's colours, the theme having no part for them.
+Under them a line of words says what the part under the pointer is,
+"Two side by side: this window on the left", since a picture of blocks
+is not plain to everyone; and an arrow stands up from them to the button
+they belong to. What a screen reader is told of them waits, with the
+rest of the shell, on the toolkit (ADR 34).
+
 A window that is open already joins a workspace made for windows by
 `join_workspace` and the workspace's `id`, which the menu of its titlebar
 offers by name under "Send to workspace" for each that has room: a part
