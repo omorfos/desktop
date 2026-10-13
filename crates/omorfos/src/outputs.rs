@@ -54,7 +54,7 @@ impl Head {
     }
 
     /// Whether `point` is on the output.
-    fn contains(&self, point: Point<f64, Logical>) -> bool {
+    pub(crate) fn contains(&self, point: Point<f64, Logical>) -> bool {
         self.area().to_f64().contains(point)
     }
 

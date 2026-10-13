@@ -164,8 +164,10 @@ impl Frame<'_> {
     /// The part of the frame the window itself occupies.
     #[must_use]
     pub fn client(&self) -> Rect {
-        self.decoration
-            .map_or(self.geometry, |decoration| decoration.client())
+        // A titlebar a fullscreen window is given is laid over it, and
+        // takes no room from it.
+        let around = self.decoration.filter(|_| !self.fullscreen);
+        around.map_or(self.geometry, |decoration| decoration.client())
     }
 }
 
@@ -339,6 +341,9 @@ struct Set {
     /// workspace wait while a workspace made for a fullscreen frame is
     /// shown.
     desk: WorkspaceId,
+    /// Set while a fullscreen window's titlebar is asked for: how far
+    /// down from the top of the output it is laid over the window.
+    revealed: Option<u32>,
 }
 
 impl Set {
@@ -519,6 +524,7 @@ impl Desktop {
             desk: workspaces[0].id,
             workspaces,
             active: 0,
+            revealed: None,
         }
     }
 
@@ -1144,6 +1150,19 @@ impl Desktop {
         self.turn(self.current, workspace);
     }
 
+    /// Asks for the titlebar of whatever fullscreen window an output is
+    /// showing to be laid over it, `down` from the top of the output, or
+    /// with `None` for it to be taken away again. Counted in the order the
+    /// outputs were given; an output that is not there is not asked.
+    ///
+    /// The window is not told to be any other size. A window that draws
+    /// its own titlebar is given none.
+    pub fn reveal(&mut self, output: usize, down: Option<u32>) {
+        if let Some(set) = self.sets.get_mut(output) {
+            set.revealed = down;
+        }
+    }
+
     /// Makes the output at `point` the current one: the one whose focused
     /// frame has the keyboard, and which switching workspace applies to. A
     /// point on no output leaves things as they are.
@@ -1304,7 +1323,9 @@ impl Desktop {
                 active: group.active,
                 geometry,
                 decoration: decorated
-                    .then(|| Decoration::new(geometry, self.settings.decoration, group.tabs.len())),
+                    .then_some((geometry, self.settings.decoration))
+                    .or(self.laid_over(index, group, geometry))
+                    .map(|(within, metrics)| Decoration::new(within, metrics, group.tabs.len())),
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
                 home: workspace.solo.map_or(Home::Desktop, |_| Home::Solo),
@@ -1318,6 +1339,24 @@ impl Desktop {
     }
 
     // --- Internals ---------------------------------------------------------
+
+    /// Where the titlebar of a fullscreen frame goes when it is asked for,
+    /// and with what sizes: across the top of the frame, so far down, with
+    /// no borders.
+    fn laid_over(&self, set: usize, group: &Group, geometry: Rect) -> Option<(Rect, Metrics)> {
+        let down = self.sets[set].revealed.filter(|_| group.fullscreen);
+        let down = down.filter(|_| group.decorated())?;
+        let size = Size::new(
+            geometry.size.width,
+            geometry.size.height.saturating_sub(down),
+        );
+        let within = Rect::new(geometry.origin.offset(0, down.cast_signed()), size);
+        let metrics = Metrics {
+            border: 0,
+            ..self.settings.decoration
+        };
+        Some((within, metrics))
+    }
 
     const fn serial(&mut self) -> u64 {
         self.next_serial += 1;
@@ -2017,6 +2056,36 @@ mod tests {
         desktop.set_fullscreen(video, true);
         desktop.set_fullscreen(chat, false);
         assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn a_fullscreen_frame_has_its_titlebar_laid_over_it_when_asked() {
+        let mut desktop = decorated_desktop();
+        let video = open(&mut desktop, "video");
+        let bare = desktop.add_window("bare", "bare", SIZE, POINTER, false);
+        desktop.set_fullscreen(video, true);
+        assert_eq!(frame(&desktop, video).decoration, None);
+
+        desktop.reveal(0, Some(30));
+        desktop.reveal(7, Some(30));
+        let shown = frame(&desktop, video);
+        let decoration = shown.decoration.unwrap();
+        let bar = Rect::new(Point::new(0, 30), Size::new(1920, METRICS.titlebar));
+        assert_eq!(decoration.titlebar(), bar, "across the top, so far down");
+        assert_eq!(shown.geometry, SCREEN);
+        assert_eq!(shown.client(), SCREEN, "and takes no room from the window");
+
+        desktop.reveal(0, None);
+        assert_eq!(frame(&desktop, video).decoration, None);
+
+        // Asked for where nothing is fullscreen, it changes nothing; and a
+        // window that draws its own titlebar is given none.
+        desktop.set_fullscreen(video, false);
+        desktop.reveal(0, Some(0));
+        let whole = frame(&desktop, video).decoration.unwrap();
+        assert_eq!(whole.outer(), frame(&desktop, video).geometry);
+        desktop.set_fullscreen(bare, true);
+        assert_eq!(frame(&desktop, bare).decoration, None);
     }
 
     #[test]

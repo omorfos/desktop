@@ -131,9 +131,11 @@ calls for them.
       the next one, one by default, and what the IPC says of them.
 - [x] Fullscreen on a workspace of its own: the solo, the window going
       back where it was, and the titlebar's button meaning fullscreen.
-- [ ] In a fullscreen workspace, the bar, the titlebar and the dock
-      brought back by pushing the pointer at an edge (ADR 36). Until
-      then it is left by the key.
+- [x] In a fullscreen workspace, the panels and the titlebar brought
+      back by resting the pointer against an edge (ADR 36).
+- [ ] The same by pushing against the edge, without the wait, on a real
+      mouse or touchpad; and not at all while a program holds the
+      pointer, once programs can.
 - [ ] A fullscreen workspace shared by two, three or four windows in a
       grid, as macOS has it: side by side, one above another, one beside
       two, or two by two, resized by dragging the line between them. A
@@ -239,7 +241,9 @@ Stage 2 says what it is to be; this builds it.
 - [ ] Movement: windows that open and close with a slight change of size
       as well as of opacity, workspaces that slide, a window that goes to
       the dock when minimized, a notification that comes in and goes
-      beside others that stay. All of it off with one setting.
+      beside others that stay; the panels and the titlebar sliding in
+      from the edge they are brought back at on a fullscreen workspace,
+      and out again. All of it off with one setting.
 - [ ] The switcher as a queue on a diagonal (wish 5).
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [ ] Night light: the screen warmer after dark.

@@ -38,7 +38,7 @@ use smithay::backend::renderer::element::{AsRenderElements, Kind, render_element
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::utils::send_frames_surface_tree;
-use smithay::desktop::{PopupManager, Space, Window, layer_map_for_output};
+use smithay::desktop::{LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::{
     CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
@@ -88,6 +88,7 @@ use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
 use crate::restarts::Restarts;
+use crate::reveal::{Placing, Reveal};
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -589,6 +590,7 @@ impl Compositor {
             self.debouncer.deadline(),
             self.ipc_retry,
             self.x11.deadline(),
+            self.hover.reveal.deadline(),
             screens_off,
             moving,
             said,
@@ -633,6 +635,7 @@ impl Compositor {
         self.revive(&failed, now);
         self.serve_ipc();
         self.manage_x11(now);
+        self.reveal(now);
         self.sync();
         self.rest_or_wake(now);
         self.space.refresh();
@@ -1400,12 +1403,21 @@ impl Compositor {
         let frames = [Some(true), Some(false), None, None];
         for (layer, fullscreen) in layers.into_iter().zip(frames) {
             self.gone_elements(renderer, view, Level::Layer(layer), &mut elements);
-            self.layer_elements(renderer, output, view, layer, &mut elements);
+            self.layer_elements(
+                renderer,
+                output,
+                view,
+                (layer, Placing::Usual),
+                &mut elements,
+            );
             if let Some(fullscreen) = fullscreen {
                 if fullscreen {
                     // Menus and tooltips of programs written for X11 are
                     // over every window, and under what is over all.
                     self.unmanaged_elements(renderer, view, &mut elements);
+                    // Panels brought back over a fullscreen window.
+                    let raised = (Layer::Top, Placing::Raised);
+                    self.layer_elements(renderer, output, view, raised, &mut elements);
                 }
                 self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
                 self.frame_elements(renderer, view, fullscreen, &mut elements);
@@ -1682,20 +1694,27 @@ impl Compositor {
         Noting::new(going.duration > 0, view.origin, view.scale.factor())
     }
 
-    /// Adds the layer-shell surfaces of one layer, topmost first.
+    /// Adds the layer-shell surfaces of one layer that stand as asked,
+    /// topmost first.
     fn layer_elements<R>(
         &self,
         renderer: &mut R,
         output: &Output,
         view: View,
-        layer: Layer,
+        (layer, standing): (Layer, Placing),
         elements: &mut Vec<Element<R>>,
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let layers = layer_map_for_output(output);
-        for surface in layers.layers_on(layer).rev() {
+        let index = self.heads.iter().position(|head| head.output == *output);
+        let index = index.unwrap_or_default();
+        let wanted = |surface: &&LayerSurface| {
+            let area = layers.layer_geometry(surface).unwrap_or_default();
+            self.standing(index, layer, area) == standing
+        };
+        for surface in layers.layers_on(layer).rev().filter(wanted) {
             // A panel is placed within its own output.
             let at = layers.layer_geometry(surface).unwrap_or_default().loc + view.origin;
             // A panel of a shell component may be coming in, and what it
@@ -1939,6 +1958,9 @@ pub(crate) struct Hover {
     /// The titlebar it last pressed on, when and where, which is what a
     /// second press has to match to be a double click.
     pub(crate) clicked: Option<(WindowId, u32, DomainPoint)>,
+    /// What it has brought back over a fullscreen window by resting
+    /// against an edge.
+    pub(crate) reveal: Reveal,
 }
 
 /// What is changing colour, coming in or going.
@@ -2314,7 +2336,14 @@ impl Chrome {
         let state = (frame.active, frame.hovered);
         let looks = paint::Looks::of(theme, motion, shown, tabs, state, frame.focused);
         let outline = looks.window.border.top.color;
-        let radius = corners::radius(&decoration, looks.window.radius);
+        // A titlebar laid over a fullscreen window is as square as the
+        // screen, and the window under it is not cut to any shape.
+        let rounded = if frame.fullscreen {
+            0
+        } else {
+            looks.window.radius
+        };
+        let radius = corners::radius(&decoration, rounded);
         let appearance = Appearance {
             titles: frame.titles.clone(),
             looks,

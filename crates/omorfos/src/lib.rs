@@ -25,6 +25,7 @@ mod lock;
 mod outputs;
 mod paint;
 mod restarts;
+mod reveal;
 mod session;
 mod x11;
 

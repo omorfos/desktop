@@ -27,6 +27,7 @@ mod notifications;
 mod outputs;
 mod panel;
 mod popups;
+mod reveal;
 mod scaling;
 mod session;
 mod taskbar;

@@ -132,6 +132,15 @@ other window, another of the same program included, opens on the desktop
 it came from, which is then shown. Maximizing is another thing: it fills the desktop the window
 is on and keeps the panel and the titlebar.
 
+On such a workspace, rest the pointer against the top of the screen for a
+third of a second and whatever panels are along the top come back, with
+the window's titlebar under them: its buttons, its menu, and the second
+button to leave fullscreen. Against the bottom, the panels along the
+bottom come back. They are laid over the window, which does not change
+size, and go when the pointer leaves them or a key is pressed. This is
+omorfos's doing and no program can turn it off or imitate it, so it is
+also how to tell a fullscreen program from the desktop.
+
 Each screen has its own workspaces, and shows one of them: switching
 workspace on one screen leaves the others as they are. A window dragged
 onto another screen joins the workspace that screen is showing. When a
@@ -740,7 +749,8 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 | To | Do this |
 |---|---|
 | Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
-| Leave fullscreen | `Super+f`, or what the program itself has for it |
+| Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
+| Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |
 | Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
 | Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |
