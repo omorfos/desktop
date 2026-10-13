@@ -81,7 +81,7 @@ fn focus_cycles_between_windows() {
 
 #[test]
 fn workspaces_can_be_switched_and_windows_sent_between_them() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
     let active = |session: &Session| session.compositor().desktop().active_workspace();
@@ -93,11 +93,7 @@ fn workspaces_can_be_switched_and_windows_sent_between_them() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     assert_eq!(active(&session), 3);
     session.compositor_mut().perform(&Action::NextWorkspace);
-    assert_eq!(
-        active(&session),
-        0,
-        "the default four workspaces wrap around"
-    );
+    assert_eq!(active(&session), 0, "the four workspaces wrap around");
     session.compositor_mut().perform(&Action::PreviousWorkspace);
     assert_eq!(active(&session), 3);
 
@@ -158,4 +154,63 @@ fn a_program_that_cannot_be_started_is_reported() {
     let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1);
     assert!(problems[0].starts_with("cannot start `/nonexistent/omorfos-test-program`: "));
+}
+
+#[test]
+fn there_is_one_workspace_and_more_are_made_as_they_are_asked_for() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let active = |session: &Session| session.compositor().desktop().active_workspace();
+    let count = |session: &Session| session.compositor().desktop().workspace_count();
+    assert_eq!(count(&session), 1);
+
+    // The number one past the last makes that workspace.
+    session
+        .compositor_mut()
+        .perform(&Action::Workspace(workspace(2)));
+    assert_eq!((active(&session), count(&session)), (1, 2));
+    session.step();
+    assert_eq!(session.draw().at(100, 50), BACKGROUND);
+
+    // Further than that is nowhere.
+    session
+        .compositor_mut()
+        .perform(&Action::Workspace(workspace(4)));
+    assert_eq!((active(&session), count(&session)), (1, 2));
+
+    // Left with nothing on it, the one that was made goes.
+    session
+        .compositor_mut()
+        .perform(&Action::Workspace(workspace(1)));
+    assert_eq!((active(&session), count(&session)), (0, 1));
+}
+
+#[test]
+fn a_workspace_is_made_by_asking_for_a_new_one_or_by_sending_a_window_to_one() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let active = |session: &Session| session.compositor().desktop().active_workspace();
+    let count = |session: &Session| session.compositor().desktop().workspace_count();
+
+    session.compositor_mut().perform(&Action::NewWorkspace);
+    session.step();
+    assert_eq!((active(&session), count(&session)), (1, 2));
+    assert_eq!(session.draw().at(100, 50), BACKGROUND, "nothing on it yet");
+
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    assert_eq!(count(&session), 1, "left empty, it has gone");
+
+    // The window goes to a workspace made for it, and stays there when
+    // another is shown.
+    session
+        .compositor_mut()
+        .perform(&Action::MoveToNewWorkspace);
+    session.step();
+    assert_eq!((active(&session), count(&session)), (0, 2));
+    assert_eq!(session.draw().at(100, 50), BACKGROUND);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 50), RED);
 }

@@ -83,10 +83,12 @@ impl Default for Keys {
             bind("Super+Shift+Tab", Action::PreviousTab),
             bind("Super+Right", Action::NextWorkspace),
             bind("Super+Left", Action::PreviousWorkspace),
+            bind("Super+n", Action::NewWorkspace),
+            bind("Super+Shift+n", Action::MoveToNewWorkspace),
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
-        for number in 1..=4 {
+        for number in 1..=9 {
             let workspace = WorkspaceNumber::clamped(number);
             bindings.push(bind(
                 &format!("Super+{number}"),
@@ -511,6 +513,17 @@ bindings:
         assert_eq!(
             action_for("Super+Shift+4"),
             Some(Action::MoveToWorkspace(WorkspaceNumber::clamped(4)))
+        );
+        // Workspaces are made as they are wanted, so every digit goes to
+        // one, and there is a key to make one.
+        assert_eq!(
+            action_for("Super+9"),
+            Some(Action::Workspace(WorkspaceNumber::clamped(9)))
+        );
+        assert_eq!(action_for("Super+n"), Some(Action::NewWorkspace));
+        assert_eq!(
+            action_for("Super+Shift+n"),
+            Some(Action::MoveToNewWorkspace)
         );
         assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
     }

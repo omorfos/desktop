@@ -22,7 +22,7 @@ use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{HEIGHT, Picture, Session, WIDTH, between, half_way};
+use crate::common::{FOUR_WORKSPACES, HEIGHT, Picture, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -137,7 +137,7 @@ fn bar_height(picture: &Picture, (width, height): (i32, i32)) -> i32 {
 
 #[test]
 fn the_panel_puts_a_bar_along_the_bottom_of_the_screen() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     assert_eq!(bar_height(&session.draw(), (WIDTH, HEIGHT)), 0);
 
@@ -154,7 +154,7 @@ fn the_panel_puts_a_bar_along_the_bottom_of_the_screen() {
 
 #[test]
 fn windows_are_kept_clear_of_the_bar() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     let mut client = session.connect();
@@ -172,7 +172,7 @@ fn windows_are_kept_clear_of_the_bar() {
 
 #[test]
 fn clicking_a_workspace_on_the_bar_shows_it() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     assert_eq!(shown(&mut session), [1]);
@@ -194,7 +194,8 @@ fn clicking_a_workspace_on_the_bar_shows_it() {
 fn a_workspace_gets_to_the_colour_of_being_shown_over_the_time_the_theme_gives() {
     let theme = "workspace { background: #ff0000; transition: 100ms linear; }\n\
                  workspace:active { background: #0000ff; }\n";
-    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut session =
+        Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut panel = panel(&mut session);
     let at = Duration::from_millis;
     let (red, blue) = (0xffff_0000, 0xff00_00ff);
@@ -231,7 +232,8 @@ fn a_workspace_gets_to_the_colour_of_being_shown_over_the_time_the_theme_gives()
 #[test]
 fn the_bar_comes_onto_the_screen_over_the_time_the_theme_gives_the_panel() {
     let theme = "panel { transition: 100ms linear; }\n";
-    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut session =
+        Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut panel = panel(&mut session);
     // Between the workspaces and the time, where the bar is bare.
     let bar = |session: &mut Session| session.draw().at(WIDTH / 2, HEIGHT - 10);
@@ -249,7 +251,7 @@ fn the_bar_comes_onto_the_screen_over_the_time_the_theme_gives_the_panel() {
 
 #[test]
 fn only_a_click_with_the_left_button_on_a_button_asks_for_anything() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     let second = button(&mut session, &workspace(2));
@@ -276,7 +278,7 @@ fn only_a_click_with_the_left_button_on_a_button_asks_for_anything() {
 
 #[test]
 fn clicking_a_window_on_the_bar_brings_it_up() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     let mut client = session.connect();
@@ -315,7 +317,7 @@ fn clicking_a_window_on_the_bar_brings_it_up() {
 
 #[test]
 fn every_screen_has_a_bar_of_its_own() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
 
@@ -345,7 +347,7 @@ fn every_screen_has_a_bar_of_its_own() {
 
 #[test]
 fn a_bar_is_drawn_with_as_many_pixels_as_its_screen_has() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
 
@@ -361,7 +363,7 @@ fn a_bar_is_drawn_with_as_many_pixels_as_its_screen_has() {
 
 #[test]
 fn the_bar_follows_the_theme_as_it_is_saved() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     let panel = RefCell::new(panel);
@@ -425,7 +427,7 @@ fn clock_shows(picture: &Picture) -> bool {
 
 #[test]
 fn every_bar_has_a_clock_that_is_drawn_again_only_when_the_time_changes() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut panel = panel(&mut session);
     settle(&mut session, &mut panel);
     let before = session.draw();
@@ -449,7 +451,7 @@ fn every_bar_has_a_clock_that_is_drawn_again_only_when_the_time_changes() {
 
 #[test]
 fn a_panel_without_a_configuration_directory_uses_the_default_theme() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let socket = session.listen();
     let news = Ipc::connect(&socket).unwrap();
     let commands = Ipc::connect(&socket).unwrap();
@@ -479,7 +481,7 @@ fn said(state: &State) -> String {
 
 #[test]
 fn the_panel_asks_for_news_and_shows_what_it_is_told() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let (mut panel, mut news, commands) = panel_told_by_us(&mut session);
     let mut asked = String::new();
     BufReader::new(&news).read_line(&mut asked).unwrap();
@@ -498,6 +500,8 @@ fn the_panel_asks_for_news_and_shows_what_it_is_told() {
             number: 7,
             name: "seven".to_owned(),
             active: true,
+            id: 0,
+            kept: true,
         }],
         ..State::default()
     };
@@ -528,7 +532,7 @@ fn the_panel_asks_for_news_and_shows_what_it_is_told() {
 
 #[test]
 fn the_panel_gives_up_when_the_compositor_stops_telling_it_anything() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let (mut panel, news, _commands) = panel_told_by_us(&mut session);
     settle(&mut session, &mut panel);
 
@@ -539,7 +543,7 @@ fn the_panel_gives_up_when_the_compositor_stops_telling_it_anything() {
 
 #[test]
 fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let (mut panel, mut news, commands) = panel_told_by_us(&mut session);
     let state = State {
         workspaces: vec![Workspace {
@@ -547,6 +551,8 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
             number: 1,
             name: "one".to_owned(),
             active: true,
+            id: 0,
+            kept: true,
         }],
         ..State::default()
     };
@@ -564,7 +570,7 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
 
 #[test]
 fn the_panel_gives_up_when_the_compositor_has_gone() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let (mut panel, _news, _commands) = panel_told_by_us(&mut session);
     settle(&mut session, &mut panel);
 
@@ -580,7 +586,7 @@ fn the_panel_gives_up_when_the_compositor_has_gone() {
 
 #[test]
 fn the_panel_runs_by_itself_in_the_session_it_is_started_in() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
     session.inner().serve(socket).unwrap();

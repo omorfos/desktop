@@ -529,7 +529,7 @@ fn a_window_that_is_not_being_shown_is_left_where_it_was() {
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
 
-    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.compositor_mut().perform(&Action::NewWorkspace);
     session.step();
     assert_eq!(session.draw().at(100, 80), BACKGROUND);
     assert_eq!(size_of(&mut session, &program, window), (200, 100));

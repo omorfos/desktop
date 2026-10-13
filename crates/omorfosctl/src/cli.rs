@@ -304,6 +304,8 @@ mod tests {
                 number: 1,
                 name: "web".to_owned(),
                 active: true,
+                id: 0,
+                kept: true,
             }],
             windows: vec![Window {
                 id: 7,

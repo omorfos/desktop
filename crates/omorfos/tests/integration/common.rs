@@ -64,6 +64,10 @@ use wayland_protocols::xdg::shell::client::{
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+/// A `config.yaml` for a session with four workspaces that are always
+/// there.
+pub(crate) const FOUR_WORKSPACES: &str = "workspaces: ['1', '2', '3', '4']\n";
+
 pub(crate) const WIDTH: i32 = 640;
 pub(crate) const HEIGHT: i32 = 480;
 
@@ -131,6 +135,12 @@ impl Session {
     /// Starts a compositor with built-in defaults.
     pub(crate) fn new() -> Self {
         Self::with_config(&[])
+    }
+
+    /// Starts a compositor with four workspaces that are always there, as
+    /// a test of going between workspaces wants. There is one by default.
+    pub(crate) fn with_workspaces() -> Self {
+        Self::with_config(&[("config.yaml", FOUR_WORKSPACES)])
     }
 
     /// Starts a compositor whose configuration directory holds `files`.

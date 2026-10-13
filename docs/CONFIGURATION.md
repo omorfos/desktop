@@ -29,7 +29,7 @@ For completion and inline validation in editors that use
 ## `config.yaml`
 
 ```yaml
-workspaces: [web, code, chat, media]   # 1 to 32 names
+workspaces: [web, code, chat, media]   # 1 to 32 that are always there
 focus:
   model: click            # click | sloppy
   raise_on_focus: true
@@ -72,7 +72,7 @@ xwayland:
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
-`["1", "2", "3", "4"]`.
+`["1"]`.
 
 `idle.screen_off` turns the screens off after that many seconds without
 input, and on again at the next key or movement. Something that asks for
@@ -113,11 +113,19 @@ place of `output.scale`. A screen's name is the `output` shown by
 `omorfosctl state`. One that is listed but not plugged in is skipped.
 Screens can only be side by side for now, not one above another.
 
-Each screen has its own set of the workspaces listed, and shows one of
-them: switching workspace on one screen leaves the others as they are. A
-window dragged onto another screen joins the workspace that screen is
-showing. When a screen is unplugged, its windows move to the workspace of
-the same number on the first screen that is left.
+The workspaces listed are always there. More are made as they are wanted,
+after those: by `Super+n`, by sending a window to a new one
+(`Super+Shift+n`, or "Send to workspace" in the menu of its titlebar), or
+by going to the number one past the last, so that `Super+2` in a session
+with one workspace makes a second. A workspace that was made is called by
+its number, and goes again once nothing is on it and another is being
+shown. A screen has 32 at most.
+
+Each screen has its own workspaces, and shows one of them: switching
+workspace on one screen leaves the others as they are. A window dragged
+onto another screen joins the workspace that screen is showing. When a
+screen is unplugged, its windows move to the workspace of the same number
+on the first screen that is left, which is made if it is not there.
 
 `output.scale` is how large everything is drawn, on every screen that
 `outputs` does not give a scale of its own. With `auto`, omorfos
@@ -163,9 +171,11 @@ that are already bound on their own.
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
 | `focus_next`, `focus_previous` | Cycle windows. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
-| `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. |
+| `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. One past the last is made first; further than that does nothing. |
+| `new_workspace` | Make a workspace after the last on the screen the pointer is on, and switch to it. |
 | `next_workspace`, `previous_workspace` | Cycle workspaces on the screen the pointer is on. |
-| `move_to_workspace: N` | Send the focused window to workspace N of its screen. |
+| `move_to_workspace: N` | Send the focused window to workspace N of its screen. One past the last is made first. |
+| `move_to_new_workspace` | Send the focused window to a workspace made for it, after the last. |
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
 | `show_launcher` | Open the launcher. |

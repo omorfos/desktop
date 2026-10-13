@@ -206,14 +206,58 @@ impl Group {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// What a workspace is known by for as long as there is one: its place
+/// among the others changes as they come and go, and this does not. It is
+/// never used again in a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct WorkspaceId(u64);
+
+impl WorkspaceId {
+    /// The identifier as a number, for those who have to write it down.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// One of an output's workspaces, as those who show them are told of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place {
+    /// What it is known by.
+    pub id: WorkspaceId,
+    /// The output it belongs to, counted in the order the outputs were
+    /// given.
+    pub output: usize,
+    /// Its place among that output's workspaces, from zero.
+    pub index: usize,
+    /// Whether it is always there, as those the configuration names are.
+    /// One that is not goes when it is empty and another is shown.
+    pub kept: bool,
+    /// Whether its output is showing it.
+    pub shown: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Workspace {
+    id: WorkspaceId,
+    /// Always there. One that is not kept goes when it is empty and
+    /// another is shown.
+    kept: bool,
     /// Bottom to top.
     groups: Vec<Group>,
     focused: Option<u64>,
 }
 
 impl Workspace {
+    const fn new(id: WorkspaceId, kept: bool) -> Self {
+        Self {
+            id,
+            kept,
+            groups: Vec::new(),
+            focused: None,
+        }
+    }
+
     /// Drops emptied groups and, if the focused group is gone or hidden,
     /// focuses the topmost one that can take focus.
     fn repair(&mut self) {
@@ -254,22 +298,31 @@ struct Set {
 }
 
 impl Set {
-    fn new(workspaces: usize) -> Self {
-        Self {
-            workspaces: vec![Workspace::default(); workspaces],
-            active: 0,
+    /// Takes on everything in `other`, workspace by workspace, on top of
+    /// what is here. Workspaces `other` has more of come over whole, as
+    /// ones that are not kept.
+    fn absorb(&mut self, other: Self) {
+        for (index, mut workspace) in other.workspaces.into_iter().enumerate() {
+            if let Some(onto) = self.workspaces.get_mut(index) {
+                onto.groups.extend(workspace.groups);
+                onto.repair();
+            } else {
+                workspace.kept = false;
+                self.workspaces.push(workspace);
+            }
         }
+        self.prune();
     }
 
-    /// Takes on everything in `other`, workspace by workspace, on top of
-    /// what is here. Workspaces `other` has more of go to the last.
-    fn absorb(&mut self, other: Self) {
-        let last = self.workspaces.len() - 1;
-        for (index, workspace) in other.workspaces.into_iter().enumerate() {
-            let onto = &mut self.workspaces[index.min(last)];
-            onto.groups.extend(workspace.groups);
-            onto.repair();
-        }
+    /// Does away with the workspaces that are not kept, are empty, and are
+    /// not being shown.
+    fn prune(&mut self) {
+        let shown = self.workspaces[self.active].id;
+        self.workspaces.retain(|workspace| {
+            workspace.kept || !workspace.groups.is_empty() || workspace.id == shown
+        });
+        let shown = |workspace: &Workspace| workspace.id == shown;
+        self.active = self.workspaces.iter().position(shown).unwrap_or(0);
     }
 }
 
@@ -305,20 +358,41 @@ pub struct Desktop {
     sets: Vec<Set>,
     /// The set that has the keyboard.
     current: usize,
+    /// How many of each output's workspaces are always there.
+    kept: usize,
     next_serial: u64,
 }
 
 impl Desktop {
-    /// Creates an empty desktop with `workspaces` workspaces (at least one).
+    /// The most workspaces an output can have. Asking for one more does
+    /// nothing.
+    pub const MOST_WORKSPACES: usize = 32;
+
+    /// Creates an empty desktop with `workspaces` workspaces that are
+    /// always there (at least one). More are made as they are asked for.
     #[must_use]
     pub fn new(settings: Settings, workspaces: usize) -> Self {
-        Self {
+        let mut desktop = Self {
             settings,
             rules: Vec::new(),
             outputs: Vec::new(),
-            sets: vec![Set::new(workspaces.max(1))],
+            sets: Vec::new(),
             current: 0,
+            kept: workspaces.clamp(1, Self::MOST_WORKSPACES),
             next_serial: 0,
+        };
+        let first = desktop.set();
+        desktop.sets.push(first);
+        desktop
+    }
+
+    /// A set of workspaces for an output that has none yet: the ones that
+    /// are always there.
+    fn set(&mut self) -> Set {
+        let workspaces = (0..self.kept).map(|_| Workspace::new(WorkspaceId(self.serial()), true));
+        Set {
+            workspaces: workspaces.collect(),
+            active: 0,
         }
     }
 
@@ -350,9 +424,10 @@ impl Desktop {
         while self.sets.len() > outputs.len().max(1) {
             self.remove_set(self.sets.len() - 1);
         }
-        let count = self.workspace_count();
-        self.sets
-            .resize_with(outputs.len().max(1), || Set::new(count));
+        while self.sets.len() < outputs.len() {
+            let set = self.set();
+            self.sets.push(set);
+        }
         for (index, (set, output)) in self.sets.iter_mut().zip(&outputs).enumerate() {
             // Where the output was, if it was anywhere.
             let before = self.outputs.get(index).map(|output| output.area.origin);
@@ -404,23 +479,23 @@ impl Desktop {
         }
     }
 
-    /// Changes the number of workspaces each output has (at least one).
+    /// Changes how many of each output's workspaces are always there (at
+    /// least one): its first so many.
     ///
-    /// Frames on removed workspaces move to the last remaining one of the
-    /// same output.
+    /// Nothing moves. A workspace that is no longer kept stays for as long
+    /// as it has a frame on it or is being shown, and then goes.
     pub fn set_workspace_count(&mut self, count: usize) {
-        let last = count.max(1) - 1;
-        for set in &mut self.sets {
-            let orphans: Vec<Group> = set
-                .workspaces
-                .iter_mut()
-                .skip(last + 1)
-                .flat_map(|workspace| workspace.groups.drain(..))
-                .collect();
-            set.workspaces.resize_with(last + 1, Workspace::default);
-            set.workspaces[last].groups.extend(orphans);
-            set.workspaces[last].repair();
-            set.active = set.active.min(last);
+        self.kept = count.clamp(1, Self::MOST_WORKSPACES);
+        for set in 0..self.sets.len() {
+            while self.sets[set].workspaces.len() < self.kept {
+                let id = WorkspaceId(self.serial());
+                self.sets[set].workspaces.push(Workspace::new(id, true));
+            }
+            let workspaces = self.sets[set].workspaces.iter_mut().enumerate();
+            for (index, workspace) in workspaces {
+                workspace.kept = index < self.kept;
+            }
+            self.sets[set].prune();
         }
     }
 
@@ -446,10 +521,8 @@ impl Desktop {
         let (app_id, title) = (app_id.into(), title.into());
         let effects = resolve(&self.rules, &app_id, &title);
         let set = self.set_at(pointer);
-        let last = self.workspace_count() - 1;
-        let workspace = effects
-            .workspace
-            .map_or(self.sets[set].active, |workspace| workspace.min(last));
+        let shown = self.sets[set].active;
+        let workspace = effects.workspace.map_or(shown, |on| self.reach(set, on));
         let decorated = effects.decorations.unwrap_or(wants_decoration);
         let area = self.output_at(pointer).usable;
         let fills = effects.maximized == Some(true) || effects.fullscreen == Some(true);
@@ -524,6 +597,7 @@ impl Desktop {
         let Some(at) = self.locate(id) else { return };
         self.sets[at.set].workspaces[at.workspace].groups[at.group].remove(at.tab);
         self.sets[at.set].workspaces[at.workspace].repair();
+        self.sets[at.set].prune();
     }
 
     /// Updates a window's title.
@@ -774,6 +848,7 @@ impl Desktop {
         group.active = group.tabs.len() - 1;
         self.sets[to.set].workspaces[to.workspace].focus(to.group, true);
         self.sets[from.set].workspaces[from.workspace].repair();
+        self.sets[from.set].prune();
     }
 
     /// Moves a window out of a shared frame into a frame of its own, just
@@ -804,10 +879,43 @@ impl Desktop {
 
     // --- Workspaces --------------------------------------------------------
 
-    /// The number of workspaces each output has. At least one.
+    /// The number of workspaces the current output has. At least one.
     #[must_use]
     pub fn workspace_count(&self) -> usize {
-        self.sets[0].workspaces.len()
+        self.sets[self.current].workspaces.len()
+    }
+
+    /// Every workspace there is, output by output and in order.
+    pub fn workspaces(&self) -> impl Iterator<Item = Place> {
+        self.sets.iter().enumerate().flat_map(|(output, set)| {
+            let workspaces = set.workspaces.iter().enumerate();
+            workspaces.map(move |(index, workspace)| Place {
+                id: workspace.id,
+                output,
+                index,
+                kept: workspace.kept,
+                shown: index == set.active,
+            })
+        })
+    }
+
+    /// The workspace of an output that is `wanted` from its first: that
+    /// one, or a new one made at the end if `wanted` is past the last and
+    /// there is room for another, or else the last.
+    fn reach(&mut self, set: usize, wanted: usize) -> usize {
+        let count = self.sets[set].workspaces.len();
+        if wanted >= count && count < Self::MOST_WORKSPACES {
+            let id = WorkspaceId(self.serial());
+            self.sets[set].workspaces.push(Workspace::new(id, false));
+        }
+        wanted.min(self.sets[set].workspaces.len() - 1)
+    }
+
+    /// Makes a workspace at the end of the current output's and shows it.
+    /// It goes again once it is empty and another is shown.
+    pub fn new_workspace(&mut self) {
+        let workspace = self.reach(self.current, usize::MAX);
+        self.turn(self.current, workspace);
     }
 
     /// Makes the output at `point` the current one: the one whose focused
@@ -839,10 +947,11 @@ impl Desktop {
         self.sets.iter().map(|set| set.active)
     }
 
-    /// Shows a workspace on the current output. Does nothing if it does not
-    /// exist.
+    /// Shows a workspace on the current output. One past the last is made
+    /// and shown; further than that does nothing.
     pub fn switch_workspace(&mut self, workspace: usize) {
-        if workspace < self.workspace_count() {
+        if workspace <= self.workspace_count() {
+            let workspace = self.reach(self.current, workspace);
             self.turn(self.current, workspace);
         }
     }
@@ -864,11 +973,28 @@ impl Desktop {
     }
 
     /// Sends a window's whole frame to another workspace of its output,
-    /// where it becomes the focused, topmost frame. The workspace being
+    /// where it becomes the focused, topmost frame. One past the last is
+    /// made for it; further than that does nothing. The workspace being
     /// shown does not change.
     pub fn move_to_workspace(&mut self, id: WindowId, workspace: usize) {
         let Some(at) = self.locate(id) else { return };
-        if workspace >= self.workspace_count() || workspace == at.workspace {
+        if workspace <= self.sets[at.set].workspaces.len() {
+            self.send(at, workspace);
+        }
+    }
+
+    /// Sends a window's whole frame to a workspace made for it, after the
+    /// last of its output's. The workspace being shown does not change.
+    pub fn move_to_new_workspace(&mut self, id: WindowId) {
+        let Some(at) = self.locate(id) else { return };
+        self.send(at, usize::MAX);
+    }
+
+    /// Sends the frame at `at` to a workspace of its output, making one at
+    /// the end if `workspace` is past the last.
+    fn send(&mut self, at: Location, workspace: usize) {
+        let workspace = self.reach(at.set, workspace);
+        if workspace == at.workspace {
             return;
         }
         let mut group = self.sets[at.set].workspaces[at.workspace]
@@ -878,6 +1004,7 @@ impl Desktop {
         group.standing.sticky = false;
         self.sets[at.set].workspaces[at.workspace].repair();
         self.push_focused(at.set, workspace, group);
+        self.sets[at.set].prune();
     }
 
     /// Sends a window's whole frame to the next output, wrapping around,
@@ -1017,6 +1144,7 @@ impl Desktop {
         arriving.groups.extend(carried);
         arriving.focused = kept.or(arriving.focused);
         arriving.repair();
+        set.prune();
     }
 
     /// Gives a frame to another output's set, on the workspace that output
@@ -1028,6 +1156,7 @@ impl Desktop {
         let workspace = self.sets[onto].active;
         self.push_focused(onto, workspace, group);
         self.current = onto;
+        self.sets[at.set].prune();
     }
 
     /// The set of the output at `point`, or failing that the first.
@@ -1370,7 +1499,7 @@ mod tests {
     }
 
     #[test]
-    fn a_rule_naming_a_missing_workspace_uses_the_last_one() {
+    fn a_rule_naming_a_workspace_past_the_last_makes_one_at_the_end() {
         let mut desktop = desktop();
         desktop.set_rules(vec![rule(
             "*",
@@ -1380,7 +1509,9 @@ mod tests {
             },
         )]);
         let id = open(&mut desktop, "app");
-        assert_eq!(desktop.workspace_of(id), Some(2));
+        assert_eq!(desktop.workspace_of(id), Some(3));
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.active_workspace(), 0, "and does not show it");
     }
 
     #[test]
@@ -2080,10 +2211,111 @@ mod tests {
     }
 
     #[test]
-    fn switching_to_a_workspace_that_does_not_exist_is_ignored() {
+    fn switching_further_than_one_past_the_last_workspace_is_ignored() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(4);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(desktop.workspace_count(), 3);
+    }
+
+    #[test]
+    fn switching_one_past_the_last_workspace_makes_it() {
         let mut desktop = desktop();
         desktop.switch_workspace(3);
-        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(desktop.active_workspace(), 3);
+        assert_eq!(desktop.workspace_count(), 4);
+
+        // Left empty, it goes.
+        desktop.switch_workspace(0);
+        assert_eq!(desktop.workspace_count(), 3);
+    }
+
+    #[test]
+    fn a_new_workspace_is_shown_and_goes_when_left_empty() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        desktop.new_workspace();
+        assert_eq!(desktop.active_workspace(), 3);
+        assert_eq!(desktop.focused(), None);
+
+        // Asked for again from an empty one, there is still only the one.
+        desktop.new_workspace();
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.active_workspace(), 3);
+
+        desktop.previous_workspace();
+        assert_eq!(desktop.workspace_count(), 3);
+        desktop.switch_workspace(0);
+        assert_eq!(desktop.focused(), Some(first));
+    }
+
+    #[test]
+    fn a_new_workspace_with_a_window_on_it_stays_when_left() {
+        let mut desktop = desktop();
+        desktop.new_workspace();
+        let id = open(&mut desktop, "app");
+        desktop.switch_workspace(0);
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.workspace_of(id), Some(3));
+
+        desktop.remove_window(id);
+        assert_eq!(desktop.workspace_count(), 3);
+    }
+
+    #[test]
+    fn a_workspace_keeps_its_identity_as_others_come_and_go() {
+        let mut desktop = desktop();
+        desktop.new_workspace();
+        let first = open(&mut desktop, "first");
+        desktop.new_workspace();
+        let second = open(&mut desktop, "second");
+        let places: Vec<Place> = desktop.workspaces().collect();
+        assert_eq!(places.len(), 5);
+        assert!(
+            places[..3]
+                .iter()
+                .all(|place| place.kept && place.output == 0)
+        );
+        assert!(!places[3].kept && !places[4].kept);
+        assert!(places[4].shown && !places[3].shown);
+        assert_eq!(places[4].index, 4);
+
+        desktop.remove_window(first);
+        let now: Vec<Place> = desktop.workspaces().collect();
+        assert_eq!(now.len(), 4);
+        assert_eq!(now[3].id, places[4].id, "the same one, a place earlier");
+        assert_ne!(now[3].id.get(), places[3].id.get());
+        assert_eq!(desktop.workspace_of(second), Some(3));
+    }
+
+    #[test]
+    fn there_are_never_more_workspaces_than_the_most() {
+        let mut desktop = desktop();
+        desktop.set_workspace_count(99);
+        assert_eq!(desktop.workspace_count(), Desktop::MOST_WORKSPACES);
+
+        // Asking for one more goes to the last there is.
+        desktop.new_workspace();
+        assert_eq!(desktop.workspace_count(), Desktop::MOST_WORKSPACES);
+        assert_eq!(desktop.active_workspace(), Desktop::MOST_WORKSPACES - 1);
+        assert_eq!(
+            Desktop::new(Settings::default(), 99).workspace_count(),
+            Desktop::MOST_WORKSPACES
+        );
+    }
+
+    #[test]
+    fn an_output_that_goes_takes_its_made_workspaces_to_the_first() {
+        let mut desktop = two_outputs();
+        let id = open_on_second(&mut desktop, "app");
+        desktop.move_to_workspace(id, 3);
+        assert_eq!(desktop.workspace_of(id), Some(3));
+
+        desktop.remove_output(1);
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.workspace_of(id), Some(3));
+        let last = desktop.workspaces().last().unwrap();
+        assert!(!last.kept);
     }
 
     #[test]
@@ -2138,33 +2370,78 @@ mod tests {
     }
 
     #[test]
-    fn moving_a_frame_to_its_own_or_a_missing_workspace_does_nothing() {
+    fn moving_a_frame_to_its_own_workspace_or_too_far_does_nothing() {
         let mut desktop = desktop();
         let id = open(&mut desktop, "app");
         let before = desktop.clone();
         desktop.move_to_workspace(id, 0);
-        desktop.move_to_workspace(id, 3);
+        desktop.move_to_workspace(id, 4);
         assert_eq!(desktop, before);
     }
 
     #[test]
-    fn removing_workspaces_moves_their_frames_to_the_last_one_left() {
+    fn moving_a_frame_one_past_the_last_workspace_makes_one_for_it() {
+        let mut desktop = desktop();
+        let id = open(&mut desktop, "app");
+
+        desktop.move_to_workspace(id, 3);
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.workspace_of(id), Some(3));
+        assert_eq!(desktop.active_workspace(), 0, "what is shown stays");
+
+        // Moved away again, the workspace that was made has nothing on it
+        // and nobody looking at it.
+        desktop.move_to_workspace(id, 1);
+        assert_eq!(desktop.workspace_count(), 3);
+        assert_eq!(desktop.workspace_of(id), Some(1));
+    }
+
+    #[test]
+    fn a_frame_is_sent_to_a_workspace_made_for_it_however_many_there_are() {
+        let mut desktop = desktop();
+        let stays = open(&mut desktop, "stays");
+        let goes = open(&mut desktop, "goes");
+
+        desktop.move_to_new_workspace(goes);
+        assert_eq!(desktop.workspace_count(), 4);
+        assert_eq!(desktop.workspace_of(goes), Some(3));
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(desktop.focused(), Some(stays));
+    }
+
+    #[test]
+    fn a_window_alone_on_a_made_workspace_stays_there_when_sent_to_a_new_one() {
+        let mut desktop = desktop();
+        desktop.new_workspace();
+        let id = open(&mut desktop, "app");
+        let before = desktop.clone();
+
+        // The one made for it would take the place of the one it left.
+        desktop.move_to_workspace(id, 4);
+        assert_eq!(desktop.workspace_count(), before.workspace_count() + 1);
+        assert_eq!(desktop.workspace_of(id), Some(4));
+        assert_eq!(desktop.active_workspace(), 3, "still shown, and empty");
+    }
+
+    #[test]
+    fn a_workspace_no_longer_kept_stays_while_it_is_shown_or_has_frames() {
         let mut desktop = desktop();
         let kept = open(&mut desktop, "kept");
         desktop.switch_workspace(2);
         let orphan = open(&mut desktop, "orphan");
 
         desktop.set_workspace_count(2);
-
-        assert_eq!(desktop.workspace_count(), 2);
-        assert_eq!(
-            desktop.active_workspace(),
-            1,
-            "the shown workspace no longer exists"
-        );
-        assert_eq!(desktop.workspace_of(orphan), Some(1));
+        assert_eq!(desktop.workspace_count(), 3, "nothing moves");
+        assert_eq!(desktop.active_workspace(), 2);
+        assert_eq!(desktop.workspace_of(orphan), Some(2));
         assert_eq!(desktop.focused(), Some(orphan));
-        assert_eq!(desktop.workspace_of(kept), Some(0));
+
+        desktop.switch_workspace(0);
+        assert_eq!(desktop.workspace_count(), 3, "it has a frame on it");
+        assert_eq!(desktop.focused(), Some(kept));
+
+        desktop.remove_window(orphan);
+        assert_eq!(desktop.workspace_count(), 2, "now it has gone");
     }
 
     #[test]
@@ -2450,7 +2727,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_output_has_as_many_workspaces_as_the_others() {
+    fn a_new_output_has_the_workspaces_that_are_always_there() {
         let mut desktop = desktop();
         desktop.set_workspace_count(5);
         desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
@@ -2458,13 +2735,16 @@ mod tests {
         desktop.move_to_workspace(id, 4);
         assert_eq!(desktop.workspace_of(id), Some(4));
 
-        // Fewer workspaces means fewer on every output.
+        // Fewer kept means fewer on every output, but not from under a
+        // frame or the user: the one being shown stays, after the two.
         desktop.turn_to(SECOND_SCREEN.origin);
         desktop.switch_workspace(4);
         desktop.set_workspace_count(2);
+        assert_eq!(desktop.workspace_count(), 3);
+        assert_eq!(shown(&desktop), [0, 2]);
+        assert_eq!(desktop.workspace_of(id), Some(2));
+        desktop.turn_to(SCREEN.origin);
         assert_eq!(desktop.workspace_count(), 2);
-        assert_eq!(shown(&desktop), [0, 1]);
-        assert_eq!(desktop.workspace_of(id), Some(1));
     }
 
     #[test]
@@ -2573,6 +2853,7 @@ mod tests {
         desktop.attach(open_window, closed);
         desktop.detach(closed);
         desktop.move_to_workspace(closed, 1);
+        desktop.move_to_new_workspace(closed);
 
         assert_eq!(desktop, before);
         assert_eq!(desktop.window(closed), None);
@@ -2586,11 +2867,21 @@ mod tests {
             desktop.current < desktop.sets.len(),
             "the current set exists"
         );
-        let count = desktop.workspace_count();
         for set in &desktop.sets {
-            assert_eq!(set.workspaces.len(), count, "every output has as many");
+            let count = set.workspaces.len();
+            assert!(count <= Desktop::MOST_WORKSPACES, "no more than the most");
             assert!(set.active < count, "the workspace shown exists");
+            for (index, workspace) in set.workspaces.iter().enumerate() {
+                assert_eq!(workspace.kept, index < desktop.kept, "the first are kept");
+                let needed = !workspace.groups.is_empty() || index == set.active;
+                assert!(workspace.kept || needed, "none is left for nothing");
+            }
         }
+        let mut places: Vec<WorkspaceId> = desktop.workspaces().map(|place| place.id).collect();
+        let every = places.len();
+        places.sort_unstable();
+        places.dedup();
+        assert_eq!(places.len(), every, "no two workspaces are one");
         let workspaces = desktop.sets.iter().flat_map(|set| &set.workspaces);
         for workspace in workspaces.clone() {
             let focusable: Vec<u64> = workspace
@@ -2637,7 +2928,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(30) {
+            match random(32) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -2650,8 +2941,10 @@ mod tests {
                 7 => desktop.detach(id),
                 8 => desktop.next_tab(id),
                 9 => desktop.previous_tab(id),
-                10 => desktop.move_to_workspace(id, random(4)),
-                11 => desktop.switch_workspace(random(4)),
+                10 => desktop.move_to_workspace(id, random(6)),
+                11 => desktop.switch_workspace(random(6)),
+                30 => desktop.new_workspace(),
+                31 => desktop.move_to_new_workspace(id),
                 12 => desktop.focus_next(),
                 13 => desktop.focus_previous(),
                 14 => desktop.set_workspace_count(1 + random(4)),

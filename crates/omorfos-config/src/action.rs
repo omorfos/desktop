@@ -44,15 +44,21 @@ pub enum Action {
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
     PreviousTab,
-    /// Switch to the workspace with this number.
+    /// Switch to the workspace with this number. One past the last makes
+    /// that workspace first.
     Workspace(WorkspaceNumber),
+    /// Make a workspace after the last and switch to it. It goes again
+    /// once it is empty and another is shown.
+    NewWorkspace,
     /// Switch to the following workspace.
     NextWorkspace,
     /// Switch to the preceding workspace.
     PreviousWorkspace,
     /// Send the focused window to the workspace with this number, on the
-    /// screen it is on.
+    /// screen it is on. One past the last makes that workspace first.
     MoveToWorkspace(WorkspaceNumber),
+    /// Send the focused window to a workspace made for it, after the last.
+    MoveToNewWorkspace,
     /// Send the focused window to the next screen.
     MoveToNextOutput,
     /// Open the root menu at the pointer.
@@ -139,6 +145,11 @@ mod tests {
         assert_eq!(parse("shade"), Ok(Action::Shade));
         assert_eq!(parse("keep_above"), Ok(Action::KeepAbove));
         assert_eq!(parse("stick"), Ok(Action::Stick));
+        assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
+        assert_eq!(
+            parse("move_to_new_workspace"),
+            Ok(Action::MoveToNewWorkspace)
+        );
     }
 
     #[test]

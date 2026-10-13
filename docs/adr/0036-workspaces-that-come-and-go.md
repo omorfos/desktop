@@ -28,9 +28,10 @@ the dock in place.
 
 - The ones named in `workspaces` in the configuration are always there
   and come first. By default there is one, where there were four.
-- More are made as wanted: by the `new_workspace` action, by "New
-  workspace" in the dock, or by sending a window to "a new workspace".
-  They are named by their number.
+- More are made as wanted: by the `new_workspace` action (`Super+n`), by
+  "New workspace" in the dock, or by sending a window to a new one
+  (`move_to_new_workspace`, `Super+Shift+n`, and the titlebar's menu).
+  They are named by their number. A screen has 32 at most.
 - One that was made, not named, is removed once it is empty and another
   is being shown. It is not removed from under the user: an empty one
   that is being shown stays until it is left.
@@ -98,8 +99,9 @@ brings up the dock.
   `Super+2` on a fresh session gives a second workspace. Further than
   that is refused, as going past the last is now.
 - `move_to_workspace: N` likewise, and takes the window along.
-- A rule's `workspace: N` makes the desktops up to N if they are not
-  there.
+- A rule's `workspace: N` puts the window on the Nth desktop, or on a new
+  one at the end if there are fewer. The desktops between are not made:
+  empty and not shown, they would go again at once.
 - Each screen still has its own row (ADR 17). A window dragged to
   another screen joins the desktop being shown there; if a solo is being
   shown there, the desktop it came from.
@@ -111,6 +113,17 @@ used again in a session, its place in the row, its kind, and, for a
 solo, its window. `number` goes on meaning what a key would reach, and a
 solo has none. Clients are told when a workspace comes or goes, as they
 are told of everything else.
+
+### What was built first
+
+The desktops, their identities and the actions came first, and solos
+after. Until solos are built, fullscreen is as it was: in place, on the
+desktop the window is on.
+
+When the number of desktops that are always there is made smaller,
+nothing is moved: one that is no longer kept stays for as long as it has
+a window on it or is being shown. And `Super+1` to `Super+9` go to
+desktops by default, where it was 1 to 4.
 
 ## Alternatives
 
