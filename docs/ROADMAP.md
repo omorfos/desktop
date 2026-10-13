@@ -82,10 +82,11 @@ Most are a day of thought and no code.
       from Lucide, and reduced motion, reduced transparency and high
       contrast as settings from the start. What is someone else's is
       credited in `CREDITS.md`.
-- [ ] **How effects are drawn**: blur, shadows and anything else that
-      only a GPU can do, how such drawing is tested when the tests draw
-      in software, and what it costs when nothing changes. Blur cannot
-      begin without this (see stage 4).
+- [x] **How effects are drawn** (ADR 33): blur is a shader, in one file
+      left out of coverage, checked at every start against a software
+      blur that is tested and is its specification; everything that is a
+      decision is outside that file. Shadows are pictures made on the
+      CPU. Nothing is blurred again until what is under it changes.
 - [ ] **What components and applications are written with.** `omorfos-ui`
       draws boxes and text. A dock needs little more; a file manager
       needs lists, scrolling, text fields, drag and drop and
@@ -174,11 +175,21 @@ calls for them.
 
 Stage 2 says what it is to be; this builds it.
 
-- [ ] Blur behind what is see-through (`backdrop-filter: blur()`), the
-      frosted glass, drawn by the compositor for its own parts and for
-      the components'. How other programs ask for it
-      (`ext-background-effect`) comes with it.
-- [ ] Shadows under windows, menus and panels (`box-shadow`).
+- [ ] Shadows under windows, menus and panels (`box-shadow`), as
+      pictures made on the CPU (ADR 33).
+- [ ] Glass, drawn in software and tested (`backdrop-filter: blur()`):
+      what is under each sheet, its blurred picture, when that is stale,
+      and the software blur that is the shader's specification. The
+      wallpaper is blurred once and used wherever nothing else is under
+      the glass. The hardware backend draws solid until the next item.
+- [ ] The blur shader, its check at startup, and the file left out of
+      coverage, tried on real hardware: behind the bar, the dock, menus
+      and notifications, for the compositor's parts and the components'.
+- [ ] How long a frame took to draw, and how many blurs it made, in the
+      state published over IPC.
+- [ ] Blur behind titlebars, once its cost has been measured with a
+      dozen windows on a modest laptop.
+- [ ] Blur for other programs that ask (`ext-background-effect`).
 - [ ] Gradients and a picture as a background, a transition's delay, and
       `cubic-bezier()`.
 - [ ] The built-in theme redrawn in the design language: light and dark,
