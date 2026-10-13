@@ -7,7 +7,7 @@
 use std::cell::Cell;
 use std::io::Write;
 use std::os::fd::AsFd;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -52,6 +52,9 @@ use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_v1 as primary_device,
     zwp_primary_selection_offer_v1 as primary_offer,
     zwp_primary_selection_source_v1 as primary_source,
+};
+use wayland_protocols::wp::security_context::v1::client::{
+    wp_security_context_manager_v1, wp_security_context_v1,
 };
 use wayland_protocols::wp::single_pixel_buffer::v1::client::wp_single_pixel_buffer_manager_v1;
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
@@ -592,6 +595,9 @@ pub(crate) struct ClientState {
     single_pixels: Option<wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1>,
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
+    sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
+    /// The name of everything the compositor offers this client.
+    pub(crate) offered: Vec<String>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
     inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
     /// The outputs the compositor offers, in the order they appeared.
@@ -673,6 +679,19 @@ impl Client {
             let _ = guard.read();
         }
         self.queue.dispatch_pending(&mut self.state).unwrap();
+    }
+
+    /// Makes a sandbox as Flatpak does: whatever connects at `path` from
+    /// now on is inside it, until what this returns is dropped.
+    pub(crate) fn sandbox(&self, path: &Path) -> UnixStream {
+        let listener = UnixListener::bind(path).unwrap();
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let manager = self.state.sandboxes.as_ref().unwrap();
+        let context = manager.create_listener(listener.as_fd(), theirs.as_fd(), &self.handle(), ());
+        context.set_sandbox_engine("org.flatpak".to_owned());
+        context.set_app_id("org.example.App".to_owned());
+        context.commit();
+        ours
     }
 
     /// Returns the events received so far and forgets them.
@@ -1110,7 +1129,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
         else {
             return;
         };
+        state.offered.push(interface.clone());
         match interface.as_str() {
+            "wp_security_context_manager_v1" => {
+                state.sandboxes = Some(registry.bind(name, version, handle, ()));
+            }
             "wl_compositor" => state.compositor = Some(registry.bind(name, version, handle, ())),
             "wl_subcompositor" => {
                 state.subcompositor = Some(registry.bind(name, version, handle, ()));
@@ -1589,6 +1612,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
 }
 
 delegate_noop!(ClientState: wl_compositor::WlCompositor);
+delegate_noop!(ClientState: wp_security_context_manager_v1::WpSecurityContextManagerV1);
+delegate_noop!(ClientState: wp_security_context_v1::WpSecurityContextV1);
 delegate_noop!(ClientState: wl_subcompositor::WlSubcompositor);
 delegate_noop!(ClientState: wl_subsurface::WlSubsurface);
 delegate_noop!(ClientState: wl_shm_pool::WlShmPool);

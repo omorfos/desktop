@@ -772,6 +772,12 @@ is refused, and you are told once what asked and what to write to let
 it. The panel, the launcher and the notifications that come with omorfos
 have what they need; started by hand, they are ordinary programs too.
 
+A program in a sandbox, such as one installed with Flatpak, is held to
+less again. It is not shown that panels, locking or the list of windows
+exist, so it cannot ask, and no setting gives it a role. Nothing needs
+to be set up for this: the sandbox tells omorfos which programs are
+inside it.
+
 This keeps a program that is merely running from putting a false panel
 or a false lock screen in front of you. It is not a wall against a
 program that can already change your files: such a program could write
