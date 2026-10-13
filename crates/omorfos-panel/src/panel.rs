@@ -199,7 +199,7 @@ impl Panel {
 /// whose own socket is at `socket`, themed from `config`, until it cannot
 /// go on. Returns why.
 pub(crate) fn run(wayland: &Path, socket: &Path, config: &Path) -> Failure {
-    let streams = UnixStream::connect(wayland).and_then(|wayland| {
+    let streams = omorfos_shell::connect(wayland).and_then(|wayland| {
         let news = Ipc::connect(socket);
         let both = news.and_then(|news| Ipc::connect(socket).map(|commands| (news, commands)));
         both.map(|(news, commands)| (wayland, news, commands))

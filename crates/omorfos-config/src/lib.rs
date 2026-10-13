@@ -34,7 +34,7 @@ mod transition;
 mod value;
 mod watcher;
 
-pub use action::{Action, Command, Half, MAX_WORKSPACES, WorkspaceNumber};
+pub use action::{Action, Command, Half, MAX_WORKSPACES, Role, Started, WorkspaceNumber};
 pub use bounded::Bounded;
 pub use color::Color;
 pub use config::{Config, FILES, MAX_FILE_SIZE};

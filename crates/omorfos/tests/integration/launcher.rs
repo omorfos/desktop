@@ -81,7 +81,10 @@ fn launcher(session: &mut Session) -> Launcher {
     let socket = session.listen();
     let apps = ["Files", "Firefox", "Lens"].map(|name| marking(session, name));
     let (ours, theirs) = UnixStream::pair().unwrap();
-    session.compositor_mut().insert_client(ours).unwrap();
+    session
+        .compositor_mut()
+        .insert_client(ours, omorfos::Roles::ALL)
+        .unwrap();
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
@@ -462,7 +465,10 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
         ..marking(&session, "Lens")
     };
     let (ours, theirs) = UnixStream::pair().unwrap();
-    session.compositor_mut().insert_client(ours).unwrap();
+    session
+        .compositor_mut()
+        .insert_client(ours, omorfos::Roles::ALL)
+        .unwrap();
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
@@ -608,7 +614,7 @@ fn a_launcher_running_by_itself_gives_up_when_the_session_ends() {
     let mut session = Session::new();
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
-    session.inner().serve(socket).unwrap();
+    session.inner().serve(socket, omorfos::Roles::ALL).unwrap();
     let ipc = session.listen();
     let variables = [
         ("XDG_RUNTIME_DIR", runtime.clone().into_os_string()),
@@ -635,7 +641,7 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
     let mut session = Session::new();
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
-    session.inner().serve(socket).unwrap();
+    session.inner().serve(socket, omorfos::Roles::ALL).unwrap();
     let ipc = session.listen();
     // One program is installed, which leaves a mark.
     let applications = runtime.join("data/applications");

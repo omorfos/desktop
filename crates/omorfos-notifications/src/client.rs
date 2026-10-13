@@ -228,7 +228,7 @@ pub(crate) fn run(
     config: &Path,
     icons: Icons,
 ) -> Failure {
-    let wayland = UnixStream::connect(wayland).map_err(Failure::from);
+    let wayland = omorfos_shell::connect(wayland).map_err(Failure::from);
     let joined = wayland.and_then(|wayland| Bus::open(address).map(|bus| (wayland, bus)));
     // A session without the compositor's own socket shows what is wrong
     // itself.

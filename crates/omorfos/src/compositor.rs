@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
@@ -90,6 +90,7 @@ use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
+use crate::roles::{Refused, Roles};
 use crate::tiles::Lines;
 use crate::x11::{Focus, Placed, Role, X11};
 
@@ -148,6 +149,8 @@ fn watch(store: &Store) -> (Option<Watcher>, Vec<String>) {
 #[derive(Debug, Default)]
 pub struct ClientState {
     pub(crate) compositor: CompositorClientState,
+    /// What the client may do that an ordinary program may not.
+    pub(crate) roles: Roles,
 }
 
 impl smithay::reexports::wayland_server::backend::ClientData for ClientState {}
@@ -266,8 +269,9 @@ pub struct Compositor {
     /// The launcher, once a backend has said where it is, and the one that
     /// is open, by the number of
     /// its process.
-    launcher: Option<PathBuf>,
-    launched: Option<u32>,
+    launcher: (Option<PathBuf>, Option<u32>),
+    /// What programs have been refused for want of a role.
+    pub(crate) refused: Refused,
     /// What is changing colour or coming in, and the time it goes by.
     animation: Animation,
     pub(crate) ipc: Option<Server>,
@@ -307,9 +311,7 @@ impl Compositor {
         // Version 6 lets a surface be told the scale to draw at.
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
-        let viewporter = ViewporterState::new::<Self>(&display);
         let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
-        // Any client may lock the session: locking gives nothing away.
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, |_| true);
         let idle = IdleNotifierState::new(&display, event_loop.clone());
         let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
@@ -321,7 +323,8 @@ impl Compositor {
         let data_device = DataDeviceState::new::<Self>(&display);
         let activation = XdgActivationState::new::<Self>(&display);
         let primary_selection = PrimarySelectionState::new::<Self>(&display);
-        let foreign_toplevels = ForeignToplevelListState::new::<Self>(&display);
+        let foreign_toplevels =
+            ForeignToplevelListState::new_with_filter::<Self>(&display, Self::lists);
         let mut seats = SeatState::new();
         let mut seat = seats.new_wl_seat(&display, "seat0");
         let pointer = seat.add_pointer();
@@ -331,6 +334,7 @@ impl Compositor {
             .map(|keyboard| {
                 let mut compositor = Self {
                     _single_pixels: SinglePixelBufferState::new::<Self>(&display),
+                    _viewporter: ViewporterState::new::<Self>(&display),
                     x11: X11::new(&display),
                     display,
                     surfaces,
@@ -346,7 +350,6 @@ impl Compositor {
                     popups: PopupManager::default(),
                     heads: Vec::new(),
                     _fractional_scale: fractional_scale,
-                    _viewporter: viewporter,
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -390,8 +393,8 @@ impl Compositor {
                     children: Vec::new(),
                     started: false,
                     components: Vec::new(),
-                    launcher: None,
-                    launched: None,
+                    launcher: (None, None),
+                    refused: Refused::default(),
                     animation: Animation::new(),
                     ipc: None,
                     ipc_retry: None,
@@ -409,14 +412,20 @@ impl Compositor {
 
     // --- Clients -------------------------------------------------------------
 
-    /// Accepts a client connected over `stream`.
+    /// Accepts a client connected over `stream` that may do what `roles`
+    /// allow: nothing beyond the ordinary, for a program that found the
+    /// socket by itself. Roles are for a stream the caller made and handed
+    /// to a program it started, which is what makes the program known.
     ///
     /// # Errors
     ///
     /// Returns an error if the connection cannot be registered.
-    pub fn insert_client(&mut self, stream: UnixStream) -> io::Result<Client> {
-        self.display
-            .insert_client(stream, Arc::new(ClientState::default()))
+    pub fn insert_client(&mut self, stream: UnixStream, roles: Roles) -> io::Result<Client> {
+        let state = ClientState {
+            roles,
+            ..ClientState::default()
+        };
+        self.display.insert_client(stream, Arc::new(state))
     }
 
     /// Sets the name of the Wayland socket, which programs started by the
@@ -611,6 +620,9 @@ impl Compositor {
     pub fn refresh(&mut self, now: Instant) {
         self.events
             .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
+        for refused in self.refused.take() {
+            self.happened(&refused, now);
+        }
         let epoch = *self.animation.epoch.get_or_insert(now);
         self.animation.clock = now.saturating_duration_since(epoch);
         if self
@@ -755,6 +767,7 @@ impl Compositor {
             }
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
+            Action::Lock => self.start_locker(),
             Action::ReloadConfig => self.reload_config(),
             Action::Quit => self.running = false,
         }
@@ -900,36 +913,72 @@ impl Compositor {
         }
     }
 
-    fn spawn(&mut self, command: &omorfos_config::Command) {
-        self.start(command.program().as_ref(), command.arguments());
+    fn spawn(&mut self, started: &omorfos_config::Started) {
+        let roles = Roles::named(&started.may);
+        let command = &started.run;
+        self.start(command.program().as_ref(), command.arguments(), roles);
+    }
+
+    /// Starts the program the configuration names to lock the session,
+    /// which is let lock by having been started for it. With none named
+    /// there is nothing to lock with, which the user is told.
+    fn start_locker(&mut self) {
+        let config = Arc::clone(self.store.current());
+        match &config.general.locker {
+            Some(locker) => {
+                self.start(locker.program().as_ref(), locker.arguments(), Roles::LOCK);
+            }
+            None => self.refused.say(
+                "nothing is set to lock the session with: name a screen locker as `locker` \
+                 in config.yaml, such as `locker: [swaylock, -f]`",
+            ),
+        }
     }
 
     /// Says where the launcher that comes with omorfos is: a name to look
     /// up in `PATH`, or a path. Until this is called there is none to
     /// open.
     pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
-        self.launcher = Some(program.into());
+        self.launcher.0 = Some(program.into());
     }
 
     /// Opens the launcher, unless one is open already.
     fn open_launcher(&mut self) {
-        let open = self.launched;
+        let (program, open) = &self.launcher;
         let open = open.is_some_and(|open| self.children.iter().any(|child| child.id() == open));
-        let program = self.launcher.clone().filter(|_| !open);
+        let program = program.clone().filter(|_| !open);
         if let Some(program) = program {
-            self.launched = self.start(program.as_os_str(), &[]);
+            // It has the keyboard, whatever had it, while it is open.
+            let roles = Roles::OVERLAY;
+            self.launcher.1 = self.start(program.as_os_str(), &[], roles);
         }
     }
 
     /// Starts a program in the session, and returns the number of its
     /// process. One that cannot be started is a problem to tell the user
     /// of.
-    fn start(&mut self, program: &OsStr, arguments: &[String]) -> Option<u32> {
+    ///
+    /// A program that is to have `roles` is handed its connection to the
+    /// compositor, already made and known to have them: as what it reads
+    /// from, which it is told by `WAYLAND_SOCKET` in the way programs
+    /// understand. An ordinary program finds the socket by its name and is
+    /// given nothing to read.
+    fn start(&mut self, program: &OsStr, arguments: &[String], roles: Roles) -> Option<u32> {
         let mut process = std::process::Command::new(program);
         process
             .args(arguments)
             .stdin(Stdio::null())
             .envs(self.session_environment());
+        let trusted = (roles != Roles::NONE).then(UnixStream::pair);
+        let handed = trusted.and_then(Result::ok).and_then(|(ours, theirs)| {
+            let known = self.insert_client(ours, roles).ok();
+            known.map(|_| theirs)
+        });
+        if let Some(theirs) = handed {
+            process
+                .stdin(OwnedFd::from(theirs))
+                .env("WAYLAND_SOCKET", "0");
+        }
         match process.spawn() {
             Ok(child) => {
                 self.wake_when_exited(&child);
@@ -993,7 +1042,8 @@ impl Compositor {
         let mut components = std::mem::take(&mut self.components);
         for component in &mut components {
             if component.kind.wanted(&config.general) {
-                component.process = self.start(component.program.as_os_str(), &[]);
+                let program = component.program.as_os_str();
+                component.process = self.start(program, &[], Roles::PANEL);
             }
         }
         self.components = components;
@@ -1024,7 +1074,8 @@ impl Compositor {
                 continue;
             }
             if component.restarts.allow(now) {
-                component.process = self.start(component.program.as_os_str(), &[]);
+                let program = component.program.as_os_str();
+                component.process = self.start(program, &[], Roles::PANEL);
             } else {
                 self.problems.push(format!(
                     "`{}` keeps stopping, and will not be started again until you log in",
@@ -1354,8 +1405,12 @@ impl Compositor {
         let demanding = self.heads.iter().find_map(|head| {
             let layers = layer_map_for_output(&head.output);
             let demanding = layers.layers().rev().find(|layer| {
+                // Only what was started to may take the keyboard from
+                // whatever has it.
+                let roles = Self::roles(layer.wl_surface().client().as_ref());
                 layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
                     && matches!(layer.layer(), Layer::Top | Layer::Overlay)
+                    && roles.has(Roles::OVERLAY)
             });
             demanding.map(|layer| layer.wl_surface().clone())
         });

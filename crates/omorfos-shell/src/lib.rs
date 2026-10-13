@@ -5,9 +5,12 @@
 //! compositor. The handing over is the same for all of them and is here.
 //! It is exercised wherever a component is tested against a compositor.
 
+use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::AsFd;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 
 use omorfos_ui::Canvas;
 use rustix::fs::{MemfdFlags, memfd_create};
@@ -45,6 +48,31 @@ where
         pool.destroy();
         buffer
     })
+}
+
+/// Connects to the compositor: over the connection the compositor made
+/// and handed over, if it handed one, or failing that at its socket,
+/// `path`, as any program does.
+///
+/// A component the compositor starts is handed a connection that is known
+/// to be its own, which is what lets it do what an ordinary program may
+/// not. It is handed over as what the program reads from, and
+/// `WAYLAND_SOCKET` says so, in the way every Wayland program understands.
+/// Taking a copy of what is read from needs nothing `unsafe`, which
+/// taking a descriptor by its number would.
+///
+/// # Errors
+///
+/// Returns an error if what was handed over cannot be copied, or the
+/// socket cannot be connected to.
+pub fn connect(path: &Path) -> io::Result<UnixStream> {
+    let handed = env::var_os("WAYLAND_SOCKET").is_some_and(|number| number == "0");
+    if handed {
+        let ours = io::stdin().as_fd().try_clone_to_owned();
+        ours.map(UnixStream::from)
+    } else {
+        UnixStream::connect(path)
+    }
 }
 
 /// The whole unit of layout a position on a surface falls in.

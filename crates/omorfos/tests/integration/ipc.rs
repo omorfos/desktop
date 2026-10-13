@@ -446,7 +446,7 @@ fn programs_started_by_the_compositor_are_told_where_the_socket_is() {
 
     session
         .compositor_mut()
-        .perform(&omorfos_config::Action::Spawn(command));
+        .perform(&omorfos_config::Action::Spawn(command.into()));
 
     let deadline = Instant::now() + Duration::from_secs(10);
     while std::fs::read_to_string(&marker)

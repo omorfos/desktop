@@ -277,7 +277,7 @@ fn announce_session(compositor: &mut Compositor) {
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
     let arguments = std::iter::once("--systemd".to_owned()).chain(told);
     if let Some(tell) = Command::new("dbus-update-activation-environment", arguments) {
-        compositor.perform(&Action::Spawn(tell));
+        compositor.perform(&Action::Spawn(tell.into()));
     }
 }
 

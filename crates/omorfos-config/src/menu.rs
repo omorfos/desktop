@@ -25,7 +25,7 @@ impl Default for Menu {
         };
         Self {
             items: vec![
-                entry("Terminal", Action::Spawn(Command::terminal())),
+                entry("Terminal", Action::Spawn(Command::terminal().into())),
                 entry("Run\u{2026}", Action::ShowLauncher),
                 MenuItem::Separator,
                 entry("Reload configuration", Action::ReloadConfig),

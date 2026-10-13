@@ -36,3 +36,45 @@ fn a_session_that_is_not_there_is_reported_too() {
     assert!(said.starts_with("omorfos-panel: "), "{said}");
     assert!(!said.contains("not an omorfos session"), "{said}");
 }
+
+#[test]
+fn a_connection_it_is_handed_is_the_one_it_uses() {
+    use std::io::Read;
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::time::Duration;
+
+    // The compositor starts its panel with the connection already made,
+    // as what the panel reads from, and says so. There is no socket of
+    // the name given, so anything said to us came over what was handed.
+    let directory = tempfile::TempDir::new().unwrap();
+    let _session = UnixListener::bind(directory.path().join("omorfos")).unwrap();
+    let (mut ours, theirs) = UnixStream::pair().unwrap();
+    let mut started = panel()
+        .env("XDG_RUNTIME_DIR", directory.path())
+        .env("WAYLAND_DISPLAY", "wayland-none")
+        .env("WAYLAND_SOCKET", "0")
+        .env("OMORFOS_SOCKET", directory.path().join("omorfos"))
+        .env("HOME", directory.path())
+        .stdin(OwnedFd::from(theirs))
+        .spawn()
+        .unwrap();
+
+    ours.set_read_timeout(Some(Duration::from_secs(30)))
+        .unwrap();
+    let mut said = [0_u8; 8];
+    let heard = ours.read(&mut said);
+    assert!(matches!(heard, Ok(bytes) if bytes > 0), "{heard:?}");
+
+    // With the connection gone it has nothing to go on for, and stops of
+    // its own accord.
+    drop(ours);
+    let stopped = (0..3000).find_map(|_| {
+        std::thread::sleep(Duration::from_millis(10));
+        started.try_wait().unwrap()
+    });
+    if stopped.is_none() {
+        started.kill().unwrap();
+    }
+    assert_eq!(stopped.and_then(|status| status.code()), Some(1));
+}

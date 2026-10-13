@@ -45,6 +45,7 @@ use smithay::{delegate_idle_inhibit, delegate_idle_notify, delegate_session_lock
 use crate::Input;
 use crate::compositor::Compositor;
 use crate::input::{Placed, virtual_terminal};
+use crate::roles::Roles;
 
 /// A lock on the session. While the compositor holds one, the session is
 /// locked.
@@ -285,6 +286,13 @@ impl SessionLockHandler for Compositor {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
+        // Locking is for the program that was started to: any other could
+        // lock the user out, or show what only looks like a lock.
+        let client = confirmation.ext_session_lock().client();
+        if !Self::roles(client.as_ref()).has(Roles::LOCK) {
+            self.refuse(client.as_ref(), "lock the session", "lock");
+            return;
+        }
         if self.lock.as_ref().is_some_and(|lock| lock.by.is_alive()) {
             // Somebody holds the lock. Dropping the request refuses it.
             return;

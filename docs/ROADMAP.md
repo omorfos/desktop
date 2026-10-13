@@ -164,11 +164,13 @@ calls for them.
 - [ ] A window that nobody asked for, opening while a fullscreen
       workspace is shown, left on the desktop unseen (activation
       tokens).
-- [ ] Roles (ADR 37): components started by being handed their
-      connection, `may` on what `autostart` starts, every privileged
-      protocol behind a check of the role, sandboxes recognised
-      (`security-context-v1`), and the notification that says what was
-      refused and how to allow it.
+- [x] Roles (ADR 37): components started by being handed their
+      connection, `may` on what `autostart` and `spawn` start, panels,
+      taking the keyboard and locking each behind a check of the role,
+      the `lock` action and `locker`, and the user told what was refused
+      and how to allow it.
+- [ ] Programs in a sandbox recognised (`security-context-v1`) and shown
+      nothing they may not have.
 - [ ] Screen capture: a screenshot of a screen, a window or a region, and
       the stream that sharing a screen in a browser or a call needs
       (`ext-image-copy-capture`, PipeWire), with the user asked each time

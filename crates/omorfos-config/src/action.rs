@@ -1,6 +1,10 @@
 //! Things a key binding or menu entry can do.
 
-use serde::Deserialize;
+use std::fmt;
+
+use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
+use serde::de::{MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 
 use crate::Bounded;
 
@@ -37,7 +41,7 @@ pub enum Half {
 pub enum Action {
     /// Start a program, given as a list: the program followed by its
     /// arguments. No shell is involved, so nothing is expanded or split.
-    Spawn(Command),
+    Spawn(Started),
     /// Ask the focused window to close.
     Close,
     /// Toggle the focused window between maximized and its normal size.
@@ -97,10 +101,97 @@ pub enum Action {
     ShowMenu,
     /// Open the launcher, to start a program by typing its name.
     ShowLauncher,
+    /// Lock the session, with the program `locker` in config.yaml names.
+    Lock,
     /// Re-read the configuration now.
     ReloadConfig,
     /// End the session.
     Quit,
+}
+
+/// A program to start, and what it may do that an ordinary program may
+/// not.
+///
+/// Written as the program and its arguments alone, `[waybar]`, it is an
+/// ordinary program. Written `{ run: [waybar], may: [panel] }` it is given
+/// the roles named, by being started with a connection that has them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Started {
+    /// The program and its arguments.
+    pub run: Command,
+    /// What it may do that an ordinary program may not. Nothing, unless
+    /// said.
+    pub may: Vec<Role>,
+}
+
+/// A program to start, written with what it may do.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Trusted {
+    run: Command,
+    #[serde(default)]
+    may: Vec<Role>,
+}
+
+/// Reads a program to start in either of the ways it is written, saying
+/// what is wrong with it as it would be said of either alone.
+struct Either;
+
+impl<'de> Visitor<'de> for Either {
+    type Value = Started;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a program to run followed by its arguments, or `run` and `may`")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, words: A) -> Result<Started, A::Error> {
+        Command::deserialize(SeqAccessDeserializer::new(words)).map(Started::from)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, fields: A) -> Result<Started, A::Error> {
+        let trusted = Trusted::deserialize(MapAccessDeserializer::new(fields));
+        trusted.map(|Trusted { run, may }| Started { run, may })
+    }
+}
+
+impl<'de> Deserialize<'de> for Started {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(Either)
+    }
+}
+
+impl From<Command> for Started {
+    fn from(run: Command) -> Self {
+        Self {
+            run,
+            may: Vec::new(),
+        }
+    }
+}
+
+/// Something a program may do only if the compositor started it and was
+/// told it may.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// Put surfaces on the screen outside windows and keep room for them,
+    /// and list the windows.
+    Panel,
+    /// Cover the screen and take the keyboard while it does.
+    Overlay,
+    /// Lock the session.
+    Lock,
+    /// Show the prompt that asks for a secret.
+    Ask,
+    /// Take pictures of the screen and of windows.
+    Capture,
+    /// Read and set the clipboard at any time.
+    Clipboard,
+    /// Type and click as the user, and see what is typed into fields.
+    Input,
+    /// Arrange the screens and change their colour.
+    Screens,
 }
 
 /// A program and its arguments, run directly without a shell.
@@ -178,6 +269,7 @@ mod tests {
         assert_eq!(parse("keep_above"), Ok(Action::KeepAbove));
         assert_eq!(parse("stick"), Ok(Action::Stick));
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
+        assert_eq!(parse("lock"), Ok(Action::Lock));
         assert_eq!(
             parse("move_to_new_workspace"),
             Ok(Action::MoveToNewWorkspace)
@@ -211,8 +303,26 @@ mod tests {
         assert_eq!(command.arguments(), ["-e", "man 1 ls"]);
         assert_eq!(
             parse("spawn: [foot, -e, 'man 1 ls']"),
-            Ok(Action::Spawn(command))
+            Ok(Action::Spawn(command.into()))
         );
+        // Told what it may do, as a screen locker bound to a key is.
+        let locker = Command::new("swaylock", ["-f"]).unwrap();
+        assert_eq!(
+            parse("spawn: { run: [swaylock, -f], may: [lock] }"),
+            Ok(Action::Spawn(Started {
+                run: locker,
+                may: vec![Role::Lock]
+            }))
+        );
+    }
+
+    #[test]
+    fn a_program_to_start_is_a_list_or_says_what_it_may_do() {
+        let wrong = parse("spawn: 5").unwrap_err();
+        assert!(wrong.contains("or `run` and `may`"), "{wrong}");
+        let wrong = parse("spawn: { run: [], may: [lock] }").unwrap_err();
+        assert!(wrong.contains("expected a program to run"), "{wrong}");
+        assert!(parse("spawn: { run: [foot], might: [lock] }").is_err());
     }
 
     #[test]

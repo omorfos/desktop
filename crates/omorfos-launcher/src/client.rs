@@ -167,7 +167,7 @@ pub(crate) fn run(
     config: &Path,
     (apps, icons): (Vec<App>, Icons),
 ) -> Result<(), Failure> {
-    let streams = UnixStream::connect(wayland);
+    let streams = omorfos_shell::connect(wayland);
     let streams = streams.and_then(|wayland| Ipc::connect(socket).map(|ipc| (wayland, ipc)));
     let launcher = streams
         .map_err(Failure::from)

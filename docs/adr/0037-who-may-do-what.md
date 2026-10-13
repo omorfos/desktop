@@ -142,6 +142,51 @@ to others, and not reachable from a sandbox. A program given a role
 through it gains nothing it could not have had by editing the
 configuration.
 
+## What was built first, and what it settled
+
+The first three roles: `panel`, `overlay` and `lock`. The others are
+names the configuration accepts, with nothing behind them yet. Programs
+in a sandbox are not recognised yet either, so for now every program
+that finds the socket is an ordinary one.
+
+**Handed over as what the program reads from.** The compositor makes
+both ends of a connection, keeps one as a client it knows the roles of,
+and gives the program the other as its standard input, with
+`WAYLAND_SOCKET=0` to say so. Every Wayland program understands that.
+Our own components take a copy of their standard input, which needs
+nothing `unsafe`, as taking a descriptor by its number would.
+
+**Refused, not hidden.** The decision had a refused program "not shown
+that the thing exists", and also had the user told what asked. The two
+do not go together: a program that is not shown a thing never asks for
+it. For a program that is not in a sandbox, being told matters more, so
+it is shown that panels and locking exist, asks, and is refused, and the
+user is told once with what to write. The list of windows is the
+exception: it is simply not offered to a program without the `panel`
+role, since offering it is giving it. Hiding everything is for programs
+in a sandbox, when those are recognised.
+
+**`overlay` is the keyboard.** It was to be "cover the screen and take
+the keyboard". Which layer a surface is on does not say whether it
+covers the screen, and the notifications that come with omorfos are on
+the top layer of all without covering anything. So any layer is the
+`panel` role's, and `overlay` adds the one thing that reaches further:
+taking the keyboard from whatever has it.
+
+**`spawn` takes `may` too**, in a key binding or a menu entry, since
+those are the configuration as much as `autostart` is.
+
+**Locking has an action.** With locking refused to ordinary programs, a
+key bound to `spawn: [swaylock]` and an idle daemon that starts a locker
+both stop working. `locker` in the configuration names the program and
+the `lock` action starts it with the role, from a key or over IPC, which
+is what an idle daemon is now told to do.
+
+**A socket can be served with roles.** `Session::serve` takes the roles
+its clients have. The session's own socket is served with none. It is
+there for tests, which run a component against a socket as a user would
+have before this, and for whoever builds on the library.
+
 ## Alternatives
 
 - **Leave it open, as most small compositors do.** Any program that runs
