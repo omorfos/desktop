@@ -19,7 +19,7 @@ use std::io::{Write, stderr};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Command, Mouse, Touchpad};
+use omorfos_config::{Acceleration, Action, Command, Mouse, Touchpad};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{
@@ -41,7 +41,7 @@ use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc,
 };
-use smithay::reexports::input::{Device, DeviceCapability, Libinput};
+use smithay::reexports::input::{AccelProfile, Device, DeviceCapability, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
@@ -543,9 +543,13 @@ impl Hardware {
         for device in &mut self.touchpads {
             let _ = device.config_tap_set_enabled(touchpad.tap_to_click);
             let _ = device.config_scroll_set_natural_scroll_enabled(touchpad.natural_scroll);
+            let _ = device.config_accel_set_speed(touchpad.speed.value());
+            let _ = device.config_accel_set_profile(profile(touchpad.acceleration));
         }
         for device in &mut self.mice {
             let _ = device.config_scroll_set_natural_scroll_enabled(mouse.natural_scroll);
+            let _ = device.config_accel_set_speed(mouse.speed.value());
+            let _ = device.config_accel_set_profile(profile(mouse.acceleration));
         }
         self.configured = Some((touchpad, mouse));
     }
@@ -600,5 +604,13 @@ impl Screen {
             }
             None => Ok(false),
         }
+    }
+}
+
+/// The name libinput has for a way of accelerating the pointer.
+const fn profile(acceleration: Acceleration) -> AccelProfile {
+    match acceleration {
+        Acceleration::Adaptive => AccelProfile::Adaptive,
+        Acceleration::Flat => AccelProfile::Flat,
     }
 }

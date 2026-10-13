@@ -288,6 +288,11 @@ pub struct Touchpad {
     pub tap_to_click: bool,
     /// Whether content follows the fingers when scrolling.
     pub natural_scroll: bool,
+    /// How fast the pointer moves under a finger.
+    pub speed: Speed,
+    /// Whether a quick movement takes the pointer further than a slow one
+    /// of the same length.
+    pub acceleration: Acceleration,
 }
 
 impl Default for Touchpad {
@@ -297,8 +302,49 @@ impl Default for Touchpad {
             // Fingers on a touchpad move what is under them, as they do on
             // a telephone.
             natural_scroll: true,
+            speed: Speed::default(),
+            acceleration: Acceleration::default(),
         }
     }
+}
+
+/// How fast a device moves the pointer: from -1, the slowest, to 1, the
+/// fastest, with 0 what the device is made for. Kept in hundredths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(try_from = "f64")]
+pub struct Speed(i8);
+
+impl Speed {
+    /// The speed as a number from -1 to 1.
+    #[must_use]
+    pub fn value(self) -> f64 {
+        f64::from(self.0) / 100.0
+    }
+}
+
+impl TryFrom<f64> for Speed {
+    type Error = String;
+
+    fn try_from(speed: f64) -> Result<Self, Self::Error> {
+        Some(speed * 100.0)
+            .filter(|hundredths| (-100.0..=100.0).contains(hundredths))
+            .and_then(|hundredths| format!("{hundredths:.0}").parse().ok())
+            .map(Self)
+            .ok_or_else(|| format!("invalid speed `{speed}`: expected a number from -1 to 1"))
+    }
+}
+
+/// How the speed of a movement changes how far the pointer goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Acceleration {
+    /// A quick movement takes the pointer further than a slow one of the
+    /// same length: slow for precision, quick to cross the screen.
+    #[default]
+    Adaptive,
+    /// The pointer goes as far as the device moved, however quickly.
+    Flat,
 }
 
 /// Mouse behaviour. A mouse and a touchpad are set apart because people
@@ -310,6 +356,11 @@ pub struct Mouse {
     /// Whether content follows the wheel when scrolling. A wheel turned
     /// towards the user moves down the page unless this is on.
     pub natural_scroll: bool,
+    /// How fast the pointer moves with the mouse.
+    pub speed: Speed,
+    /// Whether a quick movement takes the pointer further than a slow one
+    /// of the same length.
+    pub acceleration: Acceleration,
 }
 
 /// How the screen is driven.
@@ -589,7 +640,9 @@ mod tests {
             general.touchpad,
             Touchpad {
                 tap_to_click: true,
-                natural_scroll: true
+                natural_scroll: true,
+                speed: Speed(0),
+                acceleration: Acceleration::Adaptive,
             }
         );
     }
@@ -608,6 +661,46 @@ mod tests {
             "what is not said is as before"
         );
         assert!(parse("mouse: { tap_to_click: true }").is_err());
+    }
+
+    #[test]
+    fn a_mouse_and_a_touchpad_each_have_a_speed_and_an_acceleration() {
+        let general = General::default();
+        for (speed, acceleration) in [
+            (general.touchpad.speed, general.touchpad.acceleration),
+            (general.mouse.speed, general.mouse.acceleration),
+        ] {
+            assert!(
+                speed.value().abs() < f64::EPSILON,
+                "what the device is made for"
+            );
+            assert_eq!(acceleration, Acceleration::Adaptive);
+        }
+        let yaml = "touchpad: { speed: 0.3 }\nmouse: { speed: -1, acceleration: flat }";
+        let general = parse(yaml).unwrap();
+        assert!((general.touchpad.speed.value() - 0.3).abs() < f64::EPSILON);
+        assert_eq!(general.touchpad.acceleration, Acceleration::Adaptive);
+        assert!((general.mouse.speed.value() + 1.0).abs() < f64::EPSILON);
+        assert_eq!(general.mouse.acceleration, Acceleration::Flat);
+        assert_eq!(
+            parse("mouse: { speed: 1 }").unwrap().mouse.speed,
+            Speed(100)
+        );
+    }
+
+    #[test]
+    fn a_speed_outside_what_a_device_takes_is_refused() {
+        for speed in ["1.01", "-2", ".nan"] {
+            let error = parse(&format!("mouse: {{ speed: {speed} }}")).unwrap_err();
+            assert!(error.contains("speed"), "{error}");
+        }
+        let error = parse("touchpad: { speed: 3 }").unwrap_err();
+        assert!(
+            error.contains("invalid speed `3`: expected a number from -1 to 1"),
+            "{error}"
+        );
+        assert!(parse("mouse: { speed: fast }").is_err());
+        assert!(parse("mouse: { acceleration: quick }").is_err());
     }
 
     #[test]
@@ -630,7 +723,7 @@ workspaces: [web, code]
 focus: { model: sloppy, raise_on_focus: false }
 placement: pointer
 keyboard: { layout: 'gb,pl', variant: dvorak, options: 'caps:escape', repeat_delay: 250, repeat_rate: 0 }
-touchpad: { tap_to_click: false, natural_scroll: true }
+touchpad: { tap_to_click: false, natural_scroll: true, speed: -0.5, acceleration: flat }
 ";
         let general = parse(yaml).unwrap();
         assert_eq!(general.workspaces.names(), ["web", "code"]);
@@ -656,7 +749,9 @@ touchpad: { tap_to_click: false, natural_scroll: true }
             general.touchpad,
             Touchpad {
                 tap_to_click: false,
-                natural_scroll: true
+                natural_scroll: true,
+                speed: Speed(-50),
+                acceleration: Acceleration::Flat,
             }
         );
     }
