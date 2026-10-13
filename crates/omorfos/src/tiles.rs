@@ -58,7 +58,8 @@ impl Compositor {
             blue: faint(wash.blue),
             alpha: faint(255),
         };
-        let offered = self.offered().map(|(_, at, ..)| (at, wash));
+        let offered = self.offered().map(|(_, at, ..)| at);
+        let offered = offered.or_else(|| self.carried_to()).map(|at| (at, wash));
         let lines: Vec<(Rect, Color)> = lines.map(|line| (line.at, ink)).chain(offered).collect();
         let drawn = self.hover.lines.drawn.iter();
         let same = drawn
@@ -132,6 +133,15 @@ impl Compositor {
         Some((window, arrangement.parts(whole)[part], arrangement, part))
     }
 
+    /// The part a window being carried from its own would change places
+    /// with if it were let go where the pointer is.
+    fn carried_to(&self) -> Option<Rect> {
+        let Some(Drag::Tile { window }) = self.drag else {
+            return None;
+        };
+        self.desktop.part_under(window, self.pointer_position())
+    }
+
     /// Puts the frame being dragged in the part that was offered for it,
     /// if one was: on a workspace made for it, cut up that way. On the
     /// desktop it is left where it was before it was dragged, for when it
@@ -141,6 +151,11 @@ impl Compositor {
             Some(Drag::Move { from, size, .. }) => Some(Rect::new(from, size)),
             _ => None,
         };
+        if let Some(Drag::Tile { window }) = self.drag {
+            // Carried from one part of a workspace to another, it changes
+            // places with what is there.
+            self.desktop.swap_at(window, self.pointer_position());
+        }
         let Some(((window, _, arrangement, part), from)) = self.offered().zip(from) else {
             return;
         };

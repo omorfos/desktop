@@ -167,7 +167,10 @@ and the windows there. Beside a fullscreen window it takes the right
 half. You are taken there with it.
 
 `Super+Ctrl` and an arrow gives focus to the window beside the one that
-has it, and `Super+Ctrl+Shift` and an arrow changes the two over.
+has it, and `Super+Ctrl+Shift` and an arrow changes the two over. With the
+pointer, bring a window's titlebar back at the top of the screen and drag
+it by that onto another part: the part is washed over while it is held,
+and let go there the two change places.
 
 There is a line wherever two parts meet: drag it to give one more room
 and the other less, down to a sixth of the screen, and double-click it to

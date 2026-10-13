@@ -2,7 +2,7 @@
 
 use omorfos_config::Modifiers;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Button, Edges, MenuKey, MenuOutcome, Part, WindowId, resize};
+use omorfos_core::{Button, Edges, Home, MenuKey, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
@@ -154,6 +154,9 @@ pub(crate) enum Drag {
     },
     /// Carrying a tab to drop on another frame, or out of its own.
     Tab { window: WindowId },
+    /// Carrying a window that fills a part of a workspace to another part,
+    /// to change places with what is there.
+    Tile { window: WindowId },
     /// Moving a line between windows that share a workspace: which
     /// output's and which of its lines, which lies `across` or runs down.
     Line { line: (usize, usize), across: bool },
@@ -221,6 +224,8 @@ enum Hit {
 pub(crate) struct FrameFacts {
     outer: Rect,
     movable: bool,
+    /// Whether it fills a part of a workspace it shares with others.
+    shares: bool,
     tabs: Vec<WindowId>,
 }
 
@@ -389,7 +394,7 @@ impl Compositor {
                     let resized = resize(initial, edges, dx, dy, self.minimum_frame_size());
                     self.desktop.set_geometry(window, resized);
                 }
-                Drag::Tab { .. } => {}
+                Drag::Tab { .. } | Drag::Tile { .. } => {}
                 Drag::Line { line, .. } => self.drag_line(line, position),
             }
             // The drag has the pointer; no window sees it meanwhile.
@@ -547,7 +552,7 @@ impl Compositor {
             return self.cursor_asked_for();
         }
         match self.drag {
-            Some(Drag::Move { .. } | Drag::Tab { .. }) => {
+            Some(Drag::Move { .. } | Drag::Tab { .. } | Drag::Tile { .. }) => {
                 return Look::Icon(CursorIcon::Grabbing);
             }
             Some(Drag::Resize { edges, .. }) => return Look::Icon(resize_icon(edges)),
@@ -859,6 +864,9 @@ impl Compositor {
                 initial: frame.outer,
                 start: position,
             }),
+            // One that fills a part of a workspace is carried to another
+            // part, by the titlebar that was brought back over it.
+            Wanted::Move if frame.shares => Some(Drag::Tile { window }),
             Wanted::Tab => Some(Drag::Tab { window }),
             _ => None,
         };
@@ -887,6 +895,7 @@ impl Compositor {
             .map(|frame| FrameFacts {
                 outer: frame.geometry,
                 movable: !frame.maximized && !frame.fullscreen,
+                shares: frame.fullscreen && frame.home == Home::Shared,
                 tabs: frame.tabs.iter().map(|tab| tab.id).collect(),
             })
             .unwrap_or_default()
