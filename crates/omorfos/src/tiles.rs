@@ -36,7 +36,7 @@ impl Compositor {
         let ink = self.config().theme.style(Part::Window, States::NONE);
         let ink = ink.border.top.color;
         let outputs = 0..self.heads.len();
-        let lines = outputs.filter_map(|output| self.desktop.line(output));
+        let lines = outputs.flat_map(|output| self.desktop.lines(output));
         let lines: Vec<Rect> = lines.map(|line| line.at).collect();
         let drawn = self.hover.lines.drawn.iter();
         let same = drawn
@@ -63,11 +63,15 @@ impl Compositor {
     }
 
     /// The line the pointer can take hold of where it is: which output's,
-    /// and whether it lies across the output and is dragged up and down.
-    pub(crate) fn over_line(&self) -> Option<(usize, bool)> {
+    /// which of its lines, and whether it lies across and is dragged up
+    /// and down.
+    pub(crate) fn over_line(&self) -> Option<(usize, usize, bool)> {
         let point = self.pointer_position();
         let outputs = 0..self.heads.len();
-        let mut lines = outputs.filter_map(|output| Some((output, self.desktop.line(output)?)));
+        let mut lines = outputs.flat_map(|output| {
+            let lines = self.desktop.lines(output).into_iter();
+            lines.map(move |line| (output, line))
+        });
         lines.find_map(|(output, line)| {
             let (out, up) = if line.across { (0, GRIP) } else { (GRIP, 0) };
             let grip = Rect::new(
@@ -77,12 +81,13 @@ impl Compositor {
                     line.at.size.height + 2 * up.unsigned_abs(),
                 ),
             );
-            grip.contains(point).then_some((output, line.across))
+            grip.contains(point)
+                .then_some((output, line.which, line.across))
         })
     }
 
-    /// Moves the line of an output to where the pointer is.
-    pub(crate) fn drag_line(&mut self, output: usize, to: DomainPoint) {
-        self.desktop.move_line(output, Some(to));
+    /// Moves one of the lines of an output to where the pointer is.
+    pub(crate) fn drag_line(&mut self, (output, which): (usize, usize), to: DomainPoint) {
+        self.desktop.move_line(output, which, Some(to));
     }
 }

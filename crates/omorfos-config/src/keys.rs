@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::{Action, Command, Position, WorkspaceNumber};
+use crate::{Action, Command, Half, Position, WorkspaceNumber};
 
 /// The contents of `keys.yaml`.
 ///
@@ -88,6 +88,21 @@ impl Default for Keys {
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
+        // Among windows that share a workspace: to the one beside, and
+        // changing places with it.
+        let beside = [
+            ("Left", Half::Left),
+            ("Right", Half::Right),
+            ("Up", Half::Top),
+            ("Down", Half::Bottom),
+        ];
+        for (key, toward) in beside {
+            bindings.push(bind(&format!("Super+Ctrl+{key}"), Action::Focus(toward)));
+            bindings.push(bind(
+                &format!("Super+Ctrl+Shift+{key}"),
+                Action::Swap(toward),
+            ));
+        }
         for number in 1..=9 {
             let workspace = WorkspaceNumber::clamped(number);
             bindings.push(bind(
@@ -521,6 +536,11 @@ bindings:
             Some(Action::Workspace(WorkspaceNumber::clamped(9)))
         );
         assert_eq!(action_for("Super+n"), Some(Action::NewWorkspace));
+        assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Focus(Half::Top)));
+        assert_eq!(
+            action_for("Super+Ctrl+Shift+Left"),
+            Some(Action::Swap(Half::Left))
+        );
         assert_eq!(
             action_for("Super+Shift+n"),
             Some(Action::MoveToNewWorkspace)

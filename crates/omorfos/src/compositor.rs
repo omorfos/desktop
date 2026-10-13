@@ -704,6 +704,11 @@ impl Compositor {
                 let half = bridge::half(*half);
                 self.on_focused(|desktop, id| desktop.tile(id, half));
             }
+            Action::Swap(toward) => {
+                let toward = bridge::half(*toward);
+                self.on_focused(|desktop, id| desktop.swap_toward(id, toward));
+            }
+            Action::Focus(toward) => self.desktop.focus_toward(bridge::half(*toward)),
             Action::Minimize => self.on_focused(Desktop::minimize),
             Action::Shade => self.on_focused(Desktop::toggle_shaded),
             Action::KeepAbove => self.on_focused(Desktop::toggle_above),

@@ -73,7 +73,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Put the focused window in a half of a workspace made for it:\n`left`, `right`, `top` or `bottom`. The next window to open there\nhas the other half.",
+          "description": "Have the focused window take a half of where it is: `left`,\n`right`, `top` or `bottom`. The next window to open there has the\nother half. From a desktop, where it is becomes a workspace made\nfor it.",
           "properties": {
             "tile": {
               "$ref": "#/$defs/Half"
@@ -81,6 +81,32 @@
           },
           "required": [
             "tile"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Give focus to the window beside the focused one, among windows\nthat share a workspace: `left`, `right`, `up` or `down`.",
+          "properties": {
+            "focus": {
+              "$ref": "#/$defs/Half"
+            }
+          },
+          "required": [
+            "focus"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Change the focused window over with what is beside it, among\nwindows that share a workspace: `left`, `right`, `up` or `down`.",
+          "properties": {
+            "swap": {
+              "$ref": "#/$defs/Half"
+            }
+          },
+          "required": [
+            "swap"
           ],
           "type": "object"
         },
@@ -203,12 +229,12 @@
         },
         {
           "const": "top",
-          "description": "The top half.",
+          "description": "The top half, or upwards.",
           "type": "string"
         },
         {
           "const": "bottom",
-          "description": "The bottom half.",
+          "description": "The bottom half, or downwards.",
           "type": "string"
         }
       ]

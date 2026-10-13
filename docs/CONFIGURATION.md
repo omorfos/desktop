@@ -132,15 +132,27 @@ other window, another of the same program included, opens on the desktop
 it came from, which is then shown. Maximizing is another thing: it fills the desktop the window
 is on and keeps the panel and the titlebar.
 
-Two windows can share such a workspace, side by side or one above the
-other. "Tile" in the menu of a titlebar, or the `tile` action, puts a
-window in a half of a new one, and the next window to open there has the
-other half: the launcher, used there, puts a program beside the one
-already there. There is a line between the two: drag it to give one
-window more room and the other less, down to a sixth of the screen, and
-double-click it to put it back in the middle. It is drawn in the colour
-the theme gives a window's border. When one of the two closes or leaves,
-the other has the whole. A third window opens on the desktop.
+Up to four windows can share such a workspace. "Tile" in the menu of a
+titlebar, or the `tile` action, has a window take a half of where it is,
+and the next window to open there has the other half: the launcher, used
+there, puts a program beside the one already there. From a desktop,
+"where it is" becomes a new workspace. A window that already has a half
+can take a half of that, the other way, which makes room for a third; and
+the same on the other side makes room for a fourth. Nothing is cut more
+than twice, so the arrangements are two side by side or one above the
+other, one beside two, one above or below two, and four in quarters.
+Asked for a half it cannot take, a window goes to that half instead,
+changing places with what was there.
+
+`Super+Ctrl` and an arrow gives focus to the window beside the one that
+has it, and `Super+Ctrl+Shift` and an arrow changes the two over.
+
+There is a line wherever two parts meet: drag it to give one more room
+and the other less, down to a sixth of the screen, and double-click it to
+put it back in the middle. It is drawn in the colour the theme gives a
+window's border. When a window closes or leaves, the one beside it has
+its room. A window that opens when every part is taken opens on the
+desktop.
 
 On such a workspace, rest the pointer against the top of the screen for a
 third of a second and whatever panels are along the top come back, with
@@ -200,7 +212,9 @@ that are already bound on their own.
 | `close` | Close the focused window. |
 | `maximize`, `minimize` | Toggle or apply that state. |
 | `fullscreen` | Put the focused window alone on a workspace made for it, filling the screen, or bring it back to the desktop it came from. |
-| `tile: left` | Put the focused window in the left half of a workspace made for it; also `right`, `top` and `bottom`. The next window to open there has the other half. |
+| `tile: left` | Have the focused window take the left half of where it is; also `right`, `top` and `bottom`. The next window to open there has the other half. From a desktop, where it is becomes a workspace made for it. |
+| `focus: left` | Among windows that share a workspace, give focus to the one beside the focused one; also `right`, `up` and `down`. |
+| `swap: left` | Among windows that share a workspace, change the focused one over with what is beside it; also `right`, `up` and `down`. |
 | `shade` | Roll the focused window up into its titlebar, or let it down. |
 | `keep_above` | Keep the focused window above the others, or stop. |
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |

@@ -205,3 +205,62 @@ fn there_is_no_line_once_a_window_is_alone() {
     session.step();
     assert_eq!(session.draw().at(320, 300), BACKGROUND);
 }
+
+/// The app of the window with focus.
+fn focused(session: &Session) -> String {
+    let desktop = session.compositor().desktop();
+    let window = desktop.focused().and_then(|id| desktop.window(id));
+    window
+        .map(|window| window.app_id.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_third_window_has_half_of_a_side_and_a_line_of_its_own() {
+    let (mut session, mut client) = shared(Half::Left);
+    // The second, on the right, takes the bottom of the right; the third
+    // to open has the top.
+    session
+        .compositor_mut()
+        .perform(&Action::Tile(Half::Bottom));
+    session.open(&mut client, "third", (200, 100), GREEN);
+    session.step();
+    assert_eq!(
+        parts(&session),
+        [(0, 0, 320, 480), (320, 240, 320, 240), (320, 0, 320, 240)]
+    );
+    let picture = session.draw();
+    assert_eq!(picture.at(320, 400), LINE, "the line down the screen");
+    assert_eq!(picture.at(500, 240), LINE, "and the one across the right");
+    assert_eq!(picture.at(100, 240), BACKGROUND, "which stops at the first");
+
+    // The line across is dragged by itself.
+    point(&mut session, 500, 241);
+    assert_eq!(session.draw().at(503, 244), MAGENTA);
+    button(&mut session, LEFT, true, 0);
+    point(&mut session, 500, 300);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(
+        parts(&session),
+        [(0, 0, 320, 480), (320, 300, 320, 180), (320, 0, 320, 300)]
+    );
+}
+
+#[test]
+fn focus_and_windows_go_from_part_to_part_by_direction() {
+    let (mut session, _client) = shared(Half::Left);
+    assert_eq!(focused(&session), "second");
+
+    session.compositor_mut().perform(&Action::Focus(Half::Left));
+    assert_eq!(focused(&session), "first");
+    session.compositor_mut().perform(&Action::Focus(Half::Left));
+    assert_eq!(focused(&session), "first", "nothing further that way");
+
+    // The first changes places with the second, and keeps focus.
+    session.compositor_mut().perform(&Action::Swap(Half::Right));
+    session.step();
+    assert_eq!(focused(&session), "first");
+    let picture = session.draw();
+    assert_eq!(picture.at(330, 10), RED, "the first is on the right now");
+    assert_eq!(picture.at(10, 10), BLUE);
+}
