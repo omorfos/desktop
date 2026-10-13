@@ -134,6 +134,8 @@ pub struct Frame<'a> {
     pub maximized: bool,
     /// Whether the frame covers its output without decorations.
     pub fullscreen: bool,
+    /// What kind of workspace it is on.
+    pub home: Home,
     /// Whether the frame has keyboard focus.
     pub focused: bool,
     /// How it stands apart from the others, as the user asked.
@@ -167,6 +169,16 @@ impl Frame<'_> {
     }
 }
 
+/// The kind of workspace a frame is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Home {
+    /// A desktop, where frames are under the panels.
+    Desktop,
+    /// A workspace made for a fullscreen window: that window, or one of
+    /// its program's that opened over it. These are over the panels.
+    Solo,
+}
+
 /// One or more windows sharing a position as tabs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Group {
@@ -184,10 +196,11 @@ struct Group {
 
 impl Group {
     /// Where it is among the frames of its workspace, whatever order they
-    /// were raised in: those kept above are over those that are not, and
-    /// fullscreen ones over both.
+    /// were raised in: those kept above are over those that are not. A
+    /// fullscreen frame is under whatever else is on the workspace made
+    /// for it, which is its own program's dialogs.
     fn level(&self) -> u8 {
-        u8::from(self.standing.above) + 2 * u8::from(self.fullscreen)
+        u8::from(!self.fullscreen) * (1 + u8::from(self.standing.above))
     }
 
     /// Whether the frame has a titlebar and borders when not fullscreen.
@@ -235,6 +248,21 @@ pub struct Place {
     pub kept: bool,
     /// Whether its output is showing it.
     pub shown: bool,
+    /// Which of its output's desktops it is, from zero, as a key or a rule
+    /// would count to it. A workspace made for one fullscreen window is
+    /// not a desktop and has none.
+    pub desktop: Option<usize>,
+    /// The fullscreen window it was made for, if it was made for one.
+    pub solo: Option<WindowId>,
+}
+
+/// What makes a workspace one that was made for a fullscreen frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Solo {
+    /// The desktop the frame came from, and goes back to.
+    origin: WorkspaceId,
+    /// The frame it was made for.
+    owner: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,6 +271,9 @@ struct Workspace {
     /// Always there. One that is not kept goes when it is empty and
     /// another is shown.
     kept: bool,
+    /// Set for a workspace made for one fullscreen frame. The others are
+    /// desktops.
+    solo: Option<Solo>,
     /// Bottom to top.
     groups: Vec<Group>,
     focused: Option<u64>,
@@ -253,9 +284,18 @@ impl Workspace {
         Self {
             id,
             kept,
+            solo: None,
             groups: Vec::new(),
             focused: None,
         }
+    }
+
+    /// The fullscreen frame this was made for, while it is here and still
+    /// fullscreen.
+    fn owner(&self) -> Option<&Group> {
+        let solo = self.solo?;
+        let owner = |group: &&Group| group.serial == solo.owner && group.fullscreen;
+        self.groups.iter().find(owner)
     }
 
     /// Drops emptied groups and, if the focused group is gone or hidden,
@@ -292,37 +332,121 @@ impl Workspace {
 /// The workspaces of one output, and which of them it is showing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Set {
-    /// Never empty.
+    /// Never empty, and never without a desktop.
     workspaces: Vec<Workspace>,
     active: usize,
+    /// The desktop last shown: where the frames that are on every
+    /// workspace wait while a workspace made for a fullscreen frame is
+    /// shown.
+    desk: WorkspaceId,
 }
 
 impl Set {
-    /// Takes on everything in `other`, workspace by workspace, on top of
-    /// what is here. Workspaces `other` has more of come over whole, as
-    /// ones that are not kept.
-    fn absorb(&mut self, other: Self) {
-        for (index, mut workspace) in other.workspaces.into_iter().enumerate() {
-            if let Some(onto) = self.workspaces.get_mut(index) {
-                onto.groups.extend(workspace.groups);
-                onto.repair();
-            } else {
-                workspace.kept = false;
-                self.workspaces.push(workspace);
-            }
-        }
-        self.prune();
+    /// Where each desktop is among the workspaces, in order. Never empty.
+    fn desktops(&self) -> Vec<usize> {
+        let workspaces = self.workspaces.iter().enumerate();
+        let desktops = workspaces.filter(|(_, workspace)| workspace.solo.is_none());
+        desktops.map(|(index, _)| index).collect()
     }
 
-    /// Does away with the workspaces that are not kept, are empty, and are
-    /// not being shown.
-    fn prune(&mut self) {
-        let shown = self.workspaces[self.active].id;
+    /// Where the workspace known by `id` is among the others.
+    fn place(&self, id: WorkspaceId) -> usize {
+        let known = |workspace: &Workspace| workspace.id == id;
+        self.workspaces.iter().position(known).unwrap_or(0)
+    }
+
+    /// Takes on everything in `other`: its desktops one by one onto the
+    /// desktops here, on top of what is there, and those it has more of
+    /// whole, as ones that are not kept. Workspaces made for fullscreen
+    /// frames come over as they are.
+    fn absorb(&mut self, other: Self) {
+        let desktops = self.desktops();
+        let mut merged = Vec::new();
+        let mut solos = Vec::new();
+        let mut count = 0;
+        for mut workspace in other.workspaces {
+            match (workspace.solo, desktops.get(count)) {
+                (Some(solo), _) => solos.push((workspace, solo)),
+                (None, Some(onto)) => {
+                    let onto = &mut self.workspaces[*onto];
+                    merged.push((workspace.id, onto.id));
+                    onto.groups.extend(workspace.groups);
+                    onto.repair();
+                    count += 1;
+                }
+                (None, None) => {
+                    workspace.kept = false;
+                    self.workspaces.push(workspace);
+                    count += 1;
+                }
+            }
+        }
+        for (mut workspace, solo) in solos {
+            // Its frame goes back to wherever the desktop it came from is
+            // now.
+            let now = merged.iter().find(|(was, _)| *was == solo.origin);
+            let origin = now.map_or(solo.origin, |(_, now)| *now);
+            workspace.solo = Some(Solo { origin, ..solo });
+            self.workspaces.push(workspace);
+        }
+        self.settle();
+    }
+
+    /// Puts right what an operation may have left: a workspace made for a
+    /// fullscreen frame that has closed or left fullscreen is done away
+    /// with, whatever else was on it going to the desktop the frame came
+    /// from; frames that are on every workspace come to the desktop being
+    /// shown; and workspaces that are not kept, are empty and are not
+    /// needed go.
+    fn settle(&mut self) {
+        let mut shown = self.workspaces[self.active].id;
+        let over = |workspace: &Workspace| workspace.solo.filter(|_| workspace.owner().is_none());
+        let ended = |workspaces: &[Workspace]| {
+            let mut workspaces = workspaces.iter().enumerate();
+            workspaces.find_map(|(index, workspace)| over(workspace).map(|solo| (index, solo)))
+        };
+        while let Some((index, solo)) = ended(&self.workspaces) {
+            let ending = &mut self.workspaces[index];
+            ending.solo = None;
+            let (id, focused) = (ending.id, ending.focused.take());
+            let groups = std::mem::take(&mut ending.groups);
+            let origin = self.place(solo.origin);
+            let origin = &mut self.workspaces[origin];
+            origin.groups.extend(groups);
+            origin.focused = focused.or(origin.focused);
+            origin.repair();
+            if shown == id {
+                shown = origin.id;
+            }
+        }
+        // A frame on every workspace follows to the desktop now shown. One
+        // of them that had focus keeps it.
+        let showing = self.place(shown);
+        let (desk, to) = (self.place(self.desk), &self.workspaces[showing]);
+        if to.solo.is_none() && to.id != self.desk {
+            self.desk = to.id;
+            let leaving = &mut self.workspaces[desk];
+            let focused = leaving.focused;
+            let carried = leaving.groups.extract_if(.., |group| group.standing.sticky);
+            let carried: Vec<Group> = carried.collect();
+            leaving.repair();
+            let arriving = &mut self.workspaces[showing];
+            let mut kept = carried.iter().map(|group| group.serial);
+            let kept = kept.find(|serial| Some(*serial) == focused);
+            arriving.groups.extend(carried);
+            arriving.focused = kept.or(arriving.focused);
+            arriving.repair();
+        }
+        let solos = self
+            .workspaces
+            .iter()
+            .filter_map(|workspace| workspace.solo);
+        let origins: Vec<WorkspaceId> = solos.map(|solo| solo.origin).collect();
         self.workspaces.retain(|workspace| {
-            workspace.kept || !workspace.groups.is_empty() || workspace.id == shown
+            let needed = workspace.id == shown || origins.contains(&workspace.id);
+            workspace.kept || !workspace.groups.is_empty() || needed
         });
-        let shown = |workspace: &Workspace| workspace.id == shown;
-        self.active = self.workspaces.iter().position(shown).unwrap_or(0);
+        self.active = self.place(shown);
     }
 }
 
@@ -390,8 +514,10 @@ impl Desktop {
     /// are always there.
     fn set(&mut self) -> Set {
         let workspaces = (0..self.kept).map(|_| Workspace::new(WorkspaceId(self.serial()), true));
+        let workspaces: Vec<Workspace> = workspaces.collect();
         Set {
-            workspaces: workspaces.collect(),
+            desk: workspaces[0].id,
+            workspaces,
             active: 0,
         }
     }
@@ -487,15 +613,15 @@ impl Desktop {
     pub fn set_workspace_count(&mut self, count: usize) {
         self.kept = count.clamp(1, Self::MOST_WORKSPACES);
         for set in 0..self.sets.len() {
-            while self.sets[set].workspaces.len() < self.kept {
+            while self.sets[set].desktops().len() < self.kept {
                 let id = WorkspaceId(self.serial());
                 self.sets[set].workspaces.push(Workspace::new(id, true));
             }
-            let workspaces = self.sets[set].workspaces.iter_mut().enumerate();
-            for (index, workspace) in workspaces {
-                workspace.kept = index < self.kept;
+            let desktops = self.sets[set].desktops().into_iter().enumerate();
+            for (count, index) in desktops {
+                self.sets[set].workspaces[index].kept = count < self.kept;
             }
-            self.sets[set].prune();
+            self.sets[set].settle();
         }
     }
 
@@ -518,11 +644,40 @@ impl Desktop {
         pointer: Point,
         wants_decoration: bool,
     ) -> WindowId {
+        self.add_window_of(None, app_id, title, size, pointer, wants_decoration)
+    }
+
+    /// Adds a new window as [`Desktop::add_window`] does, that says it
+    /// belongs to another: a dialog of `parent`, say.
+    ///
+    /// It matters on a workspace made for a fullscreen window. What
+    /// belongs to a window there opens over it, where it is. Anything else
+    /// opening while such a workspace is shown opens on the desktop the
+    /// fullscreen window came from, which is then shown: a second window
+    /// of the same program as much as another program's.
+    pub fn add_window_of(
+        &mut self,
+        parent: Option<WindowId>,
+        app_id: impl Into<String>,
+        title: impl Into<String>,
+        size: Size,
+        pointer: Point,
+        wants_decoration: bool,
+    ) -> WindowId {
         let (app_id, title) = (app_id.into(), title.into());
         let effects = resolve(&self.rules, &app_id, &title);
-        let set = self.set_at(pointer);
+        let alone = |at: &Location| self.sets[at.set].workspaces[at.workspace].solo.is_some();
+        let beside = parent.and_then(|parent| self.locate(parent)).filter(alone);
+        let set = beside.map_or_else(|| self.set_at(pointer), |at| at.set);
         let shown = self.sets[set].active;
-        let workspace = effects.workspace.map_or(shown, |on| self.reach(set, on));
+        let showing = &self.sets[set].workspaces[shown];
+        let home = showing.solo.filter(|_| beside.is_none());
+        let home = home.map(|solo| self.sets[set].place(solo.origin));
+        let home = home.filter(|_| effects.workspace.is_none());
+        let workspace = beside.map_or(home.unwrap_or(shown), |at| at.workspace);
+        let workspace = effects
+            .workspace
+            .map_or(workspace, |on| self.reach(set, on));
         let decorated = effects.decorations.unwrap_or(wants_decoration);
         let area = self.output_at(pointer).usable;
         let fills = effects.maximized == Some(true) || effects.fullscreen == Some(true);
@@ -548,12 +703,18 @@ impl Desktop {
             active: 0,
             geometry: Rect::new(origin, size),
             maximized: effects.maximized.unwrap_or(false),
-            fullscreen: effects.fullscreen.unwrap_or(false),
+            fullscreen: false,
             minimized: false,
             standing: Standing::default(),
         };
         self.push_focused(set, workspace, group);
         self.current = set;
+        if let Some(home) = home {
+            self.turn(set, home);
+        }
+        if effects.fullscreen == Some(true) {
+            self.set_fullscreen(id, true);
+        }
         id
     }
 
@@ -597,7 +758,7 @@ impl Desktop {
         let Some(at) = self.locate(id) else { return };
         self.sets[at.set].workspaces[at.workspace].groups[at.group].remove(at.tab);
         self.sets[at.set].workspaces[at.workspace].repair();
-        self.sets[at.set].prune();
+        self.sets[at.set].settle();
     }
 
     /// Updates a window's title.
@@ -688,10 +849,10 @@ impl Desktop {
     /// output becomes the current one.
     pub fn set_geometry(&mut self, id: WindowId, geometry: Rect) {
         let Some(at) = self.locate(id) else { return };
+        let at = self.grounded(id, at);
         let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         group.geometry = geometry;
         group.maximized = false;
-        group.fullscreen = false;
         let onto = self.set_for(geometry).unwrap_or(at.set);
         if onto != at.set {
             self.rehome(at, onto);
@@ -715,19 +876,69 @@ impl Desktop {
     }
 
     /// Makes a window's frame fullscreen, or returns it to how it was.
+    ///
+    /// A fullscreen frame is alone on a workspace made for it, directly
+    /// after the one it was on, which is shown if that one was. Leaving
+    /// fullscreen takes it back to the desktop it came from and does away
+    /// with the workspace.
     pub fn set_fullscreen(&mut self, id: WindowId, fullscreen: bool) {
-        let Some(group) = self.group_mut(id) else {
-            return;
-        };
-        group.fullscreen = fullscreen;
+        let Some(at) = self.locate(id) else { return };
+        let on = &self.sets[at.set].workspaces[at.workspace];
+        match (on.groups[at.group].fullscreen, fullscreen) {
+            (true, false) => {
+                self.grounded(id, at);
+            }
+            (false, true) => {
+                let made = WorkspaceId(self.serial());
+                self.solo(at, made);
+            }
+            _ => {}
+        }
     }
 
     /// Switches a window's frame in or out of fullscreen.
     pub fn toggle_fullscreen(&mut self, id: WindowId) {
-        let Some(group) = self.group_mut(id) else {
-            return;
-        };
-        group.fullscreen = !group.fullscreen;
+        let now = self.group_mut(id).map(|group| group.fullscreen);
+        if let Some(now) = now {
+            self.set_fullscreen(id, !now);
+        }
+    }
+
+    /// Puts the frame at `at` alone on a workspace made for it, known by
+    /// `made`, and fullscreen.
+    fn solo(&mut self, at: Location, made: WorkspaceId) {
+        let set = &mut self.sets[at.set];
+        let from = &mut set.workspaces[at.workspace];
+        let mut group = from.groups.remove(at.group);
+        from.repair();
+        group.fullscreen = true;
+        // Made fullscreen, it is to be seen.
+        group.minimized = false;
+        // From a workspace made for another's fullscreen window, it goes
+        // back where that one would.
+        let origin = from.solo.map_or(from.id, |solo| solo.origin);
+        let mut solo = Workspace::new(made, false);
+        solo.solo = Some(Solo {
+            origin,
+            owner: group.serial,
+        });
+        solo.focused = Some(group.serial);
+        solo.groups.push(group);
+        set.workspaces.insert(at.workspace + 1, solo);
+        // What was being shown still is, unless it is where the frame came
+        // from: then the frame is.
+        if set.active >= at.workspace {
+            set.active += 1;
+        }
+        set.settle();
+    }
+
+    /// Has a frame leave fullscreen, if it is, and says where its window
+    /// is afterwards: back on the desktop it came from.
+    fn grounded(&mut self, id: WindowId, at: Location) -> Location {
+        self.sets[at.set].workspaces[at.workspace].groups[at.group].fullscreen = false;
+        self.sets[at.set].settle();
+        self.locate(id).unwrap_or(at)
     }
 
     /// Rolls a window's frame up into its titlebar, or lets it down again.
@@ -757,8 +968,18 @@ impl Desktop {
     /// [`Desktop::activate`] brings it back.
     pub fn minimize(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.sets[at.set].workspaces[at.workspace].groups[at.group].minimized = true;
-        self.sets[at.set].workspaces[at.workspace].repair();
+        let set = &mut self.sets[at.set];
+        let on = &mut set.workspaces[at.workspace];
+        on.groups[at.group].minimized = true;
+        on.repair();
+        // With the frame a workspace was made for put away, there is
+        // nothing there to look at.
+        let shown = set.active == at.workspace;
+        let owned = |solo: &Solo| solo.owner == on.groups[at.group].serial && shown;
+        if let Some(solo) = on.solo.filter(owned) {
+            set.active = set.place(solo.origin);
+            set.settle();
+        }
     }
 
     // --- Focus -------------------------------------------------------------
@@ -848,7 +1069,7 @@ impl Desktop {
         group.active = group.tabs.len() - 1;
         self.sets[to.set].workspaces[to.workspace].focus(to.group, true);
         self.sets[from.set].workspaces[from.workspace].repair();
-        self.sets[from.set].prune();
+        self.sets[from.set].settle();
     }
 
     /// Moves a window out of a shared frame into a frame of its own, just
@@ -879,15 +1100,17 @@ impl Desktop {
 
     // --- Workspaces --------------------------------------------------------
 
-    /// The number of workspaces the current output has. At least one.
+    /// The number of desktops the current output has. At least one. A
+    /// workspace made for a fullscreen window is not counted.
     #[must_use]
     pub fn workspace_count(&self) -> usize {
-        self.sets[self.current].workspaces.len()
+        self.sets[self.current].desktops().len()
     }
 
     /// Every workspace there is, output by output and in order.
     pub fn workspaces(&self) -> impl Iterator<Item = Place> {
         self.sets.iter().enumerate().flat_map(|(output, set)| {
+            let desktops = set.desktops();
             let workspaces = set.workspaces.iter().enumerate();
             workspaces.map(move |(index, workspace)| Place {
                 id: workspace.id,
@@ -895,20 +1118,23 @@ impl Desktop {
                 index,
                 kept: workspace.kept,
                 shown: index == set.active,
+                desktop: desktops.iter().position(|desktop| *desktop == index),
+                solo: workspace.owner().map(|owner| owner.tabs[owner.active].id),
             })
         })
     }
 
-    /// The workspace of an output that is `wanted` from its first: that
+    /// The workspace that is an output's desktop `wanted`, from zero: that
     /// one, or a new one made at the end if `wanted` is past the last and
     /// there is room for another, or else the last.
     fn reach(&mut self, set: usize, wanted: usize) -> usize {
-        let count = self.sets[set].workspaces.len();
-        if wanted >= count && count < Self::MOST_WORKSPACES {
+        let desktops = self.sets[set].desktops();
+        if wanted >= desktops.len() && desktops.len() < Self::MOST_WORKSPACES {
             let id = WorkspaceId(self.serial());
             self.sets[set].workspaces.push(Workspace::new(id, false));
+            return self.sets[set].workspaces.len() - 1;
         }
-        wanted.min(self.sets[set].workspaces.len() - 1)
+        desktops[wanted.min(desktops.len() - 1)]
     }
 
     /// Makes a workspace at the end of the current output's and shows it.
@@ -959,7 +1185,7 @@ impl Desktop {
     /// Shows the following workspace on the current output, wrapping
     /// around.
     pub fn next_workspace(&mut self) {
-        let count = self.workspace_count();
+        let count = self.sets[self.current].workspaces.len();
         let next = (self.sets[self.current].active + 1) % count;
         self.turn(self.current, next);
     }
@@ -967,7 +1193,7 @@ impl Desktop {
     /// Shows the preceding workspace on the current output, wrapping
     /// around.
     pub fn previous_workspace(&mut self) {
-        let count = self.workspace_count();
+        let count = self.sets[self.current].workspaces.len();
         let previous = (self.sets[self.current].active + count - 1) % count;
         self.turn(self.current, previous);
     }
@@ -978,8 +1204,8 @@ impl Desktop {
     /// shown does not change.
     pub fn move_to_workspace(&mut self, id: WindowId, workspace: usize) {
         let Some(at) = self.locate(id) else { return };
-        if workspace <= self.sets[at.set].workspaces.len() {
-            self.send(at, workspace);
+        if workspace <= self.sets[at.set].desktops().len() {
+            self.send(id, at, workspace);
         }
     }
 
@@ -987,12 +1213,14 @@ impl Desktop {
     /// last of its output's. The workspace being shown does not change.
     pub fn move_to_new_workspace(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.send(at, usize::MAX);
+        self.send(id, at, usize::MAX);
     }
 
-    /// Sends the frame at `at` to a workspace of its output, making one at
-    /// the end if `workspace` is past the last.
-    fn send(&mut self, at: Location, workspace: usize) {
+    /// Sends the frame of a window at `at` to a desktop of its output,
+    /// making one at the end if `workspace` is past the last. A fullscreen
+    /// frame leaves fullscreen to go.
+    fn send(&mut self, id: WindowId, at: Location, workspace: usize) {
+        let at = self.grounded(id, at);
         let workspace = self.reach(at.set, workspace);
         if workspace == at.workspace {
             return;
@@ -1004,7 +1232,7 @@ impl Desktop {
         group.standing.sticky = false;
         self.sets[at.set].workspaces[at.workspace].repair();
         self.push_focused(at.set, workspace, group);
-        self.sets[at.set].prune();
+        self.sets[at.set].settle();
     }
 
     /// Sends a window's whole frame to the next output, wrapping around,
@@ -1021,6 +1249,7 @@ impl Desktop {
             return;
         }
         let (from, to) = (from.usable, *to);
+        let at = self.grounded(id, at);
         let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         let within = (
             group.geometry.origin.x.saturating_sub(from.origin.x),
@@ -1054,7 +1283,7 @@ impl Desktop {
                     .map(move |group| (index, workspace, group))
             })
         };
-        (0..4).flat_map(shown).map(|(index, workspace, group)| {
+        (0..3).flat_map(shown).map(|(index, workspace, group)| {
             // A frame fills its own output; with none, it has only
             // itself to fill.
             let own = self.outputs.get(index).copied();
@@ -1078,6 +1307,7 @@ impl Desktop {
                     .then(|| Decoration::new(geometry, self.settings.decoration, group.tabs.len())),
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
+                home: workspace.solo.map_or(Home::Desktop, |_| Home::Solo),
                 focused: index == self.current && workspace.focused == Some(group.serial),
                 standing: Standing {
                     shaded,
@@ -1125,38 +1355,30 @@ impl Desktop {
     }
 
     /// Has an output show another of its workspaces. The frames that are on
-    /// whichever workspace it shows go along, on top of what is there, and
+    /// every workspace go along to a desktop, on top of what is there, and
     /// one of them that had focus keeps it.
     fn turn(&mut self, set: usize, to: usize) {
         let set = &mut self.sets[set];
-        let from = std::mem::replace(&mut set.active, to);
-        if from == to {
-            return;
-        }
-        let leaving = &mut set.workspaces[from];
-        let focused = leaving.focused;
-        let carried = leaving.groups.extract_if(.., |group| group.standing.sticky);
-        let carried: Vec<Group> = carried.collect();
-        leaving.repair();
-        let arriving = &mut set.workspaces[to];
-        let mut kept = carried.iter().map(|group| group.serial);
-        let kept = kept.find(|serial| Some(*serial) == focused);
-        arriving.groups.extend(carried);
-        arriving.focused = kept.or(arriving.focused);
-        arriving.repair();
-        set.prune();
+        set.active = to;
+        set.settle();
     }
 
-    /// Gives a frame to another output's set, on the workspace that output
-    /// is showing, focused and on top, and makes that output current.
+    /// Gives a frame to another output's set, on the desktop that output
+    /// is showing, focused and on top, and makes that output current. If
+    /// that output is showing a workspace made for a fullscreen window,
+    /// the frame goes to the desktop that window came from, which is then
+    /// shown.
     fn rehome(&mut self, at: Location, onto: usize) {
         let from = &mut self.sets[at.set].workspaces[at.workspace];
         let group = from.groups.remove(at.group);
         from.repair();
-        let workspace = self.sets[onto].active;
+        let showing = &self.sets[onto].workspaces[self.sets[onto].active];
+        let home = showing.solo.map(|solo| self.sets[onto].place(solo.origin));
+        let workspace = home.unwrap_or(self.sets[onto].active);
         self.push_focused(onto, workspace, group);
+        self.turn(onto, workspace);
         self.current = onto;
-        self.sets[at.set].prune();
+        self.sets[at.set].settle();
     }
 
     /// The set of the output at `point`, or failing that the first.
@@ -1245,6 +1467,11 @@ mod tests {
 
     fn open(desktop: &mut Desktop, app_id: &str) -> WindowId {
         desktop.add_window(app_id, format!("{app_id} window"), SIZE, POINTER, true)
+    }
+
+    /// Opens a window that says it belongs to `parent`.
+    fn open_of(desktop: &mut Desktop, parent: WindowId) -> WindowId {
+        desktop.add_window_of(Some(parent), "dialog", "dialog", SIZE, POINTER, true)
     }
 
     /// The shown window of each frame on the current workspace, bottom to top.
@@ -1381,9 +1608,9 @@ mod tests {
             },
         )]);
         let player = open(&mut desktop, "mpv");
-        let other = open(&mut desktop, "foot");
         let frame = frame(&desktop, player);
         assert!(frame.maximized && frame.fullscreen && !frame.window().decorated);
+        let other = open(&mut desktop, "foot");
         assert!(!self::frame(&desktop, other).maximized);
     }
 
@@ -1767,17 +1994,310 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_frames_are_drawn_above_the_others() {
+    fn a_fullscreen_frame_is_alone_on_a_workspace_made_for_it() {
         let mut desktop = desktop();
         let video = open(&mut desktop, "video");
         let chat = open(&mut desktop, "chat");
         desktop.set_fullscreen(video, true);
+
+        assert_eq!(stack(&desktop), [video], "nothing else is there");
+        assert_eq!(desktop.focused(), Some(video));
+        assert_eq!(frame(&desktop, video).home, Home::Solo);
+        assert_eq!(desktop.active_workspace(), 1, "directly after its own");
+        assert_eq!(desktop.workspace_count(), 3, "and is not a desktop");
+        let places: Vec<Place> = desktop.workspaces().collect();
+        let desktops: Vec<Option<usize>> = places.iter().map(|place| place.desktop).collect();
+        assert_eq!(desktops, [Some(0), None, Some(1), Some(2)]);
+        assert_eq!(places[1].solo, Some(video));
+        assert_eq!(places[0].solo, None);
+        assert!(!places[1].kept && places[1].shown);
+
+        // Asked for again, nothing more happens.
+        let before = desktop.clone();
+        desktop.set_fullscreen(video, true);
+        desktop.set_fullscreen(chat, false);
+        assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn leaving_fullscreen_takes_a_frame_back_where_it_was() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        let chat = open(&mut desktop, "chat");
+        let was = frame(&desktop, video).geometry;
+
+        desktop.toggle_fullscreen(video);
+        desktop.toggle_fullscreen(video);
+
+        assert_eq!(desktop.workspaces().count(), 3, "its workspace has gone");
+        assert_eq!(desktop.active_workspace(), 0);
         assert_eq!(stack(&desktop), [chat, video]);
+        assert_eq!(frame(&desktop, video).geometry, was);
+        assert_eq!(frame(&desktop, video).home, Home::Desktop);
+        assert_eq!(desktop.focused(), Some(video));
+    }
+
+    #[test]
+    fn closing_a_fullscreen_window_shows_the_desktop_it_came_from() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(1);
+        let chat = open(&mut desktop, "chat");
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        assert_eq!(desktop.active_workspace(), 2);
+
+        desktop.remove_window(video);
+        assert_eq!(desktop.active_workspace(), 1);
+        assert_eq!(desktop.workspaces().count(), 3);
+        assert_eq!(desktop.focused(), Some(chat));
+    }
+
+    #[test]
+    fn a_window_made_fullscreen_where_nobody_is_looking_is_not_shown() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(2);
+        let late = open(&mut desktop, "late");
+        desktop.switch_workspace(1);
+        let middle = open(&mut desktop, "middle");
+
+        // One on a later workspace than the one shown.
+        desktop.set_fullscreen(late, true);
+        assert_eq!(desktop.active_workspace(), 1);
+        assert_eq!(stack(&desktop), [middle]);
+        assert_eq!(desktop.workspace_of(late), Some(3));
+
+        // And one on an earlier: what is shown is still what was.
+        desktop.switch_workspace(0);
+        let early = open(&mut desktop, "early");
+        desktop.switch_workspace(1);
+        desktop.set_fullscreen(early, true);
+        assert_eq!(stack(&desktop), [middle]);
+        assert_eq!(desktop.workspace_of(early), Some(1));
+        assert_eq!(desktop.workspace_of(middle), Some(2));
+
+        // Closed where nobody is looking, it takes nothing with it.
+        desktop.remove_window(late);
+        assert_eq!(stack(&desktop), [middle]);
+        assert_eq!(desktop.workspaces().count(), 4);
+    }
+
+    #[test]
+    fn numbers_count_desktops_and_next_goes_along_the_whole_row() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+
+        desktop.switch_workspace(1);
+        assert_eq!(desktop.active_workspace(), 2, "the second desktop");
+        desktop.previous_workspace();
+        assert_eq!(stack(&desktop), [video], "the one made for it is between");
+        desktop.previous_workspace();
+        assert_eq!(desktop.active_workspace(), 0);
+        desktop.next_workspace();
+        desktop.next_workspace();
+        desktop.next_workspace();
+        desktop.next_workspace();
+        assert_eq!(desktop.active_workspace(), 0, "round the four of them");
+
+        // Sent to a desktop by its number, it leaves fullscreen to go.
+        desktop.move_to_workspace(video, 2);
+        assert_eq!(desktop.workspaces().count(), 3);
+        assert_eq!(desktop.workspace_of(video), Some(2));
+        desktop.switch_workspace(2);
+        assert!(!frame(&desktop, video).fullscreen);
+    }
+
+    #[test]
+    fn what_belongs_to_a_fullscreen_window_opens_over_it_and_the_rest_on_the_desktop() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+
+        let dialog = open_of(&mut desktop, video);
+        assert_eq!(stack(&desktop), [video, dialog], "over it");
+        assert_eq!(frame(&desktop, dialog).home, Home::Solo);
+        assert!(!frame(&desktop, dialog).fullscreen);
+        assert_eq!(desktop.focused(), Some(dialog));
+        desktop.clicked(video);
+        assert_eq!(stack(&desktop), [video, dialog], "and stays over it");
+
+        // A window that is nobody's is not for this workspace, though it
+        // be another of the same program's.
+        let second = open(&mut desktop, "video");
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [second]);
+        assert_eq!(desktop.workspace_of(video), Some(1));
+
+        // Nor is one that belongs to a window on a desktop, which opens
+        // where things do.
+        let child = open_of(&mut desktop, second);
+        assert_eq!(stack(&desktop), [second, child]);
+
+        // What belongs to the fullscreen one opens over it even while
+        // nobody is looking, and nothing is shown that was not.
+        let unseen = open_of(&mut desktop, video);
+        assert_eq!(stack(&desktop), [second, child]);
+        assert_eq!(desktop.workspace_of(unseen), Some(1));
+        desktop.remove_window(unseen);
+        desktop.remove_window(child);
+        desktop.remove_window(second);
+
+        // One that a rule sends elsewhere goes there, and nothing is shown
+        // that was not.
+        desktop.switch_workspace(0);
+        desktop.next_workspace();
+        desktop.set_rules(vec![rule(
+            "mail",
+            Effects {
+                workspace: Some(2),
+                ..Effects::default()
+            },
+        )]);
+        let mail = open(&mut desktop, "mail");
+        assert_eq!(stack(&desktop), [video, dialog]);
+        assert_eq!(desktop.workspace_of(mail), Some(3));
+    }
+
+    #[test]
+    fn what_opened_over_a_fullscreen_window_goes_back_with_it() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        let dialog = open_of(&mut desktop, video);
+
+        desktop.set_fullscreen(video, false);
+        assert_eq!(stack(&desktop), [video, dialog]);
+        assert_eq!(desktop.workspaces().count(), 3);
+
+        // And is left on the desktop if the fullscreen window closes.
+        desktop.set_fullscreen(video, true);
+        let again = open_of(&mut desktop, video);
+        desktop.remove_window(video);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [dialog, again]);
+        assert_eq!(desktop.focused(), Some(again));
+    }
+
+    #[test]
+    fn a_window_made_fullscreen_over_another_goes_back_where_that_one_would() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        let second = open_of(&mut desktop, video);
+
+        desktop.set_fullscreen(second, true);
+        assert_eq!(stack(&desktop), [second]);
+        assert_eq!(desktop.active_workspace(), 2);
+
+        desktop.set_fullscreen(second, false);
         assert_eq!(
-            desktop.focused(),
-            Some(chat),
-            "stacking does not move focus"
+            desktop.active_workspace(),
+            0,
+            "the desktop, not the other's"
         );
+        assert_eq!(stack(&desktop), [second]);
+        assert_eq!(desktop.workspace_of(video), Some(1));
+    }
+
+    #[test]
+    fn a_frame_on_every_workspace_is_not_on_one_made_for_a_fullscreen_window() {
+        let mut desktop = desktop();
+        let note = open(&mut desktop, "note");
+        desktop.toggle_sticky(note);
+        let video = open(&mut desktop, "video");
+
+        desktop.set_fullscreen(video, true);
+        assert_eq!(stack(&desktop), [video]);
+
+        // It is on the next desktop to be shown, all the same.
+        desktop.switch_workspace(1);
+        assert_eq!(stack(&desktop), [note]);
+        assert_eq!(desktop.focused(), Some(note));
+    }
+
+    #[test]
+    fn minimizing_a_fullscreen_window_shows_the_desktop_until_it_is_brought_back() {
+        let mut desktop = desktop();
+        let chat = open(&mut desktop, "chat");
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        let dialog = open_of(&mut desktop, video);
+
+        // Putting away what opened over it changes nothing else.
+        desktop.minimize(dialog);
+        assert_eq!(stack(&desktop), [video]);
+
+        desktop.minimize(video);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [chat]);
+        assert_eq!(desktop.workspaces().count(), 4, "its workspace waits");
+
+        desktop.activate(video);
+        assert_eq!(stack(&desktop), [video]);
+        assert!(frame(&desktop, video).fullscreen);
+    }
+
+    #[test]
+    fn a_fullscreen_frame_leaves_fullscreen_to_go_to_another_output() {
+        let mut desktop = two_outputs();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+
+        desktop.move_to_next_output(video);
+        assert_eq!(shown(&desktop), [0, 0]);
+        assert_eq!(desktop.workspaces().count(), 6);
+        assert!(!frame(&desktop, video).fullscreen);
+        assert_eq!(desktop.current_output(), 1);
+    }
+
+    #[test]
+    fn a_frame_sent_to_an_output_showing_a_fullscreen_window_goes_to_its_desktop() {
+        let mut desktop = two_outputs();
+        let video = open_on_second(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        let chat = open(&mut desktop, "chat");
+
+        desktop.move_to_next_output(chat);
+        assert_eq!(shown(&desktop), [0, 0], "which is shown for it");
+        assert_eq!(desktop.focused(), Some(chat));
+        assert_eq!(desktop.workspace_of(video), Some(1));
+    }
+
+    #[test]
+    fn an_output_that_goes_takes_its_fullscreen_windows_to_the_first() {
+        let mut desktop = two_outputs();
+        let video = open_on_second(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        // And one that came from a desktop the first output has not got.
+        desktop.turn_to(SECOND_SCREEN.origin);
+        desktop.new_workspace();
+        let film = open_on_second(&mut desktop, "film");
+        desktop.set_fullscreen(film, true);
+
+        desktop.remove_output(1);
+        assert_eq!(desktop.workspaces().count(), 6);
+        let solos: Vec<Option<WindowId>> = desktop.workspaces().map(|place| place.solo).collect();
+        assert_eq!(solos, [None, None, None, None, Some(video), Some(film)]);
+
+        // Each goes back to the desktop its own became.
+        desktop.set_fullscreen(video, false);
+        assert_eq!(desktop.workspace_of(video), Some(0));
+        desktop.set_fullscreen(film, false);
+        assert_eq!(desktop.workspace_of(film), Some(3));
+    }
+
+    #[test]
+    fn desktops_are_kept_by_their_number_whatever_is_between_them() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+
+        desktop.set_workspace_count(2);
+        let kept: Vec<bool> = desktop.workspaces().map(|place| place.kept).collect();
+        assert_eq!(kept, [true, false, true]);
+        desktop.set_workspace_count(4);
+        let kept: Vec<bool> = desktop.workspaces().map(|place| place.kept).collect();
+        assert_eq!(kept, [true, false, true, true, true]);
     }
 
     // --- Frame state -------------------------------------------------------
@@ -2869,12 +3389,39 @@ mod tests {
         );
         for set in &desktop.sets {
             let count = set.workspaces.len();
-            assert!(count <= Desktop::MOST_WORKSPACES, "no more than the most");
             assert!(set.active < count, "the workspace shown exists");
+            let desktops = set.desktops();
+            assert!(!desktops.is_empty(), "there is a desktop");
+            assert!(
+                desktops.len() <= Desktop::MOST_WORKSPACES,
+                "no more than the most"
+            );
+            for (count, index) in desktops.iter().enumerate() {
+                let kept = set.workspaces[*index].kept;
+                assert_eq!(kept, count < desktop.kept, "the first are kept");
+            }
+            let solos = set.workspaces.iter().filter_map(|workspace| workspace.solo);
+            let origins: Vec<WorkspaceId> = solos.map(|solo| solo.origin).collect();
+            for origin in &origins {
+                let known = |index: &&usize| set.workspaces[**index].id == *origin;
+                assert!(
+                    desktops.iter().any(|index| known(&index)),
+                    "a desktop to go back to"
+                );
+            }
             for (index, workspace) in set.workspaces.iter().enumerate() {
-                assert_eq!(workspace.kept, index < desktop.kept, "the first are kept");
                 let needed = !workspace.groups.is_empty() || index == set.active;
+                let needed = needed || origins.contains(&workspace.id);
                 assert!(workspace.kept || needed, "none is left for nothing");
+                let fullscreen = workspace.groups.iter().filter(|group| group.fullscreen);
+                match workspace.solo {
+                    Some(_) => {
+                        assert!(!workspace.kept, "one made for a window is not kept");
+                        assert!(workspace.owner().is_some(), "and its window is there");
+                        assert_eq!(fullscreen.count(), 1, "alone");
+                    }
+                    None => assert_eq!(fullscreen.count(), 0, "none on a desktop"),
+                }
             }
         }
         let mut places: Vec<WorkspaceId> = desktop.workspaces().map(|place| place.id).collect();
@@ -3043,11 +3590,6 @@ mod tests {
         desktop.clicked(second);
         assert_eq!(stack(&desktop), [third, second, first], "raised under it");
         assert_eq!(desktop.focused(), Some(second));
-
-        // A fullscreen frame is over even that.
-        desktop.toggle_fullscreen(third);
-        assert_eq!(stack(&desktop), [second, first, third]);
-        desktop.toggle_fullscreen(third);
 
         desktop.toggle_above(first);
         assert_eq!(

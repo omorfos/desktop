@@ -214,3 +214,29 @@ fn a_workspace_is_made_by_asking_for_a_new_one_or_by_sending_a_window_to_one() {
     session.step();
     assert_eq!(session.draw().at(100, 50), RED);
 }
+
+#[test]
+fn a_dialog_opens_over_its_fullscreen_window_and_any_other_window_on_the_desktop() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let player = session.open(&mut client, "player", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Fullscreen);
+    let active = |session: &Session| session.compositor().desktop().active_workspace();
+    let frames = |session: &Session| session.compositor().desktop().frames().count();
+    assert_eq!((active(&session), frames(&session)), (1, 1));
+
+    // One that says it belongs to the fullscreen window is with it.
+    let dialog = client.toplevel_uncommitted("player", "dialog");
+    dialog.role.set_parent(Some(&player.role));
+    dialog.surface.commit();
+    session.roundtrip(&mut client);
+    client.fill(&dialog.surface, (100, 50), RED);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!((active(&session), frames(&session)), (1, 2));
+
+    // Another window of the same program is not: it opens on the desktop
+    // the fullscreen one came from, which is shown for it.
+    session.open(&mut client, "player", (200, 100), RED);
+    assert_eq!((active(&session), frames(&session)), (0, 1));
+}

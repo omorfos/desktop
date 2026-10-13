@@ -176,7 +176,12 @@ impl Compositor {
         window.on_commit();
         let size = domain_size(window.geometry().size);
         let listed = self.foreign_toplevels.new_toplevel::<Self>(&title, &app_id);
-        let id = self.desktop.add_window(
+        // A dialog says which window it belongs to, and opens where that
+        // one is.
+        let parent = toplevel.parent();
+        let parent = parent.and_then(|parent| self.window_id(&parent));
+        let id = self.desktop.add_window_of(
+            parent,
             app_id,
             title,
             size,

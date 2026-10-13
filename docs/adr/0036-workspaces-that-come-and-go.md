@@ -116,9 +116,38 @@ are told of everything else.
 
 ### What was built first
 
-The desktops, their identities and the actions came first, and solos
-after. Until solos are built, fullscreen is as it was: in place, on the
-desktop the window is on.
+The desktops, their identities and the actions came first, then solos,
+and the edges that answer to a push after that. Until those are built a
+solo is left by the key, or by whatever the program has for it.
+
+Some things were settled in building solos that the above leaves open:
+
+- "The program's own dialogs" are the windows that say they belong to the
+  fullscreen one (`xdg_toplevel.set_parent`). Going by the program's name
+  was tried first and was wrong at once: a second terminal is the same
+  program and is not a dialog. Programs written for X11 are not asked
+  yet, so a dialog of theirs opens on the desktop.
+- Any other window opens on the desktop the solo came from, and that is
+  shown, whether the user asked for the window or not. The compositor
+  cannot yet tell the two apart. Activation tokens can, and when they are
+  heeded a window nobody asked for should open there unseen.
+- A fullscreen window sent to a desktop or to another screen leaves
+  fullscreen to go.
+- Minimizing a fullscreen window shows the desktop it came from; its solo
+  waits, and bringing the window back shows it again.
+- A window on every workspace waits on the desktop last shown while a
+  solo is shown, and is on the next desktop shown.
+- Over IPC a solo has the number 0 and is named by its window's title.
+
+### More than one window on a workspace of their own
+
+Wanted next, and not designed yet: two, three or four windows sharing
+such a workspace in a grid, side by side or one above another, resized
+by dragging the line between them; a window dragged to an edge of the
+screen making one; and the titlebar's button, under the pointer,
+offering the arrangements. A solo is then the simplest arrangement of
+several. This ADR is to be amended, or followed by another, when that is
+designed.
 
 When the number of desktops that are always there is made smaller,
 nothing is moved: one that is no longer kept stays for as long as it has

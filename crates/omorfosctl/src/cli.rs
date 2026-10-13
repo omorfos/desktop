@@ -306,6 +306,7 @@ mod tests {
                 active: true,
                 id: 0,
                 kept: true,
+                window: None,
             }],
             windows: vec![Window {
                 id: 7,

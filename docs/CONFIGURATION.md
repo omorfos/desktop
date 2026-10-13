@@ -121,6 +121,17 @@ with one workspace makes a second. A workspace that was made is called by
 its number, and goes again once nothing is on it and another is being
 shown. A screen has 32 at most.
 
+A window made fullscreen, by the second button of its titlebar, by
+`Super+f`, or because its program asked, goes alone to a workspace made
+for it, directly after the one it was on, with no panel over it and no
+titlebar. That workspace has no number: `Super+Right` and `Super+Left` go
+along the whole row and reach it, and the number keys count desktops only.
+It goes when the window closes or leaves fullscreen, which takes the
+window back where it was. A dialog that belongs to it opens over it; any
+other window, another of the same program included, opens on the desktop
+it came from, which is then shown. Maximizing is another thing: it fills the desktop the window
+is on and keeps the panel and the titlebar.
+
 Each screen has its own workspaces, and shows one of them: switching
 workspace on one screen leaves the others as they are. A window dragged
 onto another screen joins the workspace that screen is showing. When a
@@ -165,7 +176,8 @@ that are already bound on their own.
 |---|---|
 | `spawn: [program, arg, ...]` | Start a program. No shell is involved. |
 | `close` | Close the focused window. |
-| `maximize`, `fullscreen`, `minimize` | Toggle or apply that state. |
+| `maximize`, `minimize` | Toggle or apply that state. |
+| `fullscreen` | Put the focused window alone on a workspace made for it, filling the screen, or bring it back to the desktop it came from. |
 | `shade` | Roll the focused window up into its titlebar, or let it down. |
 | `keep_above` | Keep the focused window above the others, or stop. |
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
@@ -727,7 +739,8 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 
 | To | Do this |
 |---|---|
-| Close, maximize or minimize a window | Click the first, second or third button at the left of its titlebar |
+| Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
+| Leave fullscreen | `Super+f`, or what the program itself has for it |
 | Maximize a window, or put it back | Double-click its titlebar |
 | Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
 | Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |

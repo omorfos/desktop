@@ -452,7 +452,10 @@ impl Compositor {
                 // A window that has just gone has nothing to close.
                 let _ = self.mapped(window).map(|mapped| mapped.role.close());
             }
-            Button::Maximize => self.desktop.toggle_maximized(window),
+            // The button is for fullscreen, as on macOS: the window goes
+            // to a workspace of its own. Maximizing is a double click on
+            // the titlebar.
+            Button::Maximize => self.desktop.toggle_fullscreen(window),
             Button::Minimize => self.desktop.minimize(window),
         }
     }
@@ -618,7 +621,7 @@ impl Compositor {
             .scene
             .iter()
             .rev()
-            .filter(|shown| shown.fullscreen == fullscreen);
+            .filter(|shown| shown.over == fullscreen);
         frames.into_iter().find_map(|shown| {
             let part = shown
                 .decoration()

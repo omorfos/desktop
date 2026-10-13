@@ -129,9 +129,21 @@ calls for them.
 - [x] Workspaces as ADR 36 has them, in the model first: identities,
       desktops made and removed, `new_workspace`, the number keys making
       the next one, one by default, and what the IPC says of them.
-- [ ] Fullscreen on a workspace of its own: the solo, the window going
-      back where it was, the titlebar's button meaning fullscreen, and
-      the bar, titlebar and dock brought back by pushing at an edge.
+- [x] Fullscreen on a workspace of its own: the solo, the window going
+      back where it was, and the titlebar's button meaning fullscreen.
+- [ ] In a fullscreen workspace, the bar, the titlebar and the dock
+      brought back by pushing the pointer at an edge (ADR 36). Until
+      then it is left by the key.
+- [ ] A fullscreen workspace shared by two, three or four windows in a
+      grid, as macOS has it: side by side, one above another, one beside
+      two, or two by two, resized by dragging the line between them. A
+      window dragged to an edge of the screen makes one; and the
+      titlebar's fullscreen button, under the pointer, offers the
+      arrangements to make a new workspace with. To be designed first,
+      as an amendment to ADR 36.
+- [ ] A window that nobody asked for, opening while a fullscreen
+      workspace is shown, left on the desktop unseen (activation
+      tokens).
 - [ ] Roles (ADR 37): components started by being handed their
       connection, `may` on what `autostart` starts, every privileged
       protocol behind a check of the role, sandboxes recognised
@@ -160,8 +172,9 @@ calls for them.
       own, which the theme's `desktop` gives way to.
 - [ ] Keys for volume, brightness and media, with a small display of the
       level over the screen that goes by itself.
-- [ ] Windows snapped to a half or a quarter of the screen, by a key and
-      by dragging to an edge.
+- [ ] Windows snapped to a half or a quarter of a desktop, by a key and
+      by dragging to an edge. To be designed with the grid above, since
+      both answer to a window dragged to an edge.
 - [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
       were last used, each with its picture and title, walked through
       while Alt is held and chosen when it is let go. Flat first. The
@@ -423,6 +436,10 @@ A way in:
 
 Reaching people:
 
+- [ ] The README put right: it does not render as it should, and it
+      describes a smaller omorfos than there is. What it is now, what it
+      looks like, how to build, install and try it, and where the guide,
+      the roadmap and the decisions are.
 - [ ] A first release, which is also the first real test of the release
       pipeline (see [RELEASING.md](RELEASING.md)).
 - [ ] The shell in the user's language.
