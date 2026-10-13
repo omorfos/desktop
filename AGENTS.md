@@ -16,6 +16,8 @@ It is a fresh implementation, not a port: see
 - Current state and next task: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Layering and crate responsibilities: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - The IPC protocol, a compatibility surface: [docs/IPC.md](docs/IPC.md)
+- How to test, and how to write code the coverage gate accepts:
+  [docs/TESTING.md](docs/TESTING.md)
 - Decisions and their reasons: [docs/adr/](docs/adr/)
 
 ## Priorities, in order
