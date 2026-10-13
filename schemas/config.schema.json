@@ -126,6 +126,18 @@
       },
       "type": "object"
     },
+    "Mouse": {
+      "additionalProperties": false,
+      "description": "Mouse behaviour. A mouse and a touchpad are set apart because people\nexpect opposite things of them.",
+      "properties": {
+        "natural_scroll": {
+          "default": false,
+          "description": "Whether content follows the wheel when scrolling. A wheel turned\ntowards the user moves down the page unless this is on.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "NamedOutput": {
       "additionalProperties": false,
       "description": "One screen, by the name of the socket it is plugged into.",
@@ -239,7 +251,7 @@
       "description": "Touchpad behaviour.",
       "properties": {
         "natural_scroll": {
-          "default": false,
+          "default": true,
           "description": "Whether content follows the fingers when scrolling.",
           "type": "boolean"
         },
@@ -322,6 +334,10 @@
     "launcher": {
       "$ref": "#/$defs/Launcher",
       "description": "The launcher that comes with omorfos."
+    },
+    "mouse": {
+      "$ref": "#/$defs/Mouse",
+      "description": "Mouse behaviour."
     },
     "notifications": {
       "$ref": "#/$defs/Notifications",

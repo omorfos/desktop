@@ -19,6 +19,8 @@ pub struct General {
     pub keyboard: Keyboard,
     /// Touchpad behaviour.
     pub touchpad: Touchpad,
+    /// Mouse behaviour.
+    pub mouse: Mouse,
     /// How every screen is driven, unless it is named in `outputs`.
     pub output: Output,
     /// Particular screens, by name: where each stands and how it is
@@ -292,9 +294,22 @@ impl Default for Touchpad {
     fn default() -> Self {
         Self {
             tap_to_click: true,
-            natural_scroll: false,
+            // Fingers on a touchpad move what is under them, as they do on
+            // a telephone.
+            natural_scroll: true,
         }
     }
+}
+
+/// Mouse behaviour. A mouse and a touchpad are set apart because people
+/// expect opposite things of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Mouse {
+    /// Whether content follows the wheel when scrolling. A wheel turned
+    /// towards the user moves down the page unless this is on.
+    pub natural_scroll: bool,
 }
 
 /// How the screen is driven.
@@ -574,9 +589,25 @@ mod tests {
             general.touchpad,
             Touchpad {
                 tap_to_click: true,
-                natural_scroll: false
+                natural_scroll: true
             }
         );
+    }
+
+    #[test]
+    fn a_mouse_and_a_touchpad_scroll_each_in_the_way_people_expect_of_it() {
+        let general = General::default();
+        assert!(general.touchpad.natural_scroll, "as fingers do");
+        assert!(!general.mouse.natural_scroll, "as a wheel does");
+        let swapped = "touchpad: { natural_scroll: false }\nmouse: { natural_scroll: true }";
+        let general = parse(swapped).unwrap();
+        assert!(!general.touchpad.natural_scroll);
+        assert!(general.mouse.natural_scroll);
+        assert!(
+            general.touchpad.tap_to_click,
+            "what is not said is as before"
+        );
+        assert!(parse("mouse: { tap_to_click: true }").is_err());
     }
 
     #[test]
