@@ -147,9 +147,10 @@ calls for them.
 - [ ] A line that stops where a window says it can be no smaller, and a
       part of the theme for the line.
 - [x] Three and four windows, changing places and focus by direction.
-- [ ] A window changed over with another by dragging its titlebar onto
-      the other's part; and a tile's titlebar brought back at the line
-      above it.
+- [x] A window changed over with another by dragging its titlebar onto
+      the other's part.
+- [ ] A tile's titlebar brought back at the line above it, if it is
+      still wanted.
 - [x] An empty part of a tiled workspace filled by the next window to
       open there.
 - [x] A window that is open already put beside one that is tiled or

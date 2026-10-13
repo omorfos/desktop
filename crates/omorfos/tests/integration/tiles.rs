@@ -386,3 +386,51 @@ fn a_window_held_when_its_screen_goes_is_offered_nothing() {
     button(&mut session, LEFT, false, 0);
     assert_eq!(session.compositor().desktop().workspaces().count(), 1);
 }
+
+#[test]
+fn a_window_carried_by_its_titlebar_to_another_part_changes_places() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    session.open_decorated(&mut client, "second", (200, 100), BLUE);
+    session.step();
+    let apps = |session: &Session| -> Vec<(String, i32)> {
+        let frames = session.compositor().desktop().frames();
+        let mut apps: Vec<(String, i32)> = frames
+            .map(|frame| (frame.window().app_id.clone(), frame.geometry.origin.x))
+            .collect();
+        apps.sort();
+        apps
+    };
+    assert_eq!(
+        apps(&session),
+        [("first".to_owned(), 0), ("second".to_owned(), 320)]
+    );
+
+    // Its titlebar is brought back at the top of the screen, and taken
+    // hold of.
+    point(&mut session, 150, 0);
+    session.advance(std::time::Duration::from_millis(300));
+    point(&mut session, 150, 14);
+    button(&mut session, LEFT, true, 0);
+
+    // Over its own part nothing is offered; over the other, that part is
+    // washed over.
+    point(&mut session, 150, 300);
+    assert_eq!(session.draw().at(500, 400), BACKGROUND);
+    point(&mut session, 500, 300);
+    assert_ne!(session.draw().at(500, 400), BACKGROUND);
+    assert_eq!(session.draw().at(100, 400), BACKGROUND);
+
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(
+        apps(&session),
+        [("first".to_owned(), 320), ("second".to_owned(), 0)]
+    );
+    assert_eq!(
+        session.draw().at(500, 400),
+        BACKGROUND,
+        "nothing is offered now"
+    );
+}

@@ -196,11 +196,15 @@ instead, changing places with what was there, which is what the word
 would be taken to mean. A fullscreen window asked the same takes a half
 of the workspace it has, and no new one is made.
 
-Changing places by dragging a titlebar onto another part, and a tile's
-titlebar brought back at the line above it, are not built: the first
-needs a titlebar that can be dragged where it is laid over a window, and
-the second has been less wanted since what is brought back stays while
-the pointer moves.
+Changing places by dragging came later: a window that fills a part is
+taken hold of by the titlebar brought back over it, the part under the
+pointer is washed over as a part offered at an edge is, and let go there
+the two change places, a part with nothing in it included. The window
+itself does not follow the pointer; only the wash says where it will go.
+
+A tile's titlebar brought back at the line above it is not built, and
+has been less wanted since what is brought back stays while the pointer
+moves.
 
 The pictures of arrangements came next: all seven in a row under the
 button, each part a block, the one under the pointer picked out as a

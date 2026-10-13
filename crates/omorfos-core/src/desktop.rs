@@ -981,6 +981,11 @@ impl Set {
     }
 }
 
+/// A window dropped on a part of the workspace it shares: where the
+/// window is, how the workspace is cut, the window's own part and the one
+/// it was dropped on, and where on the output that one is.
+type Dropped = (Location, Tiling, [(usize, usize); 2], Rect);
+
 /// Where a window is: its output's set, its workspace there, its group and
 /// its tab.
 #[derive(Clone, Copy)]
@@ -1531,6 +1536,39 @@ impl Desktop {
         onto.groups.push(group);
         set.active = to;
         set.settle();
+    }
+
+    /// The part of a workspace made for windows that is at `point`, with
+    /// how the workspace is cut and where `id`'s own part is: another part
+    /// than the one `id` fills.
+    fn part_at(&self, id: WindowId, point: Point) -> Option<Dropped> {
+        let (at, tiling, own, area) = self.tiled(id)?;
+        let mut others = tiling
+            .slots()
+            .filter(|(other, part)| *other != own && *part != Part::None);
+        let (other, place) = others.find_map(|(other, _)| {
+            let place = tiling.rect(other, area);
+            place.contains(point).then_some((other, place))
+        })?;
+        Some((at, tiling, [own, other], place))
+    }
+
+    /// Where the part is that a window would change places with if it
+    /// were dropped at `point`: another part of the workspace it shares,
+    /// whether a window fills it or nothing does.
+    #[must_use]
+    pub fn part_under(&self, id: WindowId, point: Point) -> Option<Rect> {
+        self.part_at(id, point).map(|(.., place)| place)
+    }
+
+    /// Changes a window over with whatever is in the part of its workspace
+    /// at `point`: another window, or nothing. Does nothing for a window
+    /// that does not fill a part, or at a point on its own part or none.
+    pub fn swap_at(&mut self, id: WindowId, point: Point) {
+        if let Some((at, tiling, [own, other], _)) = self.part_at(id, point) {
+            let on = &mut self.sets[at.set].workspaces[at.workspace];
+            on.solo = Some(tiling.swapped(own, other));
+        }
     }
 
     /// Changes a window over with whatever is in the part beside its own,
@@ -3257,6 +3295,37 @@ mod tests {
     }
 
     #[test]
+    fn a_window_changes_places_with_the_part_it_is_dropped_on() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+        // The top left, dropped on the bottom right.
+        let there = Point::new(1500, 900);
+        let place = Rect::new(Point::new(960, 540), Size::new(960, 540));
+        assert_eq!(desktop.part_under(a, there), Some(place));
+        desktop.swap_at(a, there);
+        assert_eq!(part(&desktop, a), (960, 540, 960, 540));
+        assert_eq!(part(&desktop, d), (0, 0, 960, 540));
+        assert_eq!(part(&desktop, b), (0, 540, 960, 540), "the others stay");
+        assert_eq!(part(&desktop, c), (960, 0, 960, 540));
+
+        // On its own part, or off the screen, it stays where it is; and a
+        // window that fills no part has none to change with.
+        let before = desktop.clone();
+        desktop.swap_at(a, there);
+        desktop.swap_at(a, Point::new(5000, 5000));
+        desktop.swap_at(WindowId(999), there);
+        assert_eq!(desktop, before);
+        assert_eq!(desktop.part_under(a, there), None);
+
+        // A part with nothing in it is changed with as well.
+        let mut desktop = self::desktop();
+        let only = open(&mut desktop, "only");
+        desktop.tile(only, Half::Left);
+        desktop.swap_at(only, Point::new(1500, 500));
+        assert_eq!(part(&desktop, only), (960, 0, 960, 1080));
+    }
+
+    #[test]
     fn a_window_changes_places_with_what_is_beside_it() {
         let mut desktop = desktop();
         let editor = open(&mut desktop, "editor");
@@ -4896,7 +4965,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(38) {
+            match random(39) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -4917,6 +4986,7 @@ mod tests {
                 34 => desktop.focus_toward(HALVES[random(4)]),
                 35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400))),
                 37 => desktop.arrange(id, Arrangement::ALL[random(7)], random(4)),
+                38 => desktop.swap_at(id, Point::new(1000, 600)),
                 36 => {
                     let places: Vec<Place> = desktop.workspaces().collect();
                     desktop.join(id, places[random(places.len())].id);
