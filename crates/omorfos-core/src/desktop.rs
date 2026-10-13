@@ -1404,6 +1404,7 @@ mod tests {
     const METRICS: Metrics = Metrics {
         border: 2,
         titlebar: 20,
+        buttons: [0; 3],
     };
 
     fn decorated_desktop() -> Desktop {

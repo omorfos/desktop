@@ -9,7 +9,7 @@ use std::path::Path;
 use omorfos_config::{
     Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
 };
-use omorfos_core::{Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
+use omorfos_core::{Button, Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
 use crate::Scale;
@@ -46,9 +46,24 @@ pub fn settings(config: &Config) -> Settings {
         decoration: Metrics {
             border: theme.style(Part::Window, States::NONE).border.top.width,
             titlebar: theme.style(Part::Titlebar, States::NONE).height,
+            buttons: BUTTONS.map(|(_, part)| {
+                // A button is as wide as it says, with its margin around
+                // it. One with no width is not there, margin and all.
+                let style = theme.style(part, States::NONE);
+                let wide = Some(style.min_width).filter(|wide| *wide > 0);
+                wide.map_or(0, |wide| wide.saturating_add(style.margin.across()))
+            }),
         },
     }
 }
+
+/// The buttons of a titlebar, from the left, and the part of the theme
+/// that says how each looks.
+pub(crate) const BUTTONS: [(Button, Part); 3] = [
+    (Button::Close, Part::ButtonClose),
+    (Button::Maximize, Part::ButtonMaximize),
+    (Button::Minimize, Part::ButtonMinimize),
+];
 
 /// Converts configured rules into domain rules.
 ///
@@ -216,6 +231,7 @@ mod tests {
             decoration: Metrics {
                 border: 1,
                 titlebar: 28,
+                buttons: [26, 20, 20],
             },
         };
         assert_eq!(settings(&Config::default()), expected);
@@ -225,13 +241,18 @@ mod tests {
     fn decoration_sizes_come_from_the_theme() {
         let theme = config(
             "theme.css",
-            "window { border-width: 3px; }\ntitlebar { height: 40px; }\n",
+            "window { border-width: 3px; }\ntitlebar { height: 40px; }\n\
+             button-close { min-width: 16px; margin: 0 2px; }\n\
+             button-maximize { min-width: 0; }\n",
         );
         assert_eq!(
             settings(&theme).decoration,
             Metrics {
                 border: 3,
-                titlebar: 40
+                titlebar: 40,
+                // One as wide as it says with its margin, one that is not
+                // there, and one as the built-in theme has it.
+                buttons: [20, 0, 20],
             }
         );
     }
@@ -247,7 +268,8 @@ mod tests {
                 placement: Placement::Center,
                 decoration: Metrics {
                     border: 1,
-                    titlebar: 28
+                    titlebar: 28,
+                    buttons: [26, 20, 20],
                 },
             }
         );

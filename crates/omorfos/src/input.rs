@@ -1,7 +1,7 @@
 //! Input from the user.
 
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Edges, MenuOutcome, Part, WindowId, resize};
+use omorfos_core::{Button, Edges, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
@@ -96,6 +96,10 @@ pub(crate) enum Placed {
 }
 
 /// Linux input event codes for the pointer buttons.
+/// How long there may be between two presses on a titlebar for them to be
+/// a double click, in thousandths of a second.
+const DOUBLE_CLICK: u32 = 400;
+
 const BUTTON_LEFT: u32 = 0x110;
 const BUTTON_RIGHT: u32 = 0x111;
 const BUTTON_MIDDLE: u32 = 0x112;
@@ -310,6 +314,8 @@ impl Compositor {
 
     fn motion(&mut self, x: f64, y: f64, time: u32) {
         self.pointer_location = (x, y).into();
+        // Whatever else has the pointer, no button of a titlebar has.
+        self.hover.button = None;
         let position = self.pointer_position();
         if let Some(drag) = self.drag {
             match drag {
@@ -350,17 +356,83 @@ impl Compositor {
         }
 
         let under = self.under();
+        self.hover.button = Self::button_under(under.as_ref());
         let hovered = match &under {
             Some(Under::Frame(id, _)) => Some(*id),
             _ => None,
         };
-        if hovered != self.hovered {
-            self.hovered = hovered;
+        if hovered != self.hover.window {
+            self.hover.window = hovered;
             if let Some(id) = hovered {
                 self.desktop.pointer_entered(id);
             }
         }
         self.move_pointer(under.as_ref().and_then(Under::focus), time);
+    }
+
+    /// Takes a press of a mouse button on the frame of `id`, on its
+    /// decoration or on its window: gives the frame focus, and begins
+    /// whatever the press begins there.
+    fn press_frame(&mut self, id: WindowId, hit: &Hit, button: u32, time: u32) {
+        let frame = self.frame_facts(id);
+        let tab = |index: &usize| frame.tabs.get(*index).copied().unwrap_or(id);
+        let alt = self.keyboard.modifier_state().alt;
+        let (clicked, wanted) = match (hit, button, alt) {
+            (Hit::Part(Part::Button(which)), BUTTON_LEFT, _) => {
+                // It does what it does when it is let go on.
+                self.hover.pressed = Some((id, *which));
+                (id, Wanted::Nothing)
+            }
+            (Hit::Part(Part::Tab(_)), BUTTON_LEFT, _) if self.double_click(id, time) => {
+                self.desktop.toggle_maximized(id);
+                (id, Wanted::Nothing)
+            }
+            (Hit::Part(Part::Tab(index)), BUTTON_LEFT, _) => (tab(index), Wanted::Move),
+            (Hit::Part(Part::Tab(index)), BUTTON_MIDDLE, _) => (tab(index), Wanted::Tab),
+            (Hit::Part(Part::Tab(index)), ..) => (tab(index), Wanted::Nothing),
+            (Hit::Part(Part::Border(edges)), BUTTON_LEFT, _) => (id, Wanted::Resize(*edges)),
+            (Hit::Surface(..), BUTTON_LEFT, true) => (id, Wanted::Move),
+            (Hit::Surface(..), BUTTON_RIGHT, true) => (
+                id,
+                Wanted::Resize(frame.nearest_corner(self.pointer_position())),
+            ),
+            _ => (id, Wanted::Nothing),
+        };
+        self.desktop.clicked(clicked);
+        self.begin(clicked, wanted);
+    }
+
+    /// The button of a titlebar that is under the pointer, and the window
+    /// whose frame has it.
+    fn button_under(under: Option<&Under>) -> Option<(WindowId, Button)> {
+        match under {
+            Some(Under::Frame(id, Hit::Part(Part::Button(which)))) => Some((*id, *which)),
+            _ => None,
+        }
+    }
+
+    /// Does what a button of a window's titlebar does.
+    fn press_button(&mut self, window: WindowId, which: Button) {
+        match which {
+            Button::Close => {
+                // A window that has just gone has nothing to close.
+                let _ = self.mapped(window).map(|mapped| mapped.role.close());
+            }
+            Button::Maximize => self.desktop.toggle_maximized(window),
+            Button::Minimize => self.desktop.minimize(window),
+        }
+    }
+
+    /// Whether a press on a window's titlebar at `time`, in thousandths
+    /// of a second, is the second of two close together in time and
+    /// place. Either way it is remembered, to be the first of the next.
+    fn double_click(&mut self, window: WindowId, time: u32) -> bool {
+        let position = self.pointer_position();
+        let before = self.hover.clicked.replace((window, time, position));
+        before.is_some_and(|(last, at, place)| {
+            let near = place.x.abs_diff(position.x) <= 4 && place.y.abs_diff(position.y) <= 4;
+            last == window && near && time.wrapping_sub(at) <= DOUBLE_CLICK
+        })
     }
 
     pub(crate) fn move_pointer(
@@ -569,6 +641,13 @@ impl Compositor {
             return;
         }
         let under = self.under();
+        // A button of a titlebar does what it does if the pointer is let
+        // go on the button it was pressed on.
+        let on = Self::button_under(under.as_ref());
+        let chosen = self.hover.pressed.take_if(|_| !pressed);
+        if let Some((window, which)) = chosen.filter(|chosen| on == Some(*chosen)) {
+            self.press_button(window, which);
+        }
         if pressed {
             // Something may have come or gone under a pointer that has not
             // moved since, as a launcher does when it opens. The press is
@@ -602,23 +681,7 @@ impl Compositor {
             return;
         }
         if let (true, Some(Under::Frame(id, hit))) = (pressed, under) {
-            let frame = self.frame_facts(id);
-            let tab = |index: &usize| frame.tabs.get(*index).copied().unwrap_or(id);
-            let alt = self.keyboard.modifier_state().alt;
-            let (clicked, wanted) = match (&hit, button, alt) {
-                (Hit::Part(Part::Tab(index)), BUTTON_LEFT, _) => (tab(index), Wanted::Move),
-                (Hit::Part(Part::Tab(index)), BUTTON_MIDDLE, _) => (tab(index), Wanted::Tab),
-                (Hit::Part(Part::Tab(index)), ..) => (tab(index), Wanted::Nothing),
-                (Hit::Part(Part::Border(edges)), BUTTON_LEFT, _) => (id, Wanted::Resize(*edges)),
-                (Hit::Surface(..), BUTTON_LEFT, true) => (id, Wanted::Move),
-                (Hit::Surface(..), BUTTON_RIGHT, true) => (
-                    id,
-                    Wanted::Resize(frame.nearest_corner(self.pointer_position())),
-                ),
-                _ => (id, Wanted::Nothing),
-            };
-            self.desktop.clicked(clicked);
-            self.begin(clicked, wanted);
+            self.press_frame(id, &hit, button, time);
             if self.drag.is_some() {
                 self.move_pointer(None, time);
                 return;

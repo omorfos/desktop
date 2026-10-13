@@ -20,7 +20,7 @@ mod menu;
 mod placement;
 mod rules;
 
-pub use decoration::{CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
+pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{Desktop, Frame, Listed, Opening, Screen, Settings, Window, WindowId};
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Menu, MenuMetrics, MenuOutcome, Panel};
