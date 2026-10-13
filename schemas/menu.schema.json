@@ -73,6 +73,19 @@
         },
         {
           "additionalProperties": false,
+          "description": "Put the focused window in a half of a workspace made for it:\n`left`, `right`, `top` or `bottom`. The next window to open there\nhas the other half.",
+          "properties": {
+            "tile": {
+              "$ref": "#/$defs/Half"
+            }
+          },
+          "required": [
+            "tile"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Switch to the workspace with this number. One past the last makes\nthat workspace first.",
           "properties": {
             "workspace": {
@@ -155,6 +168,31 @@
       },
       "minItems": 1,
       "type": "array"
+    },
+    "Half": {
+      "description": "A half of the screen.",
+      "oneOf": [
+        {
+          "const": "left",
+          "description": "The left half.",
+          "type": "string"
+        },
+        {
+          "const": "right",
+          "description": "The right half.",
+          "type": "string"
+        },
+        {
+          "const": "top",
+          "description": "The top half.",
+          "type": "string"
+        },
+        {
+          "const": "bottom",
+          "description": "The bottom half.",
+          "type": "string"
+        }
+      ]
     },
     "MenuEntry": {
       "additionalProperties": false,

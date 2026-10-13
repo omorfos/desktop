@@ -620,6 +620,13 @@ impl Compositor {
             .or_else(|| on_layer(Layer::Background))
     }
 
+    /// Whether the pointer is on the titlebar of a window that fills a
+    /// workspace made for it, or its part of one: a titlebar that was
+    /// brought back.
+    pub(crate) fn on_titlebar(&self) -> bool {
+        matches!(self.frame_under(true), Some((_, Hit::Part(_))))
+    }
+
     /// The frame under the pointer, whatever else may be in front of it.
     fn target(&self) -> Option<(WindowId, Hit)> {
         self.frame_under(true).or_else(|| self.frame_under(false))
@@ -693,6 +700,11 @@ impl Compositor {
             return;
         }
         let under = self.under();
+        // A press in a window is for the window: what was brought back
+        // over it has served.
+        if pressed && matches!(under, Some(Under::Frame(_, Hit::Surface(..)))) {
+            self.hover.reveal.dismiss();
+        }
         // A button of a titlebar does what it does if the pointer is let
         // go on the button it was pressed on.
         let on = Self::button_under(under.as_ref());

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{
-    Action, Config, Debouncer, Part, States, Store, Style, Theme, Watcher, WorkspaceNumber,
+    Action, Config, Debouncer, Half, Part, States, Store, Style, Theme, Watcher, WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
@@ -699,6 +699,10 @@ impl Compositor {
             }
             Action::Maximize => self.on_focused(Desktop::toggle_maximized),
             Action::Fullscreen => self.on_focused(Desktop::toggle_fullscreen),
+            Action::Tile(half) => {
+                let half = bridge::half(*half);
+                self.on_focused(|desktop, id| desktop.tile(id, half));
+            }
             Action::Minimize => self.on_focused(Desktop::minimize),
             Action::Shade => self.on_focused(Desktop::toggle_shaded),
             Action::KeepAbove => self.on_focused(Desktop::toggle_above),
@@ -786,6 +790,15 @@ impl Compositor {
             },
             entry("Minimize", Action::Minimize),
             entry("Fullscreen", Action::Fullscreen),
+            Item::Submenu {
+                label: "Tile".to_owned(),
+                items: vec![
+                    entry("Left half", Action::Tile(Half::Left)),
+                    entry("Right half", Action::Tile(Half::Right)),
+                    entry("Top half", Action::Tile(Half::Top)),
+                    entry("Bottom half", Action::Tile(Half::Bottom)),
+                ],
+            },
             Item::Separator,
             Item::Entry {
                 label: either(standing.shaded, "Shade", "Unshade"),
@@ -817,20 +830,15 @@ impl Compositor {
     /// that were made.
     pub(crate) fn workspace_name(&self, place: &Place) -> String {
         let configured = self.config().general.workspaces.names();
-        match (place.desktop, place.solo) {
-            (Some(desktop), _) => {
-                let name = configured.get(desktop).cloned();
-                name.unwrap_or_else(|| (desktop + 1).to_string())
-            }
-            // One made for a fullscreen window is called what the window
-            // is.
-            (None, solo) => {
-                let window = solo.and_then(|id| self.desktop.window(id));
-                window
-                    .map(|window| window.title.clone())
-                    .unwrap_or_default()
-            }
+        if let Some(desktop) = place.desktop {
+            let name = configured.get(desktop).cloned();
+            return name.unwrap_or_else(|| (desktop + 1).to_string());
         }
+        // One made for windows is called what they are.
+        let windows = place.tiles.iter();
+        let windows = windows.filter_map(|id| self.desktop.window(*id));
+        let titles: Vec<&str> = windows.map(|window| window.title.as_str()).collect();
+        titles.join(" | ")
     }
 
     /// Opens a menu of `items` at the pointer.
@@ -1095,7 +1103,10 @@ impl Compositor {
             let placed = unrolled.map(|(_, frame)| Placed {
                 client: frame.client,
                 maximized: frame.maximized,
-                fullscreen: frame.fullscreen,
+                // A window that shares its workspace fills a part of the
+                // screen and is not fullscreen.
+                fullscreen: frame.fullscreen && frame.home == Home::Solo,
+                tiled: frame.fullscreen && frame.home == Home::Shared,
             });
             role.arrange(Some(*id) == focused, placed);
             match frame {
@@ -1126,7 +1137,7 @@ impl Compositor {
                             id: *id,
                             opacity,
                             shaded: frame.standing.shaded,
-                            over: frame.home == Home::Solo,
+                            over: frame.home != Home::Desktop,
                             window: window.clone(),
                             surface: surface.clone(),
                             outer: frame.geometry,

@@ -176,9 +176,12 @@ impl Frame<'_> {
 pub enum Home {
     /// A desktop, where frames are under the panels.
     Desktop,
-    /// A workspace made for a fullscreen window: that window, or one of
-    /// its program's that opened over it. These are over the panels.
+    /// A workspace made for one fullscreen window: that window, or a
+    /// dialog of it that opened over it. These are over the panels.
     Solo,
+    /// A workspace made for windows to share, each filling a part of it,
+    /// and what opened over them. These are over the panels too.
+    Shared,
 }
 
 /// One or more windows sharing a position as tabs.
@@ -236,7 +239,7 @@ impl WorkspaceId {
 }
 
 /// One of an output's workspaces, as those who show them are told of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
     /// What it is known by.
     pub id: WorkspaceId,
@@ -254,17 +257,132 @@ pub struct Place {
     /// would count to it. A workspace made for one fullscreen window is
     /// not a desktop and has none.
     pub desktop: Option<usize>,
-    /// The fullscreen window it was made for, if it was made for one.
-    pub solo: Option<WindowId>,
+    /// The windows it was made for, in the order of its parts, if it was
+    /// made for windows to fill between them. A desktop has none.
+    pub tiles: Vec<WindowId>,
 }
 
-/// What makes a workspace one that was made for a fullscreen frame.
+/// A half of an output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Half {
+    /// The left half.
+    Left,
+    /// The right half.
+    Right,
+    /// The top half.
+    Top,
+    /// The bottom half.
+    Bottom,
+}
+
+/// A part of a workspace made for windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Solo {
-    /// The desktop the frame came from, and goes back to.
+enum Part {
+    /// There is no such part: the workspace is cut into fewer.
+    None,
+    /// A part with nothing in it yet.
+    Empty,
+    /// The frame that fills it.
+    Tile(u64),
+}
+
+/// What makes a workspace one that was made for windows to fill between
+/// them, and how it is cut up: into one part, or into two side by side or
+/// one above the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tiling {
+    /// The desktop the frames came from, and go back to.
     origin: WorkspaceId,
-    /// The frame it was made for.
-    owner: u64,
+    /// Whether two parts are one above the other, and not side by side.
+    stacked: bool,
+    /// How much of the output the first part has, in thousandths.
+    split: u32,
+    parts: [Part; 2],
+}
+
+impl Tiling {
+    /// A workspace for one frame, which has all of it.
+    const fn alone(origin: WorkspaceId, frame: u64) -> Self {
+        Self {
+            origin,
+            stacked: false,
+            split: 500,
+            parts: [Part::Tile(frame), Part::None],
+        }
+    }
+
+    /// A workspace of two halves, with a frame in one and nothing yet in
+    /// the other.
+    const fn halved(origin: WorkspaceId, frame: u64, half: Half) -> Self {
+        let first = matches!(half, Half::Left | Half::Top);
+        Self {
+            origin,
+            stacked: matches!(half, Half::Top | Half::Bottom),
+            split: 500,
+            parts: if first {
+                [Part::Tile(frame), Part::Empty]
+            } else {
+                [Part::Empty, Part::Tile(frame)]
+            },
+        }
+    }
+
+    /// The frames that fill its parts, in the order of the parts.
+    fn tiles(self) -> impl Iterator<Item = u64> {
+        let tile = |part: Part| match part {
+            Part::Tile(frame) => Some(frame),
+            _ => None,
+        };
+        self.parts.into_iter().filter_map(tile)
+    }
+
+    /// The same without the frames that are not `here` any longer. One
+    /// that leaves gives its part up, and the frame beside it has the
+    /// whole.
+    fn kept(self, here: impl Fn(u64) -> bool) -> Self {
+        let left = self.tiles().filter(|frame| !here(*frame)).count();
+        let mut staying = self.tiles().filter(|frame| here(*frame));
+        let only = staying.next().filter(|_| left > 0);
+        only.map_or(self, |frame| Self::alone(self.origin, frame))
+    }
+
+    /// The same with `frame` in the part that had nothing in it.
+    fn filled(self, frame: u64) -> Self {
+        let fill = |part: Part| match part {
+            Part::Empty => Part::Tile(frame),
+            other => other,
+        };
+        Self {
+            parts: self.parts.map(fill),
+            ..self
+        }
+    }
+
+    /// Whether it has a part with nothing in it.
+    fn has_room(&self) -> bool {
+        self.parts.contains(&Part::Empty)
+    }
+
+    /// Where on an output of `area` the part filled by `frame` is.
+    fn part_of(&self, frame: u64, area: Rect) -> Rect {
+        let second = self.parts[1] == Part::Tile(frame);
+        let whole = self.parts[1] == Part::None;
+        let (width, height) = (area.size.width, area.size.height);
+        let along = if self.stacked { height } else { width };
+        let first = u32::try_from(u64::from(along) * u64::from(self.split) / 1000).unwrap_or(along);
+        let (from, length) = match (whole, second) {
+            (true, _) => (0, along),
+            (false, false) => (0, first),
+            (false, true) => (first, along - first),
+        };
+        if self.stacked {
+            let origin = area.origin.offset(0, from.cast_signed());
+            Rect::new(origin, Size::new(width, length))
+        } else {
+            let origin = area.origin.offset(from.cast_signed(), 0);
+            Rect::new(origin, Size::new(length, height))
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,9 +391,9 @@ struct Workspace {
     /// Always there. One that is not kept goes when it is empty and
     /// another is shown.
     kept: bool,
-    /// Set for a workspace made for one fullscreen frame. The others are
-    /// desktops.
-    solo: Option<Solo>,
+    /// Set for a workspace made for frames to fill between them. The
+    /// others are desktops.
+    solo: Option<Tiling>,
     /// Bottom to top.
     groups: Vec<Group>,
     focused: Option<u64>,
@@ -292,12 +410,17 @@ impl Workspace {
         }
     }
 
-    /// The fullscreen frame this was made for, while it is here and still
-    /// fullscreen.
-    fn owner(&self) -> Option<&Group> {
-        let solo = self.solo?;
-        let owner = |group: &&Group| group.serial == solo.owner && group.fullscreen;
-        self.groups.iter().find(owner)
+    /// The frame that fills a part, while it is here and still does.
+    fn tile(&self, frame: u64) -> Option<&Group> {
+        let tile = |group: &&Group| group.serial == frame && group.fullscreen;
+        self.groups.iter().find(tile)
+    }
+
+    /// The frames this was made for that are still here, in the order of
+    /// its parts.
+    fn tiles(&self) -> Vec<&Group> {
+        let parts = self.solo.into_iter().flat_map(Tiling::tiles);
+        parts.filter_map(|frame| self.tile(frame)).collect()
     }
 
     /// Drops emptied groups and, if the focused group is gone or hidden,
@@ -391,7 +514,7 @@ impl Set {
             // now.
             let now = merged.iter().find(|(was, _)| *was == solo.origin);
             let origin = now.map_or(solo.origin, |(_, now)| *now);
-            workspace.solo = Some(Solo { origin, ..solo });
+            workspace.solo = Some(Tiling { origin, ..solo });
             self.workspaces.push(workspace);
         }
         self.settle();
@@ -405,7 +528,33 @@ impl Set {
     /// needed go.
     fn settle(&mut self) {
         let mut shown = self.workspaces[self.active].id;
-        let over = |workspace: &Workspace| workspace.solo.filter(|_| workspace.owner().is_none());
+        // A frame that has closed or left gives its part up. One that left
+        // and is still here goes back to the desktop it came from, and is
+        // followed there if it was being looked at.
+        for index in 0..self.workspaces.len() {
+            let workspace = &mut self.workspaces[index];
+            let Some(tiling) = workspace.solo else {
+                continue;
+            };
+            let parts: Vec<u64> = tiling.tiles().collect();
+            let left = |group: &mut Group| parts.contains(&group.serial) && !group.fullscreen;
+            let leaving: Vec<Group> = workspace.groups.extract_if(.., left).collect();
+            workspace.repair();
+            let here = |frame: u64| workspace.tile(frame).is_some();
+            workspace.solo = Some(tiling.kept(here));
+            let from = workspace.id;
+            if let Some(last) = leaving.last().map(|group| group.serial) {
+                let origin = self.place(tiling.origin);
+                let origin = &mut self.workspaces[origin];
+                origin.groups.extend(leaving);
+                origin.focused = Some(last);
+                origin.repair();
+                if shown == from {
+                    shown = origin.id;
+                }
+            }
+        }
+        let over = |workspace: &Workspace| workspace.solo.filter(|_| workspace.tiles().is_empty());
         let ended = |workspaces: &[Workspace]| {
             let mut workspaces = workspaces.iter().enumerate();
             workspaces.find_map(|(index, workspace)| over(workspace).map(|solo| (index, solo)))
@@ -677,9 +826,14 @@ impl Desktop {
         let set = beside.map_or_else(|| self.set_at(pointer), |at| at.set);
         let shown = self.sets[set].active;
         let showing = &self.sets[set].workspaces[shown];
-        let home = showing.solo.filter(|_| beside.is_none());
+        // Nobody's dialog and sent nowhere by a rule, it is for where the
+        // user is: a part with nothing in it, if there is one, and failing
+        // that the desktop.
+        let free = beside.is_none() && effects.workspace.is_none();
+        let made = showing.solo.filter(|_| free);
+        let room = made.filter(Tiling::has_room);
+        let home = made.filter(|_| room.is_none());
         let home = home.map(|solo| self.sets[set].place(solo.origin));
-        let home = home.filter(|_| effects.workspace.is_none());
         let workspace = beside.map_or(home.unwrap_or(shown), |at| at.workspace);
         let workspace = effects
             .workspace
@@ -709,12 +863,16 @@ impl Desktop {
             active: 0,
             geometry: Rect::new(origin, size),
             maximized: effects.maximized.unwrap_or(false),
-            fullscreen: false,
+            fullscreen: room.is_some(),
             minimized: false,
             standing: Standing::default(),
         };
+        let filled = room.map(|tiling| tiling.filled(group.serial));
         self.push_focused(set, workspace, group);
         self.current = set;
+        if filled.is_some() {
+            self.sets[set].workspaces[workspace].solo = filled;
+        }
         if let Some(home) = home {
             self.turn(set, home);
         }
@@ -896,10 +1054,24 @@ impl Desktop {
             }
             (false, true) => {
                 let made = WorkspaceId(self.serial());
-                self.solo(at, made);
+                self.solo(at, made, Tiling::alone);
             }
             _ => {}
         }
+    }
+
+    /// Puts a window's frame in a half of a workspace made for it,
+    /// directly after the one it was on, which is shown if that one was.
+    /// The other half has nothing in it until a window opens there. A
+    /// frame that is fullscreen, or in such a workspace already, leaves
+    /// it first.
+    pub fn tile(&mut self, id: WindowId, half: Half) {
+        let Some(at) = self.locate(id) else { return };
+        let at = self.grounded(id, at);
+        let made = WorkspaceId(self.serial());
+        self.solo(at, made, |origin, frame| {
+            Tiling::halved(origin, frame, half)
+        });
     }
 
     /// Switches a window's frame in or out of fullscreen.
@@ -910,9 +1082,14 @@ impl Desktop {
         }
     }
 
-    /// Puts the frame at `at` alone on a workspace made for it, known by
-    /// `made`, and fullscreen.
-    fn solo(&mut self, at: Location, made: WorkspaceId) {
+    /// Puts the frame at `at` on a workspace made for it, known by `made`
+    /// and cut up as `cut` says for a frame from a desktop.
+    fn solo(
+        &mut self,
+        at: Location,
+        made: WorkspaceId,
+        cut: impl FnOnce(WorkspaceId, u64) -> Tiling,
+    ) {
         let set = &mut self.sets[at.set];
         let from = &mut set.workspaces[at.workspace];
         let mut group = from.groups.remove(at.group);
@@ -924,10 +1101,7 @@ impl Desktop {
         // back where that one would.
         let origin = from.solo.map_or(from.id, |solo| solo.origin);
         let mut solo = Workspace::new(made, false);
-        solo.solo = Some(Solo {
-            origin,
-            owner: group.serial,
-        });
+        solo.solo = Some(cut(origin, group.serial));
         solo.focused = Some(group.serial);
         solo.groups.push(group);
         set.workspaces.insert(at.workspace + 1, solo);
@@ -981,8 +1155,8 @@ impl Desktop {
         // With the frame a workspace was made for put away, there is
         // nothing there to look at.
         let shown = set.active == at.workspace;
-        let owned = |solo: &Solo| solo.owner == on.groups[at.group].serial && shown;
-        if let Some(solo) = on.solo.filter(owned) {
+        let dark = on.tiles().iter().all(|tile| tile.minimized) && shown;
+        if let Some(solo) = on.solo.filter(|_| dark) {
             set.active = set.place(solo.origin);
             set.settle();
         }
@@ -1125,7 +1299,10 @@ impl Desktop {
                 kept: workspace.kept,
                 shown: index == set.active,
                 desktop: desktops.iter().position(|desktop| *desktop == index),
-                solo: workspace.owner().map(|owner| owner.tabs[owner.active].id),
+                tiles: {
+                    let tiles = workspace.tiles().into_iter();
+                    tiles.map(|tile| tile.tabs[tile.active].id).collect()
+                },
             })
         })
     }
@@ -1307,10 +1484,12 @@ impl Desktop {
             // itself to fill.
             let own = self.outputs.get(index).copied();
             let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
-            let mut geometry = match (group.fullscreen, group.maximized) {
-                (true, _) => screen.area,
-                (false, true) => screen.usable,
-                (false, false) => group.geometry,
+            let part = workspace.solo.filter(|_| group.fullscreen);
+            let part = part.map(|tiling| tiling.part_of(group.serial, screen.area));
+            let mut geometry = match (part, group.maximized) {
+                (Some(part), _) => part,
+                (None, true) => screen.usable,
+                (None, false) => group.geometry,
             };
             let decorated = group.decorated() && !group.fullscreen;
             // Rolled up, a frame is as tall as its titlebar and no more.
@@ -1324,11 +1503,17 @@ impl Desktop {
                 geometry,
                 decoration: decorated
                     .then_some((geometry, self.settings.decoration))
-                    .or(self.laid_over(index, group, geometry))
+                    .or(self.laid_over(index, group, geometry, screen.area))
                     .map(|(within, metrics)| Decoration::new(within, metrics, group.tabs.len())),
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
-                home: workspace.solo.map_or(Home::Desktop, |_| Home::Solo),
+                home: workspace.solo.map_or(Home::Desktop, |tiling| {
+                    if tiling.parts[1] == Part::None {
+                        Home::Solo
+                    } else {
+                        Home::Shared
+                    }
+                }),
                 focused: index == self.current && workspace.focused == Some(group.serial),
                 standing: Standing {
                     shaded,
@@ -1343,9 +1528,22 @@ impl Desktop {
     /// Where the titlebar of a fullscreen frame goes when it is asked for,
     /// and with what sizes: across the top of the frame, so far down, with
     /// no borders.
-    fn laid_over(&self, set: usize, group: &Group, geometry: Rect) -> Option<(Rect, Metrics)> {
+    fn laid_over(
+        &self,
+        set: usize,
+        group: &Group,
+        geometry: Rect,
+        area: Rect,
+    ) -> Option<(Rect, Metrics)> {
         let down = self.sets[set].revealed.filter(|_| group.fullscreen);
         let down = down.filter(|_| group.decorated())?;
+        // Only what is along the top of the output has the panels there
+        // to be under.
+        let down = if geometry.origin.y == area.origin.y {
+            down
+        } else {
+            0
+        };
         let size = Size::new(
             geometry.size.width,
             geometry.size.height.saturating_sub(down),
@@ -2047,8 +2245,8 @@ mod tests {
         let places: Vec<Place> = desktop.workspaces().collect();
         let desktops: Vec<Option<usize>> = places.iter().map(|place| place.desktop).collect();
         assert_eq!(desktops, [Some(0), None, Some(1), Some(2)]);
-        assert_eq!(places[1].solo, Some(video));
-        assert_eq!(places[0].solo, None);
+        assert_eq!(places[1].tiles, [video]);
+        assert_eq!(places[0].tiles, []);
         assert!(!places[1].kept && places[1].shown);
 
         // Asked for again, nothing more happens.
@@ -2086,6 +2284,160 @@ mod tests {
         assert_eq!(whole.outer(), frame(&desktop, video).geometry);
         desktop.set_fullscreen(bare, true);
         assert_eq!(frame(&desktop, bare).decoration, None);
+    }
+
+    #[test]
+    fn a_window_is_put_in_a_half_of_a_workspace_made_for_it() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        let chat = open(&mut desktop, "chat");
+        let (half, tall) = (Size::new(960, 1080), Size::new(1920, 540));
+        let halves = [
+            (Half::Left, Rect::new(Point::new(0, 0), half)),
+            (Half::Right, Rect::new(Point::new(960, 0), half)),
+            (Half::Top, Rect::new(Point::new(0, 0), tall)),
+            (Half::Bottom, Rect::new(Point::new(0, 540), tall)),
+        ];
+        for (half, part) in halves {
+            desktop.tile(editor, half);
+            let frame = frame(&desktop, editor);
+            assert_eq!(frame.geometry, part, "{half:?}");
+            assert_eq!(frame.client(), part, "it fills it, with no titlebar");
+            assert_eq!(frame.home, Home::Shared);
+            assert!(frame.fullscreen && frame.decoration.is_none());
+            assert_eq!(stack(&desktop), [editor], "and is all there is there");
+            assert_eq!(desktop.active_workspace(), 1);
+            assert_eq!(desktop.workspaces().count(), 4, "one made, however often");
+        }
+        assert_eq!(desktop.workspace_of(chat), Some(0));
+        desktop.tile(WindowId(999), Half::Left);
+    }
+
+    #[test]
+    fn the_next_window_to_open_fills_the_other_half() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Right);
+
+        let browser = open(&mut desktop, "browser");
+        let half = Size::new(960, 1080);
+        assert_eq!(desktop.active_workspace(), 1, "where the user is");
+        assert_eq!(
+            frame(&desktop, browser).geometry,
+            Rect::new(Point::new(0, 0), half)
+        );
+        assert_eq!(
+            frame(&desktop, editor).geometry,
+            Rect::new(Point::new(960, 0), half)
+        );
+        assert_eq!(frame(&desktop, browser).home, Home::Shared);
+        assert_eq!(desktop.focused(), Some(browser));
+        let places: Vec<Place> = desktop.workspaces().collect();
+        assert_eq!(
+            places[1].tiles,
+            [browser, editor],
+            "in the order of the parts"
+        );
+
+        // With both halves taken, the next is for the desktop.
+        let third = open(&mut desktop, "third");
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [third]);
+    }
+
+    #[test]
+    fn a_window_that_leaves_a_half_gives_it_to_the_other() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+
+        desktop.remove_window(editor);
+        assert_eq!(stack(&desktop), [browser]);
+        assert_eq!(frame(&desktop, browser).geometry, SCREEN);
+        assert_eq!(frame(&desktop, browser).home, Home::Solo, "it is alone now");
+
+        // The last to leave ends the workspace, by whatever way it goes.
+        desktop.set_fullscreen(browser, false);
+        assert_eq!(desktop.workspaces().count(), 3);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [browser]);
+    }
+
+    #[test]
+    fn a_window_that_leaves_a_half_goes_back_to_the_desktop_and_is_followed() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+        assert_eq!(desktop.focused(), Some(browser));
+
+        desktop.toggle_fullscreen(browser);
+        assert_eq!(
+            desktop.active_workspace(),
+            0,
+            "the desktop it would have had"
+        );
+        assert_eq!(stack(&desktop), [browser], "and not over the other");
+        assert_eq!(frame(&desktop, browser).home, Home::Desktop);
+        assert_eq!(desktop.focused(), Some(browser));
+
+        // The other has the whole of the workspace they shared.
+        desktop.next_workspace();
+        assert_eq!(stack(&desktop), [editor]);
+        assert_eq!(frame(&desktop, editor).geometry, SCREEN);
+
+        // One that leaves where nobody is looking takes nobody with it.
+        desktop.tile(browser, Half::Top);
+        let third = open(&mut desktop, "third");
+        desktop.switch_workspace(1);
+        desktop.set_fullscreen(third, false);
+        assert_eq!(desktop.active_workspace(), 3, "the second desktop still");
+        assert_eq!(desktop.workspace_of(third), Some(0));
+    }
+
+    #[test]
+    fn a_half_with_nothing_beside_it_ends_with_its_window() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Bottom);
+
+        desktop.toggle_fullscreen(editor);
+        assert_eq!(desktop.workspaces().count(), 3);
+        assert_eq!(stack(&desktop), [editor]);
+        assert!(!frame(&desktop, editor).fullscreen);
+    }
+
+    #[test]
+    fn a_tile_is_put_away_alone_and_the_desktop_shown_when_all_are() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+
+        desktop.minimize(editor);
+        assert_eq!(stack(&desktop), [browser], "its half shows nothing");
+        assert_eq!(desktop.active_workspace(), 1);
+        assert_eq!(frame(&desktop, browser).geometry.size, Size::new(960, 1080));
+
+        desktop.minimize(browser);
+        assert_eq!(desktop.active_workspace(), 0, "nothing was left to see");
+        desktop.activate(editor);
+        assert_eq!(stack(&desktop), [editor]);
+    }
+
+    #[test]
+    fn a_titlebar_is_laid_over_each_tile_and_under_the_panels_only_along_the_top() {
+        let mut desktop = decorated_desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Top);
+        let browser = open(&mut desktop, "browser");
+
+        desktop.reveal(0, Some(30));
+        let bar = |id| frame(&desktop, id).decoration.unwrap().titlebar();
+        let wide = Size::new(1920, METRICS.titlebar);
+        assert_eq!(bar(editor), Rect::new(Point::new(0, 30), wide));
+        assert_eq!(bar(browser), Rect::new(Point::new(0, 540), wide));
     }
 
     #[test]
@@ -2345,8 +2697,11 @@ mod tests {
 
         desktop.remove_output(1);
         assert_eq!(desktop.workspaces().count(), 6);
-        let solos: Vec<Option<WindowId>> = desktop.workspaces().map(|place| place.solo).collect();
-        assert_eq!(solos, [None, None, None, None, Some(video), Some(film)]);
+        let tiles: Vec<Vec<WindowId>> = desktop.workspaces().map(|place| place.tiles).collect();
+        assert_eq!(
+            tiles,
+            [vec![], vec![], vec![], vec![], vec![video], vec![film]]
+        );
 
         // Each goes back to the desktop its own became.
         desktop.set_fullscreen(video, false);
@@ -3483,13 +3838,12 @@ mod tests {
                 let needed = needed || origins.contains(&workspace.id);
                 assert!(workspace.kept || needed, "none is left for nothing");
                 let fullscreen = workspace.groups.iter().filter(|group| group.fullscreen);
-                match workspace.solo {
-                    Some(_) => {
-                        assert!(!workspace.kept, "one made for a window is not kept");
-                        assert!(workspace.owner().is_some(), "and its window is there");
-                        assert_eq!(fullscreen.count(), 1, "alone");
-                    }
-                    None => assert_eq!(fullscreen.count(), 0, "none on a desktop"),
+                let tiles = workspace.tiles().len();
+                assert_eq!(fullscreen.count(), tiles, "what fills a part is a tile");
+                if let Some(tiling) = workspace.solo {
+                    assert!(!workspace.kept, "one made for windows is not kept");
+                    assert!(tiles > 0, "and a window of them is there");
+                    assert_eq!(tiling.tiles().count(), tiles, "none has gone unnoticed");
                 }
             }
         }
@@ -3544,7 +3898,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(32) {
+            match random(33) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -3560,6 +3914,10 @@ mod tests {
                 10 => desktop.move_to_workspace(id, random(6)),
                 11 => desktop.switch_workspace(random(6)),
                 30 => desktop.new_workspace(),
+                32 => desktop.tile(
+                    id,
+                    [Half::Left, Half::Right, Half::Top, Half::Bottom][random(4)],
+                ),
                 31 => desktop.move_to_new_workspace(id),
                 12 => desktop.focus_next(),
                 13 => desktop.focus_previous(),

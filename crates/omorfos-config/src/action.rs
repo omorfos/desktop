@@ -10,6 +10,21 @@ pub const MAX_WORKSPACES: u32 = 32;
 /// A one-based workspace number, as users count them.
 pub type WorkspaceNumber = Bounded<1, MAX_WORKSPACES>;
 
+/// A half of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Half {
+    /// The left half.
+    Left,
+    /// The right half.
+    Right,
+    /// The top half.
+    Top,
+    /// The bottom half.
+    Bottom,
+}
+
 /// An action triggered by a key binding or a menu entry.
 ///
 /// In YAML, actions without a parameter are plain strings (`close`) and
@@ -44,6 +59,10 @@ pub enum Action {
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
     PreviousTab,
+    /// Put the focused window in a half of a workspace made for it:
+    /// `left`, `right`, `top` or `bottom`. The next window to open there
+    /// has the other half.
+    Tile(Half),
     /// Switch to the workspace with this number. One past the last makes
     /// that workspace first.
     Workspace(WorkspaceNumber),
@@ -162,6 +181,9 @@ mod tests {
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
+        assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
+        assert_eq!(parse("tile: bottom"), Ok(Action::Tile(Half::Bottom)));
+        assert!(parse("tile: middle").is_err());
     }
 
     #[test]

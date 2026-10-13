@@ -117,11 +117,75 @@ fn resting_the_pointer_against_the_top_brings_back_the_panel_and_the_titlebar() 
     // was, under what was laid over it.
     assert_eq!(session.draw().at(100, 80), RED);
 
-    // They stay while the pointer is on them, and go when it leaves.
+    // They stay for as long as the pointer is on them.
     point(&mut session, 600, 40);
+    session.advance(Duration::from_secs(5));
     assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+
+    // Off them, they stay while the pointer is on its way somewhere, and
+    // go a second after it has stopped.
     point(&mut session, 600, 60);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+    let due = session.compositor().deadline();
+    assert_eq!(due, Some(session.now + Duration::from_secs(1)));
+    session.advance(Duration::from_millis(900));
+    point(&mut session, 600, 200);
+    session.advance(Duration::from_millis(900));
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+    session.advance(Duration::from_millis(100));
     assert_eq!(seen(&mut session), [BACKGROUND; 3]);
+    assert_eq!(session.compositor().deadline(), None);
+}
+
+#[test]
+fn a_press_in_the_window_sends_away_what_was_brought_back() {
+    let (mut session, _client) = fullscreen();
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+
+    // The window is drawn 200 by 100 in the corner; a press on it is for
+    // it, and what was laid over it has served.
+    click(&mut session, 100, 80);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3]);
+}
+
+#[test]
+fn the_titlebar_of_a_window_in_the_bottom_half_can_be_reached() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "upper", (200, 100), RED);
+    let top = omorfos_config::Half::Top;
+    session.compositor_mut().perform(&Action::Tile(top));
+    session.open_decorated(&mut client, "lower", (200, 100), BLUE);
+    session.step();
+    // Each has its half, with nothing over it.
+    let titlebars = |session: &mut Session| {
+        let picture = session.draw();
+        [picture.at(600, 14), picture.at(600, 254)]
+    };
+    assert_eq!(titlebars(&mut session), [BACKGROUND; 2]);
+
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    let shown = titlebars(&mut session);
+    assert_ne!(shown[0], BACKGROUND, "the upper window's");
+    assert_ne!(shown[1], BACKGROUND, "and the lower's, half a screen down");
+
+    // Across the upper window to the lower one's titlebar, a step at a
+    // time, and it is still there to stop on and use.
+    for y in [60, 120, 180, 250] {
+        point(&mut session, 600, y);
+        session.advance(Duration::from_millis(200));
+    }
+    session.advance(Duration::from_secs(5));
+    assert_ne!(titlebars(&mut session)[1], BACKGROUND);
+
+    // Its second button takes it back to the desktop, and the view with
+    // it.
+    click(&mut session, 36, 254);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    assert_eq!(session.compositor().desktop().frames().count(), 1);
 }
 
 #[test]
@@ -165,8 +229,10 @@ fn resting_the_pointer_against_the_bottom_brings_back_the_panel_there() {
     assert_eq!(seen(&mut session), [BACKGROUND, BACKGROUND, BLUE]);
 
     point(&mut session, 600, 465);
+    session.advance(Duration::from_secs(5));
     assert_eq!(seen(&mut session), [BACKGROUND, BACKGROUND, BLUE]);
     point(&mut session, 600, 300);
+    session.advance(Duration::from_secs(1));
     assert_eq!(seen(&mut session), [BACKGROUND; 3]);
 }
 

@@ -517,7 +517,7 @@ fn the_state_says_which_workspace_was_made_for_a_fullscreen_window() {
     let state = state(&mut session, &mut peer);
     let chat = state.windows.iter().find(|window| window.app_id == "chat");
     let chat = chat.unwrap();
-    let told: Vec<(u32, &str, bool, Option<u64>)> = state
+    let told: Vec<(u32, &str, bool, &[u64])> = state
         .workspaces
         .iter()
         .map(|workspace| {
@@ -525,7 +525,7 @@ fn the_state_says_which_workspace_was_made_for_a_fullscreen_window() {
                 workspace.number,
                 workspace.name.as_str(),
                 workspace.active,
-                workspace.window,
+                workspace.windows.as_slice(),
             )
         })
         .collect();
@@ -533,8 +533,8 @@ fn the_state_says_which_workspace_was_made_for_a_fullscreen_window() {
     assert_eq!(
         told,
         [
-            (1, "1", false, None),
-            (0, "chat window", true, Some(chat.id))
+            (1, "1", false, [].as_slice()),
+            (0, "chat window", true, [chat.id].as_slice())
         ]
     );
     assert_eq!(chat.workspace, 0);
@@ -543,4 +543,24 @@ fn the_state_says_which_workspace_was_made_for_a_fullscreen_window() {
         .iter()
         .find(|window| window.app_id == "player");
     assert_eq!(player.unwrap().workspace, 1);
+}
+
+#[test]
+fn a_workspace_two_windows_share_is_called_what_they_both_are() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "editor", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let action = json!({ "tile": "right" });
+    assert_eq!(
+        session.ask(&mut peer, &Request::Perform { action }),
+        Reply::Done
+    );
+    session.open(&mut client, "browser", (200, 100), RED);
+
+    let state = state(&mut session, &mut peer);
+    let shared = &state.workspaces[1];
+    assert_eq!(shared.name, "browser window | editor window");
+    assert_eq!(shared.windows.len(), 2);
+    assert_eq!(shared.number, 0);
 }

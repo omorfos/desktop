@@ -320,7 +320,7 @@ mod tests {
             active,
             id: 0,
             kept: true,
-            window: None,
+            windows: Vec::new(),
         }
     }
 

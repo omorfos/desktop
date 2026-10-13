@@ -163,6 +163,26 @@ in place of the one `window` it has now, and its arrangement.
 7. Choosing a window for an empty part, when the compositor can draw
    windows small (ADR 38).
 
+### What was built first
+
+Two halves, made by the titlebar's menu and by `tile`, with the other
+half filled by the next window to open there, which was to be the fourth
+step and was needed at once: without it there is no way to have a second
+window. Each window is told it is tiled on every side. The window that
+leaves gives its half to the other, which is then alone and fullscreen.
+
+What is brought back at an edge staying while the pointer moves, which
+was to come with the lines, came with this too: with one window above
+another, the lower one's titlebar could not be reached without it. And
+a window that leaves a half without closing goes back to the desktop it
+came from, where the user follows it if they were looking at it; at
+first it was left floating over the window it had shared with.
+
+A window is not yet put beside one that is already tiled or fullscreen
+except by opening there. `tile` on a window that is tiled already makes
+a new workspace for it. The lines are not drawn or dragged, and there
+are no more than two parts.
+
 ## Alternatives
 
 - **Tile on desktops too**, as snapping does on other desktops: a window

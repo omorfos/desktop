@@ -136,18 +136,20 @@ calls for them.
 - [ ] The same by pushing against the edge, without the wait, on a real
       mouse or touchpad; and not at all while a program holds the
       pointer, once programs can.
-- [ ] Tiled workspaces (ADR 39): a workspace made for up to four
+- [x] Tiled workspaces (ADR 39): a workspace made for up to four
       windows that fill the screen between them. First the model, with
       two windows side by side made from the titlebar's menu and by a
       key, each told it is tiled, and a window that leaves giving its
       room up.
-- [ ] The lines between tiles drawn and dragged; and what is brought
-      back at an edge staying while the pointer moves, so that a
-      titlebar away from the edge can be reached.
+- [x] What is brought back at an edge staying while the pointer moves,
+      so that a titlebar away from the edge can be reached.
+- [ ] The lines between tiles drawn and dragged.
 - [ ] Three and four windows, changing places, focus by direction, and
       a tile's titlebar brought back at the line above it.
-- [ ] An empty part of a tiled workspace filled by the next window to
+- [x] An empty part of a tiled workspace filled by the next window to
       open there.
+- [ ] A window that is open already put beside one that is tiled or
+      fullscreen, without opening it there.
 - [ ] Pictures of the arrangements at the titlebar's second button,
       when the pointer rests on it.
 - [ ] A window dragged to an edge of the screen put in a tiled
