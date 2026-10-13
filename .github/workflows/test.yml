@@ -32,9 +32,10 @@ jobs:
         with:
           persist-credentials: false
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev fonts-dejavu-core dbus-daemon xwayland
-      # Where X servers put their sockets, which a session that has never
-      # run one does not have.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev fonts-dejavu-core dbus-daemon xwayland libegl1
+      # `libegl1` is for Xwayland, which aborts as it starts without it and
+      # does not depend on it. Then where X servers put their sockets, which
+      # a session that has never run one does not have.
       - name: Make room for X servers
         run: sudo mkdir -p -m 1777 /tmp/.X11-unix
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

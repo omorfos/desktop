@@ -8,7 +8,8 @@ work on omorfos. Deeper detail lives in `docs/`.
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
 Rust and inspired by Fluxbox. It needs `pkg-config` and the development
 files for libxkbcommon, pixman, udev, libinput, libseat and GBM to build,
-and `dbus-daemon` and `Xwayland` to run the tests.
+and `dbus-daemon` and `Xwayland` to run the tests. `Xwayland` needs
+`libEGL` to start at all, which its package only recommends.
 It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 
