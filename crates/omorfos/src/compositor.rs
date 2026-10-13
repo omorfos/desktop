@@ -20,7 +20,7 @@ use omorfos_config::{
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Standing,
-    WindowId,
+    WindowId, WorkspaceId,
 };
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
@@ -741,6 +741,10 @@ impl Compositor {
                 self.on_focused(|desktop, id| desktop.move_to_workspace(id, workspace));
             }
             Action::MoveToNewWorkspace => self.on_focused(Desktop::move_to_new_workspace),
+            Action::JoinWorkspace(id) => {
+                let workspace = WorkspaceId::from_raw(*id);
+                self.on_focused(|desktop, window| desktop.join(window, workspace));
+            }
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
             Action::ReloadConfig => self.reload_config(),
@@ -776,15 +780,25 @@ impl Compositor {
         // one way or the other is the opposite of how things are.
         let either = |now: bool, on: &str, off: &str| if now { off } else { on }.to_owned();
         let here = self.desktop.current_output();
-        let places = self.desktop.workspaces();
-        // Windows are sent to desktops, not to a workspace made for
-        // another's fullscreen window.
-        let places = places.filter(|place| place.output == here && place.desktop.is_some());
-        let send = (1..).zip(places).map(|(number, place)| Item::Entry {
+        let places = || {
+            let places = self.desktop.workspaces();
+            places.filter(|place| place.output == here)
+        };
+        let desktops = places().filter(|place| place.desktop.is_some());
+        let send = (1..).zip(desktops).map(|(number, place)| Item::Entry {
             label: self.workspace_name(&place),
             action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
         });
-        let send = send.chain([
+        // A workspace made for windows takes another where it has room,
+        // unless it is where this window is already.
+        let own = self.desktop.focused();
+        let joinable =
+            |place: &Place| place.room && !own.is_some_and(|id| place.tiles.contains(&id));
+        let join = places().filter(joinable).map(|place| Item::Entry {
+            label: format!("Beside {}", self.workspace_name(&place)),
+            action: Action::JoinWorkspace(place.id.get()),
+        });
+        let send = send.chain(join).chain([
             Item::Separator,
             entry("New workspace", Action::MoveToNewWorkspace),
         ]);

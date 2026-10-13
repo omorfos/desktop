@@ -87,6 +87,10 @@ pub enum Action {
     MoveToWorkspace(WorkspaceNumber),
     /// Send the focused window to a workspace made for it, after the last.
     MoveToNewWorkspace,
+    /// Put the focused window beside those that share a workspace made
+    /// for windows, known by the `id` the state gives it, and show that
+    /// workspace.
+    JoinWorkspace(u64),
     /// Send the focused window to the next screen.
     MoveToNextOutput,
     /// Open the root menu at the pointer.
@@ -193,6 +197,7 @@ mod tests {
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
         assert_eq!(parse("tile: bottom"), Ok(Action::Tile(Half::Bottom)));
         assert!(parse("tile: middle").is_err());
+        assert_eq!(parse("join_workspace: 7"), Ok(Action::JoinWorkspace(7)));
         assert_eq!(parse("focus: up"), Ok(Action::Focus(Half::Top)));
         assert_eq!(parse("focus: left"), Ok(Action::Focus(Half::Left)));
         assert_eq!(parse("swap: down"), Ok(Action::Swap(Half::Bottom)));

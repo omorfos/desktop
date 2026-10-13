@@ -321,12 +321,19 @@ impl Compositor {
     /// not exist. A key binding doing the same is quietly ignored; a peer
     /// is told, because it has no screen to see that nothing happened.
     fn objection(&self, action: &Action) -> Option<String> {
-        let (Action::Workspace(number) | Action::MoveToWorkspace(number)) = action else {
-            return None;
-        };
-        // One past the last is made when asked for.
-        (bridge::workspace_index(*number) > self.desktop.workspace_count())
-            .then(|| format!("there is no workspace {}", number.get()))
+        match action {
+            // One past the last is made when asked for.
+            Action::Workspace(number) | Action::MoveToWorkspace(number) => {
+                (bridge::workspace_index(*number) > self.desktop.workspace_count())
+                    .then(|| format!("there is no workspace {}", number.get()))
+            }
+            Action::JoinWorkspace(id) => {
+                let mut places = self.desktop.workspaces();
+                let roomy = places.any(|place| place.id.get() == *id && place.room);
+                (!roomy).then(|| format!("no workspace {id} has room for a window"))
+            }
+            _ => None,
+        }
     }
 
     fn ipc_state(&self) -> State {
@@ -355,6 +362,7 @@ impl Compositor {
                     active: place.shown,
                     kept: place.kept,
                     windows: place.tiles.iter().map(|id| id.raw()).collect(),
+                    room: place.room,
                 })
                 .collect(),
             windows: self

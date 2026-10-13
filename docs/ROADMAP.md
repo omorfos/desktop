@@ -152,7 +152,7 @@ calls for them.
       above it.
 - [x] An empty part of a tiled workspace filled by the next window to
       open there.
-- [ ] A window that is open already put beside one that is tiled or
+- [x] A window that is open already put beside one that is tiled or
       fullscreen, without opening it there.
 - [ ] Pictures of the arrangements at the titlebar's second button,
       when the pointer rests on it.

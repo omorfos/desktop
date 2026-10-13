@@ -144,6 +144,12 @@ other, one beside two, one above or below two, and four in quarters.
 Asked for a half it cannot take, a window goes to that half instead,
 changing places with what was there.
 
+A window that is open already is put beside a fullscreen one, or into a
+part that has nothing in it, from the menu of its own titlebar: under
+"Send to workspace", each workspace that has room is listed as "Beside"
+and the windows there. Beside a fullscreen window it takes the right
+half. You are taken there with it.
+
 `Super+Ctrl` and an arrow gives focus to the window beside the one that
 has it, and `Super+Ctrl+Shift` and an arrow changes the two over.
 
@@ -225,6 +231,7 @@ that are already bound on their own.
 | `next_workspace`, `previous_workspace` | Cycle workspaces on the screen the pointer is on. |
 | `move_to_workspace: N` | Send the focused window to workspace N of its screen. One past the last is made first. |
 | `move_to_new_workspace` | Send the focused window to a workspace made for it, after the last. |
+| `join_workspace: ID` | Put the focused window beside those sharing a workspace made for windows, and show it. The `ID` is the one `omorfosctl state` gives the workspace. The titlebar's menu offers the same by name. |
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
 | `show_launcher` | Open the launcher. |
