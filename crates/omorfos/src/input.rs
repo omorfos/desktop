@@ -15,6 +15,7 @@ use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
 use crate::compositor::{Compositor, Look};
+use crate::reveal::Placing;
 use omorfos_core::KeyOutcome;
 
 /// An input event, reduced to what the compositor acts on.
@@ -302,6 +303,9 @@ impl Compositor {
             let keysym = key
                 .raw_latin_sym_or_raw_current_sym()
                 .unwrap_or(key.modified_sym());
+            // A key sends away what was brought back over a fullscreen
+            // window, and is the window's all the same.
+            compositor.hover.reveal.dismiss();
             if compositor.menu.is_some() && keysym == Keysym::Escape {
                 compositor.menu = None;
                 compositor.suppressed_keys.push(code);
@@ -560,12 +564,18 @@ impl Compositor {
     /// layers behind them.
     fn under(&self) -> Option<Under> {
         // Panels belong to an output and are placed within it.
-        let head = self.head_at(self.pointer_location);
-        let on_layer = |layer: Layer| {
-            let head = head?;
+        let point = self.pointer_location;
+        let index = self.heads.iter().position(|head| head.contains(point));
+        let on_panel = |layer: Layer, standing: Placing| {
+            let index = index?;
+            let head = &self.heads[index];
             let layers = layer_map_for_output(&head.output);
             let corner = head.area().loc;
             let surface = layers.layer_under(layer, self.pointer_location - corner.to_f64())?;
+            // A panel that is not shown is not there to be pointed at.
+            let area = layers.layer_geometry(surface).unwrap_or_default();
+            let shown = self.standing(index, layer, area) == standing;
+            let surface = shown.then_some(surface)?;
             let origin = layers.layer_geometry(surface).unwrap_or_default().loc + corner;
             let within = self.pointer_location - origin.to_f64();
             let takes_keyboard = surface
@@ -599,8 +609,10 @@ impl Compositor {
                 })
             })
         };
+        let on_layer = |layer: Layer| on_panel(layer, Placing::Usual);
         on_layer(Layer::Overlay)
             .or_else(on_unmanaged)
+            .or_else(|| on_panel(Layer::Top, Placing::Raised))
             .or_else(|| on_frame(true))
             .or_else(|| on_layer(Layer::Top))
             .or_else(|| on_frame(false))

@@ -117,8 +117,25 @@ are told of everything else.
 ### What was built first
 
 The desktops, their identities and the actions came first, then solos,
-and the edges that answer to a push after that. Until those are built a
-solo is left by the key, or by whatever the program has for it.
+and then the edges.
+
+The edges answer to the pointer resting against them for a third of a
+second, and not yet to being pushed. Pushing needs the distance the
+pointer would have gone past the edge, which only a real mouse or
+touchpad gives and a test's pointer does not; resting is the half of
+the rule that is the same everywhere, and is what macOS does. What comes
+back is every panel along that edge, and at the top the titlebar under
+them. They stay while the pointer is on them. A key sends them away, and
+they do not come back until the pointer has left the edge and returned,
+so that a pointer left at the top does not bring them back over what is
+being typed.
+
+A titlebar is laid over a fullscreen window only if omorfos draws that
+window's titlebar on a desktop. A program that draws its own has its own
+way out.
+
+Nothing holds the pointer yet (`pointer-constraints` is still to come),
+so the rule that a game is not interrupted has nothing to act on.
 
 Some things were settled in building solos that the above leaves open:
 
