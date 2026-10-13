@@ -27,9 +27,10 @@ fn window() -> (Session, Client, (i32, i32)) {
     let button = frame.and_then(|frame| frame.decoration);
     let button = button.map(|decoration| decoration.button(Button::Maximize));
     let button = button.unwrap_or_default();
+    // A little under the button, with room between for the arrow.
     let corner = (
         button.origin.x,
-        button.origin.y + button.size.height.cast_signed(),
+        button.origin.y + button.size.height.cast_signed() + 6,
     );
     (session, client, corner)
 }
@@ -57,7 +58,7 @@ fn press(session: &mut Session) {
 /// Rests the pointer on the second button of the titlebar until the
 /// pictures are up.
 fn rest(session: &mut Session, corner: (i32, i32)) {
-    point(session, (corner.0 + 4, corner.1 - 10));
+    point(session, (corner.0 + 4, corner.1 - 16));
     session.advance(REST);
 }
 
@@ -78,7 +79,7 @@ fn resting_on_the_second_button_brings_up_pictures_of_the_arrangements() {
     let far = (corner.0 + 330, corner.1 + 3);
     assert_eq!(session.draw().at(far.0, far.1), BACKGROUND);
 
-    point(&mut session, (corner.0 + 4, corner.1 - 10));
+    point(&mut session, (corner.0 + 4, corner.1 - 16));
     assert_eq!(session.draw().at(far.0, far.1), BACKGROUND, "not at once");
     let due = session.compositor().deadline();
     assert_eq!(due, Some(session.now + REST));
@@ -217,7 +218,7 @@ fn a_button_let_go_on_the_pictures_chooses_nothing() {
     let (mut session, _client, corner) = window();
     // Held down on the button until the pictures come, then carried onto
     // them and let go.
-    point(&mut session, (corner.0 + 4, corner.1 - 10));
+    point(&mut session, (corner.0 + 4, corner.1 - 16));
     let hold = |pressed: bool| Input::Button {
         button: LEFT,
         pressed,
@@ -276,23 +277,37 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
     let button = button.map(|decoration| decoration.button(Button::Maximize));
     let button = button.unwrap_or_default();
     let middle = button.origin.x + (button.size.width / 2).cast_signed();
-    let foot = button.origin.y + button.size.height.cast_signed() - 1;
-    let before = session.draw().at(middle, foot);
+    let foot = button.origin.y + button.size.height.cast_signed();
 
-    point(&mut session, (button.origin.x + 4, foot - 9));
-    let above = session.draw().at(middle, foot - 8);
+    point(&mut session, (button.origin.x + 4, foot - 10));
+    let titlebar = session.draw().at(middle, foot - 1);
     session.advance(REST);
     let picture = session.draw();
+    // It is in the room between the titlebar and the pictures, over the
+    // window, edged as they are: seen whatever colour the titlebar is.
     assert_eq!(
         picture.at(middle, foot),
-        0xff11_2233,
-        "up into the titlebar"
+        0xff2c_303a,
+        "its point, at the titlebar"
     );
-    assert_eq!(picture.at(middle, foot - 4), 0xff11_2233);
     assert_eq!(
-        picture.at(middle + 40, foot),
-        before,
-        "and only under the button"
+        picture.at(middle, foot + 4),
+        0xff11_2233,
+        "filled as they are"
     );
-    assert_eq!(picture.at(middle, foot - 8), above, "no higher than it is");
+    assert_eq!(
+        picture.at(middle, foot + 6),
+        0xff11_2233,
+        "and open onto them"
+    );
+    assert_eq!(
+        picture.at(middle + 40, foot + 3),
+        RED,
+        "only under the button"
+    );
+    assert_eq!(
+        picture.at(middle, foot - 1),
+        titlebar,
+        "and not in the titlebar"
+    );
 }

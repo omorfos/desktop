@@ -28,7 +28,9 @@ const STRAY: i32 = 8;
 /// the one under the pointer is.
 const CAPTION: u32 = 22;
 /// How far the arrow that points at the button stands up from the
-/// pictures, and so how wide it is at its foot: twice that.
+/// pictures, and so how wide it is at its foot: twice that. The pictures
+/// are this far under the titlebar, so that the arrow is seen against the
+/// window and not lost in a titlebar of its own colour.
 pub(crate) const ARROW: u32 = 6;
 
 /// What each arrangement is called, and each of its parts, in the order
@@ -136,7 +138,8 @@ fn size() -> DomainSize {
 /// Paints the pictures: each part a block, and the one the pointer is on
 /// picked out as a menu's row is; under them, in words, what that one is;
 /// and over them an arrow, `arrow` along, that points up at the button
-/// they belong to. The arrow stands [`ARROW`] above the rest.
+/// they belong to. The arrow stands [`ARROW`] above the rest, in the room
+/// left between them and the titlebar.
 fn paint(
     text: &mut Text,
     theme: &Theme,
@@ -148,12 +151,16 @@ fn paint(
     let mut canvas = Canvas::scaled(size.width, size.height + ARROW, scale);
     let down = ARROW.cast_signed();
     canvas.draw_box((0, down, size.width, size.height), &ground);
-    // The arrow: a row for each step up, each narrower than the last.
-    for step in 0..ARROW {
-        let half = ARROW - step;
-        let left = arrow.saturating_sub(half).cast_signed();
-        let row = (ARROW - 1 - step).cast_signed();
-        canvas.fill((left, row, 2 * half, 1), ground.background);
+    // The arrow: a row for each step down from its point, each wider than
+    // the last, edged as the pictures are and open at its foot onto them.
+    let edge = ground.border.top.color;
+    for row in 0..=ARROW {
+        let outer = row + 1;
+        let left = arrow.saturating_sub(outer).cast_signed();
+        if row < ARROW {
+            canvas.fill((left, row.cast_signed(), 2 * outer, 1), edge);
+        }
+        canvas.fill((left + 1, row.cast_signed(), 2 * row, 1), ground.background);
     }
     let plain = theme.style(Part::MenuSeparator, States::NONE).color;
     let chosen = States::NONE.with(State::Hovered);
@@ -241,12 +248,14 @@ impl Compositor {
         let button = button.filter(|(_, which)| *which == Button::Maximize);
         let on = button.map(|(window, _)| window);
         // Where the pictures of a window would go, if it is on a desktop:
-        // under its button, with the arrow at the middle of the button.
+        // a little under its button, with the arrow reaching up to the
+        // middle of the button across the room between.
         let under = |window: WindowId| {
             let mut frames = self.desktop.frames();
             let frame = frames.find(|frame| frame.window().id == window)?;
             let button = frame.decoration?.button(Button::Maximize);
-            let corner = button.origin.offset(0, button.size.height.cast_signed());
+            let down = (button.size.height + ARROW).cast_signed();
+            let corner = button.origin.offset(0, down);
             let placed = (Rect::new(corner, size()), button.size.width / 2);
             (frame.home == Home::Desktop).then_some(placed)
         };

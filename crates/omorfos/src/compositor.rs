@@ -1437,7 +1437,7 @@ impl Compositor {
             ));
         }
         if let Some(shown) = &self.hover.palette.shown {
-            // Its arrow stands above it, up into the titlebar.
+            // Its arrow stands above it, up to the titlebar.
             let up = shown.area.origin.offset(0, -palette::ARROW.cast_signed());
             let at = Point::<i32, Logical>::from((up.x, up.y));
             elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
