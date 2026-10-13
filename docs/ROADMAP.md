@@ -136,13 +136,24 @@ calls for them.
 - [ ] The same by pushing against the edge, without the wait, on a real
       mouse or touchpad; and not at all while a program holds the
       pointer, once programs can.
-- [ ] A fullscreen workspace shared by two, three or four windows in a
-      grid, as macOS has it: side by side, one above another, one beside
-      two, or two by two, resized by dragging the line between them. A
-      window dragged to an edge of the screen makes one; and the
-      titlebar's fullscreen button, under the pointer, offers the
-      arrangements to make a new workspace with. To be designed first,
-      as an amendment to ADR 36.
+- [ ] Tiled workspaces (ADR 39): a workspace made for up to four
+      windows that fill the screen between them. First the model, with
+      two windows side by side made from the titlebar's menu and by a
+      key, each told it is tiled, and a window that leaves giving its
+      room up.
+- [ ] The lines between tiles drawn and dragged; and what is brought
+      back at an edge staying while the pointer moves, so that a
+      titlebar away from the edge can be reached.
+- [ ] Three and four windows, changing places, focus by direction, and
+      a tile's titlebar brought back at the line above it.
+- [ ] An empty part of a tiled workspace filled by the next window to
+      open there.
+- [ ] Pictures of the arrangements at the titlebar's second button,
+      when the pointer rests on it.
+- [ ] A window dragged to an edge of the screen put in a tiled
+      workspace, with the half it would take shown before it is let go.
+- [ ] Choosing a window for an empty part from those on the desktop,
+      shown small (ADR 38).
 - [ ] A window that nobody asked for, opening while a fullscreen
       workspace is shown, left on the desktop unseen (activation
       tokens).
@@ -174,9 +185,6 @@ calls for them.
       own, which the theme's `desktop` gives way to.
 - [ ] Keys for volume, brightness and media, with a small display of the
       level over the screen that goes by itself.
-- [ ] Windows snapped to a half or a quarter of a desktop, by a key and
-      by dragging to an edge. To be designed with the grid above, since
-      both answer to a window dragged to an edge.
 - [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
       were last used, each with its picture and title, walked through
       while Alt is held and chosen when it is let go. Flat first. The
