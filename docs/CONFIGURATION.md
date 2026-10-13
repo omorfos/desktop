@@ -66,6 +66,8 @@ launcher:
 notifications:
   enabled: true           # show what programs have to tell you
   timeout: 5              # seconds one stays; 0 until it is clicked
+screenshots:
+  destination: file       # file | clipboard | both
 xwayland:
   enabled: true           # run programs written for X11
   scaling: stretched      # stretched | native, on a screen with a scale
@@ -754,8 +756,9 @@ are only for a program omorfos started itself and was told may do them:
 | `overlay` | The same, and take the keyboard from whatever has it while one of its surfaces asks, as a launcher does |
 | `lock` | Lock the session |
 | `capture` | Take pictures of the screen |
+| `clipboard` | Read what is copied and set it at any time, not only while one of its windows has the keyboard, as a clipboard manager does |
 
-`ask`, `clipboard`, `input` and `screens` are names for what is
+`ask`, `input` and `screens` are names for what is
 to come, and are accepted so that a configuration can say them already.
 
 A role is given where the program is started: in `autostart`, or in a
@@ -782,8 +785,8 @@ it. The panel, the launcher and the notifications that come with omorfos
 have what they need; started by hand, they are ordinary programs too.
 
 A program in a sandbox, such as one installed with Flatpak, is held to
-less again. It is not shown that panels, locking, pictures of the screen
-or the list of windows exist, so it cannot ask, and no setting gives it a role. Nothing needs
+less again. It is not shown that panels, locking, pictures of the screen,
+the clipboard at any time or the list of windows exist, so it cannot ask, and no setting gives it a role. Nothing needs
 to be set up for this: the sandbox tells omorfos which programs are
 inside it.
 
@@ -800,14 +803,34 @@ folder called `Screenshots` among your pictures: `~/Pictures`, or wherever
 when it was taken, and after its screen when there is more than one. One
 that is there already is never written over.
 
-It is taken by `omorfos-screenshot`, which the key starts as a program
+`Shift+Print` puts the picture on the clipboard instead, to be pasted, and
+saves nothing. With several screens that is one picture of them all,
+side by side. To have `Print` do that, or both, say so in `config.yaml`:
+
+```yaml
+screenshots:
+  destination: both       # file | clipboard | both
+```
+
+It is taken by `omorfos-screenshot`, which the keys start as a program
 that may:
 
 ```yaml
 # keys.yaml
 - keys: Print
-  action: { spawn: { run: [omorfos-screenshot], may: [capture] } }
+  action: { spawn: { run: [omorfos-screenshot], may: [capture, clipboard] } }
+- keys: Shift+Print
+  action:
+    spawn:
+      run: [omorfos-screenshot, --to, clipboard]
+      may: [capture, clipboard]
 ```
+
+`--to file`, `--to clipboard` or `--to both` says where one picture goes,
+whatever the configuration says. A picture on the clipboard is given by
+the program that put it there each time it is pasted, so
+`omorfos-screenshot` stays running, unseen, until you copy something
+else.
 
 Any program that speaks `ext-image-copy-capture-v1` can be let take
 pictures the same way, with `may: [capture]`. Started without it, it is

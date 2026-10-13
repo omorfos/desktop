@@ -86,6 +86,7 @@ impl Default for Keys {
             bind("Super+n", Action::NewWorkspace),
             bind("Super+Shift+n", Action::MoveToNewWorkspace),
             bind("Print", Action::Spawn(Started::screenshot())),
+            bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
@@ -527,7 +528,15 @@ bindings:
         assert_eq!(screenshot, Some(Action::Spawn(Started::screenshot())));
         let started = Started::screenshot();
         assert_eq!(started.run.program(), "omorfos-screenshot");
-        assert_eq!(started.may, [crate::Role::Capture]);
+        assert_eq!(started.may, [crate::Role::Capture, crate::Role::Clipboard]);
+        // With Shift it goes on the clipboard and nowhere else.
+        let copied = Started::screenshot_copied();
+        assert_eq!(
+            action_for("Shift+Print"),
+            Some(Action::Spawn(copied.clone()))
+        );
+        assert_eq!(copied.run.arguments(), ["--to", "clipboard"]);
+        assert_eq!(copied.may, started.may);
         assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::FocusPrevious));
         assert_eq!(
             action_for("Super+3"),

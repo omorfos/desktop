@@ -359,7 +359,7 @@ impl Session {
     /// in parallel another test may be starting a process, which briefly
     /// holds copies of every descriptor in this one. Such effects have to be
     /// waited for rather than assumed.
-    pub(crate) fn eventually(&mut self, condition: impl Fn(&mut Self) -> bool) {
+    pub(crate) fn eventually(&mut self, mut condition: impl FnMut(&mut Self) -> bool) {
         for _ in 0..5000 {
             if condition(self) {
                 return;
@@ -1180,6 +1180,16 @@ impl Client {
         let offer = self.state.selection.as_ref()?;
         let (reader, writer) = std::io::pipe().unwrap();
         offer.receive(TEXT.to_owned(), writer.as_fd());
+        Some(reader)
+    }
+
+    /// Asks for what is on the clipboard in one of the formats it is
+    /// offered in. Returns where it will arrive, or `None` if the
+    /// clipboard is empty.
+    pub(crate) fn paste_as(&self, format: &str) -> Option<std::io::PipeReader> {
+        let offer = self.state.selection.as_ref()?;
+        let (reader, writer) = std::io::pipe().unwrap();
+        offer.receive(format.to_owned(), writer.as_fd());
         Some(reader)
     }
 

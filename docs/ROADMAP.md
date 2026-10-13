@@ -177,10 +177,14 @@ calls for them.
       taken that is not in them. `omorfos-screenshot` saves one of every
       screen, and `Print` starts it. The one `unsafe` block in omorfos
       is here (ADR 40).
-- [ ] A picture copied to the clipboard instead of, or as well as,
-      saved: a setting and a key. It waits for the `clipboard` role and
-      `ext-data-control-v1`, since a program without a window cannot
-      otherwise set the clipboard.
+- [x] A picture put on the clipboard instead of, or as well as, saved:
+      `screenshots.destination`, `--to`, and `Shift+Print`. With it the
+      `clipboard` role and `ext-data-control-v1`, since a program
+      without a window cannot otherwise set the clipboard.
+- [ ] A clipboard that outlives the program that copied: a manager of
+      our own with the `clipboard` role, which would also let
+      `omorfos-screenshot` stop at once. Today it stays running to give
+      its picture when pasted.
 - [ ] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
       and with them the `private` rule, which leaves a window blank in
       any picture (ADR 38).

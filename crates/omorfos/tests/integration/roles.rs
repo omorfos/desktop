@@ -2,6 +2,7 @@
 //! compositor started it for more.
 
 use omorfos::Roles;
+use smithay::wayland::selection::ext_data_control::DataControlHandler;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
@@ -167,7 +168,8 @@ fn the_lock_action_starts_the_program_named_to_lock_with() {
 
 /// The things only a role allows, which a program in a sandbox is not to
 /// be shown, and the way a sandbox is made.
-const WITHHELD: [&str; 6] = [
+const WITHHELD: [&str; 7] = [
+    "ext_data_control_manager_v1",
     "ext_image_copy_capture_manager_v1",
     "ext_output_image_capture_source_manager_v1",
     "zwlr_layer_shell_v1",
@@ -208,4 +210,19 @@ fn a_program_in_a_sandbox_is_not_shown_what_only_a_role_allows() {
     // When the sandbox ends, nothing more can come in that way.
     drop(open);
     session.eventually(|_| std::os::unix::net::UnixStream::connect(&path).is_err());
+}
+
+#[test]
+fn only_a_program_that_may_is_given_the_clipboard_at_any_time() {
+    let mut session = Session::new();
+    let clipboard = "ext_data_control_manager_v1";
+    let shown = |client: &Client| client.state.offered.iter().any(|it| it == clipboard);
+    assert!(!shown(&session.connect_plain()), "offering it is giving it");
+    assert!(!shown(&session.connect_as(Roles::PANEL)));
+    assert!(shown(&session.connect_as(Roles::CLIPBOARD)));
+
+    // Smithay has the compositor say where it keeps this, and never asks.
+    // It is asked here, so that what it would be told is known to be so.
+    let kept = session.compositor().data_control_state();
+    assert_eq!(kept.global(), kept.global());
 }

@@ -2,16 +2,22 @@
 
 use std::error::Error;
 use std::fs::File;
-use std::io;
+use std::io::{self, Write};
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
 
 use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_output, wl_registry, wl_shm, wl_shm_pool,
+    wl_buffer, wl_callback, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
 };
-use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
+use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
+use wayland_protocols::ext::data_control::v1::client::{
+    ext_data_control_device_v1::{self as device, ExtDataControlDeviceV1},
+    ext_data_control_manager_v1::ExtDataControlManagerV1,
+    ext_data_control_offer_v1::ExtDataControlOfferV1,
+    ext_data_control_source_v1::{self as source, ExtDataControlSourceV1},
+};
 use wayland_protocols::ext::image_capture_source::v1::client::{
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
@@ -76,6 +82,21 @@ struct State {
     caught_up: u32,
     /// Whether the compositor offers pictures of the screen at all.
     offered: bool,
+    /// What the clipboard is set through, if this program may.
+    clipboards: Option<ExtDataControlManagerV1>,
+    seat: Option<wl_seat::WlSeat>,
+    /// The picture held for whatever asks to paste it.
+    held: Vec<u8>,
+    /// Whether something else has been copied since.
+    replaced: bool,
+}
+
+/// The connection pictures were taken over, kept to hold one of them on
+/// the clipboard through.
+#[derive(Debug)]
+pub(crate) struct Camera {
+    queue: EventQueue<State>,
+    state: State,
 }
 
 impl State {
@@ -105,7 +126,7 @@ fn memory(length: u64) -> io::Result<File> {
 ///
 /// Returns why not: there is no compositor there, it gives this program
 /// no pictures, or a picture could not be taken.
-pub(crate) fn shoot(socket: &Path) -> Result<Vec<Shot>, Failure> {
+pub(crate) fn shoot(socket: &Path) -> Result<(Vec<Shot>, Camera), Failure> {
     let stream = omorfos_shell::connect(socket);
     let connection =
         stream.and_then(|stream| Connection::from_socket(stream).map_err(io::Error::other));
@@ -140,7 +161,38 @@ pub(crate) fn shoot(socket: &Path) -> Result<Vec<Shot>, Failure> {
     }
     let shots = state.screens.iter().enumerate().map(Screen::shot);
     let shots: Option<Vec<Shot>> = shots.collect();
-    shots.ok_or_else(|| "a picture of the screen could not be taken".into())
+    let shots = shots.ok_or("a picture of the screen could not be taken")?;
+    Ok((shots, Camera { queue, state }))
+}
+
+impl Camera {
+    /// Puts a picture, as a PNG, on the clipboard, and holds it there
+    /// until something else is copied or the session ends: what is on
+    /// the clipboard is given by the program that put it there, each
+    /// time it is pasted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this program may not set the clipboard.
+    pub(crate) fn hold(mut self, png: Vec<u8>) -> Result<(), Failure> {
+        let may = self.state.clipboards.as_ref().zip(self.state.seat.as_ref());
+        let Some((clipboards, seat)) = may else {
+            let said = "omorfos did not let this program set the clipboard. It lets a program \
+                        it starts with `may: [capture, clipboard]`";
+            return Err(said.into());
+        };
+        let handle = self.queue.handle();
+        let device = clipboards.get_data_device(seat, &handle, ());
+        let source = clipboards.create_data_source(&handle, ());
+        source.offer("image/png".to_owned());
+        device.set_selection(Some(&source));
+        self.state.held = png;
+        let mut alive = true;
+        while alive && !self.state.replaced {
+            alive = self.queue.blocking_dispatch(&mut self.state).is_ok();
+        }
+        Ok(())
+    }
 }
 
 impl Screen {
@@ -195,6 +247,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "ext_image_copy_capture_manager_v1" => {
                     state.capturers = Some(registry.bind(name, 1, handle, ()));
                 }
+                "ext_data_control_manager_v1" => {
+                    state.clipboards = Some(registry.bind(name, 1, handle, ()));
+                }
+                "wl_seat" => state.seat = Some(registry.bind(name, 1, handle, ())),
                 "wl_output" if state.caught_up == 0 => {
                     // The fourth version is the first to say what a
                     // screen is called.
@@ -325,6 +381,48 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, usize> for State {
     }
 }
 
+impl Dispatch<ExtDataControlSourceV1, ()> for State {
+    fn event(
+        state: &mut Self,
+        _: &ExtDataControlSourceV1,
+        event: source::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // It is asked for the picture, or told that something else has
+        // been copied: there is nothing else it is told.
+        if let source::Event::Send { fd, .. } = event {
+            // A program that asked and then went away is no trouble of
+            // ours.
+            drop(File::from(fd).write_all(&state.held));
+        } else {
+            state.replaced = true;
+        }
+    }
+}
+
+impl Dispatch<ExtDataControlDeviceV1, ()> for State {
+    fn event(
+        _: &mut Self,
+        _: &ExtDataControlDeviceV1,
+        _: device::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // What is on the clipboard is of no interest: only putting
+        // something there is.
+    }
+
+    wayland_client::event_created_child!(State, ExtDataControlDeviceV1, [
+        device::EVT_DATA_OFFER_OPCODE => (ExtDataControlOfferV1, ()),
+    ]);
+}
+
+delegate_noop!(State: ExtDataControlManagerV1);
+delegate_noop!(State: ignore ExtDataControlOfferV1);
+delegate_noop!(State: ignore wl_seat::WlSeat);
 delegate_noop!(State: ignore wl_shm::WlShm);
 delegate_noop!(State: wl_shm_pool::WlShmPool);
 delegate_noop!(State: ignore wl_buffer::WlBuffer);

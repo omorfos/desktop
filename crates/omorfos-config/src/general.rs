@@ -40,6 +40,8 @@ pub struct General {
     pub launcher: Launcher,
     /// The notifications that come with omorfos.
     pub notifications: Notifications,
+    /// Pictures of the screen.
+    pub screenshots: Screenshots,
     /// Programs written for X11.
     pub xwayland: Xwayland,
     /// The program that locks the session, and its arguments, such as
@@ -84,6 +86,56 @@ pub enum X11Scaling {
     /// dense it is. Those that take that in are sharp and the right size;
     /// those that do not are sharp and small.
     Native,
+}
+
+/// Pictures of the screen, as `omorfos-screenshot` takes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Screenshots {
+    /// Where a picture goes when the program is not told otherwise.
+    pub destination: Kept,
+}
+
+/// Where a picture of the screen goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Kept {
+    /// Saved as a file among the user's pictures.
+    #[default]
+    File,
+    /// Copied, to be pasted, and not saved.
+    Clipboard,
+    /// Saved and copied.
+    Both,
+}
+
+impl Kept {
+    /// Whether a picture is saved as a file.
+    #[must_use]
+    pub const fn saves(self) -> bool {
+        matches!(self, Self::File | Self::Both)
+    }
+
+    /// Whether a picture is copied to the clipboard.
+    #[must_use]
+    pub const fn copies(self) -> bool {
+        matches!(self, Self::Clipboard | Self::Both)
+    }
+
+    /// The place of this name, as it is written in the configuration.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        let all = [
+            ("file", Self::File),
+            ("clipboard", Self::Clipboard),
+            ("both", Self::Both),
+        ];
+        all.into_iter()
+            .find(|(known, _)| *known == name)
+            .map(|(_, kept)| kept)
+    }
 }
 
 /// The notifications that come with omorfos: what programs have to tell
@@ -490,6 +542,30 @@ mod tests {
         let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
+    }
+
+    #[test]
+    fn a_picture_of_the_screen_is_saved_unless_told_otherwise() {
+        assert_eq!(General::default().screenshots.destination, Kept::File);
+        let to = |yaml: &str| parse(yaml).map(|general| general.screenshots.destination);
+        assert_eq!(
+            to("screenshots: { destination: clipboard }").unwrap(),
+            Kept::Clipboard
+        );
+        assert_eq!(
+            to("screenshots: { destination: both }").unwrap(),
+            Kept::Both
+        );
+        assert!(to("screenshots: { destination: printer }").is_err());
+        assert!(parse("screenshots: { into: file }").is_err());
+
+        assert!(Kept::File.saves() && !Kept::File.copies());
+        assert!(!Kept::Clipboard.saves() && Kept::Clipboard.copies());
+        assert!(Kept::Both.saves() && Kept::Both.copies());
+        assert_eq!(Kept::named("file"), Some(Kept::File));
+        assert_eq!(Kept::named("clipboard"), Some(Kept::Clipboard));
+        assert_eq!(Kept::named("both"), Some(Kept::Both));
+        assert_eq!(Kept::named("File"), None);
     }
 
     #[test]

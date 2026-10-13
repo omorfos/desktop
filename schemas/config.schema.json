@@ -86,6 +86,26 @@
       },
       "type": "object"
     },
+    "Kept": {
+      "description": "Where a picture of the screen goes.",
+      "oneOf": [
+        {
+          "const": "file",
+          "description": "Saved as a file among the user's pictures.",
+          "type": "string"
+        },
+        {
+          "const": "clipboard",
+          "description": "Copied, to be pasted, and not saved.",
+          "type": "string"
+        },
+        {
+          "const": "both",
+          "description": "Saved and copied.",
+          "type": "string"
+        }
+      ]
+    },
     "Keyboard": {
       "additionalProperties": false,
       "description": "Keyboard layout and key repeat.",
@@ -314,6 +334,17 @@
         }
       ]
     },
+    "Screenshots": {
+      "additionalProperties": false,
+      "description": "Pictures of the screen, as `omorfos-screenshot` takes them.",
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/Kept",
+          "description": "Where a picture goes when the program is not told otherwise."
+        }
+      },
+      "type": "object"
+    },
     "Speed": {
       "description": "From -1, the slowest, to 1, the fastest; 0 is what the device is made for.",
       "maximum": 1,
@@ -478,6 +509,10 @@
     "placement": {
       "$ref": "#/$defs/Placement",
       "description": "Where new windows appear."
+    },
+    "screenshots": {
+      "$ref": "#/$defs/Screenshots",
+      "description": "Pictures of the screen."
     },
     "touchpad": {
       "$ref": "#/$defs/Touchpad",
