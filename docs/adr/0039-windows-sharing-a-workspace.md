@@ -215,7 +215,10 @@ are drawn from the menu's colours, the theme having no part for them.
 Under them a line of words says what the part under the pointer is,
 "Two side by side: this window on the left", since a picture of blocks
 is not plain to everyone; and an arrow stands up from them to the button
-they belong to. What a screen reader is told of them waits, with the
+they belong to. The arrow was first drawn up into the titlebar, in the
+menu's colour, which in the built-in theme is the titlebar's colour, and
+could not be seen. The pictures now stand a little under the titlebar
+and the arrow crosses the room between, edged as they are. What a screen reader is told of them waits, with the
 rest of the shell, on the toolkit (ADR 34).
 
 A window that is open already joins a workspace made for windows by
