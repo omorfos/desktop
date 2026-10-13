@@ -152,9 +152,9 @@ pub(crate) enum Drag {
     },
     /// Carrying a tab to drop on another frame, or out of its own.
     Tab { window: WindowId },
-    /// Moving the line between two windows that share a workspace on an
-    /// output, which lies `across` the output or runs down it.
-    Line { output: usize, across: bool },
+    /// Moving a line between windows that share a workspace: which
+    /// output's and which of its lines, which lies `across` or runs down.
+    Line { line: (usize, usize), across: bool },
 }
 
 /// What a press asks for, before checking that the frame allows it.
@@ -385,7 +385,7 @@ impl Compositor {
                     self.desktop.set_geometry(window, resized);
                 }
                 Drag::Tab { .. } => {}
-                Drag::Line { output, .. } => self.drag_line(output, position),
+                Drag::Line { line, .. } => self.drag_line(line, position),
             }
             // The drag has the pointer; no window sees it meanwhile.
             self.move_pointer(None, time);
@@ -551,7 +551,7 @@ impl Compositor {
         if self.over_notice() || self.menu.is_some() {
             return Look::Icon(CursorIcon::Default);
         }
-        if let Some((_, across)) = self.over_line() {
+        if let Some((.., across)) = self.over_line() {
             return Look::Icon(line_icon(across));
         }
         match self.under() {
@@ -722,7 +722,7 @@ impl Compositor {
             }
             return;
         }
-        if let Some((output, across)) = self.over_line() {
+        if let Some((output, which, across)) = self.over_line() {
             // The line between two windows is taken hold of and dragged.
             // Pressed twice in quick succession, it goes back to the
             // middle. Nothing under it sees any of this.
@@ -731,9 +731,10 @@ impl Compositor {
                 let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
                 if twice {
                     self.hover.lines.pressed = None;
-                    self.desktop.move_line(output, None);
+                    self.desktop.move_line(output, which, None);
                 } else {
-                    self.drag = Some(Drag::Line { output, across });
+                    let line = (output, which);
+                    self.drag = Some(Drag::Line { line, across });
                 }
                 self.move_pointer(None, time);
             }

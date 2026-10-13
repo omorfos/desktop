@@ -278,14 +278,18 @@ pub enum Half {
 /// What a split is out of: a first part with this much has everything.
 const WHOLE: u32 = 1 << 16;
 
-/// The line between two windows that share a workspace.
+/// A line between windows that share a workspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
-    /// Where it is: a hair wide and as long as the output, or a hair tall
-    /// and as wide.
+    /// Which line of its workspace it is: 0 for the one that cuts the
+    /// whole output in two, 1 and 2 for the one that cuts the first or
+    /// the second of those two again.
+    pub which: usize,
+    /// Where it is: a hair wide or a hair tall, and as long as what it
+    /// cuts.
     pub at: Rect,
-    /// Whether it lies across the output, between a window above and one
-    /// below, and is dragged up and down.
+    /// Whether it lies across, between a window above and one below, and
+    /// is dragged up and down.
     pub across: bool,
 }
 
@@ -300,18 +304,86 @@ enum Part {
     Tile(u64),
 }
 
+/// One of the two sides a workspace made for windows is cut into: one
+/// part, or two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Side {
+    /// How much of the side its first part has, out of [`WHOLE`].
+    split: u32,
+    /// The first is only [`Part::None`] if there is no such side.
+    parts: [Part; 2],
+}
+
+impl Side {
+    /// No side at all: the other has everything.
+    const NONE: Self = Self::of(Part::None);
+
+    /// A side that is one part.
+    const fn of(part: Part) -> Self {
+        Self {
+            split: WHOLE / 2,
+            parts: [part, Part::None],
+        }
+    }
+
+    /// A side cut in two, with `first` before `second`.
+    const fn cut(first: Part, second: Part) -> Self {
+        Self {
+            split: WHOLE / 2,
+            parts: [first, second],
+        }
+    }
+}
+
+/// Cuts a rectangle in two, the first having `split` of it out of
+/// [`WHOLE`]: side by side, or with `rows` one above the other.
+fn halves(area: Rect, rows: bool, split: u32) -> [Rect; 2] {
+    let (width, height) = (area.size.width, area.size.height);
+    let along = if rows { height } else { width };
+    let first = u64::from(along) * u64::from(split) / u64::from(WHOLE);
+    let first = u32::try_from(first).unwrap_or(along);
+    let rest = along - first;
+    if rows {
+        let below = area.origin.offset(0, first.cast_signed());
+        [
+            Rect::new(area.origin, Size::new(width, first)),
+            Rect::new(below, Size::new(width, rest)),
+        ]
+    } else {
+        let beside = area.origin.offset(first.cast_signed(), 0);
+        [
+            Rect::new(area.origin, Size::new(first, height)),
+            Rect::new(beside, Size::new(rest, height)),
+        ]
+    }
+}
+
+/// The split at which the first of two parts has `first` of a length of
+/// `along`, or as near that as leaves each a sixth of it.
+fn split_at(first: u32, along: u32) -> u32 {
+    let least = along / 6;
+    let first = first.clamp(least, along - least);
+    // Rounded up, so that the part is the length asked for and not one
+    // short of it.
+    let split = (u64::from(first) * u64::from(WHOLE)).div_ceil(u64::from(along.max(1)));
+    u32::try_from(split).unwrap_or(WHOLE / 2)
+}
+
 /// What makes a workspace one that was made for windows to fill between
-/// them, and how it is cut up: into one part, or into two side by side or
-/// one above the other.
+/// them, and how it is cut up: in two, side by side or one above the
+/// other, each side of which is one part or is cut again the other way.
+/// So there are four parts at most, in eight arrangements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Tiling {
     /// The desktop the frames came from, and go back to.
     origin: WorkspaceId,
-    /// Whether two parts are one above the other, and not side by side.
+    /// Whether the two sides are one above the other, and not side by
+    /// side.
     stacked: bool,
-    /// How much of the output the first part has, out of [`WHOLE`].
+    /// How much of the output the first side has, out of [`WHOLE`].
     split: u32,
-    parts: [Part; 2],
+    /// The second is [`Side::NONE`] where the first has everything.
+    sides: [Side; 2],
 }
 
 impl Tiling {
@@ -321,101 +393,266 @@ impl Tiling {
             origin,
             stacked: false,
             split: WHOLE / 2,
-            parts: [Part::Tile(frame), Part::None],
+            sides: [Side::of(Part::Tile(frame)), Side::NONE],
         }
     }
 
-    /// A workspace of two halves, with a frame in one and nothing yet in
-    /// the other.
-    const fn halved(origin: WorkspaceId, frame: u64, half: Half) -> Self {
-        let first = matches!(half, Half::Left | Half::Top);
-        Self {
-            origin,
-            stacked: matches!(half, Half::Top | Half::Bottom),
-            split: WHOLE / 2,
-            parts: if first {
-                [Part::Tile(frame), Part::Empty]
-            } else {
-                [Part::Empty, Part::Tile(frame)]
-            },
-        }
+    /// Every part there could be, in the order they are read in: where it
+    /// is, as a side and a place on that side, and what is in it.
+    fn slots(self) -> impl Iterator<Item = ((usize, usize), Part)> {
+        let places = [(0, 0), (0, 1), (1, 0), (1, 1)];
+        places
+            .into_iter()
+            .map(move |(side, place)| ((side, place), self.sides[side].parts[place]))
     }
 
     /// The frames that fill its parts, in the order of the parts.
     fn tiles(self) -> impl Iterator<Item = u64> {
-        let tile = |part: Part| match part {
+        self.slots().filter_map(|(_, part)| match part {
             Part::Tile(frame) => Some(frame),
             _ => None,
+        })
+    }
+
+    /// Whether it is cut into more than one part.
+    fn shared(self) -> bool {
+        self.slots().filter(|(_, part)| *part != Part::None).count() > 1
+    }
+
+    /// The same with each part changed by `change`.
+    fn with(self, mut change: impl FnMut((usize, usize), Part) -> Part) -> Self {
+        let mut sides = self.sides;
+        for (at, part) in self.slots() {
+            sides[at.0].parts[at.1] = change(at, part);
+        }
+        Self { sides, ..self }
+    }
+
+    /// The same put in order after parts have gone: a part that is left
+    /// has the room of the one that went.
+    fn closed_up(self) -> Self {
+        let pack = |side: Side| {
+            let gone = side.parts[0] == Part::None;
+            let parts = if gone {
+                [side.parts[1], Part::None]
+            } else {
+                side.parts
+            };
+            Side { parts, ..side }
         };
-        self.parts.into_iter().filter_map(tile)
+        let [first, second] = self.sides.map(pack);
+        let (first, second) = if first.parts[0] == Part::None {
+            (second, first)
+        } else {
+            (first, second)
+        };
+        // One side cut in two is the whole cut in two the other way.
+        if second.parts[0] == Part::None && first.parts[1] != Part::None {
+            let sides = first.parts.map(Side::of);
+            return Self {
+                stacked: !self.stacked,
+                split: first.split,
+                sides,
+                ..self
+            };
+        }
+        Self {
+            sides: [first, second],
+            ..self
+        }
     }
 
     /// The same without the frames that are not `here` any longer. One
     /// that leaves gives its part up, and the frame beside it has the
-    /// whole.
+    /// room.
     fn kept(self, here: impl Fn(u64) -> bool) -> Self {
-        let left = self.tiles().filter(|frame| !here(*frame)).count();
-        let mut staying = self.tiles().filter(|frame| here(*frame));
-        let only = staying.next().filter(|_| left > 0);
-        only.map_or(self, |frame| Self::alone(self.origin, frame))
-    }
-
-    /// The same with `frame` in the part that had nothing in it.
-    fn filled(self, frame: u64) -> Self {
-        let fill = |part: Part| match part {
-            Part::Empty => Part::Tile(frame),
+        let kept = self.with(|_, part| match part {
+            Part::Tile(frame) if !here(frame) => Part::None,
             other => other,
-        };
-        Self {
-            parts: self.parts.map(fill),
-            ..self
-        }
+        });
+        kept.closed_up()
     }
 
-    /// How much of a length along which it is cut the first part has.
-    fn first(&self, along: u32) -> u32 {
-        let first = u64::from(along) * u64::from(self.split) / u64::from(WHOLE);
-        u32::try_from(first).unwrap_or(along)
-    }
-
-    /// The same, cut so that the first part has `first` of a length of
-    /// `along`, or as near that as leaves each part a sixth of it.
-    fn cut(self, first: u32, along: u32) -> Self {
-        let least = along / 6;
-        let first = first.clamp(least, along - least);
-        // Rounded up, so that the part is the length asked for and not
-        // one short of it.
-        let split = (u64::from(first) * u64::from(WHOLE)).div_ceil(u64::from(along.max(1)));
-        Self {
-            split: u32::try_from(split).unwrap_or(WHOLE / 2),
-            ..self
-        }
+    /// The same with `frame` in the first part that had nothing in it.
+    fn filled(self, frame: u64) -> Self {
+        let mut room = true;
+        self.with(|_, part| {
+            let fill = part == Part::Empty && std::mem::take(&mut room);
+            if fill { Part::Tile(frame) } else { part }
+        })
     }
 
     /// Whether it has a part with nothing in it.
-    fn has_room(&self) -> bool {
-        self.parts.contains(&Part::Empty)
+    fn has_room(self) -> bool {
+        self.slots().any(|(_, part)| part == Part::Empty)
+    }
+
+    /// Where a part is on an output of `area`.
+    fn rect(self, (side, place): (usize, usize), area: Rect) -> Rect {
+        let whole = self.sides[1].parts[0] == Part::None;
+        let sides = halves(area, self.stacked, self.split);
+        let within = if whole { area } else { sides[side] };
+        let alone = self.sides[side].parts[1] == Part::None;
+        let parts = halves(within, !self.stacked, self.sides[side].split);
+        if alone { within } else { parts[place] }
+    }
+
+    /// Where the part that `frame` fills is.
+    fn at(self, frame: u64) -> Option<(usize, usize)> {
+        let mut slots = self.slots();
+        slots.find_map(|(at, part)| (part == Part::Tile(frame)).then_some(at))
     }
 
     /// Where on an output of `area` the part filled by `frame` is.
-    fn part_of(&self, frame: u64, area: Rect) -> Rect {
-        let second = self.parts[1] == Part::Tile(frame);
-        let whole = self.parts[1] == Part::None;
-        let (width, height) = (area.size.width, area.size.height);
-        let along = if self.stacked { height } else { width };
-        let first = self.first(along);
-        let (from, length) = match (whole, second) {
-            (true, _) => (0, along),
-            (false, false) => (0, first),
-            (false, true) => (first, along - first),
-        };
-        if self.stacked {
-            let origin = area.origin.offset(0, from.cast_signed());
-            Rect::new(origin, Size::new(width, length))
+    fn part_of(self, frame: u64, area: Rect) -> Rect {
+        self.at(frame).map_or(area, |at| self.rect(at, area))
+    }
+
+    /// The same with `frame` taking a half of the part it fills, and the
+    /// other half left with nothing in it for another. A part can be
+    /// halved if it is the whole workspace, or a whole side of it halved
+    /// the other way than the workspace is; otherwise nothing changes.
+    fn halved(self, (side, place): (usize, usize), frame: u64, half: Half) -> Self {
+        let rows = matches!(half, Half::Top | Half::Bottom);
+        let first = matches!(half, Half::Left | Half::Top);
+        let tile = Part::Tile(frame);
+        let (before, after) = if first {
+            (tile, Part::Empty)
         } else {
-            let origin = area.origin.offset(from.cast_signed(), 0);
-            Rect::new(origin, Size::new(length, height))
+            (Part::Empty, tile)
+        };
+        if !self.shared() {
+            return Self {
+                stacked: rows,
+                split: WHOLE / 2,
+                sides: [Side::of(before), Side::of(after)],
+                ..self
+            };
         }
+        let whole = self.sides[side].parts[1] == Part::None;
+        if rows == self.stacked {
+            // It has a half that way already, or the other: asked for the
+            // other, the two sides change places.
+            let other = (side == 0) != first;
+            let [one, two] = self.sides;
+            let sides = if other { [two, one] } else { [one, two] };
+            return Self { sides, ..self };
+        }
+        let mut sides = self.sides;
+        if !whole {
+            // Likewise within a side that is cut already: its two parts
+            // change places.
+            let other = (place == 0) != first;
+            let [one, two] = sides[side].parts;
+            sides[side].parts = if other { [two, one] } else { [one, two] };
+            return Self { sides, ..self };
+        }
+        sides[side] = Side::cut(before, after);
+        Self { sides, ..self }
+    }
+
+    /// The lines between its parts on an output of `area`.
+    fn lines(self, area: Rect) -> Vec<Line> {
+        let hair = |second: Rect, across: bool| {
+            let size = if across {
+                Size::new(second.size.width, 1)
+            } else {
+                Size::new(1, second.size.height)
+            };
+            Rect::new(second.origin, size)
+        };
+        let sides = halves(area, self.stacked, self.split);
+        let whole = self.sides[1].parts[0] == Part::None;
+        let root = (!whole).then(|| Line {
+            which: 0,
+            at: hair(sides[1], self.stacked),
+            across: self.stacked,
+        });
+        let within = (0..2).filter_map(|side| {
+            let cut = self.sides[side].parts[1] != Part::None;
+            let parts = halves(sides[side], !self.stacked, self.sides[side].split);
+            cut.then(|| Line {
+                which: side + 1,
+                at: hair(parts[1], !self.stacked),
+                across: !self.stacked,
+            })
+        });
+        root.into_iter().chain(within).collect()
+    }
+
+    /// The same with one of its lines at `point` on an output of `area`,
+    /// or as near it as leaves each part a sixth of the output; or with
+    /// `None` in the middle of what it cuts.
+    fn cut(self, which: usize, point: Option<Point>, area: Rect) -> Self {
+        let across = (which == 0) == self.stacked;
+        let (from, along) = if across {
+            (area.origin.y, area.size.height)
+        } else {
+            (area.origin.x, area.size.width)
+        };
+        let wanted = point.map_or(along / 2, |point| {
+            let to = if across { point.y } else { point.x };
+            to.saturating_sub(from).max(0).unsigned_abs()
+        });
+        let split = split_at(wanted, along);
+        let mut cut = self;
+        match which.checked_sub(1) {
+            None => cut.split = split,
+            Some(side) => cut.sides[side.min(1)].split = split,
+        }
+        cut
+    }
+
+    /// The part beside another, on the side of it that `toward` says: the
+    /// one that shares most of that edge with it.
+    fn beside(self, at: (usize, usize), toward: Half, area: Rect) -> Option<(usize, usize)> {
+        let mine = self.rect(at, area);
+        let shared = |other: Rect| {
+            let (near, lengthwise) = match toward {
+                Half::Left => (other.right() == i64::from(mine.origin.x), false),
+                Half::Right => (i64::from(other.origin.x) == mine.right(), false),
+                Half::Top => (other.bottom() == i64::from(mine.origin.y), true),
+                Half::Bottom => (i64::from(other.origin.y) == mine.bottom(), true),
+            };
+            let span = |rect: Rect| {
+                if lengthwise {
+                    (i64::from(rect.origin.x), rect.right())
+                } else {
+                    (i64::from(rect.origin.y), rect.bottom())
+                }
+            };
+            let (one, other) = (span(mine), span(other));
+            let overlap = one.1.min(other.1) - one.0.max(other.0);
+            (near && overlap > 0).then_some(overlap)
+        };
+        let others = self
+            .slots()
+            .filter(|(other, part)| *other != at && *part != Part::None);
+        let beside = others.filter_map(|(other, _)| Some((shared(self.rect(other, area))?, other)));
+        // The first of those that share the most, in the order they are
+        // read in.
+        let most = |best: Option<(i64, (usize, usize))>, next: (i64, (usize, usize))| {
+            let better = best.is_none_or(|best| next.0 > best.0);
+            if better { Some(next) } else { best }
+        };
+        beside.fold(None, most).map(|(_, other)| other)
+    }
+
+    /// The same with what is in two parts changed over.
+    fn swapped(self, one: (usize, usize), other: (usize, usize)) -> Self {
+        let (first, second) = (
+            self.sides[one.0].parts[one.1],
+            self.sides[other.0].parts[other.1],
+        );
+        self.with(|at, part| {
+            if at == one {
+                second
+            } else if at == other {
+                first
+            } else {
+                part
+            }
+        })
     }
 }
 
@@ -865,7 +1102,7 @@ impl Desktop {
         // that the desktop.
         let free = beside.is_none() && effects.workspace.is_none();
         let made = showing.solo.filter(|_| free);
-        let room = made.filter(Tiling::has_room);
+        let room = made.filter(|tiling| tiling.has_room());
         let home = made.filter(|_| room.is_none());
         let home = home.map(|solo| self.sets[set].place(solo.origin));
         let workspace = beside.map_or(home.unwrap_or(shown), |at| at.workspace);
@@ -1094,18 +1331,84 @@ impl Desktop {
         }
     }
 
-    /// Puts a window's frame in a half of a workspace made for it,
+    /// Has a window's frame take a half of where it is, leaving the other
+    /// half with nothing in it until a window opens there.
+    ///
+    /// From a desktop, where it is becomes a workspace made for it,
     /// directly after the one it was on, which is shown if that one was.
-    /// The other half has nothing in it until a window opens there. A
-    /// frame that is fullscreen, or in such a workspace already, leaves
-    /// it first.
+    /// A frame that is fullscreen takes a half of its workspace. One that
+    /// fills a part of a workspace takes a half of that part, if the part
+    /// is a whole side of the workspace and the half is the other way
+    /// than the workspace is cut: nothing is cut more than twice. Where
+    /// it cannot take a half, it goes to the half asked for instead: its
+    /// side of the workspace changes places with the other, or it changes
+    /// places with the part that shares its side.
     pub fn tile(&mut self, id: WindowId, half: Half) {
         let Some(at) = self.locate(id) else { return };
-        let at = self.grounded(id, at);
+        let on = &mut self.sets[at.set].workspaces[at.workspace];
+        let frame = on.groups[at.group].serial;
+        // One that fills a part already takes a half of that part.
+        let tile = on.groups[at.group].fullscreen;
+        let part = on.solo.filter(|_| tile);
+        let part = part.and_then(|tiling| tiling.at(frame).map(|at| (tiling, at)));
+        if let Some((tiling, part)) = part {
+            on.solo = Some(tiling.halved(part, frame, half));
+            return;
+        }
         let made = WorkspaceId(self.serial());
         self.solo(at, made, |origin, frame| {
-            Tiling::halved(origin, frame, half)
+            Tiling::alone(origin, frame).halved((0, 0), frame, half)
         });
+    }
+
+    /// Where the part of a workspace made for windows that `id` fills is,
+    /// with how the workspace is cut and the output it is cut from.
+    fn tiled(&self, id: WindowId) -> Option<(Location, Tiling, (usize, usize), Rect)> {
+        let at = self.locate(id)?;
+        let on = &self.sets[at.set].workspaces[at.workspace];
+        let tiling = on.solo?;
+        let part = tiling.at(on.groups[at.group].serial)?;
+        // With no output there is nothing to measure but the cut itself.
+        let nominal = Rect::new(Point::new(0, 0), Size::new(WHOLE, WHOLE));
+        let area = self
+            .outputs
+            .get(at.set)
+            .map_or(nominal, |output| output.area);
+        Some((at, tiling, part, area))
+    }
+
+    /// Changes a window over with whatever is in the part beside its own,
+    /// on the side `toward` says: another window, or nothing. Does nothing
+    /// for a window that does not fill a part, or has nothing that side.
+    pub fn swap_toward(&mut self, id: WindowId, toward: Half) {
+        let Some((at, tiling, part, area)) = self.tiled(id) else {
+            return;
+        };
+        if let Some(other) = tiling.beside(part, toward, area) {
+            let on = &mut self.sets[at.set].workspaces[at.workspace];
+            on.solo = Some(tiling.swapped(part, other));
+        }
+    }
+
+    /// Gives focus to the window in the part beside the focused one's, on
+    /// the side `toward` says. Does nothing unless the window with focus
+    /// fills a part and there is a window that side.
+    pub fn focus_toward(&mut self, toward: Half) {
+        let found = self.focused().and_then(|id| self.tiled(id));
+        let Some((at, tiling, part, area)) = found else {
+            return;
+        };
+        let other = tiling.beside(part, toward, area);
+        let frame = other.and_then(|other| match tiling.sides[other.0].parts[other.1] {
+            Part::Tile(frame) => Some(frame),
+            _ => None,
+        });
+        let on = &mut self.sets[at.set].workspaces[at.workspace];
+        let group =
+            frame.and_then(|frame| on.groups.iter().position(|group| group.serial == frame));
+        if let Some(group) = group {
+            on.focus(group, false);
+        }
     }
 
     /// Switches a window's frame in or out of fullscreen.
@@ -1374,49 +1677,29 @@ impl Desktop {
         }
     }
 
-    /// The line between the two parts of the workspace an output is
-    /// showing, if it is showing one that windows share. Outputs are
-    /// counted in the order they were given.
+    /// The lines between the parts of the workspace an output is showing,
+    /// if it is showing one that windows share. Outputs are counted in
+    /// the order they were given.
     #[must_use]
-    pub fn line(&self, output: usize) -> Option<Line> {
-        let (set, area) = (self.sets.get(output)?, self.outputs.get(output)?.area);
-        let tiling = set.workspaces[set.active].solo?;
-        let shared = tiling.parts[1] != Part::None;
-        let (width, height) = (area.size.width, area.size.height);
-        let (at, size) = if tiling.stacked {
-            let down = tiling.first(height).cast_signed();
-            (area.origin.offset(0, down), Size::new(width, 1))
-        } else {
-            let along = tiling.first(width).cast_signed();
-            (area.origin.offset(along, 0), Size::new(1, height))
-        };
-        shared.then_some(Line {
-            at: Rect::new(at, size),
-            across: tiling.stacked,
-        })
+    pub fn lines(&self, output: usize) -> Vec<Line> {
+        let cut = self.sets.get(output).zip(self.outputs.get(output));
+        let cut =
+            cut.and_then(|(set, output)| Some((set.workspaces[set.active].solo?, output.area)));
+        cut.map_or_else(Vec::new, |(tiling, area)| tiling.lines(area))
     }
 
-    /// Moves the line between the two parts of the workspace an output is
-    /// showing to `point`, or as near it as leaves each part a sixth of
-    /// the output; or with `None` puts it back in the middle. Does nothing
-    /// where there is no such line.
-    pub fn move_line(&mut self, output: usize, point: Option<Point>) {
-        let Some(line) = self.line(output) else {
+    /// Moves one of the lines of the workspace an output is showing to
+    /// `point`, or as near it as leaves each part a sixth of the output;
+    /// or with `None` puts it back in the middle. Does nothing where there
+    /// is no such line.
+    pub fn move_line(&mut self, output: usize, which: usize, point: Option<Point>) {
+        if !self.lines(output).iter().any(|line| line.which == which) {
             return;
-        };
+        }
         let area = self.outputs[output].area;
-        let (from, along) = if line.across {
-            (area.origin.y, area.size.height)
-        } else {
-            (area.origin.x, area.size.width)
-        };
-        let wanted = point.map_or(along / 2, |point| {
-            let to = if line.across { point.y } else { point.x };
-            to.saturating_sub(from).max(0).unsigned_abs()
-        });
         let set = &mut self.sets[output];
         let shown = &mut set.workspaces[set.active];
-        shown.solo = shown.solo.map(|tiling| tiling.cut(wanted, along));
+        shown.solo = shown.solo.map(|tiling| tiling.cut(which, point, area));
     }
 
     /// Makes the output at `point` the current one: the one whose focused
@@ -1587,10 +1870,10 @@ impl Desktop {
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
                 home: workspace.solo.map_or(Home::Desktop, |tiling| {
-                    if tiling.parts[1] == Part::None {
-                        Home::Solo
-                    } else {
+                    if tiling.shared() {
                         Home::Shared
+                    } else {
+                        Home::Solo
                     }
                 }),
                 focused: index == self.current && workspace.focused == Some(group.serial),
@@ -1784,6 +2067,34 @@ mod tests {
     fn open(desktop: &mut Desktop, app_id: &str) -> WindowId {
         desktop.add_window(app_id, format!("{app_id} window"), SIZE, POINTER, true)
     }
+
+    /// The line that cuts the workspace an output is showing in two, if it
+    /// is cut.
+    fn line(desktop: &Desktop, output: usize) -> Option<Line> {
+        desktop.lines(output).first().copied()
+    }
+
+    /// Where a window's frame is.
+    fn part(desktop: &Desktop, id: WindowId) -> (i32, i32, u32, u32) {
+        let at = frame(desktop, id).geometry;
+        (at.origin.x, at.origin.y, at.size.width, at.size.height)
+    }
+
+    /// Four windows sharing a workspace, a quarter each: `[a, b, c, d]`
+    /// for the top left, the bottom left, the top right and the bottom
+    /// right.
+    fn quarters(desktop: &mut Desktop) -> [WindowId; 4] {
+        let a = open(desktop, "a");
+        desktop.tile(a, Half::Left);
+        let c = open(desktop, "c");
+        desktop.tile(a, Half::Top);
+        let b = open(desktop, "b");
+        desktop.tile(c, Half::Top);
+        let d = open(desktop, "d");
+        [a, b, c, d]
+    }
+
+    const HALVES: [Half; 4] = [Half::Left, Half::Right, Half::Top, Half::Bottom];
 
     /// Opens a window that says it belongs to `parent`.
     fn open_of(desktop: &mut Desktop, parent: WindowId) -> WindowId {
@@ -2378,6 +2689,7 @@ mod tests {
             (Half::Bottom, Rect::new(Point::new(0, 540), tall)),
         ];
         for (half, part) in halves {
+            let mut desktop = desktop.clone();
             desktop.tile(editor, half);
             let frame = frame(&desktop, editor);
             assert_eq!(frame.geometry, part, "{half:?}");
@@ -2386,7 +2698,7 @@ mod tests {
             assert!(frame.fullscreen && frame.decoration.is_none());
             assert_eq!(stack(&desktop), [editor], "and is all there is there");
             assert_eq!(desktop.active_workspace(), 1);
-            assert_eq!(desktop.workspaces().count(), 4, "one made, however often");
+            assert_eq!(desktop.workspaces().count(), 4);
         }
         assert_eq!(desktop.workspace_of(chat), Some(0));
         desktop.tile(WindowId(999), Half::Left);
@@ -2428,21 +2740,25 @@ mod tests {
     fn the_line_between_two_windows_is_moved_to_give_one_more_room() {
         let mut desktop = desktop();
         let editor = open(&mut desktop, "editor");
-        assert_eq!(desktop.line(0), None, "a desktop has none");
+        assert_eq!(line(&desktop, 0), None, "a desktop has none");
         let nowhere = Desktop::new(Settings::default(), 1);
-        assert_eq!(nowhere.line(0), None, "nor is there one with no output");
+        assert_eq!(line(&nowhere, 0), None, "nor is there one with no output");
         desktop.set_fullscreen(editor, true);
-        assert_eq!(desktop.line(0), None, "nor a window alone");
-        desktop.move_line(0, Some(Point::new(100, 100)));
+        assert_eq!(line(&desktop, 0), None, "nor a window alone");
+        desktop.move_line(0, 0, Some(Point::new(100, 100)));
         desktop.tile(editor, Half::Left);
         let browser = open(&mut desktop, "browser");
         let tall = |x: i32| Rect::new(Point::new(x, 0), Size::new(1, 1080));
-        let line = desktop.line(0).unwrap();
-        assert_eq!((line.at, line.across), (tall(960), false));
-        assert_eq!(desktop.line(7), None);
+        let first = line(&desktop, 0).unwrap();
+        assert_eq!((first.at, first.across, first.which), (tall(960), false, 0));
+        assert_eq!(line(&desktop, 7), None);
 
-        desktop.move_line(0, Some(Point::new(1201, 300)));
-        assert_eq!(desktop.line(0).unwrap().at, tall(1201), "to the very pixel");
+        desktop.move_line(0, 0, Some(Point::new(1201, 300)));
+        assert_eq!(
+            line(&desktop, 0).unwrap().at,
+            tall(1201),
+            "to the very pixel"
+        );
         let widths = |desktop: &Desktop| {
             let of = |id| frame(desktop, id).geometry;
             (
@@ -2454,15 +2770,15 @@ mod tests {
         assert_eq!(widths(&desktop), (1201, 1201, 719));
 
         // Neither is left with less than a sixth of the screen.
-        desktop.move_line(0, Some(Point::new(5, 0)));
+        desktop.move_line(0, 0, Some(Point::new(5, 0)));
         assert_eq!(widths(&desktop), (320, 320, 1600));
-        desktop.move_line(0, Some(Point::new(-50, 0)));
+        desktop.move_line(0, 0, Some(Point::new(-50, 0)));
         assert_eq!(widths(&desktop), (320, 320, 1600));
-        desktop.move_line(0, Some(Point::new(5000, 0)));
+        desktop.move_line(0, 0, Some(Point::new(5000, 0)));
         assert_eq!(widths(&desktop), (1600, 1600, 320));
 
         // And it goes back to the middle when asked.
-        desktop.move_line(0, None);
+        desktop.move_line(0, 0, None);
         assert_eq!(widths(&desktop), (960, 960, 960));
     }
 
@@ -2471,14 +2787,296 @@ mod tests {
         let mut desktop = desktop();
         let editor = open(&mut desktop, "editor");
         desktop.tile(editor, Half::Bottom);
-        let line = desktop.line(0).unwrap();
+        let first = line(&desktop, 0).unwrap();
         let wide = |y: i32| Rect::new(Point::new(0, y), Size::new(1920, 1));
-        assert_eq!((line.at, line.across), (wide(540), true));
+        assert_eq!((first.at, first.across), (wide(540), true));
 
-        desktop.move_line(0, Some(Point::new(700, 300)));
-        assert_eq!(desktop.line(0).unwrap().at, wide(300));
+        desktop.move_line(0, 0, Some(Point::new(700, 300)));
+        assert_eq!(line(&desktop, 0).unwrap().at, wide(300));
         assert_eq!(frame(&desktop, editor).geometry.origin.y, 300);
         assert_eq!(frame(&desktop, editor).geometry.size.height, 780);
+    }
+
+    #[test]
+    fn a_side_of_a_shared_workspace_is_halved_again_for_a_third_window() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+
+        // The one on the right takes the bottom of the right, and the
+        // next to open has the top.
+        desktop.tile(browser, Half::Bottom);
+        assert_eq!(part(&desktop, browser), (960, 540, 960, 540));
+        assert_eq!(part(&desktop, editor), (0, 0, 960, 1080), "as it was");
+        let terminal = open(&mut desktop, "terminal");
+        assert_eq!(part(&desktop, terminal), (960, 0, 960, 540));
+        assert_eq!(desktop.workspaces().count(), 4, "all on the one workspace");
+        let places: Vec<Place> = desktop.workspaces().collect();
+        assert_eq!(places[1].tiles, [editor, terminal, browser]);
+
+        let lines = desktop.lines(0);
+        let whole = Rect::new(Point::new(960, 0), Size::new(1, 1080));
+        let right = Rect::new(Point::new(960, 540), Size::new(960, 1));
+        assert_eq!(
+            (lines[0].which, lines[0].at, lines[0].across),
+            (0, whole, false)
+        );
+        assert_eq!(
+            (lines[1].which, lines[1].at, lines[1].across),
+            (2, right, true)
+        );
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn four_windows_have_a_quarter_each() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+        assert_eq!(part(&desktop, a), (0, 0, 960, 540));
+        assert_eq!(part(&desktop, b), (0, 540, 960, 540));
+        assert_eq!(part(&desktop, c), (960, 0, 960, 540));
+        assert_eq!(part(&desktop, d), (960, 540, 960, 540));
+        let which: Vec<usize> = desktop.lines(0).iter().map(|line| line.which).collect();
+        assert_eq!(which, [0, 1, 2]);
+
+        // With every part taken, the next window is for the desktop.
+        let fifth = open(&mut desktop, "fifth");
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [fifth]);
+    }
+
+    #[test]
+    fn nothing_is_cut_more_than_twice_or_twice_the_same_way() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+        let before = desktop.clone();
+        desktop.tile(a, Half::Left);
+        desktop.tile(a, Half::Top);
+        desktop.tile(d, Half::Bottom);
+        assert_eq!(desktop, before, "each has that half of where it is");
+
+        // A quarter is not halved. Asked for the other half, it goes
+        // there: down its side, or with its side across.
+        desktop.tile(a, Half::Bottom);
+        assert_eq!(part(&desktop, a), (0, 540, 960, 540));
+        assert_eq!(part(&desktop, b), (0, 0, 960, 540));
+        desktop.tile(a, Half::Right);
+        assert_eq!(part(&desktop, a), (960, 540, 960, 540));
+        assert_eq!(part(&desktop, b), (960, 0, 960, 540));
+        assert_eq!(part(&desktop, c), (0, 0, 960, 540));
+        assert_eq!(part(&desktop, d), (0, 540, 960, 540));
+        assert_eq!(desktop.lines(0).len(), 3, "still four parts");
+
+        // Nor is a half halved the way the workspace already is.
+        let mut desktop = self::desktop();
+        let left = open(&mut desktop, "left");
+        desktop.tile(left, Half::Left);
+        let right = open(&mut desktop, "right");
+        let before = desktop.clone();
+        desktop.tile(left, Half::Left);
+        desktop.tile(right, Half::Right);
+        assert_eq!(desktop, before);
+
+        // Asked for the half the other has, the two change places.
+        desktop.tile(left, Half::Right);
+        assert_eq!(part(&desktop, left), (960, 0, 960, 1080));
+        assert_eq!(part(&desktop, right), (0, 0, 960, 1080));
+        desktop.tile(right, Half::Right);
+        assert_eq!(part(&desktop, right), (960, 0, 960, 1080));
+    }
+
+    #[test]
+    fn a_fullscreen_window_takes_a_half_of_the_workspace_it_has() {
+        let mut desktop = desktop();
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        let dialog = open_of(&mut desktop, video);
+
+        desktop.tile(video, Half::Right);
+        assert_eq!(desktop.workspaces().count(), 4, "the same workspace");
+        assert_eq!(part(&desktop, video), (960, 0, 960, 1080));
+        assert_eq!(frame(&desktop, video).home, Home::Shared);
+
+        // What only opened over it is not of it: tiled, it has a
+        // workspace of its own, from the same desktop.
+        desktop.tile(dialog, Half::Top);
+        assert_eq!(desktop.workspaces().count(), 5);
+        assert_eq!(part(&desktop, dialog), (0, 0, 1920, 540));
+        desktop.set_fullscreen(dialog, false);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [dialog]);
+    }
+
+    #[test]
+    fn two_parts_with_nothing_in_them_are_filled_in_the_order_they_are_read() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        desktop.tile(first, Half::Left);
+        desktop.tile(first, Half::Top);
+
+        let second = open(&mut desktop, "second");
+        assert_eq!(
+            part(&desktop, second),
+            (0, 540, 960, 540),
+            "under the first"
+        );
+        let third = open(&mut desktop, "third");
+        assert_eq!(
+            part(&desktop, third),
+            (960, 0, 960, 1080),
+            "then beside them"
+        );
+    }
+
+    #[test]
+    fn a_window_that_leaves_gives_its_room_to_the_one_beside_it() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+
+        // Four become three: the one under it has the whole of the right.
+        desktop.remove_window(c);
+        assert_eq!(part(&desktop, d), (960, 0, 960, 1080));
+        assert_eq!(part(&desktop, a), (0, 0, 960, 540));
+
+        // Three become two, one above the other no longer: side by side.
+        desktop.remove_window(b);
+        assert_eq!(part(&desktop, a), (0, 0, 960, 1080));
+        assert_eq!(part(&desktop, d), (960, 0, 960, 1080));
+
+        // And with a whole side gone, what is left of the other has the
+        // screen between them, as they were: one above the other.
+        let mut desktop = self::desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+        desktop.move_line(0, 1, Some(Point::new(0, 300)));
+        desktop.remove_window(c);
+        desktop.remove_window(d);
+        assert_eq!(part(&desktop, a), (0, 0, 1920, 300));
+        assert_eq!(part(&desktop, b), (0, 300, 1920, 780));
+        let only = desktop.lines(0);
+        assert_eq!((only.len(), only[0].which, only[0].across), (1, 0, true));
+    }
+
+    #[test]
+    fn each_line_is_moved_by_itself_and_only_if_it_is_there() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+
+        desktop.move_line(0, 2, Some(Point::new(1500, 200)));
+        assert_eq!(part(&desktop, c), (960, 0, 960, 200));
+        assert_eq!(part(&desktop, d), (960, 200, 960, 880));
+        assert_eq!(part(&desktop, a), (0, 0, 960, 540), "the left is as it was");
+
+        desktop.move_line(0, 0, Some(Point::new(600, 0)));
+        assert_eq!(part(&desktop, b), (0, 540, 600, 540));
+        assert_eq!(part(&desktop, c), (600, 0, 1320, 200));
+        desktop.move_line(0, 2, None);
+        assert_eq!(part(&desktop, c), (600, 0, 1320, 540));
+
+        // One that is not there is not moved, and nothing else is.
+        desktop.remove_window(b);
+        let before = desktop.clone();
+        desktop.move_line(0, 1, Some(Point::new(0, 100)));
+        desktop.move_line(0, 9, Some(Point::new(0, 100)));
+        assert_eq!(desktop, before);
+
+        // Where the workspace is cut across, its sides are cut down.
+        let mut desktop = self::desktop();
+        let above = open(&mut desktop, "above");
+        desktop.tile(above, Half::Top);
+        let below = open(&mut desktop, "below");
+        desktop.tile(below, Half::Right);
+        desktop.move_line(0, 2, Some(Point::new(500, 900)));
+        assert_eq!(part(&desktop, below), (500, 540, 1420, 540));
+        desktop.move_line(0, 0, Some(Point::new(500, 900)));
+        assert_eq!(part(&desktop, above), (0, 0, 1920, 900));
+    }
+
+    #[test]
+    fn a_window_changes_places_with_what_is_beside_it() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+
+        // With nothing, which is then on the other side.
+        desktop.swap_toward(editor, Half::Right);
+        assert_eq!(part(&desktop, editor), (960, 0, 960, 1080));
+        let browser = open(&mut desktop, "browser");
+        assert_eq!(part(&desktop, browser), (0, 0, 960, 1080));
+
+        // With another window.
+        desktop.swap_toward(editor, Half::Left);
+        assert_eq!(part(&desktop, editor), (0, 0, 960, 1080));
+        assert_eq!(part(&desktop, browser), (960, 0, 960, 1080));
+
+        // And with nothing at all where there is no part that side, or
+        // the window does not fill a part.
+        let before = desktop.clone();
+        desktop.swap_toward(editor, Half::Left);
+        desktop.swap_toward(editor, Half::Top);
+        desktop.swap_toward(WindowId(999), Half::Left);
+        let dialog = open_of(&mut desktop, editor);
+        desktop.swap_toward(dialog, Half::Right);
+        desktop.remove_window(dialog);
+        desktop.focus_toward(Half::Left);
+        assert_eq!(part(&desktop, editor), part(&before, editor));
+        let loose = open(&mut desktop, "loose");
+        desktop.swap_toward(loose, Half::Left);
+        assert_eq!(stack(&desktop), [loose]);
+    }
+
+    #[test]
+    fn focus_goes_to_the_window_beside_the_one_that_has_it() {
+        let mut desktop = desktop();
+        let [a, b, c, d] = quarters(&mut desktop);
+        assert_eq!(desktop.focused(), Some(d));
+
+        desktop.focus_toward(Half::Left);
+        assert_eq!(desktop.focused(), Some(b));
+        desktop.focus_toward(Half::Top);
+        assert_eq!(desktop.focused(), Some(a));
+        desktop.focus_toward(Half::Right);
+        assert_eq!(desktop.focused(), Some(c));
+        desktop.focus_toward(Half::Bottom);
+        assert_eq!(desktop.focused(), Some(d));
+        desktop.focus_toward(Half::Right);
+        desktop.focus_toward(Half::Bottom);
+        assert_eq!(desktop.focused(), Some(d), "nothing that way");
+
+        // Of two beside it, the one it shares more of its edge with.
+        desktop.move_line(0, 1, Some(Point::new(0, 300)));
+        desktop.focus_toward(Half::Left);
+        assert_eq!(desktop.focused(), Some(b), "below the line at 300");
+        desktop.move_line(0, 1, Some(Point::new(0, 900)));
+        desktop.focus_toward(Half::Right);
+        desktop.focus_toward(Half::Left);
+        assert_eq!(desktop.focused(), Some(a), "above the line at 900");
+        desktop.focus_toward(Half::Right);
+        assert_eq!(desktop.focused(), Some(c), "the first of two alike");
+
+        // A part with nothing in it has nothing to give focus to, and on
+        // a desktop there is no beside.
+        let mut desktop = self::desktop();
+        let alone = open(&mut desktop, "alone");
+        desktop.focus_toward(Half::Right);
+        desktop.tile(alone, Half::Left);
+        desktop.focus_toward(Half::Right);
+        assert_eq!(desktop.focused(), Some(alone));
+    }
+
+    #[test]
+    fn windows_share_a_workspace_with_no_output_to_measure_it_by() {
+        let mut desktop = Desktop::new(Settings::default(), 1);
+        let first = open(&mut desktop, "first");
+        desktop.tile(first, Half::Left);
+        let second = open(&mut desktop, "second");
+        assert_eq!(desktop.focused(), Some(second));
+        desktop.focus_toward(Half::Left);
+        assert_eq!(desktop.focused(), Some(first));
+        desktop.swap_toward(first, Half::Right);
+        desktop.focus_toward(Half::Left);
+        assert_eq!(desktop.focused(), Some(second));
+        assert_eq!(desktop.lines(0), []);
     }
 
     #[test]
@@ -4034,7 +4632,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(33) {
+            match random(36) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -4050,10 +4648,10 @@ mod tests {
                 10 => desktop.move_to_workspace(id, random(6)),
                 11 => desktop.switch_workspace(random(6)),
                 30 => desktop.new_workspace(),
-                32 => desktop.tile(
-                    id,
-                    [Half::Left, Half::Right, Half::Top, Half::Bottom][random(4)],
-                ),
+                32 => desktop.tile(id, HALVES[random(4)]),
+                33 => desktop.swap_toward(id, HALVES[random(4)]),
+                34 => desktop.focus_toward(HALVES[random(4)]),
+                35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400))),
                 31 => desktop.move_to_new_workspace(id),
                 12 => desktop.focus_next(),
                 13 => desktop.focus_previous(),

@@ -19,9 +19,11 @@ pub enum Half {
     Left,
     /// The right half.
     Right,
-    /// The top half.
+    /// The top half, or upwards.
+    #[serde(alias = "up")]
     Top,
-    /// The bottom half.
+    /// The bottom half, or downwards.
+    #[serde(alias = "down")]
     Bottom,
 }
 
@@ -59,10 +61,17 @@ pub enum Action {
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
     PreviousTab,
-    /// Put the focused window in a half of a workspace made for it:
-    /// `left`, `right`, `top` or `bottom`. The next window to open there
-    /// has the other half.
+    /// Have the focused window take a half of where it is: `left`,
+    /// `right`, `top` or `bottom`. The next window to open there has the
+    /// other half. From a desktop, where it is becomes a workspace made
+    /// for it.
     Tile(Half),
+    /// Give focus to the window beside the focused one, among windows
+    /// that share a workspace: `left`, `right`, `up` or `down`.
+    Focus(Half),
+    /// Change the focused window over with what is beside it, among
+    /// windows that share a workspace: `left`, `right`, `up` or `down`.
+    Swap(Half),
     /// Switch to the workspace with this number. One past the last makes
     /// that workspace first.
     Workspace(WorkspaceNumber),
@@ -184,6 +193,10 @@ mod tests {
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
         assert_eq!(parse("tile: bottom"), Ok(Action::Tile(Half::Bottom)));
         assert!(parse("tile: middle").is_err());
+        assert_eq!(parse("focus: up"), Ok(Action::Focus(Half::Top)));
+        assert_eq!(parse("focus: left"), Ok(Action::Focus(Half::Left)));
+        assert_eq!(parse("swap: down"), Ok(Action::Swap(Half::Bottom)));
+        assert_eq!(parse("swap: right"), Ok(Action::Swap(Half::Right)));
     }
 
     #[test]

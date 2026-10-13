@@ -146,8 +146,10 @@ calls for them.
 - [x] The lines between tiles drawn and dragged.
 - [ ] A line that stops where a window says it can be no smaller, and a
       part of the theme for the line.
-- [ ] Three and four windows, changing places, focus by direction, and
-      a tile's titlebar brought back at the line above it.
+- [x] Three and four windows, changing places and focus by direction.
+- [ ] A window changed over with another by dragging its titlebar onto
+      the other's part; and a tile's titlebar brought back at the line
+      above it.
 - [x] An empty part of a tiled workspace filled by the next window to
       open there.
 - [ ] A window that is open already put beside one that is tiled or

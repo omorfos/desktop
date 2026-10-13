@@ -185,10 +185,25 @@ either edge. What a window says is the least it can be is not asked yet,
 so a window can be given less room than it will draw in, and then draws
 over the line.
 
+Three and four came next, with focus and changing places by direction
+(`Super+Ctrl` and an arrow, and with `Shift`). How a third part is made
+was settled here: `tile` on a window that fills a part has it take a
+half of that part, where the part is a whole side and the half is the
+other way than the workspace is cut. So one word does for all of it:
+"this window takes that half of where it is, and the rest is room for
+another". Asked for a half it cannot take, the window goes to that half
+instead, changing places with what was there, which is what the word
+would be taken to mean. A fullscreen window asked the same takes a half
+of the workspace it has, and no new one is made.
+
+Changing places by dragging a titlebar onto another part, and a tile's
+titlebar brought back at the line above it, are not built: the first
+needs a titlebar that can be dragged where it is laid over a window, and
+the second has been less wanted since what is brought back stays while
+the pointer moves.
+
 A window is not yet put beside one that is already tiled or fullscreen
-except by opening there. `tile` on a window that is tiled already makes
-a new workspace for it. The lines are not drawn or dragged, and there
-are no more than two parts.
+except by opening there.
 
 ## Alternatives
 
