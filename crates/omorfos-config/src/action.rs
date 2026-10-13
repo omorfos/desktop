@@ -175,6 +175,17 @@ impl Started {
         }
     }
 
+    /// The same program, told to take the window with focus in place of
+    /// the screens. It is told what windows there are, which is how it
+    /// says which it wants.
+    #[must_use]
+    pub fn screenshot_window() -> Self {
+        let mut started = Self::screenshot();
+        started.run.arguments = vec!["--window".to_owned()];
+        started.may.push(Role::Panel);
+        started
+    }
+
     /// The same program, told to put the picture on the clipboard and
     /// nowhere else.
     #[must_use]

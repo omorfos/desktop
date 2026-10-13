@@ -68,6 +68,17 @@ pub enum Reply {
     },
 }
 
+impl Reply {
+    /// The state of the session, if that is what was answered.
+    #[must_use]
+    pub fn into_state(self) -> Option<State> {
+        match self {
+            Self::State(state) => Some(state),
+            Self::Version { .. } | Self::Done | Self::Error { .. } => None,
+        }
+    }
+}
+
 /// Everything a panel or script might show about the session.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct State {
@@ -152,6 +163,12 @@ pub struct Window {
     pub shown: bool,
     /// Whether its frame is minimized.
     pub minimized: bool,
+    /// What it is called in the list of windows a taskbar is given
+    /// (`ext-foreign-toplevel-list-v1`), for a program that speaks that
+    /// as well and wants to know which of those windows this is. Empty
+    /// from a compositor that does not say.
+    #[serde(default)]
+    pub handle: String,
 }
 
 /// Writes a message as one line, newline included.
@@ -248,6 +265,7 @@ mod tests {
                 focused: true,
                 shown: true,
                 minimized: false,
+                handle: "3f2a".to_owned(),
             }],
             problems: vec!["keys.yaml:2:3: nope".to_owned()],
             events: vec!["something was started again".to_owned()],
@@ -289,5 +307,15 @@ mod tests {
         let workspace: Workspace = serde_json::from_str(old).unwrap();
         assert!(workspace.kept);
         assert_eq!(workspace.id, 0);
+    }
+
+    #[test]
+    fn the_state_can_be_taken_from_an_answer_that_is_one() {
+        let state = State {
+            problems: vec!["something".to_owned()],
+            ..State::default()
+        };
+        assert_eq!(Reply::State(state.clone()).into_state(), Some(state));
+        assert_eq!(Reply::Done.into_state(), None);
     }
 }

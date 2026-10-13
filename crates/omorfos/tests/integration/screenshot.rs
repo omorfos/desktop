@@ -398,3 +398,53 @@ fn told_something_it_does_not_understand_it_says_how_it_is_used() {
         "{problems}"
     );
 }
+
+/// Starts the tool to take the window with focus, with what it is told
+/// by the socket for scripts as well as the compositor's own.
+fn start_window(session: &mut Session, roles: Roles) -> JoinHandle<Said> {
+    let ipc = session.listen();
+    let more = [("OMORFOS_SOCKET", ipc.into_os_string())];
+    start_with(session, roles, &more, &["--window"])
+}
+
+/// May take pictures and is told what windows there are, as the built-in
+/// key for a picture of a window starts the tool.
+const WINDOWS: Roles = Roles::CAPTURE.with(Roles::PANEL);
+
+#[test]
+fn told_to_it_takes_the_window_with_focus_in_place_of_the_screens() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "behind", (300, 200), RED);
+    session.open_decorated(&mut app, "front", (200, 100), GREEN);
+
+    let tool = start_window(&mut session, WINDOWS);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths.len(), 1);
+    // As large as the window, and all of it the window.
+    assert_eq!(saved(&paths[0], (0, 0)), ((200, 100), GREEN));
+    assert_eq!(saved(&paths[0], (199, 99)).1, GREEN);
+}
+
+#[test]
+fn with_no_window_to_take_it_says_so() {
+    let mut session = Session::new();
+    let tool = start_window(&mut session, WINDOWS);
+    let said = finish(&mut session, tool).unwrap_err();
+    assert!(said.contains("no window with focus"), "{said}");
+
+    // Nor is there one where the socket for scripts cannot be asked.
+    let tool = start_with(&mut session, WINDOWS, &[], &["--window"]);
+    let said = finish(&mut session, tool).unwrap_err();
+    assert!(said.contains("no window with focus"), "{said}");
+}
+
+#[test]
+fn not_told_what_windows_there_are_it_says_how_it_could_be() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "front", (200, 100), GREEN);
+    let tool = start_window(&mut session, Roles::CAPTURE);
+    let said = finish(&mut session, tool).unwrap_err();
+    assert!(said.contains("may: [capture, panel]"), "{said}");
+}

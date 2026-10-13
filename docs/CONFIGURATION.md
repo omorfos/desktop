@@ -813,6 +813,9 @@ folder called `Screenshots` among your pictures: `~/Pictures`, or wherever
 when it was taken, and after its screen when there is more than one. One
 that is there already is never written over.
 
+`Alt+Print` takes the window with focus by itself, as large as it is and
+without the frame omorfos draws round it.
+
 `Shift+Print` puts the picture on the clipboard instead, to be pasted, and
 saves nothing. With several screens that is one picture of them all,
 side by side. To have `Print` do that, or both, say so in `config.yaml`:
@@ -834,10 +837,19 @@ that may:
     spawn:
       run: [omorfos-screenshot, --to, clipboard]
       may: [capture, clipboard]
+- keys: Alt+Print
+  action:
+    spawn:
+      run: [omorfos-screenshot, --window]
+      may: [capture, clipboard, panel]
 ```
 
 `--to file`, `--to clipboard` or `--to both` says where one picture goes,
-whatever the configuration says. A picture on the clipboard is given by
+whatever the configuration says, and `--window` that it is of the window
+with focus; the two can be said together. A program says which window it
+wants a picture of by the window's entry in the list of windows, so one
+that takes pictures of windows needs the `panel` role as well, to be
+given that list. A picture on the clipboard is given by
 the program that put it there each time it is pasted, so
 `omorfos-screenshot` stays running, unseen, until you copy something
 else.
@@ -854,7 +866,9 @@ theme. So a picture cannot be taken of your screen without your seeing
 that it was.
 
 A window that a rule in `rules.yaml` calls `private` is blank in every
-picture, in the background colour of the `capture` part of the theme.
+picture, of the screen or of itself, in the background colour of the
+`capture` part of the theme. A window that is out of sight, minimized or
+on another workspace, can have its picture taken all the same.
 
 Nothing is given while the session is locked. The pointer is in a picture
 only if the program asks for it, and `omorfos-screenshot` does not.

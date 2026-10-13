@@ -460,3 +460,174 @@ fn a_window_becomes_private_when_its_title_comes_to_say_so() {
     let (shot, _) = snap(&mut session, &mut camera, &taking);
     assert_eq!(shot.at(100, 50), RED);
 }
+
+/// A program that may take pictures and is told what windows there are,
+/// which is how it says which window it wants one of.
+fn window_camera(session: &mut Session) -> Client {
+    session.connect_as(Roles::CAPTURE.with(Roles::PANEL))
+}
+
+/// Takes a picture as large as `size` through `taking`.
+fn snap_sized(
+    session: &mut Session,
+    client: &mut Client,
+    taking: &Taking,
+    size: (i32, i32),
+) -> (Picture, Vec<Event>) {
+    let (file, buffer) = client.shot_buffer(size);
+    let frame = client.shot(taking);
+    frame.attach_buffer(&buffer);
+    frame.damage_buffer(0, 0, size.0, size.1);
+    frame.capture();
+    let events = develop(session, client);
+    frame.destroy();
+    (Picture::read(&file, size.0), events)
+}
+
+#[test]
+fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open_decorated(&mut app, "editor", (200, 100), RED);
+    session.open(&mut app, "terminal", (300, 150), BLUE);
+    let mut camera = window_camera(&mut session);
+
+    let taking = camera.capture_window("editor");
+    session.roundtrip(&mut camera);
+    // As large as the window draws itself: the frame round it is not its.
+    let told = [
+        Event::CaptureSize(200, 100),
+        Event::CaptureFormat(Format::Xrgb8888),
+        Event::CaptureKnown,
+    ];
+    assert_eq!(camera.take_events(), told);
+    assert_eq!(
+        session.draw().at(MARK.0, MARK.1),
+        DOT,
+        "it is marked all the same"
+    );
+
+    let before = session.draw();
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (200, 100));
+    assert_eq!(
+        events,
+        [Event::ShotDamage(0, 0, 200, 100), Event::ShotReady]
+    );
+    for (x, y) in [(0, 0), (199, 0), (0, 99), (199, 99), (100, 50)] {
+        assert_eq!(shot.at(x, y), RED, "at {x}, {y}");
+    }
+    // The screen is as it was: the window was drawn by itself only for
+    // the picture.
+    let after = session.draw();
+    for (x, y) in [(5, 5), (150, 60), (400, 300), (MARK.0, MARK.1)] {
+        assert_eq!(after.at(x, y), before.at(x, y), "at {x}, {y}");
+    }
+
+    // Another window, another picture, of its own size.
+    let other = camera.capture_window("terminal");
+    session.roundtrip(&mut camera);
+    assert!(camera.take_events().contains(&Event::CaptureSize(300, 150)));
+    let (shot, _) = snap_sized(&mut session, &mut camera, &other, (300, 150));
+    assert_eq!((shot.at(0, 0), shot.at(299, 149)), (BLUE, BLUE));
+    camera.finish_capturing();
+    session.roundtrip(&mut camera);
+}
+
+#[test]
+fn a_program_is_told_when_its_window_changes_size_or_goes() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "editor", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("editor");
+    snap_sized(&mut session, &mut camera, &taking, (200, 100));
+
+    app.fill(&window.surface, (240, 120), GREEN);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    assert!(events.contains(&Event::CaptureSize(240, 120)), "{events:?}");
+    // The next picture is all new, at the new size.
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (240, 120));
+    assert_eq!(
+        events,
+        [Event::ShotDamage(0, 0, 240, 120), Event::ShotReady]
+    );
+    assert_eq!(shot.at(239, 119), GREEN);
+
+    window.role.destroy();
+    window.xdg_surface.destroy();
+    window.surface.destroy();
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    assert!(events.contains(&Event::CaptureStopped), "{events:?}");
+
+    // What is asked for of a window that has gone is stopped at once.
+    let _late = camera.capture_window("editor");
+    session.roundtrip(&mut camera);
+    assert_eq!(camera.take_events(), [Event::CaptureStopped]);
+}
+
+#[test]
+fn a_window_that_is_not_shown_can_still_have_its_picture_taken() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "editor", (200, 100), RED);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Minimize);
+    session.roundtrip(&mut app);
+    assert_eq!(session.draw().at(100, 50), BACKGROUND, "it is out of sight");
+
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("editor");
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (200, 100));
+    assert_eq!(events.last(), Some(&Event::ShotReady));
+    assert_eq!(shot.at(100, 50), RED);
+    assert_eq!(session.draw().at(100, 50), BACKGROUND, "and stays so");
+}
+
+#[test]
+fn a_private_window_is_blank_in_a_picture_of_itself() {
+    let mut session = Session::with_config(&PRIVATE);
+    let mut app = session.connect();
+    session.open(&mut app, "wallet", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("wallet");
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (200, 100));
+    assert_eq!(events.last(), Some(&Event::ShotReady));
+    assert_eq!((shot.at(0, 0), shot.at(199, 99)), (GREEN, GREEN));
+    assert_eq!(session.draw().at(100, 50), RED);
+}
+
+#[test]
+fn programs_that_want_the_same_are_given_it_from_one_drawing() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "editor", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let takings = [camera.capture(0, false), camera.capture(0, false)];
+    let windows = [
+        camera.capture_window("editor"),
+        camera.capture_window("editor"),
+    ];
+    let screens = takings.map(|taking| (camera.shot_buffer((WIDTH, HEIGHT)), taking));
+    let alone = windows.map(|taking| (camera.shot_buffer((200, 100)), taking));
+    let mut frames = Vec::new();
+    for ((_, buffer), taking) in screens.iter().chain(&alone) {
+        let frame = camera.shot(taking);
+        frame.attach_buffer(buffer);
+        frame.capture();
+        frames.push(frame);
+    }
+    let events = develop(&mut session, &mut camera);
+    let ready = events.iter().filter(|event| **event == Event::ShotReady);
+    assert_eq!(ready.count(), 4);
+    for ((file, _), _) in &screens {
+        assert_eq!(picture(file).at(300, 300), BACKGROUND);
+    }
+    for ((file, _), _) in &alone {
+        assert_eq!(Picture::read(file, 200).at(199, 99), RED);
+    }
+}

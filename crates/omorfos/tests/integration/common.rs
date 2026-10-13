@@ -36,6 +36,7 @@ use wayland_protocols::ext::idle_notify::v1::client::{
     ext_idle_notification_v1, ext_idle_notifier_v1,
 };
 use wayland_protocols::ext::image_capture_source::v1::client::{
+    ext_foreign_toplevel_image_capture_source_manager_v1 as window_sources,
     ext_image_capture_source_v1 as capture_source,
     ext_output_image_capture_source_manager_v1 as capture_sources,
 };
@@ -632,6 +633,7 @@ pub(crate) struct ClientState {
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
     capture_sources: Option<capture_sources::ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<capture_manager::ExtImageCopyCaptureManagerV1>,
+    window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
     pub(crate) offered: Vec<String>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
@@ -737,6 +739,23 @@ impl Client {
         session
     }
 
+    /// Asks to take pictures of one window, the one a taskbar is told of
+    /// as being of the application `app_id`.
+    pub(crate) fn capture_window(
+        &self,
+        app_id: &str,
+    ) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        let listed = self.state.taskbar.iter();
+        let task = listed.rev().find(|task| task.app_id == app_id).unwrap();
+        let sources = self.state.window_sources.as_ref().unwrap();
+        let source = sources.create_source(&task.handle, &self.handle(), ());
+        let capturers = self.state.capturers.as_ref().unwrap();
+        let options = capture_manager::Options::empty();
+        let session = capturers.create_session(&source, options, &self.handle(), ());
+        source.destroy();
+        session
+    }
+
     /// Asks for pictures of the pointer by itself, on a screen.
     pub(crate) fn capture_pointer(&self) -> capture_session::ExtImageCopyCaptureSessionV1 {
         let sources = self.state.capture_sources.as_ref().unwrap();
@@ -759,6 +778,7 @@ impl Client {
     pub(crate) fn finish_capturing(&mut self) {
         self.state.capturers.take().unwrap().destroy();
         self.state.capture_sources.take().unwrap().destroy();
+        self.state.window_sources.take().unwrap().destroy();
     }
 
     /// Begins a picture of the screen, which is then told what to be
@@ -1267,6 +1287,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
         match interface.as_str() {
             "ext_output_image_capture_source_manager_v1" => {
                 state.capture_sources = Some(registry.bind(name, version, handle, ()));
+            }
+            "ext_foreign_toplevel_image_capture_source_manager_v1" => {
+                state.window_sources = Some(registry.bind(name, version, handle, ()));
             }
             "ext_image_copy_capture_manager_v1" => {
                 state.capturers = Some(registry.bind(name, version, handle, ()));
@@ -1801,6 +1824,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
 delegate_noop!(ClientState: wl_compositor::WlCompositor);
 delegate_noop!(ClientState: capture_sources::ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(ClientState: capture_source::ExtImageCaptureSourceV1);
+delegate_noop!(ClientState: window_sources::ExtForeignToplevelImageCaptureSourceManagerV1);
 delegate_noop!(ClientState: capture_manager::ExtImageCopyCaptureManagerV1);
 delegate_noop!(ClientState: ignore capture_cursor::ExtImageCopyCaptureCursorSessionV1);
 delegate_noop!(ClientState: wp_security_context_manager_v1::WpSecurityContextManagerV1);

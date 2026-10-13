@@ -18,7 +18,12 @@ use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_offer_v1::ExtDataControlOfferV1,
     ext_data_control_source_v1::{self as source, ExtDataControlSourceV1},
 };
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
+    ext_foreign_toplevel_handle_v1::{self as toplevel, ExtForeignToplevelHandleV1},
+    ext_foreign_toplevel_list_v1::{self as toplevel_list, ExtForeignToplevelListV1},
+};
 use wayland_protocols::ext::image_capture_source::v1::client::{
+    ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
 };
@@ -57,10 +62,10 @@ enum Stage {
     Failed,
 }
 
-/// One screen, and the picture of it.
+/// One thing a picture is taken of, a screen or a window, and the
+/// picture of it.
 #[derive(Debug)]
 struct Screen {
-    output: wl_output::WlOutput,
     name: Option<String>,
     stage: Stage,
     /// The size the compositor said the picture is.
@@ -75,7 +80,16 @@ struct State {
     shm: Option<wl_shm::WlShm>,
     sources: Option<ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<ExtImageCopyCaptureManagerV1>,
+    outputs: Vec<wl_output::WlOutput>,
     screens: Vec<Screen>,
+    /// What one window is asked for through, and the windows there are:
+    /// each as a taskbar is told of it, and what it is called.
+    windows: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
+    listed: Vec<(ExtForeignToplevelHandleV1, String)>,
+    /// The window a picture is wanted of, by what it is called, in place
+    /// of the screens; and whether it was among the windows there are.
+    wanted: Option<String>,
+    found: bool,
     /// How many times the compositor has said it has caught up. After the
     /// first it has said what there is, and after the second what each
     /// screen is called, which is when pictures are asked for.
@@ -120,20 +134,24 @@ fn memory(length: u64) -> io::Result<File> {
 }
 
 /// Takes a picture of every screen of the compositor at `socket`, or of
-/// the one that handed this program a connection.
+/// the one that handed this program a connection; or of one `window`, by
+/// what it is called in the list of windows, in place of the screens.
 ///
 /// # Errors
 ///
 /// Returns why not: there is no compositor there, it gives this program
 /// no pictures, or a picture could not be taken.
-pub(crate) fn shoot(socket: &Path) -> Result<(Vec<Shot>, Camera), Failure> {
+pub(crate) fn shoot(socket: &Path, window: Option<String>) -> Result<(Vec<Shot>, Camera), Failure> {
     let stream = omorfos_shell::connect(socket);
     let connection =
         stream.and_then(|stream| Connection::from_socket(stream).map_err(io::Error::other));
     let connection = connection.map_err(|error| format!("{}: {error}", socket.display()))?;
     let mut queue = connection.new_event_queue();
     let handle = queue.handle();
-    let mut state = State::default();
+    let mut state = State {
+        wanted: window,
+        ..State::default()
+    };
     connection.display().get_registry(&handle, ());
     connection.display().sync(&handle, ());
 
@@ -148,6 +166,11 @@ pub(crate) fn shoot(socket: &Path) -> Result<(Vec<Shot>, Camera), Failure> {
     }
     if !state.offered {
         return Err("the compositor does not offer pictures of the screen to this program".into());
+    }
+    if state.wanted.is_some() && !state.found {
+        let said = "the window with focus is not among the windows omorfos lists to this \
+                    program. It lists them to a program it starts with `may: [capture, panel]`";
+        return Err(said.into());
     }
     if state
         .screens
@@ -196,6 +219,16 @@ impl Camera {
 }
 
 impl Screen {
+    /// Something a picture has been asked for of, or is about to be.
+    const fn asked() -> Self {
+        Self {
+            name: None,
+            stage: Stage::Asked,
+            size: (0, 0),
+            memory: None,
+        }
+    }
+
     /// The picture of this screen, the `index`th, if it was taken.
     fn shot((index, screen): (usize, &Self)) -> Option<Shot> {
         let (width, height) = screen.size;
@@ -251,17 +284,19 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                     state.clipboards = Some(registry.bind(name, 1, handle, ()));
                 }
                 "wl_seat" => state.seat = Some(registry.bind(name, 1, handle, ())),
+                "ext_foreign_toplevel_image_capture_source_manager_v1" => {
+                    state.windows = Some(registry.bind(name, 1, handle, ()));
+                }
+                "ext_foreign_toplevel_list_v1" => {
+                    let _: ExtForeignToplevelListV1 = registry.bind(name, 1, handle, ());
+                }
                 "wl_output" if state.caught_up == 0 => {
                     // The fourth version is the first to say what a
                     // screen is called.
                     let index = state.screens.len();
-                    state.screens.push(Screen {
-                        output: registry.bind(name, version.min(4), handle, index),
-                        name: None,
-                        stage: Stage::Asked,
-                        size: (0, 0),
-                        memory: None,
-                    });
+                    let output = registry.bind(name, version.min(4), handle, index);
+                    state.outputs.push(output);
+                    state.screens.push(Screen::asked());
                 }
                 _ => {}
             }
@@ -285,14 +320,30 @@ impl Dispatch<wl_callback::WlCallback, ()> for State {
             connection.display().sync(handle, ());
             return;
         }
-        let offered = state.sources.as_ref().zip(state.capturers.as_ref());
+        let offered = state.sources.clone().zip(state.capturers.clone());
         state.offered = offered.is_some() && state.shm.is_some();
-        if let Some((sources, capturers)) = offered {
-            for (index, screen) in state.screens.iter().enumerate() {
-                let source = sources.create_source(&screen.output, handle, ());
+        let Some((sources, capturers)) = offered else {
+            return;
+        };
+        let Some(wanted) = state.wanted.clone() else {
+            for (index, output) in state.outputs.iter().enumerate() {
+                let source = sources.create_source(output, handle, ());
                 capturers.create_session(&source, Options::empty(), handle, index);
                 source.destroy();
             }
+            return;
+        };
+        // One picture, of the window, in place of those of the screens.
+        let mut listed = state.listed.iter();
+        let window = listed.find(|(_, called)| *called == wanted);
+        let source = window.zip(state.windows.as_ref());
+        let source = source.map(|((window, _), windows)| windows.create_source(window, handle, ()));
+        state.screens.clear();
+        if let Some(source) = source {
+            state.found = true;
+            state.screens.push(Screen::asked());
+            capturers.create_session(&source, Options::empty(), handle, 0);
+            source.destroy();
         }
     }
 }
@@ -420,6 +471,39 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
     ]);
 }
 
+impl Dispatch<ExtForeignToplevelListV1, ()> for State {
+    fn event(
+        _: &mut Self,
+        _: &ExtForeignToplevelListV1,
+        _: <ExtForeignToplevelListV1 as wayland_client::Proxy>::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A window is noted when it says what it is called.
+    }
+
+    wayland_client::event_created_child!(State, ExtForeignToplevelListV1, [
+        toplevel_list::EVT_TOPLEVEL_OPCODE => (ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtForeignToplevelHandleV1, ()> for State {
+    fn event(
+        state: &mut Self,
+        window: &ExtForeignToplevelHandleV1,
+        event: toplevel::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let toplevel::Event::Identifier { identifier } = event {
+            state.listed.push((window.clone(), identifier));
+        }
+    }
+}
+
+delegate_noop!(State: ExtForeignToplevelImageCaptureSourceManagerV1);
 delegate_noop!(State: ExtDataControlManagerV1);
 delegate_noop!(State: ignore ExtDataControlOfferV1);
 delegate_noop!(State: ignore wl_seat::WlSeat);

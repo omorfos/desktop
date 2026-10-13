@@ -335,6 +335,7 @@ mod tests {
             focused: false,
             shown: true,
             minimized: false,
+            handle: String::new(),
         }
     }
 
