@@ -663,12 +663,26 @@ fn an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it() {
 
     kill_and_recover(&mut session);
 
+    // The user is told, as of something that has happened and not of
+    // something that is wrong: for a while, and then no longer.
+    let happened: Vec<String> = session.compositor().events().map(str::to_owned).collect();
+    assert_eq!(happened.len(), 1, "{happened:?}");
+    assert!(
+        happened[0].contains("has been started again"),
+        "{happened:?}"
+    );
+    assert_eq!(session.compositor().problems(), [] as [String; 0]);
+    session.step();
+    assert_ne!(session.draw().at(400, 30), BACKGROUND, "in the notice");
+    assert!(session.compositor_mut().deadline().is_some());
+    session.advance(Duration::from_secs(11));
+    assert_eq!(session.compositor().events().count(), 0);
+    assert_eq!(session.draw().at(400, 30), BACKGROUND);
+
     // Its windows went with it, and those of other programs did not.
     session.eventually(|session| windows(session).len() == 1);
     assert_eq!(windows(&session)[0].0, "app");
     session.roundtrip(&mut other);
-    let problems = session.compositor().problems().join("\n");
-    assert!(problems.contains("has been started again"), "{problems}");
 
     // A program started now finds an X server where the last one was.
     assert_eq!(display(&session), number);
@@ -814,6 +828,22 @@ fn fetch(program: &RustConnection, window: u32, names: [u32; 3]) -> Option<Strin
     unreachable!("the program was never answered");
 }
 
+/// Waits until the X server has someone to ask for the clipboard or the
+/// selection: the window manager, on behalf of a program written for
+/// Wayland that holds it.
+fn held(session: &mut Session, program: &RustConnection, which: u32) {
+    meanwhile(session, || {
+        for _ in 0..5000 {
+            let owner = program.get_selection_owner(which).unwrap();
+            if owner.reply().unwrap().owner != x11rb::NONE {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        unreachable!("no one ever held it");
+    });
+}
+
 /// Whether a program written for Wayland is being offered the clipboard,
 /// or the selection.
 fn offered(client: &Client, primary: bool) -> bool {
@@ -828,6 +858,22 @@ fn offered(client: &Client, primary: bool) -> bool {
 fn what_a_program_written_for_x11_copies_or_selects_can_be_pasted_by_any_other() {
     for primary in [false, true] {
         let (mut session, program) = session();
+/// Waits until the X server has someone to ask for the clipboard or the
+/// selection: the window manager, on behalf of a program written for
+/// Wayland that holds it.
+fn held(session: &mut Session, program: &RustConnection, which: u32) {
+    meanwhile(session, || {
+        for _ in 0..5000 {
+            let owner = program.get_selection_owner(which).unwrap();
+            if owner.reply().unwrap().owner != x11rb::NONE {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        unreachable!("no one ever held it");
+    });
+}
+
         let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
         let names = [selection(primary), "TARGETS", "UTF8_STRING"];
         let names = names.map(|name| atom(&mut session, &program, name));
@@ -883,6 +929,7 @@ fn what_any_other_program_copies_or_selects_can_be_pasted_by_one_written_for_x11
         let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
         let names = [selection(primary), "UTF8_STRING", "PASTED"];
         let names = names.map(|name| atom(&mut session, &program, name));
+        held(&mut session, &program, names[0]);
         let pasted = std::thread::scope(|scope| {
             let fetching = scope.spawn(|| fetch(&program, window, names));
             until(&mut session, &mut client, |_, _| fetching.is_finished());
@@ -897,6 +944,7 @@ fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied()
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
     // Another program has the keyboard, and copies something.
+        held(&mut session, &program, names[0]);
     let mut client = session.connect();
     session.open(&mut client, "app", (50, 50), GREEN);
     client.copy("private to whoever is focused");
@@ -904,6 +952,8 @@ fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied()
 
     let names = ["CLIPBOARD", "UTF8_STRING", "PASTED"];
     let names = names.map(|name| atom(&mut session, &program, name));
+    // There is someone to ask, who says no.
+    held(&mut session, &program, names[0]);
     let pasted = std::thread::scope(|scope| {
         let fetching = scope.spawn(|| fetch(&program, window, names));
         until(&mut session, &mut client, |_, _| fetching.is_finished());
@@ -918,6 +968,8 @@ fn session_with(config: &str) -> (Session, RustConnection) {
     let mut session = Session::with_config(&[("config.yaml", config)]);
     start(&mut session);
     let program = connect(&mut session);
+    // There is someone to ask, who says no.
+    held(&mut session, &program, names[0]);
     (session, program)
 }
 

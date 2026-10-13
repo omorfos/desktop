@@ -364,6 +364,7 @@ impl Compositor {
                 })
                 .collect(),
             problems: self.problems().to_vec(),
+            events: self.events().map(str::to_owned).collect(),
         }
     }
 }

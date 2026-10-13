@@ -548,7 +548,7 @@ impl Compositor {
         if self.over_notice() {
             // A click on the notice dismisses it, until what it says changes.
             if pressed {
-                self.dismissed = self.problems().to_vec();
+                self.dismissed = self.said().into_owned();
             }
             return;
         }

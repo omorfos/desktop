@@ -285,7 +285,7 @@ to show over the IPC socket (ADR 18). In this order:
       (ADR 29). The notice the compositor draws is what is fallen back on
       when nothing is showing notifications, which is also when it has to
       say that the notifications have stopped
-  - [ ] What merely happened, such as the X server having been started
+  - [x] What merely happened, such as the X server having been started
         again, told apart from what is wrong, and gone by itself after a
         while
 - [ ] Screen capture and portals

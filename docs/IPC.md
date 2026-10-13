@@ -68,7 +68,8 @@ whole state, not a difference, so a client never has to reconstruct
 anything.
 
 `"show_problems"` is `"subscribe"` with a promise: that the program shows
-the user what is in `problems`, each until it is dismissed or put right.
+the user what is in `problems`, each until it is dismissed or put right,
+and what is in `events`, each once.
 For as long as such a program is connected the compositor does not show
 them itself, and it shows them again the moment the last one goes. The
 notifications that come with omorfos ask this. A notification program of
@@ -93,9 +94,17 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "minimized": false
     }
   ],
-  "problems": []
+  "problems": [],
+  "events": []
 }
 ```
+
+`problems` is what is wrong and stays so until it is put right: each is a
+line for the user, such as `theme.css:2:13: ...`. `events` is what has
+happened in the last few seconds that the user might want to know of and
+need do nothing about, such as the X server having been started again
+after it stopped. Each is there for about ten seconds and then is not, so
+a program that shows them shows each once when it first sees it.
 
 Each screen has its own set of workspaces, numbered from 1, and shows one
 of them. They are listed screen by screen, so numbers repeat and one

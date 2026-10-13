@@ -115,7 +115,7 @@ impl Notifier {
         // goes.
         self.shell.stale |= self.shell.motion.due(now);
         handled
-            .and_then(|()| self.learn())
+            .and_then(|()| self.learn(now))
             .and_then(|()| self.hear(now))
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle(), now);
@@ -125,11 +125,11 @@ impl Notifier {
     }
 
     /// Takes in what the compositor has said is wrong with the session.
-    fn learn(&mut self) -> Result<(), Failure> {
+    fn learn(&mut self, now: Duration) -> Result<(), Failure> {
         let shell = &mut self.shell;
         let heard = self.news.as_mut().map_or(Ok(()), |news| {
             let mut said = std::iter::from_fn(|| news.try_receive().transpose());
-            said.try_for_each(|reply| reply.map(|reply| shell.told(&reply)))
+            said.try_for_each(|reply| reply.map(|reply| shell.told(&reply, now)))
         });
         heard.map_err(Failure::from)
     }
@@ -188,8 +188,10 @@ impl Notifier {
             }
             shell.stale = true;
         }
+        // What omorfos itself said goes too, and no program is told.
+        let before = shell.stack.len();
         let expired = shell.stack.expire(now);
-        shell.stale |= !expired.is_empty();
+        shell.stale |= shell.stack.len() != before;
         shell
             .gone
             .extend(expired.into_iter().map(|id| (id, Reason::Expired)));
@@ -326,9 +328,9 @@ impl Shell {
 
     /// Takes in something the compositor said on its own socket. Only the
     /// state of the session is of any use here, for what it says is wrong.
-    fn told(&mut self, reply: &Reply) {
+    fn told(&mut self, reply: &Reply, now: Duration) {
         if let Reply::State(state) = reply {
-            self.stale |= self.stack.tell(&state.problems);
+            self.stale |= self.stack.tell(&state.problems, &state.events, now);
         }
     }
 

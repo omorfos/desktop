@@ -78,6 +78,12 @@ pub struct State {
     /// What is currently wrong with the configuration or the environment.
     /// Empty when all is well.
     pub problems: Vec<String>,
+    /// What has happened in the last few moments that the user might want
+    /// to know of and need do nothing about, such as something having
+    /// been started again after it stopped. Each is here for a short
+    /// while and then is not.
+    #[serde(default)]
+    pub events: Vec<String>,
 }
 
 /// A workspace.
@@ -213,6 +219,7 @@ mod tests {
                 minimized: false,
             }],
             problems: vec!["keys.yaml:2:3: nope".to_owned()],
+            events: vec!["something was started again".to_owned()],
         };
         for reply in [
             Reply::Version {

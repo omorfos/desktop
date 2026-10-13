@@ -96,8 +96,10 @@ struct Shown {
     key: u64,
     /// The number its program gave it, if it is a program's.
     id: u32,
-    /// What is wrong, as the compositor put it, if it is about that and
-    /// not from a program.
+    /// Whether it is from omorfos itself and not from a program.
+    ours: bool,
+    /// What is wrong, as the compositor put it, if it is about something
+    /// that stays wrong until it is put right.
     problem: Option<String>,
     title: String,
     /// What it says, as its sender broke it into lines.
@@ -123,7 +125,10 @@ pub struct Stack {
     under: Option<u64>,
     /// What is wrong that the user has dismissed, and is still wrong.
     dismissed: Vec<String>,
-    /// How many times something that is wrong has been shown.
+    /// What has happened that has been shown, and that the compositor is
+    /// still saying has.
+    seen: Vec<String>,
+    /// How many times omorfos itself has had something shown.
     told: u32,
 }
 
@@ -138,6 +143,7 @@ impl Stack {
             usual: (seconds > 0).then_some(usual),
             under: None,
             dismissed: Vec::new(),
+            seen: Vec::new(),
             told: 0,
         }
     }
@@ -155,6 +161,12 @@ impl Stack {
         self.shown.is_empty()
     }
 
+    /// How many notifications are showing.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.shown.len()
+    }
+
     /// Shows a notification, at the time `now`. If one with its number is
     /// showing, it takes that one's place. Returns the number of the one
     /// that had to go to make room, if any did.
@@ -170,6 +182,7 @@ impl Stack {
         let shown = Shown {
             key: u64::from(note.id),
             id: note.id,
+            ours: false,
             problem: None,
             title: clipped(plain(&note.title).trim()),
             lines: said.clone(),
@@ -186,20 +199,24 @@ impl Stack {
         }
         // Room is made by a program's notification going, never by one
         // about something that is wrong.
-        let theirs = |shown: &Shown| shown.problem.is_none();
+        let theirs = |shown: &Shown| !shown.ours;
         let crowded = self.shown.iter().filter(|shown| theirs(shown)).count() > MOST;
         let oldest = self.shown.iter().rposition(theirs);
         let gone = oldest.filter(|_| crowded);
         gone.map(|oldest| self.shown.remove(oldest).id)
     }
 
-    /// Takes in what is wrong with the session just now, as the compositor
-    /// has it. Each thing is shown, as a notification that stays until it
-    /// is dismissed or put right, and is not shown again once dismissed
-    /// unless it is put right and goes wrong again. Returns whether that
-    /// changed what is showing.
-    pub fn tell(&mut self, problems: &[String]) -> bool {
+    /// Takes in, at the time `now`, what the compositor has to say of the
+    /// session: what is wrong with it, and what has just happened in it.
+    ///
+    /// Each thing that is wrong is shown as a notification that stays
+    /// until it is dismissed or put right, and is not shown again once
+    /// dismissed unless it is put right and goes wrong again. Each thing
+    /// that has happened is shown once, for as long as notifications
+    /// usually stay. Returns whether that changed what is showing.
+    pub fn tell(&mut self, problems: &[String], events: &[String], now: Duration) -> bool {
         self.dismissed.retain(|known| problems.contains(known));
+        self.seen.retain(|known| events.contains(known));
         let before = self.shown.len();
         let still = |shown: &Shown| {
             shown
@@ -209,31 +226,47 @@ impl Stack {
         };
         self.shown.retain(still);
         let mut changed = self.shown.len() != before;
-        // As many as there is room for of a program's notifications.
+        // As many of each as there is room for of a program's
+        // notifications.
         for problem in problems.iter().take(MOST) {
             let mut showing = self.shown.iter();
             let showing = showing.any(|shown| shown.problem.as_ref() == Some(problem));
-            if showing || self.dismissed.contains(problem) {
-                continue;
+            if !showing && !self.dismissed.contains(problem) {
+                self.say(problem, Some(problem.clone()), None);
+                changed = true;
             }
-            self.told = self.told.wrapping_add(1);
-            let said = vec![clipped(problem.trim())];
-            let shown = Shown {
-                key: APART | u64::from(self.told),
-                id: 0,
-                problem: Some(problem.clone()),
-                title: OURS.to_owned(),
-                lines: said.clone(),
-                said,
-                picture: Picture::None,
-                urgent: true,
-                acts: false,
-                until: None,
-            };
-            self.shown.insert(0, shown);
-            changed = true;
+        }
+        let lasts = self.usual.map(|usual| now.saturating_add(usual));
+        for event in events.iter().take(MOST) {
+            if !self.seen.contains(event) {
+                self.seen.push(event.clone());
+                self.say(event, None, lasts);
+                changed = true;
+            }
         }
         changed
+    }
+
+    /// Shows something omorfos itself has to say, above everything else:
+    /// about a `problem`, which is urgent, or not, and staying `until` a
+    /// time if it goes by itself.
+    fn say(&mut self, words: &str, problem: Option<String>, until: Option<Duration>) {
+        self.told = self.told.wrapping_add(1);
+        let said = vec![clipped(words.trim())];
+        let shown = Shown {
+            key: APART | u64::from(self.told),
+            id: 0,
+            ours: true,
+            urgent: problem.is_some(),
+            problem,
+            title: OURS.to_owned(),
+            lines: said.clone(),
+            said,
+            picture: Picture::None,
+            acts: false,
+            until,
+        };
+        self.shown.insert(0, shown);
     }
 
     /// Breaks what each notification says into lines that fit it under
@@ -252,11 +285,7 @@ impl Stack {
             for words in &shown.said {
                 // Once the lines there may be are full, the rest is left
                 // out.
-                let most = if shown.problem.is_some() {
-                    PROBLEM_LINES
-                } else {
-                    LINES
-                };
+                let most = if shown.ours { PROBLEM_LINES } else { LINES };
                 let left = most.saturating_sub(lines.len());
                 if left > 0 {
                     lines.extend(text.wrap(words, room, font, left));
@@ -279,11 +308,13 @@ impl Stack {
     }
 
     /// Takes away the notifications whose time has run out by `now`, and
-    /// returns their numbers.
+    /// returns the numbers of those that were programs'.
     pub fn expire(&mut self, now: Duration) -> Vec<u32> {
         let due = |shown: &Shown| shown.until.is_some_and(|until| until <= now);
         let gone = self.shown.extract_if(.., |shown| due(shown));
-        gone.map(|shown| shown.id).collect()
+        // Programs are told of their own, and only of their own.
+        let theirs = gone.filter(|shown| !shown.ours);
+        theirs.map(|shown| shown.id).collect()
     }
 
     /// When the next notification's time runs out, if any will.
@@ -331,7 +362,7 @@ impl Stack {
         let clicked = place.map(|place| self.shown.remove(place));
         let problem = clicked.as_ref().and_then(|shown| shown.problem.clone());
         self.dismissed.extend(problem);
-        let theirs = clicked.filter(|shown| shown.problem.is_none());
+        let theirs = clicked.filter(|shown| !shown.ours);
         theirs.map(|shown| (shown.id, shown.acts))
     }
 
@@ -867,64 +898,63 @@ mod tests {
         wrong.collect()
     }
 
-    fn problems(them: &[&str]) -> Vec<String> {
-        them.iter().map(|problem| (*problem).to_owned()).collect()
+    fn all(them: &[&str]) -> Vec<String> {
+        them.iter().map(|one| (*one).to_owned()).collect()
+    }
+
+    /// Tells a stack what is wrong, with nothing having happened.
+    fn tell(stack: &mut Stack, problems: &[&str]) -> bool {
+        stack.tell(&all(problems), &[], START)
     }
 
     #[test]
     fn what_is_wrong_with_the_session_is_shown_until_it_is_put_right() {
         let mut stack = Stack::new(5);
         stack.show(note(1, "From a program", ""), START);
+        let two = ["keys.yaml: no such key", "theme.css:2:3: nope"];
 
-        assert!(stack.tell(&problems(&[
-            "keys.yaml: no such key",
-            "theme.css:2:3: nope"
-        ])));
-        assert_eq!(
-            wrong(&stack),
-            ["theme.css:2:3: nope", "keys.yaml: no such key"]
-        );
-        assert_eq!(stack.shown.len(), 3, "above what programs have said");
-        assert!(stack.shown[0].urgent && stack.shown[0].title == "omorfos");
-        assert!(!stack.tell(&problems(&[
-            "keys.yaml: no such key",
-            "theme.css:2:3: nope"
-        ])));
+        assert!(tell(&mut stack, &two));
+        assert_eq!(wrong(&stack), [two[1], two[0]]);
+        assert_eq!(stack.len(), 3, "above what programs have said");
+        assert!(stack.shown[0].urgent);
+        assert_eq!(stack.shown[0].title, "omorfos");
+        assert!(!tell(&mut stack, &two));
 
         // However long it is left.
         assert_eq!(stack.expire(seconds(3600)), [1]);
         assert_eq!(stack.deadline(), None);
         assert_eq!(wrong(&stack).len(), 2);
 
-        assert!(stack.tell(&problems(&["keys.yaml: no such key"])));
-        assert_eq!(wrong(&stack), ["keys.yaml: no such key"]);
-        assert!(stack.tell(&[]));
+        assert!(tell(&mut stack, &two[..1]));
+        assert_eq!(wrong(&stack), [two[0]]);
+        assert!(tell(&mut stack, &[]));
         assert!(stack.is_empty());
-        assert!(!stack.tell(&[]));
+        assert!(!tell(&mut stack, &[]));
     }
 
     #[test]
     fn what_is_wrong_and_has_been_dismissed_stays_away_until_it_goes_wrong_again() {
         let theme = Theme::default();
         let mut stack = Stack::new(5);
-        let broken = problems(&["keys.yaml: no such key"]);
-        stack.tell(&broken);
+        let broken = ["keys.yaml: no such key"];
+        tell(&mut stack, &broken);
 
         assert_eq!(stack.click(100, 20, &theme), None, "no program to tell");
         assert!(stack.is_empty());
-        assert!(!stack.tell(&broken), "still wrong, and still dismissed");
+        let again = tell(&mut stack, &broken);
+        assert!(!again, "still wrong, and still dismissed");
         assert!(stack.is_empty());
 
         // Put right, and then wrong again.
-        stack.tell(&[]);
-        assert!(stack.tell(&broken));
-        assert_eq!(wrong(&stack), ["keys.yaml: no such key"]);
+        tell(&mut stack, &[]);
+        assert!(tell(&mut stack, &broken));
+        assert_eq!(wrong(&stack), broken);
     }
 
     #[test]
     fn programs_cannot_take_away_or_crowd_out_what_is_wrong() {
         let mut stack = Stack::new(5);
-        stack.tell(&problems(&["something is wrong"]));
+        tell(&mut stack, &["something is wrong"]);
         // The numbers programs use are not the ones these go by.
         for id in [0, 1, u32::MAX] {
             assert!(!stack.close(id));
@@ -939,7 +969,7 @@ mod tests {
         }
         assert_eq!(gone, [1, 2, 3, 4]);
         assert_eq!(wrong(&stack), ["something is wrong"]);
-        assert_eq!(stack.shown.len(), 9);
+        assert_eq!(stack.len(), 9);
     }
 
     #[test]
@@ -952,7 +982,7 @@ mod tests {
         theirs.show(note(1, "Long", &long), START);
         theirs.fit(&theme, &mut text);
         let mut ours = Stack::new(5);
-        ours.tell(std::slice::from_ref(&long));
+        tell(&mut ours, &[&long]);
         ours.fit(&theme, &mut text);
 
         assert_eq!(theirs.shown[0].lines.len(), 3);
@@ -964,8 +994,50 @@ mod tests {
     fn only_so_much_that_is_wrong_is_shown_at_once() {
         let many: Vec<String> = (0..20).map(|n| format!("problem {n}")).collect();
         let mut stack = Stack::new(5);
-        assert!(stack.tell(&many));
+        assert!(stack.tell(&many, &[], START));
         assert_eq!(wrong(&stack).len(), 8);
         assert_eq!(wrong(&stack)[7], "problem 0", "the first of them");
+        assert!(stack.tell(&[], &many, START));
+        assert_eq!(stack.len(), 8, "and of what has happened");
+    }
+
+    #[test]
+    fn what_has_happened_is_shown_once_and_goes_by_itself() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        let happened = all(&["the X server has been started again"]);
+
+        assert!(stack.tell(&[], &happened, seconds(100)));
+        assert_eq!(stack.len(), 1);
+        assert!(!stack.shown[0].urgent, "nothing is wrong");
+        assert_eq!(stack.shown[0].title, "omorfos");
+        assert_eq!(wrong(&stack), [] as [&str; 0]);
+        assert_eq!(stack.deadline(), Some(seconds(105)));
+        // The compositor goes on saying so for a while. It is not news.
+        assert!(!stack.tell(&[], &happened, seconds(102)));
+
+        // No program is told when it goes.
+        assert_eq!(stack.expire(seconds(105)), [] as [u32; 0]);
+        assert!(stack.is_empty());
+        assert!(!stack.tell(&[], &happened, seconds(106)));
+        assert!(stack.is_empty(), "it is not shown again");
+
+        // Once the compositor has stopped saying so, the same thing
+        // happening again is news.
+        assert!(!stack.tell(&[], &[], seconds(110)));
+        assert!(stack.tell(&[], &happened, seconds(200)));
+        // It can be clicked away, and no program is told of that either.
+        assert_eq!(stack.click(100, 20, &theme), None);
+        assert!(stack.is_empty());
+        assert!(!stack.tell(&[], &happened, seconds(201)));
+    }
+
+    #[test]
+    fn what_has_happened_stays_if_notifications_stay_until_dismissed() {
+        let mut stack = Stack::new(0);
+        assert!(stack.tell(&[], &all(&["something happened"]), START));
+        assert_eq!(stack.deadline(), None);
+        assert_eq!(stack.expire(seconds(3600)), [] as [u32; 0]);
+        assert_eq!(stack.len(), 1);
     }
 }

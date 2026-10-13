@@ -354,6 +354,7 @@ mod tests {
                 window("right", 1, 4, "player"),
             ],
             problems: Vec::new(),
+            events: Vec::new(),
         }
     }
 

@@ -1,5 +1,6 @@
 //! The compositor's state and its main operations.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
@@ -91,6 +92,19 @@ pub const DESKTOP_NAME: &str = "omorfos";
 
 /// How long the configuration directory must be quiet before it is reloaded.
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
+
+/// How long something that has happened is said to have.
+const EVENT_LASTS: Duration = Duration::from_secs(10);
+
+/// What there is to tell the user: what is wrong, and after it what has
+/// just happened.
+fn said<'a>(problems: &'a [String], events: &[(String, Instant)]) -> Cow<'a, [String]> {
+    if events.is_empty() {
+        return Cow::Borrowed(problems);
+    }
+    let events = events.iter().map(|(what, _)| what.clone());
+    Cow::Owned(problems.iter().cloned().chain(events).collect())
+}
 
 /// Tells a surface the scale of the output it is on, and that it is on it.
 /// One that is on no output is told to draw at a scale of one.
@@ -200,6 +214,9 @@ pub struct Compositor {
     debouncer: Debouncer,
     pub(crate) bindings: Bindings,
     pub(crate) problems: Vec<String>,
+    /// What has happened lately that the user might want to know of and
+    /// need do nothing about, and when.
+    events: Vec<(String, Instant)>,
 
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed_keys: Vec<Keycode>,
@@ -344,6 +361,7 @@ impl Compositor {
                     debouncer: Debouncer::new(RELOAD_DELAY),
                     bindings: Bindings::new([]),
                     problems: Vec::new(),
+                    events: Vec::new(),
                     suppressed_keys: Vec::new(),
                     pointer_location: (0.0, 0.0).into(),
                     draws_pointer: false,
@@ -506,6 +524,23 @@ impl Compositor {
         &self.problems
     }
 
+    /// What has happened in the last few moments that the user might want
+    /// to know of and need do nothing about, described for the user.
+    pub fn events(&self) -> impl Iterator<Item = &str> {
+        self.events.iter().map(|(what, _)| what.as_str())
+    }
+
+    /// What there is to tell the user just now.
+    pub(crate) fn said(&self) -> Cow<'_, [String]> {
+        said(&self.problems, &self.events)
+    }
+
+    /// Notes that something has happened, at `now`, that the user might
+    /// want to know of. It is said for a short while.
+    pub(crate) fn happened(&mut self, what: &str, now: Instant) {
+        self.events.push((what.to_owned(), now));
+    }
+
     /// Wakes the event loop whenever `source` has something to read, and
     /// returns what is needed to stop doing so.
     ///
@@ -542,11 +577,14 @@ impl Compositor {
         // What is changing colour is drawn again a moment later.
         let moving = self.animation.epoch.zip(self.animation.motion.deadline());
         let moving = moving.map(|(epoch, due)| epoch + due);
+        // What has happened is said for a while and then no longer.
+        let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         [
             self.debouncer.deadline(),
             self.ipc_retry,
             screens_off,
             moving,
+            said,
         ]
         .into_iter()
         .flatten()
@@ -559,6 +597,8 @@ impl Compositor {
     /// `now` drives the delay between a configuration file changing and its
     /// reload, and how far what is changing colour has got.
     pub fn refresh(&mut self, now: Instant) {
+        self.events
+            .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
         let epoch = *self.animation.epoch.get_or_insert(now);
         self.animation.clock = now.saturating_duration_since(epoch);
         if self
@@ -1053,15 +1093,16 @@ impl Compositor {
         // away, and repaint it only when its contents would differ.
         let config = Arc::clone(self.store.current());
         let theme = &config.theme;
-        if self.problems.is_empty() {
+        let shown_elsewhere = self.problems_shown_elsewhere();
+        let said = said(&self.problems, &self.events);
+        if said.is_empty() {
             self.dismissed.clear();
         }
-        // What is wrong is shown here only if no program is showing it:
-        // the notifications that come with omorfos do, among what other
-        // programs have to say, where neither covers the other.
-        let wanted = !self.problems.is_empty()
-            && self.problems != self.dismissed
-            && !self.problems_shown_elsewhere();
+        // What is wrong, and what has just happened, is shown here only if
+        // no program is showing it: the notifications that come with
+        // omorfos do, among what other programs have to say, where neither
+        // covers the other.
+        let wanted = !said.is_empty() && *said != *self.dismissed && !shown_elsewhere;
         // The notice is on the first output, which is where a session
         // with one screen has it.
         let first = self.heads.first();
@@ -1074,20 +1115,14 @@ impl Compositor {
             closed.map(|notice| self.animation.closing(Part::Notice, What::Notice(notice)));
         self.animation.gone.extend(closed);
         let current = had.filter(|notice| {
-            notice.problems == self.problems
+            notice.problems == *said
                 && notice.theme == *theme
                 && notice.within == within
                 && notice.scale == scale
         });
         self.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
-            (None, true) => Some(Notice::paint(
-                &mut self.text,
-                theme,
-                &self.problems,
-                within,
-                scale,
-            )),
+            (None, true) => Some(Notice::paint(&mut self.text, theme, &said, within, scale)),
             (None, false) => None,
         };
         let notice = self.notice.as_ref();

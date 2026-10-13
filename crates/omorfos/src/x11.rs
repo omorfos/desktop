@@ -502,7 +502,7 @@ impl Compositor {
         if self.x11.restarts.allow(now) {
             let said = "the X server stopped and has been started again; programs written for \
                         X11 that were running have closed";
-            self.problems.push(said.to_owned());
+            self.happened(said, now);
             self.x11.stopped = Some(server);
         } else {
             let said = "the X server keeps stopping; programs written for X11 will not run \

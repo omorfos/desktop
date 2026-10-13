@@ -569,8 +569,11 @@ What omorfos itself has to say is wrong, such as a mistake in a
 configuration file, is shown here too, headed `omorfos` and looking as a
 critical notification does. It is given up to six lines, stays until you
 click it away or put it right, and is never the one to go when there are
-too many. If you turn these notifications off, or use another program for
-them, the compositor shows what is wrong in a notice of its own.
+too many. What has merely happened and needs nothing done, such as the X
+server having been started again, is shown the same way but looking as
+an ordinary notification does, and goes by itself like one. If you turn
+these notifications off, or use another program for them, the compositor
+shows both in a notice of its own.
 
 A picture may be a PNG or an SVG, given by its path, or an icon by name.
 Icons are looked for in the `hicolor` and `Adwaita` themes; where a theme
