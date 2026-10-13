@@ -115,12 +115,11 @@ Most are a day of thought and no code.
       A mark while the screen is captured, one locker, and a prompt for
       secrets that cannot be imitated are the compositor's and no role
       alters them.
-- [ ] **Pictures of windows for those who show them.** The window
-      switcher, the dock's previews and an overview all need a window's
-      picture small. Either the compositor draws these things itself,
-      having the pictures already, or it hands pictures to components,
-      which is a privilege as above. Recommended: the compositor draws
-      the switcher and the previews.
+- [x] **Pictures of windows** (ADR 38): they never leave the
+      compositor. It draws the switcher and the overview itself, and
+      lends the dock a window's picture by drawing it in a rectangle the
+      dock leaves empty, live and made small by halves. A rule can mark
+      a window `private`, shown as its icon and left blank in captures.
 
 ## 3. What a day's use needs
 
