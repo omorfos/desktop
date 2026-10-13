@@ -108,12 +108,13 @@ Most are a day of thought and no code.
       button means fullscreen. In a solo, pushing the pointer against
       the top brings down the bar and the titlebar, and against the
       bottom the dock.
-- [ ] **Who may do what.** Any program may now ask to be a panel, cover
-      the screen, or read what is listed over IPC. Screen capture, the
-      clipboard's history, input that pretends to be the user and
-      locking the session are privileges. Which programs get them, how
-      the user is asked, and how a sandboxed program is recognised
-      (`security-context-v1`).
+- [x] **Who may do what** (ADR 37): a privilege is given to a program
+      the compositor started itself, for a role the configuration names
+      (`may: [panel]`), never by a name a program can choose. A program
+      in a sandbox gets none and asks the portals, which ask the user.
+      A mark while the screen is captured, one locker, and a prompt for
+      secrets that cannot be imitated are the compositor's and no role
+      alters them.
 - [ ] **Pictures of windows for those who show them.** The window
       switcher, the dock's previews and an overview all need a window's
       picture small. Either the compositor draws these things itself,
@@ -132,6 +133,11 @@ calls for them.
 - [ ] Fullscreen on a workspace of its own: the solo, the window going
       back where it was, the titlebar's button meaning fullscreen, and
       the bar, titlebar and dock brought back by pushing at an edge.
+- [ ] Roles (ADR 37): components started by being handed their
+      connection, `may` on what `autostart` starts, every privileged
+      protocol behind a check of the role, sandboxes recognised
+      (`security-context-v1`), and the notification that says what was
+      refused and how to allow it.
 - [ ] Screen capture: a screenshot of a screen, a window or a region, and
       the stream that sharing a screen in a browser or a call needs
       (`ext-image-copy-capture`, PipeWire), with the user asked each time
