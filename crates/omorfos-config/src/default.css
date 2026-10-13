@@ -57,6 +57,26 @@ tab:active:focus {
   border-bottom-color: var(--accent);
 }
 
+/* The buttons at the left of a titlebar: close, maximize, minimize. Each
+ * is a box in its share of the titlebar, as wide as its min-width with its
+ * margin around it, and its color is that of the sign drawn on it. They
+ * are :focus with their frame and :hover under the pointer. Give one a
+ * min-width of 0 to do without it. */
+button-close, button-maximize, button-minimize {
+  min-width: 12px;
+  margin: 8px 4px;
+  border-radius: 6px;
+  background: var(--border);
+  color: transparent;
+}
+button-close { margin-left: 10px; }
+button-close:focus, button-close:hover { background: #e06c75; }
+button-maximize:focus, button-maximize:hover { background: #98c379; }
+button-minimize:focus, button-minimize:hover { background: #e5c07b; }
+button-close:hover, button-maximize:hover, button-minimize:hover {
+  color: var(--background);
+}
+
 menu {
   background: var(--surface);
   color: var(--text);

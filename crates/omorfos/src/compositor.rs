@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use omorfos_config::{Action, Config, Debouncer, Part, States, Store, Style, Theme, Watcher};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
+use omorfos_core::{Button, Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
@@ -234,7 +234,8 @@ pub struct Compositor {
     /// The virtual terminal the user asked to switch to, until the backend
     /// collects it.
     pub(crate) terminal_wanted: Option<i32>,
-    pub(crate) hovered: Option<WindowId>,
+    /// What the pointer is over, and what it is doing with titlebars.
+    pub(crate) hover: Hover,
     /// The lock on the session, while it is locked.
     pub(crate) lock: Option<Lock>,
     pub(crate) lock_manager: SessionLockManagerState,
@@ -371,7 +372,7 @@ impl Compositor {
                     themes: Themes::default(),
                     _cursor_shapes: cursor_shapes,
                     terminal_wanted: None,
-                    hovered: None,
+                    hover: Hover::default(),
                     lock: None,
                     lock_manager,
                     idle,
@@ -952,10 +953,11 @@ impl Compositor {
             self.head_for(geometry)
                 .map_or(Scale::ONE, |head| head.scale)
         };
+        let over = self.hover.button;
         let frames: Vec<FrameInfo> = self
             .desktop
             .frames()
-            .map(|frame| FrameInfo::of(&frame, scale_for(frame.geometry)))
+            .map(|frame| FrameInfo::of(&frame, scale_for(frame.geometry), over))
             .collect();
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
@@ -1805,6 +1807,21 @@ struct Component {
     restarts: Restarts,
 }
 
+/// What the pointer is over, and what it is doing with titlebars.
+#[derive(Debug, Default)]
+pub(crate) struct Hover {
+    /// The window whose frame it is over.
+    pub(crate) window: Option<WindowId>,
+    /// The button of a titlebar it is over, and the window whose frame
+    /// has it.
+    pub(crate) button: Option<(WindowId, Button)>,
+    /// The button it was pressed on and has yet to be let go on.
+    pub(crate) pressed: Option<(WindowId, Button)>,
+    /// The titlebar it last pressed on, when and where, which is what a
+    /// second press has to match to be a double click.
+    pub(crate) clicked: Option<(WindowId, u32, DomainPoint)>,
+}
+
 /// What is changing colour, coming in or going.
 #[derive(Debug)]
 struct Animation {
@@ -2170,7 +2187,8 @@ impl Chrome {
         let scale = frame.scale;
         let tabs = frame.tabs.iter().map(|window| window.raw());
         let shown = frame.shown.raw();
-        let looks = paint::Looks::of(theme, motion, shown, tabs, frame.active, frame.focused);
+        let state = (frame.active, frame.hovered);
+        let looks = paint::Looks::of(theme, motion, shown, tabs, state, frame.focused);
         let outline = looks.window.border.top.color;
         let radius = corners::radius(&decoration, looks.window.radius);
         let appearance = Appearance {
@@ -2229,12 +2247,19 @@ struct FrameInfo {
     tabs: Vec<WindowId>,
     titles: Vec<String>,
     active: usize,
+    /// The button of its titlebar that the pointer is over, if any.
+    hovered: Option<Button>,
 }
 
 impl FrameInfo {
-    fn of(frame: &Frame<'_>, scale: Scale) -> Self {
+    /// What is known of a frame, drawn at `scale`, with the pointer `over`
+    /// a button of some frame's titlebar or of none.
+    fn of(frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) -> Self {
+        let shown = frame.window().id;
+        let over = over.filter(|(window, _)| *window == shown);
         Self {
-            shown: frame.window().id,
+            hovered: over.map(|(_, button)| button),
+            shown,
             scale,
             geometry: frame.geometry,
             client: frame.client(),

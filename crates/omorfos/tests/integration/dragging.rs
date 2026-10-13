@@ -101,7 +101,7 @@ fn dragging_the_titlebar_moves_the_frame() {
     decorated(&mut session, &mut client, "foot");
     client.take_events();
 
-    drag(&mut session, LEFT, (50, 10), (150, 110));
+    drag(&mut session, LEFT, (100, 10), (200, 110));
     session.roundtrip(&mut client);
 
     assert_eq!(frames(&session), [rect(100, 100, 202, 129)]);
@@ -214,7 +214,7 @@ fn a_maximized_frame_stays_put() {
     session.roundtrip(&mut client);
     let maximized = frames(&session);
 
-    drag(&mut session, LEFT, (50, 10), (150, 110));
+    drag(&mut session, LEFT, (100, 10), (200, 110));
     drag(&mut session, LEFT, (0, 200), (100, 200));
 
     assert_eq!(frames(&session), maximized);
@@ -339,8 +339,9 @@ fn clicking_a_tab_shows_it() {
     drag(&mut session, MIDDLE, (100, 40), (100, 10));
     session.roundtrip(&mut client);
 
-    // Two tabs share the 202 pixel titlebar: the editor's is the left half.
-    move_to(&mut session, 50, 10);
+    // Two tabs share what the buttons leave of the 202 pixel titlebar,
+    // from 66 across: the editor's is the left half of that.
+    move_to(&mut session, 100, 10);
     press(&mut session, LEFT);
     release(&mut session, LEFT);
     session.roundtrip(&mut client);
@@ -372,7 +373,7 @@ fn a_tab_dropped_back_on_its_own_titlebar_stays_where_it_was() {
     let mut client = session.connect();
     decorated(&mut session, &mut client, "editor");
 
-    drag(&mut session, MIDDLE, (50, 10), (150, 10));
+    drag(&mut session, MIDDLE, (100, 10), (190, 10));
 
     assert_eq!(tab_counts(&session), [1]);
     assert_eq!(frames(&session), [rect(0, 0, 202, 129)]);
@@ -385,10 +386,10 @@ fn other_buttons_are_swallowed_while_a_drag_is_in_progress() {
     decorated(&mut session, &mut client, "foot");
     client.take_events();
 
-    move_to(&mut session, 50, 10);
+    move_to(&mut session, 100, 10);
     press(&mut session, LEFT);
     press(&mut session, RIGHT);
-    move_to(&mut session, 150, 110);
+    move_to(&mut session, 200, 110);
     release(&mut session, RIGHT);
     session.roundtrip(&mut client);
 

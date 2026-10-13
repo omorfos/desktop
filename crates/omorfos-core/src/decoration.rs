@@ -57,6 +57,10 @@ pub struct Metrics {
     pub border: u32,
     /// The height of the titlebar across the top.
     pub titlebar: u32,
+    /// How much of the titlebar's width each of its buttons takes, with
+    /// the room around it, in the order of [`Button::ALL`]. A button that
+    /// takes none is not there.
+    pub buttons: [u32; 3],
 }
 
 impl Metrics {
@@ -73,9 +77,27 @@ impl Metrics {
     }
 }
 
+/// A button on a titlebar. They stand at its left-hand end, in this order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Button {
+    /// Asks the window to close.
+    Close,
+    /// Makes the frame fill its screen, or puts it back as it was.
+    Maximize,
+    /// Takes the frame off the screen until it is asked for again.
+    Minimize,
+}
+
+impl Button {
+    /// Every button there is, from the left.
+    pub const ALL: [Self; 3] = [Self::Close, Self::Maximize, Self::Minimize];
+}
+
 /// The part of a frame under a point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Part {
+    /// A button, in the titlebar.
+    Button(Button),
     /// The tab with this index, in the titlebar.
     Tab(usize),
     /// A border, or just outside one. Dragging resizes these edges.
@@ -113,7 +135,9 @@ impl Decoration {
     /// The area left for the window.
     #[must_use]
     pub const fn client(&self) -> Rect {
-        let Metrics { border, titlebar } = self.metrics;
+        let Metrics {
+            border, titlebar, ..
+        } = self.metrics;
         let size = self.outer.size;
         Rect::new(
             self.outer
@@ -139,11 +163,35 @@ impl Decoration {
         self.tabs
     }
 
-    /// The tab with this index. Tabs share the titlebar equally.
+    /// How far along the titlebar the first `count` buttons reach: no
+    /// further than the titlebar does, if it is too narrow for them.
+    fn reach(&self, count: usize) -> u32 {
+        let widths = self.metrics.buttons.iter().take(count);
+        let wanted = widths.fold(0_u32, |sum, width| sum.saturating_add(*width));
+        min(wanted, self.outer.size.width)
+    }
+
+    /// Where a button is: its share of the left-hand end of the titlebar,
+    /// as tall as the titlebar. One that does not fit has no width.
+    #[must_use]
+    pub fn button(&self, which: Button) -> Rect {
+        let titlebar = self.titlebar();
+        let place = Button::ALL.iter().position(|button| *button == which);
+        let place = place.unwrap_or(0);
+        let (start, end) = (self.reach(place), self.reach(place + 1));
+        Rect::new(
+            titlebar.origin.offset(start.cast_signed(), 0),
+            Size::new(end - start, titlebar.size.height),
+        )
+    }
+
+    /// The tab with this index. Tabs share equally what the buttons leave
+    /// of the titlebar.
     #[must_use]
     pub fn tab(&self, index: usize) -> Rect {
         let titlebar = self.titlebar();
-        let width = u64::from(titlebar.size.width);
+        let taken = self.reach(Button::ALL.len());
+        let width = u64::from(titlebar.size.width - taken);
         let count = u64::try_from(self.tabs).unwrap_or(u64::MAX);
         let edge = |index: usize| {
             let index = u64::try_from(index).unwrap_or(u64::MAX).min(count);
@@ -151,7 +199,9 @@ impl Decoration {
         };
         let (start, end) = (edge(index), edge(index.saturating_add(1)));
         Rect::new(
-            titlebar.origin.offset(start.cast_signed(), 0),
+            titlebar
+                .origin
+                .offset(taken.saturating_add(start).cast_signed(), 0),
             Size::new(end - start, titlebar.size.height),
         )
     }
@@ -200,9 +250,10 @@ impl Decoration {
             return Some(Part::Client);
         }
         if self.titlebar().contains(point) {
-            return (0..self.tabs)
-                .find(|index| self.tab(*index).contains(point))
-                .map(Part::Tab);
+            let mut buttons = Button::ALL.into_iter();
+            let button = buttons.find(|button| self.button(*button).contains(point));
+            let tab = || (0..self.tabs).find(|index| self.tab(*index).contains(point));
+            return button.map(Part::Button).or_else(|| tab().map(Part::Tab));
         }
 
         let (x, y) = (i64::from(point.x), i64::from(point.y));
@@ -281,6 +332,13 @@ mod tests {
     const METRICS: Metrics = Metrics {
         border: 2,
         titlebar: 20,
+        buttons: [0; 3],
+    };
+
+    /// The same, with buttons sixteen across.
+    const BUTTONED: Metrics = Metrics {
+        buttons: [16; 3],
+        ..METRICS
     };
     const OUTER: Rect = Rect::new(Point::new(100, 50), Size::new(304, 222));
 
@@ -332,6 +390,74 @@ mod tests {
         assert_eq!(frame.tab(1), rect(201, 50, 101, 20));
         assert_eq!(frame.tab(2), rect(302, 50, 102, 20));
         assert_eq!(frame.tab(7).size.width, 0, "there is no such tab");
+    }
+
+    #[test]
+    fn buttons_stand_at_the_left_of_the_titlebar_and_tabs_share_the_rest() {
+        let frame = Decoration::new(OUTER, BUTTONED, 2);
+        assert_eq!(frame.button(Button::Close), rect(100, 50, 16, 20));
+        assert_eq!(frame.button(Button::Maximize), rect(116, 50, 16, 20));
+        assert_eq!(frame.button(Button::Minimize), rect(132, 50, 16, 20));
+        assert_eq!(frame.tab(0), rect(148, 50, 128, 20));
+        assert_eq!(frame.tab(1), rect(276, 50, 128, 20));
+
+        let point = |x| Point::new(x, 55);
+        assert_eq!(frame.hit(point(100)), Some(Part::Button(Button::Close)));
+        assert_eq!(frame.hit(point(115)), Some(Part::Button(Button::Close)));
+        assert_eq!(frame.hit(point(116)), Some(Part::Button(Button::Maximize)));
+        assert_eq!(frame.hit(point(147)), Some(Part::Button(Button::Minimize)));
+        assert_eq!(frame.hit(point(148)), Some(Part::Tab(0)));
+        assert_eq!(frame.hit(point(403)), Some(Part::Tab(1)));
+    }
+
+    #[test]
+    fn each_button_takes_the_room_it_is_given() {
+        let uneven = Metrics {
+            buttons: [20, 0, 12],
+            ..METRICS
+        };
+        let frame = Decoration::new(OUTER, uneven, 1);
+        assert_eq!(frame.button(Button::Close), rect(100, 50, 20, 20));
+        assert_eq!(frame.button(Button::Maximize).size.width, 0, "not there");
+        assert_eq!(frame.button(Button::Minimize), rect(120, 50, 12, 20));
+        assert_eq!(frame.tab(0), rect(132, 50, 272, 20));
+        assert_eq!(
+            frame.hit(Point::new(120, 55)),
+            Some(Part::Button(Button::Minimize))
+        );
+    }
+
+    #[test]
+    fn a_frame_without_buttons_has_none_to_hit() {
+        let frame = frame(1);
+        for button in Button::ALL {
+            assert_eq!(frame.button(button).size.width, 0);
+        }
+        assert_eq!(frame.hit(Point::new(100, 55)), Some(Part::Tab(0)));
+    }
+
+    #[test]
+    fn a_titlebar_too_narrow_for_its_buttons_shows_those_that_fit() {
+        let narrow = Decoration::new(rect(0, 0, 40, 100), BUTTONED, 1);
+        assert_eq!(narrow.button(Button::Close), rect(0, 0, 16, 20));
+        assert_eq!(narrow.button(Button::Maximize), rect(16, 0, 16, 20));
+        assert_eq!(
+            narrow.button(Button::Minimize),
+            rect(32, 0, 8, 20),
+            "cut short"
+        );
+        assert_eq!(
+            narrow.tab(0).size.width,
+            0,
+            "and there is no room for a title"
+        );
+        let tiny = Decoration::new(rect(0, 0, 10, 100), BUTTONED, 1);
+        assert_eq!(tiny.button(Button::Close).size.width, 10);
+        assert_eq!(tiny.button(Button::Minimize).size.width, 0);
+        assert_eq!(
+            tiny.hit(Point::new(5, 5)),
+            Some(Part::Button(Button::Close))
+        );
     }
 
     #[test]

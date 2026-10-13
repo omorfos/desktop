@@ -228,6 +228,7 @@ mod tests {
             Metrics {
                 border: 1,
                 titlebar: 28,
+                buttons: [0; 3],
             },
             1,
         )

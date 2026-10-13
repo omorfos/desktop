@@ -54,7 +54,7 @@ Small, independent, and each an improvement the day it lands.
       natural way by default and the mouse does not, each with its own
       setting.
 - [ ] Pointer speed and acceleration, for the mouse and for the touchpad.
-- [ ] Titlebar buttons: close, maximize, minimize, at the left, coloured,
+- [x] Titlebar buttons: close, maximize, minimize, at the left, coloured,
       each a part of the theme (wish 3). Double-click on a titlebar
       maximizes.
 - [ ] A menu on a right click of the titlebar (wish 3): the same three,

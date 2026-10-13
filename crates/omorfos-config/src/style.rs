@@ -23,6 +23,18 @@ pub enum Part {
     /// is the window being shown, and [`State::Focused`] with its frame.
     /// Its border is the line between it and the tab before it.
     Tab,
+    /// The button at the left of a titlebar that closes the window. Like
+    /// the two after it, it is a box in its share of the titlebar: its
+    /// width is its `min-width` and its margin is the room around it, and
+    /// its text colour is that of the sign drawn on it. It is
+    /// [`State::Focused`] with its frame and [`State::Hovered`] under the
+    /// pointer. One with no width is not there.
+    ButtonClose,
+    /// The button that makes the frame fill its screen, or puts it back.
+    ButtonMaximize,
+    /// The button that takes the frame off the screen until it is asked
+    /// for again.
+    ButtonMinimize,
     /// A panel of the menu.
     Menu,
     /// A row of the menu. It is [`State::Hovered`] under the pointer.
@@ -71,11 +83,14 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 24] = [
         Self::Desktop,
         Self::Window,
         Self::Titlebar,
         Self::Tab,
+        Self::ButtonClose,
+        Self::ButtonMaximize,
+        Self::ButtonMinimize,
         Self::Menu,
         Self::MenuItem,
         Self::MenuSeparator,
@@ -103,6 +118,9 @@ impl Part {
             Self::Window => "window",
             Self::Titlebar => "titlebar",
             Self::Tab => "tab",
+            Self::ButtonClose => "button-close",
+            Self::ButtonMaximize => "button-maximize",
+            Self::ButtonMinimize => "button-minimize",
             Self::Menu => "menu",
             Self::MenuItem => "menu-item",
             Self::MenuSeparator => "menu-separator",
@@ -460,6 +478,9 @@ mod tests {
                 "window",
                 "titlebar",
                 "tab",
+                "button-close",
+                "button-maximize",
+                "button-minimize",
                 "menu",
                 "menu-item",
                 "menu-separator",

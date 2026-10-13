@@ -255,6 +255,26 @@ tab:active:focus {
   border-bottom-color: var(--accent);
 }
 
+/* The buttons at the left of a titlebar: close, maximize, minimize. Each
+ * is a box in its share of the titlebar, as wide as its min-width with its
+ * margin around it, and its color is that of the sign drawn on it. They
+ * are :focus with their frame and :hover under the pointer. Give one a
+ * min-width of 0 to do without it. */
+button-close, button-maximize, button-minimize {
+  min-width: 12px;
+  margin: 8px 4px;
+  border-radius: 6px;
+  background: var(--border);
+  color: transparent;
+}
+button-close { margin-left: 10px; }
+button-close:focus, button-close:hover { background: #e06c75; }
+button-maximize:focus, button-maximize:hover { background: #98c379; }
+button-minimize:focus, button-minimize:hover { background: #e5c07b; }
+button-close:hover, button-maximize:hover, button-minimize:hover {
+  color: var(--background);
+}
+
 menu {
   background: var(--surface);
   color: var(--text);
@@ -385,7 +405,8 @@ workspace, task {
 workspace:active, task:active { border-bottom: none; }
 ```
 
-**Parts** are `desktop`, `window`, `titlebar`, `tab`, `menu`, `menu-item`,
+**Parts** are `desktop`, `window`, `titlebar`, `tab`, `button-close`,
+`button-maximize`, `button-minimize`, `menu`, `menu-item`,
 `menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
@@ -413,7 +434,7 @@ is measured to the outside of its border.
 | `border-radius` | `0` to `32px` | rounds the corners of the box |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |
-| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out` or `ease-in-out`; or `none` | how long the part's colours take to change when its state does, and how; also `transition-duration` and `transition-timing-function` |
@@ -456,8 +477,12 @@ once, and so does one notification among others that stay.
 Not every part uses every property yet:
 
 - `margin` is honoured by `panel` (it moves the bar in from the edges of
-  the screen), and by `workspace`, `task` and `clock` (room around each on
-  the bar).
+  the screen), by `workspace`, `task` and `clock` (room around each on
+  the bar), and by the buttons of a titlebar (room around each in the
+  titlebar, which is how one is made smaller than the titlebar is tall).
+- The buttons of a titlebar are drawn from `background`, `border`,
+  `border-radius` and `color`, which is the colour of the sign on each: a
+  cross, a plus and a bar. They stand at the left in that order.
 - `padding` is honoured by `tab`, `menu-item`, `notice`, `panel`,
   `workspace`, `task` and `clock`.
 - `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
@@ -679,6 +704,8 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 
 | To | Do this |
 |---|---|
+| Close, maximize or minimize a window | Click the first, second or third button at the left of its titlebar |
+| Maximize a window, or put it back | Double-click its titlebar |
 | Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |
 | Resize a window | Drag a border or corner, or hold Alt and drag with the right button |
 | Group windows as tabs | Drag a titlebar with the middle button onto another titlebar |

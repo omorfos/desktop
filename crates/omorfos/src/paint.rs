@@ -6,11 +6,12 @@
 //! changes, not every frame.
 
 use omorfos_config::{Color, Edges, Line, Part, State, States, Style, Theme};
-use omorfos_core::{Decoration, Item, Menu, Panel};
-use omorfos_ui::inset;
+use omorfos_core::{Button, Decoration, Item, Menu, Panel};
+use omorfos_ui::{Area, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
 use crate::Scale;
+use crate::bridge::BUTTONS;
 
 /// The width set aside on a menu row for the arrow that marks a submenu.
 const ARROW: u32 = 14;
@@ -46,6 +47,8 @@ pub(crate) struct Looks {
     pub(crate) titlebar: Style,
     /// Each tab, in order.
     pub(crate) tabs: Vec<Style>,
+    /// Each button of the titlebar, from the left.
+    pub(crate) buttons: [Style; 3],
 }
 
 impl Looks {
@@ -57,17 +60,22 @@ impl Looks {
 
     /// How the frame showing the window numbered `shown` looks, with a tab
     /// for each of the windows numbered `tabs`, of which `active` is the
-    /// one being shown. Whatever has just changed state is as far on its
-    /// way as `motion` has it.
+    /// one being shown, and the pointer over the button `hovered`, if over
+    /// any. Whatever has just changed state is as far on its way as
+    /// `motion` has it.
     pub(crate) fn of(
         theme: &Theme,
         motion: &mut Motion,
         shown: u64,
         tabs: impl Iterator<Item = u64>,
-        active: usize,
+        (active, hovered): (usize, Option<Button>),
         focused: bool,
     ) -> Self {
         let states = States::NONE.when(State::Focused, focused);
+        let buttons = BUTTONS.map(|(button, part)| {
+            let states = states.when(State::Hovered, hovered == Some(button));
+            motion.style(theme, part, shown, states)
+        });
         let tabs = tabs.enumerate().map(|(index, window)| {
             let states = Self::tab_states(focused, index == active);
             motion.style(theme, Part::Tab, window, states)
@@ -76,6 +84,7 @@ impl Looks {
             focused,
             active,
             tabs: tabs.collect(),
+            buttons,
             window: motion.style(theme, Part::Window, shown, states),
             titlebar: motion.style(theme, Part::Titlebar, shown, states),
         }
@@ -110,6 +119,14 @@ pub(crate) fn titlebar(
         looks.titlebar.background,
     );
 
+    for ((button, _), style) in BUTTONS.into_iter().zip(&looks.buttons) {
+        let share = decoration.button(button);
+        let left = share.origin.x - bar.origin.x;
+        let area = inset((left, 0, share.size.width, share.size.height), style.margin);
+        canvas.draw_box(area, style);
+        sign(&mut canvas, button, area, style.color);
+    }
+
     let tabbed = titles.len() > 1;
     for (index, (title, style)) in titles.iter().zip(&looks.tabs).enumerate() {
         let tab = decoration.tab(index);
@@ -141,6 +158,31 @@ pub(crate) fn titlebar(
 
     canvas.round_top_corners(looks.window.radius);
     canvas
+}
+
+/// Draws on a titlebar button what it does, for those who cannot tell
+/// the buttons apart by colour: a cross to close, a plus to make larger,
+/// a bar to put away. Each is half as large as the button and in the
+/// middle of it.
+fn sign(canvas: &mut Canvas, button: Button, (left, top, width, height): Area, ink: Color) {
+    let size = width.min(height) / 2;
+    let x = left.saturating_add_unsigned((width - size) / 2);
+    let y = top.saturating_add_unsigned((height - size) / 2);
+    let middle = (size / 2).cast_signed();
+    match button {
+        Button::Close => {
+            for step in 0..size.cast_signed() {
+                let across = size.cast_signed() - 1 - step;
+                canvas.fill((x + step, y + step, 1, 1), ink);
+                canvas.fill((x + across, y + step, 1, 1), ink);
+            }
+        }
+        Button::Maximize => {
+            canvas.fill((x, y + middle, size, 1), ink);
+            canvas.fill((x + middle, y, 1, size), ink);
+        }
+        Button::Minimize => canvas.fill((x, y + middle, size, 1), ink),
+    }
 }
 
 /// How each row of each panel of an open menu looks, from the root panel
@@ -337,7 +379,8 @@ mod tests {
         scale: Scale,
     ) -> Canvas {
         let tabs = (0_u64..).take(titles.len());
-        let looks = Looks::of(theme, &mut Motion::new(), 0, tabs, active, focused);
+        let state = (active, None);
+        let looks = Looks::of(theme, &mut Motion::new(), 0, tabs, state, focused);
         super::titlebar(text, theme, decoration, titles, &looks, scale)
     }
 
@@ -505,6 +548,7 @@ mod tests {
     const METRICS: FrameMetrics = FrameMetrics {
         border: 1,
         titlebar: 28,
+        buttons: [0; 3],
     };
 
     fn frame(tabs: usize) -> Decoration {
@@ -566,6 +610,118 @@ mod tests {
         );
         assert_eq!(canvas.at(200, 0), argb(palette(&theme).unfocused.border));
         assert_eq!(canvas.at(300, 14), argb(palette(&theme).unfocused.titlebar));
+    }
+
+    /// The colours the built-in theme gives the buttons of a frame with
+    /// focus, from the left, and the one it gives them all without.
+    const BUTTON_COLORS: [u32; 3] = [0xffe0_6c75, 0xff98_c379, 0xffe5_c07b];
+    const BUTTON_PLAIN: u32 = 0xff2c_303a;
+
+    /// The middle of each button under the built-in theme: twelve across
+    /// with room around them, the first further in than the others.
+    const BUTTON_MIDDLES: [u32; 3] = [16, 36, 56];
+
+    /// A frame with room for the buttons the built-in theme has.
+    fn buttoned() -> Decoration {
+        let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
+        let metrics = FrameMetrics {
+            buttons: [26, 20, 20],
+            ..METRICS
+        };
+        Decoration::new(outer, metrics, 1)
+    }
+
+    #[test]
+    fn a_titlebar_has_three_round_buttons_at_its_left_coloured_when_it_has_focus() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let frame = buttoned();
+        let focused = titlebar(&mut text, &theme, &frame, &["Title"], 0, true, Scale::ONE);
+        let other = titlebar(&mut text, &theme, &frame, &["Title"], 0, false, Scale::ONE);
+        for (middle, color) in BUTTON_MIDDLES.into_iter().zip(BUTTON_COLORS) {
+            assert_eq!(focused.at(middle, 14), color);
+            assert_eq!(
+                other.at(middle, 14),
+                BUTTON_PLAIN,
+                "all alike without focus"
+            );
+            // Round, and twelve across: its corner is the titlebar's.
+            assert_eq!(focused.at(middle - 5, 14), color);
+            assert_ne!(focused.at(middle - 6, 9), color);
+            assert_ne!(focused.at(middle + 7, 14), color);
+        }
+        // The titlebar shows between them, and no title is written there.
+        let background = argb(palette(&theme).focused.titlebar);
+        for between in [26, 46] {
+            assert_eq!(focused.at(between, 14), background);
+        }
+    }
+
+    #[test]
+    fn the_button_under_the_pointer_says_what_it_does() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let ink = argb(theme.style(Part::Desktop, States::NONE).background);
+        let mut hovering = |button: Option<Button>, focused: bool| {
+            let looks = Looks::of(&theme, &mut Motion::new(), 0, 0..1, (0, button), focused);
+            super::titlebar(
+                &mut text,
+                &theme,
+                &buttoned(),
+                &["Title"],
+                &looks,
+                Scale::ONE,
+            )
+        };
+        let count = |canvas: &Canvas, middle: u32| {
+            let around = (middle - 6..middle + 6).flat_map(|x| (8..20).map(move |y| (x, y)));
+            around.filter(|(x, y)| canvas.at(*x, *y) == ink).count()
+        };
+        let plain = hovering(None, true);
+        for middle in BUTTON_MIDDLES {
+            assert_eq!(count(&plain, middle), 0, "nothing until it is pointed at");
+        }
+
+        // A cross of two diagonals six long, a plus of two bars, and a bar.
+        let close = hovering(Some(Button::Close), true);
+        assert_eq!(count(&close, 16), 12);
+        assert_eq!(close.at(13, 11), ink, "from one corner");
+        assert_eq!(close.at(18, 11), ink, "and from the other");
+        assert_eq!(count(&close, 36), 0, "and on no other button");
+        let maximize = hovering(Some(Button::Maximize), true);
+        assert_eq!(count(&maximize, 36), 11);
+        let minimize = hovering(Some(Button::Minimize), true);
+        assert_eq!(count(&minimize, 56), 6);
+
+        // Pointed at, a button has its colour whether or not its frame
+        // has focus.
+        let unfocused = hovering(Some(Button::Close), false);
+        assert_eq!(unfocused.at(11, 14), BUTTON_COLORS[0]);
+        assert_eq!(unfocused.at(36, 14), BUTTON_PLAIN);
+    }
+
+    #[test]
+    fn a_theme_can_do_without_a_button_and_the_title_takes_its_room() {
+        let theme = "button-close, button-maximize, button-minimize { min-width: 0; }";
+        let theme = Theme::parse(theme).unwrap();
+        let mut text = Text::new();
+        let canvas = titlebar(
+            &mut text,
+            &theme,
+            &frame(1),
+            &["Title"],
+            0,
+            true,
+            Scale::ONE,
+        );
+        for (middle, color) in BUTTON_MIDDLES.into_iter().zip(BUTTON_COLORS) {
+            assert_ne!(canvas.at(middle, 14), color);
+        }
+        let background = argb(palette(&theme).focused.titlebar);
+        assert!(
+            inked(&canvas, 10..66, background) > 10,
+            "the title is there"
+        );
     }
 
     #[test]

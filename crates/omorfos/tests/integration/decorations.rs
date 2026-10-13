@@ -439,6 +439,203 @@ fn a_window_of_one_colour_fades_out_too() {
     assert_eq!(inside(&mut session), BACKGROUND);
 }
 
+/// The colours of a titlebar's buttons under the default theme: close,
+/// maximize and minimize when their frame has focus, and all of them when
+/// it has not.
+const BUTTONS: [u32; 3] = [0xffe0_6c75, 0xff98_c379, 0xffe5_c07b];
+const PLAIN_BUTTON: u32 = 0xff2c_303a;
+
+/// The middle of each button of a frame whose corner is at the screen's.
+const CLOSE: (i32, i32) = (16, 14);
+const MAXIMIZE: (i32, i32) = (36, 14);
+const MINIMIZE: (i32, i32) = (56, 14);
+
+const LEFT: u32 = 0x110;
+const RIGHT: u32 = 0x111;
+
+fn point(session: &mut Session, (x, y): (i32, i32)) {
+    let (x, y) = (f64::from(x), f64::from(y));
+    session
+        .compositor_mut()
+        .input(omorfos::Input::Motion { x, y }, 0);
+}
+
+/// Presses or lets go of a mouse button, at a time in thousandths of a
+/// second.
+fn button(session: &mut Session, button: u32, pressed: bool, time: u32) {
+    let event = omorfos::Input::Button { button, pressed };
+    session.compositor_mut().input(event, time);
+}
+
+fn click(session: &mut Session, at: (i32, i32)) {
+    point(session, at);
+    button(session, LEFT, true, 0);
+    button(session, LEFT, false, 0);
+    session.step();
+}
+
+/// Whether the first frame is maximized, and how many frames are showing.
+fn frames(session: &Session) -> (bool, usize) {
+    let mut frames = session.compositor().desktop().frames();
+    let maximized = frames.next().is_some_and(|frame| frame.maximized);
+    (maximized, session.compositor().desktop().frames().count())
+}
+
+#[test]
+fn a_titlebar_has_buttons_that_close_maximize_and_minimize() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    client.take_events();
+    let picture = session.draw();
+    let shown = [CLOSE, MAXIMIZE, MINIMIZE].map(|(x, y)| picture.at(x, y));
+    assert_eq!(shown, BUTTONS);
+
+    click(&mut session, MAXIMIZE);
+    assert_eq!(frames(&session), (true, 1));
+    click(&mut session, MAXIMIZE);
+    assert_eq!(frames(&session), (false, 1), "and back again");
+
+    click(&mut session, CLOSE);
+    session.roundtrip(&mut client);
+    assert!(
+        client.take_events().contains(&Event::Close),
+        "it is asked to"
+    );
+    assert_eq!(frames(&session).1, 1, "and is there until it does");
+
+    click(&mut session, MINIMIZE);
+    assert_eq!(frames(&session).1, 0, "put away");
+}
+
+#[test]
+fn a_button_does_nothing_unless_the_pointer_is_let_go_on_it() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    client.take_events();
+    let before = session
+        .compositor()
+        .desktop()
+        .frames()
+        .next()
+        .unwrap()
+        .geometry;
+
+    // Pressed on one and let go on another, or off them altogether.
+    for elsewhere in [MAXIMIZE, (120, 14), (100, 80)] {
+        point(&mut session, CLOSE);
+        button(&mut session, LEFT, true, 0);
+        point(&mut session, elsewhere);
+        button(&mut session, LEFT, false, 0);
+        session.step();
+    }
+    // Nor with another button of the mouse.
+    point(&mut session, CLOSE);
+    button(&mut session, RIGHT, true, 0);
+    button(&mut session, RIGHT, false, 0);
+    // Nor by being let go on one that was not pressed.
+    point(&mut session, (100, 80));
+    button(&mut session, LEFT, true, 0);
+    point(&mut session, MINIMIZE);
+    button(&mut session, LEFT, false, 0);
+    session.roundtrip(&mut client);
+
+    assert!(!client.take_events().contains(&Event::Close));
+    assert_eq!(frames(&session), (false, 1));
+    let after = session
+        .compositor()
+        .desktop()
+        .frames()
+        .next()
+        .unwrap()
+        .geometry;
+    assert_eq!(after, before, "and the frame was not dragged about");
+}
+
+#[test]
+fn a_button_is_coloured_under_the_pointer_whether_or_not_its_frame_has_focus() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    // Another window takes the focus, clear of the first one's titlebar.
+    session.open(&mut client, "second", (50, 50), RED);
+    point(&mut session, (600, 400));
+    session.step();
+    let buttons = |session: &mut Session| {
+        let picture = session.draw();
+        [(11, 14), (31, 14), (51, 14)].map(|(x, y)| picture.at(x, y))
+    };
+    assert_eq!(buttons(&mut session), [PLAIN_BUTTON; 3]);
+
+    point(&mut session, MAXIMIZE);
+    session.step();
+    assert_eq!(
+        buttons(&mut session),
+        [PLAIN_BUTTON, BUTTONS[1], PLAIN_BUTTON]
+    );
+    assert_ne!(
+        session.draw().at(MAXIMIZE.0, MAXIMIZE.1),
+        BUTTONS[1],
+        "with a sign on it of what it does"
+    );
+
+    point(&mut session, (120, 14));
+    session.step();
+    assert_eq!(
+        buttons(&mut session),
+        [PLAIN_BUTTON; 3],
+        "and not once left"
+    );
+}
+
+#[test]
+fn a_double_click_on_a_titlebar_maximizes_the_frame_and_another_puts_it_back() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    let title = (120, 14);
+    let press = |session: &mut Session, at: (i32, i32), time: u32| {
+        point(session, at);
+        button(session, LEFT, true, time);
+        button(session, LEFT, false, time);
+        session.step();
+    };
+
+    press(&mut session, title, 1000);
+    assert_eq!(frames(&session), (false, 1), "one click is not two");
+    press(&mut session, title, 1300);
+    assert_eq!(frames(&session), (true, 1));
+
+    // Two clicks far apart in time are two clicks.
+    press(&mut session, title, 5000);
+    assert_eq!(frames(&session), (true, 1));
+    // As are two that are far apart on the titlebar.
+    press(&mut session, (300, 14), 5100);
+    assert_eq!(frames(&session), (true, 1));
+    // And two on different frames, if another is put in the way.
+    press(&mut session, (300, 14), 5200);
+    assert_eq!(frames(&session), (false, 1), "back as it was");
+
+    let mut other = session.connect();
+    session.open_decorated(&mut other, "second", (200, 100), RED);
+    let second = session
+        .compositor()
+        .desktop()
+        .frames()
+        .last()
+        .unwrap()
+        .geometry;
+    let on_second = (second.origin.x + 120, second.origin.y + 14);
+    press(&mut session, on_second, 9000);
+    press(&mut session, title, 9100);
+    assert_eq!(
+        frames(&session),
+        (false, 2),
+        "a click on each is not two on one"
+    );
+}
+
 #[test]
 fn decorations_are_repainted_only_when_something_about_them_changes() {
     let mut session = Session::new();
