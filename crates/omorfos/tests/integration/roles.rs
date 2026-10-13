@@ -167,7 +167,9 @@ fn the_lock_action_starts_the_program_named_to_lock_with() {
 
 /// The things only a role allows, which a program in a sandbox is not to
 /// be shown, and the way a sandbox is made.
-const WITHHELD: [&str; 4] = [
+const WITHHELD: [&str; 6] = [
+    "ext_image_copy_capture_manager_v1",
+    "ext_output_image_capture_source_manager_v1",
     "zwlr_layer_shell_v1",
     "ext_session_lock_manager_v1",
     "ext_foreign_toplevel_list_v1",

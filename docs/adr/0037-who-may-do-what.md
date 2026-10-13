@@ -173,6 +173,16 @@ either, or it could make one and say it is some other program. What the
 sandbox says the program is called is not kept yet: nothing reads it
 until the portals do.
 
+**Capture is refused like a panel, and marked.** An ordinary program
+that asks for pictures of the screen is told there will be none, and the
+user is told once what asked; a program in a sandbox is not shown that
+pictures can be asked for. The mark is on the screen being captured from
+the moment a program may take pictures of it until a second and a half
+after it stops, so that one picture cannot be taken unseen. It is drawn
+after a picture has been read back, which is what keeps it out of the
+pictures without a second way of drawing the screen. While the session
+is locked a picture asked for fails.
+
 **`overlay` is the keyboard.** It was to be "cover the screen and take
 the keyboard". Which layer a surface is on does not say whether it
 covers the screen, and the notifications that come with omorfos are on

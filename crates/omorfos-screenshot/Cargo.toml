@@ -1,0 +1,33 @@
+[package]
+name = "omorfos-screenshot"
+description = "Takes pictures of the screen in the omorfos desktop and saves them"
+keywords = ["wayland", "compositor", "screenshot"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Already in the tree through the panel. Says what time it is where the
+# user is, which a picture is named after.
+jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+omorfos-shell = { path = "../omorfos-shell" }
+# Already in the tree through the icons. Writes the pictures.
+png = "0.18.1"
+# Already in the tree through Smithay. Makes the memory a picture is taken
+# in.
+rustix = { version = "1.1.5", default-features = false, features = ["fs"] }
+# The tool is a Wayland client. Both are already in the tree through
+# Smithay's nested backend.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

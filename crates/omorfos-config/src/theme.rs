@@ -778,6 +778,14 @@ mod tests {
     }
 
     #[test]
+    fn the_mark_of_capture_is_a_red_dot_on_the_background() {
+        let theme = Theme::default();
+        let mark = theme.style(Part::Capture, States::NONE);
+        assert_eq!(mark.background, BACKGROUND);
+        assert_eq!(mark.color, Color::rgb(0xf0, 0x52, 0x4f));
+    }
+
+    #[test]
     fn what_is_active_on_the_panel_is_lit_and_underlined() {
         let theme = Theme::default();
         let panel = theme.style(Part::Panel, States::NONE);

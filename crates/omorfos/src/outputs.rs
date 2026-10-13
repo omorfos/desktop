@@ -41,7 +41,7 @@ pub(crate) struct Head {
 
 impl Head {
     /// The size of the output in pixels.
-    fn pixels(&self) -> Size<i32, Physical> {
+    pub(crate) fn pixels(&self) -> Size<i32, Physical> {
         let mode = self.output.current_mode();
         mode.map(|mode| mode.size).unwrap_or_default()
     }

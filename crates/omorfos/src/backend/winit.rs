@@ -233,7 +233,7 @@ impl Screen {
                     &mut self.tracker,
                     age,
                 )?;
-                result.damage.cloned()
+                result.damage
             };
             self.backend.submit(damage.as_deref())?;
             compositor.send_frames(&self.output, self.started.elapsed());

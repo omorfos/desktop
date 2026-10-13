@@ -594,7 +594,7 @@ impl Screen {
                 &mut self.tracker,
                 usize::from(age),
             )?;
-            result.damage.cloned().map(|damage| (damage, result.sync))
+            result.damage.map(|damage| (damage, result.sync))
         };
         match drawn {
             Some((damage, sync)) => {

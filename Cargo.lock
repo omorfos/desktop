@@ -1654,7 +1654,10 @@ dependencies = [
  "omorfos-launcher",
  "omorfos-notifications",
  "omorfos-panel",
+ "omorfos-screenshot",
+ "omorfos-shm",
  "omorfos-ui",
+ "png",
  "rustix 1.1.5",
  "serde",
  "serde_json",
@@ -1756,12 +1759,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-screenshot"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "omorfos-shell",
+ "png",
+ "rustix 1.1.5",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "omorfos-shell"
 version = "0.1.0"
 dependencies = [
  "omorfos-ui",
  "rustix 1.1.5",
  "wayland-client",
+]
+
+[[package]]
+name = "omorfos-shm"
+version = "0.1.0"
+dependencies = [
+ "smithay",
 ]
 
 [[package]]

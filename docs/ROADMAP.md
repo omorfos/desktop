@@ -172,10 +172,24 @@ calls for them.
 - [x] Programs in a sandbox recognised (`security-context-v1`) and shown
       nothing they may not have: not panels, locking, the list of
       windows, or the way a sandbox is made.
-- [ ] Screen capture: a screenshot of a screen, a window or a region, and
-      the stream that sharing a screen in a browser or a call needs
-      (`ext-image-copy-capture`, PipeWire), with the user asked each time
-      and shown that it is happening.
+- [x] Pictures of a screen (`ext-image-copy-capture-v1`), for a program
+      with the `capture` role, with a mark on the screen while they are
+      taken that is not in them. `omorfos-screenshot` saves one of every
+      screen, and `Print` starts it. The one `unsafe` block in omorfos
+      is here (ADR 40).
+- [ ] A picture copied to the clipboard instead of, or as well as,
+      saved: a setting and a key. It waits for the `clipboard` role and
+      `ext-data-control-v1`, since a program without a window cannot
+      otherwise set the clipboard.
+- [ ] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
+      and with them the `private` rule, which leaves a window blank in
+      any picture (ADR 38).
+- [ ] The stream that sharing a screen in a browser or a call needs
+      (PipeWire), in buffers of the GPU so that nothing is copied, with
+      the user asked each time.
+- [ ] Known gaps in pictures of the screen: a screen that is turned is
+      given as it is stored, not as it is seen; the pointer by itself
+      is not given; and the mark sits over the end of a panel at the top.
 - [ ] Portals (`xdg-desktop-portal`): screenshot and screen sharing as
       above, the file chooser, and the settings that tell applications
       light from dark and the accent.
@@ -411,6 +425,8 @@ Security:
       (`security-context-v1`): done in stage 3.
 - [ ] What a sandbox says its program is (the application's name) kept
       with the connection, for the portals to ask the user by.
+- [ ] Smithay asked for a safe way to write into a buffer a program
+      shares, so that the one `unsafe` block can go (ADR 40).
 - [ ] A review of everything a client can make the compositor allocate or
       wait for.
 

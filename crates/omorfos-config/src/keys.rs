@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::{Action, Command, Half, Position, WorkspaceNumber};
+use crate::{Action, Command, Half, Position, Started, WorkspaceNumber};
 
 /// The contents of `keys.yaml`.
 ///
@@ -85,6 +85,7 @@ impl Default for Keys {
             bind("Super+Left", Action::PreviousWorkspace),
             bind("Super+n", Action::NewWorkspace),
             bind("Super+Shift+n", Action::MoveToNewWorkspace),
+            bind("Print", Action::Spawn(Started::screenshot())),
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
@@ -120,7 +121,8 @@ impl Default for Keys {
 
 /// Builds a built-in binding from a single chord with a non-empty key.
 fn bind(chord: &str, action: Action) -> Binding {
-    let (modifiers, key) = chord.rsplit_once('+').unwrap_or_default();
+    // A key by itself has nothing held with it.
+    let (modifiers, key) = chord.rsplit_once('+').unwrap_or(("", chord));
     let modifiers = modifiers
         .split('+')
         .filter_map(Modifiers::named)
@@ -520,6 +522,12 @@ bindings:
             Some(Action::Spawn(Command::terminal().into()))
         );
         assert_eq!(action_for("Super+q"), Some(Action::Close));
+        // A picture of the screen is taken by a program that may.
+        let screenshot = action_for("Print");
+        assert_eq!(screenshot, Some(Action::Spawn(Started::screenshot())));
+        let started = Started::screenshot();
+        assert_eq!(started.run.program(), "omorfos-screenshot");
+        assert_eq!(started.may, [crate::Role::Capture]);
         assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::FocusPrevious));
         assert_eq!(
             action_for("Super+3"),

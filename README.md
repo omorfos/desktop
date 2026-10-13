@@ -31,7 +31,8 @@ desktop with a modern look. *Omorfos* is Greek for "beautiful".
 
 ## What it holds to
 
-- **Secure.** No `unsafe` in our own code; every program, every peer on
+- **Secure.** No `unsafe` in our own code but for one block, kept in a
+  crate of its own; every program, every peer on
   the socket and every configuration file is treated as untrusted.
 - **Correct.** Every line is covered by a test, outside the two files
   that need a real screen to run. The compositor is tested through a
@@ -60,8 +61,8 @@ screen reads, then pick omorfos when you log in:
 
 ```sh
 cargo build --release -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications
-sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications} /usr/local/bin/
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot
+sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot} /usr/local/bin/
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
 ```
 
@@ -79,6 +80,7 @@ A few keys to begin with:
 | `Super+f` | Fullscreen, and back |
 | `Super+n` | A new workspace |
 | `Super+1` to `Super+9` | Go to a workspace |
+| `Print` | A picture of every screen, saved in `Pictures/Screenshots` |
 | `Super+Shift+r` | Read the configuration again |
 | `Super+Shift+e` | End the session |
 
