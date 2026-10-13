@@ -1,7 +1,8 @@
 //! Input from the user.
 
+use omorfos_config::Modifiers;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Button, Edges, MenuOutcome, Part, WindowId, resize};
+use omorfos_core::{Button, Edges, MenuKey, MenuOutcome, Part, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
@@ -60,6 +61,20 @@ pub enum Input {
         /// Downwards scroll distance.
         vertical: f64,
     },
+}
+
+/// What a key means to an open menu, if anything. A key pressed with a
+/// modifier held is a binding's, not the menu's.
+fn menu_key(keysym: Keysym, held: Modifiers) -> Option<MenuKey> {
+    let key = match keysym {
+        Keysym::Up => MenuKey::Up,
+        Keysym::Down => MenuKey::Down,
+        Keysym::Left => MenuKey::Left,
+        Keysym::Right => MenuKey::Right,
+        Keysym::Return | Keysym::KP_Enter => MenuKey::Enter,
+        _ => return None,
+    };
+    (held == Modifiers::NONE).then_some(key)
 }
 
 /// The virtual terminal a key asks for, if it is one of the keys that
@@ -291,6 +306,20 @@ impl Compositor {
                 compositor.menu = None;
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
+            }
+            // An open menu is steered by the arrows and Enter, which no
+            // client or binding then sees.
+            let steer = menu_key(keysym, bridge::modifiers(held));
+            if let Some((menu, steer)) = compositor.menu.as_mut().zip(steer) {
+                let chosen = match menu.key(steer) {
+                    MenuOutcome::Activate(action) => Some(action),
+                    _ => None,
+                };
+                if chosen.is_some() {
+                    compositor.menu = None;
+                }
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(chosen);
             }
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a

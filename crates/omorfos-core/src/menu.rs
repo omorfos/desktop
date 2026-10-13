@@ -1,9 +1,10 @@
-//! Pop-up menus: where their panels go, and what the pointer does to them.
+//! Pop-up menus: where their panels go, and what the pointer and the
+//! keyboard do to them.
 //!
 //! A menu is a column of rows. A row that opens a submenu shows it in a
-//! further panel beside itself while the pointer is on it. This module
-//! decides layout and behaviour; the compositor draws the panels and feeds
-//! in pointer events.
+//! further panel beside itself while the pointer is on it, or when the
+//! keyboard goes into it. This module decides layout and behaviour; the
+//! compositor draws the panels and feeds in pointer events and keys.
 
 use crate::geometry::{Point, Rect, Size};
 
@@ -56,7 +57,8 @@ impl<A> Panel<A> {
         &self.items
     }
 
-    /// The row the pointer is on, if it is one that can be chosen.
+    /// The row the pointer is on or the keyboard went to, if it is one
+    /// that can be chosen.
     #[must_use]
     pub const fn highlighted(&self) -> Option<usize> {
         self.highlighted
@@ -72,6 +74,21 @@ pub enum MenuOutcome<A> {
     Dismiss,
     /// The press was on the menu but chose nothing: keep it open.
     Nothing,
+}
+
+/// A key that means something to an open menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MenuKey {
+    /// To the row above, and from the first to the last.
+    Up,
+    /// To the row below, and from the last to the first.
+    Down,
+    /// Out of a submenu, back to the row it belongs to.
+    Left,
+    /// Into the submenu of the highlighted row.
+    Right,
+    /// Chooses the highlighted row.
+    Enter,
 }
 
 /// An open menu: a root panel and the submenu panels leading to wherever
@@ -144,18 +161,81 @@ impl<A: Clone> Menu<A> {
             _ => None,
         });
         if let Some((row, items)) = submenu {
-            let beside = self.rows(&self.panels[panel])[row];
-            let width = self.metrics.width.cast_signed();
-            let padding = self.metrics.padding.cast_signed();
-            // Open to the right, or to the left if that would leave the area.
-            let fits = beside.right() + i64::from(width) <= self.area.right();
-            let x = if fits {
-                beside.origin.offset(width, 0).x
-            } else {
-                beside.origin.offset(-width, 0).x
-            };
-            self.push(items, Point::new(x, beside.origin.offset(0, -padding).y));
+            self.unfold(panel, row, items);
         }
+    }
+
+    /// Reports a key being pressed.
+    ///
+    /// The keys act on the outermost panel: the root, or the submenu the
+    /// pointer or the keyboard last opened. Up and down go round its rows,
+    /// passing over separators. Right goes into the submenu of the
+    /// highlighted row and left comes back out. Enter chooses the row: an
+    /// entry is activated, a submenu is gone into.
+    #[must_use]
+    pub fn key(&mut self, key: MenuKey) -> MenuOutcome<A> {
+        let last = self.panels.len().saturating_sub(1);
+        let highlighted = self.panels[last].highlighted;
+        match key {
+            MenuKey::Up | MenuKey::Down => {
+                let down = key == MenuKey::Down;
+                let panel = &mut self.panels[last];
+                let count = panel.items.len();
+                // Where to look first: the row after or before the
+                // highlighted one, or the first or last row of all.
+                let from = match (highlighted, down) {
+                    (Some(row), true) => row + 1,
+                    (Some(row), false) => row + count - 1,
+                    (None, true) => 0,
+                    (None, false) => count.saturating_sub(1),
+                };
+                // Going all the way round comes back to the highlighted
+                // row, so a row stays highlighted once one is.
+                panel.highlighted = (0..count)
+                    .map(|step| {
+                        if down {
+                            (from + step) % count
+                        } else {
+                            (from + count - step) % count
+                        }
+                    })
+                    .find(|row| !matches!(panel.items[*row], Item::Separator));
+            }
+            MenuKey::Left => {
+                if last > 0 {
+                    self.panels.pop();
+                }
+            }
+            MenuKey::Right | MenuKey::Enter => {
+                let chosen = highlighted.map(|row| (row, self.panels[last].items[row].clone()));
+                match chosen {
+                    Some((_, Item::Entry { action, .. })) if key == MenuKey::Enter => {
+                        return MenuOutcome::Activate(action);
+                    }
+                    Some((row, Item::Submenu { items, .. })) => {
+                        self.unfold(last, row, items);
+                        return self.key(MenuKey::Down);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        MenuOutcome::Nothing
+    }
+
+    /// Opens the panel of `items` beside the row of a panel they belong to.
+    fn unfold(&mut self, panel: usize, row: usize, items: Vec<Item<A>>) {
+        let beside = self.rows(&self.panels[panel])[row];
+        let width = self.metrics.width.cast_signed();
+        let padding = self.metrics.padding.cast_signed();
+        // Open to the right, or to the left if that would leave the area.
+        let fits = beside.right() + i64::from(width) <= self.area.right();
+        let x = if fits {
+            beside.origin.offset(width, 0).x
+        } else {
+            beside.origin.offset(-width, 0).x
+        };
+        self.push(items, Point::new(x, beside.origin.offset(0, -padding).y));
     }
 
     /// Reports a button press at `point`.
@@ -414,6 +494,131 @@ mod tests {
             MenuOutcome::Dismiss,
             "no submenu is open there"
         );
+    }
+
+    fn highlights(menu: &Menu<&'static str>) -> Vec<Option<usize>> {
+        menu.panels().iter().map(Panel::highlighted).collect()
+    }
+
+    fn keys(menu: &mut Menu<&'static str>, keys: &[MenuKey]) -> MenuOutcome<&'static str> {
+        keys.iter()
+            .map(|key| menu.key(*key))
+            .last()
+            .unwrap_or(MenuOutcome::Nothing)
+    }
+
+    #[test]
+    fn down_goes_to_the_first_row_then_on_past_separators_and_round() {
+        let mut menu = open_at(100, 100);
+        assert_eq!(menu.key(MenuKey::Down), MenuOutcome::Nothing);
+        assert_eq!(highlights(&menu), [Some(0)]);
+        let _ = menu.key(MenuKey::Down);
+        assert_eq!(highlights(&menu), [Some(2)]);
+        let _ = keys(&mut menu, &[MenuKey::Down, MenuKey::Down]);
+        assert_eq!(highlights(&menu), [Some(0)]);
+    }
+
+    #[test]
+    fn up_goes_to_the_last_row_then_back_past_separators_and_round() {
+        let mut menu = open_at(100, 100);
+        let _ = menu.key(MenuKey::Up);
+        assert_eq!(highlights(&menu), [Some(3)]);
+        let _ = keys(&mut menu, &[MenuKey::Up, MenuKey::Up]);
+        assert_eq!(highlights(&menu), [Some(0)]);
+        let _ = menu.key(MenuKey::Up);
+        assert_eq!(highlights(&menu), [Some(3)]);
+    }
+
+    #[test]
+    fn the_keys_carry_on_from_the_row_the_pointer_is_on() {
+        let mut menu = open_at(100, 100);
+        menu.hover(Point::new(110, 160));
+        assert_eq!(highlights(&menu), [Some(3)]);
+        let _ = menu.key(MenuKey::Up);
+        assert_eq!(highlights(&menu), [Some(2)]);
+    }
+
+    #[test]
+    fn enter_activates_the_highlighted_entry() {
+        let mut menu = open_at(100, 100);
+        assert_eq!(menu.key(MenuKey::Enter), MenuOutcome::Nothing);
+        assert_eq!(
+            keys(&mut menu, &[MenuKey::Down, MenuKey::Enter]),
+            MenuOutcome::Activate("Terminal")
+        );
+    }
+
+    #[test]
+    fn right_does_not_activate_an_entry() {
+        let mut menu = open_at(100, 100);
+        assert_eq!(
+            keys(&mut menu, &[MenuKey::Down, MenuKey::Right]),
+            MenuOutcome::Nothing
+        );
+        assert_eq!(highlights(&menu), [Some(0)]);
+    }
+
+    #[test]
+    fn right_and_enter_go_into_a_submenu_at_its_first_row() {
+        for into in [MenuKey::Right, MenuKey::Enter] {
+            let mut menu = open_at(100, 100);
+            let outcome = keys(&mut menu, &[MenuKey::Down, MenuKey::Down, into]);
+            assert_eq!(outcome, MenuOutcome::Nothing);
+            assert_eq!(highlights(&menu), [Some(2), Some(0)]);
+            assert_eq!(
+                menu.panel_rect(&menu.panels()[1]),
+                rect(300, 130, 200, 48),
+                "where the pointer would have opened it"
+            );
+            assert_eq!(
+                keys(&mut menu, &[MenuKey::Down, MenuKey::Enter]),
+                MenuOutcome::Activate("Quit")
+            );
+        }
+    }
+
+    #[test]
+    fn up_and_down_stay_in_the_submenu_that_is_open() {
+        let mut menu = open_at(100, 100);
+        let into = [MenuKey::Up, MenuKey::Up, MenuKey::Right];
+        let _ = keys(&mut menu, &into);
+        let _ = keys(&mut menu, &[MenuKey::Down, MenuKey::Down, MenuKey::Down]);
+        assert_eq!(highlights(&menu), [Some(2), Some(1)]);
+    }
+
+    #[test]
+    fn left_comes_out_of_a_submenu_to_the_row_it_belongs_to() {
+        let mut menu = open_at(100, 100);
+        let _ = keys(&mut menu, &[MenuKey::Up, MenuKey::Up, MenuKey::Right]);
+        assert_eq!(menu.key(MenuKey::Left), MenuOutcome::Nothing);
+        assert_eq!(highlights(&menu), [Some(2)]);
+        let _ = menu.key(MenuKey::Left);
+        assert_eq!(highlights(&menu), [Some(2)], "the root stays");
+    }
+
+    #[test]
+    fn the_keys_go_into_a_submenu_the_pointer_opened() {
+        let mut menu = open_at(100, 100);
+        menu.hover(Point::new(110, 140));
+        assert_eq!(highlights(&menu), [Some(2), None]);
+        let _ = menu.key(MenuKey::Down);
+        assert_eq!(highlights(&menu), [Some(2), Some(0)]);
+    }
+
+    #[test]
+    fn the_keys_find_nothing_to_highlight_in_a_menu_with_nothing_to_choose() {
+        for items in [Vec::new(), vec![Item::Separator]] {
+            let mut menu = Menu::<&str>::open(items, Point::new(0, 0), AREA, METRICS);
+            let all = [
+                MenuKey::Down,
+                MenuKey::Up,
+                MenuKey::Right,
+                MenuKey::Left,
+                MenuKey::Enter,
+            ];
+            assert_eq!(keys(&mut menu, &all), MenuOutcome::Nothing);
+            assert_eq!(highlights(&menu), [None]);
+        }
     }
 
     #[test]

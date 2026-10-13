@@ -64,7 +64,8 @@ Small, independent, and each an improvement the day it lands.
       `keep_above` and `stick`.
 - [ ] What a window is kept as, told to panels and taskbars over IPC and
       set by rules: shaded, above, on every workspace.
-- [ ] The root menu driven from the keyboard: arrows, Enter, Escape.
+- [x] The root menu, and the titlebar's, driven from the keyboard:
+      arrows, Enter, Escape.
 - [ ] The work pushed and seen to pass in CI. At the time of writing 57
       commits are on this machine only, and CI has not run on any of
       them: the XWayland tests have never run anywhere else.

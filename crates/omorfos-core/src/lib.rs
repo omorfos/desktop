@@ -8,7 +8,7 @@
 //!   back what to show.
 //! - [`Decoration`] lays out a frame's titlebar, tabs and borders.
 //! - [`KeyChains`] recognises key bindings, including multi-key chains.
-//! - [`Menu`] lays out pop-up menus and reacts to the pointer.
+//! - [`Menu`] lays out pop-up menus and reacts to the pointer and to keys.
 //! - [`Rule`] and [`Pattern`] describe per-application rules.
 //! - [`place`] decides where a new window goes.
 
@@ -23,6 +23,6 @@ mod rules;
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{Desktop, Frame, Listed, Opening, Screen, Settings, Standing, Window, WindowId};
 pub use keys::{KeyChains, KeyOutcome};
-pub use menu::{Item, Menu, MenuMetrics, MenuOutcome, Panel};
+pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Rule, resolve};

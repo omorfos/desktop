@@ -83,6 +83,10 @@ pub(crate) mod key {
     pub(crate) const ALT: Keycode = Keycode::new(64);
     pub(crate) const X: Keycode = Keycode::new(53);
     pub(crate) const F2: Keycode = Keycode::new(68);
+    pub(crate) const UP: Keycode = Keycode::new(111);
+    pub(crate) const LEFT: Keycode = Keycode::new(113);
+    pub(crate) const RIGHT: Keycode = Keycode::new(114);
+    pub(crate) const DOWN: Keycode = Keycode::new(116);
     pub(crate) const SUPER: Keycode = Keycode::new(133);
 }
 
