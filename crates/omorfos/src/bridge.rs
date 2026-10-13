@@ -340,7 +340,7 @@ items:
             label: "Quit".to_owned(),
             action: Action::Quit,
         };
-        let spawn = Action::Spawn(Command::terminal());
+        let spawn = Action::Spawn(Command::terminal().into());
         assert_eq!(
             menu_items(&config("menu.yaml", yaml).menu.items),
             [
@@ -375,7 +375,7 @@ items:
     fn bindings_trigger_on_the_unshifted_key_with_the_named_modifiers() {
         let (mut bindings, _) = bindings(&Keys::default(), Path::new("keys.yaml"));
         let terminal = chord(Modifiers::SUPER, Keysym::Return);
-        let spawn_terminal = Action::Spawn(Command::terminal());
+        let spawn_terminal = Action::Spawn(Command::terminal().into());
         assert_eq!(
             bindings.press(terminal),
             KeyOutcome::Triggered(&spawn_terminal)

@@ -150,7 +150,9 @@ fn quit_ends_the_session() {
 fn a_program_that_cannot_be_started_is_reported() {
     let mut session = Session::new();
     let command = Command::new("/nonexistent/omorfos-test-program", [""; 0]).unwrap();
-    session.compositor_mut().perform(&Action::Spawn(command));
+    session
+        .compositor_mut()
+        .perform(&Action::Spawn(command.into()));
     let problems = session.compositor().problems();
     assert_eq!(problems.len(), 1);
     assert!(problems[0].starts_with("cannot start `/nonexistent/omorfos-test-program`: "));

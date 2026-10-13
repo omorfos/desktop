@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::{Bounded, Command, MAX_WORKSPACES};
+use crate::{Bounded, Command, MAX_WORKSPACES, Started};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -29,9 +29,9 @@ pub struct General {
     /// What happens when the user is away.
     pub idle: Idle,
     /// Programs to start with the session, each as a program and its
-    /// arguments. They are started once, in order, and not again when the
-    /// configuration is reloaded.
-    pub autostart: Vec<Command>,
+    /// arguments, or as that and what it may do. They are started once, in
+    /// order, and not again when the configuration is reloaded.
+    pub autostart: Vec<Started>,
     /// The panel that comes with omorfos.
     pub panel: Panel,
     /// The pointer.
@@ -42,6 +42,10 @@ pub struct General {
     pub notifications: Notifications,
     /// Programs written for X11.
     pub xwayland: Xwayland,
+    /// The program that locks the session, and its arguments, such as
+    /// `[swaylock, -f]`. The `lock` action starts it, and it alone is let
+    /// lock. Without one there is nothing to lock with.
+    pub locker: Option<Command>,
 }
 
 /// Programs written for X11, which run through `Xwayland`.
@@ -523,6 +527,46 @@ mod tests {
     }
 
     #[test]
+    fn a_program_started_with_the_session_can_be_told_what_it_may_do() {
+        use crate::Role;
+
+        let yaml = "
+autostart:
+  - [swayidle]
+  - { run: [waybar, -c, mine], may: [panel] }
+  - { run: [swaylock] , may: [lock, overlay] }
+  - { run: [foot] }
+";
+        let started = parse(yaml).unwrap().autostart;
+        assert_eq!(started[0].may, []);
+        assert_eq!(started[1].run.arguments(), ["-c", "mine"]);
+        assert_eq!(started[1].may, [Role::Panel]);
+        assert_eq!(started[2].may, [Role::Lock, Role::Overlay]);
+        assert_eq!(started[3].may, [], "nothing unless it is said");
+        for wrong in [
+            "autostart: [{ run: [waybar], may: [everything] }]",
+            "autostart: [{ run: [waybar], might: [panel] }]",
+            "autostart: [{ may: [panel] }]",
+            "autostart: [{ run: [], may: [panel] }]",
+        ] {
+            assert!(parse(wrong).is_err(), "{wrong}");
+        }
+        let all = "autostart: [{ run: [x], may: [ask, capture, clipboard, input, screens] }]";
+        assert_eq!(parse(all).unwrap().autostart[0].may.len(), 5);
+    }
+
+    #[test]
+    fn a_program_can_be_named_to_lock_the_session_with() {
+        assert_eq!(General::default().locker, None);
+        let locker = parse("locker: [swaylock, -f]").unwrap().locker.unwrap();
+        assert_eq!(
+            (locker.program(), locker.arguments()),
+            ("swaylock", ["-f".to_owned()].as_slice())
+        );
+        assert!(parse("locker: []").is_err());
+    }
+
+    #[test]
     fn the_panel_is_started_unless_it_is_turned_off() {
         assert!(General::default().panel.enabled);
         assert!(parse("panel: {}").unwrap().panel.enabled);
@@ -536,9 +580,10 @@ mod tests {
         let yaml = "autostart:\n  - [swayidle, -w]\n  - [waybar]\n";
         let started = parse(yaml).unwrap().autostart;
         assert_eq!(started.len(), 2);
-        assert_eq!(started[0].program(), "swayidle");
-        assert_eq!(started[0].arguments(), ["-w"]);
-        assert_eq!(started[1].program(), "waybar");
+        assert_eq!(started[0].run.program(), "swayidle");
+        assert_eq!(started[0].run.arguments(), ["-w"]);
+        assert_eq!(started[1].run.program(), "waybar");
+        assert_eq!(started[1].may, [], "an ordinary program");
         assert!(
             parse("autostart: [[]]").is_err(),
             "a program has to be named"

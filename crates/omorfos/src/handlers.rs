@@ -47,6 +47,7 @@ use smithay::{
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
+use crate::roles::Roles;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::xwayland::XWaylandClientData;
 
@@ -395,6 +396,15 @@ impl WlrLayerShellHandler for Compositor {
         _layer: Layer,
         namespace: String,
     ) {
+        // A surface outside windows is for a program that was started to
+        // put one there.
+        let client = surface.wl_surface().client();
+        let roles = Self::roles(client.as_ref());
+        if !roles.has(Roles::PANEL.with(Roles::OVERLAY)) {
+            self.refuse(client.as_ref(), "put a panel on the screen", "panel");
+            surface.send_close();
+            return;
+        }
         // On the output it asked for, or else the one the pointer is on.
         let asked = output.as_ref().and_then(Output::from_resource);
         let asked = asked.as_ref().and_then(|output| self.head(output));

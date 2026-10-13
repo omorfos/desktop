@@ -25,6 +25,7 @@ use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
+use crate::Roles;
 use crate::{Compositor, Input, Scale, Session, Themes};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
@@ -149,7 +150,7 @@ pub(super) fn listen(session: &mut Session) -> Result<(), Box<dyn Error>> {
             compositor.listen_ipc(path)?;
         }
     }
-    session.serve(socket)
+    session.serve(socket, Roles::NONE)
 }
 
 /// Hands an input event to the compositor, whichever backend it is from.

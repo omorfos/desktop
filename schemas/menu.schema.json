@@ -8,7 +8,7 @@
           "description": "Start a program, given as a list: the program followed by its\narguments. No shell is involved, so nothing is expanded or split.",
           "properties": {
             "spawn": {
-              "$ref": "#/$defs/Command"
+              "$ref": "#/$defs/Started"
             }
           },
           "required": [
@@ -191,6 +191,11 @@
           "type": "string"
         },
         {
+          "const": "lock",
+          "description": "Lock the session, with the program `locker` in config.yaml names.",
+          "type": "string"
+        },
+        {
           "const": "reload_config",
           "description": "Re-read the configuration now.",
           "type": "string"
@@ -278,6 +283,78 @@
         },
         {
           "$ref": "#/$defs/MenuEntry"
+        }
+      ]
+    },
+    "Role": {
+      "description": "Something a program may do only if the compositor started it and was\ntold it may.",
+      "oneOf": [
+        {
+          "const": "panel",
+          "description": "Put surfaces on the screen outside windows and keep room for them,\nand list the windows.",
+          "type": "string"
+        },
+        {
+          "const": "overlay",
+          "description": "Cover the screen and take the keyboard while it does.",
+          "type": "string"
+        },
+        {
+          "const": "lock",
+          "description": "Lock the session.",
+          "type": "string"
+        },
+        {
+          "const": "ask",
+          "description": "Show the prompt that asks for a secret.",
+          "type": "string"
+        },
+        {
+          "const": "capture",
+          "description": "Take pictures of the screen and of windows.",
+          "type": "string"
+        },
+        {
+          "const": "clipboard",
+          "description": "Read and set the clipboard at any time.",
+          "type": "string"
+        },
+        {
+          "const": "input",
+          "description": "Type and click as the user, and see what is typed into fields.",
+          "type": "string"
+        },
+        {
+          "const": "screens",
+          "description": "Arrange the screens and change their colour.",
+          "type": "string"
+        }
+      ]
+    },
+    "Started": {
+      "description": "A program to start with the session: its name and arguments, or that and what it may do.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Command"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "may": {
+              "description": "What it may do that an ordinary program may not.",
+              "items": {
+                "$ref": "#/$defs/Role"
+              },
+              "type": "array"
+            },
+            "run": {
+              "$ref": "#/$defs/Command"
+            }
+          },
+          "required": [
+            "run"
+          ],
+          "type": "object"
         }
       ]
     }

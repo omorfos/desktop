@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
-    OutputScale, Outputs, Rules, Speed, Workspaces,
+    OutputScale, Outputs, Role, Rules, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -64,6 +64,36 @@ impl JsonSchema for Command {
             "type": "array",
             "items": { "type": "string" },
             "minItems": 1,
+        })
+    }
+}
+
+impl JsonSchema for Started {
+    fn schema_name() -> Cow<'static, str> {
+        "Started".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let run = generator.subschema_for::<Command>();
+        let role = generator.subschema_for::<Role>();
+        json_schema!({
+            "description": "A program to start with the session: its name and arguments, or that and what it may do.",
+            "oneOf": [
+                run,
+                {
+                    "type": "object",
+                    "properties": {
+                        "run": run,
+                        "may": {
+                            "description": "What it may do that an ordinary program may not.",
+                            "type": "array",
+                            "items": role,
+                        },
+                    },
+                    "required": ["run"],
+                    "additionalProperties": false,
+                },
+            ],
         })
     }
 }

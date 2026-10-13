@@ -70,7 +70,7 @@ impl Keys {
 impl Default for Keys {
     fn default() -> Self {
         let mut bindings = vec![
-            bind("Super+Return", Action::Spawn(Command::terminal())),
+            bind("Super+Return", Action::Spawn(Command::terminal().into())),
             bind("Super+space", Action::ShowLauncher),
             bind("Super+Escape", Action::ShowMenu),
             bind("Super+q", Action::Close),
@@ -517,7 +517,7 @@ bindings:
         };
         assert_eq!(
             action_for("Super+Return"),
-            Some(Action::Spawn(Command::terminal()))
+            Some(Action::Spawn(Command::terminal().into()))
         );
         assert_eq!(action_for("Super+q"), Some(Action::Close));
         assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::FocusPrevious));

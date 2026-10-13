@@ -17,7 +17,7 @@ fn clients_that_connect_to_a_served_socket_are_taken_on() {
     let mut session = Session::new();
     let path = session.config.path().join("wayland-test");
     let socket = ListeningSocket::bind_absolute(path.clone()).unwrap();
-    session.inner().serve(socket).unwrap();
+    session.inner().serve(socket, omorfos::Roles::NONE).unwrap();
 
     let mut first = session.adopt(UnixStream::connect(&path).unwrap());
     let mut second = session.adopt(UnixStream::connect(&path).unwrap());

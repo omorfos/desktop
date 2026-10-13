@@ -29,6 +29,7 @@ mod palette;
 mod panel;
 mod popups;
 mod reveal;
+mod roles;
 mod scaling;
 mod session;
 mod taskbar;

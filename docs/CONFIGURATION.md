@@ -84,9 +84,12 @@ program and its arguments, as for `spawn`:
 
 ```yaml
 autostart:
-  - [swayidle, -w, timeout, "300", swaylock -f]
-  - [waybar]
+  - [swayidle, -w, timeout, "300", omorfosctl action lock]
+  - { run: [waybar], may: [panel] }
 ```
+
+A program written with `may` is let do what an ordinary program is not;
+see "Who may do what" below.
 
 They are started once, in order. Changing the list takes effect the next
 time you log in; reloading the configuration does not start them again. A
@@ -258,6 +261,7 @@ that are already bound on their own.
 | `join_workspace: ID` | Put the focused window beside those sharing a workspace made for windows, and show it. The `ID` is the one `omorfosctl state` gives the workspace. The titlebar's menu offers the same by name. |
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
+| `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
 | `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
 | `quit` | End the session. |
@@ -731,23 +735,72 @@ notifications:
 
 Like `autostart`, this takes effect the next time you log in.
 
-## Locking the screen
+## Who may do what
 
-omorfos does not lock by itself; it lets a screen locker do it, and tells
-an idle daemon when you have been away. With `swaylock` and `swayidle`
-installed, for example:
+A program sees and works its own windows. Some things reach further, and
+are only for a program omorfos started itself and was told may do them:
+
+| Role | Lets a program |
+|---|---|
+| `panel` | Put surfaces on the screen outside windows, as a bar, a dock, a wallpaper or a notification does, and be told what windows there are |
+| `overlay` | The same, and take the keyboard from whatever has it while one of its surfaces asks, as a launcher does |
+| `lock` | Lock the session |
+
+`ask`, `capture`, `clipboard`, `input` and `screens` are names for what is
+to come, and are accepted so that a configuration can say them already.
+
+A role is given where the program is started: in `autostart`, or in a
+`spawn` bound to a key or put in the menu.
 
 ```yaml
-bindings:
-  - keys: Super+l
-    action: { spawn: [swaylock] }
-  - keys: Super+Shift+i
-    action: { spawn: [swayidle, -w, timeout, "300", swaylock -f] }
+# config.yaml
+autostart:
+  - { run: [waybar], may: [panel] }
+  - { run: [swaybg, -i, wall.png], may: [panel] }
 ```
 
-The second starts the daemon that locks after five minutes. To have it
-running from login, list it under `autostart` in `config.yaml` instead. While the screen is locked nothing else
-is shown and no key binding works, except Ctrl+Alt+F1 to F12.
+```yaml
+# keys.yaml
+bindings:
+  - keys: Super+d
+    action: { spawn: { run: [fuzzel], may: [overlay] } }
+```
+
+A program started any other way, from a terminal say, is an ordinary
+program whatever it is called. One that asks for what it has no role for
+is refused, and you are told once what asked and what to write to let
+it. The panel, the launcher and the notifications that come with omorfos
+have what they need; started by hand, they are ordinary programs too.
+
+This keeps a program that is merely running from putting a false panel
+or a false lock screen in front of you. It is not a wall against a
+program that can already change your files: such a program could write
+itself into `autostart`.
+
+## Locking the screen
+
+omorfos does not lock by itself; it starts a screen locker to, and tells
+an idle daemon when you have been away. Name the locker in `config.yaml`,
+and the `lock` action starts it, as the one program let lock:
+
+```yaml
+# config.yaml
+locker: [swaylock, -f]
+autostart:
+  - [swayidle, -w, timeout, "300", omorfosctl action lock]
+```
+
+```yaml
+# keys.yaml
+bindings:
+  - keys: Super+l
+    action: lock
+```
+
+The idle daemon asks omorfos to lock and does not start the locker
+itself: a locker it started would be an ordinary program, and refused.
+While the screen is locked nothing else is shown and no key binding
+works, except Ctrl+Alt+F1 to F12.
 
 ## Programs written for X11
 

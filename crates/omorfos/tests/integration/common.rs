@@ -364,10 +364,24 @@ impl Session {
         peer.receive().unwrap()
     }
 
-    /// Connects a new client.
+    /// Connects a new client that may do anything a program may be let:
+    /// put up panels, cover the screen, lock. Most tests are of what such a
+    /// program does, not of who may.
     pub(crate) fn connect(&mut self) -> Client {
+        self.connect_as(omorfos::Roles::ALL)
+    }
+
+    /// Connects a new client that is an ordinary program, with no role,
+    /// as one that finds the socket by itself is.
+    pub(crate) fn connect_plain(&mut self) -> Client {
+        self.connect_as(omorfos::Roles::NONE)
+    }
+
+    /// Connects a new client with the roles given, as the compositor does
+    /// for a program it starts.
+    pub(crate) fn connect_as(&mut self, roles: omorfos::Roles) -> Client {
         let (ours, theirs) = UnixStream::pair().unwrap();
-        self.compositor_mut().insert_client(ours).unwrap();
+        self.compositor_mut().insert_client(ours, roles).unwrap();
         self.adopt(theirs)
     }
 

@@ -18,6 +18,7 @@ use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAct
 use smithay::reexports::wayland_server::{Display, ListeningSocket};
 
 use crate::Compositor;
+use crate::Roles;
 
 /// A compositor and the event loop that drives it.
 #[derive(Debug)]
@@ -73,17 +74,23 @@ impl Session {
             })
     }
 
-    /// Accepts the clients that connect to `socket` from now on.
+    /// Accepts the clients that connect to `socket` from now on, each with
+    /// `roles`.
+    ///
+    /// The socket a session is known by is for any program that finds it,
+    /// and is served with no roles: what a program may do beyond the
+    /// ordinary comes from the compositor having started it, not from its
+    /// having found a socket.
     ///
     /// # Errors
     ///
     /// Returns an error if the socket cannot be added to the event loop.
-    pub fn serve(&mut self, socket: ListeningSocket) -> Result<(), Box<dyn Error>> {
+    pub fn serve(&mut self, socket: ListeningSocket, roles: Roles) -> Result<(), Box<dyn Error>> {
         let socket = Generic::new(socket, Interest::READ, Mode::Level);
         self.event_loop
             .handle()
-            .insert_source(socket, |_, socket, compositor| {
-                accept_all(socket, compositor).map(|()| PostAction::Continue)
+            .insert_source(socket, move |_, socket, compositor| {
+                accept_all(socket, compositor, roles).map(|()| PostAction::Continue)
             })
             .map(drop)
             .map_err(Box::from)
@@ -160,11 +167,15 @@ impl Session {
 }
 
 /// Takes on every client waiting to connect.
-fn accept_all(socket: &ListeningSocket, compositor: &mut Compositor) -> io::Result<()> {
+fn accept_all(
+    socket: &ListeningSocket,
+    compositor: &mut Compositor,
+    roles: Roles,
+) -> io::Result<()> {
     let mut waiting = socket.accept();
     while let Ok(Some(stream)) = waiting {
         waiting = compositor
-            .insert_client(stream)
+            .insert_client(stream, roles)
             .and_then(|_| socket.accept());
     }
     waiting.map(drop)

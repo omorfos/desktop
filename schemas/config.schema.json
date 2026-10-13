@@ -269,11 +269,83 @@
         }
       ]
     },
+    "Role": {
+      "description": "Something a program may do only if the compositor started it and was\ntold it may.",
+      "oneOf": [
+        {
+          "const": "panel",
+          "description": "Put surfaces on the screen outside windows and keep room for them,\nand list the windows.",
+          "type": "string"
+        },
+        {
+          "const": "overlay",
+          "description": "Cover the screen and take the keyboard while it does.",
+          "type": "string"
+        },
+        {
+          "const": "lock",
+          "description": "Lock the session.",
+          "type": "string"
+        },
+        {
+          "const": "ask",
+          "description": "Show the prompt that asks for a secret.",
+          "type": "string"
+        },
+        {
+          "const": "capture",
+          "description": "Take pictures of the screen and of windows.",
+          "type": "string"
+        },
+        {
+          "const": "clipboard",
+          "description": "Read and set the clipboard at any time.",
+          "type": "string"
+        },
+        {
+          "const": "input",
+          "description": "Type and click as the user, and see what is typed into fields.",
+          "type": "string"
+        },
+        {
+          "const": "screens",
+          "description": "Arrange the screens and change their colour.",
+          "type": "string"
+        }
+      ]
+    },
     "Speed": {
       "description": "From -1, the slowest, to 1, the fastest; 0 is what the device is made for.",
       "maximum": 1,
       "minimum": -1,
       "type": "number"
+    },
+    "Started": {
+      "description": "A program to start with the session: its name and arguments, or that and what it may do.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Command"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "may": {
+              "description": "What it may do that an ordinary program may not.",
+              "items": {
+                "$ref": "#/$defs/Role"
+              },
+              "type": "array"
+            },
+            "run": {
+              "$ref": "#/$defs/Command"
+            }
+          },
+          "required": [
+            "run"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Touchpad": {
       "additionalProperties": false,
@@ -346,9 +418,9 @@
   "description": "The contents of `config.yaml`.",
   "properties": {
     "autostart": {
-      "description": "Programs to start with the session, each as a program and its\narguments. They are started once, in order, and not again when the\nconfiguration is reloaded.",
+      "description": "Programs to start with the session, each as a program and its\narguments, or as that and what it may do. They are started once, in\norder, and not again when the configuration is reloaded.",
       "items": {
-        "$ref": "#/$defs/Command"
+        "$ref": "#/$defs/Started"
       },
       "type": "array"
     },
@@ -371,6 +443,17 @@
     "launcher": {
       "$ref": "#/$defs/Launcher",
       "description": "The launcher that comes with omorfos."
+    },
+    "locker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Command"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The program that locks the session, and its arguments, such as\n`[swaylock, -f]`. The `lock` action starts it, and it alone is let\nlock. Without one there is nothing to lock with."
     },
     "mouse": {
       "$ref": "#/$defs/Mouse",

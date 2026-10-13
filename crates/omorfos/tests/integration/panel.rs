@@ -54,7 +54,10 @@ fn accent() -> u32 {
 /// of its own socket.
 fn panel_on(session: &mut Session, news: Ipc, commands: Ipc, config: &Path) -> Panel {
     let (ours, theirs) = UnixStream::pair().unwrap();
-    session.compositor_mut().insert_client(ours).unwrap();
+    session
+        .compositor_mut()
+        .insert_client(ours, omorfos::Roles::ALL)
+        .unwrap();
     Panel::new(theirs, news, commands, config).unwrap()
 }
 
@@ -593,7 +596,7 @@ fn the_panel_runs_by_itself_in_the_session_it_is_started_in() {
     let mut session = Session::with_workspaces();
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
-    session.inner().serve(socket).unwrap();
+    session.inner().serve(socket, omorfos::Roles::ALL).unwrap();
     let ipc = session.listen();
     // The configuration is looked for where the session would have it.
     std::fs::create_dir(runtime.join("omorfos")).unwrap();
