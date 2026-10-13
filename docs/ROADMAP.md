@@ -440,10 +440,9 @@ A way in:
 
 Reaching people:
 
-- [ ] The README put right: it does not render as it should, and it
-      describes a smaller omorfos than there is. What it is now, what it
-      looks like, how to build, install and try it, and where the guide,
-      the roadmap and the decisions are.
+- [x] The README put right: what omorfos is now, how to build, install
+      and try it, and where the guide, the roadmap and the decisions are.
+- [ ] Pictures of it in the README, once it wears the design language.
 - [ ] A first release, which is also the first real test of the release
       pipeline (see [RELEASING.md](RELEASING.md)).
 - [ ] The shell in the user's language.
