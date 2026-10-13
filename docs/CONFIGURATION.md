@@ -136,8 +136,11 @@ Two windows can share such a workspace, side by side or one above the
 other. "Tile" in the menu of a titlebar, or the `tile` action, puts a
 window in a half of a new one, and the next window to open there has the
 other half: the launcher, used there, puts a program beside the one
-already there. When one of the two closes or leaves, the other has the
-whole. A third window opens on the desktop.
+already there. There is a line between the two: drag it to give one
+window more room and the other less, down to a sixth of the screen, and
+double-click it to put it back in the middle. It is drawn in the colour
+the theme gives a window's border. When one of the two closes or leaves,
+the other has the whole. A third window opens on the desktop.
 
 On such a workspace, rest the pointer against the top of the screen for a
 third of a second and whatever panels are along the top come back, with
@@ -761,6 +764,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 |---|---|
 | Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
 | Put two windows side by side | Right-click the titlebar of one, choose Tile and a half, then open the other |
+| Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
 | Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |

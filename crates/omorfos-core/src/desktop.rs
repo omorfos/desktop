@@ -275,6 +275,20 @@ pub enum Half {
     Bottom,
 }
 
+/// What a split is out of: a first part with this much has everything.
+const WHOLE: u32 = 1 << 16;
+
+/// The line between two windows that share a workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Line {
+    /// Where it is: a hair wide and as long as the output, or a hair tall
+    /// and as wide.
+    pub at: Rect,
+    /// Whether it lies across the output, between a window above and one
+    /// below, and is dragged up and down.
+    pub across: bool,
+}
+
 /// A part of a workspace made for windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Part {
@@ -295,7 +309,7 @@ struct Tiling {
     origin: WorkspaceId,
     /// Whether two parts are one above the other, and not side by side.
     stacked: bool,
-    /// How much of the output the first part has, in thousandths.
+    /// How much of the output the first part has, out of [`WHOLE`].
     split: u32,
     parts: [Part; 2],
 }
@@ -306,7 +320,7 @@ impl Tiling {
         Self {
             origin,
             stacked: false,
-            split: 500,
+            split: WHOLE / 2,
             parts: [Part::Tile(frame), Part::None],
         }
     }
@@ -318,7 +332,7 @@ impl Tiling {
         Self {
             origin,
             stacked: matches!(half, Half::Top | Half::Bottom),
-            split: 500,
+            split: WHOLE / 2,
             parts: if first {
                 [Part::Tile(frame), Part::Empty]
             } else {
@@ -358,6 +372,26 @@ impl Tiling {
         }
     }
 
+    /// How much of a length along which it is cut the first part has.
+    fn first(&self, along: u32) -> u32 {
+        let first = u64::from(along) * u64::from(self.split) / u64::from(WHOLE);
+        u32::try_from(first).unwrap_or(along)
+    }
+
+    /// The same, cut so that the first part has `first` of a length of
+    /// `along`, or as near that as leaves each part a sixth of it.
+    fn cut(self, first: u32, along: u32) -> Self {
+        let least = along / 6;
+        let first = first.clamp(least, along - least);
+        // Rounded up, so that the part is the length asked for and not
+        // one short of it.
+        let split = (u64::from(first) * u64::from(WHOLE)).div_ceil(u64::from(along.max(1)));
+        Self {
+            split: u32::try_from(split).unwrap_or(WHOLE / 2),
+            ..self
+        }
+    }
+
     /// Whether it has a part with nothing in it.
     fn has_room(&self) -> bool {
         self.parts.contains(&Part::Empty)
@@ -369,7 +403,7 @@ impl Tiling {
         let whole = self.parts[1] == Part::None;
         let (width, height) = (area.size.width, area.size.height);
         let along = if self.stacked { height } else { width };
-        let first = u32::try_from(u64::from(along) * u64::from(self.split) / 1000).unwrap_or(along);
+        let first = self.first(along);
         let (from, length) = match (whole, second) {
             (true, _) => (0, along),
             (false, false) => (0, first),
@@ -1338,6 +1372,51 @@ impl Desktop {
         if let Some(set) = self.sets.get_mut(output) {
             set.revealed = down;
         }
+    }
+
+    /// The line between the two parts of the workspace an output is
+    /// showing, if it is showing one that windows share. Outputs are
+    /// counted in the order they were given.
+    #[must_use]
+    pub fn line(&self, output: usize) -> Option<Line> {
+        let (set, area) = (self.sets.get(output)?, self.outputs.get(output)?.area);
+        let tiling = set.workspaces[set.active].solo?;
+        let shared = tiling.parts[1] != Part::None;
+        let (width, height) = (area.size.width, area.size.height);
+        let (at, size) = if tiling.stacked {
+            let down = tiling.first(height).cast_signed();
+            (area.origin.offset(0, down), Size::new(width, 1))
+        } else {
+            let along = tiling.first(width).cast_signed();
+            (area.origin.offset(along, 0), Size::new(1, height))
+        };
+        shared.then_some(Line {
+            at: Rect::new(at, size),
+            across: tiling.stacked,
+        })
+    }
+
+    /// Moves the line between the two parts of the workspace an output is
+    /// showing to `point`, or as near it as leaves each part a sixth of
+    /// the output; or with `None` puts it back in the middle. Does nothing
+    /// where there is no such line.
+    pub fn move_line(&mut self, output: usize, point: Option<Point>) {
+        let Some(line) = self.line(output) else {
+            return;
+        };
+        let area = self.outputs[output].area;
+        let (from, along) = if line.across {
+            (area.origin.y, area.size.height)
+        } else {
+            (area.origin.x, area.size.width)
+        };
+        let wanted = point.map_or(along / 2, |point| {
+            let to = if line.across { point.y } else { point.x };
+            to.saturating_sub(from).max(0).unsigned_abs()
+        });
+        let set = &mut self.sets[output];
+        let shown = &mut set.workspaces[set.active];
+        shown.solo = shown.solo.map(|tiling| tiling.cut(wanted, along));
     }
 
     /// Makes the output at `point` the current one: the one whose focused
@@ -2343,6 +2422,63 @@ mod tests {
         let third = open(&mut desktop, "third");
         assert_eq!(desktop.active_workspace(), 0);
         assert_eq!(stack(&desktop), [third]);
+    }
+
+    #[test]
+    fn the_line_between_two_windows_is_moved_to_give_one_more_room() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        assert_eq!(desktop.line(0), None, "a desktop has none");
+        let nowhere = Desktop::new(Settings::default(), 1);
+        assert_eq!(nowhere.line(0), None, "nor is there one with no output");
+        desktop.set_fullscreen(editor, true);
+        assert_eq!(desktop.line(0), None, "nor a window alone");
+        desktop.move_line(0, Some(Point::new(100, 100)));
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+        let tall = |x: i32| Rect::new(Point::new(x, 0), Size::new(1, 1080));
+        let line = desktop.line(0).unwrap();
+        assert_eq!((line.at, line.across), (tall(960), false));
+        assert_eq!(desktop.line(7), None);
+
+        desktop.move_line(0, Some(Point::new(1201, 300)));
+        assert_eq!(desktop.line(0).unwrap().at, tall(1201), "to the very pixel");
+        let widths = |desktop: &Desktop| {
+            let of = |id| frame(desktop, id).geometry;
+            (
+                of(editor).size.width,
+                of(browser).origin.x,
+                of(browser).size.width,
+            )
+        };
+        assert_eq!(widths(&desktop), (1201, 1201, 719));
+
+        // Neither is left with less than a sixth of the screen.
+        desktop.move_line(0, Some(Point::new(5, 0)));
+        assert_eq!(widths(&desktop), (320, 320, 1600));
+        desktop.move_line(0, Some(Point::new(-50, 0)));
+        assert_eq!(widths(&desktop), (320, 320, 1600));
+        desktop.move_line(0, Some(Point::new(5000, 0)));
+        assert_eq!(widths(&desktop), (1600, 1600, 320));
+
+        // And it goes back to the middle when asked.
+        desktop.move_line(0, None);
+        assert_eq!(widths(&desktop), (960, 960, 960));
+    }
+
+    #[test]
+    fn the_line_between_one_window_and_another_below_it_goes_up_and_down() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Bottom);
+        let line = desktop.line(0).unwrap();
+        let wide = |y: i32| Rect::new(Point::new(0, y), Size::new(1920, 1));
+        assert_eq!((line.at, line.across), (wide(540), true));
+
+        desktop.move_line(0, Some(Point::new(700, 300)));
+        assert_eq!(desktop.line(0).unwrap().at, wide(300));
+        assert_eq!(frame(&desktop, editor).geometry.origin.y, 300);
+        assert_eq!(frame(&desktop, editor).geometry.size.height, 780);
     }
 
     #[test]

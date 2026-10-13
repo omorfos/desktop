@@ -31,5 +31,6 @@ mod reveal;
 mod scaling;
 mod session;
 mod taskbar;
+mod tiles;
 mod windows;
 mod x11;

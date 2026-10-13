@@ -178,6 +178,13 @@ a window that leaves a half without closing goes back to the desktop it
 came from, where the user follows it if they were looking at it; at
 first it was left floating over the window it had shared with.
 
+The line came next. It is drawn a hair wide in the colour of a window's
+border, since the theme has no part for it yet; it is taken hold of
+within four pixels either side; and it stops a sixth of the screen from
+either edge. What a window says is the least it can be is not asked yet,
+so a window can be given less room than it will draw in, and then draws
+over the line.
+
 A window is not yet put beside one that is already tiled or fullscreen
 except by opening there. `tile` on a window that is tiled already makes
 a new workspace for it. The lines are not drawn or dragged, and there

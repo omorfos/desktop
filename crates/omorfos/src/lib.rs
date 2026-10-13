@@ -27,6 +27,7 @@ mod paint;
 mod restarts;
 mod reveal;
 mod session;
+mod tiles;
 mod x11;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME};
