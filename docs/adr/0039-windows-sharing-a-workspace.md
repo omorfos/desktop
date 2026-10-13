@@ -221,6 +221,16 @@ could not be seen. The pictures now stand a little under the titlebar
 and the arrow crosses the room between, edged as they are. What a screen reader is told of them waits, with the
 rest of the shell, on the toolkit (ADR 34).
 
+Dragging to an edge came next. The pointer has to be at the very edge,
+which on a real screen is where it stops; within 64 of a corner along
+that edge the part offered is a quarter. The part is shown as a wash of
+the colour of a focused window's border, over everything. An edge that
+another screen is beyond offers nothing, the pointer being on its way
+there. Let go, the window is put in that part of a workspace made for
+it, and what it is to be on a desktop again is where it was before the
+drag, not half off the screen where it was dragged to; on another screen
+than it started on, the middle of that screen.
+
 A window that is open already joins a workspace made for windows by
 `join_workspace` and the workspace's `id`, which the menu of its titlebar
 offers by name under "Send to workspace" for each that has room: a part

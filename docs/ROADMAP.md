@@ -156,7 +156,7 @@ calls for them.
       fullscreen, without opening it there.
 - [x] Pictures of the arrangements at the titlebar's second button,
       when the pointer rests on it.
-- [ ] A window dragged to an edge of the screen put in a tiled
+- [x] A window dragged to an edge of the screen put in a tiled
       workspace, with the half it would take shown before it is let go.
 - [ ] Choosing a window for an empty part from those on the desktop,
       shown small (ADR 38).
