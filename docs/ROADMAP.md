@@ -169,8 +169,9 @@ calls for them.
       taking the keyboard and locking each behind a check of the role,
       the `lock` action and `locker`, and the user told what was refused
       and how to allow it.
-- [ ] Programs in a sandbox recognised (`security-context-v1`) and shown
-      nothing they may not have.
+- [x] Programs in a sandbox recognised (`security-context-v1`) and shown
+      nothing they may not have: not panels, locking, the list of
+      windows, or the way a sandbox is made.
 - [ ] Screen capture: a screenshot of a screen, a window or a region, and
       the stream that sharing a screen in a browser or a call needs
       (`ext-image-copy-capture`, PipeWire), with the user asked each time
@@ -406,8 +407,10 @@ Ongoing, and taken between the stages above as much as after them.
 Security:
 
 - [ ] The configuration, theme and IPC parsers fuzzed.
-- [ ] Sandboxed programs recognised and held to less
-      (`security-context-v1`), once stage 2 has said to what.
+- [x] Sandboxed programs recognised and held to less
+      (`security-context-v1`): done in stage 3.
+- [ ] What a sandbox says its program is (the application's name) kept
+      with the connection, for the portals to ask the user by.
 - [ ] A review of everything a client can make the compositor allocate or
       wait for.
 

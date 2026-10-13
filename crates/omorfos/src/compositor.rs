@@ -64,6 +64,7 @@ use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fract
 use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
 use smithay::wayland::idle_notify::IdleNotifierState;
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::security_context::SecurityContextState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
 use smithay::wayland::session_lock::SessionLockManagerState;
@@ -151,6 +152,9 @@ pub struct ClientState {
     pub(crate) compositor: CompositorClientState,
     /// What the client may do that an ordinary program may not.
     pub(crate) roles: Roles,
+    /// Whether the client came in through a sandbox, which told the
+    /// compositor so itself.
+    pub(crate) sandboxed: bool,
 }
 
 impl smithay::reexports::wayland_server::backend::ClientData for ClientState {}
@@ -188,6 +192,7 @@ pub struct Compositor {
     _fractional_scale: FractionalScaleManagerState,
     _viewporter: ViewporterState,
     _single_pixels: SinglePixelBufferState,
+    _sandboxes: SecurityContextState,
     /// The outputs as the desktop was last told about them.
     pub(crate) screens: Vec<Screen>,
     pub(crate) layer_shell: WlrLayerShellState,
@@ -312,14 +317,13 @@ impl Compositor {
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
-        let lock_manager = SessionLockManagerState::new::<Self, _>(&display, |_| true);
+        let lock_manager = SessionLockManagerState::new::<Self, _>(&display, Self::outside);
         let idle = IdleNotifierState::new(&display, event_loop.clone());
         let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
-        let decorations = XdgDecorationState::new::<Self>(&display);
-        let layer_shell = WlrLayerShellState::new::<Self>(&display);
+        let layer_shell = WlrLayerShellState::new_with_filter::<Self, _>(&display, Self::outside);
         let data_device = DataDeviceState::new::<Self>(&display);
         let activation = XdgActivationState::new::<Self>(&display);
         let primary_selection = PrimarySelectionState::new::<Self>(&display);
@@ -334,7 +338,9 @@ impl Compositor {
             .map(|keyboard| {
                 let mut compositor = Self {
                     _single_pixels: SinglePixelBufferState::new::<Self>(&display),
+                    _sandboxes: SecurityContextState::new::<Self, _>(&display, Self::outside),
                     _viewporter: ViewporterState::new::<Self>(&display),
+                    _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
                     display,
                     surfaces,
@@ -342,7 +348,6 @@ impl Compositor {
                     shm,
                     seats,
                     _output_manager_state: output_manager_state,
-                    _decorations: decorations,
                     seat,
                     keyboard,
                     pointer,
@@ -423,6 +428,16 @@ impl Compositor {
     pub fn insert_client(&mut self, stream: UnixStream, roles: Roles) -> io::Result<Client> {
         let state = ClientState {
             roles,
+            ..ClientState::default()
+        };
+        self.display.insert_client(stream, Arc::new(state))
+    }
+
+    /// Accepts a client that connected through a sandbox. It has no role
+    /// and is not shown what only a role allows.
+    pub(crate) fn insert_sandboxed(&mut self, stream: UnixStream) -> io::Result<Client> {
+        let state = ClientState {
+            sandboxed: true,
             ..ClientState::default()
         };
         self.display.insert_client(stream, Arc::new(state))

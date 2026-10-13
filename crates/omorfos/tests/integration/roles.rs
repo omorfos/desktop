@@ -164,3 +164,46 @@ fn the_lock_action_starts_the_program_named_to_lock_with() {
     let problems = session.compositor().problems().join("\n");
     assert!(problems.contains("cannot start"), "{problems}");
 }
+
+/// The things only a role allows, which a program in a sandbox is not to
+/// be shown, and the way a sandbox is made.
+const WITHHELD: [&str; 4] = [
+    "zwlr_layer_shell_v1",
+    "ext_session_lock_manager_v1",
+    "ext_foreign_toplevel_list_v1",
+    "wp_security_context_manager_v1",
+];
+
+#[test]
+fn a_program_in_a_sandbox_is_not_shown_what_only_a_role_allows() {
+    let mut session = Session::new();
+    let directory = tempfile::TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+
+    // An ordinary program is shown all but the list of windows, and is
+    // refused what it asks for, so that the user can be told.
+    let mut flatpak = session.connect_plain();
+    let shown = |client: &Client, name: &str| client.state.offered.iter().any(|it| it == name);
+    assert!(shown(&flatpak, "zwlr_layer_shell_v1"));
+    assert!(shown(&flatpak, "wp_security_context_manager_v1"));
+
+    let open = flatpak.sandbox(&path);
+    session.roundtrip(&mut flatpak);
+
+    let stream = std::os::unix::net::UnixStream::connect(&path).unwrap();
+    let mut inside = session.adopt(stream);
+    for name in WITHHELD {
+        assert!(!shown(&inside, name), "{name} is shown in a sandbox");
+    }
+
+    // It is a program like any other for the rest, and nothing is said of
+    // it: it asked for nothing it could not have.
+    assert!(shown(&inside, "xdg_wm_base"));
+    session.open(&mut inside, "app", (200, 100), GREEN);
+    assert_eq!(session.draw().at(10, 10), GREEN);
+    assert_eq!(told(&session), Vec::<String>::new());
+
+    // When the sandbox ends, nothing more can come in that way.
+    drop(open);
+    session.eventually(|_| std::os::unix::net::UnixStream::connect(&path).is_err());
+}

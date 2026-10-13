@@ -8,7 +8,11 @@
 use std::fs;
 
 use omorfos_config::Role;
+use smithay::delegate_security_context;
 use smithay::reexports::wayland_server::Client;
+use smithay::wayland::security_context::{
+    SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
+};
 
 use crate::compositor::{ClientState, Compositor};
 
@@ -92,6 +96,14 @@ impl Compositor {
         Self::roles(Some(client)).has(Roles::PANEL)
     }
 
+    /// Whether a client is outside any sandbox. One inside is not shown
+    /// what only a role allows, since it can be given none, nor the way a
+    /// sandbox is made, by which it could say it is another program.
+    pub(crate) fn outside(client: &Client) -> bool {
+        let state = client.get_data::<ClientState>();
+        !state.is_some_and(|state| state.sandboxed)
+    }
+
     /// Notes that a client was refused something it has no role for, so
     /// that the user is told once what asked, for what, and how it could
     /// be let.
@@ -109,6 +121,22 @@ impl Compositor {
         self.refused.say(&said);
     }
 }
+
+impl SecurityContextHandler for Compositor {
+    fn context_created(&mut self, source: SecurityContextListenerSource, _: SecurityContext) {
+        // Whatever connects where the sandbox listens is inside it. If the
+        // sandbox cannot be listened to, its programs cannot connect at
+        // all, which holds them to less still.
+        let accepted = self
+            .event_loop
+            .insert_source(source, |stream, (), compositor| {
+                let _ = compositor.insert_sandboxed(stream);
+            });
+        let _ = accepted;
+    }
+}
+
+delegate_security_context!(Compositor);
 
 /// What to call a program, given what it calls itself if that could be
 /// found out.

@@ -145,9 +145,7 @@ configuration.
 ## What was built first, and what it settled
 
 The first three roles: `panel`, `overlay` and `lock`. The others are
-names the configuration accepts, with nothing behind them yet. Programs
-in a sandbox are not recognised yet either, so for now every program
-that finds the socket is an ordinary one.
+names the configuration accepts, with nothing behind them yet.
 
 **Handed over as what the program reads from.** The compositor makes
 both ends of a connection, keeps one as a client it knows the roles of,
@@ -163,8 +161,17 @@ it. For a program that is not in a sandbox, being told matters more, so
 it is shown that panels and locking exist, asks, and is refused, and the
 user is told once with what to write. The list of windows is the
 exception: it is simply not offered to a program without the `panel`
-role, since offering it is giving it. Hiding everything is for programs
-in a sandbox, when those are recognised.
+role, since offering it is giving it.
+
+**Hidden, in a sandbox.** A sandbox makes a place to connect of its own
+and tells the compositor so (`security-context-v1`); whatever connects
+there is inside it. Such a program is not shown panels, locking or the
+list of windows at all. It could not be let have them by anything the
+user writes, so there is nothing to tell the user, and a program that
+sees less has less to try. It is not shown the way a sandbox is made
+either, or it could make one and say it is some other program. What the
+sandbox says the program is called is not kept yet: nothing reads it
+until the portals do.
 
 **`overlay` is the keyboard.** It was to be "cover the screen and take
 the keyboard". Which layer a surface is on does not say whether it
