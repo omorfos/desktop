@@ -57,10 +57,13 @@ Small, independent, and each an improvement the day it lands.
 - [x] Titlebar buttons: close, maximize, minimize, at the left, coloured,
       each a part of the theme (wish 3). Double-click on a titlebar
       maximizes.
-- [ ] A menu on a right click of the titlebar (wish 3): the same three,
+- [x] A menu on a right click of the titlebar (wish 3): the same three,
       and shade (roll the window up into its titlebar), keep above the
-      others, show on every workspace, move to a workspace. The last four
-      are new things the desktop model has to know.
+      others, show on every workspace, send to a workspace (ADR 31). The
+      first three of those are also actions, to bind keys to: `shade`,
+      `keep_above` and `stick`.
+- [ ] What a window is kept as, told to panels and taskbars over IPC and
+      set by rules: shaded, above, on every workspace.
 - [ ] The root menu driven from the keyboard: arrows, Enter, Escape.
 - [ ] The work pushed and seen to pass in CI. At the time of writing 57
       commits are on this machine only, and CI has not run on any of
@@ -182,6 +185,10 @@ Stage 2 says what it is to be; this builds it.
       following the time of day if asked, with the accent a setting.
 - [ ] The default font and icons, and a pointer that is the same size
       everywhere, including over programs written for X11.
+- [ ] Icons in menus: a glyph before each entry of the titlebar's menu
+      and of the root menu (a program's own icon there), and a tick
+      beside what is on in place of wording that changes. It waits for
+      the icon set stage 2 chooses.
 - [ ] Movement: windows that open and close with a slight change of size
       as well as of opacity, workspaces that slide, a window that goes to
       the dock when minimized, a notification that comes in and goes

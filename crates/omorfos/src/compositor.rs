@@ -14,9 +14,13 @@ use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Config, Debouncer, Part, States, Store, Style, Theme, Watcher};
+use omorfos_config::{
+    Action, Config, Debouncer, Part, States, Store, Style, Theme, Watcher, WorkspaceNumber,
+};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Button, Decoration, Desktop, Frame, Menu, MenuMetrics, Screen, WindowId};
+use omorfos_core::{
+    Button, Decoration, Desktop, Frame, Item, Menu, MenuMetrics, Screen, Standing, WindowId,
+};
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
@@ -691,6 +695,9 @@ impl Compositor {
             Action::Maximize => self.on_focused(Desktop::toggle_maximized),
             Action::Fullscreen => self.on_focused(Desktop::toggle_fullscreen),
             Action::Minimize => self.on_focused(Desktop::minimize),
+            Action::Shade => self.on_focused(Desktop::toggle_shaded),
+            Action::KeepAbove => self.on_focused(Desktop::toggle_above),
+            Action::Stick => self.on_focused(Desktop::toggle_sticky),
             Action::FocusNext => self.desktop.focus_next(),
             Action::FocusPrevious => self.desktop.focus_previous(),
             Action::NextTab => self.on_focused(Desktop::next_tab),
@@ -724,6 +731,72 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
+        let items = bridge::menu_items(&config.menu.items);
+        self.open_menu_of(items);
+    }
+
+    /// Opens the menu of the window that has focus, at the pointer: what
+    /// can be done with it, each thing done as its key binding would do
+    /// it. A right click on a titlebar opens it, having given that window
+    /// focus.
+    pub(crate) fn open_window_menu(&mut self) {
+        let focused = self.desktop.focused();
+        let frame = self
+            .desktop
+            .frames()
+            .find(|frame| Some(frame.window().id) == focused)
+            .map(|frame| (frame.standing, frame.maximized));
+        // It is opened by a click on a frame, so there is one.
+        let (standing, maximized) = frame.unwrap_or_default();
+        let entry = |label: &str, action: Action| Item::Entry {
+            label: label.to_owned(),
+            action,
+        };
+        // Each says what choosing it will do, which for those that are
+        // one way or the other is the opposite of how things are.
+        let either = |now: bool, on: &str, off: &str| if now { off } else { on }.to_owned();
+        let workspaces = self.config().general.workspaces.names();
+        let numbered = (1..).zip(workspaces);
+        let send = numbered.map(|(number, name)| Item::Entry {
+            label: name.clone(),
+            action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
+        });
+        let items = vec![
+            entry("Close", Action::Close),
+            Item::Entry {
+                label: either(maximized, "Maximize", "Restore"),
+                action: Action::Maximize,
+            },
+            entry("Minimize", Action::Minimize),
+            Item::Separator,
+            Item::Entry {
+                label: either(standing.shaded, "Shade", "Unshade"),
+                action: Action::Shade,
+            },
+            Item::Entry {
+                label: either(standing.above, "Keep above", "Stop keeping above"),
+                action: Action::KeepAbove,
+            },
+            Item::Entry {
+                label: either(
+                    standing.sticky,
+                    "Show on every workspace",
+                    "Show on this workspace only",
+                ),
+                action: Action::Stick,
+            },
+            Item::Separator,
+            Item::Submenu {
+                label: "Send to workspace".to_owned(),
+                items: send.collect(),
+            },
+        ];
+        self.open_menu_of(items);
+    }
+
+    /// Opens a menu of `items` at the pointer.
+    fn open_menu_of(&mut self, items: Vec<Item<Action>>) {
+        let config = Arc::clone(self.store.current());
         // The menu stays on the output the pointer is on.
         let area = self.pointer_head().map(Head::area).unwrap_or_default();
         let area = Rect::new(
@@ -736,7 +809,6 @@ impl Compositor {
             separator: MENU_SEPARATOR,
             padding: MENU_PADDING,
         };
-        let items = bridge::menu_items(&config.menu.items);
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
     }
 
@@ -978,7 +1050,10 @@ impl Compositor {
                 .iter()
                 .enumerate()
                 .find(|(_, frame)| frame.shown == *id);
-            let placed = frame.map(|(_, frame)| Placed {
+            // A window rolled up into its titlebar is left the size it
+            // was: it is not shown, but it is not made to be nothing.
+            let unrolled = frame.filter(|(_, frame)| !frame.standing.shaded);
+            let placed = unrolled.map(|(_, frame)| Placed {
                 client: frame.client,
                 maximized: frame.maximized,
                 fullscreen: frame.fullscreen,
@@ -1011,6 +1086,7 @@ impl Compositor {
                         Shown {
                             id: *id,
                             opacity,
+                            shaded: frame.standing.shaded,
                             fullscreen: frame.fullscreen,
                             window: window.clone(),
                             surface: surface.clone(),
@@ -1428,7 +1504,14 @@ impl Compositor {
             if let Some(chrome) = &shown.chrome {
                 Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);
             }
-            self.window_elements(renderer, view, shown, elements);
+            if shown.shaded {
+                // Rolled up into its titlebar, none of the window is
+                // drawn, and none of it is left to fade if it goes.
+                let nothing = self.noting::<R::TextureId>(view, Part::Window);
+                self.animation.note(&shown.surface, nothing.done());
+            } else {
+                self.window_elements(renderer, view, shown, elements);
+            }
         }
     }
 
@@ -2132,6 +2215,9 @@ pub(crate) struct Shown {
     pub(crate) origin: Point<i32, Logical>,
     /// How much of it there is to see while it is coming in, from 0 to 1.
     opacity: f32,
+    /// Whether it is rolled up into its titlebar, with none of the window
+    /// showing.
+    pub(crate) shaded: bool,
     chrome: Option<Chrome>,
 }
 
@@ -2249,6 +2335,8 @@ struct FrameInfo {
     active: usize,
     /// The button of its titlebar that the pointer is over, if any.
     hovered: Option<Button>,
+    /// How it stands apart from the others: rolled up, kept above.
+    standing: Standing,
 }
 
 impl FrameInfo {
@@ -2259,6 +2347,7 @@ impl FrameInfo {
         let over = over.filter(|(window, _)| *window == shown);
         Self {
             hovered: over.map(|(_, button)| button),
+            standing: frame.standing,
             shown,
             scale,
             geometry: frame.geometry,
