@@ -242,6 +242,26 @@ with nothing in it, or one window that has the whole, which then keeps
 the left half. The user is taken there with it, unlike a window sent to
 a desktop, since it was asked to be beside something.
 
+### Titlebars after all
+
+"Finding things again" above had tiles bare, with every titlebar brought
+back at the top edge, and the alternative of keeping them was turned
+down for the room it gives up. Used, it was the wrong way round. With
+nothing on a tile there was no telling which window had focus; every
+thing done to a window began with going to the top of the screen and
+waiting; and a titlebar in the lower row had to be chased across the
+screen before it went again.
+
+So windows that share a workspace keep their titlebars, each across the
+top of its own part with no borders, and each window is told the room
+under its titlebar. A window that draws its own titlebar is given none,
+as on a desktop. Only the panels are hidden, and the top edge brings
+those back. One window alone on a workspace is as ADR 36 has it: nothing
+over it until it is asked for. So the last of several loses its titlebar
+when the others go, which is what being fullscreen is.
+
+It costs a titlebar's height for each row of windows.
+
 ## Alternatives
 
 - **Tile on desktops too**, as snapping does on other desktops: a window
@@ -255,8 +275,9 @@ a desktop, since it was asked to be beside something.
   to draw and to drag. It cannot give three windows a third each of
   anything, and the tree above has to be kept for the arrangements of
   three anyway.
-- **The titlebars always shown on tiles.** Easier to find. It gives up
-  the room that the workspace was made to give.
+- **The titlebars never shown on tiles, and brought back at an edge.**
+  This was chosen first, for the room, and given up: see "Titlebars
+  after all".
 
 ## Consequences
 

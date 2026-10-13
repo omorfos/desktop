@@ -164,9 +164,10 @@ impl Frame<'_> {
     /// The part of the frame the window itself occupies.
     #[must_use]
     pub fn client(&self) -> Rect {
-        // A titlebar a fullscreen window is given is laid over it, and
-        // takes no room from it.
-        let around = self.decoration.filter(|_| !self.fullscreen);
+        // A titlebar a window alone on its workspace is given is laid over
+        // it, and takes no room from it.
+        let over = self.fullscreen && self.home == Home::Solo;
+        let around = self.decoration.filter(|_| !over);
         around.map_or(self.geometry, |decoration| decoration.client())
     }
 }
@@ -2050,6 +2051,13 @@ impl Desktop {
                 (None, true) => screen.usable,
                 (None, false) => group.geometry,
             };
+            let home = workspace.solo.map_or(Home::Desktop, |tiling| {
+                if tiling.shared() {
+                    Home::Shared
+                } else {
+                    Home::Solo
+                }
+            });
             let decorated = group.decorated() && !group.fullscreen;
             // Rolled up, a frame is as tall as its titlebar and no more.
             let shaded = group.standing.shaded && decorated;
@@ -2062,17 +2070,11 @@ impl Desktop {
                 geometry,
                 decoration: decorated
                     .then_some((geometry, self.settings.decoration))
-                    .or(self.laid_over(index, group, geometry, screen.area))
+                    .or(self.laid_over(index, group, geometry, home == Home::Shared))
                     .map(|(within, metrics)| Decoration::new(within, metrics, group.tabs.len())),
                 maximized: group.maximized,
                 fullscreen: group.fullscreen,
-                home: workspace.solo.map_or(Home::Desktop, |tiling| {
-                    if tiling.shared() {
-                        Home::Shared
-                    } else {
-                        Home::Solo
-                    }
-                }),
+                home,
                 focused: index == self.current && workspace.focused == Some(group.serial),
                 standing: Standing {
                     shaded,
@@ -2084,25 +2086,23 @@ impl Desktop {
 
     // --- Internals ---------------------------------------------------------
 
-    /// Where the titlebar of a fullscreen frame goes when it is asked for,
-    /// and with what sizes: across the top of the frame, so far down, with
+    /// Where the titlebar goes of a frame that fills a workspace or a part
+    /// of one, and with what sizes: across the top of what it fills, with
     /// no borders.
+    ///
+    /// One that shares its workspace always has its titlebar, and its
+    /// window the room under it. One that is alone has it only when it is
+    /// asked for, laid over the window so far down from the top.
     fn laid_over(
         &self,
         set: usize,
         group: &Group,
         geometry: Rect,
-        area: Rect,
+        shared: bool,
     ) -> Option<(Rect, Metrics)> {
-        let down = self.sets[set].revealed.filter(|_| group.fullscreen);
-        let down = down.filter(|_| group.decorated())?;
-        // Only what is along the top of the output has the panels there
-        // to be under.
-        let down = if geometry.origin.y == area.origin.y {
-            down
-        } else {
-            0
-        };
+        let asked = self.sets[set].revealed;
+        let down = if shared { Some(0) } else { asked };
+        let down = down.filter(|_| group.fullscreen && group.decorated())?;
         let size = Size::new(
             geometry.size.width,
             geometry.size.height.saturating_sub(down),
@@ -2292,6 +2292,13 @@ mod tests {
     }
 
     const HALVES: [Half; 4] = [Half::Left, Half::Right, Half::Top, Half::Bottom];
+
+    /// What the first workspace made for windows is known by.
+    fn desktop_made(desktop: &Desktop) -> WorkspaceId {
+        let mut made = desktop.workspaces().filter(|place| !place.tiles.is_empty());
+        made.next()
+            .map_or(WorkspaceId::from_raw(0), |place| place.id)
+    }
 
     /// Opens a window that says it belongs to `parent`.
     fn open_of(desktop: &mut Desktop, parent: WindowId) -> WindowId {
@@ -2890,9 +2897,9 @@ mod tests {
             desktop.tile(editor, half);
             let frame = frame(&desktop, editor);
             assert_eq!(frame.geometry, part, "{half:?}");
-            assert_eq!(frame.client(), part, "it fills it, with no titlebar");
+            assert_eq!(frame.client(), part, "it fills it, with no borders");
             assert_eq!(frame.home, Home::Shared);
-            assert!(frame.fullscreen && frame.decoration.is_none());
+            assert!(frame.fullscreen);
             assert_eq!(stack(&desktop), [editor], "and is all there is there");
             assert_eq!(desktop.active_workspace(), 1);
             assert_eq!(desktop.workspaces().count(), 4);
@@ -3494,17 +3501,56 @@ mod tests {
     }
 
     #[test]
-    fn a_titlebar_is_laid_over_each_tile_and_under_the_panels_only_along_the_top() {
+    fn windows_that_share_a_workspace_keep_their_titlebars() {
         let mut desktop = decorated_desktop();
         let editor = open(&mut desktop, "editor");
         desktop.tile(editor, Half::Top);
         let browser = open(&mut desktop, "browser");
+        let bare = desktop.add_window("bare", "bare", SIZE, POINTER, false);
+        assert_eq!(
+            desktop.workspace_of(bare),
+            Some(0),
+            "both halves were taken"
+        );
+        desktop.activate(editor);
 
-        desktop.reveal(0, Some(30));
-        let bar = |id| frame(&desktop, id).decoration.unwrap().titlebar();
+        // Each has its titlebar across the top of its own part, with no
+        // borders, and its window the room under it.
         let wide = Size::new(1920, METRICS.titlebar);
-        assert_eq!(bar(editor), Rect::new(Point::new(0, 30), wide));
-        assert_eq!(bar(browser), Rect::new(Point::new(0, 540), wide));
+        let under = Size::new(1920, 540 - METRICS.titlebar);
+        let seen = |desktop: &Desktop, id| {
+            let frame = frame(desktop, id);
+            (
+                frame.decoration.map(|decoration| decoration.titlebar()),
+                frame.client(),
+            )
+        };
+        let top = Rect::new(Point::new(0, 0), wide);
+        let room = Rect::new(Point::new(0, METRICS.titlebar.cast_signed()), under);
+        assert_eq!(seen(&desktop, editor), (Some(top), room));
+        let lower = Rect::new(Point::new(0, 540), wide);
+        let room = Rect::new(Point::new(0, 540 + METRICS.titlebar.cast_signed()), under);
+        assert_eq!(seen(&desktop, browser), (Some(lower), room));
+
+        // Asking for titlebars to be brought back changes nothing here:
+        // they have not gone.
+        let before: Vec<Rect> = desktop.frames().map(|frame| frame.client()).collect();
+        desktop.reveal(0, Some(30));
+        let after: Vec<Rect> = desktop.frames().map(|frame| frame.client()).collect();
+        assert_eq!(after, before);
+        desktop.reveal(0, None);
+
+        // A window that draws its own titlebar is given none, and has the
+        // whole of its part.
+        desktop.remove_window(browser);
+        desktop.join(bare, desktop_made(&desktop));
+        assert_eq!(frame(&desktop, bare).decoration, None);
+        assert_eq!(frame(&desktop, bare).client().size, Size::new(960, 1080));
+
+        // Alone again, a window has the screen to itself, titlebar and
+        // all.
+        desktop.remove_window(bare);
+        assert_eq!(seen(&desktop, editor), (None, SCREEN));
     }
 
     #[test]

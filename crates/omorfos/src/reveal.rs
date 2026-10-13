@@ -116,11 +116,12 @@ impl Compositor {
             self.hover.reveal.moved = Some(now);
         }
         // Against the very edge to bring something back. To keep it, the
-        // pointer is on it, a panel or a titlebar, or is still on its way
-        // somewhere: it goes when the pointer has stopped elsewhere.
+        // pointer is on it, a panel or the titlebar under the panels, or
+        // is still on its way somewhere: it goes when the pointer has
+        // stopped elsewhere.
         let against = self.edge(|_, _| 1.0);
         let over = self.edge(|output, side| self.reach(output, side));
-        let on_it = |shown: &(usize, Side)| over == Some(*shown) || self.on_titlebar();
+        let on_it = |shown: &(usize, Side)| over == Some(*shown);
         let stopped = self.hover.reveal.moved.map(|moved| moved + LINGER);
         let lingering = stopped.is_some_and(|stopped| now < stopped);
         let here = self

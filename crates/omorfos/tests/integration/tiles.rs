@@ -408,10 +408,7 @@ fn a_window_carried_by_its_titlebar_to_another_part_changes_places() {
         [("first".to_owned(), 0), ("second".to_owned(), 320)]
     );
 
-    // Its titlebar is brought back at the top of the screen, and taken
-    // hold of.
-    point(&mut session, 150, 0);
-    session.advance(std::time::Duration::from_millis(300));
+    // Its titlebar is there to be taken hold of.
     point(&mut session, 150, 14);
     button(&mut session, LEFT, true, 0);
 

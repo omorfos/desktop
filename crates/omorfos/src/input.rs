@@ -687,13 +687,6 @@ impl Compositor {
         true
     }
 
-    /// Whether the pointer is on the titlebar of a window that fills a
-    /// workspace made for it, or its part of one: a titlebar that was
-    /// brought back.
-    pub(crate) fn on_titlebar(&self) -> bool {
-        matches!(self.frame_under(true), Some((_, Hit::Part(_))))
-    }
-
     /// The frame under the pointer, whatever else may be in front of it.
     fn target(&self) -> Option<(WindowId, Hit)> {
         self.frame_under(true).or_else(|| self.frame_under(false))
