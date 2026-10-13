@@ -34,6 +34,11 @@ pub struct Rule {
     /// Draw a titlebar and border around the window, or not.
     #[serde(default)]
     pub decorations: Option<bool>,
+    /// Leave the window blank in any picture taken of the screen, or not.
+    /// Unlike the others this holds for as long as the window matches,
+    /// not only when it opens: a title that comes to match hides it.
+    #[serde(default)]
+    pub private: Option<bool>,
 }
 
 /// Selects windows by application and title.

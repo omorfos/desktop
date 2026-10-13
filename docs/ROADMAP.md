@@ -185,9 +185,18 @@ calls for them.
       our own with the `clipboard` role, which would also let
       `omorfos-screenshot` stop at once. Today it stays running to give
       its picture when pasted.
+- [x] The `private` rule, which leaves a window blank in any picture
+      taken of the screen, for as long as it matches (ADR 38).
 - [ ] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
-      and with them the `private` rule, which leaves a window blank in
-      any picture (ADR 38).
+      and the screenshot tool taking one of the window with focus.
+- [ ] A private window blurred in pictures in place of blank, as a
+      choice of the rule (`private: blur`), once glass has brought the
+      blur and a way to draw a window by itself. A blur hides less than
+      a blank does, which the guide is to say.
+- [ ] Known gaps in what is private: a notification about a private
+      window, its menus if it is written for X11, and its last moment as
+      it fades when closed, are in a picture; and a program cannot yet
+      say of its own window that it is private.
 - [ ] The stream that sharing a screen in a browser or a call needs
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.

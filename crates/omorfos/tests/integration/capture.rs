@@ -394,3 +394,69 @@ fn a_program_that_breaks_the_rules_of_asking_is_ended() {
         assert_eq!(error, Some((about.to_owned(), number)));
     }
 }
+
+/// Windows called `wallet`, and any whose title has "Bank" in it, are
+/// private; and what is blank in a picture is green, to tell it from the
+/// desktop.
+const PRIVATE: [(&str, &str); 2] = [
+    (
+        "rules.yaml",
+        "rules:\n  - match: { app_id: wallet }\n    private: true\n  - match: { title: '*Bank*' }\n    private: true\n",
+    ),
+    ("theme.css", "capture { background: #00ff00; }"),
+];
+
+#[test]
+fn a_private_window_is_blank_in_a_picture_and_not_on_the_screen() {
+    let mut session = Session::with_config(&PRIVATE);
+    let mut app = session.connect();
+    let _wallet = session.open_decorated(&mut app, "wallet", (200, 100), RED);
+    let on_screen = session.draw();
+    let frame = on_screen.at(10, 5);
+    assert_eq!(on_screen.at(100, 80), RED, "the user sees it as ever");
+
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(100, 80), GREEN, "the window");
+    assert_eq!(
+        shot.at(10, 5),
+        GREEN,
+        "and its titlebar, which says what it is"
+    );
+    assert_eq!(shot.at(400, 400), BACKGROUND, "and nothing else");
+    let after = session.draw();
+    assert_eq!((after.at(100, 80), after.at(10, 5)), (RED, frame));
+
+    // A picture after the first still waits for something to change:
+    // what is blank is not new each time.
+    let (_file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let _frame = ask(&camera, &taking, &buffer);
+    assert_eq!(develop(&mut session, &mut camera), []);
+}
+
+#[test]
+fn a_window_becomes_private_when_its_title_comes_to_say_so() {
+    let mut session = Session::with_config(&PRIVATE);
+    let mut app = session.connect();
+    let browser = session.open(&mut app, "browser", (200, 100), RED);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(
+        shot.at(100, 50),
+        RED,
+        "an ordinary window is in the picture"
+    );
+
+    browser.role.set_title("My Bank - statement".to_owned());
+    session.roundtrip(&mut app);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(100, 50), GREEN);
+    assert_eq!(session.draw().at(100, 50), RED);
+
+    browser.role.set_title("News".to_owned());
+    session.roundtrip(&mut app);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(100, 50), RED);
+}

@@ -181,7 +181,9 @@ impl Drawn {
 struct Extras {
     /// The pointer.
     pointer: bool,
-    /// The mark that says the screen is being captured.
+    /// The mark that says the screen is being captured, which is also to
+    /// say that this is what the user sees and not a picture for a
+    /// program: in a picture, windows that are private are left blank.
     mark: bool,
 }
 
@@ -1230,6 +1232,7 @@ impl Compositor {
             .collect();
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
+        let mut veils = Veils::kept(&mut previous, &config.theme);
         let text = &mut self.text;
         let motion = &mut self.animation.motion;
         motion.begin(self.animation.clock);
@@ -1293,6 +1296,8 @@ impl Compositor {
                             outer: frame.geometry,
                             origin,
                             chrome,
+                            veil: (self.desktop.private(*id))
+                                .then(|| veils.veil(*id, frame.geometry.size)),
                         },
                     ));
                 }
@@ -1679,7 +1684,7 @@ impl Compositor {
                     elements.extend(lines.map(Element::Solid));
                 }
                 self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
-                self.frame_elements(renderer, view, fullscreen, &mut elements);
+                self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
             }
         }
         elements
@@ -1785,7 +1790,7 @@ impl Compositor {
         &self,
         renderer: &mut R,
         view: View,
-        fullscreen: bool,
+        (fullscreen, seen): (bool, bool),
         elements: &mut Vec<Element<R>>,
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -1797,6 +1802,17 @@ impl Compositor {
             .rev()
             .filter(|shown| shown.over == fullscreen)
         {
+            if let Some(veil) = shown.veil.as_ref().filter(|_| !seen) {
+                // In a picture a private window is a blank the size of
+                // its frame: its titlebar says what it is as well.
+                let at = Point::<i32, Logical>::from((shown.outer.origin.x, shown.outer.origin.y));
+                let at = view.pixel(at.to_f64());
+                let scale = view.scale.factor();
+                let blank =
+                    SolidColorRenderElement::from_buffer(veil, at, scale, 1.0, Kind::Unspecified);
+                elements.push(Element::Solid(blank));
+                continue;
+            }
             if let Some(chrome) = &shown.chrome {
                 Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);
             }
@@ -2532,6 +2548,40 @@ pub(crate) struct Shown {
     /// showing.
     pub(crate) shaded: bool,
     chrome: Option<Chrome>,
+    /// What is drawn in its place in a picture taken of the screen, if a
+    /// rule says it is private. Kept, so that a picture after the first
+    /// is not thought to differ where it is.
+    veil: Option<SolidColorBuffer>,
+}
+
+/// What stands for private windows in pictures taken of the screen, kept
+/// from one laying out of the scene to the next so that none is something
+/// new each time, which a program taking pictures would be told of.
+struct Veils {
+    kept: Vec<(WindowId, SolidColorBuffer)>,
+    color: Color32F,
+}
+
+impl Veils {
+    /// Takes what stood for the windows of a scene, to be given to those
+    /// of the next. They are the colour of the mark of capture.
+    fn kept(scene: &mut [Shown], theme: &Theme) -> Self {
+        let kept = scene.iter_mut();
+        let kept = kept.filter_map(|shown| shown.veil.take().map(|veil| (shown.id, veil)));
+        Self {
+            kept: kept.collect(),
+            color: color(theme.style(Part::Capture, States::NONE).background),
+        }
+    }
+
+    /// What stands for a window whose frame is of a size.
+    fn veil(&mut self, id: WindowId, size: DomainSize) -> SolidColorBuffer {
+        let kept = self.kept.iter().position(|(of, _)| *of == id);
+        let kept = kept.map(|index| self.kept.swap_remove(index).1);
+        let mut veil = kept.unwrap_or_default();
+        veil.update(logical_size(size), self.color);
+        veil
+    }
 }
 
 impl Shown {

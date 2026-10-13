@@ -56,6 +56,14 @@
             "null"
           ]
         },
+        "private": {
+          "default": null,
+          "description": "Leave the window blank in any picture taken of the screen, or not.\nUnlike the others this holds for as long as the window matches,\nnot only when it opens: a title that comes to match hides it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "workspace": {
           "description": "Open the window on the workspace with this number.",
           "maximum": 32,

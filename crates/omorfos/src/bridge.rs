@@ -79,6 +79,7 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
             maximized: rule.maximized,
             fullscreen: rule.fullscreen,
             decorations: rule.decorations,
+            private: rule.private,
         },
     };
     rules.rules.iter().map(convert).collect()
@@ -299,6 +300,8 @@ rules:
   - match: { app_id: mpv }
     fullscreen: true
     decorations: false
+  - match: { title: '*Bank*' }
+    private: true
 ";
         let rules = rules(&config("rules.yaml", yaml).rules);
         assert_eq!(
@@ -319,6 +322,14 @@ rules:
                     effects: Effects {
                         fullscreen: Some(true),
                         decorations: Some(false),
+                        ..Effects::default()
+                    },
+                },
+                Rule {
+                    app_id: None,
+                    title: Some(Pattern::new("*Bank*")),
+                    effects: Effects {
+                        private: Some(true),
                         ..Effects::default()
                     },
                 },
