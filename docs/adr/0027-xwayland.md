@@ -117,4 +117,10 @@ requests only after asking the compositor something.
   between the two for no longer than it takes to ask for it again. The
   tests, which start X servers side by side all the time, keep others from
   starting while one is being replaced; nothing else needs to.
+- What is left of an X server that stopped can hold its number for a
+  moment after the compositor knows it has stopped: a process is not gone
+  all at once, and the name it listened on is free only when the last of
+  it is. Finding the number held, the compositor tries again every 50
+  milliseconds for five seconds before it calls it a problem, and goes on
+  telling programs the number meanwhile.
 - `Xwayland` is recommended by the packages, not required.
