@@ -163,8 +163,7 @@ such a workspace in a grid, side by side or one above another, resized
 by dragging the line between them; a window dragged to an edge of the
 screen making one; and the titlebar's button, under the pointer,
 offering the arrangements. A solo is then the simplest arrangement of
-several. This ADR is to be amended, or followed by another, when that is
-designed.
+several. ADR 39 designs it.
 
 When the number of desktops that are always there is made smaller,
 nothing is moved: one that is no longer kept stays for as long as it has
