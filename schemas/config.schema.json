@@ -1,5 +1,20 @@
 {
   "$defs": {
+    "Acceleration": {
+      "description": "How the speed of a movement changes how far the pointer goes.",
+      "oneOf": [
+        {
+          "const": "adaptive",
+          "description": "A quick movement takes the pointer further than a slow one of the\nsame length: slow for precision, quick to cross the screen.",
+          "type": "string"
+        },
+        {
+          "const": "flat",
+          "description": "The pointer goes as far as the device moved, however quickly.",
+          "type": "string"
+        }
+      ]
+    },
     "Command": {
       "description": "A program followed by its arguments, run without a shell.",
       "items": {
@@ -130,10 +145,18 @@
       "additionalProperties": false,
       "description": "Mouse behaviour. A mouse and a touchpad are set apart because people\nexpect opposite things of them.",
       "properties": {
+        "acceleration": {
+          "$ref": "#/$defs/Acceleration",
+          "description": "Whether a quick movement takes the pointer further than a slow one\nof the same length."
+        },
         "natural_scroll": {
           "default": false,
           "description": "Whether content follows the wheel when scrolling. A wheel turned\ntowards the user moves down the page unless this is on.",
           "type": "boolean"
+        },
+        "speed": {
+          "$ref": "#/$defs/Speed",
+          "description": "How fast the pointer moves with the mouse."
         }
       },
       "type": "object"
@@ -246,14 +269,28 @@
         }
       ]
     },
+    "Speed": {
+      "description": "From -1, the slowest, to 1, the fastest; 0 is what the device is made for.",
+      "maximum": 1,
+      "minimum": -1,
+      "type": "number"
+    },
     "Touchpad": {
       "additionalProperties": false,
       "description": "Touchpad behaviour.",
       "properties": {
+        "acceleration": {
+          "$ref": "#/$defs/Acceleration",
+          "description": "Whether a quick movement takes the pointer further than a slow one\nof the same length."
+        },
         "natural_scroll": {
           "default": true,
           "description": "Whether content follows the fingers when scrolling.",
           "type": "boolean"
+        },
+        "speed": {
+          "$ref": "#/$defs/Speed",
+          "description": "How fast the pointer moves under a finger."
         },
         "tap_to_click": {
           "default": true,

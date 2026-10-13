@@ -53,7 +53,7 @@ Small, independent, and each an improvement the day it lands.
 - [x] Mouse and touchpad set apart (wish 4): the touchpad scrolls the
       natural way by default and the mouse does not, each with its own
       setting.
-- [ ] Pointer speed and acceleration, for the mouse and for the touchpad.
+- [x] Pointer speed and acceleration, for the mouse and for the touchpad.
 - [x] Titlebar buttons: close, maximize, minimize, at the left, coloured,
       each a part of the theme (wish 3). Double-click on a titlebar
       maximizes.

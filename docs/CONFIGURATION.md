@@ -43,8 +43,12 @@ keyboard:
 touchpad:
   tap_to_click: true
   natural_scroll: true    # content follows the fingers
+  speed: 0                # -1 slowest to 1 fastest
+  acceleration: adaptive  # adaptive | flat
 mouse:
   natural_scroll: false   # content follows the wheel
+  speed: 0                # -1 slowest to 1 fastest
+  acceleration: adaptive  # adaptive | flat
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
 outputs: []               # particular screens, by name

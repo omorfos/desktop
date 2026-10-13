@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
-    OutputScale, Outputs, Rules, Workspaces,
+    OutputScale, Outputs, Rules, Speed, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -99,6 +99,21 @@ impl JsonSchema for OutputScale {
                     "multipleOf": 0.25,
                 },
             ],
+        })
+    }
+}
+
+impl JsonSchema for Speed {
+    fn schema_name() -> Cow<'static, str> {
+        "Speed".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "From -1, the slowest, to 1, the fastest; 0 is what the device is made for.",
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1,
         })
     }
 }
