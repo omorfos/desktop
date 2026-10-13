@@ -96,6 +96,13 @@ requests only after asking the compositor something.
   Wayland holds is handed to one written for X11 only while an X11 window
   has the keyboard, which is the rule programs written for Wayland live
   by. Among themselves programs written for X11 share it regardless.
+- Smithay's window manager leaves some of what it asks of the X server
+  unsent until it next asks something: that a selection is now held is
+  one, and new settings are another. Nothing may be asked next for a long
+  time, and until then no program written for X11 can paste what was just
+  copied. The compositor follows each with a question that has an answer,
+  which sends everything. It waits for that answer, as Smithay's own
+  handling of what the X server says already waits for others.
 - On a screen with a scale, programs written for X11 draw with as many
   pixels as the screen has: see ADR 30.
 - Every window that does not manage itself is treated as an ordinary one:

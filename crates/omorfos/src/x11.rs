@@ -230,6 +230,18 @@ struct Server {
     waking: Option<RegistrationToken>,
 }
 
+/// Sees that what the window manager has asked of the X server has been
+/// sent to it.
+///
+/// Smithay leaves some of what it asks, such as that a selection is now
+/// held, waiting to be sent along with whatever is asked next. Until then
+/// no program written for X11 knows of it, and next may be a long time.
+/// Asking something that has an answer sends everything, and the answer
+/// to this is short: which screen comes first, which is none.
+fn sent(manager: &X11Wm) {
+    let _ = manager.get_randr_primary_output();
+}
+
 /// The nearest whole number to a value that is small and not negative.
 fn rounded(value: f64) -> i32 {
     #[expect(
@@ -402,7 +414,10 @@ impl Compositor {
         let settings = settings.map(|(name, value)| (name.to_owned(), Value::from(rounded(value))));
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
-        let _ = manager.map(|manager| manager.set_xsettings(settings.into_iter()));
+        let _ = manager.map(|manager| {
+            let _ = manager.set_xsettings(settings.into_iter());
+            sent(manager);
+        });
         let density = rounded(96.0 * scale);
         let display = self
             .x11
@@ -510,7 +525,10 @@ impl Compositor {
     pub(crate) fn offer_to_x11(&mut self, which: SelectionTarget, kinds: Option<Vec<String>>) {
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
-        let _ = manager.map(|manager| manager.new_selection(which, kinds));
+        let _ = manager.map(|manager| {
+            let _ = manager.new_selection(which, kinds);
+            sent(manager);
+        });
     }
 
     /// Has what a program written for X11 copied or selected written to
