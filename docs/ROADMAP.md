@@ -101,11 +101,13 @@ Most are a day of thought and no code.
       and the bar to UPower, NetworkManager and the tray. Every one is
       optional, none runs as root, and a locked session is opened only
       by its user's secret.
-- [ ] **Workspaces that come and go** (wish 1). Today each screen has the
-      workspaces the configuration names, and keys go to them by number.
-      Made as needed, they have to be named, ordered, kept or dropped
-      when empty, bound to keys and published over IPC in some way that
-      still makes sense with several screens.
+- [x] **Workspaces that come and go** (wish 1, ADR 36): desktops made
+      when wanted and removed when empty and left, one by default; and a
+      solo workspace for each fullscreen window, as macOS has it, gone
+      when the window closes or leaves fullscreen. The titlebar's second
+      button means fullscreen. In a solo, pushing the pointer against
+      the top brings down the bar and the titlebar, and against the
+      bottom the dock.
 - [ ] **Who may do what.** Any program may now ask to be a panel, cover
       the screen, or read what is listed over IPC. Screen capture, the
       clipboard's history, input that pretends to be the user and
@@ -124,6 +126,12 @@ Most are a day of thought and no code.
 Without these, omorfos is put aside for something else when the day
 calls for them.
 
+- [ ] Workspaces as ADR 36 has them, in the model first: identities,
+      desktops made and removed, `new_workspace`, the number keys making
+      the next one, one by default, and what the IPC says of them.
+- [ ] Fullscreen on a workspace of its own: the solo, the window going
+      back where it was, the titlebar's button meaning fullscreen, and
+      the bar, titlebar and dock brought back by pushing at an edge.
 - [ ] Screen capture: a screenshot of a screen, a window or a region, and
       the stream that sharing a screen in a browser or a call needs
       (`ext-image-copy-capture`, PipeWire), with the user asked each time
