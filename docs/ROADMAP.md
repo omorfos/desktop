@@ -87,13 +87,13 @@ Most are a day of thought and no code.
       blur that is tested and is its specification; everything that is a
       decision is outside that file. Shadows are pictures made on the
       CPU. Nothing is blurred again until what is under it changes.
-- [ ] **What components and applications are written with.** `omorfos-ui`
-      draws boxes and text. A dock needs little more; a file manager
-      needs lists, scrolling, text fields, drag and drop and
-      accessibility, which is a toolkit. Either that toolkit is written
-      here, to the standard of everything else here, or the applications
-      of stage 7 use one that exists and only the shell uses ours. This
-      decides how large stage 7 is, by a factor of several.
+- [x] **What components and applications are written with** (ADR 34):
+      one toolkit, ours, `omorfos-ui` grown by need into one, for the
+      shell and for the applications. Text editing comes from the text
+      library already used, and speaking to screen readers from
+      AccessKit. Two trials guard it: a long list scrolling on a dense
+      screen, tried with the first list written, and the file manager,
+      which comes last and may fall back to a toolkit that exists.
 - [ ] **Where omorfos meets the rest of the system**: D-Bus and systemd
       user sessions, logind (sleep, the lid, locking), polkit, UPower,
       NetworkManager, portals. Which program of ours talks to each, so
