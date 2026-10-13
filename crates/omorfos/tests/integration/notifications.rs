@@ -657,3 +657,42 @@ fn notifications_that_cannot_ask_what_is_wrong_leave_it_to_the_compositor() {
     until(&mut session, &mut notifier, Duration::ZERO, |_| true);
     assert_ne!(session.draw().at(NOTICE.0, NOTICE.1), BACKGROUND);
 }
+
+/// The colour of the line around a notification that is nothing special.
+fn plain() -> u32 {
+    let style = Theme::default().style(Part::Notification, States::NONE);
+    argb(style.border.left.color)
+}
+
+#[test]
+fn what_has_happened_in_the_session_is_shown_for_a_while_among_the_notifications() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let bus = Bus::open(Some(&daemon.address)).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session.compositor_mut().insert_client(ours).unwrap();
+    let config = session.config.path().to_owned();
+    let (news, mut compositor) = UnixStream::pair().unwrap();
+    let news = Some(Ipc::from_stream(news));
+    let mut notifier = Notifier::new(theirs, bus, news, &config, Icons::default()).unwrap();
+
+    let happened = Told {
+        events: vec!["something was started again".to_owned()],
+        ..Told::default()
+    };
+    let said = encode(&Reply::State(happened));
+    std::io::Write::write_all(&mut compositor, said.as_bytes()).unwrap();
+
+    // It looks as any notification does, since nothing is wrong.
+    let edge = |session: &mut Session| session.draw().at(EDGE.0, EDGE.1);
+    let at = Duration::from_secs;
+    until(&mut session, &mut notifier, at(100), |session| {
+        edge(session) == plain()
+    });
+    // And goes by itself after as long as notifications stay.
+    until(&mut session, &mut notifier, at(104), |_| true);
+    assert_eq!(edge(&mut session), plain());
+    until(&mut session, &mut notifier, at(105), |session| {
+        edge(session) == BACKGROUND
+    });
+}

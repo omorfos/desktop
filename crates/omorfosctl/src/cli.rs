@@ -316,6 +316,7 @@ mod tests {
                 minimized: false,
             }],
             problems: problems.iter().map(ToString::to_string).collect(),
+            events: Vec::new(),
         }
     }
 

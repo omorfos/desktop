@@ -53,9 +53,15 @@ to.
 - What is dismissed is remembered by whichever is showing. If the
   notifications are started again after a crash, what was dismissed in
   them is shown again.
-- Everything in `problems` stays until clicked, including what merely
-  happened and needs nothing done, such as the X server having been
-  started again. Telling the two apart is still to do.
+- What merely happened and needs nothing done, such as the X server
+  having been started again, is not a problem and is not kept as one.
+  `State` has `events` beside `problems`: what has happened in the last
+  ten seconds. The state is a picture of the session and not a stream, so
+  something that happened is in it for a while and then is not, and a
+  program that shows events shows each once, when it first sees it. The
+  notifications show one as an ordinary notification, which goes after as
+  long as those usually stay; the compositor's own notice, where that is
+  what there is, shows it for as long as it is in the state.
 - The notifications fail if the compositor's socket closes under them,
   which it does only when the compositor has gone.
 - The protocol gains a request. A compositor that does not know it
