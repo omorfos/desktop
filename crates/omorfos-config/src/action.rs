@@ -162,7 +162,8 @@ impl<'de> Deserialize<'de> for Started {
 
 impl Started {
     /// The program the built-in bindings take a picture of the screen
-    /// with, which it may: `omorfos-screenshot`.
+    /// with, `omorfos-screenshot`, which may, and may put it on the
+    /// clipboard if the configuration says that is where it goes.
     #[must_use]
     pub fn screenshot() -> Self {
         Self {
@@ -170,8 +171,17 @@ impl Started {
                 program: "omorfos-screenshot".to_owned(),
                 arguments: Vec::new(),
             },
-            may: vec![Role::Capture],
+            may: vec![Role::Capture, Role::Clipboard],
         }
+    }
+
+    /// The same program, told to put the picture on the clipboard and
+    /// nowhere else.
+    #[must_use]
+    pub fn screenshot_copied() -> Self {
+        let mut started = Self::screenshot();
+        started.run.arguments = vec!["--to".to_owned(), "clipboard".to_owned()];
+        started
     }
 }
 

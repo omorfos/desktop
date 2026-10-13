@@ -1,7 +1,7 @@
 //! Where pictures are kept, and writing them there.
 
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use crate::Shot;
@@ -51,15 +51,52 @@ pub fn save(folder: &Path, stamp: &str, screen: Option<&str>, shot: &Shot) -> io
     // of no name fails.
     let path = candidates.find(|path| !path.exists()).unwrap_or_default();
     let file = File::create_new(&path);
-    let written = file.and_then(|file| {
-        let mut encoder = png::Encoder::new(BufWriter::new(file), shot.width, shot.height);
-        encoder.set_color(png::ColorType::Rgb);
-        encoder.set_depth(png::BitDepth::Eight);
-        let begun = encoder.write_header();
-        let done = begun.and_then(|mut writer| writer.write_image_data(&shot.pixels));
-        done.map_err(io::Error::other)
-    });
+    let written = file.and_then(|file| encode(shot, BufWriter::new(file)));
     written.map(|()| path)
+}
+
+/// Writes a picture as a PNG.
+///
+/// # Errors
+///
+/// Returns an error if it cannot be written, or if there is nothing of
+/// it: a PNG has at least one pixel.
+pub fn encode(shot: &Shot, to: impl Write) -> io::Result<()> {
+    let mut encoder = png::Encoder::new(to, shot.width, shot.height);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let begun = encoder.write_header();
+    let done = begun.and_then(|mut writer| writer.write_image_data(&shot.pixels));
+    done.map_err(io::Error::other)
+}
+
+/// One picture of several screens, side by side in the order given, each
+/// from the top, on black where one is shorter than another.
+#[must_use]
+pub fn together(shots: &[Shot]) -> Shot {
+    let width: u32 = shots.iter().map(|shot| shot.width).sum();
+    let height = shots
+        .iter()
+        .map(|shot| shot.height)
+        .max()
+        .unwrap_or_default();
+    let mut pixels = Vec::new();
+    for row in 0..height {
+        for shot in shots {
+            let across = usize::try_from(shot.width).unwrap_or_default() * 3;
+            let from = usize::try_from(row).unwrap_or_default() * across;
+            let part = shot.pixels.get(from..from + across);
+            // Below the end of a shorter screen there is nothing.
+            pixels.extend(part.map_or(vec![0; across], <[u8]>::to_vec));
+        }
+    }
+    let names: Vec<&str> = shots.iter().map(|shot| shot.screen.as_str()).collect();
+    Shot {
+        screen: names.join("+"),
+        width,
+        height,
+        pixels,
+    }
 }
 
 #[cfg(test)]
@@ -128,6 +165,34 @@ mod tests {
         let info = reader.next_frame(&mut pixels).unwrap();
         assert_eq!((info.width, info.height), (2, 1));
         assert_eq!(pixels[..6], [255, 0, 0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn several_screens_make_one_picture_side_by_side() {
+        let red = [255, 0, 0];
+        let blue = [0, 0, 255];
+        let tall = Shot {
+            screen: "left".to_owned(),
+            width: 1,
+            height: 2,
+            pixels: [red, red].concat(),
+        };
+        let short = Shot {
+            screen: "right".to_owned(),
+            width: 2,
+            height: 1,
+            pixels: [blue, blue].concat(),
+        };
+        let both = together(&[tall.clone(), short]);
+        assert_eq!((both.width, both.height), (3, 2));
+        assert_eq!(both.screen, "left+right");
+        let black = [0, 0, 0];
+        assert_eq!(both.pixels, [red, blue, blue, red, black, black].concat());
+
+        assert_eq!(together(std::slice::from_ref(&tall)), tall);
+        let none = together(&[]);
+        assert_eq!((none.width, none.height), (0, 0));
+        assert!(encode(&none, Vec::new()).is_err(), "nothing is no picture");
     }
 
     #[test]

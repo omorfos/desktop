@@ -183,6 +183,13 @@ after a picture has been read back, which is what keeps it out of the
 pictures without a second way of drawing the screen. While the session
 is locked a picture asked for fails.
 
+**The clipboard at any time is not offered, like the list of windows.**
+A program without the `clipboard` role is not shown
+`ext-data-control-v1` at all, in a sandbox or out of one: what is copied
+has passwords in it, and offering it is giving it. So nothing is refused
+and the user is told nothing; a program that needs it and has not got
+it says so itself, as `omorfos-screenshot` does.
+
 **`overlay` is the keyboard.** It was to be "cover the screen and take
 the keyboard". Which layer a surface is on does not say whether it
 covers the screen, and the notifications that come with omorfos are on

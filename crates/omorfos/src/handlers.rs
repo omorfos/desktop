@@ -20,6 +20,7 @@ use smithay::wayland::compositor::{
 };
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelListHandler, ForeignToplevelListState};
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::selection::ext_data_control::{DataControlHandler, DataControlState};
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 use std::os::fd::OwnedFd;
 use smithay::wayland::selection::primary_selection::{
@@ -445,6 +446,14 @@ impl SeatHandler for Compositor {
         self.cursor = image;
     }
 }
+
+impl DataControlHandler for Compositor {
+    fn data_control_state(&self) -> &DataControlState {
+        &self.clipboards
+    }
+}
+
+smithay::delegate_ext_data_control!(Compositor);
 
 impl SelectionHandler for Compositor {
     type SelectionUserData = ();

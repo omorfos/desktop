@@ -11,7 +11,7 @@ use std::thread::JoinHandle;
 use omorfos::Roles;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH};
+use crate::common::{Client, Event, HEIGHT, Session, WIDTH};
 use crate::windows::{GREEN, RED};
 
 /// What the tool said: where it saved pictures, or why it took none.
@@ -20,8 +20,18 @@ type Said = Result<Vec<PathBuf>, String>;
 /// Starts the tool in a session whose socket gives `roles`, with `more`
 /// in its environment besides. Its home folder is the session's own.
 fn start(session: &mut Session, roles: Roles, more: &[(&str, OsString)]) -> JoinHandle<Said> {
+    start_with(session, roles, more, &[])
+}
+
+/// The same, with words on its command line.
+fn start_with(
+    session: &mut Session,
+    roles: Roles,
+    more: &[(&str, OsString)],
+    arguments: &[&str],
+) -> JoinHandle<Said> {
     let runtime = session.config.path().to_owned();
-    let name = format!("wayland-{}", more.len());
+    let name = format!("wayland-{}-{}", more.len(), arguments.len());
     let socket = ListeningSocket::bind_absolute(runtime.join(&name)).unwrap();
     session.inner().serve(socket, roles).unwrap();
     let mut variables = vec![
@@ -36,12 +46,19 @@ fn start(session: &mut Session, roles: Roles, more: &[(&str, OsString)]) -> Join
         variables.retain(|(known, _)| known != name);
         variables.push(((*name).to_owned(), value.clone()));
     }
+    let arguments: Vec<OsString> = arguments.iter().map(OsString::from).collect();
     std::thread::spawn(move || {
         let variable = |name: &str| {
             let found = variables.iter().find(|(known, _)| known == name);
             found.map(|(_, value)| value.clone())
         };
-        omorfos_screenshot::start(&variable).map_err(|failure| failure.to_string())
+        let mut out = Vec::new();
+        let outcome = omorfos_screenshot::start(&variable, &arguments, &mut out);
+        let out = String::from_utf8(out).unwrap();
+        let saved = out.lines().map(PathBuf::from).collect();
+        outcome
+            .map(|()| saved)
+            .map_err(|failure| failure.to_string())
     })
 }
 
@@ -231,7 +248,7 @@ fn it_says_where_it_saved_or_why_it_did_not() {
             _ => None,
         };
         let (mut out, mut problems) = (Vec::new(), Vec::new());
-        let failed = omorfos_screenshot::run(&variable, &mut out, &mut problems);
+        let failed = omorfos_screenshot::run(&variable, &[], &mut out, &mut problems);
         (failed, String::from_utf8(out).unwrap(), problems)
     });
     session.eventually(|session| {
@@ -253,8 +270,131 @@ fn it_says_where_it_saved_or_why_it_did_not() {
     assert!(Path::new(line).exists());
 
     let (mut out, mut problems) = (Vec::new(), Vec::new());
-    assert!(omorfos_screenshot::run(&|_| None, &mut out, &mut problems));
+    assert!(omorfos_screenshot::run(
+        &|_| None,
+        &[],
+        &mut out,
+        &mut problems
+    ));
     let problems = String::from_utf8(problems).unwrap();
     assert!(problems.starts_with("omorfos-screenshot: this is not an omorfos session"));
     assert_eq!(out, b"");
+}
+
+/// May take pictures and set the clipboard, as the built-in keys start
+/// the tool.
+const BOTH: Roles = Roles::CAPTURE.with(Roles::CLIPBOARD);
+
+/// Has a program with the keyboard paste the picture on the clipboard,
+/// and returns the colour at a place in it.
+fn pasted(session: &mut Session, app: &mut Client, (x, y): (usize, usize)) -> u32 {
+    use std::io::Read;
+    session.eventually(|session| {
+        session.draw();
+        session.roundtrip(app);
+        app.state.formats.iter().any(|format| format == "image/png")
+    });
+    let mut reader = app.paste_as("image/png").unwrap();
+    session.roundtrip(app);
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).unwrap();
+    let mut decoded = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; decoded.output_buffer_size().unwrap()];
+    let info = decoded.next_frame(&mut pixels).unwrap();
+    let at = (y * usize::try_from(info.width).unwrap() + x) * 3;
+    u32::from_be_bytes([0xff, pixels[at], pixels[at + 1], pixels[at + 2]])
+}
+
+#[test]
+fn told_to_it_puts_the_picture_on_the_clipboard_and_holds_it_there() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let home = session.config.path().to_owned();
+
+    let tool = start_with(&mut session, BOTH, &[], &["--to", "clipboard"]);
+    assert_eq!(pasted(&mut session, &mut app, (10, 10)), RED);
+    assert_eq!(
+        pasted(&mut session, &mut app, (300, 300)),
+        crate::windows::BACKGROUND
+    );
+    assert!(
+        !tool.is_finished(),
+        "it is what gives the picture when pasted"
+    );
+    assert!(!home.join("Pictures").exists(), "and nothing was saved");
+
+    // Something else is copied, and it has nothing more to do.
+    app.copy("something else");
+    session.roundtrip(&mut app);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths, Vec::<PathBuf>::new());
+}
+
+#[test]
+fn the_configuration_says_where_a_picture_goes_when_nothing_else_does() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), GREEN);
+    let home = session.config.path().to_owned();
+    std::fs::create_dir_all(home.join(".config/omorfos")).unwrap();
+    let config = "screenshots: { destination: both }\n";
+    std::fs::write(home.join(".config/omorfos/config.yaml"), config).unwrap();
+
+    let tool = start(&mut session, BOTH, &[]);
+    assert_eq!(pasted(&mut session, &mut app, (10, 10)), GREEN);
+    app.copy("something else");
+    session.roundtrip(&mut app);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths.len(), 1, "saved as well");
+    assert_eq!(saved(&paths[0], (10, 10)).1, GREEN);
+}
+
+#[test]
+fn without_leave_to_set_the_clipboard_it_says_how_it_could_be_let() {
+    let mut session = Session::new();
+    let tool = start_with(&mut session, Roles::CAPTURE, &[], &["--to", "clipboard"]);
+    let said = finish(&mut session, tool).unwrap_err();
+    assert!(said.contains("may: [capture, clipboard]"), "{said}");
+}
+
+#[test]
+fn with_no_screen_there_is_nothing_to_put_on_the_clipboard() {
+    let mut session = Session::new();
+    let only = session.output();
+    session.compositor_mut().remove_output(&only);
+    let tool = start_with(&mut session, BOTH, &[], &["--to", "clipboard"]);
+    session.eventually(|_| tool.is_finished());
+    let said = tool.join().unwrap().unwrap_err();
+    assert!(said.contains("no screen"), "{said}");
+}
+
+#[test]
+fn a_picture_held_on_the_clipboard_is_let_go_when_the_session_ends() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let tool = start_with(&mut session, BOTH, &[], &["--to", "clipboard"]);
+    pasted(&mut session, &mut app, (10, 10));
+    drop(session);
+    assert_eq!(tool.join().unwrap(), Ok(Vec::new()));
+}
+
+#[test]
+fn told_something_it_does_not_understand_it_says_how_it_is_used() {
+    let (mut out, mut problems) = (Vec::new(), Vec::new());
+    let arguments = [OsString::from("--help")];
+    assert!(omorfos_screenshot::run(
+        &|_| None,
+        &arguments,
+        &mut out,
+        &mut problems
+    ));
+    let problems = String::from_utf8(problems).unwrap();
+    assert!(
+        problems.starts_with("omorfos-screenshot: usage: "),
+        "{problems}"
+    );
 }

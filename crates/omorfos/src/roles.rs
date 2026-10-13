@@ -34,6 +34,9 @@ impl Roles {
     pub const LOCK: Self = Self(1 << 2);
     /// Take pictures of the screen.
     pub const CAPTURE: Self = Self(1 << 3);
+    /// Read the clipboard and set it at any time, not only while one of
+    /// its windows has the keyboard.
+    pub const CLIPBOARD: Self = Self(1 << 4);
 
     /// These roles and those as well.
     #[must_use]
@@ -56,7 +59,8 @@ impl Roles {
             Role::Overlay => Self::OVERLAY,
             Role::Lock => Self::LOCK,
             Role::Capture => Self::CAPTURE,
-            Role::Ask | Role::Clipboard | Role::Input | Role::Screens => Self::NONE,
+            Role::Clipboard => Self::CLIPBOARD,
+            Role::Ask | Role::Input | Role::Screens => Self::NONE,
         };
         roles.iter().map(one).fold(Self::NONE, Self::with)
     }
@@ -97,6 +101,13 @@ impl Compositor {
     /// what shows them: their titles say what the user is doing.
     pub(crate) fn lists(client: &Client) -> bool {
         Self::roles(Some(client)).has(Roles::PANEL)
+    }
+
+    /// Whether a client is given the clipboard at any time. That is
+    /// what is copied wherever, passwords among it, so it is not offered
+    /// to a program that has not the role: offering it is giving it.
+    pub(crate) fn copies(client: &Client) -> bool {
+        Self::roles(Some(client)).has(Roles::CLIPBOARD)
     }
 
     /// Whether a client is outside any sandbox. One inside is not shown
@@ -159,7 +170,8 @@ mod tests {
         assert!(!named.has(Roles::OVERLAY));
         assert_eq!(Roles::named(&[Role::Overlay]), Roles::OVERLAY);
         assert_eq!(Roles::named(&[Role::Capture]), Roles::CAPTURE);
-        let later = [Role::Ask, Role::Clipboard, Role::Input, Role::Screens];
+        assert_eq!(Roles::named(&[Role::Clipboard]), Roles::CLIPBOARD);
+        let later = [Role::Ask, Role::Input, Role::Screens];
         assert_eq!(Roles::named(&later), Roles::NONE, "nothing to give yet");
         assert_eq!(Roles::named(&[]), Roles::NONE);
         assert!(Roles::ALL.has(Roles::PANEL.with(Roles::OVERLAY)));

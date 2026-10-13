@@ -67,6 +67,7 @@ use smithay::wayland::idle_notify::IdleNotifierState;
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::security_context::SecurityContextState;
 use smithay::wayland::selection::data_device::DataDeviceState;
+use smithay::wayland::selection::ext_data_control::DataControlState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
 use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, WlrLayerShellState};
@@ -241,6 +242,9 @@ pub struct Compositor {
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
     pub(crate) activation: XdgActivationState,
+    /// The clipboard as given to a program that may read and set it at
+    /// any time.
+    pub(crate) clipboards: DataControlState,
     pub(crate) primary_selection: PrimarySelectionState,
     pub(crate) foreign_toplevels: ForeignToplevelListState,
 
@@ -367,7 +371,6 @@ impl Compositor {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
         let layer_shell = WlrLayerShellState::new_with_filter::<Self, _>(&display, Self::outside);
         let data_device = DataDeviceState::new::<Self>(&display);
-        let activation = XdgActivationState::new::<Self>(&display);
         let primary_selection = PrimarySelectionState::new::<Self>(&display);
         let foreign_toplevels =
             ForeignToplevelListState::new_with_filter::<Self>(&display, Self::lists);
@@ -384,6 +387,8 @@ impl Compositor {
                     _viewporter: ViewporterState::new::<Self>(&display),
                     _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
                     capture: Capture::offer(&display),
+                    activation: XdgActivationState::new::<Self>(&display),
+                    clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
                     display,
@@ -402,7 +407,6 @@ impl Compositor {
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
-                    activation,
                     primary_selection,
                     foreign_toplevels,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
