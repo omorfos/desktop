@@ -500,3 +500,47 @@ fn the_state_says_which_workspaces_were_made_and_knows_each_by_what_does_not_cha
     assert_ne!(state.workspaces[0].id, state.workspaces[1].id);
     assert_ne!(state.workspaces[1].id, 0);
 }
+
+#[test]
+fn the_state_says_which_workspace_was_made_for_a_fullscreen_window() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "player", (200, 100), RED);
+    session.open(&mut client, "chat", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let action = json!("fullscreen");
+    assert_eq!(
+        session.ask(&mut peer, &Request::Perform { action }),
+        Reply::Done
+    );
+
+    let state = state(&mut session, &mut peer);
+    let chat = state.windows.iter().find(|window| window.app_id == "chat");
+    let chat = chat.unwrap();
+    let told: Vec<(u32, &str, bool, Option<u64>)> = state
+        .workspaces
+        .iter()
+        .map(|workspace| {
+            (
+                workspace.number,
+                workspace.name.as_str(),
+                workspace.active,
+                workspace.window,
+            )
+        })
+        .collect();
+    // It has no number, is called what its window is, and is being shown.
+    assert_eq!(
+        told,
+        [
+            (1, "1", false, None),
+            (0, "chat window", true, Some(chat.id))
+        ]
+    );
+    assert_eq!(chat.workspace, 0);
+    let player = state
+        .windows
+        .iter()
+        .find(|window| window.app_id == "player");
+    assert_eq!(player.unwrap().workspace, 1);
+}

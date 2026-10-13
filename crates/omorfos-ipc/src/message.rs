@@ -99,8 +99,8 @@ pub struct Workspace {
     /// output.
     #[serde(default)]
     pub output: String,
-    /// Its number among that output's, counting from 1 as key bindings and
-    /// rules do.
+    /// Its number among that output's desktops, counting from 1 as key
+    /// bindings and rules do. Zero for one made for a fullscreen window.
     pub number: u32,
     /// Its configured name, or its number if it was made and has none.
     pub name: String,
@@ -110,6 +110,12 @@ pub struct Workspace {
     /// One that is not goes when it is empty and another is shown.
     #[serde(default = "kept")]
     pub kept: bool,
+    /// The fullscreen window this workspace was made for, if it was made
+    /// for one. Such a workspace is not one of the desktops: its `number`
+    /// is 0, no key goes to it by number, it is called what its window is,
+    /// and it goes when the window closes or leaves fullscreen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<u64>,
 }
 
 /// Every workspace was always there before any could be made.
@@ -130,8 +136,9 @@ pub struct Window {
     /// is no output.
     #[serde(default)]
     pub output: String,
-    /// The number of the workspace it is on, among that output's, counting
-    /// from 1.
+    /// The number of the desktop it is on, among that output's, counting
+    /// from 1. Zero for a window on a workspace made for a fullscreen
+    /// window.
     pub workspace: u32,
     /// Whether it has keyboard focus.
     pub focused: bool,
@@ -223,6 +230,7 @@ mod tests {
                 active: true,
                 id: 0,
                 kept: true,
+                window: None,
             }],
             windows: vec![Window {
                 id: 3,

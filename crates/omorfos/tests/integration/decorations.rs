@@ -488,7 +488,7 @@ fn frames(session: &Session) -> (bool, usize) {
 }
 
 #[test]
-fn a_titlebar_has_buttons_that_close_maximize_and_minimize() {
+fn a_titlebar_has_buttons_that_close_make_fullscreen_and_minimize() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -497,10 +497,20 @@ fn a_titlebar_has_buttons_that_close_maximize_and_minimize() {
     let shown = [CLOSE, MAXIMIZE, MINIMIZE].map(|(x, y)| picture.at(x, y));
     assert_eq!(shown, BUTTONS);
 
+    // The second is for fullscreen: the window goes to a workspace of
+    // its own, and comes back from it where it was.
+    let places = |session: &Session| session.compositor().desktop().workspaces().count();
     click(&mut session, MAXIMIZE);
-    assert_eq!(frames(&session), (true, 1));
-    click(&mut session, MAXIMIZE);
-    assert_eq!(frames(&session), (false, 1), "and back again");
+    assert!(first_frame(&session).fullscreen);
+    assert_eq!(first_frame(&session).home, omorfos_core::Home::Solo);
+    assert_eq!(places(&session), 2);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Fullscreen);
+    session.step();
+    assert!(!first_frame(&session).fullscreen, "and back again");
+    assert_eq!(places(&session), 1);
+    assert_eq!(frames(&session), (false, 1));
 
     click(&mut session, CLOSE);
     session.roundtrip(&mut client);
@@ -656,11 +666,11 @@ fn open_window_menu(session: &mut Session, at: (i32, i32)) {
 }
 
 /// A point on a row of a menu opened at `at`. The rows are: close,
-/// maximize, minimize; then shade, keep above, show on every workspace;
-/// then send to a workspace. Each is 28 tall, inside 4 of padding, and
-/// the lines between the three groups take 9 each.
+/// maximize, minimize, fullscreen; then shade, keep above, show on every
+/// workspace; then send to a workspace. Each is 28 tall, inside 4 of
+/// padding, and the lines between the three groups take 9 each.
 fn row(at: (i32, i32), which: i32) -> (i32, i32) {
-    let lines = which / 3 * 9;
+    let lines = (i32::from(which >= 4) + i32::from(which >= 7)) * 9;
     (at.0 + 60, at.1 + 4 + which * 28 + lines + 14)
 }
 
@@ -711,7 +721,7 @@ fn a_window_can_be_rolled_up_into_its_titlebar_and_let_down_again() {
     client.take_events();
     assert_eq!(first_frame(&session).geometry.size.height, 129);
 
-    choose(&mut session, 3);
+    choose(&mut session, 4);
     assert!(first_frame(&session).standing.shaded);
     assert_eq!(first_frame(&session).geometry.size.height, 28);
     let picture = session.draw();
@@ -747,7 +757,7 @@ fn a_window_kept_above_stays_over_the_one_that_is_clicked() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
-    choose(&mut session, 4);
+    choose(&mut session, 5);
     assert!(first_frame(&session).standing.above);
 
     // A second window opens over part of the first, and has focus.
@@ -784,7 +794,7 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
 
-    choose(&mut session, 5);
+    choose(&mut session, 6);
     assert!(first_frame(&session).standing.sticky);
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.step();
@@ -799,7 +809,7 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     // The last row opens a list of the workspaces beside it, and the
     // third of those is where the window is sent.
     open_window_menu(&mut session, TITLE);
-    let send = row(TITLE, 6);
+    let send = row(TITLE, 7);
     point(&mut session, send);
     session.step();
     click(&mut session, (send.0 + 220, send.1 + 2 * 28));
@@ -807,6 +817,17 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.step();
     assert_eq!(session.draw().at(100, 80), RED, "and on the third");
+}
+
+#[test]
+fn a_window_is_made_fullscreen_from_the_menu_of_its_titlebar() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+
+    choose(&mut session, 3);
+    assert!(first_frame(&session).fullscreen);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
 }
 
 #[test]
@@ -819,7 +840,7 @@ fn a_window_can_be_sent_to_a_new_workspace_from_its_titlebar() {
     // Beside the last row: the one workspace there is, a line, and a new
     // one.
     open_window_menu(&mut session, TITLE);
-    let send = row(TITLE, 6);
+    let send = row(TITLE, 7);
     point(&mut session, send);
     session.step();
     click(&mut session, (send.0 + 220, send.1 + 28 + 9));

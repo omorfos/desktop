@@ -6,6 +6,7 @@
 //! socket I/O is non-blocking, messages and buffers are capped, and a peer
 //! that breaks a rule is simply dropped.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -336,6 +337,12 @@ impl Compositor {
             let head = self.heads.get(index);
             head.map(|head| head.output.name()).unwrap_or_default()
         };
+        // What a key would count to: desktops have numbers, and a
+        // workspace made for a fullscreen window has none.
+        let places = self.desktop.workspaces();
+        let numbers: HashMap<(usize, usize), u32> = places
+            .filter_map(|place| Some(((place.output, place.index), number(place.desktop?))))
+            .collect();
         State {
             workspaces: self
                 .desktop
@@ -343,10 +350,11 @@ impl Compositor {
                 .map(|place| Workspace {
                     id: place.id.get(),
                     output: output(place.output),
-                    number: number(place.index),
+                    number: place.desktop.map_or(0, number),
                     name: self.workspace_name(&place),
                     active: place.shown,
                     kept: place.kept,
+                    window: place.solo.map(WindowId::raw),
                 })
                 .collect(),
             windows: self
@@ -357,7 +365,10 @@ impl Compositor {
                     app_id: listed.window.app_id.clone(),
                     title: listed.window.title.clone(),
                     output: output(listed.output),
-                    workspace: number(listed.workspace),
+                    workspace: numbers
+                        .get(&(listed.output, listed.workspace))
+                        .copied()
+                        .unwrap_or_default(),
                     focused: listed.focused,
                     shown: listed.shown,
                     minimized: listed.minimized,

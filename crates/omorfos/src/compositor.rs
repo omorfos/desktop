@@ -19,7 +19,8 @@ use omorfos_config::{
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
-    Button, Decoration, Desktop, Frame, Item, Menu, MenuMetrics, Place, Screen, Standing, WindowId,
+    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Standing,
+    WindowId,
 };
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
@@ -763,7 +764,9 @@ impl Compositor {
         let either = |now: bool, on: &str, off: &str| if now { off } else { on }.to_owned();
         let here = self.desktop.current_output();
         let places = self.desktop.workspaces();
-        let places = places.filter(|place| place.output == here);
+        // Windows are sent to desktops, not to a workspace made for
+        // another's fullscreen window.
+        let places = places.filter(|place| place.output == here && place.desktop.is_some());
         let send = (1..).zip(places).map(|(number, place)| Item::Entry {
             label: self.workspace_name(&place),
             action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
@@ -779,6 +782,7 @@ impl Compositor {
                 action: Action::Maximize,
             },
             entry("Minimize", Action::Minimize),
+            entry("Fullscreen", Action::Fullscreen),
             Item::Separator,
             Item::Entry {
                 label: either(standing.shaded, "Shade", "Unshade"),
@@ -810,8 +814,20 @@ impl Compositor {
     /// that were made.
     pub(crate) fn workspace_name(&self, place: &Place) -> String {
         let configured = self.config().general.workspaces.names();
-        let name = configured.get(place.index).cloned();
-        name.unwrap_or_else(|| (place.index + 1).to_string())
+        match (place.desktop, place.solo) {
+            (Some(desktop), _) => {
+                let name = configured.get(desktop).cloned();
+                name.unwrap_or_else(|| (desktop + 1).to_string())
+            }
+            // One made for a fullscreen window is called what the window
+            // is.
+            (None, solo) => {
+                let window = solo.and_then(|id| self.desktop.window(id));
+                window
+                    .map(|window| window.title.clone())
+                    .unwrap_or_default()
+            }
+        }
     }
 
     /// Opens a menu of `items` at the pointer.
@@ -1107,7 +1123,7 @@ impl Compositor {
                             id: *id,
                             opacity,
                             shaded: frame.standing.shaded,
-                            fullscreen: frame.fullscreen,
+                            over: frame.home == Home::Solo,
                             window: window.clone(),
                             surface: surface.clone(),
                             outer: frame.geometry,
@@ -1519,7 +1535,7 @@ impl Compositor {
             .scene
             .iter()
             .rev()
-            .filter(|shown| shown.fullscreen == fullscreen)
+            .filter(|shown| shown.over == fullscreen)
         {
             if let Some(chrome) = &shown.chrome {
                 Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);
@@ -2040,7 +2056,7 @@ impl Animation {
                 since: self.clock,
                 from: shown.opacity,
                 opacity: shown.opacity,
-                level: Level::Frames(shown.fullscreen),
+                level: Level::Frames(shown.over),
                 what: What::Surface(shown.chrome.map(Box::new), pieces),
             });
             self.gone.extend(gone);
@@ -2225,7 +2241,9 @@ impl Painted {
 #[derive(Debug)]
 pub(crate) struct Shown {
     pub(crate) id: WindowId,
-    pub(crate) fullscreen: bool,
+    /// Whether it is over the panels: a fullscreen window, or one of its
+    /// program's that opened over it.
+    pub(crate) over: bool,
     pub(crate) window: Window,
     /// The window's own surface.
     surface: WlSurface,
@@ -2348,6 +2366,8 @@ struct FrameInfo {
     client: Rect,
     maximized: bool,
     fullscreen: bool,
+    /// What kind of workspace it is on.
+    home: Home,
     focused: bool,
     decoration: Option<Decoration>,
     tabs: Vec<WindowId>,
@@ -2374,6 +2394,7 @@ impl FrameInfo {
             client: frame.client(),
             maximized: frame.maximized,
             fullscreen: frame.fullscreen,
+            home: frame.home,
             focused: frame.focused,
             decoration: frame.decoration,
             tabs: frame.tabs.iter().map(|window| window.id).collect(),
