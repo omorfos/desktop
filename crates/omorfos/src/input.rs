@@ -88,6 +88,16 @@ pub(crate) fn virtual_terminal(keysym: Keysym) -> Option<i32> {
 }
 
 /// The pointer shape that says a drag here resizes these edges.
+/// The pointer that says a line between two windows can be dragged: up
+/// and down for one that lies across the screen, side to side otherwise.
+const fn line_icon(across: bool) -> CursorIcon {
+    if across {
+        CursorIcon::RowResize
+    } else {
+        CursorIcon::ColResize
+    }
+}
+
 fn resize_icon(edges: Edges) -> CursorIcon {
     let has = |edge| edges.contains(edge);
     let (left, right) = (has(Edges::LEFT), has(Edges::RIGHT));
@@ -142,6 +152,9 @@ pub(crate) enum Drag {
     },
     /// Carrying a tab to drop on another frame, or out of its own.
     Tab { window: WindowId },
+    /// Moving the line between two windows that share a workspace on an
+    /// output, which lies `across` the output or runs down it.
+    Line { output: usize, across: bool },
 }
 
 /// What a press asks for, before checking that the frame allows it.
@@ -372,6 +385,7 @@ impl Compositor {
                     self.desktop.set_geometry(window, resized);
                 }
                 Drag::Tab { .. } => {}
+                Drag::Line { output, .. } => self.drag_line(output, position),
             }
             // The drag has the pointer; no window sees it meanwhile.
             self.move_pointer(None, time);
@@ -386,6 +400,11 @@ impl Compositor {
         if let Some(menu) = &mut self.menu {
             // An open menu has the pointer, like a drag.
             menu.hover(position);
+            self.move_pointer(None, time);
+            return;
+        }
+        if self.over_line().is_some() {
+            // The line between two windows is ours, and neither window's.
             self.move_pointer(None, time);
             return;
         }
@@ -526,10 +545,14 @@ impl Compositor {
                 return Look::Icon(CursorIcon::Grabbing);
             }
             Some(Drag::Resize { edges, .. }) => return Look::Icon(resize_icon(edges)),
+            Some(Drag::Line { across, .. }) => return Look::Icon(line_icon(across)),
             None => {}
         }
         if self.over_notice() || self.menu.is_some() {
             return Look::Icon(CursorIcon::Default);
+        }
+        if let Some((_, across)) = self.over_line() {
+            return Look::Icon(line_icon(across));
         }
         match self.under() {
             Some(Under::Frame(_, Hit::Part(Part::Border(edges)))) => Look::Icon(resize_icon(edges)),
@@ -696,6 +719,23 @@ impl Compositor {
                 }
                 MenuOutcome::Dismiss => self.menu = None,
                 MenuOutcome::Nothing => {}
+            }
+            return;
+        }
+        if let Some((output, across)) = self.over_line() {
+            // The line between two windows is taken hold of and dragged.
+            // Pressed twice in quick succession, it goes back to the
+            // middle. Nothing under it sees any of this.
+            if pressed && button == BUTTON_LEFT {
+                let before = self.hover.lines.pressed.replace(time);
+                let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
+                if twice {
+                    self.hover.lines.pressed = None;
+                    self.desktop.move_line(output, None);
+                } else {
+                    self.drag = Some(Drag::Line { output, across });
+                }
+                self.move_pointer(None, time);
             }
             return;
         }

@@ -89,6 +89,7 @@ use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
+use crate::tiles::Lines;
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -1152,6 +1153,7 @@ impl Compositor {
         // Mapping raises an element, so mapping bottom to top sets the order.
         scene.sort_by_key(|(order, _)| *order);
         self.scene = scene.into_iter().map(|(_, shown)| shown).collect();
+        self.lay_lines();
         for shown in &self.scene {
             self.space
                 .map_element(shown.window.clone(), shown.origin, false);
@@ -1429,6 +1431,9 @@ impl Compositor {
                     // Panels brought back over a fullscreen window.
                     let raised = (Layer::Top, Placing::Raised);
                     self.layer_elements(renderer, output, view, raised, &mut elements);
+                    // The line between windows that share a workspace.
+                    let lines = self.lines(|at| view.pixel(at), view.scale.factor());
+                    elements.extend(lines.map(Element::Solid));
                 }
                 self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
                 self.frame_elements(renderer, view, fullscreen, &mut elements);
@@ -1972,6 +1977,8 @@ pub(crate) struct Hover {
     /// What it has brought back over a fullscreen window by resting
     /// against an edge.
     pub(crate) reveal: Reveal,
+    /// The lines between windows that share a workspace, which it drags.
+    pub(crate) lines: Lines,
 }
 
 /// What is changing colour, coming in or going.
@@ -2449,7 +2456,7 @@ impl FrameInfo {
 }
 
 /// Converts a configured colour into the renderer's form.
-fn color(color: omorfos_config::Color) -> Color32F {
+pub(crate) fn color(color: omorfos_config::Color) -> Color32F {
     let channel = |value: u8| f32::from(value) / 255.0;
     Color32F::new(
         channel(color.red),

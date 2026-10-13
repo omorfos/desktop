@@ -143,7 +143,9 @@ calls for them.
       room up.
 - [x] What is brought back at an edge staying while the pointer moves,
       so that a titlebar away from the edge can be reached.
-- [ ] The lines between tiles drawn and dragged.
+- [x] The lines between tiles drawn and dragged.
+- [ ] A line that stops where a window says it can be no smaller, and a
+      part of the theme for the line.
 - [ ] Three and four windows, changing places, focus by direction, and
       a tile's titlebar brought back at the line above it.
 - [x] An empty part of a tiled workspace filled by the next window to
