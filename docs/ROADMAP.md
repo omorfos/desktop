@@ -149,8 +149,8 @@ calls for them.
 - [x] Three and four windows, changing places and focus by direction.
 - [x] A window changed over with another by dragging its titlebar onto
       the other's part.
-- [ ] A tile's titlebar brought back at the line above it, if it is
-      still wanted.
+- [x] Windows that share a workspace keep their titlebars; only the
+      panels hide (ADR 39, "Titlebars after all").
 - [x] An empty part of a tiled workspace filled by the next window to
       open there.
 - [x] A window that is open already put beside one that is tiled or
@@ -259,6 +259,11 @@ Stage 2 says what it is to be; this builds it.
       beside others that stay; the panels and the titlebar sliding in
       from the edge they are brought back at on a fullscreen workspace,
       and out again. All of it off with one setting.
+- [ ] To be tried once there are effects: on a shared workspace, the
+      windows without focus drawn a little fainter or blurred, so that
+      the one with focus stands out. It has to be weighed against the
+      design language, which keeps a window's content from being glass
+      because it is there to be read.
 - [ ] The switcher as a queue on a diagonal (wish 5).
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [ ] Night light: the screen warmer after dark.
@@ -438,6 +443,11 @@ Known gaps carried forward:
       defaults and has no test.
 - [ ] The nested backend has not been run by hand since the event loop
       moved into `Session`.
+- [ ] One branch for programs written for X11 (something asked of a
+      window the compositor does not manage yet) is reached by the tests
+      only by timing, so the coverage gate has been seen to miss it once.
+      A test is to bring it about for certain. Likewise the test of the
+      launcher run by itself has timed out once in some hundred runs.
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Not
       planned while ours use the IPC socket; to be looked at again if

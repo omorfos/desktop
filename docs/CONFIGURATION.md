@@ -168,9 +168,14 @@ half. You are taken there with it.
 
 `Super+Ctrl` and an arrow gives focus to the window beside the one that
 has it, and `Super+Ctrl+Shift` and an arrow changes the two over. With the
-pointer, bring a window's titlebar back at the top of the screen and drag
-it by that onto another part: the part is washed over while it is held,
-and let go there the two change places.
+pointer, drag a window by its titlebar onto another part: the part is
+washed over while it is held, and let go there the two change places.
+
+Windows that share a workspace keep their titlebars, each across the top
+of its own part, so that which has focus can be seen and each can be
+closed, sent back to the desktop by its second button, or dragged. Only
+the panels are hidden. A window that has a workspace to itself has
+nothing over it, as fullscreen means.
 
 There is a line wherever two parts meet: drag it to give one more room
 and the other less, down to a sixth of the screen, and double-click it to
@@ -180,9 +185,9 @@ its room. A window that opens when every part is taken opens on the
 desktop.
 
 On such a workspace, rest the pointer against the top of the screen for a
-third of a second and whatever panels are along the top come back, with
-the window's titlebar under them: its buttons, its menu, and the second
-button to leave fullscreen. Against the bottom, the panels along the
+third of a second and whatever panels are along the top come back. Where
+one window has the workspace to itself its titlebar comes back under
+them: its buttons, its menu, and the second button to leave fullscreen. Against the bottom, the panels along the
 bottom come back. They are laid over the window, which does not change
 size. They stay while the pointer is on them or still moving, so that a
 titlebar further down the screen can be reached, and go a second after

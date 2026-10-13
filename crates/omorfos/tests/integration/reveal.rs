@@ -151,38 +151,47 @@ fn a_press_in_the_window_sends_away_what_was_brought_back() {
 }
 
 #[test]
-fn the_titlebar_of_a_window_in_the_bottom_half_can_be_reached() {
+fn windows_that_share_a_workspace_keep_their_titlebars_and_only_the_panel_hides() {
     let mut session = Session::new();
     let mut client = session.connect();
+    session.open_layer(&mut client, &panel(Anchor::Top), (640, 20), GREEN);
     session.open_decorated(&mut client, "upper", (200, 100), RED);
     let top = omorfos_config::Half::Top;
     session.compositor_mut().perform(&Action::Tile(top));
-    session.open_decorated(&mut client, "lower", (200, 100), BLUE);
-    session.step();
-    // Each has its half, with nothing over it.
+    let mut other = session.connect();
+    session.open_decorated(&mut other, "lower", (200, 100), BLUE);
+    session.roundtrip(&mut other);
+
+    // Each has its titlebar across the top of its own half, without
+    // being asked, and is told the room under it; the panel is not shown.
     let titlebars = |session: &mut Session| {
         let picture = session.draw();
         [picture.at(600, 14), picture.at(600, 254)]
     };
-    assert_eq!(titlebars(&mut session), [BACKGROUND; 2]);
-
-    point(&mut session, 600, 0);
-    session.advance(REST);
     let shown = titlebars(&mut session);
     assert_ne!(shown[0], BACKGROUND, "the upper window's");
-    assert_ne!(shown[1], BACKGROUND, "and the lower's, half a screen down");
+    assert_eq!(shown[1], TITLEBAR, "and the lower's, which has focus");
+    assert_ne!(shown[0], shown[1], "which is how the two are told apart");
+    assert_eq!(other.last_configure().0, (640, 212));
+    assert_eq!(session.draw().at(300, 120), BACKGROUND, "no panel");
 
-    // Across the upper window to the lower one's titlebar, a step at a
-    // time, and it is still there to stop on and use.
-    for y in [60, 120, 180, 250] {
-        point(&mut session, 600, y);
-        session.advance(Duration::from_millis(200));
-    }
-    session.advance(Duration::from_secs(5));
-    assert_ne!(titlebars(&mut session)[1], BACKGROUND);
+    // The panel comes back at the top edge, over the upper titlebar, and
+    // goes a second after the pointer has stopped anywhere else, a
+    // titlebar included: those were not brought back, and do not keep it.
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    assert_eq!(session.draw().at(600, 10), GREEN);
+    point(&mut session, 600, 254);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(600, 10), shown[0]);
+    assert_eq!(
+        titlebars(&mut session),
+        shown,
+        "and the titlebars are as they were"
+    );
 
-    // Its second button takes it back to the desktop, and the view with
-    // it.
+    // The second button of the lower one takes it back to the desktop,
+    // and the view with it.
     click(&mut session, 36, 254);
     assert_eq!(session.compositor().desktop().active_workspace(), 0);
     assert_eq!(session.compositor().desktop().frames().count(), 1);
