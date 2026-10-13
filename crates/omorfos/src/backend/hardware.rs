@@ -19,7 +19,7 @@ use std::io::{Write, stderr};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Action, Command, Touchpad};
+use omorfos_config::{Action, Command, Mouse, Touchpad};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{
@@ -41,7 +41,7 @@ use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc,
 };
-use smithay::reexports::input::{Device, Libinput};
+use smithay::reexports::input::{Device, DeviceCapability, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
@@ -72,7 +72,9 @@ struct Hardware {
     lit: bool,
     /// The touchpads plugged in, and the settings they were last given.
     touchpads: Vec<Device>,
-    configured: Option<Touchpad>,
+    /// The other devices that move a pointer, which are mice.
+    mice: Vec<Device>,
+    configured: Option<(Touchpad, Mouse)>,
     reported: Vec<String>,
 }
 
@@ -145,6 +147,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         active: true,
         lit: true,
         touchpads: Vec::new(),
+        mice: Vec::new(),
         configured: None,
         reported: Vec::new(),
     }));
@@ -223,7 +226,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 }
 
 /// Reads the keyboard, mice and touchpads, and keeps track of which
-/// touchpads there are so that they can be given their settings.
+/// touchpads and mice there are so that they can be given their settings.
 fn watch_devices(
     session: &Session,
     hardware: &Rc<RefCell<Hardware>>,
@@ -241,8 +244,16 @@ fn watch_devices(
                     // The new one has yet to be given the settings.
                     hardware.configured = None;
                 }
+                // Anything else that moves a pointer is a mouse.
+                InputEvent::DeviceAdded { device }
+                    if device.has_capability(DeviceCapability::Pointer) =>
+                {
+                    hardware.mice.push(device.clone());
+                    hardware.configured = None;
+                }
                 InputEvent::DeviceRemoved { device } => {
                     hardware.touchpads.retain(|touchpad| touchpad != device);
+                    hardware.mice.retain(|mouse| mouse != device);
                 }
                 _ => {}
             }
@@ -282,7 +293,8 @@ fn turn(
     if let Some(terminal) = compositor.take_terminal_switch() {
         let _ = now.seat.change_vt(terminal);
     }
-    now.configure_touchpads(compositor.config().general.touchpad);
+    let general = &compositor.config().general;
+    now.configure_pointers(general.touchpad, general.mouse);
     if !now.active {
         return Ok(());
     }
@@ -521,18 +533,21 @@ impl Hardware {
         }
     }
 
-    /// Gives the touchpads the configured settings, if they do not have
-    /// them yet: at startup, when one is plugged in, and after a reload. A
-    /// touchpad that lacks a setting keeps what it has.
-    fn configure_touchpads(&mut self, wanted: Touchpad) {
-        if self.configured == Some(wanted) {
+    /// Gives the touchpads and the mice the configured settings, if they
+    /// do not have them yet: at startup, when one is plugged in, and after
+    /// a reload. A device that lacks a setting keeps what it has.
+    fn configure_pointers(&mut self, touchpad: Touchpad, mouse: Mouse) {
+        if self.configured == Some((touchpad, mouse)) {
             return;
         }
-        for touchpad in &mut self.touchpads {
-            let _ = touchpad.config_tap_set_enabled(wanted.tap_to_click);
-            let _ = touchpad.config_scroll_set_natural_scroll_enabled(wanted.natural_scroll);
+        for device in &mut self.touchpads {
+            let _ = device.config_tap_set_enabled(touchpad.tap_to_click);
+            let _ = device.config_scroll_set_natural_scroll_enabled(touchpad.natural_scroll);
         }
-        self.configured = Some(wanted);
+        for device in &mut self.mice {
+            let _ = device.config_scroll_set_natural_scroll_enabled(mouse.natural_scroll);
+        }
+        self.configured = Some((touchpad, mouse));
     }
 
     /// Tells the user about problems, once each time they change.

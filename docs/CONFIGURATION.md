@@ -42,7 +42,9 @@ keyboard:
   repeat_rate: 30         # per second; 0 disables repeat
 touchpad:
   tap_to_click: true
-  natural_scroll: false
+  natural_scroll: true    # content follows the fingers
+mouse:
+  natural_scroll: false   # content follows the wheel
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
 outputs: []               # particular screens, by name
@@ -490,7 +492,7 @@ An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
 
 The menu opens with a right click on the desktop or the `show_menu` action
-(`Super+space` by default). Click an entry to choose it; click elsewhere or
+(`Super+Escape` by default). Click an entry to choose it; click elsewhere or
 press Escape to close the menu.
 
 ## The panel
@@ -520,7 +522,7 @@ Like `autostart`, this takes effect the next time you log in.
 
 ## The launcher
 
-`Super+d`, or **Run…** in the root menu, opens the launcher: a box in the
+`Super+Space`, or **Run…** in the root menu, opens the launcher: a box in the
 middle of the screen the pointer is on. Type part of a program's name and
 the list narrows to the programs that have it, those that begin with it
 first. Up and Down choose among them, Enter starts the chosen one, and
