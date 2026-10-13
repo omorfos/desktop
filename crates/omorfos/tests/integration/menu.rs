@@ -5,6 +5,8 @@ use omorfos_config::Action;
 
 use std::time::Duration;
 
+use smithay::input::keyboard::Keycode;
+
 use crate::common::{Event, Session, between, half_way, key};
 use crate::windows::{BACKGROUND, RED};
 
@@ -271,6 +273,101 @@ fn escape_closes_the_menu_and_is_kept_from_the_focused_window() {
             .any(|event| matches!(event, Event::Key { .. })),
         "{events:?}"
     );
+}
+
+fn press(session: &mut Session, codes: &[Keycode]) {
+    for code in codes {
+        for pressed in [true, false] {
+            let code = *code;
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+    }
+    session.step();
+}
+
+#[test]
+fn the_arrows_go_through_the_rows_and_enter_chooses_one() {
+    let mut session = session();
+    open_menu(&mut session);
+    assert_eq!(session.draw().at(510, 218), PANEL, "nothing is highlighted");
+
+    press(&mut session, &[key::DOWN]);
+    assert_eq!(session.draw().at(510, 218), ACCENT, "the first row");
+
+    press(&mut session, &[key::DOWN]);
+    let picture = session.draw();
+    assert_eq!(picture.at(510, 218), PANEL);
+    assert_eq!(picture.at(510, 255), ACCENT, "past the separator");
+
+    press(&mut session, &[key::UP, key::RETURN]);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+    assert_eq!(session.draw().at(510, 218), BACKGROUND, "the menu is gone");
+}
+
+#[test]
+fn right_goes_into_a_submenu_and_left_comes_back_out() {
+    let mut session = session();
+    open_menu(&mut session);
+
+    press(&mut session, &[key::UP, key::RIGHT]);
+    let picture = session.draw();
+    assert_eq!(picture.at(290, 255), ACCENT, "its first row is highlighted");
+    assert_eq!(picture.at(510, 255), ACCENT, "and the row it belongs to");
+
+    press(&mut session, &[key::LEFT]);
+    let picture = session.draw();
+    assert_eq!(picture.at(290, 255), BACKGROUND, "the submenu is gone");
+    assert_eq!(picture.at(510, 255), ACCENT);
+
+    press(&mut session, &[key::RETURN, key::RETURN]);
+    assert!(!session.compositor().is_running(), "Quit was chosen");
+}
+
+#[test]
+fn the_keys_that_steer_the_menu_are_kept_from_the_focused_window() {
+    let mut session = session();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    open_menu(&mut session);
+    client.take_events();
+
+    press(&mut session, &[key::DOWN, key::RETURN]);
+    session.roundtrip(&mut client);
+
+    let events = client.take_events();
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Event::Key { .. })),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn an_arrow_with_a_modifier_held_is_not_the_menus() {
+    let mut session = session();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    open_menu(&mut session);
+    client.take_events();
+
+    session.compositor_mut().input(
+        Input::Key {
+            code: key::SHIFT,
+            pressed: true,
+        },
+        0,
+    );
+    press(&mut session, &[key::DOWN]);
+    session.roundtrip(&mut client);
+
+    assert_eq!(session.draw().at(510, 218), PANEL, "nothing is highlighted");
+    assert!(client.take_events().contains(&Event::Key {
+        code: 108,
+        pressed: true
+    }));
 }
 
 #[test]

@@ -523,6 +523,12 @@ The menu opens with a right click on the desktop or the `show_menu` action
 (`Super+Escape` by default). Click an entry to choose it; click elsewhere or
 press Escape to close the menu.
 
+The keyboard steers it too, and so the menu a right click on a titlebar
+opens: Up and Down go through the rows and round, Right or Enter goes into
+a submenu, Left comes back out of one, and Enter chooses an entry. While a
+menu is open these keys are the menu's and no window sees them; with a
+modifier held they are a binding's as ever.
+
 ## The panel
 
 `omorfos-panel` puts a bar along the bottom of every screen: that screen's
