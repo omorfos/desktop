@@ -587,6 +587,7 @@ impl Compositor {
         [
             self.debouncer.deadline(),
             self.ipc_retry,
+            self.x11.deadline(),
             screens_off,
             moving,
             said,

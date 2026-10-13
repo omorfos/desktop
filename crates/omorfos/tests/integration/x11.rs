@@ -9,6 +9,8 @@
 )]
 
 use std::io::Read;
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixListener};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
 use std::time::Duration;
@@ -640,6 +642,78 @@ fn kill_server(session: &mut Session) {
 fn kill_and_recover(session: &mut Session) {
     kill_server(session);
     wait(session, |session| server(session).is_some());
+}
+
+/// Kills the session's X server and takes hold of its number before the
+/// compositor has heard, as what is left of an X server that stopped can
+/// for a moment.
+fn kill_and_hold(session: &mut Session) -> UnixListener {
+    wait(session, |session| server(session).is_some());
+    let number = display(session).unwrap();
+    let name = format!("/tmp/.X11-unix/X{}", number.trim_start_matches(':'));
+    let name = SocketAddr::from_abstract_name(name).unwrap();
+    let process = server(session).unwrap();
+    let killed = std::process::Command::new("kill")
+        .args(["-9", &process.to_string()])
+        .status();
+    assert!(killed.unwrap().success());
+    // The compositor is not let carry on meanwhile, so it cannot have
+    // started another.
+    loop {
+        if let Ok(held) = UnixListener::bind_addr(&name) {
+            return held;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+/// Whether the compositor is waiting to try again to start an X server:
+/// nothing else in these sessions has it wait for a moment so short.
+fn retrying(session: &Session) -> bool {
+    let soon = session.now + Duration::from_millis(100);
+    session
+        .compositor()
+        .deadline()
+        .is_some_and(|due| due < soon)
+}
+
+#[test]
+fn an_x_server_is_started_again_once_its_number_is_let_go_of() {
+    let (mut session, _program, _alone) = session_alone();
+    let number = display(&session);
+
+    let held = kill_and_hold(&mut session);
+    // It is tried again and again, with nowhere for it yet.
+    wait(&mut session, retrying);
+    for _ in 0..20 {
+        session.step();
+    }
+    assert_eq!(server(&session), None, "there is nowhere for it yet");
+    assert_eq!(display(&session), number, "and it is still to be there");
+    assert_eq!(session.compositor().problems(), [] as [String; 0]);
+    assert!(retrying(&session), "it is tried again");
+
+    drop(held);
+    wait(&mut session, |session| server(session).is_some());
+    assert_eq!(display(&session), number);
+    let program = connect(&mut session);
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+}
+
+#[test]
+fn an_x_server_whose_number_is_never_let_go_of_is_a_problem() {
+    let (mut session, _program, _alone) = session_alone();
+
+    let _held = kill_and_hold(&mut session);
+    wait(&mut session, retrying);
+    session.advance(Duration::from_secs(6));
+    wait(&mut session, |session| display(session).is_none());
+
+    let problems = session.compositor().problems().join("\n");
+    assert!(
+        problems.contains("cannot run programs written for X11"),
+        "{problems}"
+    );
 }
 
 /// A session with an X server and a program connected to it, with no

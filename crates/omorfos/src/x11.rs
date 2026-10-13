@@ -10,9 +10,10 @@
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fmt::Display;
+use std::io;
 use std::os::fd::OwnedFd;
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use omorfos_config::X11Scaling;
 use omorfos_core::geometry::Rect;
@@ -279,6 +280,12 @@ fn set_density(display: &str, density: i32) {
     });
 }
 
+/// How long the number of an X server that stopped is tried for, when
+/// something still holds it.
+const TAKING_AGAIN: Duration = Duration::from_secs(5);
+/// How long after finding the number held it is tried again.
+const TRYING_AGAIN: Duration = Duration::from_millis(50);
+
 /// The X server and what the compositor keeps as its window manager.
 #[derive(Debug)]
 pub(crate) struct X11 {
@@ -294,6 +301,10 @@ pub(crate) struct X11 {
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
     stopped: Option<Server>,
+    /// The number an X server is to be started with in place of one that
+    /// stopped and could not be yet, with when to give up, and when to
+    /// try next if nothing happens sooner.
+    again: Option<(u32, Instant, Instant)>,
     /// The window manager, once the X server is ready for one.
     wm: Option<X11Wm>,
     /// Windows that are to be shown and are not part of the desktop, the
@@ -310,6 +321,7 @@ impl X11 {
             restarts: Restarts::default(),
             told: None,
             stopped: None,
+            again: None,
             wm: None,
             apart: Vec::new(),
         }
@@ -322,12 +334,20 @@ impl X11 {
         apart.filter(|(window, _)| window.is_override_redirect())
     }
 
+    /// When to try again to start an X server in place of one that
+    /// stopped, if its number could not be had yet.
+    pub(crate) fn deadline(&self) -> Option<Instant> {
+        self.again.map(|(.., next)| next)
+    }
+
     /// What programs written for X11 are to be told to connect to, once
     /// the X server has been started.
     pub(crate) fn display(&self) -> Option<OsString> {
         // One that is about to be replaced is replaced where it was.
         let server = self.server.as_ref().or(self.stopped.as_ref());
-        server.map(|server| format!(":{}", server.process.display_number()).into())
+        let number = server.map(|server| server.process.display_number());
+        let number = number.or(self.again.map(|(number, ..)| number));
+        number.map(|number| format!(":{number}").into())
     }
 }
 
@@ -344,9 +364,21 @@ impl Compositor {
         if !self.config().general.xwayland.enabled || self.x11.server.is_some() {
             return;
         }
+        let started = self.spawn_x11(display);
+        self.started_x11(started);
+    }
+
+    /// Starts an X server with the number `display`, or the first that is
+    /// free.
+    fn spawn_x11(&self, display: Option<u32>) -> io::Result<(XWayland, Client)> {
         let none: [(OsString, OsString); 0] = [];
         let quiet = Stdio::null;
-        let started = XWayland::spawn(&self.display, display, none, true, quiet(), quiet(), |_| ());
+        XWayland::spawn(&self.display, display, none, true, quiet(), quiet(), |_| ())
+    }
+
+    /// Takes up an X server that has been started, or tells the user that
+    /// it could not be.
+    fn started_x11(&mut self, started: io::Result<(XWayland, Client)>) {
         let started = self.or_problem("cannot run programs written for X11", started);
         self.x11.server = started.map(|(process, client)| Server {
             // The loop is woken when the X server says it is ready, which
@@ -458,7 +490,20 @@ impl Compositor {
             // again at once, before anything else can have it.
             let number = stopped.process.display_number();
             drop(stopped);
-            self.start_xwayland(Some(number));
+            self.x11.again = Some((number, now + TAKING_AGAIN, now));
+        }
+        if let Some((number, until, _)) = self.x11.again.take() {
+            let started = self.spawn_x11(Some(number));
+            // What is left of the one that stopped can hold on to the
+            // number for a moment after it is known to have stopped: a
+            // process is not gone all at once. It is tried again until it
+            // can be had, and not for ever.
+            let held = |error: &io::Error| error.kind() == io::ErrorKind::AddrInUse && now < until;
+            if started.as_ref().is_err_and(held) {
+                self.x11.again = Some((number, until, now + TRYING_AGAIN));
+            } else {
+                self.started_x11(started);
+            }
         }
         let x11 = &mut self.x11;
         let starting = x11.server.as_mut().filter(|_| x11.wm.is_none());
