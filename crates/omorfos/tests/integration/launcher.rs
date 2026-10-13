@@ -571,12 +571,12 @@ fn the_launcher_is_opened_by_its_key_and_from_the_menu_by_default() {
     session.compositor_mut().set_launcher(stand_in_launcher());
     std::fs::write(session.config.path().join("launcher-close"), "").unwrap();
 
-    // Super+d.
-    let d = Keycode::new(40);
+    // Super+Space.
+    let space = Keycode::new(65);
     for (code, pressed) in [
         (key::SUPER, true),
-        (d, true),
-        (d, false),
+        (space, true),
+        (space, false),
         (key::SUPER, false),
     ] {
         session

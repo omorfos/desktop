@@ -71,8 +71,8 @@ impl Default for Keys {
     fn default() -> Self {
         let mut bindings = vec![
             bind("Super+Return", Action::Spawn(Command::terminal())),
-            bind("Super+space", Action::ShowMenu),
-            bind("Super+d", Action::ShowLauncher),
+            bind("Super+space", Action::ShowLauncher),
+            bind("Super+Escape", Action::ShowMenu),
             bind("Super+q", Action::Close),
             bind("Super+m", Action::Maximize),
             bind("Super+f", Action::Fullscreen),

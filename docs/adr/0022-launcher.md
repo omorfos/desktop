@@ -35,7 +35,7 @@ outlives the launcher without anything having to be detached. A program
 that needs a terminal is started in the one the built-in bindings use.
 
 **The compositor opens the launcher.** A new action, `show_launcher`, is
-bound to `Super+d` and listed in the root menu by default. A backend says
+bound to `Super+Space` (at first `Super+d`) and listed in the root menu by default. A backend says
 where the launcher is, as it does for the panel. Asked while one is open,
 the compositor does nothing.
 
