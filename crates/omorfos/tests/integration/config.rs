@@ -9,7 +9,7 @@ use crate::windows::{BACKGROUND, RED};
 fn the_defaults_have_no_problems() {
     let session = Session::new();
     assert_eq!(session.compositor().problems(), [""; 0]);
-    assert_eq!(session.compositor().desktop().workspace_count(), 4);
+    assert_eq!(session.compositor().desktop().workspace_count(), 1);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn a_directory_that_cannot_be_used_is_reported_and_defaults_apply() {
             .any(|p| p.contains("changes will not be picked up automatically")),
         "{problems:?}"
     );
-    assert_eq!(session.compositor().desktop().workspace_count(), 4);
+    assert_eq!(session.compositor().desktop().workspace_count(), 1);
 }
 
 #[test]

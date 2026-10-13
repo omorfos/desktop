@@ -126,7 +126,7 @@ Most are a day of thought and no code.
 Without these, omorfos is put aside for something else when the day
 calls for them.
 
-- [ ] Workspaces as ADR 36 has them, in the model first: identities,
+- [x] Workspaces as ADR 36 has them, in the model first: identities,
       desktops made and removed, `new_workspace`, the number keys making
       the next one, one by default, and what the IPC says of them.
 - [ ] Fullscreen on a workspace of its own: the solo, the window going

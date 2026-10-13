@@ -21,7 +21,7 @@ const LEFT_BUTTON: u32 = 0x110;
 
 /// A session with a second output, 800 by 600, to the right of the first.
 fn two_screens() -> (Session, Output) {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let second = session.add_output((800, 600));
     (session, second)
 }
@@ -694,7 +694,7 @@ fn with_no_screen_the_state_still_lists_one_set_of_workspaces() {
     let Reply::State(state) = session.ask(&mut peer, &Request::State) else {
         unreachable!("expected the state")
     };
-    assert_eq!(state.workspaces.len(), 4);
+    assert_eq!(state.workspaces.len(), 1);
     assert!(
         state
             .workspaces

@@ -117,7 +117,7 @@ fn state_lists_workspaces_windows_and_problems() {
 
 #[test]
 fn an_action_is_performed_exactly_as_a_key_binding_would() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut peer = Client::connect(&session.listen()).unwrap();
 
     let reply = session.ask(
@@ -192,16 +192,16 @@ fn activating_a_window_that_does_not_exist_is_refused() {
 
 #[test]
 fn an_action_naming_a_workspace_that_does_not_exist_is_refused() {
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut client = session.connect();
     session.open(&mut client, "only", (200, 100), RED);
     let mut peer = Client::connect(&session.listen()).unwrap();
 
-    for action in [json!({ "workspace": 5 }), json!({ "move_to_workspace": 5 })] {
+    for action in [json!({ "workspace": 6 }), json!({ "move_to_workspace": 6 })] {
         assert_eq!(
             session.ask(&mut peer, &Request::Perform { action }),
             Reply::Error {
-                message: "there is no workspace 5".to_owned()
+                message: "there is no workspace 6".to_owned()
             }
         );
     }
@@ -460,4 +460,43 @@ fn programs_started_by_the_compositor_are_told_where_the_socket_is() {
         std::fs::read_to_string(&marker).unwrap(),
         path.display().to_string()
     );
+}
+
+#[test]
+fn the_state_says_which_workspaces_were_made_and_knows_each_by_what_does_not_change() {
+    let mut session = Session::with_config(&[("config.yaml", "workspaces: [web]\n")]);
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+
+    // One past the last is made for whoever asks, a peer as much as a key.
+    let action = json!({ "workspace": 2 });
+    assert_eq!(
+        session.ask(&mut peer, &Request::Perform { action }),
+        Reply::Done
+    );
+    let action = json!({ "workspace": 4 });
+    assert_eq!(
+        session.ask(&mut peer, &Request::Perform { action }),
+        Reply::Error {
+            message: "there is no workspace 4".to_owned()
+        }
+    );
+
+    let state = state(&mut session, &mut peer);
+    let told: Vec<(&str, u32, bool, bool)> = state
+        .workspaces
+        .iter()
+        .map(|workspace| {
+            (
+                workspace.name.as_str(),
+                workspace.number,
+                workspace.kept,
+                workspace.active,
+            )
+        })
+        .collect();
+    assert_eq!(told, [("web", 1, true, false), ("2", 2, false, true)]);
+    assert_ne!(state.workspaces[0].id, state.workspaces[1].id);
+    assert_ne!(state.workspaces[1].id, 0);
 }

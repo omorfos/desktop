@@ -323,30 +323,30 @@ impl Compositor {
         let (Action::Workspace(number) | Action::MoveToWorkspace(number)) = action else {
             return None;
         };
-        (bridge::workspace_index(*number) >= self.desktop.workspace_count())
+        // One past the last is made when asked for.
+        (bridge::workspace_index(*number) > self.desktop.workspace_count())
             .then(|| format!("there is no workspace {}", number.get()))
     }
 
     fn ipc_state(&self) -> State {
         let number = |index: usize| u32::try_from(index + 1).unwrap_or(u32::MAX);
-        let names = self.config().general.workspaces.names();
         // The desktop counts outputs in the order they were added, which is
         // the order they are kept in here.
         let output = |index: usize| {
             let head = self.heads.get(index);
             head.map(|head| head.output.name()).unwrap_or_default()
         };
-        let count = self.desktop.workspace_count();
-        let shown = self.desktop.shown_workspaces().enumerate();
         State {
-            workspaces: shown
-                .flat_map(|(set, active)| {
-                    (0..count).map(move |index| Workspace {
-                        output: output(set),
-                        number: number(index),
-                        name: names.get(index).cloned().unwrap_or_default(),
-                        active: index == active,
-                    })
+            workspaces: self
+                .desktop
+                .workspaces()
+                .map(|place| Workspace {
+                    id: place.id.get(),
+                    output: output(place.output),
+                    number: number(place.index),
+                    name: self.workspace_name(&place),
+                    active: place.shown,
+                    kept: place.kept,
                 })
                 .collect(),
             windows: self

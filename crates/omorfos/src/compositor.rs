@@ -19,7 +19,7 @@ use omorfos_config::{
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
-    Button, Decoration, Desktop, Frame, Item, Menu, MenuMetrics, Screen, Standing, WindowId,
+    Button, Decoration, Desktop, Frame, Item, Menu, MenuMetrics, Place, Screen, Standing, WindowId,
 };
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Fourcc;
@@ -709,6 +709,10 @@ impl Compositor {
                 self.desktop
                     .switch_workspace(bridge::workspace_index(*number));
             }
+            Action::NewWorkspace => {
+                self.desktop.turn_to(self.pointer_position());
+                self.desktop.new_workspace();
+            }
             Action::NextWorkspace => {
                 self.desktop.turn_to(self.pointer_position());
                 self.desktop.next_workspace();
@@ -722,6 +726,7 @@ impl Compositor {
                 let workspace = bridge::workspace_index(*number);
                 self.on_focused(|desktop, id| desktop.move_to_workspace(id, workspace));
             }
+            Action::MoveToNewWorkspace => self.on_focused(Desktop::move_to_new_workspace),
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
             Action::ReloadConfig => self.reload_config(),
@@ -756,12 +761,17 @@ impl Compositor {
         // Each says what choosing it will do, which for those that are
         // one way or the other is the opposite of how things are.
         let either = |now: bool, on: &str, off: &str| if now { off } else { on }.to_owned();
-        let workspaces = self.config().general.workspaces.names();
-        let numbered = (1..).zip(workspaces);
-        let send = numbered.map(|(number, name)| Item::Entry {
-            label: name.clone(),
+        let here = self.desktop.current_output();
+        let places = self.desktop.workspaces();
+        let places = places.filter(|place| place.output == here);
+        let send = (1..).zip(places).map(|(number, place)| Item::Entry {
+            label: self.workspace_name(&place),
             action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
         });
+        let send = send.chain([
+            Item::Separator,
+            entry("New workspace", Action::MoveToNewWorkspace),
+        ]);
         let items = vec![
             entry("Close", Action::Close),
             Item::Entry {
@@ -793,6 +803,15 @@ impl Compositor {
             },
         ];
         self.open_menu_of(items);
+    }
+
+    /// What a workspace is called: as the configuration names it, or by
+    /// its number where it has no name for it, as it has none for those
+    /// that were made.
+    pub(crate) fn workspace_name(&self, place: &Place) -> String {
+        let configured = self.config().general.workspaces.names();
+        let name = configured.get(place.index).cloned();
+        name.unwrap_or_else(|| (place.index + 1).to_string())
     }
 
     /// Opens a menu of `items` at the pointer.

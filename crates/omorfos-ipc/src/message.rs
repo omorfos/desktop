@@ -89,6 +89,11 @@ pub struct State {
 /// A workspace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Workspace {
+    /// What it is known by for as long as there is one, and never used
+    /// again in a session. Its number changes as workspaces before it go;
+    /// this does not. Zero from a compositor too old to say.
+    #[serde(default)]
+    pub id: u64,
     /// The name of the output it belongs to, such as `eDP-1`. Each output
     /// has its own workspaces, numbered alike. Empty while there is no
     /// output.
@@ -97,10 +102,19 @@ pub struct Workspace {
     /// Its number among that output's, counting from 1 as key bindings and
     /// rules do.
     pub number: u32,
-    /// Its configured name.
+    /// Its configured name, or its number if it was made and has none.
     pub name: String,
     /// Whether it is the one its output is showing.
     pub active: bool,
+    /// Whether it is always there, as those the configuration names are.
+    /// One that is not goes when it is empty and another is shown.
+    #[serde(default = "kept")]
+    pub kept: bool,
+}
+
+/// Every workspace was always there before any could be made.
+const fn kept() -> bool {
+    true
 }
 
 /// A window.
@@ -207,6 +221,8 @@ mod tests {
                 number: 1,
                 name: "web".to_owned(),
                 active: true,
+                id: 0,
+                kept: true,
             }],
             windows: vec![Window {
                 id: 3,
@@ -250,5 +266,13 @@ mod tests {
                 .contains("unknown variant")
         );
         assert!(decode::<Request>("").is_err());
+    }
+
+    #[test]
+    fn a_workspace_from_before_they_could_be_made_is_one_that_is_kept() {
+        let old = r#"{"output":"eDP-1","number":2,"name":"code","active":false}"#;
+        let workspace: Workspace = serde_json::from_str(old).unwrap();
+        assert!(workspace.kept);
+        assert_eq!(workspace.id, 0);
     }
 }

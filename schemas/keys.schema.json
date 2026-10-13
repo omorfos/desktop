@@ -73,7 +73,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Switch to the workspace with this number.",
+          "description": "Switch to the workspace with this number. One past the last makes\nthat workspace first.",
           "properties": {
             "workspace": {
               "maximum": 32,
@@ -87,6 +87,11 @@
           "type": "object"
         },
         {
+          "const": "new_workspace",
+          "description": "Make a workspace after the last and switch to it. It goes again\nonce it is empty and another is shown.",
+          "type": "string"
+        },
+        {
           "const": "next_workspace",
           "description": "Switch to the following workspace.",
           "type": "string"
@@ -98,7 +103,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Send the focused window to the workspace with this number, on the\nscreen it is on.",
+          "description": "Send the focused window to the workspace with this number, on the\nscreen it is on. One past the last makes that workspace first.",
           "properties": {
             "move_to_workspace": {
               "maximum": 32,
@@ -110,6 +115,11 @@
             "move_to_workspace"
           ],
           "type": "object"
+        },
+        {
+          "const": "move_to_new_workspace",
+          "description": "Send the focused window to a workspace made for it, after the last.",
+          "type": "string"
         },
         {
           "const": "move_to_next_output",

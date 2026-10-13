@@ -171,7 +171,8 @@ impl Workspaces {
 
 impl Default for Workspaces {
     fn default() -> Self {
-        Self(["1", "2", "3", "4"].map(String::from).into())
+        // More are made as they are wanted, and go when they are not.
+        Self(vec!["1".to_owned()])
     }
 }
 
@@ -626,7 +627,7 @@ mod tests {
     #[test]
     fn defaults_are_usable_without_any_configuration() {
         let general = General::default();
-        assert_eq!(general.workspaces.names(), ["1", "2", "3", "4"]);
+        assert_eq!(general.workspaces.names(), ["1"]);
         assert_eq!(
             general.focus,
             Focus {

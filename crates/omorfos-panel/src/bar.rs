@@ -318,6 +318,8 @@ mod tests {
             number,
             name: name.to_owned(),
             active,
+            id: 0,
+            kept: true,
         }
     }
 

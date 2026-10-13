@@ -41,7 +41,7 @@ fn a_backend_can_add_its_own_source_of_events() {
         })
         .unwrap();
 
-    sender.send(Action::NextWorkspace).unwrap();
+    sender.send(Action::NewWorkspace).unwrap();
     session.step();
     assert_eq!(session.compositor().desktop().active_workspace(), 1);
 

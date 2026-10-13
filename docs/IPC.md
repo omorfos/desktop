@@ -56,7 +56,8 @@ and reads one reply.
 Anything that cannot be understood or carried out is answered with
 `{"error": {"message": "..."}}`, and the connection stays open. That
 includes naming something that does not exist: activating a window that is
-not there, or switching or moving to a workspace beyond the last one. An
+not there, or switching or moving to a workspace more than one beyond the
+last (one beyond the last is made). An
 action on the focused window when no window is focused does nothing and is
 answered with `"done"`, as the same key binding would be.
 
@@ -80,7 +81,7 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
 ```json
 {
   "workspaces": [
-    { "output": "eDP-1", "number": 1, "name": "web", "active": true }
+    { "id": 1, "output": "eDP-1", "number": 1, "name": "web", "active": true, "kept": true }
   ],
   "windows": [
     {
@@ -108,8 +109,12 @@ a program that shows them shows each once when it first sees it.
 
 Each screen has its own set of workspaces, numbered from 1, and shows one
 of them. They are listed screen by screen, so numbers repeat and one
-workspace per screen is `active`; tell them apart by `output` and `number`
-together. A window's `output` and `workspace` say which it is on. `output`
+workspace per screen is `active`. Workspaces are made and go while the
+session runs, and a workspace's `number` changes when one before it goes:
+its `id` does not, and is never used again in a session, so that is what
+to tell them apart by. `kept` is true of those the configuration names,
+which are always there; one that is not goes once it is empty and another
+is shown. A workspace that was made has its number for a `name`. A window's `output` and `workspace` say which it is on. `output`
 is empty while no screen is connected. Windows are listed in a stable order (by
 when their frame was created, then tab order), so a task list does not
 reshuffle. `shown` is false for a tab that is not the one its frame is

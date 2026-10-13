@@ -21,7 +21,10 @@ mod placement;
 mod rules;
 
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
-pub use desktop::{Desktop, Frame, Listed, Opening, Screen, Settings, Standing, Window, WindowId};
+pub use desktop::{
+    Desktop, Frame, Listed, Opening, Place, Screen, Settings, Standing, Window, WindowId,
+    WorkspaceId,
+};
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};

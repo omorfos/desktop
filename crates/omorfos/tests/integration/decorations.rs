@@ -9,7 +9,7 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
 use std::time::Duration;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH, between, half_way};
+use crate::common::{Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, RED};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
@@ -317,7 +317,8 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     use omorfos_config::Action;
 
     let theme = "window { transition: 100ms linear; }\n";
-    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut session =
+        Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();
     // The titlebar, the border down the left and the window itself.
     let seen = |session: &mut Session| {
@@ -421,7 +422,8 @@ fn a_window_whose_program_has_gone_does_not_stop_the_screen_being_drawn() {
 #[test]
 fn a_window_of_one_colour_fades_out_too() {
     let theme = "window { transition: 100ms linear; }\n";
-    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut session =
+        Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();
     let window = client.toplevel("plain", "plain window");
     session.roundtrip(&mut client);
@@ -778,7 +780,7 @@ fn a_window_kept_above_stays_over_the_one_that_is_clicked() {
 fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     use omorfos_config::Action;
 
-    let mut session = Session::new();
+    let mut session = Session::with_workspaces();
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
 
@@ -805,6 +807,34 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.step();
     assert_eq!(session.draw().at(100, 80), RED, "and on the third");
+}
+
+#[test]
+fn a_window_can_be_sent_to_a_new_workspace_from_its_titlebar() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    assert_eq!(session.compositor().desktop().workspace_count(), 1);
+
+    // Beside the last row: the one workspace there is, a line, and a new
+    // one.
+    open_window_menu(&mut session, TITLE);
+    let send = row(TITLE, 6);
+    point(&mut session, send);
+    session.step();
+    click(&mut session, (send.0 + 220, send.1 + 28 + 9));
+
+    assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone from this one");
+    assert_eq!(session.compositor().desktop().workspace_count(), 2);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::NextWorkspace);
+    session.step();
+    assert_eq!(
+        session.draw().at(100, 80),
+        RED,
+        "and on the one made for it"
+    );
 }
 
 #[test]
