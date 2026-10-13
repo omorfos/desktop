@@ -281,12 +281,22 @@ rules:
     decorations: true
   - match: { app_id: mpv }
     fullscreen: true
+  - match: { title: "*Bank*" }
+    private: true
 ```
 
 A rule needs `app_id`, `title` or both; `*` stands for any run of
 characters. Every matching rule applies, in order. Properties are
-`workspace`, `maximized`, `fullscreen` and `decorations`. Without a
-`decorations` rule, a window is framed if it asks omorfos to decorate it.
+`workspace`, `maximized`, `fullscreen`, `decorations` and `private`.
+Without a `decorations` rule, a window is framed if it asks omorfos to
+decorate it.
+
+The others are looked at when a window opens. `private` holds for as
+long as the window matches: a window whose title comes to match is
+private from then on, and one whose title no longer does is not. A
+private window is left blank in any picture a program takes of the
+screen, titlebar and all, and so is a window that shares its frame as a
+tab. You see it as ever.
 
 ## `theme.css`
 
@@ -842,6 +852,9 @@ omorfos over everything else, it is not in the pictures, and nothing can
 turn it off: its colours can be changed, with the `capture` part of the
 theme. So a picture cannot be taken of your screen without your seeing
 that it was.
+
+A window that a rule in `rules.yaml` calls `private` is blank in every
+picture, in the background colour of the `capture` part of the theme.
 
 Nothing is given while the session is locked. The pointer is in a picture
 only if the program asks for it, and `omorfos-screenshot` does not.

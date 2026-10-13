@@ -1322,6 +1322,19 @@ impl Desktop {
             .map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs[at.tab])
     }
 
+    /// Whether a window is to be left out of pictures taken of the
+    /// screen: a rule says so of it, or of a window it shares a frame
+    /// with, whose title is on the same titlebar. It is asked of the
+    /// windows as they are now, so a title that comes to match hides one.
+    #[must_use]
+    pub fn private(&self, id: WindowId) -> bool {
+        let frame = self.locate(id);
+        let tabs =
+            frame.map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs);
+        let said = |window: &Window| resolve(&self.rules, &window.app_id, &window.title).private;
+        tabs.is_some_and(|tabs| tabs.iter().any(|window| said(window) == Some(true)))
+    }
+
     /// Every window on every workspace of every output, in the order frames
     /// were created and then tab order: a stable order suited to a task
     /// list.
@@ -2436,6 +2449,7 @@ mod tests {
                 maximized: Some(true),
                 fullscreen: Some(true),
                 decorations: Some(false),
+                private: None,
             },
         )]);
         let player = open(&mut desktop, "mpv");
@@ -2699,6 +2713,44 @@ mod tests {
             frame.decoration.map(|decoration| decoration.tabs()),
             Some(1)
         );
+    }
+
+    #[test]
+    fn a_window_is_private_for_as_long_as_a_rule_says_so_of_it_or_its_frame() {
+        let mut desktop = decorated_desktop();
+        let private = Effects {
+            private: Some(true),
+            ..Effects::default()
+        };
+        let mut by_title = rule("", private);
+        by_title.app_id = None;
+        by_title.title = Some(Pattern::new("*Bank*"));
+        desktop.set_rules(vec![rule("wallet", private), by_title]);
+
+        let wallet = open(&mut desktop, "wallet");
+        let browser = open(&mut desktop, "browser");
+        assert!(desktop.private(wallet));
+        assert!(!desktop.private(browser));
+        // A title that comes to match hides the window, and one that no
+        // longer does shows it again.
+        desktop.set_title(browser, "My Bank - statement");
+        assert!(desktop.private(browser));
+        desktop.set_title(browser, "News");
+        assert!(!desktop.private(browser));
+
+        // A window that shares a frame with a private one is hidden with
+        // it: the titlebar says what both are.
+        desktop.attach(browser, wallet);
+        assert!(desktop.private(browser));
+        // A later rule can say that one is not private after all.
+        let shown = Effects {
+            private: Some(false),
+            ..Effects::default()
+        };
+        desktop.set_rules(vec![rule("wallet", private), rule("wallet", shown)]);
+        assert!(!desktop.private(wallet));
+        desktop.remove_window(wallet);
+        assert!(!desktop.private(wallet), "nor is one that has gone");
     }
 
     #[test]

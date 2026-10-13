@@ -107,3 +107,21 @@ own window where a protocol for it exists.
 - Rules gain `private`, which capture honours when capture is built.
 - The cost while a preview is open is one small picture remade when its
   window changes. Closed, it is nothing.
+
+## What was built first, and what it settled
+
+The `private` rule came with pictures of the screen, before the switcher
+and the dock that this record is mostly about.
+
+- **It is asked of a window as it is now.** Every other rule is looked at
+  once, when a window opens. A browser's title says what page it shows
+  only after it has opened, and changes, so a rule on a title that was
+  looked at once would hide nothing. Whether a window is private is
+  worked out each time the scene is laid out.
+- **The whole frame is blank**, titlebar included, since the titlebar
+  says what the window is; and with it any window that shares the frame
+  as a tab, whose title is on the same titlebar.
+- **What stands in its place is kept** from one frame to the next, so
+  that a program taking pictures is not told that part of the screen
+  changed when it did not. It is the background colour of the `capture`
+  part of the theme, so the mark and the blank are one thing to style.

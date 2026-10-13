@@ -77,6 +77,6 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     assert_eq!(config.general, defaults.general);
 
     assert_eq!(config.keys.bindings().len(), 3);
-    assert_eq!(config.rules.rules.len(), 3);
+    assert_eq!(config.rules.rules.len(), 4);
     assert_eq!(config.menu.items.len(), 3);
 }

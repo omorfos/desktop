@@ -47,6 +47,9 @@ pub struct Effects {
     pub fullscreen: Option<bool>,
     /// Whether the window gets a titlebar and border.
     pub decorations: Option<bool>,
+    /// Whether the window is left out of pictures taken of the screen.
+    /// This is asked of a window as it is now, not only as it opened.
+    pub private: Option<bool>,
 }
 
 impl Effects {
@@ -59,6 +62,7 @@ impl Effects {
             maximized: later.maximized.or(self.maximized),
             fullscreen: later.fullscreen.or(self.fullscreen),
             decorations: later.decorations.or(self.decorations),
+            private: later.private.or(self.private),
         }
     }
 }
@@ -220,6 +224,7 @@ mod tests {
                 maximized: None,
                 fullscreen: Some(true),
                 decorations: Some(false),
+                private: None,
             }
         );
         assert_eq!(resolve(&rules, "vlc", "").workspace, Some(3));
