@@ -87,6 +87,7 @@ impl Default for Keys {
             bind("Super+Shift+n", Action::MoveToNewWorkspace),
             bind("Print", Action::Spawn(Started::screenshot())),
             bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
+            bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
@@ -537,6 +538,12 @@ bindings:
         );
         assert_eq!(copied.run.arguments(), ["--to", "clipboard"]);
         assert_eq!(copied.may, started.may);
+        // With Alt it is of the window with focus, which it has to be
+        // told of to ask for.
+        let window = Started::screenshot_window();
+        assert_eq!(action_for("Alt+Print"), Some(Action::Spawn(window.clone())));
+        assert_eq!(window.run.arguments(), ["--window"]);
+        assert!(window.may.contains(&crate::Role::Panel));
         assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::FocusPrevious));
         assert_eq!(
             action_for("Super+3"),

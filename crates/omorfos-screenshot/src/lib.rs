@@ -2,6 +2,7 @@
 //!
 //! Run by itself it takes a picture of every screen and saves each as a
 //! PNG among the user's pictures, in a folder called `Screenshots`. It can
+//! take the window with focus in place of the screens, with `--window`, and
 //! put the picture on the clipboard as well or instead: `screenshots.destination`
 //! in `config.yaml` says which, and `--to` says it for one run.
 //!
@@ -23,23 +24,49 @@ use omorfos_config::{Kept, Store};
 pub use save::{encode, pictures, save, together};
 
 /// How the program is used, said when it is used otherwise.
-const USAGE: &str = "usage: omorfos-screenshot [--to file|clipboard|both]";
+const USAGE: &str = "usage: omorfos-screenshot [--window] [--to file|clipboard|both]";
 
-/// Where a run was told to put its picture, if it was told.
+/// What a run was told on its command line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Told {
+    /// Where to put its picture, if it was told.
+    pub to: Option<Kept>,
+    /// Whether to take the window with focus in place of the screens.
+    pub window: bool,
+}
+
+/// What a run was told.
 ///
 /// # Errors
 ///
 /// Returns how the program is used, if `arguments` are not that.
-pub fn told(arguments: &[OsString]) -> Result<Option<Kept>, Failure> {
-    let words: Vec<Option<&str>> = arguments.iter().map(|word| word.to_str()).collect();
-    match words[..] {
-        [] => Ok(None),
-        [Some("--to"), Some(place)] => {
-            let kept = Kept::named(place);
-            kept.map(Some).ok_or_else(|| USAGE.into())
+pub fn told(arguments: &[OsString]) -> Result<Told, Failure> {
+    let mut told = Told::default();
+    let mut words = arguments.iter().map(|word| word.to_str());
+    while let Some(word) = words.next() {
+        match word {
+            Some("--window") => told.window = true,
+            Some("--to") => {
+                let place = words.next().flatten().and_then(Kept::named);
+                told.to = Some(place.ok_or(USAGE)?);
+            }
+            _ => return Err(USAGE.into()),
         }
-        _ => Err(USAGE.into()),
     }
+    Ok(told)
+}
+
+/// What the window with focus is called in the list of windows, as the
+/// compositor says at its socket for scripts. Nothing, if it cannot be
+/// asked or no window has focus.
+fn focused(socket: Option<PathBuf>) -> Option<String> {
+    let client = socket.and_then(|socket| omorfos_ipc::Client::connect(&socket).ok());
+    let reply = client.and_then(|mut client| client.request(&omorfos_ipc::Request::State).ok());
+    let state = reply.and_then(omorfos_ipc::Reply::into_state);
+    let mut windows = state.into_iter().flat_map(|state| state.windows);
+    windows
+        .find(|window| window.focused)
+        .map(|window| window.handle)
 }
 
 /// Takes a picture of every screen, puts it where it is to go, and says
@@ -96,15 +123,24 @@ pub fn start(
     let beside = config.parent().map(|above| above.join("user-dirs.dirs"));
     let named = beside.and_then(|file| fs::read_to_string(file).ok());
     let folder = pictures(named.as_deref(), &home).join("Screenshots");
-    let kept = told.unwrap_or(
-        Store::open(config)
-            .current()
-            .general
-            .screenshots
-            .destination,
-    );
+    let kept = Store::open(config)
+        .current()
+        .general
+        .screenshots
+        .destination;
+    let kept = told.to.unwrap_or(kept);
+    let window = if told.window {
+        let socket = get("OMORFOS_SOCKET");
+        let (runtime, display) = (get("XDG_RUNTIME_DIR"), get("WAYLAND_DISPLAY"));
+        let socket =
+            omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
+        let focused = focused(socket);
+        Some(focused.ok_or("there is no window with focus to take a picture of")?)
+    } else {
+        None
+    };
 
-    let (shots, camera) = client::shoot(&wayland)?;
+    let (shots, camera) = client::shoot(&wayland, window)?;
     let saved = if kept.saves() {
         let stamp = jiff::Zoned::now().strftime("%Y-%m-%d %H-%M-%S").to_string();
         // A screen is named in the file only when there is more than one.
@@ -143,11 +179,17 @@ mod tests {
 
     #[test]
     fn a_run_can_be_told_where_its_picture_goes() {
-        assert_eq!(told(&[]).unwrap(), None);
-        let to = |place: &str| told(&[word("--to"), word(place)]);
+        assert_eq!(told(&[]).unwrap(), Told::default());
+        let to = |place: &str| told(&[word("--to"), word(place)]).map(|told| told.to);
         assert_eq!(to("file").unwrap(), Some(Kept::File));
         assert_eq!(to("clipboard").unwrap(), Some(Kept::Clipboard));
         assert_eq!(to("both").unwrap(), Some(Kept::Both));
+
+        // And to take the window with focus, with or without that.
+        let window = told(&[word("--window")]).unwrap();
+        assert_eq!((window.window, window.to), (true, None));
+        let both = told(&[word("--to"), word("clipboard"), word("--window")]).unwrap();
+        assert_eq!((both.window, both.to), (true, Some(Kept::Clipboard)));
     }
 
     #[test]

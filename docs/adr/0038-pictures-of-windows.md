@@ -125,3 +125,18 @@ and the dock that this record is mostly about.
   that a program taking pictures is not told that part of the screen
   changed when it did not. It is the background colour of the `capture`
   part of the theme, so the mark and the blank are one thing to style.
+
+**A picture of one window** is what the window draws, without the frame
+omorfos puts round it, as the protocol means it. It is drawn by itself in
+the corner of the screen the window is on, before that screen is drawn,
+and cut from what is read back: the same reading as for a picture of the
+screen, which is the one that has been tried on real hardware. So it can
+be no larger than that screen. A window out of sight can have its
+picture taken, since what it last drew is still held; one a rule calls
+private is a blank of its size.
+
+**A window is named by its entry in the list of windows**, which only a
+program with the `panel` role is given. So taking a picture of a window
+needs `panel` as well as `capture`. The socket for scripts says what each
+window is called in that list (`handle`), which is how the screenshot
+tool finds the one with focus.

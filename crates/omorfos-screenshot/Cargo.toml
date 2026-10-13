@@ -15,6 +15,8 @@ publish.workspace = true
 # Already in the tree through the panel. Says what time it is where the
 # user is, which a picture is named after.
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+# Asks the compositor which window has focus.
+omorfos-ipc = { path = "../omorfos-ipc" }
 # Says where the user wants pictures to go.
 omorfos-config = { path = "../omorfos-config" }
 omorfos-shell = { path = "../omorfos-shell" }

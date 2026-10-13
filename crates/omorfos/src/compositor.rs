@@ -82,7 +82,7 @@ use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
 use crate::bridge::{self, Bindings};
-use crate::capture::{self, Capture};
+use crate::capture::{self, Capture, Pass};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
@@ -1543,16 +1543,18 @@ impl Compositor {
         // read back. What the screen shows is drawn over it after.
         let mut age = age;
         let mut before = Vec::new();
-        for pointer in [false, true] {
-            if !self.capture.wants(output, pointer) {
-                continue;
-            }
-            let shown = Extras {
-                pointer,
-                mark: false,
+        for pass in self.capture.wanted(output) {
+            let (elements, behind) = match pass {
+                Pass::Screen { pointer } => {
+                    let shown = Extras {
+                        pointer,
+                        mark: false,
+                    };
+                    (self.elements(renderer, output, view, shown), behind)
+                }
+                Pass::Window(window) => (self.alone(renderer, window, view.scale), BLACK),
             };
-            let elements = self.elements(renderer, output, view, shown);
-            let due = self.capture.due(output, pointer, &elements);
+            let due = self.capture.due(output, pass, &elements);
             if due.is_empty() {
                 continue;
             }
@@ -1564,7 +1566,9 @@ impl Compositor {
                 .flat_map(|drawn| drawn.damage.into_iter().flatten());
             before.extend(changed.copied());
             age = 1;
-            // Red first is the one order every renderer can give.
+            // Red first is the one order every renderer can give. All of
+            // the screen is read, and a window's picture cut from it, so
+            // that there is one way of reading and it is the tried one.
             let whole = Rectangle::from_size((size.w, size.h).into());
             let read = renderer.copy_framebuffer(framebuffer, whole, Fourcc::Abgr8888);
             let read = read.ok();
@@ -1580,6 +1584,36 @@ impl Compositor {
         let elements = self.elements(renderer, output, view, shown);
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
         drawn.map(|drawn| Drawn::of(drawn, before))
+    }
+
+    /// A window by itself, from the top left corner of the screen, as a
+    /// picture of it is taken: what it draws, without the frame omorfos
+    /// puts round it. A blank, if a rule says it is private.
+    fn alone<R>(&self, renderer: &mut R, window: WindowId, scale: Scale) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let corner = Point::<i32, Physical>::default();
+        if self.desktop.private(window) {
+            let blank = self.capture.blank(window).into_iter();
+            let blank = blank.map(|blank| {
+                SolidColorRenderElement::from_buffer(blank, corner, 1.0, 1.0, Kind::Unspecified)
+            });
+            return blank.map(Element::Solid).collect();
+        }
+        let mapped = self.windows.iter().find(|mapped| mapped.id == window);
+        let surfaces = mapped.into_iter().flat_map(|mapped| {
+            // A window's surface may start above and left of what is seen
+            // of it, where it draws its own shadows.
+            let within = Point::<i32, Logical>::default() - mapped.window.geometry().loc;
+            let at = within.to_f64().to_physical(scale.factor()).to_i32_round();
+            let scale = smithay::utils::Scale::from(scale.factor());
+            mapped
+                .window
+                .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0)
+        });
+        surfaces.map(Element::Surface).collect()
     }
 
     /// What a locked screen shows: the pointer, over what the locker put

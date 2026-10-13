@@ -92,13 +92,18 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "workspace": 1,
       "focused": true,
       "shown": true,
-      "minimized": false
+      "minimized": false,
+      "handle": "5d3a0f6c1b2e4a7f8c9d0e1f2a3b4c5d"
     }
   ],
   "problems": [],
   "events": []
 }
 ```
+
+A window's `handle` is what it is called in the list of windows that
+`ext-foreign-toplevel-list-v1` gives a program with the `panel` role, so
+that a program speaking both can tell which of those windows this is.
 
 `problems` is what is wrong and stays so until it is put right: each is a
 line for the user, such as `theme.css:2:13: ...`. `events` is what has

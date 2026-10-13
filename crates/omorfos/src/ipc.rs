@@ -380,6 +380,7 @@ impl Compositor {
                     focused: listed.focused,
                     shown: listed.shown,
                     minimized: listed.minimized,
+                    handle: self.handle_of(listed.window.id),
                 })
                 .collect(),
             problems: self.problems().to_vec(),

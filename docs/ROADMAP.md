@@ -187,8 +187,12 @@ calls for them.
       its picture when pasted.
 - [x] The `private` rule, which leaves a window blank in any picture
       taken of the screen, for as long as it matches (ADR 38).
-- [ ] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
-      and the screenshot tool taking one of the window with focus.
+- [x] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
+      and the screenshot tool taking one of the window with focus, with
+      `--window` and `Alt+Print`.
+- [ ] Known gaps in pictures of a window: one larger than its screen is
+      cut to the screen; what is see-through in it is black; and it is
+      given without the frame omorfos draws, with no way to ask for it.
 - [ ] A private window blurred in pictures in place of blank, as a
       choice of the rule (`private: blur`), once glass has brought the
       blur and a way to draw a window by itself. A blur hides less than
@@ -228,6 +232,13 @@ calls for them.
       windows standing one behind another on a diagonal, turned through
       as a queue, is the same thing drawn another way and comes with
       stage 4.
+      The order is that of use, most recent first, and is remembered
+      between one use of the switcher and the next. While Alt is held,
+      Tab goes through all of the windows and the order stands still:
+      a window passed over on the way has not been used. When Alt is
+      let go, the window chosen goes to the front of the order and the
+      rest keep their places, so that one Alt+Tab goes back to the
+      window before and another goes back again.
 - [ ] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`), and switching keyboard
       layout by a key.

@@ -11,8 +11,12 @@ use std::time::{Duration, Instant};
 
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Element;
+use smithay::backend::renderer::element::solid::SolidColorBuffer;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::image_capture_source::v1::server::{
+    ext_foreign_toplevel_image_capture_source_manager_v1::{
+        ExtForeignToplevelImageCaptureSourceManagerV1, Request as WindowSourceRequest,
+    },
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_output_image_capture_source_manager_v1::{
         ExtOutputImageCaptureSourceManagerV1, Request as SourceRequest,
@@ -42,7 +46,11 @@ use smithay::reexports::wayland_server::{
 use smithay::utils::{Physical, Rectangle, Size};
 
 use crate::Scale;
-use crate::compositor::{Compositor, Painted};
+use omorfos_config::{Part, States};
+use omorfos_core::WindowId;
+use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
+
+use crate::compositor::{Compositor, Painted, color};
 use crate::paint;
 use crate::roles::Roles;
 
@@ -56,29 +64,108 @@ pub(crate) const MARGIN: i32 = 8;
 /// What has changed on a screen, in its pixels.
 type Damage = Vec<Rectangle<i32, Physical>>;
 
-/// A program taking pictures of a screen.
+/// What pictures are taken of.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Subject {
+    /// All that a screen shows.
+    Screen(Output),
+    /// One window, by itself.
+    Window(WindowId),
+}
+
+/// One drawing of something to take pictures from. Programs that want the
+/// same are given their pictures from the same drawing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pass {
+    /// A screen, with the pointer or without.
+    Screen {
+        /// Whether the pointer is drawn.
+        pointer: bool,
+    },
+    /// A window by itself.
+    Window(WindowId),
+}
+
+/// Where what pictures are taken of stands just now: the screen it is on,
+/// how many pixels of that screen it takes, and how many of them there
+/// are to a unit of layout.
+type Standing = (Output, Size<i32, Physical>, f64);
+
+/// A program taking pictures.
 #[derive(Debug)]
 struct Taking {
     session: ExtImageCopyCaptureSessionV1,
+    subject: Subject,
+    /// The screen the pictures are drawn on to be taken, which is the one
+    /// that shows the mark: the screen itself, or the one a window is on.
     output: Output,
-    /// The size of the pictures, which is that of the screen.
+    /// The size of the pictures: that of the screen, or of the window.
     size: Size<i32, Physical>,
-    /// Whether the pointer is to be in the pictures.
+    scale: f64,
+    /// Whether the pointer is to be in pictures of a screen.
     pointer: bool,
     /// What has changed since the last picture.
     tracker: OutputDamageTracker,
     /// Whether a picture has been taken. The first is taken at once, and
     /// those after it when something has changed.
     taken: bool,
+    /// What a window is in its pictures while a rule says it is private.
+    blank: SolidColorBuffer,
 }
 
 impl Taking {
-    /// Tells the program what a buffer has to be to take a picture in.
-    fn announce(&self) {
-        let width = self.size.w.unsigned_abs();
-        self.session.buffer_size(width, self.size.h.unsigned_abs());
+    /// A program beginning to take pictures of something that stands
+    /// somewhere.
+    fn of(
+        session: ExtImageCopyCaptureSessionV1,
+        subject: Subject,
+        pointer: bool,
+        (output, size, scale): Standing,
+    ) -> Self {
+        let mut taking = Self {
+            session,
+            tracker: OutputDamageTracker::from_output(&output),
+            subject,
+            output,
+            size: Size::default(),
+            scale,
+            pointer,
+            taken: false,
+            blank: SolidColorBuffer::default(),
+        };
+        taking.stand((taking.output.clone(), size, scale));
+        taking
+    }
+
+    /// Notes where what is taken stands now. If its size is not what it
+    /// was, the program is told what a buffer has to be to take a picture
+    /// in, and the next picture is all new.
+    fn stand(&mut self, (output, size, scale): Standing) {
+        let same = size == self.size && scale.to_bits() == self.scale.to_bits();
+        self.output = output;
+        if same {
+            return;
+        }
+        (self.size, self.scale) = (size, scale);
+        self.taken = false;
+        self.tracker = match self.subject {
+            Subject::Screen(_) => OutputDamageTracker::from_output(&self.output),
+            Subject::Window(_) => OutputDamageTracker::new(size, scale, Transform::Normal.into()),
+        };
+        self.session
+            .buffer_size(size.w.unsigned_abs(), size.h.unsigned_abs());
         self.session.shm_format(Format::Xrgb8888);
         self.session.done();
+    }
+
+    /// The drawing its pictures are taken from.
+    fn pass(&self) -> Pass {
+        match self.subject {
+            Subject::Screen(_) => Pass::Screen {
+                pointer: self.pointer,
+            },
+            Subject::Window(window) => Pass::Window(window),
+        }
     }
 }
 
@@ -108,6 +195,9 @@ struct Shot {
 pub(crate) struct Due {
     shot: usize,
     damage: Damage,
+    /// How much of the drawing it is: all of a screen, or as much from
+    /// its top left corner as a window takes.
+    size: Size<i32, Physical>,
 }
 
 /// Everything to do with pictures of the screen being taken.
@@ -133,6 +223,8 @@ impl Capture {
     pub(crate) fn offer(display: &DisplayHandle) -> Self {
         display.create_global::<Compositor, ExtOutputImageCaptureSourceManagerV1, ()>(1, ());
         display.create_global::<Compositor, ExtImageCopyCaptureManagerV1, ()>(1, ());
+        display
+            .create_global::<Compositor, ExtForeignToplevelImageCaptureSourceManagerV1, ()>(1, ());
         Self::default()
     }
 
@@ -160,29 +252,36 @@ impl Capture {
         self.fading.iter().map(|(_, until)| *until).min()
     }
 
-    /// Whether a picture of a screen has been asked for, with the pointer
-    /// in it or without.
-    pub(crate) fn wants(&self, output: &Output, pointer: bool) -> bool {
-        let mut asked = self.shots.iter().filter(|shot| shot.stage == Stage::Asked);
-        asked.any(|shot| self.sits(&shot.session, output, pointer))
+    /// The drawings of a screen from which pictures have been asked for.
+    pub(crate) fn wanted(&self, output: &Output) -> Vec<Pass> {
+        let mut passes = Vec::new();
+        let asked = self.shots.iter().filter(|shot| shot.stage == Stage::Asked);
+        for shot in asked {
+            let taking = self.takings.iter();
+            let mut taking = taking.filter(|taking| taking.session == shot.session);
+            let pass = taking
+                .find(|taking| taking.output == *output)
+                .map(Taking::pass);
+            passes.extend(pass.filter(|pass| !passes.contains(pass)));
+        }
+        passes
     }
 
-    /// Whether a program's pictures are of this screen and of this kind.
-    fn sits(&self, session: &ExtImageCopyCaptureSessionV1, output: &Output, pointer: bool) -> bool {
-        let taking = self
-            .takings
-            .iter()
-            .find(|taking| taking.session == *session);
-        taking.is_some_and(|taking| taking.output == *output && taking.pointer == pointer)
+    /// What a window is in pictures of it while it is private, as large
+    /// as it is.
+    pub(crate) fn blank(&self, window: WindowId) -> Option<&SolidColorBuffer> {
+        let of = Subject::Window(window);
+        let taking = self.takings.iter().find(|taking| taking.subject == of);
+        taking.map(|taking| &taking.blank)
     }
 
-    /// The pictures of a screen to take now, given what is on it: those
-    /// that are a program's first, and those for which something has
-    /// changed since its last.
+    /// The pictures to take now from a drawing of a screen, given what is
+    /// in it: those that are a program's first, and those for which
+    /// something has changed since its last.
     pub(crate) fn due<E: Element>(
         &mut self,
         output: &Output,
-        pointer: bool,
+        pass: Pass,
         elements: &[E],
     ) -> Vec<Due> {
         let mut due = Vec::new();
@@ -191,7 +290,7 @@ impl Capture {
                 .shots
                 .iter()
                 .position(|shot| shot.stage == Stage::Asked && shot.session == taking.session);
-            let here = taking.output == *output && taking.pointer == pointer;
+            let here = taking.output == *output && taking.pass() == pass;
             let Some(shot) = asked.filter(|_| here) else {
                 continue;
             };
@@ -202,34 +301,38 @@ impl Capture {
             } else {
                 Some(vec![Rectangle::from_size(taking.size)])
             };
-            due.extend(damage.map(|damage| Due { shot, damage }));
+            let size = taking.size;
+            due.extend(damage.map(|damage| Due { shot, damage, size }));
         }
         due
     }
 
-    /// Gives programs the pictures that were due. `pixels` is what the
-    /// screen shows, four bytes to a pixel as red, green, blue and one to
-    /// spare, or nothing if it could not be read.
+    /// Gives programs the pictures that were due. `pixels` is the drawing
+    /// they are taken from, as wide and as high as `drawn`, four bytes to
+    /// a pixel as red, green, blue and one to spare; or nothing, if it
+    /// could not be read.
     pub(crate) fn hand(
         &mut self,
         due: Vec<Due>,
         pixels: Option<&[u8]>,
-        size: Size<i32, Physical>,
+        drawn: Size<i32, Physical>,
         clock: Duration,
     ) {
-        self.scratch.clear();
-        let (pixels, _) = pixels.unwrap_or_default().as_chunks::<4>();
-        // A program is given blue first and red third.
-        self.scratch.extend(
-            pixels
-                .iter()
-                .flat_map(|[red, green, blue, _]| [*blue, *green, *red, u8::MAX]),
-        );
-        let size = (
-            usize::try_from(size.w).unwrap_or_default(),
-            usize::try_from(size.h).unwrap_or_default(),
-        );
-        for Due { shot, damage } in due {
+        let across = |pixels: i32| usize::try_from(pixels).unwrap_or_default();
+        // A row of the drawing, which is never of no length to cut by.
+        let row = (across(drawn.w) * 4).max(4);
+        for Due { shot, damage, size } in due {
+            let size = (across(size.w), across(size.h));
+            self.scratch.clear();
+            // As much of each row, from the top, as the picture is wide.
+            for row in pixels.unwrap_or_default().chunks(row).take(size.1) {
+                let (row, _) = row.get(..size.0 * 4).unwrap_or_default().as_chunks::<4>();
+                // A program is given blue first and red third.
+                let turned = row.iter();
+                let turned =
+                    turned.flat_map(|[red, green, blue, _]| [*blue, *green, *red, u8::MAX]);
+                self.scratch.extend(turned);
+            }
             let shot = &mut self.shots[shot];
             shot.stage = Stage::Over;
             let buffer = shot.buffer.as_ref();
@@ -268,6 +371,16 @@ impl Capture {
 }
 
 impl Compositor {
+    /// What a window is called in the list of windows a taskbar is given,
+    /// which is how a program says which window it wants a picture of.
+    /// Empty for one that is not in it.
+    pub(crate) fn handle_of(&self, window: WindowId) -> String {
+        let mapped = self.windows.iter().find(|mapped| mapped.id == window);
+        mapped
+            .map(|mapped| mapped.listed.identifier())
+            .unwrap_or_default()
+    }
+
     /// Whether a program is taking pictures of a screen, or was a moment
     /// ago: whether the mark that says so is on it.
     #[must_use]
@@ -275,33 +388,62 @@ impl Compositor {
         self.capture.marks(output)
     }
 
-    /// Keeps pictures of the screen in step with everything else: a
-    /// program taking pictures of a screen that has gone is told it has
-    /// stopped, one whose screen has changed size is told the new size,
-    /// and nothing is given while the session is locked. Sees to the mark.
+    /// Where what pictures are taken of stands: a screen where it is, and
+    /// a window on the screen that shows it, or on the first if none
+    /// does, as large as it is and no larger than that screen. Nothing,
+    /// if it has gone.
+    fn stands(&self, subject: &Subject) -> Option<Standing> {
+        match subject {
+            Subject::Screen(output) => {
+                let head = self.head(output);
+                head.map(|head| (head.output.clone(), head.pixels(), head.scale.factor()))
+            }
+            Subject::Window(window) => {
+                let mapped = self.windows.iter().find(|mapped| mapped.id == *window);
+                let shown = self.scene.iter().find(|shown| shown.id == *window);
+                let on = shown.and_then(|shown| self.head_at(shown.origin.to_f64()));
+                let head = on.or(self.heads.first());
+                mapped.zip(head).map(|(mapped, head)| {
+                    let scale = head.scale.factor();
+                    let size = mapped.window.geometry().size;
+                    let size: Size<i32, Physical> = size.to_f64().to_physical(scale).to_i32_round();
+                    let most = head.pixels();
+                    let size = Size::from((size.w.clamp(1, most.w), size.h.clamp(1, most.h)));
+                    (head.output.clone(), size, scale)
+                })
+            }
+        }
+    }
+
+    /// Keeps pictures in step with everything else: a program taking
+    /// pictures of what has gone is told it has stopped, one whose screen
+    /// or window has changed size is told the new size, and nothing is
+    /// given while the session is locked. Sees to the mark.
     pub(crate) fn settle_capture(&mut self, now: Instant) {
-        let sizes = self.heads.iter();
-        let sizes: Vec<_> = sizes
-            .map(|head| (head.output.clone(), head.pixels()))
+        let subjects = self.capture.takings.iter();
+        let standing: Vec<_> = subjects
+            .map(|taking| self.stands(&taking.subject))
             .collect();
+        let veiled = color(
+            self.config()
+                .theme
+                .style(Part::Capture, States::NONE)
+                .background,
+        );
         let locked = self.is_locked();
         let capture = &mut self.capture;
+        let mut standing = standing.into_iter();
         let gone = capture.takings.extract_if(.., |taking| {
-            !sizes.iter().any(|(output, _)| *output == taking.output)
+            let stands = standing.next().flatten();
+            let gone = stands.is_none();
+            // What has gone is left as it stood, to be told it has stopped.
+            taking.stand(stands.unwrap_or((taking.output.clone(), taking.size, taking.scale)));
+            taking.blank.update(taking.size.to_logical(1), veiled);
+            gone
         });
         for taking in gone.collect::<Vec<_>>() {
             taking.session.stopped();
             capture.ended.push(taking.output);
-        }
-        for taking in &mut capture.takings {
-            let now = sizes.iter().find(|(output, _)| *output == taking.output);
-            let size = now.map_or(taking.size, |(_, size)| *size);
-            if size != taking.size {
-                taking.size = size;
-                taking.tracker = OutputDamageTracker::from_output(&taking.output);
-                taking.taken = false;
-                taking.announce();
-            }
         }
         // A picture asked for that will not be taken is said to have failed.
         for shot in &mut capture.shots {
@@ -353,22 +495,58 @@ impl Compositor {
         if !may {
             self.refuse(Some(client), "take pictures of the screen", "capture");
         }
-        let output = source.data::<Option<Output>>().cloned().flatten();
-        let head = output.and_then(|output| self.head(&output).filter(|_| may));
-        let Some((output, size)) = head.map(|head| (head.output.clone(), head.pixels())) else {
+        let subject = source.data::<Option<Subject>>().cloned().flatten();
+        let subject = subject.filter(|_| may);
+        let stands = subject.as_ref().and_then(|subject| self.stands(subject));
+        let Some((subject, stands)) = subject.zip(stands) else {
             session.stopped();
             return;
         };
-        let taking = Taking {
-            session,
-            tracker: OutputDamageTracker::from_output(&output),
-            output,
-            size,
-            pointer,
-            taken: false,
-        };
-        taking.announce();
+        let taking = Taking::of(session, subject, pointer, stands);
         self.capture.takings.push(taking);
+    }
+}
+
+impl GlobalDispatch<ExtForeignToplevelImageCaptureSourceManagerV1, ()> for Compositor {
+    fn bind(
+        _: &mut Self,
+        _: &DisplayHandle,
+        _: &Client,
+        manager: New<ExtForeignToplevelImageCaptureSourceManagerV1>,
+        (): &(),
+        data_init: &mut DataInit<'_, Self>,
+    ) {
+        data_init.init(manager, ());
+    }
+
+    fn can_view(client: Client, (): &()) -> bool {
+        Self::outside(&client)
+    }
+}
+
+impl Dispatch<ExtForeignToplevelImageCaptureSourceManagerV1, ()> for Compositor {
+    fn request(
+        state: &mut Self,
+        _: &Client,
+        _: &ExtForeignToplevelImageCaptureSourceManagerV1,
+        request: WindowSourceRequest,
+        (): &(),
+        _: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
+    ) {
+        if let WindowSourceRequest::CreateSource {
+            source,
+            toplevel_handle,
+        } = request
+        {
+            // A window is named by its entry in the list of windows, which
+            // only a program that is told what windows there are has.
+            let listed = ForeignToplevelHandle::from_resource(&toplevel_handle);
+            let listed = listed.map(|listed| listed.identifier());
+            let mut windows = state.windows.iter();
+            let window = windows.find(|mapped| Some(mapped.listed.identifier()) == listed);
+            data_init.init(source, window.map(|mapped| Subject::Window(mapped.id)));
+        }
     }
 }
 
@@ -400,18 +578,19 @@ impl Dispatch<ExtOutputImageCaptureSourceManagerV1, ()> for Compositor {
         data_init: &mut DataInit<'_, Self>,
     ) {
         if let SourceRequest::CreateSource { source, output } = request {
-            data_init.init(source, Output::from_resource(&output));
+            let screen = Output::from_resource(&output).map(Subject::Screen);
+            data_init.init(source, screen);
         }
     }
 }
 
-impl Dispatch<ExtImageCaptureSourceV1, Option<Output>> for Compositor {
+impl Dispatch<ExtImageCaptureSourceV1, Option<Subject>> for Compositor {
     fn request(
         _: &mut Self,
         _: &Client,
         _: &ExtImageCaptureSourceV1,
         _: <ExtImageCaptureSourceV1 as Resource>::Request,
-        _: &Option<Output>,
+        _: &Option<Subject>,
         _: &DisplayHandle,
         _: &mut DataInit<'_, Self>,
     ) {

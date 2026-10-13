@@ -318,6 +318,7 @@ mod tests {
                 focused: true,
                 shown: true,
                 minimized: false,
+                handle: String::new(),
             }],
             problems: problems.iter().map(ToString::to_string).collect(),
             events: Vec::new(),
