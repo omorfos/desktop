@@ -18,6 +18,9 @@ It is a fresh implementation, not a port: see
 - The IPC protocol, a compatibility surface: [docs/IPC.md](docs/IPC.md)
 - How to test, and how to write code the coverage gate accepts:
   [docs/TESTING.md](docs/TESTING.md)
+- What it looks like, and the rules a part is drawn by:
+  [docs/DESIGN.md](docs/DESIGN.md). What is someone else's is credited in
+  [CREDITS.md](CREDITS.md) before it is built in.
 - Decisions and their reasons: [docs/adr/](docs/adr/)
 
 ## Priorities, in order
