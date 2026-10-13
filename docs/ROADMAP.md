@@ -299,7 +299,22 @@ a setting.
       password managers mark as secret, and keeps nothing on disk unless
       asked.
 - [ ] The launcher: looser matching, names in the user's language, and
-      what it can do beyond starting programs (sums, files, windows).
+      windows to go to as well as programs to start.
+- [ ] Sums in the launcher: what is typed is worked out as it is typed,
+      and Enter copies the answer. Worked out by code of ours; nothing
+      typed is ever run.
+- [ ] Files in the launcher: those in the home directory that are not
+      hidden, found by name and opened with the program for their kind.
+      Which directories are looked in is a setting, and nothing is kept
+      on disk about them.
+- [ ] Shortcuts in the launcher: a word, and what to do with the rest of
+      what is typed. "google" with a question opens the default browser
+      at a search for it; "ai" opens an assistant, in the browser or a
+      program, with the question. Each is an entry in the configuration:
+      an address with a place for the question, or a program and its
+      arguments. The question is put into an address encoded and given
+      to a program as one argument, never through a shell. A few come
+      set up; the user adds their own.
 - [ ] Hot corners and edges, if wanted.
 
 ## 7. Applications
@@ -333,6 +348,16 @@ decision of stage 2.
 - [ ] **Image viewer** (wish 9): one picture, zoomed and turned, with
       what is known about it in a panel that is out of the way until
       asked for.
+- [ ] **Screenshot**: a picture of a region drawn with the pointer, of
+      the window with focus, of a window picked with the pointer, of one
+      screen, or of all of them at once; copied, saved, or both. It
+      stands on screen capture (stage 3) and has the `capture` role
+      (ADR 37), with the compositor's mark shown as for any capture.
+- [ ] **Screen recording**, in the same program, of the same five
+      things, to a file. Three sounds can be recorded with it, each a
+      switch and each off unless turned on: the program's, everything
+      the machine plays, and the microphone. Sound comes from PipeWire.
+      What is being recorded, and which sounds, is shown the whole time.
 - [ ] About: what the system is, shown from the bar's menu.
 
 ## 8. Reach and hardening
@@ -385,6 +410,16 @@ Known gaps carried forward:
       workspaces (`ext-workspace`, foreign-toplevel management). Not
       planned while ours use the IPC socket; to be looked at again if
       people want to bring their own.
+
+A way in:
+
+- [ ] A login screen of our own, in place of GDM, SDDM or LightDM: who
+      is logging in, their secret, and which session. Long term. It is
+      to be a greeter for `greetd`, which is the small service that
+      checks the secret and starts the session, so that nothing of ours
+      runs as root (ADR 35). It runs on the compositor itself, wears the
+      design language, and shares what asks for a secret with the lock
+      screen.
 
 Reaching people:
 
