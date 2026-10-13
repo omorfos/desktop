@@ -502,7 +502,7 @@ fn the_panel_asks_for_news_and_shows_what_it_is_told() {
             active: true,
             id: 0,
             kept: true,
-            window: None,
+            windows: Vec::new(),
         }],
         ..State::default()
     };
@@ -554,7 +554,7 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
             active: true,
             id: 0,
             kept: true,
-            window: None,
+            windows: Vec::new(),
         }],
         ..State::default()
     };

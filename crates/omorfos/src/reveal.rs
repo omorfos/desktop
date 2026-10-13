@@ -26,6 +26,11 @@ use crate::compositor::Compositor;
 /// has at the edge brings nothing.
 const REST: Duration = Duration::from_millis(300);
 
+/// How long what was brought back stays once the pointer has stopped
+/// somewhere else. While the pointer is moving it stays, so that a
+/// titlebar half a screen from the edge that brought it back is reached.
+const LINGER: Duration = Duration::from_secs(1);
+
 /// An edge of an output that answers to the pointer resting against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Side {
@@ -55,6 +60,12 @@ pub(crate) struct Reveal {
     /// Set by a key, which sends what was brought back away: nothing
     /// comes back until the pointer has left the edge and returned.
     quiet: bool,
+    /// Where the pointer last was, and when it last moved.
+    last: (f64, f64),
+    moved: Option<Instant>,
+    /// When what was brought back goes, the pointer having stopped
+    /// somewhere else.
+    until: Option<Instant>,
 }
 
 impl Reveal {
@@ -62,12 +73,14 @@ impl Reveal {
     /// anything.
     pub(crate) fn deadline(&self) -> Option<Instant> {
         let waiting = self.resting.filter(|_| self.shown.is_none() && !self.quiet);
-        waiting.map(|(.., since)| since + REST)
+        waiting.map(|(.., since)| since + REST).or(self.until)
     }
 
-    /// Sends away what was brought back, as a key does.
+    /// Sends away what was brought back, as a key does, and a press in a
+    /// window.
     pub(crate) const fn dismiss(&mut self) {
         self.shown = None;
+        self.until = None;
         self.quiet = true;
     }
 }
@@ -77,7 +90,7 @@ impl Compositor {
     /// a workspace made for a fullscreen window.
     fn given_over(&self, output: usize) -> bool {
         let mut places = self.desktop.workspaces();
-        places.any(|place| place.output == output && place.shown && place.solo.is_some())
+        places.any(|place| place.output == output && place.shown && !place.tiles.is_empty())
     }
 
     /// The edge of an output given over to a fullscreen window that the
@@ -97,11 +110,29 @@ impl Compositor {
     /// Brings back what the pointer has rested for, and sends away what it
     /// has left.
     pub(crate) fn reveal(&mut self, now: Instant) {
-        // Against the very edge to bring something back; anywhere on what
-        // was brought back to keep it.
+        let point = (self.pointer_location.x, self.pointer_location.y);
+        if self.hover.reveal.last != point {
+            self.hover.reveal.last = point;
+            self.hover.reveal.moved = Some(now);
+        }
+        // Against the very edge to bring something back. To keep it, the
+        // pointer is on it, a panel or a titlebar, or is still on its way
+        // somewhere: it goes when the pointer has stopped elsewhere.
         let against = self.edge(|_, _| 1.0);
         let over = self.edge(|output, side| self.reach(output, side));
-        let kept = self.hover.reveal.shown.filter(|shown| over == Some(*shown));
+        let on_it = |shown: &(usize, Side)| over == Some(*shown) || self.on_titlebar();
+        let stopped = self.hover.reveal.moved.map(|moved| moved + LINGER);
+        let lingering = stopped.is_some_and(|stopped| now < stopped);
+        let here = self
+            .heads
+            .iter()
+            .position(|head| head.contains(self.pointer_location));
+        let stays = |shown: &(usize, Side)| {
+            let given_over = here == Some(shown.0) && self.given_over(shown.0);
+            given_over && (on_it(shown) || lingering)
+        };
+        let kept = self.hover.reveal.shown.filter(stays);
+        self.hover.reveal.until = kept.filter(|shown| !on_it(shown)).and(stopped);
         let since = |(output, side)| {
             let already = self.hover.reveal.resting;
             let already = already.filter(|(on, at, _)| (*on, *at) == (output, side));

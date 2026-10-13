@@ -240,3 +240,42 @@ fn a_dialog_opens_over_its_fullscreen_window_and_any_other_window_on_the_desktop
     session.open(&mut client, "player", (200, 100), RED);
     assert_eq!((active(&session), frames(&session)), (0, 1));
 }
+
+#[test]
+fn two_windows_share_a_workspace_made_for_them_side_by_side() {
+    use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "editor", (200, 100), RED);
+    let half = omorfos_config::Half::Left;
+    session.compositor_mut().perform(&Action::Tile(half));
+    session.roundtrip(&mut client);
+
+    // It is told the half it has, and that there is something against
+    // every edge of it; not that it is fullscreen.
+    let (size, states) = client.last_configure();
+    assert_eq!(size, (320, 480));
+    assert!(states.contains(&State::TiledLeft) && states.contains(&State::TiledBottom));
+    assert!(!states.contains(&State::Fullscreen));
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+
+    // The next window to open there has the other half.
+    let mut other = session.connect();
+    session.open(&mut other, "browser", (200, 100), 0xff00_ff00);
+    session.roundtrip(&mut other);
+    let (size, states) = other.last_configure();
+    assert_eq!(size, (320, 480));
+    assert!(states.contains(&State::TiledRight));
+    let picture = session.draw();
+    assert_eq!(picture.at(10, 10), RED, "the first in the left half");
+    assert_eq!(picture.at(330, 10), 0xff00_ff00, "the second in the right");
+
+    // When one closes, the other is alone, and is told it is fullscreen.
+    drop(other);
+    session.eventually(|session| session.compositor().desktop().frames().count() == 1);
+    session.roundtrip(&mut client);
+    let (size, states) = client.last_configure();
+    assert_eq!(size, (640, 480));
+    assert!(states.contains(&State::Fullscreen) && !states.contains(&State::TiledLeft));
+}

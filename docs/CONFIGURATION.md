@@ -132,12 +132,22 @@ other window, another of the same program included, opens on the desktop
 it came from, which is then shown. Maximizing is another thing: it fills the desktop the window
 is on and keeps the panel and the titlebar.
 
+Two windows can share such a workspace, side by side or one above the
+other. "Tile" in the menu of a titlebar, or the `tile` action, puts a
+window in a half of a new one, and the next window to open there has the
+other half: the launcher, used there, puts a program beside the one
+already there. When one of the two closes or leaves, the other has the
+whole. A third window opens on the desktop.
+
 On such a workspace, rest the pointer against the top of the screen for a
 third of a second and whatever panels are along the top come back, with
 the window's titlebar under them: its buttons, its menu, and the second
 button to leave fullscreen. Against the bottom, the panels along the
 bottom come back. They are laid over the window, which does not change
-size, and go when the pointer leaves them or a key is pressed. This is
+size. They stay while the pointer is on them or still moving, so that a
+titlebar further down the screen can be reached, and go a second after
+the pointer has stopped somewhere else, or when a key is pressed or a
+button is pressed in a window. This is
 omorfos's doing and no program can turn it off or imitate it, so it is
 also how to tell a fullscreen program from the desktop.
 
@@ -187,6 +197,7 @@ that are already bound on their own.
 | `close` | Close the focused window. |
 | `maximize`, `minimize` | Toggle or apply that state. |
 | `fullscreen` | Put the focused window alone on a workspace made for it, filling the screen, or bring it back to the desktop it came from. |
+| `tile: left` | Put the focused window in the left half of a workspace made for it; also `right`, `top` and `bottom`. The next window to open there has the other half. |
 | `shade` | Roll the focused window up into its titlebar, or let it down. |
 | `keep_above` | Keep the focused window above the others, or stop. |
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
@@ -749,6 +760,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 | To | Do this |
 |---|---|
 | Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
+| Put two windows side by side | Right-click the titlebar of one, choose Tile and a half, then open the other |
 | Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |

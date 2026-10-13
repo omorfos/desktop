@@ -101,6 +101,18 @@ pub fn menu_items(items: &[omorfos_config::MenuItem]) -> Vec<Item<Action>> {
     items.iter().map(convert).collect()
 }
 
+/// Says which half of the screen the configuration means, as the desktop
+/// model has it.
+#[must_use]
+pub const fn half(half: omorfos_config::Half) -> omorfos_core::Half {
+    match half {
+        omorfos_config::Half::Left => omorfos_core::Half::Left,
+        omorfos_config::Half::Right => omorfos_core::Half::Right,
+        omorfos_config::Half::Top => omorfos_core::Half::Top,
+        omorfos_config::Half::Bottom => omorfos_core::Half::Bottom,
+    }
+}
+
 /// Converts a one-based workspace number into a zero-based index.
 #[must_use]
 pub fn workspace_index(number: omorfos_config::WorkspaceNumber) -> usize {
@@ -453,5 +465,20 @@ bindings:
             workspace_index(omorfos_config::WorkspaceNumber::clamped(32)),
             31
         );
+    }
+
+    #[test]
+    fn a_half_of_the_screen_is_the_same_half_to_the_desktop() {
+        use omorfos_config::Half as Asked;
+        use omorfos_core::Half as Meant;
+        let halves = [
+            (Asked::Left, Meant::Left),
+            (Asked::Right, Meant::Right),
+            (Asked::Top, Meant::Top),
+            (Asked::Bottom, Meant::Bottom),
+        ];
+        for (asked, meant) in halves {
+            assert_eq!(half(asked), meant);
+        }
     }
 }

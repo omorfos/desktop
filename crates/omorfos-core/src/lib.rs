@@ -22,8 +22,8 @@ mod rules;
 
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{
-    Desktop, Frame, Home, Listed, Opening, Place, Screen, Settings, Standing, Window, WindowId,
-    WorkspaceId,
+    Desktop, Frame, Half, Home, Listed, Opening, Place, Screen, Settings, Standing, Window,
+    WindowId, WorkspaceId,
 };
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};

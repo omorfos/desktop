@@ -68,6 +68,9 @@ pub(crate) struct Placed {
     pub(crate) client: Rect,
     pub(crate) maximized: bool,
     pub(crate) fullscreen: bool,
+    /// Whether it fills a part of a workspace it shares, with other
+    /// windows or the edges of the screen all round it.
+    pub(crate) tiled: bool,
 }
 
 impl Role {
@@ -108,6 +111,17 @@ impl Role {
                             ToplevelState::Fullscreen,
                             placed.fullscreen,
                         );
+                        // Told it has something against every edge, a
+                        // program draws its window square and without a
+                        // shadow.
+                        for edge in [
+                            ToplevelState::TiledLeft,
+                            ToplevelState::TiledRight,
+                            ToplevelState::TiledTop,
+                            ToplevelState::TiledBottom,
+                        ] {
+                            set(&mut state.states, edge, placed.tiled);
+                        }
                         state.size = Some(logical_size(placed.client.size));
                     }
                 });

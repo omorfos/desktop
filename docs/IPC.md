@@ -116,10 +116,12 @@ to tell them apart by. `kept` is true of those the configuration names,
 which are always there; one that is not goes once it is empty and another
 is shown. A workspace that was made has its number for a `name`.
 
-A window made fullscreen is alone on a workspace made for it. That
-workspace has `"window"`, the `id` of the window; its `number` is 0, since
-no key counts to it; and its `name` is the window's title. A window on one
-has 0 for its `workspace`. Other workspaces have no `"window"`. A window's `output` and `workspace` say which it is on. `output`
+A window made fullscreen is alone on a workspace made for it, and two can
+share one, each filling half of the screen. Such a workspace has
+`"windows"`, the `id`s of its windows in the order of their parts; its
+`number` is 0, since no key counts to it; and its `name` is the titles of
+its windows. A window on one has 0 for its `workspace`. Other workspaces
+have no `"windows"`. A window's `output` and `workspace` say which it is on. `output`
 is empty while no screen is connected. Windows are listed in a stable order (by
 when their frame was created, then tab order), so a task list does not
 reshuffle. `shown` is false for a tab that is not the one its frame is

@@ -354,7 +354,7 @@ impl Compositor {
                     name: self.workspace_name(&place),
                     active: place.shown,
                     kept: place.kept,
-                    window: place.solo.map(WindowId::raw),
+                    windows: place.tiles.iter().map(|id| id.raw()).collect(),
                 })
                 .collect(),
             windows: self

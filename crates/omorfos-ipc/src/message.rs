@@ -110,12 +110,14 @@ pub struct Workspace {
     /// One that is not goes when it is empty and another is shown.
     #[serde(default = "kept")]
     pub kept: bool,
-    /// The fullscreen window this workspace was made for, if it was made
-    /// for one. Such a workspace is not one of the desktops: its `number`
-    /// is 0, no key goes to it by number, it is called what its window is,
-    /// and it goes when the window closes or leaves fullscreen.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub window: Option<u64>,
+    /// The windows this workspace was made for, if it was made for
+    /// windows: one that is fullscreen, or several that fill the screen
+    /// between them, in the order of their parts. Such a workspace is not
+    /// one of the desktops: its `number` is 0, no key goes to it by
+    /// number, it is called what its windows are, and it goes when the
+    /// last of them closes or leaves. Empty for a desktop.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub windows: Vec<u64>,
 }
 
 /// Every workspace was always there before any could be made.
@@ -230,7 +232,7 @@ mod tests {
                 active: true,
                 id: 0,
                 kept: true,
-                window: None,
+                windows: Vec::new(),
             }],
             windows: vec![Window {
                 id: 3,
