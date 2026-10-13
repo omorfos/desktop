@@ -152,6 +152,14 @@ and a workspace is made cut up that way, with the window in that part and
 the others waiting for windows to open in them. A click on the button
 itself is still for fullscreen.
 
+Or drag a window by its titlebar until the pointer is against an edge of
+the screen. The half it would take is washed over while it is held:
+left or right at the sides, top or bottom at the top and bottom, and a
+quarter near a corner. Let go there and it is put in that part of a new
+workspace. Drag it away from the edge again and nothing happens. An edge
+with another screen beyond it is the way to that screen and offers
+nothing.
+
 A window that is open already is put beside a fullscreen one, or into a
 part that has nothing in it, from the menu of its own titlebar: under
 "Send to workspace", each workspace that has room is listed as "Beside"
@@ -793,6 +801,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 |---|---|
 | Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
 | Put two windows side by side | Rest the pointer on the second button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
+| Put a window in a half or a quarter of the screen | Drag it by its titlebar to an edge of the screen, or to an edge near a corner, and let go |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
 | Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |

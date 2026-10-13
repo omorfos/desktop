@@ -264,3 +264,125 @@ fn focus_and_windows_go_from_part_to_part_by_direction() {
     assert_eq!(picture.at(330, 10), RED, "the first is on the right now");
     assert_eq!(picture.at(10, 10), BLUE);
 }
+
+/// A session with one window, 200 by 100 with a titlebar, held by its
+/// titlebar and about to be dragged.
+fn held() -> (Session, Client) {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    point(&mut session, 120, 14);
+    button(&mut session, LEFT, true, 0);
+    (session, client)
+}
+
+/// Where the first frame is, and the workspace being shown.
+fn placed(session: &Session) -> (Option<(i32, i32, u32, u32)>, usize) {
+    let desktop = session.compositor().desktop();
+    (parts(session).first().copied(), desktop.active_workspace())
+}
+
+#[test]
+fn a_window_dragged_to_an_edge_is_shown_the_half_it_would_take() {
+    let (mut session, _client) = held();
+    let before = parts(&session);
+
+    // Against the left of the screen, the left half is washed over.
+    point(&mut session, 0, 240);
+    let picture = session.draw();
+    assert_ne!(picture.at(250, 400), BACKGROUND, "the half it would have");
+    assert_eq!(picture.at(400, 400), BACKGROUND, "and not the other");
+    session.step();
+    assert!(
+        !session.draw().damaged,
+        "not drawn again while nothing moves"
+    );
+
+    // Away from the edge again, nothing is offered and nothing happens.
+    point(&mut session, 300, 240);
+    assert_eq!(session.draw().at(250, 400), BACKGROUND);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(placed(&session).1, 0);
+    assert_ne!(parts(&session), before, "it was only moved");
+}
+
+#[test]
+fn let_go_against_an_edge_a_window_is_put_in_that_half_of_a_workspace() {
+    let edges = [
+        ((0, 240), (0, 0, 320, 480)),
+        ((639, 240), (320, 0, 320, 480)),
+        ((320, 0), (0, 0, 640, 240)),
+        ((320, 479), (0, 240, 640, 240)),
+    ];
+    for (edge, half) in edges {
+        let (mut session, _client) = held();
+        let before = parts(&session);
+        point(&mut session, edge.0, edge.1);
+        button(&mut session, LEFT, false, 0);
+        assert_eq!(placed(&session), (Some(half), 1), "{edge:?}");
+
+        // Back on its desktop, it is where it was before it was dragged
+        // to the edge, and not half off the screen.
+        session.compositor_mut().perform(&Action::Fullscreen);
+        session.step();
+        assert_eq!(parts(&session), before);
+    }
+}
+
+#[test]
+fn near_a_corner_a_window_is_offered_a_quarter() {
+    let corners = [
+        ((0, 20), (0, 0, 320, 240)),
+        ((30, 0), (0, 0, 320, 240)),
+        ((0, 470), (0, 240, 320, 240)),
+        ((639, 10), (320, 0, 320, 240)),
+        ((600, 479), (320, 240, 320, 240)),
+    ];
+    for (corner, quarter) in corners {
+        let (mut session, _client) = held();
+        point(&mut session, corner.0, corner.1);
+        let middle = (quarter.0 + 160, quarter.1 + 200);
+        let picture = session.draw();
+        assert_ne!(picture.at(middle.0, middle.1), BACKGROUND, "{corner:?}");
+        button(&mut session, LEFT, false, 0);
+        assert_eq!(placed(&session), (Some(quarter), 1), "{corner:?}");
+    }
+}
+
+#[test]
+fn an_edge_with_another_screen_beyond_it_offers_nothing() {
+    let (mut session, _client) = held();
+    session.add_output((640, 480));
+    session.step();
+
+    // The right of the first screen is the way to the second.
+    point(&mut session, 639, 240);
+    assert_eq!(session.draw().at(400, 400), BACKGROUND);
+    // The far right of the second is an edge like any other.
+    point(&mut session, 1279, 240);
+    button(&mut session, LEFT, false, 0);
+    let part = parts(&session).first().copied();
+    assert_eq!(part, Some((960, 0, 320, 480)));
+
+    // Back on a desktop, it is in the middle of the screen it was
+    // dragged to: 200 by 100 and its titlebar and borders, in 640 by 480.
+    session.compositor_mut().perform(&Action::Fullscreen);
+    session.step();
+    let (x, y, width, height) = parts(&session).first().copied().unwrap_or_default();
+    let (right, below) = (
+        1280 - x - width.cast_signed(),
+        480 - y - height.cast_signed(),
+    );
+    assert!((x - 640 - right).abs() <= 1, "as far from each side");
+    assert!((y - below).abs() <= 1, "and from top and bottom");
+}
+
+#[test]
+fn a_window_held_when_its_screen_goes_is_offered_nothing() {
+    let (mut session, _client) = held();
+    point(&mut session, 0, 240);
+    let only = session.output();
+    session.compositor_mut().remove_output(&only);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(session.compositor().desktop().workspaces().count(), 1);
+}

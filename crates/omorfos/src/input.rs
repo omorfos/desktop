@@ -137,11 +137,13 @@ const MINIMUM_WINDOW: DomainSize = DomainSize::new(64, 32);
 /// released.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Drag {
-    /// Moving a frame. `grab` is where on the frame the pointer holds it.
+    /// Moving a frame. `grab` is where on the frame the pointer holds it,
+    /// and `from` where the frame was before it was moved.
     Move {
         window: WindowId,
         grab: (i32, i32),
         size: DomainSize,
+        from: DomainPoint,
     },
     /// Resizing a frame by some of its edges, from `initial`.
     Resize {
@@ -368,7 +370,9 @@ impl Compositor {
         let position = self.pointer_position();
         if let Some(drag) = self.drag {
             match drag {
-                Drag::Move { window, grab, size } => {
+                Drag::Move {
+                    window, grab, size, ..
+                } => {
                     let origin = position.offset(-grab.0, -grab.1);
                     self.desktop.set_geometry(window, Rect::new(origin, size));
                 }
@@ -728,6 +732,9 @@ impl Compositor {
         if let Some(drag) = self.drag {
             // Everything is swallowed during a drag; any release ends it.
             if !pressed {
+                // A frame let go against an edge of the screen is put in
+                // the part of a workspace that was shown for it.
+                self.drop_at_edge();
                 self.drag = None;
                 self.drop_tab(drag);
             }
@@ -843,6 +850,7 @@ impl Compositor {
                     window,
                     grab,
                     size: frame.outer.size,
+                    from: frame.outer.origin,
                 })
             }
             Wanted::Resize(edges) if frame.movable => Some(Drag::Resize {
