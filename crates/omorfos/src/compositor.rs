@@ -694,6 +694,11 @@ impl Compositor {
 
     /// Carries out an action from a key binding or menu entry.
     pub fn perform(&mut self, action: &Action) {
+        // A menu that is open was opened on what was there then: a
+        // window, or the desktop being shown. Whatever is done next may
+        // change that, so the menu goes, as it does when one of its own
+        // entries is chosen.
+        self.menu = None;
         match action {
             Action::Spawn(command) => self.spawn(command),
             Action::Close => {
