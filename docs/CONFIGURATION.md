@@ -154,6 +154,9 @@ that are already bound on their own.
 | `spawn: [program, arg, ...]` | Start a program. No shell is involved. |
 | `close` | Close the focused window. |
 | `maximize`, `fullscreen`, `minimize` | Toggle or apply that state. |
+| `shade` | Roll the focused window up into its titlebar, or let it down. |
+| `keep_above` | Keep the focused window above the others, or stop. |
+| `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
 | `focus_next`, `focus_previous` | Cycle windows. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
 | `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. |
@@ -706,6 +709,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 |---|---|
 | Close, maximize or minimize a window | Click the first, second or third button at the left of its titlebar |
 | Maximize a window, or put it back | Double-click its titlebar |
+| Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
 | Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |
 | Resize a window | Drag a border or corner, or hold Alt and drag with the right button |
 | Group windows as tabs | Drag a titlebar with the middle button onto another titlebar |

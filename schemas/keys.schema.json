@@ -37,6 +37,21 @@
           "type": "string"
         },
         {
+          "const": "shade",
+          "description": "Roll the focused window up into its titlebar, or let it down again.",
+          "type": "string"
+        },
+        {
+          "const": "keep_above",
+          "description": "Keep the focused window above the others, or stop keeping it there.",
+          "type": "string"
+        },
+        {
+          "const": "stick",
+          "description": "Have the focused window on whichever workspace its screen is\nshowing, or leave it on the one it is on.",
+          "type": "string"
+        },
+        {
           "const": "focus_next",
           "description": "Focus the next window on the workspace.",
           "type": "string"

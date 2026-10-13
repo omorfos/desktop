@@ -1,4 +1,8 @@
 //! Server-side decorations: negotiation and how windows sit in their frames.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test support code fails the test on any error"
+)]
 
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
@@ -634,6 +638,173 @@ fn a_double_click_on_a_titlebar_maximizes_the_frame_and_another_puts_it_back() {
         (false, 2),
         "a click on each is not two on one"
     );
+}
+
+/// Where the pointer is put to open the menu of the first window: on its
+/// title, clear of the buttons.
+const TITLE: (i32, i32) = (120, 14);
+
+/// Opens the menu of the window whose titlebar is at `at`, with a click of
+/// the right button there.
+fn open_window_menu(session: &mut Session, at: (i32, i32)) {
+    point(session, at);
+    button(session, RIGHT, true, 0);
+    button(session, RIGHT, false, 0);
+    session.step();
+}
+
+/// A point on a row of a menu opened at `at`. The rows are: close,
+/// maximize, minimize; then shade, keep above, show on every workspace;
+/// then send to a workspace. Each is 28 tall, inside 4 of padding, and
+/// the lines between the three groups take 9 each.
+fn row(at: (i32, i32), which: i32) -> (i32, i32) {
+    let lines = which / 3 * 9;
+    (at.0 + 60, at.1 + 4 + which * 28 + lines + 14)
+}
+
+/// Chooses a row of the menu of the first window.
+fn choose(session: &mut Session, which: i32) {
+    open_window_menu(session, TITLE);
+    click(session, row(TITLE, which));
+}
+
+fn first_frame(session: &Session) -> omorfos_core::Frame<'_> {
+    session.compositor().desktop().frames().next().unwrap()
+}
+
+#[test]
+fn a_right_click_on_a_titlebar_opens_a_menu_of_what_can_be_done_with_the_window() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    client.take_events();
+
+    open_window_menu(&mut session, TITLE);
+    let menu = session.draw().at(TITLE.0 + 200, TITLE.1 + 100);
+    assert_ne!(menu, BACKGROUND, "a menu, where the pointer is");
+    // A click beside it puts it away and does nothing else.
+    click(&mut session, (600, 400));
+    assert_eq!(session.draw().at(TITLE.0 + 200, TITLE.1 + 100), BACKGROUND);
+
+    choose(&mut session, 1);
+    assert!(first_frame(&session).maximized);
+    // Its titlebar is now along the top of the screen, and the same row
+    // puts the window back.
+    choose(&mut session, 1);
+    assert!(!first_frame(&session).maximized);
+
+    choose(&mut session, 0);
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Close));
+
+    choose(&mut session, 2);
+    assert_eq!(frames(&session).1, 0, "minimized");
+}
+
+#[test]
+fn a_window_can_be_rolled_up_into_its_titlebar_and_let_down_again() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    client.take_events();
+    assert_eq!(first_frame(&session).geometry.size.height, 129);
+
+    choose(&mut session, 3);
+    assert!(first_frame(&session).standing.shaded);
+    assert_eq!(first_frame(&session).geometry.size.height, 28);
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(190, 14),
+        FOCUSED_TITLEBAR,
+        "its titlebar is there"
+    );
+    assert_eq!(picture.at(100, 80), BACKGROUND, "and none of the window");
+
+    // Nothing of the window is there to be clicked on, and it is not told
+    // to be any other size.
+    click(&mut session, (100, 80));
+    session.roundtrip(&mut client);
+    let told = client.take_events();
+    let clicked = |event: &Event| matches!(event, Event::PointerButton { .. });
+    assert!(!told.iter().any(clicked), "{told:?}");
+    let resized =
+        |event: &Event| matches!(event, Event::Configure { size, .. } if *size != (200, 100));
+    assert!(!told.iter().any(resized), "{told:?}");
+
+    // The same row lets it down.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Shade);
+    session.step();
+    assert!(!first_frame(&session).standing.shaded);
+    assert_eq!(session.draw().at(100, 80), RED);
+}
+
+#[test]
+fn a_window_kept_above_stays_over_the_one_that_is_clicked() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    choose(&mut session, 4);
+    assert!(first_frame(&session).standing.above);
+
+    // A second window opens over part of the first, and has focus.
+    let mut other = session.connect();
+    session.open_decorated(&mut other, "second", (200, 100), 0xff00_ff00);
+    let frames: Vec<_> = session.compositor().desktop().frames().collect();
+    let on_top = frames.last().unwrap().window().app_id.clone();
+    assert_eq!(on_top, "first", "kept above the newer one");
+    let second = frames[0].geometry;
+    drop(frames);
+    // Where the two overlap, the first is what shows.
+    let shared = (second.origin.x + 60, second.origin.y + 60);
+    assert_eq!(session.draw().at(shared.0, shared.1), RED);
+
+    // Asked again, it is where any other window would be.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusNext);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::KeepAbove);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusNext);
+    session.step();
+    assert_eq!(session.draw().at(shared.0, shared.1), 0xff00_ff00);
+}
+
+#[test]
+fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
+    use omorfos_config::Action;
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+
+    choose(&mut session, 5);
+    assert!(first_frame(&session).standing.sticky);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 80), RED, "there too");
+    session.compositor_mut().perform(&Action::Stick);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 80), BACKGROUND, "left where it was");
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+
+    // The last row opens a list of the workspaces beside it, and the
+    // third of those is where the window is sent.
+    open_window_menu(&mut session, TITLE);
+    let send = row(TITLE, 6);
+    point(&mut session, send);
+    session.step();
+    click(&mut session, (send.0 + 220, send.1 + 2 * 28));
+    assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone from this one");
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.step();
+    assert_eq!(session.draw().at(100, 80), RED, "and on the third");
 }
 
 #[test]

@@ -136,6 +136,20 @@ pub struct Frame<'a> {
     pub fullscreen: bool,
     /// Whether the frame has keyboard focus.
     pub focused: bool,
+    /// How it stands apart from the others, as the user asked.
+    pub standing: Standing,
+}
+
+/// How a frame stands apart from the others, each as the user asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Standing {
+    /// Rolled up into its titlebar, which is all that shows of it. A
+    /// frame without a titlebar cannot be.
+    pub shaded: bool,
+    /// Kept above the frames that are not, whichever has focus.
+    pub above: bool,
+    /// On whichever workspace its output is showing.
+    pub sticky: bool,
 }
 
 impl Frame<'_> {
@@ -165,9 +179,17 @@ struct Group {
     maximized: bool,
     fullscreen: bool,
     minimized: bool,
+    standing: Standing,
 }
 
 impl Group {
+    /// Where it is among the frames of its workspace, whatever order they
+    /// were raised in: those kept above are over those that are not, and
+    /// fullscreen ones over both.
+    fn level(&self) -> u8 {
+        u8::from(self.standing.above) + 2 * u8::from(self.fullscreen)
+    }
+
     /// Whether the frame has a titlebar and borders when not fullscreen.
     fn decorated(&self) -> bool {
         self.tabs.len() > 1 || self.tabs[self.active].decorated
@@ -455,6 +477,7 @@ impl Desktop {
             maximized: effects.maximized.unwrap_or(false),
             fullscreen: effects.fullscreen.unwrap_or(false),
             minimized: false,
+            standing: Standing::default(),
         };
         self.push_focused(set, workspace, group);
         self.current = set;
@@ -633,6 +656,29 @@ impl Desktop {
         group.fullscreen = !group.fullscreen;
     }
 
+    /// Rolls a window's frame up into its titlebar, or lets it down again.
+    pub fn toggle_shaded(&mut self, id: WindowId) {
+        self.stand(id, |standing| standing.shaded = !standing.shaded);
+    }
+
+    /// Keeps a window's frame above those that are not kept so, or stops.
+    pub fn toggle_above(&mut self, id: WindowId) {
+        self.stand(id, |standing| standing.above = !standing.above);
+    }
+
+    /// Has a window's frame on whichever workspace its output is showing,
+    /// or leaves it on the one it is on.
+    pub fn toggle_sticky(&mut self, id: WindowId) {
+        self.stand(id, |standing| standing.sticky = !standing.sticky);
+    }
+
+    /// Changes how a window's frame stands apart from the others.
+    fn stand(&mut self, id: WindowId, change: impl FnOnce(&mut Standing)) {
+        if let Some(group) = self.group_mut(id) {
+            change(&mut group.standing);
+        }
+    }
+
     /// Hides a window's frame. Focus passes to the topmost remaining frame.
     /// [`Desktop::activate`] brings it back.
     pub fn minimize(&mut self, id: WindowId) {
@@ -647,8 +693,11 @@ impl Desktop {
     /// restores it if minimized, shows its tab, focuses and raises it.
     pub fn activate(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        self.sets[at.set].active = at.workspace;
+        self.turn(at.set, at.workspace);
         self.current = at.set;
+        // It may have been carried along with what its output is showing,
+        // and is then somewhere else than it was found.
+        let at = self.locate(id).unwrap_or(at);
         self.show(at, true);
     }
 
@@ -748,6 +797,7 @@ impl Desktop {
             maximized: false,
             fullscreen: false,
             minimized: false,
+            standing: Standing::default(),
         };
         self.push_focused(at.set, at.workspace, group);
     }
@@ -793,7 +843,7 @@ impl Desktop {
     /// exist.
     pub fn switch_workspace(&mut self, workspace: usize) {
         if workspace < self.workspace_count() {
-            self.sets[self.current].active = workspace;
+            self.turn(self.current, workspace);
         }
     }
 
@@ -801,16 +851,16 @@ impl Desktop {
     /// around.
     pub fn next_workspace(&mut self) {
         let count = self.workspace_count();
-        let set = &mut self.sets[self.current];
-        set.active = (set.active + 1) % count;
+        let next = (self.sets[self.current].active + 1) % count;
+        self.turn(self.current, next);
     }
 
     /// Shows the preceding workspace on the current output, wrapping
     /// around.
     pub fn previous_workspace(&mut self) {
         let count = self.workspace_count();
-        let set = &mut self.sets[self.current];
-        set.active = (set.active + count - 1) % count;
+        let previous = (self.sets[self.current].active + count - 1) % count;
+        self.turn(self.current, previous);
     }
 
     /// Sends a window's whole frame to another workspace of its output,
@@ -821,9 +871,11 @@ impl Desktop {
         if workspace >= self.workspace_count() || workspace == at.workspace {
             return;
         }
-        let group = self.sets[at.set].workspaces[at.workspace]
+        let mut group = self.sets[at.set].workspaces[at.workspace]
             .groups
             .remove(at.group);
+        // Sent to one workspace, it is no longer on all of them.
+        group.standing.sticky = false;
         self.sets[at.set].workspaces[at.workspace].repair();
         self.push_focused(at.set, workspace, group);
     }
@@ -865,41 +917,47 @@ impl Desktop {
         let order = (0..self.sets.len())
             .filter(|index| *index != self.current)
             .chain([self.current]);
-        let shown = move |fullscreen: bool| {
+        let shown = move |level: u8| {
             order.clone().flat_map(move |index| {
                 let set = &self.sets[index];
                 let workspace = &set.workspaces[set.active];
                 let groups = workspace.groups.iter();
                 groups
-                    .filter(move |group| !group.minimized && group.fullscreen == fullscreen)
+                    .filter(move |group| !group.minimized && group.level() == level)
                     .map(move |group| (index, workspace, group))
             })
         };
-        shown(false)
-            .chain(shown(true))
-            .map(|(index, workspace, group)| {
-                // A frame fills its own output; with none, it has only
-                // itself to fill.
-                let own = self.outputs.get(index).copied();
-                let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
-                let geometry = match (group.fullscreen, group.maximized) {
-                    (true, _) => screen.area,
-                    (false, true) => screen.usable,
-                    (false, false) => group.geometry,
-                };
-                let decorated = group.decorated() && !group.fullscreen;
-                Frame {
-                    tabs: &group.tabs,
-                    active: group.active,
-                    geometry,
-                    decoration: decorated.then(|| {
-                        Decoration::new(geometry, self.settings.decoration, group.tabs.len())
-                    }),
-                    maximized: group.maximized,
-                    fullscreen: group.fullscreen,
-                    focused: index == self.current && workspace.focused == Some(group.serial),
-                }
-            })
+        (0..4).flat_map(shown).map(|(index, workspace, group)| {
+            // A frame fills its own output; with none, it has only
+            // itself to fill.
+            let own = self.outputs.get(index).copied();
+            let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
+            let mut geometry = match (group.fullscreen, group.maximized) {
+                (true, _) => screen.area,
+                (false, true) => screen.usable,
+                (false, false) => group.geometry,
+            };
+            let decorated = group.decorated() && !group.fullscreen;
+            // Rolled up, a frame is as tall as its titlebar and no more.
+            let shaded = group.standing.shaded && decorated;
+            let titlebar = self.settings.decoration.titlebar;
+            let rolled = geometry.size.height.min(titlebar);
+            geometry.size.height = if shaded { rolled } else { geometry.size.height };
+            Frame {
+                tabs: &group.tabs,
+                active: group.active,
+                geometry,
+                decoration: decorated
+                    .then(|| Decoration::new(geometry, self.settings.decoration, group.tabs.len())),
+                maximized: group.maximized,
+                fullscreen: group.fullscreen,
+                focused: index == self.current && workspace.focused == Some(group.serial),
+                standing: Standing {
+                    shaded,
+                    ..group.standing
+                },
+            }
+        })
     }
 
     // --- Internals ---------------------------------------------------------
@@ -937,6 +995,28 @@ impl Desktop {
         workspace.groups.push(group);
         // A minimized frame can be moved here; it must not hold focus.
         workspace.repair();
+    }
+
+    /// Has an output show another of its workspaces. The frames that are on
+    /// whichever workspace it shows go along, on top of what is there, and
+    /// one of them that had focus keeps it.
+    fn turn(&mut self, set: usize, to: usize) {
+        let set = &mut self.sets[set];
+        let from = std::mem::replace(&mut set.active, to);
+        if from == to {
+            return;
+        }
+        let leaving = &mut set.workspaces[from];
+        let focused = leaving.focused;
+        let carried = leaving.groups.extract_if(.., |group| group.standing.sticky);
+        let carried: Vec<Group> = carried.collect();
+        leaving.repair();
+        let arriving = &mut set.workspaces[to];
+        let mut kept = carried.iter().map(|group| group.serial);
+        let kept = kept.find(|serial| Some(*serial) == focused);
+        arriving.groups.extend(carried);
+        arriving.focused = kept.or(arriving.focused);
+        arriving.repair();
     }
 
     /// Gives a frame to another output's set, on the workspace that output
@@ -2557,8 +2637,11 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(27) {
+            match random(30) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
+                27 => desktop.toggle_shaded(id),
+                28 => desktop.toggle_above(id),
+                29 => desktop.toggle_sticky(id),
                 2 => desktop.remove_window(id),
                 3 => desktop.minimize(id),
                 4 => desktop.activate(id),
@@ -2600,5 +2683,164 @@ mod tests {
                 "step {step}"
             );
         }
+    }
+
+    // --- Standing apart ------------------------------------------------------
+
+    #[test]
+    fn a_shaded_frame_is_rolled_up_into_its_titlebar() {
+        let mut desktop = decorated_desktop();
+        let id = open(&mut desktop, "app");
+        let whole = frame(&desktop, id).geometry;
+        assert!(!frame(&desktop, id).standing.shaded);
+
+        desktop.toggle_shaded(id);
+        let rolled = frame(&desktop, id);
+        assert!(rolled.standing.shaded);
+        assert_eq!(rolled.geometry.origin, whole.origin);
+        assert_eq!(
+            rolled.geometry.size,
+            Size::new(whole.size.width, METRICS.titlebar)
+        );
+        assert_eq!(rolled.client().size.height, 0, "none of the window shows");
+
+        // Maximized, it is as wide as the screen and still only a titlebar.
+        desktop.toggle_maximized(id);
+        let size = frame(&desktop, id).geometry.size;
+        assert_eq!(size, Size::new(SCREEN.size.width, METRICS.titlebar));
+        desktop.toggle_maximized(id);
+
+        desktop.toggle_shaded(id);
+        assert_eq!(frame(&desktop, id).geometry, whole, "let down as it was");
+    }
+
+    #[test]
+    fn a_frame_without_a_titlebar_cannot_be_rolled_up_into_one() {
+        let mut desktop = decorated_desktop();
+        let bare = desktop.add_window("bare", "bare", SIZE, POINTER, false);
+        let whole = frame(&desktop, bare).geometry;
+        desktop.toggle_shaded(bare);
+        assert_eq!(frame(&desktop, bare).geometry, whole);
+        assert!(!frame(&desktop, bare).standing.shaded);
+
+        // Nor one that is fullscreen, which has none while it is.
+        let id = open(&mut desktop, "app");
+        desktop.toggle_shaded(id);
+        desktop.toggle_fullscreen(id);
+        assert_eq!(frame(&desktop, id).geometry, SCREEN);
+        assert!(!frame(&desktop, id).standing.shaded);
+        desktop.toggle_fullscreen(id);
+        assert!(
+            frame(&desktop, id).standing.shaded,
+            "it is again afterwards"
+        );
+    }
+
+    #[test]
+    fn a_frame_kept_above_is_over_the_others_whichever_has_focus() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        let second = open(&mut desktop, "second");
+        let third = open(&mut desktop, "third");
+        assert_eq!(stack(&desktop), [first, second, third]);
+
+        desktop.toggle_above(first);
+        assert!(frame(&desktop, first).standing.above);
+        assert_eq!(stack(&desktop), [second, third, first]);
+        desktop.clicked(second);
+        assert_eq!(stack(&desktop), [third, second, first], "raised under it");
+        assert_eq!(desktop.focused(), Some(second));
+
+        // A fullscreen frame is over even that.
+        desktop.toggle_fullscreen(third);
+        assert_eq!(stack(&desktop), [second, first, third]);
+        desktop.toggle_fullscreen(third);
+
+        desktop.toggle_above(first);
+        assert_eq!(
+            stack(&desktop),
+            [first, third, second],
+            "where it was raised to"
+        );
+    }
+
+    #[test]
+    fn a_sticky_frame_is_on_whichever_workspace_its_output_shows() {
+        let mut desktop = desktop();
+        let staying = open(&mut desktop, "staying");
+        let sticky = open(&mut desktop, "sticky");
+        desktop.toggle_sticky(sticky);
+        assert!(frame(&desktop, sticky).standing.sticky);
+
+        desktop.switch_workspace(1);
+        assert_eq!(stack(&desktop), [sticky]);
+        assert_eq!(desktop.focused(), Some(sticky), "it had focus and keeps it");
+        desktop.next_workspace();
+        assert_eq!(stack(&desktop), [sticky]);
+        desktop.previous_workspace();
+        desktop.previous_workspace();
+        assert_eq!(stack(&desktop), [staying, sticky], "over what was there");
+
+        // One that did not have focus does not take it.
+        desktop.clicked(staying);
+        desktop.switch_workspace(1);
+        let other = open(&mut desktop, "other");
+        desktop.switch_workspace(0);
+        assert_eq!(desktop.focused(), Some(staying));
+        desktop.switch_workspace(1);
+        assert_eq!(desktop.focused(), Some(other));
+        assert_eq!(stack(&desktop), [other, sticky]);
+
+        // Showing the workspace it is on already changes nothing.
+        desktop.switch_workspace(1);
+        assert_eq!(stack(&desktop), [other, sticky]);
+
+        desktop.toggle_sticky(sticky);
+        desktop.switch_workspace(2);
+        assert_eq!(stack(&desktop), [], "it stays where it was left");
+    }
+
+    #[test]
+    fn a_sticky_frame_comes_along_when_another_window_is_brought_up() {
+        let mut desktop = desktop();
+        let elsewhere = open(&mut desktop, "elsewhere");
+        desktop.switch_workspace(1);
+        let sticky = open(&mut desktop, "sticky");
+        desktop.toggle_sticky(sticky);
+
+        desktop.activate(elsewhere);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(stack(&desktop), [sticky, elsewhere]);
+        assert_eq!(desktop.focused(), Some(elsewhere));
+        // Brought up itself, it is where it already was.
+        desktop.activate(sticky);
+        assert_eq!(desktop.active_workspace(), 0);
+        assert_eq!(desktop.focused(), Some(sticky));
+    }
+
+    #[test]
+    fn a_frame_sent_to_one_workspace_is_no_longer_on_all_of_them() {
+        let mut desktop = desktop();
+        let sticky = open(&mut desktop, "sticky");
+        desktop.toggle_sticky(sticky);
+        desktop.move_to_workspace(sticky, 2);
+        assert_eq!(stack(&desktop), []);
+        desktop.switch_workspace(1);
+        assert_eq!(stack(&desktop), []);
+        desktop.switch_workspace(2);
+        assert_eq!(stack(&desktop), [sticky]);
+        assert!(!frame(&desktop, sticky).standing.sticky);
+    }
+
+    #[test]
+    fn standing_apart_is_not_asked_of_a_window_that_is_not_there() {
+        let mut desktop = desktop();
+        let id = open(&mut desktop, "app");
+        let gone = open(&mut desktop, "gone");
+        desktop.remove_window(gone);
+        desktop.toggle_shaded(gone);
+        desktop.toggle_above(gone);
+        desktop.toggle_sticky(gone);
+        assert_eq!(frame(&desktop, id).standing, Standing::default());
     }
 }

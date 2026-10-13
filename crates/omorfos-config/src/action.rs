@@ -29,6 +29,13 @@ pub enum Action {
     Fullscreen,
     /// Hide the focused window.
     Minimize,
+    /// Roll the focused window up into its titlebar, or let it down again.
+    Shade,
+    /// Keep the focused window above the others, or stop keeping it there.
+    KeepAbove,
+    /// Have the focused window on whichever workspace its screen is
+    /// showing, or leave it on the one it is on.
+    Stick,
     /// Focus the next window on the workspace.
     FocusNext,
     /// Focus the previous window on the workspace.
@@ -129,6 +136,9 @@ mod tests {
         assert_eq!(parse("close"), Ok(Action::Close));
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
         assert_eq!(parse("reload_config"), Ok(Action::ReloadConfig));
+        assert_eq!(parse("shade"), Ok(Action::Shade));
+        assert_eq!(parse("keep_above"), Ok(Action::KeepAbove));
+        assert_eq!(parse("stick"), Ok(Action::Stick));
     }
 
     #[test]

@@ -134,6 +134,8 @@ pub(crate) enum Wanted {
     Move,
     Resize(Edges),
     Tab,
+    /// The menu of what can be done with the window.
+    Menu,
     Nothing,
 }
 
@@ -389,7 +391,7 @@ impl Compositor {
             }
             (Hit::Part(Part::Tab(index)), BUTTON_LEFT, _) => (tab(index), Wanted::Move),
             (Hit::Part(Part::Tab(index)), BUTTON_MIDDLE, _) => (tab(index), Wanted::Tab),
-            (Hit::Part(Part::Tab(index)), ..) => (tab(index), Wanted::Nothing),
+            (Hit::Part(Part::Tab(index)), BUTTON_RIGHT, _) => (tab(index), Wanted::Menu),
             (Hit::Part(Part::Border(edges)), BUTTON_LEFT, _) => (id, Wanted::Resize(*edges)),
             (Hit::Surface(..), BUTTON_LEFT, true) => (id, Wanted::Move),
             (Hit::Surface(..), BUTTON_RIGHT, true) => (
@@ -400,6 +402,9 @@ impl Compositor {
         };
         self.desktop.clicked(clicked);
         self.begin(clicked, wanted);
+        if wanted == Wanted::Menu {
+            self.open_window_menu();
+        }
     }
 
     /// The button of a titlebar that is under the pointer, and the window
@@ -590,14 +595,17 @@ impl Compositor {
                 .decoration()
                 .and_then(|decoration| decoration.hit(point))
                 .filter(|part| *part != Part::Client);
+            // Nothing of a window that is rolled up into its titlebar is
+            // there to be pointed at.
+            let window = (!shown.shaded).then_some(&shown.window);
             let hit = part.map(Hit::Part).or_else(|| {
+                let window = window?;
                 // A window may draw outside what it calls its geometry, for
                 // a shadow say, so its surface can begin above and left of
                 // where the window is placed.
                 let surface_origin = shown.origin - shown.window.geometry().loc;
                 let within = self.pointer_location - surface_origin.to_f64();
-                shown
-                    .window
+                window
                     .surface_under(within, WindowSurfaceType::ALL)
                     .map(|(surface, offset)| {
                         Hit::Surface(surface, (offset + surface_origin).to_f64())
