@@ -32,6 +32,8 @@ impl Roles {
     pub const OVERLAY: Self = Self(1 << 1);
     /// Lock the session.
     pub const LOCK: Self = Self(1 << 2);
+    /// Take pictures of the screen.
+    pub const CAPTURE: Self = Self(1 << 3);
 
     /// These roles and those as well.
     #[must_use]
@@ -53,7 +55,8 @@ impl Roles {
             Role::Panel => Self::PANEL,
             Role::Overlay => Self::OVERLAY,
             Role::Lock => Self::LOCK,
-            Role::Ask | Role::Capture | Role::Clipboard | Role::Input | Role::Screens => Self::NONE,
+            Role::Capture => Self::CAPTURE,
+            Role::Ask | Role::Clipboard | Role::Input | Role::Screens => Self::NONE,
         };
         roles.iter().map(one).fold(Self::NONE, Self::with)
     }
@@ -155,13 +158,8 @@ mod tests {
         assert!(named.has(Roles::PANEL) && named.has(Roles::LOCK));
         assert!(!named.has(Roles::OVERLAY));
         assert_eq!(Roles::named(&[Role::Overlay]), Roles::OVERLAY);
-        let later = [
-            Role::Ask,
-            Role::Capture,
-            Role::Clipboard,
-            Role::Input,
-            Role::Screens,
-        ];
+        assert_eq!(Roles::named(&[Role::Capture]), Roles::CAPTURE);
+        let later = [Role::Ask, Role::Clipboard, Role::Input, Role::Screens];
         assert_eq!(Roles::named(&later), Roles::NONE, "nothing to give yet");
         assert_eq!(Roles::named(&[]), Roles::NONE);
         assert!(Roles::ALL.has(Roles::PANEL.with(Roles::OVERLAY)));

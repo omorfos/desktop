@@ -6,6 +6,7 @@
 
 mod actions;
 mod activation;
+mod capture;
 mod clipboard;
 mod common;
 mod config;
@@ -31,6 +32,7 @@ mod popups;
 mod reveal;
 mod roles;
 mod scaling;
+mod screenshot;
 mod session;
 mod taskbar;
 mod tiles;

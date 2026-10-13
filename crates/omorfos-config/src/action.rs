@@ -160,6 +160,21 @@ impl<'de> Deserialize<'de> for Started {
     }
 }
 
+impl Started {
+    /// The program the built-in bindings take a picture of the screen
+    /// with, which it may: `omorfos-screenshot`.
+    #[must_use]
+    pub fn screenshot() -> Self {
+        Self {
+            run: Command {
+                program: "omorfos-screenshot".to_owned(),
+                arguments: Vec::new(),
+            },
+            may: vec![Role::Capture],
+        }
+    }
+}
+
 impl From<Command> for Started {
     fn from(run: Command) -> Self {
         Self {

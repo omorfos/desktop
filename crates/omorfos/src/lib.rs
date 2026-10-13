@@ -13,6 +13,7 @@
 
 pub mod backend;
 pub mod bridge;
+mod capture;
 pub mod cli;
 mod compositor;
 mod corners;
@@ -32,7 +33,7 @@ mod session;
 mod tiles;
 mod x11;
 
-pub use compositor::{ClientState, Compositor, DESKTOP_NAME};
+pub use compositor::{ClientState, Compositor, DESKTOP_NAME, Drawn};
 pub use cursor::Themes;
 pub use input::Input;
 pub use omorfos_ui::Scale;

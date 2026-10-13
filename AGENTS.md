@@ -25,7 +25,9 @@ It is a fresh implementation, not a port: see
 
 ## Priorities, in order
 
-1. **Security.** No `unsafe` in our crates (`forbid`). Treat every Wayland
+1. **Security.** No `unsafe` in our crates (`forbid`), but for one block
+   in `omorfos-shm`
+   ([ADR 40](docs/adr/0040-one-unsafe-block.md)). Treat every Wayland
    client, IPC peer and config file as untrusted input.
 2. **Correctness.** 100% coverage, enforced in CI.
 3. **Performance.** No work when nothing changes; no allocation in hot paths.
@@ -54,7 +56,7 @@ after a change takes seconds where `--release` takes many minutes:
 
 ```sh
 cargo build --profile nightly -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot
 ```
 
 Packages are built with `--release`.

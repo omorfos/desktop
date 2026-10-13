@@ -1,0 +1,41 @@
+[package]
+name = "omorfos-shm"
+description = "Writes pixels into memory a Wayland client shares: the one place omorfos uses unsafe"
+keywords = ["wayland", "compositor"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+smithay = { version = "0.7.0", default-features = false, features = ["wayland_frontend"] }
+
+# The lints of the workspace, but for `unsafe_code`, which every other crate
+# forbids and this one exists to hold. A manifest takes the workspace's
+# lints whole or not at all, so they are written out. See
+# docs/adr/0040-one-unsafe-block.md.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+multiple_crate_versions = "allow"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+dbg_macro = "warn"
+expect_used = "warn"
+panic = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"

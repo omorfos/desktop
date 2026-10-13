@@ -32,6 +32,7 @@ assets = [
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
+    ["target/release/omorfos-screenshot", "usr/bin/", "755"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
     # The built-in theme, to copy from.
@@ -57,6 +58,8 @@ xcursor = "0.3.11"
 # server keeps what such programs look up. Smithay brings it in already;
 # the tests also use it, to open windows as such a program would.
 x11rb = "0.13.2"
+# Writes a picture of the screen into memory a program shares.
+omorfos-shm = { path = "../omorfos-shm" }
 smithay = { version = "0.7.0", default-features = false, features = [
     "wayland_frontend",
     "desktop",
@@ -78,6 +81,9 @@ smithay = { version = "0.7.0", default-features = false, features = [
 omorfos-panel = { path = "../omorfos-panel" }
 omorfos-launcher = { path = "../omorfos-launcher" }
 omorfos-notifications = { path = "../omorfos-notifications" }
+omorfos-screenshot = { path = "../omorfos-screenshot" }
+# Reads back the pictures the screenshot tool saves.
+png = "0.18.1"
 # Sends notifications in the tests, as a program would.
 zbus = "5.19.0"
 serde_json = "1.0"

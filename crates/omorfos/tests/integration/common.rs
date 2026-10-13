@@ -35,6 +35,16 @@ use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
 use wayland_protocols::ext::idle_notify::v1::client::{
     ext_idle_notification_v1, ext_idle_notifier_v1,
 };
+use wayland_protocols::ext::image_capture_source::v1::client::{
+    ext_image_capture_source_v1 as capture_source,
+    ext_output_image_capture_source_manager_v1 as capture_sources,
+};
+use wayland_protocols::ext::image_copy_capture::v1::client::{
+    ext_image_copy_capture_cursor_session_v1 as capture_cursor,
+    ext_image_copy_capture_frame_v1 as capture_frame,
+    ext_image_copy_capture_manager_v1 as capture_manager,
+    ext_image_copy_capture_session_v1 as capture_session,
+};
 use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
 };
@@ -127,6 +137,19 @@ pub(crate) struct Picture {
 }
 
 impl Picture {
+    /// A picture read from a file a program was given it in.
+    pub(crate) fn read(file: &std::fs::File, width: i32) -> Self {
+        use std::os::unix::fs::FileExt;
+        let len = usize::try_from(file.metadata().unwrap().len()).unwrap();
+        let mut pixels = vec![0; len];
+        file.read_exact_at(&mut pixels, 0).unwrap();
+        Self {
+            pixels,
+            width,
+            damaged: true,
+        }
+    }
+
     /// The colour at a position, as `0xAARRGGBB`.
     pub(crate) fn at(&self, x: i32, y: i32) -> u32 {
         let offset = usize::try_from((y * self.width + x) * 4).unwrap();
@@ -553,6 +576,17 @@ pub(crate) enum Event {
     },
     KeyboardEnter,
     KeyboardLeave,
+    /// What a buffer has to be for a picture of the screen to be taken in.
+    CaptureSize(u32, u32),
+    CaptureFormat(wl_shm::Format),
+    /// That is all a buffer has to be.
+    CaptureKnown,
+    /// No more pictures will be given.
+    CaptureStopped,
+    /// A part of a picture that differs from the one before.
+    ShotDamage(i32, i32, i32, i32),
+    ShotReady,
+    ShotFailed(capture_frame::FailureReason),
     Key {
         code: u32,
         pressed: bool,
@@ -596,6 +630,8 @@ pub(crate) struct ClientState {
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
+    capture_sources: Option<capture_sources::ExtOutputImageCaptureSourceManagerV1>,
+    capturers: Option<capture_manager::ExtImageCopyCaptureManagerV1>,
     /// The name of everything the compositor offers this client.
     pub(crate) offered: Vec<String>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
@@ -679,6 +715,94 @@ impl Client {
             let _ = guard.read();
         }
         self.queue.dispatch_pending(&mut self.state).unwrap();
+    }
+
+    /// Asks to take pictures of a screen, counted in the order screens
+    /// appeared, with the pointer in them or without.
+    pub(crate) fn capture(
+        &self,
+        screen: usize,
+        pointer: bool,
+    ) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        let sources = self.state.capture_sources.as_ref().unwrap();
+        let source = sources.create_source(&self.state.screens[screen], &self.handle(), ());
+        let options = if pointer {
+            capture_manager::Options::PaintCursors
+        } else {
+            capture_manager::Options::empty()
+        };
+        let capturers = self.state.capturers.as_ref().unwrap();
+        let session = capturers.create_session(&source, options, &self.handle(), ());
+        source.destroy();
+        session
+    }
+
+    /// Asks for pictures of the pointer by itself, on a screen.
+    pub(crate) fn capture_pointer(&self) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        let sources = self.state.capture_sources.as_ref().unwrap();
+        let source = sources.create_source(&self.state.screens[0], &self.handle(), ());
+        let capturers = self.state.capturers.as_ref().unwrap();
+        let pointer = self
+            .state
+            .seat
+            .as_ref()
+            .unwrap()
+            .get_pointer(&self.handle(), ());
+        let cursor = capturers.create_pointer_cursor_session(&source, &pointer, &self.handle(), ());
+        let session = cursor.get_capture_session(&self.handle(), ());
+        cursor.destroy();
+        session
+    }
+
+    /// Lets go of what pictures of the screen are asked for through, as a
+    /// program that has finished with them does.
+    pub(crate) fn finish_capturing(&mut self) {
+        self.state.capturers.take().unwrap().destroy();
+        self.state.capture_sources.take().unwrap().destroy();
+    }
+
+    /// Begins a picture of the screen, which is then told what to be
+    /// taken in and asked for.
+    pub(crate) fn shot(
+        &self,
+        taking: &capture_session::ExtImageCopyCaptureSessionV1,
+    ) -> capture_frame::ExtImageCopyCaptureFrameV1 {
+        taking.create_frame(&self.handle(), ())
+    }
+
+    /// A buffer to take a picture of the screen in, and the file behind
+    /// it, which is where the picture is then read from.
+    pub(crate) fn shot_buffer(
+        &self,
+        (width, height): (i32, i32),
+    ) -> (std::fs::File, wl_buffer::WlBuffer) {
+        let file = tempfile::tempfile().unwrap();
+        file.set_len(u64::try_from(width * height * 4).unwrap())
+            .unwrap();
+        let shm = self.state.shm.as_ref().unwrap();
+        let pool = shm.create_pool(file.as_fd(), width * height * 4, &self.handle(), ());
+        let format = wl_shm::Format::Xrgb8888;
+        let buffer = pool.create_buffer(0, width, height, width * 4, format, &self.handle(), ());
+        (file, buffer)
+    }
+
+    /// A buffer of one pixel that is not memory shared with the compositor.
+    pub(crate) fn pixel_buffer(&self) -> wl_buffer::WlBuffer {
+        let pixels = self.state.single_pixels.as_ref().unwrap();
+        pixels.create_u32_rgba_buffer(0, 0, 0, u32::MAX, &self.handle(), ())
+    }
+
+    /// The error the compositor ended the connection with, as the name of
+    /// what it was about and its number, once the compositor has handled
+    /// what was sent.
+    pub(crate) fn error(&mut self) -> Option<(String, u32)> {
+        let _ = self.connection.flush();
+        if let Some(guard) = self.queue.prepare_read() {
+            let _ = guard.read();
+        }
+        let _ = self.queue.dispatch_pending(&mut self.state);
+        let error = self.connection.protocol_error()?;
+        Some((error.object_interface, error.code))
     }
 
     /// Makes a sandbox as Flatpak does: whatever connects at `path` from
@@ -1131,6 +1255,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
         };
         state.offered.push(interface.clone());
         match interface.as_str() {
+            "ext_output_image_capture_source_manager_v1" => {
+                state.capture_sources = Some(registry.bind(name, version, handle, ()));
+            }
+            "ext_image_copy_capture_manager_v1" => {
+                state.capturers = Some(registry.bind(name, version, handle, ()));
+            }
             "wp_security_context_manager_v1" => {
                 state.sandboxes = Some(registry.bind(name, version, handle, ()));
             }
@@ -1182,6 +1312,53 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "zwp_idle_inhibit_manager_v1" => {
                 state.inhibitors = Some(registry.bind(name, version, handle, ()));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<capture_session::ExtImageCopyCaptureSessionV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &capture_session::ExtImageCopyCaptureSessionV1,
+        event: capture_session::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use capture_session::Event as Told;
+        state.events.push(match event {
+            Told::BufferSize { width, height } => Event::CaptureSize(width, height),
+            Told::ShmFormat { format } => Event::CaptureFormat(format.into_result().unwrap()),
+            Told::Done => Event::CaptureKnown,
+            Told::Stopped => Event::CaptureStopped,
+            other => unreachable!("{other:?}"),
+        });
+    }
+}
+
+impl Dispatch<capture_frame::ExtImageCopyCaptureFrameV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &capture_frame::ExtImageCopyCaptureFrameV1,
+        event: capture_frame::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use capture_frame::Event as Told;
+        match event {
+            Told::Damage {
+                x,
+                y,
+                width,
+                height,
+            } => state.events.push(Event::ShotDamage(x, y, width, height)),
+            Told::Ready => state.events.push(Event::ShotReady),
+            Told::Failed { reason } => {
+                let reason = reason.into_result().unwrap();
+                state.events.push(Event::ShotFailed(reason));
             }
             _ => {}
         }
@@ -1612,6 +1789,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
 }
 
 delegate_noop!(ClientState: wl_compositor::WlCompositor);
+delegate_noop!(ClientState: capture_sources::ExtOutputImageCaptureSourceManagerV1);
+delegate_noop!(ClientState: capture_source::ExtImageCaptureSourceV1);
+delegate_noop!(ClientState: capture_manager::ExtImageCopyCaptureManagerV1);
+delegate_noop!(ClientState: ignore capture_cursor::ExtImageCopyCaptureCursorSessionV1);
 delegate_noop!(ClientState: wp_security_context_manager_v1::WpSecurityContextManagerV1);
 delegate_noop!(ClientState: wp_security_context_v1::WpSecurityContextV1);
 delegate_noop!(ClientState: wl_subcompositor::WlSubcompositor);

@@ -316,6 +316,29 @@ pub(crate) fn notice(
     canvas
 }
 
+/// The size of the mark that says the screen is being captured, and of
+/// the dot in the middle of it.
+pub(crate) const CAPTURE_MARK: (u32, u32) = (24, 16);
+const CAPTURE_DOT: u32 = 8;
+
+/// Paints the mark that says the screen is being captured: a dot in the
+/// part's text colour on its background.
+pub(crate) fn capture_mark(theme: &Theme, scale: Scale) -> Canvas {
+    let style = theme.style(Part::Capture, States::NONE);
+    let (width, height) = CAPTURE_MARK;
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box((0, 0, width, height), &style);
+    let dot = Style {
+        background: style.color,
+        radius: CAPTURE_DOT / 2,
+        ..Style::NONE
+    };
+    let left = ((width - CAPTURE_DOT) / 2).cast_signed();
+    let top = ((height - CAPTURE_DOT) / 2).cast_signed();
+    canvas.draw_box((left, top, CAPTURE_DOT, CAPTURE_DOT), &dot);
+    canvas
+}
+
 /// Paints the pointer: a white arrow with a dark outline, whose tip is the
 /// top-left pixel, so that it shows on any background.
 pub(crate) fn pointer(scale: Scale) -> Canvas {

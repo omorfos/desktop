@@ -46,6 +46,9 @@ pub enum Part {
     Notice,
     /// The first line of the notice.
     NoticeHeading,
+    /// The mark shown while a program takes pictures of the screen: a
+    /// dot in its text colour on its background. It cannot be hidden.
+    Capture,
     /// The panel's bar along the edge of a screen. Its margin is room
     /// left between it and the edges of the screen.
     Panel,
@@ -83,7 +86,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Desktop,
         Self::Window,
         Self::Titlebar,
@@ -96,6 +99,7 @@ impl Part {
         Self::MenuSeparator,
         Self::Notice,
         Self::NoticeHeading,
+        Self::Capture,
         Self::Panel,
         Self::Workspace,
         Self::Task,
@@ -126,6 +130,7 @@ impl Part {
             Self::MenuSeparator => "menu-separator",
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
+            Self::Capture => "capture",
             Self::Panel => "panel",
             Self::Workspace => "workspace",
             Self::Task => "task",
@@ -486,6 +491,7 @@ mod tests {
                 "menu-separator",
                 "notice",
                 "notice-heading",
+                "capture",
                 "panel",
                 "workspace",
                 "task",

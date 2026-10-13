@@ -35,8 +35,9 @@ use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
+use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer, Texture};
+use smithay::backend::renderer::{Color32F, ExportMem, ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
@@ -80,6 +81,7 @@ use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
 use crate::bridge::{self, Bindings};
+use crate::capture::{self, Capture};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
@@ -146,6 +148,45 @@ fn watch(store: &Store) -> (Option<Watcher>, Vec<String>) {
     }
 }
 
+/// What drawing a screen came to.
+#[derive(Debug)]
+pub struct Drawn {
+    /// The parts of the screen that changed, in its pixels, or nothing if
+    /// none did and nothing was drawn.
+    pub damage: Option<Vec<Rectangle<i32, Physical>>>,
+    /// When the drawing is finished.
+    pub sync: SyncPoint,
+}
+
+impl Drawn {
+    /// What the last drawing of a screen came to, with what the drawings
+    /// before it in the same turn changed.
+    fn of(last: RenderOutputResult<'_>, mut before: Vec<Rectangle<i32, Physical>>) -> Self {
+        let damage = if before.is_empty() {
+            last.damage.cloned()
+        } else {
+            before.extend(last.damage.into_iter().flatten().copied());
+            Some(before)
+        };
+        Self {
+            damage,
+            sync: last.sync,
+        }
+    }
+}
+
+/// What of a screen is drawn besides the session itself.
+#[derive(Debug, Clone, Copy)]
+struct Extras {
+    /// The pointer.
+    pointer: bool,
+    /// The mark that says the screen is being captured.
+    mark: bool,
+}
+
+/// What a locked screen is cleared to.
+const BLACK: Color32F = Color32F::BLACK;
+
 /// Per-client data the compositor attaches to every connection.
 #[derive(Debug, Default)]
 pub struct ClientState {
@@ -189,6 +230,8 @@ pub struct Compositor {
     pub(crate) popups: PopupManager,
     /// The outputs, left to right.
     pub(crate) heads: Vec<Head>,
+    /// Pictures of the screen being taken by programs that may.
+    pub(crate) capture: Capture,
     _fractional_scale: FractionalScaleManagerState,
     _viewporter: ViewporterState,
     _single_pixels: SinglePixelBufferState,
@@ -316,7 +359,6 @@ impl Compositor {
         // Version 6 lets a surface be told the scale to draw at.
         let surfaces = CompositorState::new_v6::<Self>(&display);
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
-        let cursor_shapes = CursorShapeManagerState::new::<Self>(&display);
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, Self::outside);
         let idle = IdleNotifierState::new(&display, event_loop.clone());
         let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
@@ -340,6 +382,8 @@ impl Compositor {
                     _single_pixels: SinglePixelBufferState::new::<Self>(&display),
                     _sandboxes: SecurityContextState::new::<Self, _>(&display, Self::outside),
                     _viewporter: ViewporterState::new::<Self>(&display),
+                    _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
+                    capture: Capture::offer(&display),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
                     display,
@@ -386,7 +430,6 @@ impl Compositor {
                     shown: Look::Icon(CursorIcon::Default),
                     pointer_image: None,
                     themes: Themes::default(),
-                    _cursor_shapes: cursor_shapes,
                     terminal_wanted: None,
                     hover: Hover::default(),
                     lock: None,
@@ -618,6 +661,7 @@ impl Compositor {
             self.x11.deadline(),
             self.hover.reveal.deadline(),
             self.hover.palette.deadline(),
+            self.capture.deadline(),
             screens_off,
             moving,
             said,
@@ -650,6 +694,7 @@ impl Compositor {
         if self.debouncer.fire(now) {
             self.reload_config();
         }
+        self.settle_capture(now);
         // Collect children that have exited so they do not linger as
         // zombies, noting those that did not exit as they should have.
         let mut failed = Vec::new();
@@ -691,6 +736,7 @@ impl Compositor {
         self.desktop
             .set_workspace_count(config.general.workspaces.names().len());
         self.apply_scale();
+        self.capture.repaint();
 
         let keys_file = self.store.directory().join("keys.yaml");
         let (bindings, unknown_keys) = bridge::bindings(&config.keys, &keys_file);
@@ -1444,7 +1490,8 @@ impl Compositor {
 
     // --- Drawing -------------------------------------------------------------
 
-    /// Draws what `output` shows into `framebuffer`.
+    /// Draws what `output` shows into `framebuffer`, and gives the
+    /// programs taking pictures of it those that are due.
     ///
     /// `age` is how many frames old the framebuffer's contents are, or `0`
     /// if unknown, and lets the damage tracker redraw only what changed.
@@ -1452,47 +1499,130 @@ impl Compositor {
     /// # Errors
     ///
     /// Returns an error if the renderer fails.
-    pub fn render<'tracker, R>(
-        &self,
+    pub fn render<R>(
+        &mut self,
         output: &Output,
         renderer: &mut R,
         framebuffer: &mut R::Framebuffer<'_>,
-        tracker: &'tracker mut OutputDamageTracker,
+        tracker: &mut OutputDamageTracker,
         age: usize,
-    ) -> Result<RenderOutputResult<'tracker>, RenderError<R::Error>>
+    ) -> Result<Drawn, RenderError<R::Error>>
+    where
+        R: Renderer + ImportAll + ImportMem + ExportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let head = self.head(output);
+        let size = head.map(Head::pixels).unwrap_or_default();
+        let view = View {
+            origin: head.map(|head| head.area().loc).unwrap_or_default(),
+            scale: head.map_or(Scale::ONE, |head| head.scale),
+        };
+        if self.is_locked() {
+            // Nothing of the session is drawn while it is locked: only what
+            // the locker shows, on black. Nothing else is even looked at.
+            let elements = self.locked_elements(renderer, output, view);
+            if let Some(head) = self.head(output) {
+                head.blanked.set(true);
+            }
+            let drawn = tracker.render_output(renderer, framebuffer, age, &elements, BLACK);
+            return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
+        }
+        let desktop = self.config().theme.style(Part::Desktop, States::NONE);
+        let behind = color(desktop.background);
+        // A picture a program is to be given is drawn first, without the
+        // mark and with the pointer only if the program asked for it, and
+        // read back. What the screen shows is drawn over it after.
+        let mut age = age;
+        let mut before = Vec::new();
+        for pointer in [false, true] {
+            if !self.capture.wants(output, pointer) {
+                continue;
+            }
+            let shown = Extras {
+                pointer,
+                mark: false,
+            };
+            let elements = self.elements(renderer, output, view, shown);
+            let due = self.capture.due(output, pointer, &elements);
+            if due.is_empty() {
+                continue;
+            }
+            // If this cannot be drawn, neither can what follows, which is
+            // where it is said.
+            let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
+            let changed = drawn
+                .iter()
+                .flat_map(|drawn| drawn.damage.into_iter().flatten());
+            before.extend(changed.copied());
+            age = 1;
+            // Red first is the one order every renderer can give.
+            let whole = Rectangle::from_size((size.w, size.h).into());
+            let read = renderer.copy_framebuffer(framebuffer, whole, Fourcc::Abgr8888);
+            let read = read.ok();
+            let pixels = read
+                .as_ref()
+                .and_then(|read| renderer.map_texture(read).ok());
+            self.capture.hand(due, pixels, size, self.animation.clock);
+        }
+        let shown = Extras {
+            pointer: true,
+            mark: true,
+        };
+        let elements = self.elements(renderer, output, view, shown);
+        let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
+        drawn.map(|drawn| Drawn::of(drawn, before))
+    }
+
+    /// What a locked screen shows: the pointer, over what the locker put
+    /// there.
+    fn locked_elements<R>(&self, renderer: &mut R, output: &Output, view: View) -> Vec<Element<R>>
     where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let unspecified = Kind::Unspecified;
-        let head = self.head(output);
-        let view = View {
-            origin: head.map(|head| head.area().loc).unwrap_or_default(),
-            scale: head.map_or(Scale::ONE, |head| head.scale),
-        };
-        // Elements are listed from the top of the stack down.
         let mut elements: Vec<Element<R>> = Vec::new();
         self.pointer_elements(renderer, view, &mut elements);
-        if self.is_locked() {
-            // Nothing of the session is drawn while it is locked: only what
-            // the locker shows, on black. This returns before anything
-            // else is even looked at.
-            let surface = self.lock_surface_on(output).into_iter();
-            let shown = surface.flat_map(|surface| {
-                render_elements_from_surface_tree(
-                    renderer,
-                    surface,
-                    (0, 0),
-                    view.scale.factor(),
-                    1.0,
-                    unspecified,
-                )
-            });
-            elements.extend(shown.map(Element::Surface));
-            if let Some(head) = head {
-                head.blanked.set(true);
-            }
-            return tracker.render_output(renderer, framebuffer, age, &elements, Color32F::BLACK);
+        let surface = self.lock_surface_on(output).into_iter();
+        let shown = surface.flat_map(|surface| {
+            render_elements_from_surface_tree(
+                renderer,
+                surface,
+                (0, 0),
+                view.scale.factor(),
+                1.0,
+                unspecified,
+            )
+        });
+        elements.extend(shown.map(Element::Surface));
+        elements
+    }
+
+    /// Everything an unlocked screen shows, from the top of the stack
+    /// down, with or without what `shown` names.
+    fn elements<R>(
+        &self,
+        renderer: &mut R,
+        output: &Output,
+        view: View,
+        shown: Extras,
+    ) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let mut elements: Vec<Element<R>> = Vec::new();
+        if shown.mark && self.capture.marks(output) {
+            // Over everything, the pointer too: nothing hides it.
+            let area = self.area_of(output);
+            let left = area.loc.x + area.size.w - capture::MARGIN;
+            let left = left - paint::CAPTURE_MARK.0.cast_signed();
+            let at = Point::<i32, Logical>::from((left, area.loc.y + capture::MARGIN));
+            let mark = self.capture.mark(view.scale);
+            elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
+        }
+        if shown.pointer {
+            self.pointer_elements(renderer, view, &mut elements);
         }
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
@@ -1548,18 +1678,7 @@ impl Compositor {
                 self.frame_elements(renderer, view, fullscreen, &mut elements);
             }
         }
-        tracker.render_output(
-            renderer,
-            framebuffer,
-            age,
-            &elements,
-            color(
-                self.config()
-                    .theme
-                    .style(Part::Desktop, States::NONE)
-                    .background,
-            ),
-        )
+        elements
     }
 
     /// Adds the pointer, if it is the compositor's to draw and is not

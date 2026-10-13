@@ -12,6 +12,7 @@
   --text: #e6e8ee;
   --text-dim: #8b90a0;
   --border: #2c303a;
+  --capture: #f0524f;      /* the screen is being captured */
 }
 
 /* Colours take a moment to change when a part's state does. To have them
@@ -100,6 +101,13 @@ notice {
   border: 1px solid var(--accent);
 }
 notice-heading { color: var(--accent); }
+
+/* The mark shown while a program takes pictures of the screen. */
+capture {
+  background: var(--background);
+  color: var(--capture);
+  border-radius: 8px;
+}
 
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in

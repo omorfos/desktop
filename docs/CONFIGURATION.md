@@ -311,6 +311,7 @@ This is the whole built-in theme, which is also every part there is:
   --text: #e6e8ee;
   --text-dim: #8b90a0;
   --border: #2c303a;
+  --capture: #f0524f;      /* the screen is being captured */
 }
 
 /* Colours take a moment to change when a part's state does. To have them
@@ -399,6 +400,13 @@ notice {
   border: 1px solid var(--accent);
 }
 notice-heading { color: var(--accent); }
+
+/* The mark shown while a program takes pictures of the screen. */
+capture {
+  background: var(--background);
+  color: var(--capture);
+  border-radius: 8px;
+}
 
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
@@ -508,7 +516,7 @@ workspace:active, task:active { border-bottom: none; }
 
 **Parts** are `desktop`, `window`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `panel`, `workspace`, `task`,
+`menu-separator`, `notice`, `notice-heading`, `capture`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title` and `notification-body`. `*` is every part. Several can share a rule:
@@ -587,7 +595,7 @@ Not every part uses every property yet:
 - `padding` is honoured by `tab`, `menu-item`, `notice`, `panel`,
   `workspace`, `task` and `clock`.
 - `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
-  `notice`, `panel`, `workspace`, `task` and `clock`.
+  `notice`, `capture`, `panel`, `workspace`, `task` and `clock`.
 - A window's border is the same on every side: its `border-top` stands for
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
@@ -745,8 +753,9 @@ are only for a program omorfos started itself and was told may do them:
 | `panel` | Put surfaces on the screen outside windows, as a bar, a dock, a wallpaper or a notification does, and be told what windows there are |
 | `overlay` | The same, and take the keyboard from whatever has it while one of its surfaces asks, as a launcher does |
 | `lock` | Lock the session |
+| `capture` | Take pictures of the screen |
 
-`ask`, `capture`, `clipboard`, `input` and `screens` are names for what is
+`ask`, `clipboard`, `input` and `screens` are names for what is
 to come, and are accepted so that a configuration can say them already.
 
 A role is given where the program is started: in `autostart`, or in a
@@ -773,8 +782,8 @@ it. The panel, the launcher and the notifications that come with omorfos
 have what they need; started by hand, they are ordinary programs too.
 
 A program in a sandbox, such as one installed with Flatpak, is held to
-less again. It is not shown that panels, locking or the list of windows
-exist, so it cannot ask, and no setting gives it a role. Nothing needs
+less again. It is not shown that panels, locking, pictures of the screen
+or the list of windows exist, so it cannot ask, and no setting gives it a role. Nothing needs
 to be set up for this: the sandbox tells omorfos which programs are
 inside it.
 
@@ -782,6 +791,37 @@ This keeps a program that is merely running from putting a false panel
 or a false lock screen in front of you. It is not a wall against a
 program that can already change your files: such a program could write
 itself into `autostart`.
+
+## Pictures of the screen
+
+`Print` takes a picture of every screen and saves each as a PNG in a
+folder called `Screenshots` among your pictures: `~/Pictures`, or wherever
+`~/.config/user-dirs.dirs` says pictures go. A picture is named after
+when it was taken, and after its screen when there is more than one. One
+that is there already is never written over.
+
+It is taken by `omorfos-screenshot`, which the key starts as a program
+that may:
+
+```yaml
+# keys.yaml
+- keys: Print
+  action: { spawn: { run: [omorfos-screenshot], may: [capture] } }
+```
+
+Any program that speaks `ext-image-copy-capture-v1` can be let take
+pictures the same way, with `may: [capture]`. Started without it, it is
+given none, and you are told once what asked.
+
+While a program is taking pictures of a screen, and for a moment after, a
+red dot is shown in the top right corner of that screen. It is drawn by
+omorfos over everything else, it is not in the pictures, and nothing can
+turn it off: its colours can be changed, with the `capture` part of the
+theme. So a picture cannot be taken of your screen without your seeing
+that it was.
+
+Nothing is given while the session is locked. The pointer is in a picture
+only if the program asks for it, and `omorfos-screenshot` does not.
 
 ## Locking the screen
 
