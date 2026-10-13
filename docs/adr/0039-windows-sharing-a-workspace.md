@@ -202,8 +202,12 @@ needs a titlebar that can be dragged where it is laid over a window, and
 the second has been less wanted since what is brought back stays while
 the pointer moves.
 
-A window is not yet put beside one that is already tiled or fullscreen
-except by opening there.
+A window that is open already joins a workspace made for windows by
+`join_workspace` and the workspace's `id`, which the menu of its titlebar
+offers by name under "Send to workspace" for each that has room: a part
+with nothing in it, or one window that has the whole, which then keeps
+the left half. The user is taken there with it, unlike a window sent to
+a desktop, since it was asked to be beside something.
 
 ## Alternatives
 

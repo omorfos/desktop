@@ -236,6 +236,13 @@ impl WorkspaceId {
     pub const fn get(self) -> u64 {
         self.0
     }
+
+    /// The identifier that was written down as `number`. It may be of no
+    /// workspace there is, or ever was.
+    #[must_use]
+    pub const fn from_raw(number: u64) -> Self {
+        Self(number)
+    }
 }
 
 /// One of an output's workspaces, as those who show them are told of it.
@@ -260,6 +267,10 @@ pub struct Place {
     /// The windows it was made for, in the order of its parts, if it was
     /// made for windows to fill between them. A desktop has none.
     pub tiles: Vec<WindowId>,
+    /// Whether another window can join those it was made for: it has a
+    /// part with nothing in it, or is one window's, which can give up
+    /// half.
+    pub room: bool,
 }
 
 /// A half of an output.
@@ -480,6 +491,16 @@ impl Tiling {
             let fill = part == Part::Empty && std::mem::take(&mut room);
             if fill { Part::Tile(frame) } else { part }
         })
+    }
+
+    /// The same with room for another frame, if it can be made to have:
+    /// as it is, where a part has nothing in it; and with its one frame
+    /// in the left half where it is one frame's. A workspace whose parts
+    /// are all taken makes no more.
+    fn roomy(self) -> Option<Self> {
+        let only = self.tiles().next().filter(|_| !self.shared());
+        let halved = only.map(|frame| self.halved((0, 0), frame, Half::Left));
+        Some(self).filter(|tiling| tiling.has_room()).or(halved)
     }
 
     /// Whether it has a part with nothing in it.
@@ -1377,6 +1398,38 @@ impl Desktop {
         Some((at, tiling, part, area))
     }
 
+    /// Puts a window's frame in a workspace that was made for windows,
+    /// beside those it has, and shows that workspace: in a part with
+    /// nothing in it, or in the right half where one window had the whole.
+    /// The workspace is one of the window's own output's. Does nothing if
+    /// there is no such workspace, its parts are all taken, or the window
+    /// fills one of them already.
+    pub fn join(&mut self, id: WindowId, workspace: WorkspaceId) {
+        let Some(at) = self.locate(id) else { return };
+        let set = &self.sets[at.set];
+        let wanted =
+            |on: &&Workspace| on.id == workspace && on.id != set.workspaces[at.workspace].id;
+        let roomy = set.workspaces.iter().find(wanted);
+        let Some(roomy) = roomy.and_then(|on| on.solo?.roomy()) else {
+            return;
+        };
+        // It leaves what it filled before, and may be somewhere else for
+        // it.
+        let at = self.grounded(id, at);
+        let set = &mut self.sets[at.set];
+        let mut group = set.workspaces[at.workspace].groups.remove(at.group);
+        set.workspaces[at.workspace].repair();
+        group.fullscreen = true;
+        group.minimized = false;
+        let to = set.place(workspace);
+        let onto = &mut set.workspaces[to];
+        onto.solo = Some(roomy.filled(group.serial));
+        onto.focused = Some(group.serial);
+        onto.groups.push(group);
+        set.active = to;
+        set.settle();
+    }
+
     /// Changes a window over with whatever is in the part beside its own,
     /// on the side `toward` says: another window, or nothing. Does nothing
     /// for a window that does not fill a part, or has nothing that side.
@@ -1640,6 +1693,9 @@ impl Desktop {
                     let tiles = workspace.tiles().into_iter();
                     tiles.map(|tile| tile.tabs[tile.active].id).collect()
                 },
+                room: workspace
+                    .solo
+                    .is_some_and(|tiling| tiling.roomy().is_some()),
             })
         })
     }
@@ -2990,6 +3046,70 @@ mod tests {
         assert_eq!(part(&desktop, below), (500, 540, 1420, 540));
         desktop.move_line(0, 0, Some(Point::new(500, 900)));
         assert_eq!(part(&desktop, above), (0, 0, 1920, 900));
+    }
+
+    #[test]
+    fn a_window_that_is_open_already_joins_those_sharing_a_workspace() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        let browser = open(&mut desktop, "browser");
+        let chat = open(&mut desktop, "chat");
+        desktop.set_fullscreen(editor, true);
+        let made = desktop.workspaces().nth(1).unwrap();
+        assert!(made.room, "one window can give up half");
+        desktop.switch_workspace(0);
+
+        // Beside a fullscreen window, which keeps the left.
+        desktop.join(browser, made.id);
+        assert_eq!(desktop.active_workspace(), 1, "and is followed there");
+        assert_eq!(part(&desktop, editor), (0, 0, 960, 1080));
+        assert_eq!(part(&desktop, browser), (960, 0, 960, 1080));
+        assert_eq!(desktop.focused(), Some(browser));
+        assert!(
+            !desktop.workspaces().nth(1).unwrap().room,
+            "both halves taken"
+        );
+
+        // Into a part with nothing in it.
+        desktop.tile(editor, Half::Top);
+        assert!(desktop.workspaces().nth(1).unwrap().room);
+        desktop.join(chat, made.id);
+        assert_eq!(part(&desktop, chat), (0, 540, 960, 540));
+        assert_eq!(desktop.workspaces().count(), 4);
+
+        // Not where every part is taken, where it is already, on a
+        // desktop, or anywhere that is not.
+        let before = desktop.clone();
+        let late = open(&mut desktop, "late");
+        desktop.join(late, made.id);
+        desktop.join(chat, made.id);
+        let first = desktop.workspaces().next().unwrap().id;
+        desktop.join(late, first);
+        desktop.join(late, WorkspaceId::from_raw(999));
+        desktop.join(WindowId(999), made.id);
+        assert_eq!(desktop.workspace_of(late), Some(0));
+        desktop.activate(chat);
+        assert_eq!(part(&desktop, chat), part(&before, chat));
+        assert_eq!(part(&desktop, browser), part(&before, browser));
+    }
+
+    #[test]
+    fn a_window_leaves_the_workspace_it_shared_to_join_another() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        desktop.switch_workspace(0);
+        desktop.tile(editor, Half::Left);
+        let other = open(&mut desktop, "other");
+        let videos = desktop.workspaces().find(|place| place.tiles == [video]);
+
+        // The one it was beside has the whole of what they shared.
+        desktop.join(editor, videos.unwrap().id);
+        assert_eq!(part(&desktop, video), (0, 0, 960, 1080));
+        assert_eq!(part(&desktop, editor), (960, 0, 960, 1080));
+        desktop.activate(other);
+        assert_eq!(part(&desktop, other), (0, 0, 1920, 1080));
     }
 
     #[test]
@@ -4632,7 +4752,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(36) {
+            match random(37) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -4652,6 +4772,10 @@ mod tests {
                 33 => desktop.swap_toward(id, HALVES[random(4)]),
                 34 => desktop.focus_toward(HALVES[random(4)]),
                 35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400))),
+                36 => {
+                    let places: Vec<Place> = desktop.workspaces().collect();
+                    desktop.join(id, places[random(places.len())].id);
+                }
                 31 => desktop.move_to_new_workspace(id),
                 12 => desktop.focus_next(),
                 13 => desktop.focus_previous(),

@@ -321,6 +321,7 @@ mod tests {
             id: 0,
             kept: true,
             windows: Vec::new(),
+            room: false,
         }
     }
 

@@ -850,6 +850,36 @@ fn a_window_is_put_in_a_half_of_the_screen_from_the_menu_of_its_titlebar() {
 }
 
 #[test]
+fn a_window_is_put_beside_a_fullscreen_one_from_the_menu_of_its_titlebar() {
+    use omorfos_config::{Action, WorkspaceNumber};
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    session.open_decorated(&mut client, "second", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Fullscreen);
+    let desk = Action::Workspace(WorkspaceNumber::clamped(1));
+    session.compositor_mut().perform(&desk);
+    session.step();
+
+    // Beside the last row are the one desktop, then the workspace the
+    // second window has to itself, which has room for another.
+    open_window_menu(&mut session, TITLE);
+    let send = row(TITLE, 8);
+    point(&mut session, send);
+    session.step();
+    click(&mut session, (send.0 + 220, send.1 + 28));
+
+    let desktop = session.compositor().desktop();
+    assert_eq!(desktop.active_workspace(), 1, "shown, with both on it");
+    let halves: Vec<(i32, u32)> = desktop
+        .frames()
+        .map(|frame| (frame.geometry.origin.x, frame.geometry.size.width))
+        .collect();
+    assert_eq!(halves, [(0, 320), (320, 320)]);
+}
+
+#[test]
 fn a_window_can_be_sent_to_a_new_workspace_from_its_titlebar() {
     let mut session = Session::new();
     let mut client = session.connect();

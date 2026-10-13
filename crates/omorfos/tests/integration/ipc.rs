@@ -564,3 +564,43 @@ fn a_workspace_two_windows_share_is_called_what_they_both_are() {
     assert_eq!(shared.windows.len(), 2);
     assert_eq!(shared.number, 0);
 }
+
+#[test]
+fn a_window_joins_a_workspace_that_has_room_for_it_by_what_it_is_known_by() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "editor", (200, 100), RED);
+    session.open(&mut client, "player", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let perform = |session: &mut Session, peer: &mut Client, action: serde_json::Value| {
+        session.ask(peer, &Request::Perform { action })
+    };
+    assert_eq!(
+        perform(&mut session, &mut peer, json!("fullscreen")),
+        Reply::Done
+    );
+    let made = state(&mut session, &mut peer).workspaces[1].clone();
+    assert!(made.room, "one window can give up half");
+    assert!(!state(&mut session, &mut peer).workspaces[0].room);
+
+    // The editor, which has focus once its desktop is shown, goes beside
+    // the player.
+    assert_eq!(
+        perform(&mut session, &mut peer, json!({ "workspace": 1 })),
+        Reply::Done
+    );
+    let join = json!({ "join_workspace": made.id });
+    assert_eq!(perform(&mut session, &mut peer, join.clone()), Reply::Done);
+    let now = state(&mut session, &mut peer).workspaces[1].clone();
+    assert_eq!(now.windows.len(), 2);
+    assert!(now.active && !now.room);
+
+    // A workspace that is full, or is not one, is not joined.
+    for action in [join, json!({ "join_workspace": 999_999 })] {
+        let reply = perform(&mut session, &mut peer, action);
+        assert!(
+            matches!(&reply, Reply::Error { message } if message.contains("has room")),
+            "{reply:?}"
+        );
+    }
+}

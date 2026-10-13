@@ -118,6 +118,10 @@ pub struct Workspace {
     /// last of them closes or leaves. Empty for a desktop.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub windows: Vec<u64>,
+    /// Whether another window can join those it was made for, with the
+    /// `join_workspace` action and its `id`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub room: bool,
 }
 
 /// Every workspace was always there before any could be made.
@@ -233,6 +237,7 @@ mod tests {
                 id: 0,
                 kept: true,
                 windows: Vec::new(),
+                room: false,
             }],
             windows: vec![Window {
                 id: 3,
