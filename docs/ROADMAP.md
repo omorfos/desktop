@@ -94,10 +94,13 @@ Most are a day of thought and no code.
       AccessKit. Two trials guard it: a long list scrolling on a dense
       screen, tried with the first list written, and the file manager,
       which comes last and may fall back to a toolkit that exists.
-- [ ] **Where omorfos meets the rest of the system**: D-Bus and systemd
-      user sessions, logind (sleep, the lid, locking), polkit, UPower,
-      NetworkManager, portals. Which program of ours talks to each, so
-      that the compositor does not come to depend on all of them.
+- [x] **Where omorfos meets the rest of the system** (ADR 35): the
+      compositor speaks to no service. `omorfos-session` speaks to
+      logind and systemd, `omorfos-lock` to PAM, `omorfos-ask` to polkit
+      and for pinentry, `xdg-desktop-portal-omorfos` for the portals,
+      and the bar to UPower, NetworkManager and the tray. Every one is
+      optional, none runs as root, and a locked session is opened only
+      by its user's secret.
 - [ ] **Workspaces that come and go** (wish 1). Today each screen has the
       workspaces the configuration names, and keys go to them by number.
       Made as needed, they have to be named, ordered, kept or dropped
