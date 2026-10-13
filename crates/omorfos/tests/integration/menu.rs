@@ -423,3 +423,21 @@ fn the_menu_follows_a_theme_change_while_open() {
     session.step();
     assert_eq!(session.draw().at(510, 220), 0xff00_ff00);
 }
+
+#[test]
+fn an_action_from_a_key_closes_the_menu_and_does_not_carry_it_along() {
+    let mut session = session();
+    open_menu(&mut session);
+    assert_eq!(session.draw().at(510, 218), PANEL);
+
+    // Going to another workspace, by its key say, leaves the menu behind.
+    session.compositor_mut().perform(&Action::NewWorkspace);
+    session.step();
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+    assert_eq!(session.draw().at(510, 218), BACKGROUND, "the menu is gone");
+
+    // Asked for again there, it opens as it does anywhere.
+    session.compositor_mut().perform(&Action::ShowMenu);
+    session.step();
+    assert_ne!(session.draw().at(510, 218), BACKGROUND);
+}
