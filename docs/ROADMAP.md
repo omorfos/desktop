@@ -1,291 +1,396 @@
 # Roadmap
 
-Work proceeds one milestone at a time, top to bottom. Tick items as they
-land and keep the "Next" pointer current.
+What omorfos is to become, in the order it is to be built. Stages are
+worked top to bottom and one at a time; within a stage the order is a
+suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** milestone 9, shell components.
+**Next:** stage 1, quick wins.
 
-## 1. Bootstrap
+Items that came from the wishlist kept outside this repository carry its
+number, as (wish 3), so that nothing asked for is lost track of.
 
-- [x] Licence, `.editorconfig`, `.gitignore`, README
-- [x] Cargo workspace, pinned toolchain, workspace lints
-- [x] `omorfos-core` with geometry primitives, proving the coverage gate
-- [x] Agent context: `AGENTS.md`, architecture, ADRs, this roadmap
-- [x] CI: format, Clippy, docs, `cargo-deny`, spelling, commit lint, tests
-      with the coverage gate on amd64 and arm64
-- [x] Pushed to `github.com/omorfos/desktop`; workflows pass there
+## Where this is going
 
-## 2. Configuration (`omorfos-config`)
+omorfos began as a Fluxbox for Wayland: small, fast, driven by text files.
+It still is small and fast and driven by text files, but what is being
+asked of it now is a whole desktop: a bar, a dock, a way to switch
+windows, settings, and programs to start with. It should look modern, in
+the frosted-glass manner, and stay simple, clean, accessible and above all
+secure (wish 10).
 
-- [x] YAML crate chosen: `serde-saphyr` (ADR 3)
-- [x] Schema and built-in defaults for `config`, `keys`, `rules`, `theme`,
-      `menu`
-- [x] Validation with file, line and column diagnostics
-- [x] Last-known-good store, per file
-- [x] Directory watcher and debouncer (editors save by atomic rename)
-- [x] Generated JSON Schemas in `schemas/`, checked by a test
+The priorities in [AGENTS.md](../AGENTS.md) do not change, and they
+settle what comes first here: security, then correctness, then
+performance, then everything else. Three things follow from them.
 
-Deferred to later milestones, where the pieces they need exist:
+- **The compositor stays small.** What can be a program of its own is one
+  (ADR 18), so that a fault in a dock is not a fault in the session.
+- **Nothing is required that can be optional.** The applications in stage
+  7 come with omorfos and are not needed by it. Someone who prefers
+  another file manager, panel or notification program can have it.
+- **Looks are built once.** The design language and how effects are drawn
+  are decided before the bar and the dock are written, not after.
 
-- Checking key names against real XKB keysyms (milestone 4, with
-  libxkbcommon). Today any non-empty key name is accepted.
-- Wiring the watcher and debouncer into the event loop and creating the
-  directory on first run (milestone 4).
-- Showing diagnostics on screen and `omorfosctl config check` / `reload`
-  (milestone 7). A manual reload also covers symlinked files whose target is
-  edited in place, which the watcher cannot see.
+The description of the project as "inspired by Fluxbox" is to be
+revisited when stage 5 is done and it is no longer the whole truth.
 
-## 3. Core domain (`omorfos-core`)
+## How the stages were ordered
 
-- [x] Windows, outputs and workspaces (`Desktop`)
-- [x] Focus model and stacking order
-- [x] Placement strategies (`place`)
-- [x] Tab groups (attach, detach, cycle)
-- [x] Key-chain state machine (`KeyChains`)
-- [x] Per-application rules (`Rule`, `Pattern`, `resolve`)
+1. What takes a day and is felt every day comes first.
+2. Decisions that many later things rest on are made before those things,
+   each as an ADR, and cost little.
+3. What stops omorfos being used all day comes before what makes it
+   pleasant: sharing a screen in a call matters more than a dock.
+4. The look comes before the shell that is to wear it.
+5. Applications come last, because they are the most work, the least
+   bound to omorfos, and need the toolkit decision of stage 2.
 
-Deferred until the features that need them:
+## 1. Quick wins
 
-- Mapping `omorfos-config` values onto the domain's settings, rules and key
-  chains (milestone 4, in the compositor).
-- Fullscreen frames stacking above others, usable area reduced by panels,
-  size constraints and always-on-top (milestones 6 and 7).
+Small, independent, and each an improvement the day it lands.
 
-## 4. Compositor skeleton (`omorfos`)
+- [ ] The launcher on `Super+Space` (wish 2). That key opens the root menu
+      today, which needs another: `Super+Escape`, or none once the bar
+      has its menu.
+- [ ] Mouse and touchpad set apart (wish 4): the touchpad scrolls the
+      natural way by default and the mouse does not, each with its own
+      settings, as well as pointer speed and acceleration for each.
+- [ ] Titlebar buttons: close, maximize, minimize, at the left, coloured,
+      each a part of the theme (wish 3). Double-click on a titlebar
+      maximizes.
+- [ ] A menu on a right click of the titlebar (wish 3): the same three,
+      and shade (roll the window up into its titlebar), keep above the
+      others, show on every workspace, move to a workspace. The last four
+      are new things the desktop model has to know.
+- [ ] The root menu driven from the keyboard: arrows, Enter, Escape.
+- [ ] The work pushed and seen to pass in CI. At the time of writing 57
+      commits are on this machine only, and CI has not run on any of
+      them: the XWayland tests have never run anywhere else.
 
-- [x] `Compositor` on Smithay: `wl_compositor`, `wl_shm`, `xdg-shell`
-      (toplevels and popups), `wl_seat`, `wl_output`, `xdg-output`
-- [x] Nested winit backend (`cargo run -p omorfos`)
-- [x] Input: pointer focus, clicks, scrolling, keyboard, key bindings and
-      chains, every configured action
-- [x] Damage-tracked rendering, generic over the renderer
-- [x] Configuration wired in: settings, rules, bindings, keyboard layout,
-      background colour, live reload, key names checked against XKB
-- [x] End-to-end test harness: a real Wayland client against the software
-      renderer, asserting on protocol events and pixels
+## 2. Decisions
 
-Not done yet, and where it is planned:
+Each is an ADR, written and agreed before the code that depends on it.
+Most are a day of thought and no code.
 
-- Clipboard: done in milestone 7. Drag-and-drop: see its known gaps.
-- Popup grabs and the one-frame flash of rule-maximized windows: done in
-  milestone 7.
-- The mouse cursor was the host's; our own, and client-set cursors, were
-  done in milestone 8.
-- Problems (bad configuration, a program that would not start) were only
-  printed to standard error; they are shown on screen since milestone 7.
-- The nested backend was run under GNOME with GTK applications and
-  Firefox, driven over IPC, before milestone 8. Nobody has yet sat in front
-  of it: drawing, and input from a real keyboard and mouse, are unchecked.
-  It has not been run at all since the event loop moved into `Session`.
+- [ ] **The design language** (wish 10), in `docs/DESIGN.md`: the default
+      font, sizes and spacing, radii, a light and a dark palette with one
+      accent, how much is see-through, what moves and how, the icons and
+      the pointer. Recommended here: Inter for the interface, since it
+      was drawn for screens at small sizes and is under the Open Font
+      Licence; packages recommend it and fall back to `sans-serif`. A
+      monospace to go with it. Reduced motion and high contrast as
+      settings from the start, not as afterthoughts.
+- [ ] **How effects are drawn**: blur, shadows and anything else that
+      only a GPU can do, how such drawing is tested when the tests draw
+      in software, and what it costs when nothing changes. Blur cannot
+      begin without this (see stage 4).
+- [ ] **What components and applications are written with.** `omorfos-ui`
+      draws boxes and text. A dock needs little more; a file manager
+      needs lists, scrolling, text fields, drag and drop and
+      accessibility, which is a toolkit. Either that toolkit is written
+      here, to the standard of everything else here, or the applications
+      of stage 7 use one that exists and only the shell uses ours. This
+      decides how large stage 7 is, by a factor of several.
+- [ ] **Where omorfos meets the rest of the system**: D-Bus and systemd
+      user sessions, logind (sleep, the lid, locking), polkit, UPower,
+      NetworkManager, portals. Which program of ours talks to each, so
+      that the compositor does not come to depend on all of them.
+- [ ] **Workspaces that come and go** (wish 1). Today each screen has the
+      workspaces the configuration names, and keys go to them by number.
+      Made as needed, they have to be named, ordered, kept or dropped
+      when empty, bound to keys and published over IPC in some way that
+      still makes sense with several screens.
+- [ ] **Who may do what.** Any program may now ask to be a panel, cover
+      the screen, or read what is listed over IPC. Screen capture, the
+      clipboard's history, input that pretends to be the user and
+      locking the session are privileges. Which programs get them, how
+      the user is asked, and how a sandboxed program is recognised
+      (`security-context-v1`).
+- [ ] **Pictures of windows for those who show them.** The window
+      switcher, the dock's previews and an overview all need a window's
+      picture small. Either the compositor draws these things itself,
+      having the pictures already, or it hands pictures to components,
+      which is a privilege as above. Recommended: the compositor draws
+      the switcher and the previews.
 
-## 5. Release pipeline
+## 3. What a day's use needs
 
-- [x] Semver releases from Conventional Commits (release-please)
-- [x] amd64 and arm64 binaries, with build provenance attestation when the
-      repository is public
-- [x] `.deb` via `cargo-deb`
-- [x] AUR `PKGBUILD` and opt-in publishing
+Without these, omorfos is put aside for something else when the day
+calls for them.
 
-Verified locally: the `.deb` and tarball packaging, and the AUR package
-built and installed in an Arch Linux container. Not verifiable until the
-first real release: the release-please configuration, the upload and
-attestation steps, and the push to the AUR. See
-[RELEASING.md](RELEASING.md) for the one-time setup on GitHub.
+- [ ] Screen capture: a screenshot of a screen, a window or a region, and
+      the stream that sharing a screen in a browser or a call needs
+      (`ext-image-copy-capture`, PipeWire), with the user asked each time
+      and shown that it is happening.
+- [ ] Portals (`xdg-desktop-portal`): screenshot and screen sharing as
+      above, the file chooser, and the settings that tell applications
+      light from dark and the accent.
+- [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
+      another's: started by a key, by being away, by the lid and by
+      logind. It is the most security-critical program here after the
+      compositor and is written and reviewed as such.
+- [ ] Sleep, restart and shut down, by logind, and what the lid and the
+      power button do.
+- [ ] Screens arranged by the user: above and below as well as side by
+      side, resolution, refresh rate, rotation, mirroring, one made
+      primary, and arrangements remembered for the screens that are
+      plugged in.
+- [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
+      fitted, stretched, centred or tiled; a directory or several shown
+      in turn, in order or shuffled, at an interval. A program of its
+      own, which the theme's `desktop` gives way to.
+- [ ] Keys for volume, brightness and media, with a small display of the
+      level over the screen that goes by itself.
+- [ ] Windows snapped to a half or a quarter of the screen, by a key and
+      by dragging to an edge.
+- [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
+      were last used, each with its picture and title, walked through
+      while Alt is held and chosen when it is let go. Flat first. The
+      windows standing one behind another on a diagonal, turned through
+      as a queue, is the same thing drawn another way and comes with
+      stage 4.
+- [ ] Writing in languages that need an input method
+      (`text-input-v3`, `input-method-v2`), and switching keyboard
+      layout by a key.
+- [ ] What games and remote desktops need of the pointer: locked,
+      confined, and moved without a position (`pointer-constraints`,
+      `relative-pointer`).
+- [ ] Gestures on the touchpad: workspaces by a swipe of three fingers.
+- [ ] A polkit agent, so that a program can ask for the administrator's
+      password, and `omorfos-pinentry` for keys and passphrases
+      (wish 9): the screen dimmed and blurred behind one prompt, what is
+      typed hidden unless asked to be shown. Both take the keyboard
+      exclusively, as the lock screen does.
+- [ ] Programs listed in `~/.config/autostart` started with the session,
+      and the session's environment told to D-Bus and systemd, without
+      which portals and much else do not find it.
+- [ ] Smaller protocols that programs complain of lacking:
+      `xdg-toplevel-icon`, `xdg-foreign`, `presentation-time`,
+      `keyboard-shortcuts-inhibit`, content type and tearing control.
 
-A `wayland-sessions` entry for login screens was left for milestone 8, when
-the compositor could drive real hardware, and is done there.
+## 4. The look
 
-## 6. Fluxbox features
+Stage 2 says what it is to be; this builds it.
 
-- [x] Server-side decorations with tabs (xdg-decoration; titlebar, borders
-      and titles drawn by the compositor)
-- [x] Interactive move and resize (titlebar and border drags, Alt-drag,
-      and client requests)
-- [x] Tabs by pointer: click to switch, middle-drag to attach and detach
-- [x] Root menu (right click on the desktop, or `show_menu`)
-- [x] Key chains and per-application rules wired to config (done in
-      milestone 4)
-- [x] Windows that resize themselves resize their frames; fullscreen
-      frames are drawn above the rest
-
-Still open, carried forward:
-
-- Popup grabs and the one-frame flash of rule-maximized windows: done in
-  milestone 7.
-- Titlebar buttons (close, maximize, minimize), double-click to maximize,
-  and keyboard navigation of the root menu.
-- During a resize from the left or top edge, the window's content can lag
-  the frame by a frame or two, because the frame moves before the window
-  has redrawn at the new size.
-- Only the titlebar's top corners were rounded. The window's own are
-  since milestone 8, and without the shader that was expected to need.
-- Pointer cursor shapes (for example a resize arrow over a border): done
-  in milestone 8.
-
-## 7. IPC and ecosystem protocols
-
-- [x] `omorfos-ipc` protocol and client library; the compositor serves it
-- [x] `omorfosctl` (state, watch, actions, activate, config check/reload)
-- [x] layer-shell: panels, docks, launchers, wallpapers, with reserved
-      space respected by placement and maximize, their popups, and keyboard
-      focus both exclusive and on demand
-- [x] Clipboard (`wl_data_device`) and primary selection
-- [x] Popup grabs: menus close on a click away and take the keyboard
-- [x] xdg-activation, honoured only for tokens tied to user input
-- [x] ext-foreign-toplevel-list, so taskbars can list windows
-- [x] Windows that rules open maximized or fullscreen appear at their final
-      size
-- [x] Config errors surfaced on screen and via `omorfosctl config check`
-
-Moved to milestone 8, with the reason:
-
-- idle-notify needs a handle to the event loop, which today belongs to the
-  backend. It moves with the event-loop work for real hardware.
-- session-lock is security-critical: a lock screen that can be bypassed is
-  worse than none. It needs input and drawing to be provably exclusive,
-  which is best done once there is a real session to lock.
-
-Not planned for now:
-
-- ext-workspace and the wlr foreign-toplevel-management protocol. Smithay
-  provides neither, and hand-writing them is not justified while the IPC
-  socket already offers workspaces, window activation and actions.
-
-Known gaps:
-
-- Drag-and-drop between applications is enabled through Smithay's defaults
-  but has no test; treat it as unverified.
-- The IPC socket was polled each turn of the loop rather than waking it.
-  Fixed in milestone 8 with the event loop.
-
-## 8. Real hardware
-
-- [x] The event loop reworked so the core can register timers and
-      sources: a tested `Session` owns it, and nothing is polled (ADR 9)
-- [x] DRM/KMS, libinput and libseat backend (ADR 10): one screen, a drawn
-      pointer, virtual terminal switching and touchpad settings. Run by
-      hand on one laptop with foot and Firefox
-- [x] Multi-monitor and hotplug (ADR 15): every connected screen, side by
-      side, each with its own scale, coming and going
-- [x] Scaling, whole and fractional: automatic from the screen's density
-      or set in `config.yaml` (ADR 11)
-- [x] Our own pointer cursor, client-set cursors and cursor shapes, from
-      the installed cursor theme (ADR 12)
-- [x] idle-notify, idle-inhibit and session-lock (moved from milestone 7;
-      ADR 14)
-- [x] A `wayland-sessions` entry for login screens, with programs told
-      about the session however they are started (ADR 13)
-- [x] Rounded window corners, without a shader (ADR 16)
-- [x] Screens turned off when the user is away (`idle.screen_off`), and
-      programs started with the session (`autostart`)
-
-## 9. Shell components
-
-Each component is a program of its own: a Wayland client that learns what
-to show over the IPC socket (ADR 18). In this order:
-
-- [x] `omorfos-ui`: the canvas, text and scale the compositor draws with,
-      shared with the components
-- [ ] Panel
-  - [x] The bar itself: a screen's workspaces and the windows on the one it
-        shows, how it is drawn and what a click asks for
-  - [x] The program, `omorfos-panel`: a bar on each screen through
-        layer-shell, kept up to date from an IPC subscription and following
-        the theme, tested against a real session, and packaged
-  - [x] A clock: the local time, from `jiff`, drawn again when the
-        minute turns
-  - [x] Started with the session unless `panel.enabled` is off
-  - [x] Tried on real hardware
-  - [ ] Where it is and what is on it, by configuration
-- [x] The theme as parts with states and properties (`panel`, `button`
-      that is `active`, and so on) rather than one palette, so that it maps
-      onto selectors (ADR 19)
-- [x] CSS as the theme format, `theme.css`, in place of `theme.yaml`
-      (ADR 20). No HTML: what is on the screen stays decided by the
-      components, CSS says how it looks
-- [x] Values as CSS writes them (`rgb()`, `hsl()`, named colours,
-      `opacity`, the `border` shorthand, font weight and style), and every
-      part a box with a margin, per-side borders, padding and rounded
-      corners (ADR 21)
-- [x] Transitions: a part's colours take the time its `transition`
-      gives to change when its state does, in the compositor's frames and
-      menu and in the panel, the launcher and the notifications (ADR 24)
-- [ ] More of CSS: `box-shadow`, gradients, a background image, and a
-      transition's delay and `cubic-bezier()`
-- [x] What comes onto the screen fades in: windows with their frames, the
-      menu, the notice, and the panels of the shell components, each over
-      its part's `transition` (ADR 25)
-- [x] What goes from the screen fades out, as it was last drawn: windows
-      with their frames, the menu, the notice and the panels of the shell
-      components (ADR 26). Buffers of a single pixel are accepted, which
-      it needed
-- [ ] A notification coming in or going beside others that stay, which
-      is the notifier's to do: its surface is there throughout
 - [ ] Blur behind what is see-through (`backdrop-filter: blur()`), the
-      frosted-glass look. The compositor has to do it, not the component:
-      draw what is below to a buffer, blur it in a shader, draw the part
-      over it. It is the first drawing that only the GPU can do, so decide
-      first, in an ADR, how it is tested (a slow equivalent on the CPU, or
-      an exclusion), how what changes behind a blurred part is redrawn, and
-      how other programs ask for it (the background-effect protocol).
-      `filter: blur()` of a part's own picture is small and can come with
-      it
-- [x] Launcher, `omorfos-launcher`: type a name, pick from the programs
-      that match, opened with `Super+d` or from the menu (ADR 22)
-  - [x] Tried on real hardware
-  - [x] Closing with a click beside it, with a backdrop that can dim the
-        screen
-  - [x] Icons and descriptions, each a setting (`launcher.icons`,
-        `launcher.descriptions`)
-  - [x] Keys that repeat when held
-  - [ ] Icons from the icon theme in use and not only `hicolor`; looser
-        matching; translated names
-- [x] Notifications, `omorfos-notifications`: the desktop notification
-      service over D-Bus, shown in a corner of the screen (ADR 23)
-  - [x] Tried on real hardware, with Firefox
-  - [x] Bodies that wrap
-  - [ ] Buttons for actions beyond the click, JPEG pictures, and a way to
-        see what has gone
-- [ ] Theming polish and restrained animations
+      frosted glass, drawn by the compositor for its own parts and for
+      the components'. How other programs ask for it
+      (`ext-background-effect`) comes with it.
+- [ ] Shadows under windows, menus and panels (`box-shadow`).
+- [ ] Gradients and a picture as a background, a transition's delay, and
+      `cubic-bezier()`.
+- [ ] The built-in theme redrawn in the design language: light and dark,
+      following the time of day if asked, with the accent a setting.
+- [ ] The default font and icons, and a pointer that is the same size
+      everywhere, including over programs written for X11.
+- [ ] Movement: windows that open and close with a slight change of size
+      as well as of opacity, workspaces that slide, a window that goes to
+      the dock when minimized, a notification that comes in and goes
+      beside others that stay. All of it off with one setting.
+- [ ] The switcher as a queue on a diagonal (wish 5).
+- [ ] An overview of every window on a workspace, and of the workspaces.
+- [ ] Night light: the screen warmer after dark.
 
-## 10. Later
+## 5. The shell: a bar and a dock
 
-- [x] Workspaces per monitor: each screen with its own set, so that
-      switching workspace on one leaves the others as they are (ADR 17)
-- [x] Settings for particular outputs, by name: the order they stand in,
-      and each one's scale. Side by side only; one above another is not
-      done
-- [x] Programs written for X11, through `Xwayland` (ADR 27): their
-      windows are windows like any other, framed, focused, moved, tabbed
-      and closed by the desktop; their menus and tooltips are shown where
-      they put them. On unless `xwayland.enabled` is turned off
-  - [x] Copy and paste between programs written for X11 and for Wayland,
-        and what is selected and pasted with the middle button
-  - [x] Drawn sharply on a screen with a scale, for whoever sets
-        `xwayland.scaling` to `native`: they draw with as many pixels as
-        the densest screen has and are told how dense it is. Stretched
-        otherwise, since programs that take no notice are then too small
-        to use
-  - [ ] The pointer the right size over a program written for X11 on a
-        screen with a scale, whatever toolkit the program uses
-  - [ ] Dialogs kept with the window they belong to, and windows that
-        are docks, splash screens and the like treated as such
-  - [x] The X server started again if it stops, where programs expect
-        to find it, and given up on if it keeps stopping
-  - [ ] The X server started when the first program asks for it, and not
-        with the session. The sockets a program connects to have to be
-        handed to `Xwayland` when it is started, and Smithay makes them
-        itself and keeps what it needs to itself, so this waits on a
-        change there
-  - [x] The panel and the notifications started again if they crash, as
-        the X server is (ADR 28)
-- [x] What is wrong with the session shown among the notifications, in
-      the same stack and the same style, so that it and they cannot cover
-      one another and each is there until it is clicked away or put right
-      (ADR 29). The notice the compositor draws is what is fallen back on
-      when nothing is showing notifications, which is also when it has to
-      say that the notifications have stopped
-  - [x] What merely happened, such as the X server having been started
-        again, told apart from what is wrong, and gone by itself after a
-        while
-- [ ] Screen capture and portals
+The panel becomes two programs (wish 1). Each is a client of the
+compositor as the panel is now, started and started again in the same
+way (ADR 28). The panel that is there today goes when both are done.
+
+What both need first:
+
+- [ ] Menus and small windows that hang from a bar: a popover with
+      content, placed by the compositor, closed by a click elsewhere.
+- [ ] Tooltips.
+- [ ] Icons from the icon theme in use, at any size and scale.
+
+`omorfos-bar`, along the top, see-through with enough of a tint to be
+read over any wallpaper. What is on it is fixed; how each thing behaves is
+a setting.
+
+- [ ] The omorfos menu, at the left, its entries from `config.yaml`. By
+      default: Run, About, Settings, Task Manager, Sleep, Restart, Shut
+      Down, Lock Screen, each with its key beside it. Entries whose
+      program is not there yet are left out, not shown and dead.
+- [ ] The clock, by default as "Wed Apr 1 9:41 AM", its format a setting.
+      A click opens a month, walked a month at a time.
+- [ ] The system tray (`StatusNotifierItem`), for the programs that put
+      an icon there.
+- [ ] The battery, if there is one: how full, and on a click how long to
+      empty or to full and what state it is in (UPower).
+- [ ] The network: wired or wireless and how strong; on a click the
+      address, the speed, the networks in reach to choose from, and VPNs
+      (NetworkManager). Joining a network needs its password asked for,
+      which is the prompt of stage 3.
+- [ ] Sound: the level, the output and the input, on a click.
+- [ ] The notification centre: everything that has been notified since
+      the session began, until it is cleared, one at a time or all at
+      once. This is the "way to see what has gone" that the
+      notifications lacked, and with it come buttons for a
+      notification's actions and pictures that are JPEGs.
+
+`omorfos-dock`, along the bottom.
+
+- [ ] Programs pinned to it and programs that are running, each as its
+      icon; a dot under one that is running, and a line and a tint under
+      the one with focus.
+- [ ] Windows of one program under one icon.
+- [ ] A tooltip with the program's name; for one that is running, a
+      picture of each of its windows, to pick one by, drawn afresh each
+      time it is shown (see the last decision of stage 2).
+- [ ] A menu on a right click: pin or unpin, close, and what the program
+      itself offers in its `.desktop` file, which for a browser is "New
+      Window" and "New Private Window". What a program does not publish,
+      such as its open tabs, cannot be listed.
+- [ ] Workspaces: which there are and which is shown, and an icon with a
+      menu to go to one, make one, or bring every window to the first.
+- [ ] Trash: what has been thrown away, by the freedesktop specification,
+      opened in whatever manages files and emptied from a menu.
+- [ ] Hidden when a window needs the room, if asked.
+
+## 6. More of the shell
+
+- [ ] Launchpad (wish 9): every installed program on a full screen, as a
+      grid or a list, in pages, arranged by dragging, with folders that
+      can be named.
+- [ ] A clipboard with a history (wish 9): what has been copied, to pick
+      from, each thing forgotten after a time that is a setting. It
+      needs a privileged protocol (`ext-data-control`), honours what
+      password managers mark as secret, and keeps nothing on disk unless
+      asked.
+- [ ] The launcher: looser matching, names in the user's language, and
+      what it can do beyond starting programs (sums, files, windows).
+- [ ] Hot corners and edges, if wanted.
+
+## 7. Applications
+
+Programs that come with omorfos so that it is usable on its own, and that
+omorfos does not need (wish 9). Each lives outside the compositor's
+workspace and is released on its own. None begins before the toolkit
+decision of stage 2.
+
+- [ ] **Task manager** (wish 8), first of these because it is what gets a
+      user out of trouble. One program with two faces over one core: in
+      a terminal, where it needs nothing of omorfos and so works from a
+      virtual terminal when the session is hung, and in a window.
+      Processes, to sort, search and end; and graphs of processor,
+      memory, swap, disk, network and GPU. A key the compositor always
+      answers that brings it up, even when a program has taken the
+      keyboard.
+- [ ] **Settings** (wish 7): the common choices of `config.yaml` and the
+      theme, written to the files as they are made and taking effect at
+      once, since the files are already watched. It writes what a person
+      could have written, keeps what it does not understand, and offers
+      presets. Few options, well chosen; everything else stays in the
+      files.
+- [ ] **Files** (wish 9): places and starred places at the side; volumes
+      mounted when plugged in, and unmounted; list, details and
+      thumbnails; make, rename, move, delete to the trash; archives
+      opened; a quick look at a picture or a document on Space. Remote
+      and cloud storage as plugins behind one interface that is designed
+      at the start and filled in later. This is the largest single thing
+      on this page.
+- [ ] **Image viewer** (wish 9): one picture, zoomed and turned, with
+      what is known about it in a panel that is out of the way until
+      asked for.
+- [ ] About: what the system is, shown from the bar's menu.
+
+## 8. Reach and hardening
+
+Ongoing, and taken between the stages above as much as after them.
+
+Security:
+
+- [ ] The configuration, theme and IPC parsers fuzzed.
+- [ ] Sandboxed programs recognised and held to less
+      (`security-context-v1`), once stage 2 has said to what.
+- [ ] A review of everything a client can make the compositor allocate or
+      wait for.
+
+Accessibility:
+
+- [ ] Everything in the shell reachable from the keyboard.
+- [ ] High contrast, larger text and reduced motion, as settings the
+      portal also tells applications of.
+- [ ] A magnifier.
+- [ ] Sticky and slow keys.
+- [ ] What a screen reader needs of the shell (AT-SPI), which depends on
+      the toolkit decision.
+
+Hardware and performance:
+
+- [ ] A window that fills the screen shown without being copied (direct
+      scanout), and the refresh rate following it (VRR).
+- [ ] Touch screens and drawing tablets.
+- [ ] Wide colour and HDR, when Smithay can.
+- [ ] Measured: what an idle session costs, and how long a frame takes.
+
+Programs written for X11:
+
+- [ ] Dialogs kept with the window they belong to, and docks, splash
+      screens and the like treated as such.
+- [ ] The X server started when first asked for. This waits on a change
+      in Smithay, which is worth offering to it, as is the fix for what
+      it leaves unsent (ADR 27).
+
+Known gaps carried forward:
+
+- [ ] During a resize from the left or top edge, the window's content can
+      lag the frame by a frame or two.
+- [ ] Dragging and dropping between applications works through Smithay's
+      defaults and has no test.
+- [ ] The nested backend has not been run by hand since the event loop
+      moved into `Session`.
+- [ ] Protocols that let another's dock or bar manage windows and
+      workspaces (`ext-workspace`, foreign-toplevel management). Not
+      planned while ours use the IPC socket; to be looked at again if
+      people want to bring their own.
+
+Reaching people:
+
+- [ ] A first release, which is also the first real test of the release
+      pipeline (see [RELEASING.md](RELEASING.md)).
+- [ ] The shell in the user's language.
+- [ ] A guide for someone who has just logged in for the first time, and
+      a first run that is not an empty screen.
+- [ ] Packages beyond `.deb` and the AUR.
+
+## Done
+
+In the order it was built. The decisions are in [adr/](adr/), and the
+detail of each step is in the history of this file.
+
+- **Bootstrap.** The workspace, lints, the coverage gate, CI.
+- **Configuration.** YAML files with defaults, validated with file, line
+  and column; the last good version of each kept; watched and reloaded as
+  they are saved; JSON Schemas generated (ADR 3).
+- **The desktop model.** Windows, screens, workspaces, focus, stacking,
+  placement, tabs, key chains and rules, knowing nothing of Wayland
+  (ADR 1).
+- **The compositor.** On Smithay: xdg-shell, input, key bindings,
+  damage-tracked drawing, and a harness that tests it through a real
+  client with a software renderer.
+- **Releases.** From commit messages, for amd64 and arm64, as a `.deb`
+  and for the AUR. Not yet exercised by a real release.
+- **Fluxbox's features.** Frames with tabs drawn by the compositor, moving
+  and resizing, the root menu.
+- **IPC and protocols.** The socket and `omorfosctl`; layer-shell; the
+  clipboard and the primary selection; popup grabs; activation; the list
+  of windows for taskbars; problems shown on screen.
+- **Real hardware.** DRM, libinput and libseat (ADR 9, 10); several
+  screens, each with its own scale and its own workspaces (ADR 11, 15,
+  17); the pointer (ADR 12); a session for login screens (ADR 13); idle,
+  inhibiting it, and locking by another's locker (ADR 14); rounded
+  corners (ADR 16).
+- **Shell components** (ADR 18): a shared drawing crate; the panel with
+  workspaces, windows and a clock; the launcher (ADR 22); notifications
+  over D-Bus (ADR 23); the theme as parts and states in CSS (ADR 19, 20,
+  21).
+- **Movement.** Colours that change over time (ADR 24); what comes onto
+  the screen fading in and what goes fading out (ADR 25, 26).
+- **Programs written for X11** (ADR 27): framed and managed like any
+  other, started again if the X server stops, copying and pasting with
+  programs written for Wayland, and drawn sharply on a dense screen for
+  whoever asks (ADR 30).
+- **Looking after itself.** The panel and the notifications started again
+  if they crash (ADR 28); what is wrong shown among the notifications,
+  and what merely happened told apart from it (ADR 29).
