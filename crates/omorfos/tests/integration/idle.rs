@@ -29,15 +29,31 @@ fn idles_within(session: &mut Session, client: &mut Client, wait: Duration) -> b
 const SOON: Duration = Duration::from_secs(10);
 const A_WHILE: Duration = Duration::from_millis(250);
 
-/// A session with a window, whose client asks to be told when the user is
-/// away.
-fn watched() -> (Session, Client, crate::common::Toplevel) {
+/// A session with a window.
+fn opened() -> (Session, Client, crate::common::Toplevel) {
     let mut session = Session::new();
     let mut client = session.connect();
     let window = session.open(&mut client, "app", (200, 100), RED);
     client.take_events();
+    (session, client, window)
+}
+
+/// Has the client ask to be told when the user is away.
+///
+/// The time it waits is real and short. Whatever is to keep the session
+/// from going idle has to be in place before this is asked, or on a busy
+/// machine the user is away before it is.
+fn watch(session: &mut Session, client: &mut Client) {
+    session.roundtrip(client);
     client.watch_idle(AWAY);
-    session.roundtrip(&mut client);
+    session.roundtrip(client);
+}
+
+/// A session with a window, whose client asks to be told when the user is
+/// away.
+fn watched() -> (Session, Client, crate::common::Toplevel) {
+    let (mut session, mut client, window) = opened();
+    watch(&mut session, &mut client);
     (session, client, window)
 }
 
@@ -59,8 +75,9 @@ fn a_client_is_told_when_the_user_has_been_away_and_when_they_are_back() {
 
 #[test]
 fn a_window_on_screen_can_ask_for_the_session_not_to_go_idle() {
-    let (mut session, mut client, window) = watched();
+    let (mut session, mut client, window) = opened();
     let inhibitor = client.inhibit_idle(&window.surface);
+    watch(&mut session, &mut client);
     assert!(
         !idles_within(&mut session, &mut client, A_WHILE),
         "something is being watched"
@@ -72,9 +89,10 @@ fn a_window_on_screen_can_ask_for_the_session_not_to_go_idle() {
 
 #[test]
 fn part_of_a_window_can_ask_as_well() {
-    let (mut session, mut client, window) = watched();
+    let (mut session, mut client, window) = opened();
     let part = client.subsurface(&window.surface, (10, 10), (50, 50), BLUE);
     let _inhibitor = client.inhibit_idle(&part);
+    watch(&mut session, &mut client);
     assert!(!idles_within(&mut session, &mut client, A_WHILE));
 }
 
@@ -89,8 +107,9 @@ fn a_window_that_is_not_shown_has_no_say() {
 
 #[test]
 fn nothing_keeps_a_locked_session_from_going_idle() {
-    let (mut session, mut client, window) = watched();
+    let (mut session, mut client, window) = opened();
     let _inhibitor = client.inhibit_idle(&window.surface);
+    watch(&mut session, &mut client);
     assert!(!idles_within(&mut session, &mut client, A_WHILE));
 
     let mut locker = session.connect();
@@ -109,7 +128,7 @@ fn a_panel_can_ask_too() {
 
     use crate::common::{LayerShape, WIDTH};
 
-    let (mut session, mut client, _window) = watched();
+    let (mut session, mut client, _window) = opened();
     let panel = LayerShape {
         layer: Layer::Top,
         anchor: Anchor::Top | Anchor::Left | Anchor::Right,
@@ -119,6 +138,7 @@ fn a_panel_can_ask_too() {
     };
     let (surface, _role) = session.open_layer(&mut client, &panel, (WIDTH, 30), BLUE);
     let _inhibitor = client.inhibit_idle(&surface);
+    watch(&mut session, &mut client);
     assert!(!idles_within(&mut session, &mut client, A_WHILE));
 }
 
