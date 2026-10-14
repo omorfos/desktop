@@ -292,8 +292,8 @@ pub struct Compositor {
     pub(crate) cursor: CursorImageStatus,
     /// What the pointer looks like now, as of the last sync.
     shown: Look,
-    /// The picture for the shape being shown, kept until it would differ.
-    pointer_image: Option<PointerImage>,
+    /// The pictures of the pointer, kept until they would differ.
+    pointer_images: PointerImages,
     themes: Themes,
     _cursor_shapes: CursorShapeManagerState,
     /// The virtual terminal the user asked to switch to, until the backend
@@ -434,7 +434,7 @@ impl Compositor {
                     draws_pointer: false,
                     cursor: CursorImageStatus::default_named(),
                     shown: Look::Icon(CursorIcon::Default),
-                    pointer_image: None,
+                    pointer_images: PointerImages::default(),
                     themes: Themes::default(),
                     terminal_wanted: None,
                     hover: Hover::default(),
@@ -560,7 +560,7 @@ impl Compositor {
     /// are none, and the pointer is a plain arrow.
     pub fn set_cursor_themes(&mut self, themes: Themes) {
         self.themes = themes;
-        self.pointer_image = None;
+        self.pointer_images = PointerImages::default();
     }
 
     /// Works out what the pointer looks like now and readies its picture.
@@ -569,15 +569,48 @@ impl Compositor {
             return;
         }
         self.shown = self.cursor_wanted();
-        if let Look::Icon(icon) = self.shown {
-            let theme = &self.store.current().general.cursor;
-            let scale = self.pointer_scale();
-            let current = self.pointer_image.take().filter(|image| {
+        let theme = &self.store.current().general.cursor;
+        let scale = self.pointer_scale();
+        let images = &mut self.pointer_images;
+        let loaded = &mut images.loaded;
+        let mut ready = |kept: Option<PointerImage>, icon| {
+            let current = kept.filter(|image| {
                 image.icon == icon && image.scale == scale && image.theme == *theme
             });
-            self.pointer_image =
-                current.or_else(|| Some(PointerImage::load(&self.themes, theme, icon, scale)));
+            current.unwrap_or_else(|| {
+                *loaded += 1;
+                PointerImage::load(&self.themes, theme, icon, scale, *loaded)
+            })
+        };
+        match self.shown {
+            Look::Icon(icon) => images.shown = Some(ready(images.shown.take(), icon)),
+            // A pointer an application draws is given to programs that take
+            // pictures of it as the ordinary one, which is a picture of ours.
+            Look::Surface(_) => {
+                let kept = images.stand_in.take();
+                images.stand_in = Some(ready(kept, CursorIcon::Default));
+            }
+            Look::Hidden => {}
         }
+    }
+
+    /// How long the session has been drawn for, which is the time a
+    /// picture is said to have been taken at.
+    pub(crate) const fn clock(&self) -> Duration {
+        self.animation.clock
+    }
+
+    /// The picture of the pointer as programs that take pictures of it are
+    /// given it, with what they are kept in: what is shown, or the
+    /// ordinary pointer in place of one an application draws. Nothing,
+    /// while it is hidden.
+    pub(crate) fn pointer_picture(&mut self) -> (Option<&PointerImage>, &mut Capture) {
+        let picture = match self.shown {
+            Look::Icon(_) => self.pointer_images.shown.as_ref(),
+            Look::Surface(_) => self.pointer_images.stand_in.as_ref(),
+            Look::Hidden => None,
+        };
+        (picture, &mut self.capture)
     }
 
     /// The virtual terminal the user has asked to switch to since this was
@@ -1742,7 +1775,7 @@ impl Compositor {
         if !self.draws_pointer {
             return;
         }
-        match (&self.shown, &self.pointer_image) {
+        match (&self.shown, &self.pointer_images.shown) {
             (Look::Icon(_), Some(image)) => {
                 let at = self.pointer_location - image.hotspot;
                 elements.extend(image.picture.cursor(renderer, at, view));
@@ -2111,15 +2144,36 @@ pub(crate) enum Look {
     Surface(WlSurface),
 }
 
+/// The pictures of the pointer the compositor has loaded.
+#[derive(Debug, Default)]
+struct PointerImages {
+    /// The picture for the shape being shown.
+    shown: Option<PointerImage>,
+    /// The ordinary pointer, kept to stand in for one an application draws
+    /// itself in pictures of the pointer given to programs.
+    stand_in: Option<PointerImage>,
+    /// How many have been loaded, which names the next: the first is 1.
+    loaded: u64,
+}
+
 /// The picture of a named pointer shape, and everything it depends on.
 #[derive(Debug)]
-struct PointerImage {
+pub(crate) struct PointerImage {
     icon: CursorIcon,
     scale: Scale,
     theme: omorfos_config::Cursor,
     picture: Painted,
     /// Where in the picture the pointer's position is.
     hotspot: Point<f64, Logical>,
+    /// The picture's pixels, row by row, as `Argb8888` with premultiplied
+    /// alpha, for a program that is given it.
+    pub(crate) bytes: Vec<u8>,
+    /// How many pixels it is across and down.
+    pub(crate) pixels: (u32, u32),
+    /// The pixel that is the pointer's position.
+    pub(crate) tip: (u32, u32),
+    /// Which picture this is: no other loaded has the same.
+    pub(crate) serial: u64,
 }
 
 impl PointerImage {
@@ -2131,24 +2185,31 @@ impl PointerImage {
         theme: &omorfos_config::Cursor,
         icon: CursorIcon,
         scale: Scale,
+        serial: u64,
     ) -> Self {
         let pixels = scale.pixels(theme.size.get().cast_signed()).unsigned_abs();
         let found = [icon, CursorIcon::Default]
             .into_iter()
             .find_map(|icon| themes.load(&theme.theme, icon, pixels));
-        let (picture, hotspot) = found.map_or_else(
-            || (Painted::new(&paint::pointer(scale)), (0.0, 0.0)),
-            |image| {
-                let hotspot = (f64::from(image.hotspot.0), f64::from(image.hotspot.1));
-                (Painted::from_image(&image, scale), hotspot)
-            },
-        );
+        let image = found.unwrap_or_else(|| {
+            let canvas = paint::pointer(scale);
+            cursor::Image {
+                pixels: canvas.bytes().to_vec(),
+                size: (canvas.width(), canvas.height()),
+                hotspot: (0, 0),
+            }
+        });
+        let hotspot = (f64::from(image.hotspot.0), f64::from(image.hotspot.1));
         Self {
             icon,
             scale,
             theme: theme.clone(),
-            picture,
+            picture: Painted::from_image(&image, scale),
             hotspot: Point::<f64, Physical>::from(hotspot).to_logical(scale.factor()),
+            pixels: image.size,
+            tip: image.hotspot,
+            bytes: image.pixels,
+            serial,
         }
     }
 }

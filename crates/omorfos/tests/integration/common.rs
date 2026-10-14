@@ -586,6 +586,13 @@ pub(crate) enum Event {
     CaptureStopped,
     /// A part of a picture that differs from the one before.
     ShotDamage(i32, i32, i32, i32),
+    /// The pointer came over the screen followed, or left it.
+    PointerEntered,
+    PointerLeft,
+    /// Where the pointer is on the screen followed, in its pixels.
+    PointerAt(i32, i32),
+    /// Where in a picture of the pointer its position is.
+    PointerTip(i32, i32),
     ShotReady,
     ShotFailed(capture_frame::FailureReason),
     Key {
@@ -756,21 +763,58 @@ impl Client {
         session
     }
 
-    /// Asks for pictures of the pointer by itself, on a screen.
-    pub(crate) fn capture_pointer(&self) -> capture_session::ExtImageCopyCaptureSessionV1 {
+    /// Follows the pointer over a screen, and asks for pictures of it by
+    /// itself.
+    pub(crate) fn capture_pointer(
+        &self,
+        screen: usize,
+    ) -> (
+        capture_cursor::ExtImageCopyCaptureCursorSessionV1,
+        capture_session::ExtImageCopyCaptureSessionV1,
+    ) {
         let sources = self.state.capture_sources.as_ref().unwrap();
-        let source = sources.create_source(&self.state.screens[0], &self.handle(), ());
+        let source = sources.create_source(&self.state.screens[screen], &self.handle(), ());
+        self.follow(&source)
+    }
+
+    /// The same, over the window last listed with `app_id`.
+    pub(crate) fn capture_pointer_over_window(
+        &self,
+        app_id: &str,
+    ) -> (
+        capture_cursor::ExtImageCopyCaptureCursorSessionV1,
+        capture_session::ExtImageCopyCaptureSessionV1,
+    ) {
+        let listed = self.state.taskbar.iter();
+        let task = listed.rev().find(|task| task.app_id == app_id).unwrap();
+        let sources = self.state.window_sources.as_ref().unwrap();
+        let source = sources.create_source(&task.handle, &self.handle(), ());
+        self.follow(&source)
+    }
+
+    /// Asks again for pictures of the pointer through what follows it,
+    /// which a program may do only once.
+    pub(crate) fn capture_pointer_again(
+        &self,
+        cursor: &capture_cursor::ExtImageCopyCaptureCursorSessionV1,
+    ) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        cursor.get_capture_session(&self.handle(), ())
+    }
+
+    fn follow(
+        &self,
+        source: &capture_source::ExtImageCaptureSourceV1,
+    ) -> (
+        capture_cursor::ExtImageCopyCaptureCursorSessionV1,
+        capture_session::ExtImageCopyCaptureSessionV1,
+    ) {
         let capturers = self.state.capturers.as_ref().unwrap();
-        let pointer = self
-            .state
-            .seat
-            .as_ref()
-            .unwrap()
-            .get_pointer(&self.handle(), ());
-        let cursor = capturers.create_pointer_cursor_session(&source, &pointer, &self.handle(), ());
+        let seat = self.state.seat.as_ref().unwrap();
+        let pointer = seat.get_pointer(&self.handle(), ());
+        let cursor = capturers.create_pointer_cursor_session(source, &pointer, &self.handle(), ());
         let session = cursor.get_capture_session(&self.handle(), ());
-        cursor.destroy();
-        session
+        source.destroy();
+        (cursor, session)
     }
 
     /// Lets go of what pictures of the screen are asked for through, as a
@@ -792,16 +836,21 @@ impl Client {
 
     /// A buffer to take a picture of the screen in, and the file behind
     /// it, which is where the picture is then read from.
-    pub(crate) fn shot_buffer(
+    pub(crate) fn shot_buffer(&self, size: (i32, i32)) -> (std::fs::File, wl_buffer::WlBuffer) {
+        self.shot_buffer_of(size, wl_shm::Format::Xrgb8888)
+    }
+
+    /// The same, for pixels of `format`.
+    pub(crate) fn shot_buffer_of(
         &self,
         (width, height): (i32, i32),
+        format: wl_shm::Format,
     ) -> (std::fs::File, wl_buffer::WlBuffer) {
         let file = tempfile::tempfile().unwrap();
         file.set_len(u64::try_from(width * height * 4).unwrap())
             .unwrap();
         let shm = self.state.shm.as_ref().unwrap();
         let pool = shm.create_pool(file.as_fd(), width * height * 4, &self.handle(), ());
-        let format = wl_shm::Format::Xrgb8888;
         let buffer = pool.create_buffer(0, width, height, width * 4, format, &self.handle(), ());
         (file, buffer)
     }
@@ -1826,7 +1875,25 @@ delegate_noop!(ClientState: capture_sources::ExtOutputImageCaptureSourceManagerV
 delegate_noop!(ClientState: capture_source::ExtImageCaptureSourceV1);
 delegate_noop!(ClientState: window_sources::ExtForeignToplevelImageCaptureSourceManagerV1);
 delegate_noop!(ClientState: capture_manager::ExtImageCopyCaptureManagerV1);
-delegate_noop!(ClientState: ignore capture_cursor::ExtImageCopyCaptureCursorSessionV1);
+impl Dispatch<capture_cursor::ExtImageCopyCaptureCursorSessionV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &capture_cursor::ExtImageCopyCaptureCursorSessionV1,
+        event: capture_cursor::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use capture_cursor::Event as Told;
+        state.events.push(match event {
+            Told::Enter => Event::PointerEntered,
+            Told::Leave => Event::PointerLeft,
+            Told::Position { x, y } => Event::PointerAt(x, y),
+            Told::Hotspot { x, y } => Event::PointerTip(x, y),
+            other => unreachable!("{other:?}"),
+        });
+    }
+}
 delegate_noop!(ClientState: wp_security_context_manager_v1::WpSecurityContextManagerV1);
 delegate_noop!(ClientState: wp_security_context_v1::WpSecurityContextV1);
 delegate_noop!(ClientState: wl_subcompositor::WlSubcompositor);

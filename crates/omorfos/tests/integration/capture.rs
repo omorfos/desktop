@@ -14,6 +14,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
 
 use crate::common::{Client, Event, HEIGHT, Picture, Session, WIDTH};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
 /// The dot in the middle of the mark that says the screen is captured.
 const DOT: u32 = 0xfff0_524f;
@@ -331,13 +332,209 @@ fn a_program_is_told_when_its_screen_changes_size_or_goes() {
     );
 }
 
-#[test]
-fn the_pointer_by_itself_is_not_given_as_pictures() {
+/// How large a picture of the pointer is, across and down.
+const POINTER: i32 = 256;
+
+/// A session whose pointer is drawn from a theme of squares 8 pixels
+/// across, one pixel in from whose corner is the pointer's position: blue
+/// for the ordinary pointer and green over text. The pointer is at
+/// `(300, 200)`.
+fn pointing() -> Session {
     let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, BLUE), ("text", 8, GREEN)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 300.0, y: 200.0 }, 0);
+    session
+}
+
+/// Asks for a picture of the pointer, and returns what came of it and
+/// where it was put.
+fn point(session: &mut Session, camera: &mut Client, taking: &Taking) -> (Vec<Event>, Picture) {
+    let (file, buffer) = camera.shot_buffer_of((POINTER, POINTER), Format::Argb8888);
+    let frame = ask(camera, taking, &buffer);
+    let events = develop(session, camera);
+    frame.destroy();
+    (events, Picture::read(&file, POINTER))
+}
+
+#[test]
+fn a_program_following_the_pointer_is_told_where_it_is_and_given_its_picture() {
+    let mut session = pointing();
     let mut camera = camera(&mut session);
-    let _taking = camera.capture_pointer();
+    let (cursor, taking) = camera.capture_pointer(0);
     session.roundtrip(&mut camera);
-    assert_eq!(camera.take_events(), [Event::CaptureStopped]);
+    session.step();
+    session.roundtrip(&mut camera);
+    let told = [
+        Event::CaptureSize(256, 256),
+        Event::CaptureFormat(Format::Argb8888),
+        Event::CaptureKnown,
+        Event::PointerEntered,
+        Event::PointerTip(1, 1),
+        Event::PointerAt(300, 200),
+    ];
+    assert_eq!(camera.take_events(), told);
+
+    // Its picture is the pointer's own, at the top left corner, and
+    // nothing round it.
+    let (events, picture) = point(&mut session, &mut camera, &taking);
+    let whole = Event::ShotDamage(0, 0, POINTER, POINTER);
+    assert_eq!(events, [whole.clone(), Event::ShotReady]);
+    assert_eq!(picture.at(4, 4), BLUE);
+    assert_eq!(picture.at(100, 100), 0, "what is not the pointer is clear");
+
+    // It moving is only told; its picture is taken again only once it
+    // looks different.
+    let (file, buffer) = camera.shot_buffer_of((POINTER, POINTER), Format::Argb8888);
+    let frame = ask(&camera, &taking, &buffer);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 310.0, y: 205.0 }, 0);
+    assert_eq!(
+        develop(&mut session, &mut camera),
+        [Event::PointerAt(310, 205)]
+    );
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
+    session.roundtrip(&mut app);
+    app.set_cursor_shape(Shape::Text);
+    session.roundtrip(&mut app);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events, [Event::PointerAt(50, 50), whole, Event::ShotReady]);
+    assert_eq!(Picture::read(&file, POINTER).at(4, 4), GREEN);
+    frame.destroy();
+
+    // A pointer an application draws is given as the ordinary one, and
+    // one it hides as nothing.
+    let drawn = app.surface();
+    app.fill(&drawn, (8, 8), RED);
+    app.set_cursor(Some(&drawn), (2, 2));
+    session.roundtrip(&mut app);
+    let (_, picture) = point(&mut session, &mut camera, &taking);
+    assert_eq!(picture.at(4, 4), BLUE);
+    app.set_cursor(None, (0, 0));
+    session.roundtrip(&mut app);
+    let (events, picture) = point(&mut session, &mut camera, &taking);
+    assert_eq!(events[0], Event::PointerTip(0, 0));
+    assert_eq!(picture.at(4, 4), 0);
+
+    // Leaving the screen and coming back is told; away from the
+    // application that hid it, the pointer is shown again.
+    session.add_output((WIDTH, HEIGHT));
+    let on_the_second = Input::Motion {
+        x: f64::from(WIDTH + 10),
+        y: 10.0,
+    };
+    session.compositor_mut().input(on_the_second, 0);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events, [Event::PointerLeft, Event::PointerTip(1, 1)]);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 20.0, y: 30.0 }, 0);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events, [Event::PointerEntered, Event::PointerAt(20, 30)]);
+
+    // A program that lets go of the pointer's pictures is still told where
+    // it is; one that stops following it is told nothing more.
+    taking.destroy();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 40.0, y: 30.0 }, 0);
+    assert_eq!(
+        develop(&mut session, &mut camera),
+        [Event::PointerAt(40, 30)]
+    );
+    cursor.destroy();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 30.0 }, 0);
+    assert_eq!(develop(&mut session, &mut camera), []);
+}
+
+#[test]
+fn a_picture_of_the_pointer_is_taken_only_in_a_buffer_it_fits_and_not_while_locked() {
+    let mut session = pointing();
+    let mut camera = camera(&mut session);
+    let (_cursor, taking) = camera.capture_pointer(0);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    let (file, buffer) = camera.shot_buffer((POINTER, POINTER));
+    let frame = ask(&camera, &taking, &buffer);
+    let failed = Event::ShotFailed(FailureReason::BufferConstraints);
+    assert_eq!(develop(&mut session, &mut camera), [failed]);
+    assert_eq!(picture(&file).at(4, 4), 0, "nothing was written");
+    frame.destroy();
+
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+    session.draw();
+    session.send_frames(Duration::from_millis(16));
+    session.roundtrip(&mut locker);
+    let (events, _) = point(&mut session, &mut camera, &taking);
+    assert_eq!(events, [Event::ShotFailed(FailureReason::Unknown)]);
+}
+
+#[test]
+fn the_pointer_is_followed_only_over_a_screen_by_a_program_that_may() {
+    let mut session = pointing();
+    // Not by one that may not, and the user is told.
+    let mut plain = session.connect_plain();
+    let _refused = plain.capture_pointer(0);
+    session.roundtrip(&mut plain);
+    session.step();
+    session.roundtrip(&mut plain);
+    assert_eq!(plain.take_events(), [Event::CaptureStopped]);
+    let said: Vec<String> = session.compositor().events().map(str::to_owned).collect();
+    assert!(said[0].contains("asked to follow the pointer"), "{said:?}");
+    let mut app = session.connect();
+
+    // Nor over a window.
+    let mut camera = session.connect_as(Roles::CAPTURE.with(Roles::PANEL));
+    session.open(&mut app, "app", (200, 100), RED);
+    session.roundtrip(&mut camera);
+    let (_cursor, _taking) = camera.capture_pointer_over_window("app");
+    session.roundtrip(&mut camera);
+    session.step();
+    session.roundtrip(&mut camera);
+    assert!(camera.take_events().contains(&Event::CaptureStopped));
+
+    // Over a screen that goes, the pointer is no longer followed, and
+    // the program is told it has left if it was over it.
+    let second = session.add_output((WIDTH, HEIGHT));
+    let third = session.add_output((WIDTH, HEIGHT));
+    session.roundtrip(&mut camera);
+    let over = Input::Motion {
+        x: f64::from(WIDTH + 10),
+        y: 10.0,
+    };
+    session.compositor_mut().input(over, 0);
+    let (_over, _) = camera.capture_pointer(1);
+    let (_away, _) = camera.capture_pointer(2);
+    session.roundtrip(&mut camera);
+    session.step();
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    session.compositor_mut().remove_output(&third);
+    session.compositor_mut().remove_output(&second);
+    session.step();
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    let stopped = events
+        .iter()
+        .filter(|event| **event == Event::CaptureStopped);
+    assert_eq!(stopped.count(), 2, "{events:?}");
+    let left = events.iter().filter(|event| **event == Event::PointerLeft);
+    assert_eq!(left.count(), 1, "{events:?}");
 }
 
 #[test]
@@ -393,6 +590,21 @@ fn a_program_that_breaks_the_rules_of_asking_is_ended() {
         }
         assert_eq!(error, Some((about.to_owned(), number)));
     }
+}
+
+#[test]
+fn a_program_that_asks_twice_for_pictures_of_the_pointer_it_follows_is_ended() {
+    let mut session = pointing();
+    let mut camera = camera(&mut session);
+    let (cursor, _taking) = camera.capture_pointer(0);
+    let _again = camera.capture_pointer_again(&cursor);
+    let mut error = None;
+    for _ in 0..10 {
+        session.step();
+        error = error.or_else(|| camera.error());
+    }
+    let about = "ext_image_copy_capture_cursor_session_v1".to_owned();
+    assert_eq!(error, Some((about, 1)));
 }
 
 /// Windows called `wallet`, and any whose title has "Bank" in it, are

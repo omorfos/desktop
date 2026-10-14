@@ -183,6 +183,17 @@ after a picture has been read back, which is what keeps it out of the
 pictures without a second way of drawing the screen. While the session
 is locked a picture asked for fails.
 
+**The pointer by itself goes to the same programs.** One that may take
+pictures may also follow the pointer over a screen: it is told when the
+pointer comes over it and leaves, where it is in the screen's pixels,
+and where its position is in its picture, and given that picture, the
+theme's own pixels as they are loaded, at the top left of a square as
+large as any pointer, so that nothing is drawn to give it. A pointer an
+application draws itself is given as the ordinary one: reading what it
+drew would take a second `unsafe` read of a program's memory, or drawing
+it again through the GPU. Following the pointer does not set the mark;
+what it is followed for, a picture of the screen, does.
+
 **The clipboard at any time is not offered, like the list of windows.**
 A program without the `clipboard` role is not shown
 `ext-data-control-v1` at all, in a sandbox or out of one: what is copied
