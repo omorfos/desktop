@@ -58,9 +58,28 @@ struct Rows {
 /// `pixels` is not exactly a picture of that size.
 #[must_use]
 pub fn write(buffer: &WlBuffer, format: Format, size: (usize, usize), pixels: &[u8]) -> bool {
+    write_part(buffer, format, size, (0, 0, size.0, size.1), pixels)
+}
+
+/// Writes part of a picture into `buffer`: the rectangle `part`, as `(x,
+/// y, width, height)` in pixels from the top left corner of a picture of
+/// `size`, whose pixels are `pixels`, a row at a time from the top.
+///
+/// What else is in the buffer is left as it is. Returns whether it was
+/// written: as [`write()`], and not if the part does not lie inside the
+/// picture or `pixels` is not exactly that part.
+#[must_use]
+pub fn write_part(
+    buffer: &WlBuffer,
+    format: Format,
+    size: (usize, usize),
+    part: (usize, usize, usize, usize),
+    pixels: &[u8],
+) -> bool {
     let written = with_buffer_contents_mut(buffer, |memory, len, data| {
         let rows = place(&data, len, format, size);
-        let rows = rows.filter(|rows| rows.row.checked_mul(size.1) == Some(pixels.len()));
+        let rows = rows.and_then(|rows| inside(rows, size, part));
+        let rows = rows.filter(|rows| rows.row.checked_mul(part.3) == Some(pixels.len()));
         rows.is_some_and(|rows| {
             for (index, row) in pixels.chunks_exact(rows.row).enumerate() {
                 let at = rows.start + index * rows.stride;
@@ -70,12 +89,14 @@ pub fn write(buffer: &WlBuffer, format: Format, size: (usize, usize), pixels: &[
                 // SAFETY: `memory` is valid for `len` bytes while this
                 // closure runs, which Smithay promises, and guards against
                 // the client making it shorter meanwhile. `place` has
-                // checked that the last row ends at or before `len`, so
-                // `at + row.len()` does too for every row. `row` is ours
-                // and cannot overlap memory mapped from the client's file.
-                // The client may write at the same time: no reference to
-                // its memory is made, only bytes copied, so the worst is a
-                // wrong picture in a buffer that is the client's own.
+                // checked that the picture's last row ends at or before
+                // `len`, and `inside` that the part lies within the
+                // picture, so `at + row.len()` is inside it for every row.
+                // `row` is ours and cannot overlap memory mapped from the
+                // client's file. The client may write at the same time: no
+                // reference to its memory is made, only bytes copied, so
+                // the worst is a wrong picture in a buffer that is the
+                // client's own.
                 unsafe {
                     std::ptr::copy_nonoverlapping(row.as_ptr(), memory.wrapping_add(at), row.len());
                 }
@@ -84,6 +105,28 @@ pub fn write(buffer: &WlBuffer, format: Format, size: (usize, usize), pixels: &[
         })
     });
     written.unwrap_or(false)
+}
+
+/// Where the rows of a part of a picture go, given where the picture's
+/// go: the start of its first, as far apart, and as long as it is wide.
+/// Nothing, unless the part lies inside the picture and is not empty.
+fn inside(
+    rows: Rows,
+    (width, height): (usize, usize),
+    part: (usize, usize, usize, usize),
+) -> Option<Rows> {
+    let (x, y, across, down) = part;
+    let fits = x.checked_add(across).is_some_and(|right| right <= width)
+        && y.checked_add(down).is_some_and(|bottom| bottom <= height)
+        && across > 0
+        && down > 0;
+    // Inside the picture, which lies inside the memory, none of this can
+    // overflow.
+    fits.then(|| Rows {
+        start: rows.start + y * rows.stride + x * PIXEL,
+        stride: rows.stride,
+        row: across * PIXEL,
+    })
 }
 
 #[cfg(test)]
@@ -127,6 +170,33 @@ mod tests {
         assert_eq!(place(&buffer(0, (2, 3), 8), usize::MAX, XRGB, wide), None);
         let far = buffer(i32::MAX, (2, 3), i32::MAX);
         assert_eq!(place(&far, 24, XRGB, (2, 3)), None);
+    }
+
+    #[test]
+    fn a_part_goes_where_it_is_in_the_picture_if_it_lies_inside_it() {
+        let rows = Rows {
+            start: 16,
+            stride: 40,
+            row: 32,
+        };
+        let part = inside(rows, (8, 4), (2, 1, 3, 2));
+        let expected = Rows {
+            start: 16 + 40 + 8,
+            stride: 40,
+            row: 12,
+        };
+        assert_eq!(part, Some(expected));
+        assert_eq!(inside(rows, (8, 4), (0, 0, 8, 4)), Some(rows), "all of it");
+        assert_eq!(inside(rows, (8, 4), (6, 0, 3, 1)), None, "past the right");
+        assert_eq!(inside(rows, (8, 4), (0, 3, 1, 2)), None, "past the bottom");
+        assert_eq!(inside(rows, (8, 4), (usize::MAX, 0, 2, 1)), None, "too far");
+        assert_eq!(
+            inside(rows, (8, 4), (0, usize::MAX, 1, 2)),
+            None,
+            "too far down"
+        );
+        assert_eq!(inside(rows, (8, 4), (1, 1, 0, 1)), None, "nothing across");
+        assert_eq!(inside(rows, (8, 4), (1, 1, 1, 0)), None, "nothing down");
     }
 
     #[test]

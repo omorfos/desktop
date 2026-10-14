@@ -1562,7 +1562,6 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let head = self.head(output);
-        let size = head.map(Head::pixels).unwrap_or_default();
         let view = View {
             origin: head.map(|head| head.area().loc).unwrap_or_default(),
             scale: head.map_or(Scale::ONE, |head| head.scale),
@@ -1607,16 +1606,21 @@ impl Compositor {
                 .flat_map(|drawn| drawn.damage.into_iter().flatten());
             before.extend(changed.copied());
             age = 1;
-            // Red first is the one order every renderer can give. All of
-            // the screen is read, and a window's picture cut from it, so
-            // that there is one way of reading and it is the tried one.
-            let whole = Rectangle::from_size((size.w, size.h).into());
-            let read = renderer.copy_framebuffer(framebuffer, whole, Fourcc::Abgr8888);
+            // Only what the pictures need is read back: what has changed,
+            // and what their programs say is out of date in their buffers.
+            // Red first is the one order every renderer can give.
+            let part = Capture::reading(&due).unwrap_or_default();
+            let (at, of) = ((part.loc.x, part.loc.y), (part.size.w, part.size.h));
+            let read = renderer.copy_framebuffer(
+                framebuffer,
+                Rectangle::new(at.into(), of.into()),
+                Fourcc::Abgr8888,
+            );
             let read = read.ok();
             let pixels = read
                 .as_ref()
                 .and_then(|read| renderer.map_texture(read).ok());
-            self.capture.hand(due, pixels, size, self.animation.clock);
+            self.capture.hand(due, pixels, part, self.animation.clock);
         }
         let shown = Extras {
             pointer: true,

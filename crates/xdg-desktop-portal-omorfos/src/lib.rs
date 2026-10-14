@@ -242,9 +242,10 @@ impl Sharing {
 
 impl Drop for Sharing {
     fn drop(&mut self) {
-        let (taken, sent) = self.out.counted();
+        let (taken, sent, alone) = self.out.counted();
         note(&format!(
-            "while it was shared, {taken} pictures were taken and {sent} sent"
+            "while it was shared, {taken} buffers were taken, and {sent} pictures and {alone} of \
+             the pointer alone sent"
         ));
     }
 }
@@ -355,7 +356,15 @@ impl Backend<'_> {
                 app,
                 pointer,
             } => {
-                note(&format!("{} asked to share the screen", called(&app)));
+                let how = match pointer {
+                    Pointer::Hidden => "without the pointer",
+                    Pointer::Drawn => "with the pointer drawn in",
+                    Pointer::Beside => "with the pointer sent beside the pictures",
+                };
+                note(&format!(
+                    "{} asked to share the screen, {how}",
+                    called(&app)
+                ));
                 self.ask(
                     &app,
                     Question::Share,

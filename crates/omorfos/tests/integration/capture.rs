@@ -198,6 +198,38 @@ fn the_pointer_is_in_a_picture_only_if_the_program_asks() {
 }
 
 #[test]
+fn only_what_has_changed_and_what_the_program_says_is_stale_is_written() {
+    use std::os::unix::fs::FileExt;
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    snap(&mut session, &mut camera, &taking);
+
+    // A buffer of the program's that holds something else altogether, of
+    // which it says only the bottom right corner is out of date.
+    let (file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let old = 0x1234_5678_u32
+        .to_le_bytes()
+        .repeat((WIDTH * HEIGHT) as usize);
+    file.write_all_at(&old, 0).unwrap();
+    let frame = camera.shot(&taking);
+    frame.attach_buffer(&buffer);
+    frame.damage_buffer(WIDTH - 4, HEIGHT - 4, 4, 4);
+    frame.capture();
+    app.fill(&window.surface, (200, 100), GREEN);
+    session.roundtrip(&mut app);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady));
+    let shot = picture(&file);
+    assert_eq!(shot.at(100, 80), GREEN, "what changed is written");
+    let corner = shot.at(WIDTH - 2, HEIGHT - 2) & 0x00ff_ffff;
+    assert_eq!(corner, BACKGROUND & 0x00ff_ffff, "and what was stale");
+    assert_eq!(shot.at(400, 400), 0x1234_5678, "and nothing else");
+}
+
+#[test]
 fn a_picture_after_the_first_waits_for_something_to_change() {
     let mut session = Session::new();
     let mut app = session.connect();

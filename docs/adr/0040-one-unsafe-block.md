@@ -33,7 +33,9 @@ Ways round were looked for:
 ## Decision
 
 One crate, `omorfos-shm`, may use `unsafe`, and holds one block of it:
-a copy of one row of pixels into a program's buffer.
+a copy of one row of pixels into a program's buffer. The same block
+writes a part of a picture, a rectangle checked first to lie inside it,
+row by row: while a screen is shared only what has changed is written.
 
 - **Every other crate still forbids it.** `omorfos-shm` does not take the
   workspace's lints, which a manifest takes whole or not at all. It

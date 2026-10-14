@@ -75,6 +75,8 @@ struct Watching {
     /// How many sessions have been begun: what is said of a picture asked
     /// for in one before the last is not heard.
     begun: u64,
+    /// What the compositor says has changed in the picture being taken.
+    changed: Vec<Part>,
 }
 
 /// Pictures of the first screen, taken over a connection to the compositor
@@ -91,12 +93,49 @@ pub struct Feed {
         Options,
     ),
     session: ExtImageCopyCaptureSessionV1,
-    /// The compositor's names for the memory pictures have been put in, by
-    /// the name of that memory, kept so as not to be made for each picture.
-    buffers: Vec<((u64, usize), wl_buffer::WlBuffer)>,
+    /// The compositor's names for the memory pictures have been put in, kept
+    /// so as not to be made for each picture.
+    buffers: Vec<Named>,
+    /// Which memory the picture asked for is being put in.
+    asked: Option<(u64, usize)>,
     size: (u32, u32),
     /// The pointer, if it is followed beside the pictures.
     following: Option<Following>,
+}
+
+/// A part of a picture: where its top left corner is, and how wide and high
+/// it is, in pixels.
+type Part = (i32, i32, i32, i32);
+
+/// The most parts of a picture remembered as out of date in a buffer; more
+/// are taken as the one part that holds them all.
+const PARTS: usize = 8;
+
+/// Memory the compositor knows by a name, what is known by, and what in it
+/// is out of date: what has changed on the screen since a picture was
+/// last put in it. The compositor writes only that, and what changes.
+#[derive(Debug)]
+struct Named {
+    place: (u64, usize),
+    buffer: wl_buffer::WlBuffer,
+    stale: Vec<Part>,
+}
+
+/// What is out of date in memory once more of the screen has changed:
+/// what was, and what has; as one part, once there would be many.
+fn gather(stale: &mut Vec<Part>, changed: &[Part]) {
+    stale.extend_from_slice(changed);
+    if stale.len() > PARTS {
+        let corners = stale
+            .iter()
+            .map(|&(x, y, wide, high)| (x, y, x + wide, y + high));
+        let all = corners.reduce(|(left, top, right, bottom), (x, y, across, down)| {
+            (left.min(x), top.min(y), right.max(across), bottom.max(down))
+        });
+        let all = all.map(|(left, top, right, bottom)| (left, top, right - left, bottom - top));
+        stale.clear();
+        stale.extend(all);
+    }
 }
 
 /// The pointer being followed: what it is followed through, and the last
@@ -186,6 +225,7 @@ impl Feed {
                 taking,
                 session,
                 buffers: Vec::new(),
+                asked: None,
                 size,
                 following,
             })
@@ -236,7 +276,7 @@ impl Feed {
         // and nothing is being put in it. What reads the stream may well
         // have changed, and is shown the screen at once, though nothing on
         // it changes: the first picture of a session is taken at once.
-        let handed = self.buffers.first().map(|((handed, _), _)| *handed);
+        let handed = self.buffers.first().map(|named| named.place.0);
         if handed.is_some_and(|handed| handed != memory.place.0) {
             let (capturers, source, options) = &self.taking;
             self.session.destroy();
@@ -245,33 +285,38 @@ impl Feed {
             let begun = Of::Screen(self.watching.begun);
             self.session = capturers.create_session(source, *options, &handle, begun);
         }
-        self.buffers.retain(|((handed, _), buffer)| {
-            let kept = *handed == memory.place.0;
+        self.buffers.retain(|named| {
+            let kept = named.place.0 == memory.place.0;
             if !kept {
-                buffer.destroy();
+                named.buffer.destroy();
             }
             kept
         });
-        let (width, height) = self.size;
-        let (across, down) = (width.cast_signed(), height.cast_signed());
         let handle = self.queue.handle();
         let known = self
             .buffers
             .iter()
-            .find(|(known, _)| *known == memory.place);
-        let known = known.map(|(_, buffer)| buffer.clone());
-        let buffer = known.unwrap_or_else(|| self.name(memory));
+            .position(|named| named.place == memory.place);
+        let at = known.unwrap_or_else(|| self.name(memory));
         let frame = self
             .session
             .create_frame(&handle, Of::Screen(self.watching.begun));
-        frame.attach_buffer(&buffer);
-        frame.damage_buffer(0, 0, across, down);
+        // The compositor is told what is out of date in the memory, and
+        // writes that and what has changed: memory new to it, all of it.
+        let named = &self.buffers[at];
+        frame.attach_buffer(&named.buffer);
+        for &(x, y, wide, high) in &named.stale {
+            frame.damage_buffer(x, y, wide, high);
+        }
         frame.capture();
+        self.watching.changed.clear();
+        self.asked = Some(memory.place);
     }
 
     /// Has the compositor know memory by a name, to put pictures in, and
-    /// keeps the name for the next time it is given.
-    fn name(&mut self, memory: &Memory) -> wl_buffer::WlBuffer {
+    /// keeps the name for the next time it is given, with all of it out of
+    /// date. Returns where it is kept.
+    fn name(&mut self, memory: &Memory) -> usize {
         let (width, height) = self.size;
         let (across, down) = (width.cast_signed(), height.cast_signed());
         let handle = self.queue.handle();
@@ -282,8 +327,12 @@ impl Feed {
         let format = wl_shm::Format::Xrgb8888;
         let buffer = pool.create_buffer(offset, across, down, across * 4, format, &handle, ());
         pool.destroy();
-        self.buffers.push((memory.place, buffer.clone()));
-        buffer
+        self.buffers.push(Named {
+            place: memory.place,
+            buffer,
+            stale: vec![(0, 0, across, down)],
+        });
+        self.buffers.len() - 1
     }
 
     /// Takes in what the compositor has said, without waiting, and returns
@@ -316,7 +365,22 @@ impl Feed {
             }
             let (ready, lost) = (&mut self.watching.ready, &mut self.watching.lost);
             let put = std::mem::take(ready).then_some(true);
-            put.or_else(|| std::mem::take(lost).then_some(false))
+            let over = put.or_else(|| std::mem::take(lost).then_some(false));
+            // A picture put in memory leaves nothing in it out of date, and
+            // what changed for it is out of date in all the rest.
+            let asked = self.asked.take_if(|_| over.is_some());
+            let filled = asked.filter(|_| over == Some(true));
+            let changed = &self.watching.changed;
+            if let Some(filled) = filled {
+                for named in &mut self.buffers {
+                    if named.place == filled {
+                        named.stale.clear();
+                    } else {
+                        gather(&mut named.stale, changed);
+                    }
+                }
+            }
+            over
         })
     }
 }
@@ -330,8 +394,8 @@ impl Drop for Feed {
             following.cursor.destroy();
             following.buffer.destroy();
         }
-        for (_, buffer) in &self.buffers {
-            buffer.destroy();
+        for named in &self.buffers {
+            named.buffer.destroy();
         }
     }
 }
@@ -429,6 +493,12 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, Of> for Watching {
     ) {
         let current = *of == Of::Screen(watching.begun);
         match event {
+            frame::Event::Damage {
+                x,
+                y,
+                width,
+                height,
+            } if current => watching.changed.push((x, y, width, height)),
             frame::Event::Ready => {
                 watching.ready |= current;
                 watching.followed.ready |= *of == Of::Pointer;
@@ -491,3 +561,18 @@ delegate_noop!(Watching: ignore wl_output::WlOutput);
 delegate_noop!(Watching: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(Watching: ExtImageCaptureSourceV1);
 delegate_noop!(Watching: ExtImageCopyCaptureManagerV1);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_is_out_of_date_in_memory_is_gathered_into_one_part_once_there_are_many() {
+        let mut stale = vec![(0, 0, 2, 2)];
+        gather(&mut stale, &[(10, 10, 4, 4)]);
+        assert_eq!(stale, [(0, 0, 2, 2), (10, 10, 4, 4)]);
+        let many: Vec<Part> = (0..8).map(|at| (at * 10, 5, 1, 1)).collect();
+        gather(&mut stale, &many);
+        assert_eq!(stale, [(0, 0, 71, 14)]);
+    }
+}
