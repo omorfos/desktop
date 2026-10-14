@@ -22,7 +22,7 @@ name="omorfos-${VERSION}-${TARGET}"
 stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
 cp target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/xdg-desktop-portal-omorfos LICENSE README.md docs/CONFIGURATION.md \
-  packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf \
+  packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf packaging/omorfos-session.target \
   "${stage}/${name}/"
 cp -r schemas "${stage}/${name}/"
 # The built-in theme, to copy from.

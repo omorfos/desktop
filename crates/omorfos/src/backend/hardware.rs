@@ -226,7 +226,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     )?;
 
     let handle = session.handle();
-    session.run(move |compositor| turn(&hardware, &handle, compositor))
+    let ended = session.run(move |compositor| turn(&hardware, &handle, compositor));
+    end_session();
+    ended
 }
 
 /// Reads the keyboard, mice and touchpads, and keeps track of which
@@ -270,24 +272,32 @@ fn watch_devices(
     Ok(())
 }
 
-/// Tells whatever else starts programs for the user about this session.
+/// Tells whatever else starts programs for the user about this session,
+/// and that it has begun.
 ///
 /// Programs are also started by D-Bus and by systemd, which know nothing of
 /// the session unless told. This backend is the user's whole session, so
 /// they are told; the nested one must not, or it would redirect the
 /// programs of the desktop it runs inside.
 ///
-/// The portal service is started by systemd too, and may be running
-/// still from a session before this one, knowing that session's desktop
-/// and nothing of this one's. Once the session has been told of, it is
-/// started again if it is running, so that it asks omorfos what is
-/// omorfos's to answer. What it is told of is handed to the shell as
+/// Then `omorfos-session.target` is started, which brings up systemd's
+/// graphical session, and the user's services that belong to one, such as
+/// the portals, run while it does and stop when it is stopped at the end.
+/// It is started again if it is up already, from a session that ended
+/// without stopping it, so that nothing of that one is left.
+///
+/// The portal service may already have been started by then, by a program
+/// that asked it something, and looked for what answers for omorfos before
+/// it was there. Once that has taken its name, the service is started again
+/// if it is running. What the session is told of is handed to the shell as
 /// arguments, never as text for the shell to read.
 fn announce_session(compositor: &mut Compositor) {
     let told = compositor.session_environment().into_iter();
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
     let script = "dbus-update-activation-environment --systemd \"$@\"; \
-                  systemctl --user try-restart xdg-desktop-portal.service; true";
+                  systemctl --user restart omorfos-session.target; \
+                  gdbus wait --session --timeout 10 org.freedesktop.impl.portal.desktop.omorfos \
+                  && systemctl --user try-restart xdg-desktop-portal.service; true";
     let arguments = ["-c", script, "sh"]
         .map(str::to_owned)
         .into_iter()
@@ -295,6 +305,14 @@ fn announce_session(compositor: &mut Compositor) {
     if let Some(tell) = Command::new("sh", arguments) {
         compositor.perform(&Action::Spawn(tell.into()));
     }
+}
+
+/// Tells systemd that the session has ended, so that the services of the
+/// graphical session stop with it and none is left for the next.
+fn end_session() {
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "stop", "--no-block", "omorfos-session.target"])
+        .status();
 }
 
 /// What the machine does each turn of the loop: report, switch virtual

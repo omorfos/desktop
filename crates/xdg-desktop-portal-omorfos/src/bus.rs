@@ -13,7 +13,9 @@
 //! it should is answered with an error and otherwise passed over.
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -21,7 +23,7 @@ use zbus::blocking::connection::Builder;
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::fdo::RequestNameFlags;
 use zbus::message::{Message, Type};
-use zbus::zvariant::{Structure, Value};
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Structure, Value};
 
 use crate::{Appearance, Failure};
 
@@ -37,8 +39,44 @@ pub const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
 /// The group of settings that say how the desktop looks.
 pub const LOOKS: &str = "org.freedesktop.appearance";
 
-/// Which version of the interface is spoken.
-const VERSION: u32 = 1;
+/// The interface a picture of the screen is asked for by.
+pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
+
+/// The interface by which the portal says it no longer wants what it
+/// asked for, on the object it named for that request.
+pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
+
+/// Which version of each interface is spoken.
+const VERSIONS: [(&str, u32); 2] = [(SETTINGS, 1), (SCREENSHOT, 2)];
+
+/// How a request is answered: given, refused by the user, or failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Response {
+    /// What was asked for is given.
+    Given = 0,
+    /// The user said no.
+    Refused = 1,
+    /// It could not be done.
+    Failed = 2,
+}
+
+/// What the portal asks of the desktop that waits on the user.
+#[derive(Debug)]
+pub enum Asked {
+    /// A picture of the screen for an application, by its identifier,
+    /// which is empty for one not in a sandbox. `request` is the object
+    /// the portal may say it no longer wants it by.
+    Screenshot {
+        /// The call, to be answered once the user has.
+        call: Message,
+        /// The object the request is known by.
+        request: OwnedObjectPath,
+        /// The application, as the sandbox names it.
+        app: String,
+    },
+    /// The request known by this object is no longer wanted.
+    Withdrawn(OwnedObjectPath),
+}
 
 /// What the service says of itself to a program that asks how to use it.
 const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
@@ -61,6 +99,17 @@ const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS 
     </signal>
     <property name="version" type="u" access="read"/>
   </interface>
+  <interface name="org.freedesktop.impl.portal.Screenshot">
+    <method name="Screenshot">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="parent_window" type="s"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+      <arg direction="out" name="response" type="u"/>
+      <arg direction="out" name="results" type="a{sv}"/>
+    </method>
+    <property name="version" type="u" access="read"/>
+  </interface>
 </node>
 "#;
 
@@ -76,6 +125,10 @@ pub struct Portal {
     connection: Connection,
     /// Readable when the bus has gone.
     gone: OwnedFd,
+    /// What has been asked that waits on the user, and what is readable
+    /// when there is some.
+    asked: Receiver<Asked>,
+    asking: OwnedFd,
 }
 
 impl Portal {
@@ -90,9 +143,10 @@ impl Portal {
     pub fn open(address: Option<&str>, look: Look) -> Result<Self, Failure> {
         let builder = address.map_or_else(Builder::session, Builder::address);
         let connection = builder.and_then(Builder::build).map_err(Failure::from);
-        let pipe = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
-        let joined = connection.and_then(|connection| pipe.map(|pipe| (connection, pipe)));
-        joined.and_then(|(connection, (gone, going))| {
+        let pipe = || pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
+        let pipes = pipe().and_then(|gone| pipe().map(|asking| (gone, asking)));
+        let joined = connection.and_then(|connection| pipes.map(|pipes| (connection, pipes)));
+        joined.and_then(|(connection, ((gone, going), (asking, ask)))| {
             // Listening before asking for the name, so that nothing sent
             // to the name is missed.
             let messages = MessageIterator::from(&connection);
@@ -112,17 +166,54 @@ impl Portal {
             };
             named.map_err(taken).map(|_| {
                 let answering = connection.clone();
+                let (sender, asked) = mpsc::channel();
                 thread::spawn(move || {
+                    let waiting = Waiting { sender, ask };
                     let messages = messages.map_while(Result::ok);
                     for message in messages.take_while(|message| !lost(message)) {
-                        answer(&answering, &message, &look);
+                        answer(&answering, &message, &look, &waiting);
                     }
                     // If nobody is waiting any more, there is nobody to tell.
                     let _ = rustix::io::write(&going, &[1]);
                 });
-                Self { connection, gone }
+                Self {
+                    connection,
+                    gone,
+                    asked,
+                    asking,
+                }
             })
         })
+    }
+
+    /// What has been asked since this was last called that waits on the
+    /// user, in order.
+    #[must_use]
+    pub fn asked(&self) -> Vec<Asked> {
+        // Emptied first, so that what is asked meanwhile wakes again.
+        let mut drained = [0; 64];
+        while rustix::io::read(&self.asking, &mut drained).is_ok_and(|read| read > 0) {}
+        self.asked.try_iter().collect()
+    }
+
+    /// What becomes readable when something has been asked that waits on
+    /// the user.
+    #[must_use]
+    pub fn asking(&self) -> BorrowedFd<'_> {
+        self.asking.as_fd()
+    }
+
+    /// Answers a call that waited on the user, with a picture saved at
+    /// `uri` if it was given. If the bus has gone it cannot be answered,
+    /// which shows by what this is becoming readable.
+    pub fn respond(&self, call: &Message, response: Response, uri: Option<String>) {
+        let results: HashMap<&str, Value<'_>> = uri
+            .into_iter()
+            .map(|uri| ("uri", Value::from(uri)))
+            .collect();
+        let _ = self
+            .connection
+            .reply(&call.header(), &(response as u32, results));
     }
 
     /// Tells applications what of the desktop's look has changed, if
@@ -147,6 +238,45 @@ impl AsFd for Portal {
         self.gone.as_fd()
     }
 }
+
+/// Where what is asked that waits on the user goes, and how the rest of
+/// the program is woken to it.
+struct Waiting {
+    sender: Sender<Asked>,
+    ask: OwnedFd,
+}
+
+impl Waiting {
+    fn tell(&self, asked: Asked) {
+        // If nobody is listening any more, there is nobody to wake either.
+        let _ = self.sender.send(asked);
+        let _ = rustix::io::write(&self.ask, &[1]);
+    }
+}
+
+impl Asked {
+    /// The object the request is known by.
+    #[must_use]
+    pub const fn request(&self) -> &OwnedObjectPath {
+        match self {
+            Self::Screenshot { request, .. } | Self::Withdrawn(request) => request,
+        }
+    }
+
+    /// The call to answer, if it is one that waits for an answer.
+    #[must_use]
+    pub const fn call(&self) -> Option<&Message> {
+        match self {
+            Self::Screenshot { call, .. } => Some(call),
+            Self::Withdrawn(_) => None,
+        }
+    }
+}
+
+/// What an application asking for a picture of the screen sends: the
+/// object its request is known by, the application, the window it asks
+/// from, and how it would like it done.
+type Shoot = (OwnedObjectPath, String, String, HashMap<String, OwnedValue>);
 
 /// Whether a message says that the name has gone to another program,
 /// which is a copy of this one that has taken over.
@@ -187,7 +317,7 @@ fn asked(groups: &[String]) -> bool {
 }
 
 /// Answers one message.
-fn answer(connection: &Connection, message: &Message, look: &Look) {
+fn answer(connection: &Connection, message: &Message, look: &Look, waiting: &Waiting) {
     let header = message.header();
     // Replies and signals pass by on the same connection.
     if header.message_type() != Type::MethodCall {
@@ -224,27 +354,67 @@ fn answer(connection: &Connection, message: &Message, look: &Look) {
             }
             Err(_) => malformed(),
         },
+        (SCREENSHOT, Some("Screenshot")) => match body.deserialize::<Shoot>() {
+            Ok((request, app, _, _)) => {
+                // Answered once the user has said.
+                waiting.tell(Asked::Screenshot {
+                    call: message.clone(),
+                    request,
+                    app,
+                });
+                Ok(())
+            }
+            Err(error) => {
+                let said = format!(
+                    "xdg-desktop-portal-omorfos: was asked for a picture in a way it does not \
+                     understand: {error}"
+                );
+                let _ = writeln!(std::io::stderr(), "{said}");
+                malformed()
+            }
+        },
+        (REQUEST, Some("Close")) => {
+            let request = header
+                .path()
+                .map(|path| OwnedObjectPath::from(path.to_owned()));
+            waiting.tell(Asked::Withdrawn(request.unwrap_or_default()));
+            connection.reply(&header, &())
+        }
         ("org.freedesktop.DBus.Properties", Some("Get")) => {
             match body.deserialize::<(String, String)>() {
-                Ok((_, property)) if property == "version" => {
-                    connection.reply(&header, &Value::U32(VERSION))
-                }
-                Ok(_) => {
-                    let name = "org.freedesktop.DBus.Error.UnknownProperty";
-                    refuse(name, "there is no such property")
+                Ok((interface, property)) => {
+                    let version = VERSIONS.iter().find(|(of, _)| *of == interface);
+                    let version = version.filter(|_| property == "version");
+                    if let Some((_, version)) = version {
+                        connection.reply(&header, &Value::U32(*version))
+                    } else {
+                        let name = "org.freedesktop.DBus.Error.UnknownProperty";
+                        refuse(name, "there is no such property")
+                    }
                 }
                 Err(_) => malformed(),
             }
         }
         ("org.freedesktop.DBus.Properties", Some("GetAll")) => {
-            let all = HashMap::from([("version", Value::U32(VERSION))]);
+            let interface = body.deserialize::<String>().unwrap_or_default();
+            let versions = VERSIONS.iter().filter(|(of, _)| *of == interface);
+            let all: HashMap<&str, Value<'_>> = versions
+                .map(|(_, version)| ("version", Value::U32(*version)))
+                .collect();
             connection.reply(&header, &all)
         }
         ("org.freedesktop.DBus.Introspectable", Some("Introspect")) => {
             connection.reply(&header, &INTROSPECTION)
         }
         ("org.freedesktop.DBus.Peer", Some("Ping")) => connection.reply(&header, &()),
-        _ => {
+        (interface, member) => {
+            // Said in the session's log, so that a portal asking for what
+            // is not answered can be seen.
+            let member = member.unwrap_or_default();
+            let said = format!(
+                "xdg-desktop-portal-omorfos: was asked {interface}.{member}, which it does not answer"
+            );
+            let _ = writeln!(std::io::stderr(), "{said}");
             let name = "org.freedesktop.DBus.Error.UnknownMethod";
             refuse(name, "there is no such method here")
         }
@@ -296,11 +466,6 @@ pub(crate) mod tests {
                 .unwrap()
                 .build()
                 .unwrap()
-        }
-
-        pub(crate) fn stop(&mut self) {
-            self.child.kill().unwrap();
-            self.child.wait().unwrap();
         }
     }
 
@@ -472,6 +637,132 @@ pub(crate) mod tests {
             peer.call_method(Some(NAME), PATH, alive, "Ping", &())
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn the_version_of_each_interface_is_its_own() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let properties = Some("org.freedesktop.DBus.Properties");
+        let get = |interface: &str| {
+            let reply =
+                peer.call_method(Some(NAME), PATH, properties, "Get", &(interface, "version"));
+            let version: OwnedValue = reply.unwrap().body().deserialize().unwrap();
+            version.downcast_ref::<u32>().unwrap()
+        };
+        assert_eq!((get(SETTINGS), get(SCREENSHOT)), (1, 2));
+        let all = |interface: &str| {
+            let reply = peer.call_method(Some(NAME), PATH, properties, "GetAll", &(interface,));
+            reply
+                .unwrap()
+                .body()
+                .deserialize::<HashMap<String, OwnedValue>>()
+                .unwrap()
+        };
+        assert_eq!(all(SCREENSHOT)["version"].downcast_ref::<u32>().unwrap(), 2);
+        assert!(all("org.example.Other").is_empty());
+        let said = peer
+            .call_method(
+                Some(NAME),
+                PATH,
+                properties,
+                "Get",
+                &("org.example.Other", "version"),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(said.contains("UnknownProperty"), "{said}");
+    }
+
+    /// Waits for the service to have been asked something that waits on
+    /// the user, and returns it.
+    pub(crate) fn heard(portal: &Portal) -> Vec<Asked> {
+        use rustix::event::{PollFd, PollFlags, poll};
+        let fd = portal.asking();
+        let mut asking = [PollFd::new(&fd, PollFlags::IN)];
+        poll(&mut asking, None).unwrap();
+        portal.asked()
+    }
+
+    /// Asks for a picture of the screen, as the portal does for an
+    /// application, and waits for the answer on a thread of its own.
+    pub(crate) fn ask_for_picture(
+        peer: &Connection,
+        request: &'static str,
+    ) -> thread::JoinHandle<(u32, HashMap<String, OwnedValue>)> {
+        let peer = peer.clone();
+        thread::spawn(move || {
+            let path = zbus::zvariant::ObjectPath::try_from(request).unwrap();
+            let options: HashMap<&str, Value<'_>> = HashMap::new();
+            let body = (path, "org.example.App", "", options);
+            let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &body);
+            reply.unwrap().body().deserialize().unwrap()
+        })
+    }
+
+    #[test]
+    fn a_picture_asked_for_waits_on_the_user_and_is_answered_when_they_have() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let asking = ask_for_picture(&peer, "/org/freedesktop/portal/desktop/request/1/a");
+
+        let asked = heard(&portal).pop().unwrap();
+        let call = asked.call().unwrap();
+        let request = asked.request();
+        assert_eq!(
+            request.as_str(),
+            "/org/freedesktop/portal/desktop/request/1/a"
+        );
+        assert!(matches!(&asked, Asked::Screenshot { app, .. } if app == "org.example.App"));
+        assert!(!asking.is_finished(), "it waits");
+        portal.respond(
+            call,
+            Response::Given,
+            Some("file:///pictures/one.png".to_owned()),
+        );
+        let (response, results) = asking.join().unwrap();
+        assert_eq!(response, 0);
+        assert_eq!(
+            results["uri"].downcast_ref::<&str>().unwrap(),
+            "file:///pictures/one.png"
+        );
+
+        // One refused is answered so, with nothing more.
+        let asking = ask_for_picture(&peer, "/org/freedesktop/portal/desktop/request/1/b");
+        let asked = heard(&portal).pop().unwrap();
+        portal.respond(asked.call().unwrap(), Response::Refused, None);
+        let (response, results) = asking.join().unwrap();
+        assert_eq!((response, results.len()), (1, 0));
+    }
+
+    #[test]
+    fn the_portal_can_say_it_no_longer_wants_what_it_asked_for() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let request = "/org/freedesktop/portal/desktop/request/1/c";
+        peer.call_method(Some(NAME), request, Some(REQUEST), "Close", &())
+            .unwrap();
+        let withdrawn = heard(&portal).pop().unwrap();
+        assert_eq!(withdrawn.request().as_str(), request);
+        assert!(
+            withdrawn.call().is_none(),
+            "nothing waits for an answer to it"
+        );
+
+        let said = peer
+            .call_method(
+                Some(NAME),
+                PATH,
+                Some(SCREENSHOT),
+                "Screenshot",
+                &("not a path",),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(said.contains("InvalidArgs"), "{said}");
     }
 
     #[test]

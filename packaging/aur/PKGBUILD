@@ -41,4 +41,5 @@ package() {
   install -Dm644 packaging/omorfos.desktop -t "$pkgdir/usr/share/wayland-sessions/"
   install -Dm644 packaging/omorfos.portal -t "$pkgdir/usr/share/xdg-desktop-portal/portals/"
   install -Dm644 packaging/omorfos-portals.conf -t "$pkgdir/usr/share/xdg-desktop-portal/"
+  install -Dm644 packaging/omorfos-session.target -t "$pkgdir/usr/lib/systemd/user/"
 }

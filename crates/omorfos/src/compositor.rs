@@ -1118,7 +1118,7 @@ impl Compositor {
         for component in &mut components {
             if component.kind.wanted(&config.general) {
                 let program = component.program.as_os_str();
-                component.process = self.start(program, &[], Roles::PANEL);
+                component.process = self.start(program, &[], component.kind.roles());
             }
         }
         self.components = components;
@@ -1150,7 +1150,7 @@ impl Compositor {
             }
             if component.restarts.allow(now) {
                 let program = component.program.as_os_str();
-                component.process = self.start(program, &[], Roles::PANEL);
+                component.process = self.start(program, &[], component.kind.roles());
             } else {
                 self.problems.push(format!(
                     "`{}` keeps stopping, and will not be started again until you log in",
@@ -2238,6 +2238,16 @@ impl Program {
             Self::Panel => general.panel.enabled,
             Self::Notifier => general.notifications.enabled,
             Self::Portal => general.portals.enabled,
+        }
+    }
+
+    /// What it may do. The program that answers the portals asks the user
+    /// over everything, with the keyboard, and takes the picture that is
+    /// given.
+    const fn roles(self) -> Roles {
+        match self {
+            Self::Panel | Self::Notifier => Roles::PANEL,
+            Self::Portal => Roles::PANEL.with(Roles::OVERLAY).with(Roles::CAPTURE),
         }
     }
 }

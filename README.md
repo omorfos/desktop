@@ -66,6 +66,7 @@ sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-laun
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
 sudo install -Dm644 packaging/omorfos.portal /usr/share/xdg-desktop-portal/portals/omorfos.portal
 sudo install -Dm644 packaging/omorfos-portals.conf /usr/share/xdg-desktop-portal/omorfos-portals.conf
+sudo install -Dm644 packaging/omorfos-session.target /usr/lib/systemd/user/omorfos-session.target
 ```
 
 It can also be started from a text console by running `omorfos`.

@@ -211,8 +211,14 @@ calls for them.
       `xdg-desktop-portal-omorfos`, started with the session: so far
       the settings that tell applications light from dark and the
       accent, read from the theme and told again when it changes.
-- [ ] The Screenshot portal, with the user asked each time by a prompt
-      of the backend's own.
+- [x] The Screenshot portal, with the user asked each time by a
+      question of the backend's own, over everything, which is not in the
+      picture.
+- [ ] Known gaps in the Screenshot portal: the colour picker it also
+      offers is not answered; the user cannot choose a screen, a window or
+      a region, only all of it; an application is named by its
+      identifier, not by the name it shows; and the question borrows the
+      launcher's look in place of a part of its own.
 - [ ] Sharing the screen through the portal, as a PipeWire stream, with
       the user asked what to share each time.
 - [ ] The portal's settings read from `appearance` once there is one

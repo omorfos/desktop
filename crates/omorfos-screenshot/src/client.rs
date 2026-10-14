@@ -108,7 +108,7 @@ struct State {
 /// The connection pictures were taken over, kept to hold one of them on
 /// the clipboard through.
 #[derive(Debug)]
-pub(crate) struct Camera {
+pub struct Camera {
     queue: EventQueue<State>,
     state: State,
 }
@@ -133,19 +133,32 @@ fn memory(length: u64) -> io::Result<File> {
     made.and_then(|file| file.set_len(length).map(|()| file))
 }
 
-/// Takes a picture of every screen of the compositor at `socket`, or of
-/// the one that handed this program a connection; or of one `window`, by
-/// what it is called in the list of windows, in place of the screens.
+/// Connects to the compositor at `socket`, or to the one that handed this
+/// program a connection.
 ///
 /// # Errors
 ///
-/// Returns why not: there is no compositor there, it gives this program
-/// no pictures, or a picture could not be taken.
-pub(crate) fn shoot(socket: &Path, window: Option<String>) -> Result<(Vec<Shot>, Camera), Failure> {
+/// Returns why not: there is no compositor there.
+pub(crate) fn connect(socket: &Path) -> Result<Connection, Failure> {
     let stream = omorfos_shell::connect(socket);
     let connection =
         stream.and_then(|stream| Connection::from_socket(stream).map_err(io::Error::other));
-    let connection = connection.map_err(|error| format!("{}: {error}", socket.display()))?;
+    connection.map_err(|error| format!("{}: {error}", socket.display()).into())
+}
+
+/// Takes a picture of every screen of the compositor `connection` is to,
+/// or of one `window`, by what it is called in the list of windows, in
+/// place of the screens. A program that already speaks to the compositor
+/// for other things takes pictures over the same connection.
+///
+/// # Errors
+///
+/// Returns why not: the compositor gives this program no pictures, or a
+/// picture could not be taken.
+pub fn shoot(
+    connection: &Connection,
+    window: Option<String>,
+) -> Result<(Vec<Shot>, Camera), Failure> {
     let mut queue = connection.new_event_queue();
     let handle = queue.handle();
     let mut state = State {
@@ -197,7 +210,7 @@ impl Camera {
     /// # Errors
     ///
     /// Returns an error if this program may not set the clipboard.
-    pub(crate) fn hold(mut self, png: Vec<u8>) -> Result<(), Failure> {
+    pub fn hold(mut self, png: Vec<u8>) -> Result<(), Failure> {
         let may = self.state.clipboards.as_ref().zip(self.state.seat.as_ref());
         let Some((clipboards, seat)) = may else {
             let said = "omorfos did not let this program set the clipboard. It lets a program \
