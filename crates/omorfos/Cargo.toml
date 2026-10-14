@@ -97,7 +97,7 @@ png = "0.18.1"
 # Sends notifications in the tests, as a program would.
 zbus = "5.19.0"
 # Reads, as an application would, the screen that is shared.
-pipewire = { version = "0.10.1", features = ["v0_3_34"] }
+pipewire = { version = "0.10.1", features = ["v0_3_65"] }
 serde_json = "1.0"
 # The software renderer lets the tests draw without a GPU. It is enabled here
 # only, so the shipped binary does not link pixman.

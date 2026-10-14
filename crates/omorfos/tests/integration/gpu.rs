@@ -15,8 +15,12 @@ use std::path::Path;
 use smithay::backend::allocator::{Format, Fourcc, Modifier};
 use smithay::reexports::gbm;
 
-use crate::common::{Event, Session};
-use crate::windows::GREEN;
+use omorfos::Roles;
+use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm};
+use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_frame_v1::FailureReason;
+
+use crate::common::{Client, Event, HEIGHT, Session, WIDTH};
+use crate::windows::{BACKGROUND, GREEN, RED};
 
 /// What the software renderer the tests draw with can draw from the memory
 /// of a card: pictures laid out a row at a time.
@@ -104,4 +108,93 @@ fn a_window_drawn_in_the_memory_of_the_graphics_card_is_shown_as_drawn() {
         GREEN,
         "what the card holds is drawn"
     );
+}
+
+/// A picture of the first screen asked for in `buffer`, and what came of
+/// it once the screen has been drawn.
+fn shoot(session: &mut Session, camera: &mut Client, buffer: &WlBuffer) -> Vec<Event> {
+    let taking = camera.capture(0, false);
+    session.roundtrip(camera);
+    camera.take_events();
+    let frame = camera.shot(&taking);
+    frame.attach_buffer(buffer);
+    frame.damage_buffer(0, 0, WIDTH, HEIGHT);
+    frame.capture();
+    session.roundtrip(camera);
+    session.draw();
+    session.roundtrip(camera);
+    camera.take_events()
+}
+
+#[test]
+fn a_program_taking_pictures_is_told_it_may_take_them_in_the_memory_of_the_card() {
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(7, drawable())
+        .unwrap();
+    let mut camera = session.connect_as(Roles::CAPTURE);
+    let _taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let told = [
+        Event::CaptureSize(WIDTH.unsigned_abs(), HEIGHT.unsigned_abs()),
+        Event::CaptureFormat(wl_shm::Format::Xrgb8888),
+        Event::CaptureCard(7),
+        Event::CaptureCardFormat(Fourcc::Xrgb8888 as u32, vec![u64::from(Modifier::Linear)]),
+        Event::CaptureKnown,
+    ];
+    assert_eq!(camera.take_events(), told);
+
+    // What says it is in the card's memory and is not cannot be drawn into.
+    let memory = tempfile::tempfile().unwrap();
+    memory
+        .set_len(u64::try_from(WIDTH * HEIGHT * 4).unwrap())
+        .unwrap();
+    let format = (Fourcc::Xrgb8888 as u32, u64::from(Modifier::Linear));
+    let stride = (WIDTH * 4).unsigned_abs();
+    let buffer = camera.gpu_buffer(memory.as_fd(), ((WIDTH, HEIGHT), stride), format);
+    let failed = Event::ShotFailed(FailureReason::BufferConstraints);
+    assert_eq!(shoot(&mut session, &mut camera, &buffer), [failed]);
+}
+
+#[test]
+fn a_picture_of_the_screen_is_drawn_straight_into_the_memory_of_the_card() {
+    let Some((card, number)) = card() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(number, drawable())
+        .unwrap();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = session.connect_as(Roles::CAPTURE);
+
+    let device = gbm::Device::new(card).unwrap();
+    let flags = gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING;
+    let (across, down) = (WIDTH.unsigned_abs(), HEIGHT.unsigned_abs());
+    let mut picture = device
+        .create_buffer_object::<()>(across, down, gbm::Format::Xrgb8888, flags)
+        .unwrap();
+    let file = picture.fd().unwrap();
+    let format = (Fourcc::Xrgb8888 as u32, u64::from(picture.modifier()));
+    let buffer = camera.gpu_buffer(file.as_fd(), ((WIDTH, HEIGHT), picture.stride()), format);
+    let events = shoot(&mut session, &mut camera, &buffer);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+
+    // What the card holds is the screen.
+    let at = |mapped: &gbm::MappedBufferObject<'_, ()>, (x, y): (usize, usize)| {
+        let start = y * mapped.stride() as usize + x * 4;
+        let pixel: [u8; 4] = mapped.buffer()[start..start + 4].try_into().unwrap();
+        u32::from_le_bytes(pixel) | 0xff00_0000
+    };
+    let seen = picture
+        .map_mut(0, 0, across, down, |mapped| {
+            (at(mapped, (100, 80)), at(mapped, (400, 400)))
+        })
+        .unwrap();
+    assert_eq!(seen, (RED, BACKGROUND));
 }

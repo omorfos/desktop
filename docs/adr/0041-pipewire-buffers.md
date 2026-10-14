@@ -53,6 +53,10 @@ does (ADR 40), and only for this. Everything else still forbids it.
   it, and is not touched once PipeWire has taken it away, which PipeWire
   says it does before it frees one. Nothing is handed out that outlives
   what it points at: the file is copied, not lent.
+- **The memory is the caller's**: shared memory, or memory of the
+  graphics card the compositor draws into, which what reads the stream
+  takes as it is, with nothing copied. The crate gives a buffer what it is
+  handed, and says which kind it is; it makes nothing itself.
 - **It also says where the pointer is**, beside each picture, as
   PipeWire's cursor metadata, which the bindings can read but not write.
   `Held::point` finds the buffer's metadata and writes it only if it has

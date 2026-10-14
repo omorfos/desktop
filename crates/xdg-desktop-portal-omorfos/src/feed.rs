@@ -31,6 +31,11 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_session_v1::{self as session, ExtImageCopyCaptureSessionV1},
 };
 
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{
+    zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1, zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+};
+
+use crate::card;
 use crate::{Failure, Pointer};
 
 /// What a session or a picture is of: the screen, or the pointer by itself.
@@ -63,6 +68,12 @@ struct Watching {
     capturers: Option<ExtImageCopyCaptureManagerV1>,
     output: Option<wl_output::WlOutput>,
     seat: Option<wl_seat::WlSeat>,
+    /// What memory of the graphics card is named to the compositor by.
+    cards: Option<ZwpLinuxDmabufV1>,
+    /// The card the compositor can put pictures in the memory of, once it
+    /// has said, and the layouts it can draw into.
+    card: Option<u64>,
+    layouts: Vec<u64>,
     followed: Followed,
     /// How large the pictures are, once said.
     size: Option<(u32, u32)>,
@@ -233,6 +244,16 @@ impl Feed {
         ready.inspect(Self::point)
     }
 
+    /// The graphics card the compositor can put pictures in the memory of,
+    /// if it has said and they can be named to it, and the layouts it can
+    /// draw into.
+    #[must_use]
+    pub fn card(&self) -> (Option<u64>, Vec<u64>) {
+        let watching = &self.watching;
+        let card = watching.card.filter(|_| watching.cards.is_some());
+        (card, watching.layouts.clone())
+    }
+
     /// The pointer as last seen, if it is followed.
     #[must_use]
     pub fn pointer(&self) -> Option<Seen<'_>> {
@@ -271,7 +292,7 @@ impl Feed {
     ///
     /// Only one is asked for at a time: the one before has been put where
     /// it was to go.
-    pub fn ask(&mut self, memory: &Memory) {
+    pub fn ask(&mut self, memory: &Memory, layout: Option<u64>) {
         // Memory handed out before buffers were last taken away is gone,
         // and nothing is being put in it. What reads the stream may well
         // have changed, and is shown the screen at once, though nothing on
@@ -297,7 +318,7 @@ impl Feed {
             .buffers
             .iter()
             .position(|named| named.place == memory.place);
-        let at = known.unwrap_or_else(|| self.name(memory));
+        let at = known.unwrap_or_else(|| self.name(memory, layout));
         let frame = self
             .session
             .create_frame(&handle, Of::Screen(self.watching.begun));
@@ -313,20 +334,26 @@ impl Feed {
         self.asked = Some(memory.place);
     }
 
-    /// Has the compositor know memory by a name, to put pictures in, and
-    /// keeps the name for the next time it is given, with all of it out of
-    /// date. Returns where it is kept.
-    fn name(&mut self, memory: &Memory) -> usize {
+    /// Has the compositor know memory by a name, to put pictures in: memory
+    /// of the graphics card in `layout`, if one was agreed, or shared
+    /// memory. Keeps the name for the next time it is given, with all of it
+    /// out of date. Returns where it is kept.
+    fn name(&mut self, memory: &Memory, layout: Option<u64>) -> usize {
         let (width, height) = self.size;
         let (across, down) = (width.cast_signed(), height.cast_signed());
         let handle = self.queue.handle();
-        let end = u64::from(memory.offset) + u64::from(memory.size);
-        let end = i32::try_from(end).unwrap_or(i32::MAX);
-        let pool = self.shm.create_pool(memory.file.as_fd(), end, &handle, ());
-        let offset = memory.offset.cast_signed();
-        let format = wl_shm::Format::Xrgb8888;
-        let buffer = pool.create_buffer(offset, across, down, across * 4, format, &handle, ());
-        pool.destroy();
+        let shm = &self.shm;
+        let cards = (self.watching.cards.as_ref(), &handle);
+        let buffer = card::name(cards, memory, (self.size, layout), || {
+            let end = u64::from(memory.offset) + u64::from(memory.size);
+            let end = i32::try_from(end).unwrap_or(i32::MAX);
+            let pool = shm.create_pool(memory.file.as_fd(), end, &handle, ());
+            let offset = memory.offset.cast_signed();
+            let format = wl_shm::Format::Xrgb8888;
+            let buffer = pool.create_buffer(offset, across, down, across * 4, format, &handle, ());
+            pool.destroy();
+            buffer
+        });
         self.buffers.push(Named {
             place: memory.place,
             buffer,
@@ -426,6 +453,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
                 "wl_output" if watching.output.is_none() => {
                     watching.output = Some(registry.bind(name, 1, handle, ()));
                 }
+                "zwp_linux_dmabuf_v1" => {
+                    watching.cards = Some(registry.bind(name, 3, handle, ()));
+                }
                 "wl_seat" if watching.seat.is_none() => {
                     watching.seat = Some(registry.bind(name, 1, handle, ()));
                 }
@@ -456,6 +486,14 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, Of> for Watching {
                 let said = Some((width, height));
                 watching.stopped |= watching.size.is_some_and(|size| Some(size) != said);
                 watching.size = watching.size.or(said);
+            }
+            (session::Event::DmabufDevice { device }, Of::Screen(_)) => {
+                let number = device.try_into().ok().map(u64::from_ne_bytes);
+                watching.card = number;
+            }
+            (session::Event::DmabufFormat { modifiers, .. }, Of::Screen(_)) => {
+                let layouts = modifiers.as_chunks::<8>().0.iter();
+                watching.layouts = layouts.map(|layout| u64::from_ne_bytes(*layout)).collect();
             }
             (session::Event::Stopped, _) => watching.stopped = true,
             _ => {}
@@ -554,6 +592,8 @@ fn follow(
 
 delegate_noop!(Watching: ignore wl_shm::WlShm);
 delegate_noop!(Watching: ignore wl_seat::WlSeat);
+delegate_noop!(Watching: ignore ZwpLinuxDmabufV1);
+delegate_noop!(Watching: ignore ZwpLinuxBufferParamsV1);
 delegate_noop!(Watching: ignore wl_pointer::WlPointer);
 delegate_noop!(Watching: wl_shm_pool::WlShmPool);
 delegate_noop!(Watching: ignore wl_buffer::WlBuffer);

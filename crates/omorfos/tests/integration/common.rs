@@ -600,6 +600,10 @@ pub(crate) enum Event {
     ShotFailed(capture_frame::FailureReason),
     /// A buffer in the memory of the graphics card could not be made.
     GpuBufferFailed,
+    /// Pictures may be taken in the memory of the graphics card with this
+    /// device number, in this format and these layouts.
+    CaptureCard(u64),
+    CaptureCardFormat(u32, Vec<u64>),
     Key {
         code: u32,
         pressed: bool,
@@ -1448,6 +1452,15 @@ impl Dispatch<capture_session::ExtImageCopyCaptureSessionV1, ()> for ClientState
             Told::ShmFormat { format } => Event::CaptureFormat(format.into_result().unwrap()),
             Told::Done => Event::CaptureKnown,
             Told::Stopped => Event::CaptureStopped,
+            Told::DmabufDevice { device } => {
+                let device = u64::from_ne_bytes(device.try_into().unwrap());
+                Event::CaptureCard(device)
+            }
+            Told::DmabufFormat { format, modifiers } => {
+                let layouts = modifiers.as_chunks::<8>().0.iter();
+                let layouts = layouts.map(|layout| u64::from_ne_bytes(*layout)).collect();
+                Event::CaptureCardFormat(format, layouts)
+            }
             other => unreachable!("{other:?}"),
         });
     }

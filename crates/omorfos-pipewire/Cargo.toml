@@ -12,9 +12,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-pipewire = { version = "0.10.1", features = ["v0_3_34"] }
-# Makes the memory each buffer is, as a file that can be shared.
-rustix = { version = "1.1.5", default-features = false, features = ["fs"] }
+pipewire = { version = "0.10.1", features = ["v0_3_65"] }
 
 # The lints of the workspace, but for `unsafe_code`, which every other crate
 # forbids and this one exists to hold. A manifest takes the workspace's

@@ -8,66 +8,80 @@
 //! would let it be taken out, is in `docs/adr/0041-pipewire-buffers.md`.
 //!
 //! What is offered is safe to call with anything. The memory of each
-//! buffer is made here, as a file of its own that the compositor can be
-//! given; PipeWire would otherwise put every buffer in one block it does
-//! not name. A buffer is held with the stream it came from, is given back
-//! to that stream however it is let go of, and is not touched once
-//! PipeWire has taken it away, which it says it does before it frees one.
+//! buffer is made by the caller, as a file of its own that the compositor
+//! can be given: shared memory, or memory of the graphics card. PipeWire
+//! would otherwise put every buffer in one block it does not name. A buffer
+//! is held with the stream it came from, is given back to that stream
+//! however it is let go of, and is not touched once PipeWire has taken it
+//! away, which it says it does before it frees one.
 
 use std::cell::{Cell, RefCell};
-use std::fs::File;
 use std::os::fd::{AsRawFd, BorrowedFd, OwnedFd};
 use std::ptr::NonNull;
 use std::rc::Rc;
 
 use pipewire::spa::sys::{
-    SPA_CHUNK_FLAG_NONE, SPA_DATA_FLAG_MAPPABLE, SPA_DATA_FLAG_READWRITE, SPA_DATA_MemFd,
-    SPA_META_Cursor, SPA_VIDEO_FORMAT_BGRA, spa_data, spa_meta, spa_meta_bitmap, spa_meta_cursor,
-    spa_point, spa_rectangle,
+    SPA_CHUNK_FLAG_CORRUPTED, SPA_CHUNK_FLAG_NONE, SPA_DATA_DmaBuf, SPA_DATA_FLAG_MAPPABLE,
+    SPA_DATA_FLAG_READWRITE, SPA_DATA_MemFd, SPA_META_Cursor, SPA_VIDEO_FORMAT_BGRA, spa_data,
+    spa_meta, spa_meta_bitmap, spa_meta_cursor, spa_point, spa_rectangle,
 };
 use pipewire::stream::{ListenerLocalBuilder, StreamRc};
 use pipewire::sys::pw_buffer;
-use rustix::fs::{MemfdFlags, memfd_create};
 
-/// The memory of a stream's buffers, made here, and the times PipeWire has
-/// taken buffers away, so that a buffer held from before is known to be
-/// gone.
+/// Memory made for a buffer: the file it is, where in it the picture
+/// starts, how far apart its rows are, and how many bytes it has; whether
+/// it is memory of the graphics card, and not shared memory; and whether
+/// what reads it may map it to read it, which memory of the card laid out
+/// otherwise than a row at a time is not to be.
+#[derive(Debug)]
+pub struct Made {
+    /// The file.
+    pub file: OwnedFd,
+    /// Where in it the picture starts.
+    pub offset: u32,
+    /// How far apart its rows are, in bytes.
+    pub stride: u32,
+    /// How many bytes it has.
+    pub size: u32,
+    /// Whether it is memory of the graphics card.
+    pub card: bool,
+    /// Whether what reads it may map it.
+    pub mappable: bool,
+}
+
+/// What a stream's buffers are known by: the times PipeWire has taken
+/// buffers away, so that a buffer held from before is known to be gone,
+/// and the memory each was made, which is let go of with it.
 #[derive(Debug, Clone, Default)]
 pub struct Removals {
     count: Rc<Cell<u64>>,
-    /// The file each buffer's memory is, by where the buffer is.
-    files: Rc<RefCell<Vec<(usize, OwnedFd)>>>,
+    /// The file each buffer's memory is, and how far apart its rows are,
+    /// by where the buffer is.
+    files: Rc<RefCell<Vec<(usize, OwnedFd, u32)>>>,
 }
 
 impl Removals {
-    /// Has a stream's buffers be memory made here, `size` bytes each, by
-    /// listening for them being made and taken away. The stream is to be
-    /// connected with `ALLOC_BUFFERS`, which says that it makes them.
+    /// Has a stream's buffers be memory `make` makes, by listening for them
+    /// being made and taken away. The stream is to be connected with
+    /// `ALLOC_BUFFERS`, which says that it makes them. A buffer for which
+    /// none is made has none, and nothing is put in it.
     #[must_use]
     pub fn furnish<'a, D>(
         &self,
         listener: ListenerLocalBuilder<'a, D>,
-        size: u32,
+        mut make: impl FnMut() -> Option<Made> + 'static,
     ) -> ListenerLocalBuilder<'a, D> {
-        let (made, gone) = (self.clone(), self.clone());
+        let (given, gone) = (self.clone(), self.clone());
         listener
-            .add_buffer(move |_, _, buffer| made.made(buffer, size))
+            .add_buffer(move |_, _, buffer| given.made(buffer, make()))
             .remove_buffer(move |_, _, buffer| gone.removed(buffer))
     }
 
-    /// Gives a buffer PipeWire has just made memory of its own, shared
-    /// through a file, if some can be had. Without, it has none, and
-    /// nothing is put in it.
-    fn made(&self, buffer: *mut pw_buffer, size: u32) {
-        let file = memfd_create(
-            "omorfos-screen",
-            MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING,
-        );
-        let file = file.ok().map(File::from);
-        let file = file.filter(|file| file.set_len(u64::from(size)).is_ok());
+    /// Gives a buffer PipeWire has just made the memory made for it.
+    fn made(&self, buffer: *mut pw_buffer, made: Option<Made>) {
         let part = NonNull::new(buffer).and_then(first);
-        let given = part.zip(file);
-        let given = given.map(|(mut part, file)| {
+        let given = part.zip(made);
+        let given = given.map(|(mut part, made)| {
             // TODO: have the PipeWire bindings give a buffer memory safely,
             // and forbid `unsafe` here as everywhere else. See
             // docs/adr/0041-pipewire-buffers.md.
@@ -76,16 +90,17 @@ impl Removals {
             // is made, on this thread, to be given its memory: nothing else
             // reads or writes it meanwhile.
             let part = unsafe { part.as_mut() };
-            // The stream offers no other memory than this, so this is what
-            // the buffer may be.
-            part.type_ = SPA_DATA_MemFd;
-            // What reads it is to map it to read it.
-            part.flags = SPA_DATA_FLAG_READWRITE | SPA_DATA_FLAG_MAPPABLE;
-            part.fd = i64::from(file.as_raw_fd());
-            part.mapoffset = 0;
-            part.maxsize = size;
+            // The stream offers what the memory is, so this is what the
+            // buffer may be.
+            let card = u32::from(made.card);
+            part.type_ = SPA_DATA_MemFd + card * (SPA_DATA_DmaBuf - SPA_DATA_MemFd);
+            part.flags =
+                SPA_DATA_FLAG_READWRITE | (u32::from(made.mappable) * SPA_DATA_FLAG_MAPPABLE);
+            part.fd = i64::from(made.file.as_raw_fd());
+            part.mapoffset = made.offset;
+            part.maxsize = made.size;
             part.data = std::ptr::null_mut();
-            (buffer.addr(), OwnedFd::from(file))
+            (buffer.addr(), made.file, made.stride)
         });
         self.files.borrow_mut().extend(given);
     }
@@ -97,7 +112,7 @@ impl Removals {
         self.count.set(self.count.get().wrapping_add(1));
         self.files
             .borrow_mut()
-            .retain(|(at, _)| *at != buffer.addr());
+            .retain(|(at, ..)| *at != buffer.addr());
     }
 }
 
@@ -149,6 +164,8 @@ pub struct Memory {
     pub offset: u32,
     /// How many bytes the buffer has.
     pub size: u32,
+    /// How far apart its rows are, in bytes.
+    pub stride: u32,
     /// What the buffer is known by: how many times buffers had been taken
     /// away when it was handed out, and which of them it is. The same
     /// memory is handed out again and again, until buffers are taken away.
@@ -185,12 +202,24 @@ impl Held {
                 removals: removals.clone(),
                 taken: removals.count.get(),
             };
-            // Until a picture is put in it, it is said to have none, so that
-            // given back unfilled it is read as nothing new: the pointer
-            // alone, if it has moved.
-            let _ = held.chunk(0, 0, SPA_CHUNK_FLAG_NONE);
+            // Until a picture is put in it, it is said to hold none to be
+            // read, so that given back unfilled it is taken for what it is,
+            // the pointer alone if it has moved: empty, which some readers
+            // look for, and spoilt, which others do. Memory of the card is
+            // read whatever its size says, unless it is said to be spoilt.
+            let _ = held.chunk(0, 0, SPA_CHUNK_FLAG_CORRUPTED);
             held
         })
+    }
+
+    /// How far apart the rows of its memory are, in bytes, as it was made.
+    #[must_use]
+    pub fn stride(&self) -> u32 {
+        let files = self.removals.files.borrow();
+        let made = files
+            .iter()
+            .find(|(at, ..)| *at == self.buffer.as_ptr().addr());
+        made.map_or(0, |(.., stride)| *stride)
     }
 
     /// Whether PipeWire has taken it away since it was taken, as it does
@@ -205,13 +234,17 @@ impl Held {
         self.removals.count.get() == self.taken
     }
 
-    /// The shared memory its picture goes in, if it has any: what the
-    /// stream offers is shared memory, unless it is given something else.
+    /// The memory its picture goes in, if it has any: shared memory, or
+    /// memory of the graphics card, as it was made.
     #[must_use]
     pub fn memory(&self) -> Option<Memory> {
         let place = (self.taken, self.buffer.as_ptr().addr());
+        let files = self.removals.files.borrow();
+        let made = files.iter().find(|(at, ..)| *at == place.1);
+        let stride = made.map_or(0, |(.., stride)| *stride);
         self.first().and_then(|data| {
-            let shared = data.type_ == SPA_DATA_MemFd && data.fd >= 0;
+            let kind = data.type_ == SPA_DATA_MemFd || data.type_ == SPA_DATA_DmaBuf;
+            let shared = kind && data.fd >= 0;
             let fd = i32::try_from(data.fd).ok().filter(|_| shared);
             let file = fd.and_then(|fd| {
                 // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
@@ -227,6 +260,7 @@ impl Held {
                 file,
                 offset: data.mapoffset,
                 size: data.maxsize,
+                stride,
                 place,
             })
         })

@@ -28,6 +28,10 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
+use std::io::Write;
+
+use smithay::backend::allocator::{Format, Fourcc, Modifier};
+
 use crate::common::{Event, HEIGHT, LayerShape, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 use omorfos::Input;
@@ -270,12 +274,19 @@ struct Viewer {
     /// Where it was last told the pointer is, where its position is in its
     /// picture, and the colour of that picture a little inside it.
     pointer: Rc<Cell<Option<Pointed>>>,
+    /// Whether the last picture seen was in memory of the graphics card.
+    card: Rc<Cell<bool>>,
+    /// Whether it was given memory of the card that said it held a picture
+    /// and could not be read, as a reader that reads such memory whatever
+    /// its size says fails on.
+    unreadable: Rc<Cell<bool>>,
     link: Option<pw::link::Link>,
 }
 
-/// The pictures a viewer wants: blue first, of any size.
-fn wanted() -> Vec<u8> {
-    let wants = spa::pod::object!(
+/// The pictures a viewer wants: blue first, of any size, in memory of the
+/// graphics card laid out in `layout` if there is one.
+fn wanted(layout: Option<u64>) -> Vec<u8> {
+    let mut wants = spa::pod::object!(
         spa::utils::SpaTypes::ObjectParamFormat,
         spa::param::ParamType::EnumFormat,
         spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
@@ -304,6 +315,13 @@ fn wanted() -> Vec<u8> {
             }
         ),
     );
+    wants
+        .properties
+        .extend(layout.map(|layout| spa::pod::Property {
+            key: FormatProperties::VideoModifier.as_raw(),
+            flags: spa::pod::PropertyFlags::MANDATORY,
+            value: PodValue::Long(layout.cast_signed()),
+        }));
     let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &PodValue::Object(wants));
     bytes.unwrap().0.into_inner()
 }
@@ -343,6 +361,13 @@ fn told_of_the_pointer() -> Vec<u8> {
 
 impl Viewer {
     fn new(socket: &std::path::Path) -> Self {
+        Self::reading(socket, false)
+    }
+
+    /// A viewer that would rather take the pictures in memory of the
+    /// graphics card laid out a row at a time, if `card`, which it can map
+    /// to read.
+    fn reading(socket: &std::path::Path, takes_card: bool) -> Self {
         pw::init();
         let main = pw::main_loop::MainLoopRc::new(None).unwrap();
         let context = pw::context::ContextRc::new(&main, None).unwrap();
@@ -355,6 +380,10 @@ impl Viewer {
         let node = Rc::new(Cell::new(None));
         let seen = Rc::new(RefCell::new(None));
         let pointer = Rc::new(Cell::new(None));
+        let card = Rc::new(Cell::new(false));
+        let on_card = Rc::clone(&card);
+        let unreadable = Rc::new(Cell::new(false));
+        let spoiling = Rc::clone(&unreadable);
         let (named, kept, told) = (Rc::clone(&node), Rc::clone(&seen), Rc::clone(&pointer));
         let listener = stream
             .add_local_listener::<()>()
@@ -385,7 +414,17 @@ impl Viewer {
                         told.set(Some(((at.x, at.y), (tip.x, tip.y), colour)));
                     }
                     let data = &mut buffer.datas_mut()[0];
-                    let size = usize::try_from(data.chunk().size()).unwrap();
+                    let card = data.type_() == spa::buffer::DataType::DmaBuf;
+                    on_card.set(card);
+                    // Memory of the card is read whatever its size says,
+                    // unless it is said to be spoilt; read so, it has to say
+                    // how far apart its rows are.
+                    let chunk = data.chunk();
+                    let spoilt = chunk.flags().contains(spa::buffer::ChunkFlags::CORRUPTED);
+                    if card && !spoilt && chunk.stride() == 0 {
+                        spoiling.set(true);
+                    }
+                    let size = usize::try_from(chunk.size()).unwrap();
                     let picture = data.data().map(|bytes| bytes[..size].to_vec());
                     if picture.as_ref().is_some_and(|picture| !picture.is_empty()) {
                         *kept.borrow_mut() = picture;
@@ -394,15 +433,12 @@ impl Viewer {
             })
             .register()
             .unwrap();
-        let bytes = wanted();
+        let wants = [takes_card.then(|| wanted(Some(0))), Some(wanted(None))];
+        let wants = wants.iter().flatten();
+        let mut wants: Vec<_> = wants.map(|wants| Pod::from_bytes(wants).unwrap()).collect();
         let flags = pw::stream::StreamFlags::MAP_BUFFERS;
         stream
-            .connect(
-                spa::utils::Direction::Input,
-                None,
-                flags,
-                &mut [Pod::from_bytes(&bytes).unwrap()],
-            )
+            .connect(spa::utils::Direction::Input, None, flags, &mut wants)
             .unwrap();
         Self {
             main,
@@ -413,6 +449,8 @@ impl Viewer {
             node,
             seen,
             pointer,
+            card,
+            unreadable,
             link: None,
         }
     }
@@ -700,6 +738,94 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
         viewer.turn(node);
         viewer.pointer.get() == Some(((320, 240), (1, 1), BLUE))
     });
+}
+
+/// What the software renderer the tests draw with can draw into in the
+/// memory of a card: pictures laid out a row at a time.
+fn drawable() -> [Format; 1] {
+    [Format {
+        code: Fourcc::Xrgb8888,
+        modifier: Modifier::Linear,
+    }]
+}
+
+/// Shares the first screen, a window on it red, with a viewer that would
+/// rather take memory of the graphics card, the compositor saying the card
+/// it draws with is the one numbered `card`, and returns the viewer once it
+/// has seen the window.
+fn shared_from_card(card: u64) -> Viewer {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(card, drawable())
+        .unwrap();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let called = "/org/freedesktop/portal/desktop/session/1_1/card";
+    let (_peer, node) = sharing_with(&mut session, &daemon, called, BESIDE);
+    let mut viewer = Viewer::reading(&remote, true);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.at(WIDTH, (10, 10)) == Some(RED)
+    });
+    assert_eq!(viewer.at(WIDTH, (400, 400)), Some(BACKGROUND));
+    // The pointer moving alone is told with nothing to read but where it
+    // is.
+    let over = |x: f64, y: f64| Input::Motion { x, y };
+    for (x, y) in [(300, 200), (310, 210)] {
+        session
+            .compositor_mut()
+            .input(over(f64::from(x), f64::from(y)), 0);
+        session.eventually(|session| {
+            session.step();
+            viewer.turn(node);
+            viewer.pointer.get().is_some_and(|(at, ..)| at == (x, y))
+        });
+    }
+    assert_eq!(
+        viewer.at(WIDTH, (10, 10)),
+        Some(RED),
+        "the picture is as it was"
+    );
+    assert!(!viewer.unreadable.get(), "a buffer no reader could read");
+    viewer
+}
+
+#[test]
+fn a_call_that_would_take_memory_of_the_card_is_given_shared_memory_where_it_cannot_be_had() {
+    // No card has this number.
+    let viewer = shared_from_card(0);
+    assert!(!viewer.card.get(), "shared memory");
+}
+
+#[test]
+fn a_screen_is_shared_in_the_memory_of_the_card_where_there_is_one() {
+    let Some(card) = render_node() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    let viewer = shared_from_card(card);
+    assert!(viewer.card.get(), "memory of the card");
+}
+
+/// The device number of the graphics card to try with, if this machine has
+/// one this user may use.
+fn render_node() -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+    let path = std::path::Path::new("/dev/dri/renderD128");
+    let usable = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(path)
+        .is_ok();
+    let number = std::fs::metadata(path).ok().map(|told| told.rdev());
+    number.filter(|_| usable)
 }
 
 #[test]
