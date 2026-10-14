@@ -670,7 +670,10 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
     });
 
     let (x, y) = row(0);
-    session.eventually(|session| session.draw().at(x, y) == lit());
+    session.eventually(|session| {
+        assert!(!launcher.is_finished(), "the launcher stopped early");
+        session.draw().at(x, y) == lit()
+    });
     // A key held for a while is taken again by the launcher's own clock,
     // with nothing prodding it. There is one program, so it stays chosen.
     hold(&mut session, DOWN, true);
@@ -680,6 +683,22 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
     }
     hold(&mut session, DOWN, false);
     press(&mut session, key::RETURN);
-    session.eventually(|_| marker.exists());
+    // This has failed once in a great many runs, with nothing to say why.
+    // If it does again, what the launcher and the compositor made of it
+    // is said, which a bare wait would not.
+    let mut waited = 0;
+    while !marker.exists() {
+        waited += 1;
+        if waited > 5000 {
+            let ended = launcher.is_finished().then(|| launcher.join().unwrap());
+            let problems = session.compositor().problems().to_vec();
+            panic!(
+                "the program picked was never started: the launcher ended with {ended:?} \
+                 (nothing, if it is still running), and the compositor says {problems:?}"
+            );
+        }
+        session.advance(Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert_eq!(launcher.join().unwrap(), Ok(()));
 }
