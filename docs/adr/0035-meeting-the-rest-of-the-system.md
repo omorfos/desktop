@@ -168,3 +168,19 @@ until there is a file manager here to do it.
   care for the one program that needs it.
 - Sound is not decided here. Volume keys and the bar's volume speak to
   PipeWire, and how is decided with that item.
+
+## What was built first, and what it settled
+
+`xdg-desktop-portal-omorfos` came first, answering how the desktop looks.
+
+- **It ends with the session.** The bus belongs to the user, not to the
+  session, and outlives it; a program that only spoke to the bus was
+  left answering for a session that had ended, holding the name the
+  next one needed. So it keeps the connection the compositor hands it
+  and ends when that closes, as the other components do.
+- **A new copy takes the name over.** Should one be left over all the
+  same, after a crash say, the new one is given the name and the old one
+  is told and stops, rather than the new one being refused it.
+- **The portal service is started again at login** if it is running,
+  once systemd has been told of the session. It may be left from a
+  session of another desktop, knowing nothing of omorfos.

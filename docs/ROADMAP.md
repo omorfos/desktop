@@ -207,9 +207,17 @@ calls for them.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
       given as it is stored, not as it is seen; the pointer by itself
       is not given; and the mark sits over the end of a panel at the top.
-- [ ] Portals (`xdg-desktop-portal`): screenshot and screen sharing as
-      above, the file chooser, and the settings that tell applications
-      light from dark and the accent.
+- [x] The portals answered by a program of our own,
+      `xdg-desktop-portal-omorfos`, started with the session: so far
+      the settings that tell applications light from dark and the
+      accent, read from the theme and told again when it changes.
+- [ ] The Screenshot portal, with the user asked each time by a prompt
+      of the backend's own.
+- [ ] Sharing the screen through the portal, as a PipeWire stream, with
+      the user asked what to share each time.
+- [ ] The portal's settings read from `appearance` once there is one
+      (stage 4), with reduced motion and high contrast; today light or
+      dark is worked out from the theme's colours.
 - [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
       another's: started by a key, by being away, by the lid and by
       logind. It is the most security-critical program here after the
@@ -492,7 +500,12 @@ Known gaps carried forward:
       window the compositor does not manage yet) is reached by the tests
       only by timing, so the coverage gate has been seen to miss it once.
       A test is to bring it about for certain. Likewise the test of the
-      launcher run by itself has timed out once in some hundred runs.
+      launcher run by itself has failed a few times in some hundreds of
+      runs: the launcher shows, Enter is pressed, and the program picked
+      is never started. It could not be made to happen again in two
+      hundred and fifty runs with the test saying more, so the test now
+      says what the launcher and the compositor made of it when it does.
+      It may be a fault of the launcher's and not only of the test.
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Not
       planned while ours use the IPC socket; to be looked at again if

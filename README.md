@@ -61,9 +61,11 @@ screen reads, then pick omorfos when you log in:
 
 ```sh
 cargo build --release -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot
-sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot} /usr/local/bin/
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p xdg-desktop-portal-omorfos
+sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,xdg-desktop-portal-omorfos} /usr/local/bin/
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
+sudo install -Dm644 packaging/omorfos.portal /usr/share/xdg-desktop-portal/portals/omorfos.portal
+sudo install -Dm644 packaging/omorfos-portals.conf /usr/share/xdg-desktop-portal/omorfos-portals.conf
 ```
 
 It can also be started from a text console by running `omorfos`.

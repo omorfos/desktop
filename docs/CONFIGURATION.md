@@ -68,6 +68,8 @@ notifications:
   timeout: 5              # seconds one stays; 0 until it is clicked
 screenshots:
   destination: file       # file | clipboard | both
+portals:
+  enabled: true           # tell applications how the desktop looks
 xwayland:
   enabled: true           # run programs written for X11
   scaling: stretched      # stretched | native, on a screen with a scale
@@ -754,6 +756,35 @@ notifications:
 ```
 
 Like `autostart`, this takes effect the next time you log in.
+
+## What applications are told of the desktop
+
+Applications ask the desktop some things through the portals
+(`xdg-desktop-portal`), and omorfos answers what only it can. So far that
+is how the desktop looks: whether it is light or dark, and the colour
+that picks things out. An application that follows the desktop, as most
+written with GTK or Qt do, is then dark when your theme is and light when
+it is.
+
+Both are read from the theme, so there is nothing to set. The desktop is
+dark if menus are written in something lighter than what they are
+written on, and the colour is the one the row of a menu under the
+pointer is lit with. Change `theme.css` and applications are told at
+once.
+
+This needs `xdg-desktop-portal` installed, and the two files that tell it
+of omorfos, which a package of omorfos puts in place. What omorfos does
+not answer is left to `xdg-desktop-portal-gtk` if that is installed,
+choosing a file above all. To have another program answer in omorfos's
+place, or none:
+
+```yaml
+portals:
+  enabled: false
+```
+
+Like `autostart`, this takes effect the next time you log in. Run inside
+another desktop, in a window, omorfos leaves the portals to that desktop.
 
 ## Who may do what
 

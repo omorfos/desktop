@@ -289,6 +289,18 @@
         }
       ]
     },
+    "Portals": {
+      "additionalProperties": false,
+      "description": "What applications ask the desktop through the portals\n(`xdg-desktop-portal`), such as whether it is light or dark.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether omorfos answers them. Turn it off to have another\nprogram answer, or none.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Role": {
       "description": "Something a program may do only if the compositor started it and was\ntold it may.",
       "oneOf": [
@@ -509,6 +521,10 @@
     "placement": {
       "$ref": "#/$defs/Placement",
       "description": "Where new windows appear."
+    },
+    "portals": {
+      "$ref": "#/$defs/Portals",
+      "description": "What applications ask the desktop through the portals."
     },
     "screenshots": {
       "$ref": "#/$defs/Screenshots",
