@@ -27,6 +27,13 @@ is the order things are done in, and what the maintainer expects to be told.
   the defaults.
 - Tick the item in `docs/ROADMAP.md`, and add what the work showed is
   still missing.
+- A library or program that is now needed, to build, to test or to run,
+  is recorded everywhere at once: "What it needs" in `README.md`, the
+  packages installed in `.github/workflows/`, `depends` or `recommends`
+  in the `[package.metadata.deb]` of `crates/omorfos/Cargo.toml` (shared
+  libraries are found by `$auto`; what is loaded or run at run time is
+  not), and `depends`, `makedepends` or `optdepends` in
+  `packaging/aur/PKGBUILD`.
 - A decision someone would later ask "why" about gets an ADR, numbered
   after the last in `docs/adr/`, or a paragraph added to the ADR it
   belongs to.

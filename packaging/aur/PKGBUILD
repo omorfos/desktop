@@ -10,11 +10,16 @@ pkgdesc='A lightweight Wayland compositor inspired by Fluxbox'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
 license=('MIT')
-depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libxkbcommon' 'mesa' 'seatd'
-         'systemd-libs' 'ttf-font')
-makedepends=('cargo')
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire' 'libxkbcommon' 'mesa'
+         'seatd' 'systemd-libs' 'ttf-font')
+makedepends=('cargo' 'clang')
 optdepends=('foot: the terminal started by the default key bindings'
-            'xorg-xwayland: to run programs written for X11')
+            'xorg-xwayland: to run programs written for X11'
+            'xdg-desktop-portal: so applications follow the look of the desktop and can ask for screenshots'
+            'xdg-desktop-portal-gtk: to choose files, which omorfos leaves to it'
+            'glib2: to wait at login for the portal backend of omorfos (gdbus)'
+            'dbus: to tell D-Bus of the session (dbus-update-activation-environment)'
+            'pipewire: to share the screen in a browser or a call')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 

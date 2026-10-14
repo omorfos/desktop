@@ -774,6 +774,13 @@ your pictures as `Print` saves them; Escape or **Cancel** gives it
 nothing. The question is not in the picture, and the red mark shows while
 it is taken. The question has the look of the launcher.
 
+An application can ask to share the screen too, as a browser or a call
+does. The same question goes up, saying that it wants to share your
+screen: **Share** or Enter gives it the first screen as a live stream,
+through PipeWire, for as long as the application keeps it; **Cancel** or
+Escape gives it nothing. While it is shared the red mark stays on that
+screen. To stop sharing, stop it in the application.
+
 How the desktop looks is read from the theme, so there is nothing to set. The desktop is
 dark if menus are written in something lighter than what they are
 written on, and the colour is the one the row of a menu under the

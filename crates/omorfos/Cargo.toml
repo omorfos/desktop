@@ -24,8 +24,13 @@ priority = "optional"
 # EGL and OpenGL ES are loaded at run time, so they are not found by the
 # automatic shared-library scan and are listed by hand.
 depends = "$auto, libegl1, libgles2"
-# Titles are drawn with whatever fonts are installed; make sure one is.
-recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland"
+# Titles are drawn with whatever fonts are installed; make sure one is. The
+# rest are programs omorfos runs or speaks to, and does without if absent:
+# the portal service and the GTK backend it leaves files to; `gdbus`, which
+# waits at login for omorfos's portal backend; and
+# `dbus-update-activation-environment`, which tells D-Bus of the session;
+# and PipeWire, which a shared screen is streamed through.
+recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire"
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],
@@ -91,6 +96,8 @@ xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 png = "0.18.1"
 # Sends notifications in the tests, as a program would.
 zbus = "5.19.0"
+# Reads, as an application would, the screen that is shared.
+pipewire = { version = "0.10.1", features = ["v0_3_34"] }
 serde_json = "1.0"
 # The software renderer lets the tests draw without a GPU. It is enabled here
 # only, so the shipped binary does not link pixman.

@@ -25,6 +25,7 @@ use zbus::fdo::RequestNameFlags;
 use zbus::message::{Message, Type};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Structure, Value};
 
+use crate::screencast::{self, SCREENCAST, SESSION, Sessions};
 use crate::{Appearance, Failure};
 
 /// The name the portals pass questions for omorfos to.
@@ -46,8 +47,17 @@ pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
 /// asked for, on the object it named for that request.
 pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
 
-/// Which version of each interface is spoken.
-const VERSIONS: [(&str, u32); 2] = [(SETTINGS, 1), (SCREENSHOT, 2)];
+/// What can be read of each interface: which version of it is spoken,
+/// and, of sharing the screen, that screens can be shared, with the
+/// pointer in them or without.
+const PROPERTIES: [(&str, &str, u32); 6] = [
+    (SETTINGS, "version", 1),
+    (SCREENSHOT, "version", 2),
+    (SCREENCAST, "version", 5),
+    (SCREENCAST, "AvailableSourceTypes", 1),
+    (SCREENCAST, "AvailableCursorModes", 1 | 2),
+    (SESSION, "version", 1),
+];
 
 /// How a request is answered: given, refused by the user, or failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +86,23 @@ pub enum Asked {
     },
     /// The request known by this object is no longer wanted.
     Withdrawn(OwnedObjectPath),
+    /// A screen to be shared with an application, in the session the
+    /// portal made for it, with the pointer drawn in or not.
+    Share {
+        /// The call, to be answered once the user has.
+        call: Message,
+        /// The object the request is known by.
+        request: OwnedObjectPath,
+        /// The object the session is known by.
+        session: OwnedObjectPath,
+        /// The application, as the sandbox names it.
+        app: String,
+        /// Whether the pointer is to be in what is shared.
+        pointer: bool,
+    },
+    /// The session known by this object has ended, and whatever it shares
+    /// is to stop.
+    Ended(OwnedObjectPath),
 }
 
 /// What the service says of itself to a program that asks how to use it.
@@ -97,6 +124,36 @@ const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS 
       <arg name="key" type="s"/>
       <arg name="value" type="v"/>
     </signal>
+    <property name="version" type="u" access="read"/>
+  </interface>
+  <interface name="org.freedesktop.impl.portal.ScreenCast">
+    <method name="CreateSession">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="session_handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+      <arg direction="out" name="response" type="u"/>
+      <arg direction="out" name="results" type="a{sv}"/>
+    </method>
+    <method name="SelectSources">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="session_handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+      <arg direction="out" name="response" type="u"/>
+      <arg direction="out" name="results" type="a{sv}"/>
+    </method>
+    <method name="Start">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="session_handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="parent_window" type="s"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+      <arg direction="out" name="response" type="u"/>
+      <arg direction="out" name="results" type="a{sv}"/>
+    </method>
+    <property name="AvailableSourceTypes" type="u" access="read"/>
+    <property name="AvailableCursorModes" type="u" access="read"/>
     <property name="version" type="u" access="read"/>
   </interface>
   <interface name="org.freedesktop.impl.portal.Screenshot">
@@ -169,9 +226,10 @@ impl Portal {
                 let (sender, asked) = mpsc::channel();
                 thread::spawn(move || {
                     let waiting = Waiting { sender, ask };
+                    let mut sessions = Sessions::new();
                     let messages = messages.map_while(Result::ok);
                     for message in messages.take_while(|message| !lost(message)) {
-                        answer(&answering, &message, &look, &waiting);
+                        answer(&answering, &message, &look, (&waiting, &mut sessions));
                     }
                     // If nobody is waiting any more, there is nobody to tell.
                     let _ = rustix::io::write(&going, &[1]);
@@ -216,6 +274,24 @@ impl Portal {
             .reply(&call.header(), &(response as u32, results));
     }
 
+    /// Answers a call to start sharing that waited on the user, with the
+    /// stream that shares the screen at `at`, `size` large.
+    pub fn respond_shared(&self, call: &Message, node: u32, at: (i32, i32), size: (i32, i32)) {
+        let results = screencast::streams(node, at, size);
+        let _ = self
+            .connection
+            .reply(&call.header(), &(Response::Given as u32, results));
+    }
+
+    /// Tells the portal that a session has ended of itself, as when the
+    /// screen it shared has gone.
+    pub fn close(&self, session: &OwnedObjectPath) {
+        let nobody = None::<&str>;
+        let _ = self
+            .connection
+            .emit_signal(nobody, session.as_str(), SESSION, "Closed", &());
+    }
+
     /// Tells applications what of the desktop's look has changed, if
     /// anything has. If the bus has gone they cannot be told, which shows
     /// by what this is becoming readable.
@@ -241,13 +317,13 @@ impl AsFd for Portal {
 
 /// Where what is asked that waits on the user goes, and how the rest of
 /// the program is woken to it.
-struct Waiting {
+pub(crate) struct Waiting {
     sender: Sender<Asked>,
     ask: OwnedFd,
 }
 
 impl Waiting {
-    fn tell(&self, asked: Asked) {
+    pub(crate) fn tell(&self, asked: Asked) {
         // If nobody is listening any more, there is nobody to wake either.
         let _ = self.sender.send(asked);
         let _ = rustix::io::write(&self.ask, &[1]);
@@ -259,7 +335,10 @@ impl Asked {
     #[must_use]
     pub const fn request(&self) -> &OwnedObjectPath {
         match self {
-            Self::Screenshot { request, .. } | Self::Withdrawn(request) => request,
+            Self::Screenshot { request, .. }
+            | Self::Share { request, .. }
+            | Self::Withdrawn(request)
+            | Self::Ended(request) => request,
         }
     }
 
@@ -267,8 +346,8 @@ impl Asked {
     #[must_use]
     pub const fn call(&self) -> Option<&Message> {
         match self {
-            Self::Screenshot { call, .. } => Some(call),
-            Self::Withdrawn(_) => None,
+            Self::Screenshot { call, .. } | Self::Share { call, .. } => Some(call),
+            Self::Withdrawn(_) | Self::Ended(_) => None,
         }
     }
 }
@@ -317,7 +396,12 @@ fn asked(groups: &[String]) -> bool {
 }
 
 /// Answers one message.
-fn answer(connection: &Connection, message: &Message, look: &Look, waiting: &Waiting) {
+fn answer(
+    connection: &Connection,
+    message: &Message,
+    look: &Look,
+    (waiting, sessions): (&Waiting, &mut Sessions),
+) {
     let header = message.header();
     // Replies and signals pass by on the same connection.
     if header.message_type() != Type::MethodCall {
@@ -326,6 +410,11 @@ fn answer(connection: &Connection, message: &Message, look: &Look, waiting: &Wai
     let interface = header.interface().map(ToString::to_string);
     let member = header.member().map(ToString::to_string);
     let called = (interface.as_deref().unwrap_or(SETTINGS), member.as_deref());
+    if let Some(sent) = screencast::answer(connection, message, called, sessions, waiting) {
+        // As below.
+        let _ = sent;
+        return;
+    }
     let body = message.body();
     let refuse = |name: &str, why: &str| connection.reply_error(&header, name, &why);
     let malformed = || {
@@ -380,29 +469,7 @@ fn answer(connection: &Connection, message: &Message, look: &Look, waiting: &Wai
             waiting.tell(Asked::Withdrawn(request.unwrap_or_default()));
             connection.reply(&header, &())
         }
-        ("org.freedesktop.DBus.Properties", Some("Get")) => {
-            match body.deserialize::<(String, String)>() {
-                Ok((interface, property)) => {
-                    let version = VERSIONS.iter().find(|(of, _)| *of == interface);
-                    let version = version.filter(|_| property == "version");
-                    if let Some((_, version)) = version {
-                        connection.reply(&header, &Value::U32(*version))
-                    } else {
-                        let name = "org.freedesktop.DBus.Error.UnknownProperty";
-                        refuse(name, "there is no such property")
-                    }
-                }
-                Err(_) => malformed(),
-            }
-        }
-        ("org.freedesktop.DBus.Properties", Some("GetAll")) => {
-            let interface = body.deserialize::<String>().unwrap_or_default();
-            let versions = VERSIONS.iter().filter(|(of, _)| *of == interface);
-            let all: HashMap<&str, Value<'_>> = versions
-                .map(|(_, version)| ("version", Value::U32(*version)))
-                .collect();
-            connection.reply(&header, &all)
-        }
+        ("org.freedesktop.DBus.Properties", Some(member)) => property(connection, message, member),
         ("org.freedesktop.DBus.Introspectable", Some("Introspect")) => {
             connection.reply(&header, &INTROSPECTION)
         }
@@ -424,12 +491,40 @@ fn answer(connection: &Connection, message: &Message, look: &Look, waiting: &Wai
     let _ = sent;
 }
 
+/// Answers a question about what can be read of an interface.
+fn property(connection: &Connection, message: &Message, member: &str) -> zbus::Result<()> {
+    let header = message.header();
+    let body = message.body();
+    let refuse = |name: &str, why: &str| connection.reply_error(&header, name, &why);
+    // Nothing can be set, so it is reading one or reading them all.
+    if member != "Get" {
+        let interface = body.deserialize::<String>().unwrap_or_default();
+        let known = PROPERTIES.iter().filter(|(of, ..)| *of == interface);
+        let all: HashMap<&str, Value<'_>> = known
+            .map(|(_, name, value)| (*name, Value::U32(*value)))
+            .collect();
+        return connection.reply(&header, &all);
+    }
+    let Ok((interface, property)) = body.deserialize::<(String, String)>() else {
+        let name = "org.freedesktop.DBus.Error.InvalidArgs";
+        return refuse(name, "the arguments are not those of this method");
+    };
+    let mut known = PROPERTIES.iter();
+    let known = known.find(|(of, name, _)| *of == interface && *name == property);
+    if let Some((.., value)) = known {
+        connection.reply(&header, &Value::U32(*value))
+    } else {
+        let name = "org.freedesktop.DBus.Error.UnknownProperty";
+        refuse(name, "there is no such property")
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use std::io::{BufRead, BufReader};
     use std::process::{Child, Command, Stdio};
 
-    use zbus::zvariant::OwnedValue;
+    use zbus::zvariant::{ObjectPath, OwnedValue};
 
     use super::*;
 
@@ -693,7 +788,7 @@ pub(crate) mod tests {
     ) -> thread::JoinHandle<(u32, HashMap<String, OwnedValue>)> {
         let peer = peer.clone();
         thread::spawn(move || {
-            let path = zbus::zvariant::ObjectPath::try_from(request).unwrap();
+            let path = ObjectPath::try_from(request).unwrap();
             let options: HashMap<&str, Value<'_>> = HashMap::new();
             let body = (path, "org.example.App", "", options);
             let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &body);
@@ -763,6 +858,44 @@ pub(crate) mod tests {
             .unwrap_err()
             .to_string();
         assert!(said.contains("InvalidArgs"), "{said}");
+    }
+
+    #[test]
+    fn a_screen_to_share_is_asked_about_and_its_session_ended() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let none: HashMap<&str, Value<'_>> = HashMap::new();
+        let request = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/1/s").unwrap();
+        let session = ObjectPath::try_from("/org/freedesktop/portal/desktop/session/1/s").unwrap();
+        let made = (
+            request.clone(),
+            session.clone(),
+            "org.example.Call",
+            none.clone(),
+        );
+        peer.call_method(Some(NAME), PATH, Some(SCREENCAST), "CreateSession", &made)
+            .unwrap();
+        let begun = (request, session.clone(), "org.example.Call", "", none);
+        let starting = peer.clone();
+        let asking = thread::spawn(move || {
+            starting
+                .call_method(Some(NAME), PATH, Some(SCREENCAST), "Start", &begun)
+                .unwrap();
+        });
+        let asked = heard(&portal).pop().unwrap();
+        assert_eq!(
+            asked.request().as_str(),
+            "/org/freedesktop/portal/desktop/request/1/s"
+        );
+        portal.respond_shared(asked.call().unwrap(), 7, (0, 0), (640, 480));
+        asking.join().unwrap();
+
+        peer.call_method(Some(NAME), session.as_str(), Some(SESSION), "Close", &())
+            .unwrap();
+        let ended = heard(&portal).pop().unwrap();
+        assert_eq!(ended.request().as_str(), session.as_str());
+        assert!(ended.call().is_none());
     }
 
     #[test]

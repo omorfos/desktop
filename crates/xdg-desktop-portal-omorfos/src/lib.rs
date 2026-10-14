@@ -12,19 +12,29 @@
 
 mod appearance;
 mod bus;
+mod feed;
 mod prompt;
+mod screencast;
+mod stream;
 
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
 pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
+pub use feed::Feed;
 use omorfos_config::{Store, Watcher};
-pub use prompt::{Answer, Desk, asking, button_at, paint};
-use rustix::event::{PollFd, PollFlags, poll};
+use omorfos_pipewire::Held;
+pub use prompt::{Answer, Desk, Question, asking, button_at, paint};
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
+pub use screencast::{SCREENCAST, SESSION, streams};
+pub use stream::{Pipes, Share};
+use zbus::message::Message;
+use zbus::zvariant::OwnedObjectPath;
 
 /// Why the program cannot go on, in words for the user.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -53,6 +63,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let (runtime, display) = (variable("XDG_RUNTIME_DIR"), variable("WAYLAND_DISPLAY"));
     let wayland = runtime.zip(display);
     let wayland = wayland.map(|(runtime, display)| Path::new(&runtime).join(display));
+    let remote = variable("PIPEWIRE_REMOTE").and_then(|remote| remote.into_string().ok());
     let address = variable("DBUS_SESSION_BUS_ADDRESS");
     let address = address.as_deref().and_then(|address| address.to_str());
     let found = config.zip(wayland).zip(home.map(PathBuf::from));
@@ -77,7 +88,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         desk.map(|desk| (portal, desk))
     });
     match portal {
-        Ok((portal, desk)) => serve(&portal, &config, desk, &folder),
+        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote)),
         Err(failure) => failure,
     }
 }
@@ -126,29 +137,82 @@ fn called(app: &str) -> &str {
     if app.is_empty() { "a program" } else { app }
 }
 
-/// A question that waits on the user: the call to answer, and the object
-/// the portal may withdraw it by.
-type Pending = (zbus::message::Message, zbus::zvariant::OwnedObjectPath);
+/// A question that waits on the user, with what is needed to answer it.
+enum Pending {
+    /// A picture of the screen: the call, and the request it may be
+    /// withdrawn by.
+    Picture(Message, OwnedObjectPath),
+    /// Sharing the screen: the same, the session it is for, and whether
+    /// the pointer is to be drawn in.
+    Share(Message, OwnedObjectPath, OwnedObjectPath, bool),
+}
 
-/// Answers what waits on the user, and tells applications when the look of
-/// the desktop changes, until the bus or the session has gone.
-fn serve(portal: &Portal, config: &Path, mut desk: Desk, folder: &Path) -> Failure {
-    // A folder that is not there cannot be watched for what is put in it.
-    let _ = fs::create_dir_all(config);
-    let mut watcher = Watcher::new(config).ok();
-    let mut last = look(config);
-    let mut pending: Option<Pending> = None;
-    loop {
-        let Ok(answer) = desk.turn() else {
-            return "the session has ended".into();
-        };
-        let answered = pending.take_if(|_| answer.is_some());
-        if let Some((answer, (call, _))) = answer.zip(answered) {
-            // The question is taken off the screen at once, and before a
-            // picture is taken, so that it is not in it.
-            let _ = desk.turn();
-            if answer == Answer::Give {
-                let taken = take(&desk, folder);
+impl Pending {
+    /// The request it may be withdrawn by.
+    const fn request(&self) -> &OwnedObjectPath {
+        match self {
+            Self::Picture(_, request) | Self::Share(_, request, ..) => request,
+        }
+    }
+
+    /// The call to answer.
+    const fn call(&self) -> &Message {
+        match self {
+            Self::Picture(call, _) | Self::Share(call, ..) => call,
+        }
+    }
+}
+
+/// The shortest time between two pictures of a screen being shared: a
+/// sixtieth of a second, which is as smooth as a call needs, and spares the
+/// compositor the work of more on a faster screen.
+const BETWEEN: Duration = Duration::from_nanos(1_000_000_000 / 60);
+
+/// A screen being shared, for a session the portal made.
+struct Sharing {
+    session: OwnedObjectPath,
+    feed: Feed,
+    out: Share,
+    /// The call to start sharing, until the application can be told what
+    /// to read, which is once PipeWire has said.
+    call: Option<Message>,
+    /// The buffer the compositor is putting a picture in, if it is.
+    held: Option<Held>,
+    /// When the next picture may be asked for.
+    next: Instant,
+}
+
+impl Drop for Sharing {
+    fn drop(&mut self) {
+        let (taken, sent) = self.out.counted();
+        note(&format!(
+            "while it was shared, {taken} pictures were taken and {sent} sent"
+        ));
+    }
+}
+
+/// Everything that waits on the user, or on the screen, or on PipeWire.
+struct Backend<'a> {
+    portal: &'a Portal,
+    desk: Desk,
+    /// Where pictures are saved.
+    folder: &'a Path,
+    /// Where PipeWire is, if not where the environment says.
+    remote: Option<String>,
+    pending: Option<Pending>,
+    pipes: Option<Pipes>,
+    shares: Vec<Sharing>,
+}
+
+impl Backend<'_> {
+    /// Does what the user said to a question.
+    fn answered(&mut self, answer: Answer, pending: Pending) {
+        // The question is taken off the screen at once, and before a
+        // picture is taken, so that it is not in it.
+        let _ = self.desk.turn();
+        match (answer, pending) {
+            (Answer::Give, Pending::Picture(call, _)) => {
+                let taken = take(&self.desk, self.folder);
                 let response = if let Some(taken) = &taken {
                     note(&format!("the picture was taken and saved at {taken}"));
                     Response::Given
@@ -156,68 +220,237 @@ fn serve(portal: &Portal, config: &Path, mut desk: Desk, folder: &Path) -> Failu
                     note("the user said yes, and the picture could not be taken or saved");
                     Response::Failed
                 };
-                portal.respond(&call, response, taken);
-            } else {
+                self.portal.respond(&call, response, taken);
+            }
+            (Answer::Give, Pending::Share(call, _, session, pointer)) => {
+                match self.share(pointer) {
+                    Ok((feed, out)) => {
+                        note("the screen is being shared");
+                        let sharing = Sharing {
+                            session,
+                            feed,
+                            out,
+                            call: Some(call),
+                            held: None,
+                            next: Instant::now(),
+                        };
+                        self.shares.push(sharing);
+                    }
+                    Err(failure) => {
+                        note(&format!(
+                            "the user said yes, and the screen cannot be shared: {failure}"
+                        ));
+                        self.portal.respond(&call, Response::Failed, None);
+                    }
+                }
+            }
+            (Answer::Keep, pending) => {
                 note("the user said no");
-                portal.respond(&call, Response::Refused, None);
+                self.portal.respond(pending.call(), Response::Refused, None);
             }
         }
+    }
+
+    /// Begins sharing the first screen: pictures of it, and the stream
+    /// they go into.
+    fn share(&mut self, pointer: bool) -> Result<(Feed, Share), Failure> {
+        let pipes = self
+            .pipes
+            .take()
+            .map_or_else(|| Pipes::connect(self.remote.as_deref()), Ok);
+        pipes.and_then(|pipes| {
+            let begun = Feed::new(self.desk.connection(), pointer);
+            let begun = begun.and_then(|feed| pipes.share(feed.size()).map(|out| (feed, out)));
+            self.pipes = Some(pipes);
+            begun
+        })
+    }
+
+    /// Takes in what has been asked.
+    fn heard(&mut self, asked: Asked) {
+        let pending = self.pending.is_some();
+        match asked {
+            // One question at a time: another while one is up fails.
+            Asked::Screenshot { call, app, .. } | Asked::Share { call, app, .. } if pending => {
+                let app = called(&app);
+                note(&format!(
+                    "{app} asked something while another was being asked about"
+                ));
+                self.portal.respond(&call, Response::Failed, None);
+            }
+            Asked::Screenshot { call, request, app } => {
+                note(&format!(
+                    "{} asked for a picture of the screen",
+                    called(&app)
+                ));
+                self.ask(&app, Question::Picture, Pending::Picture(call, request));
+            }
+            Asked::Share {
+                call,
+                request,
+                session,
+                app,
+                pointer,
+            } => {
+                note(&format!("{} asked to share the screen", called(&app)));
+                self.ask(
+                    &app,
+                    Question::Share,
+                    Pending::Share(call, request, session, pointer),
+                );
+            }
+            Asked::Withdrawn(request) => {
+                let withdrawn = self
+                    .pending
+                    .take_if(|pending| *pending.request() == request);
+                if let Some(pending) = withdrawn {
+                    note("the portal no longer wants what it asked for");
+                    self.desk.dismiss();
+                    self.portal.respond(pending.call(), Response::Refused, None);
+                }
+            }
+            Asked::Ended(session) => {
+                let ended = self
+                    .shares
+                    .extract_if(.., |sharing| sharing.session == session);
+                if ended.count() > 0 {
+                    note("the screen is no longer shared");
+                }
+            }
+        }
+    }
+
+    /// Puts a question to the user, if they can be asked.
+    fn ask(&mut self, app: &str, question: Question, pending: Pending) {
+        if self.desk.ask(app, question) {
+            self.pending = Some(pending);
+        } else {
+            note("the user cannot be asked: the compositor does not offer the means");
+            self.portal.respond(pending.call(), Response::Failed, None);
+        }
+    }
+
+    /// Keeps what is shared going: tells an application what to read once
+    /// it can be, has the compositor put each new picture in its stream,
+    /// and returns how long until the next may be asked for, if that is to
+    /// be waited for. One whose screen has gone is ended, and the
+    /// application told.
+    fn keep(&mut self) -> Option<Duration> {
+        if let Some(pipes) = &self.pipes {
+            pipes.turn();
+        }
+        let portal = self.portal;
+        let now = Instant::now();
+        self.shares.retain_mut(|sharing| {
+            let known = sharing.out.node().zip(sharing.call.as_ref());
+            if let Some((node, call)) = known {
+                let (width, height) = sharing.feed.size();
+                let size = (width.cast_signed(), height.cast_signed());
+                portal.respond_shared(call, node, (0, 0), size);
+                sharing.call = None;
+            }
+            let turned = sharing.feed.turn();
+            if let Err(failure) = &turned {
+                note(&format!("the screen is no longer shared: {failure}"));
+                portal.close(&sharing.session);
+            }
+            // A picture being put in memory PipeWire has since taken away
+            // is not waited for.
+            drop(sharing.held.take_if(|held| held.gone()));
+            // A picture that could not be taken, as while the session is
+            // locked, gives its buffer back to be filled again later.
+            let over = turned.as_ref().ok().copied().flatten();
+            let given = over.and_then(|filled| sharing.held.take().map(|held| (held, filled)));
+            if let Some((held, filled)) = given {
+                sharing.out.give(held, filled);
+                sharing.next = now + BETWEEN;
+            }
+            // The next picture is asked for when something reads them, the
+            // one before has been put in its buffer, it is time, and
+            // PipeWire has a buffer free: one is handed back when what reads
+            // the stream has finished with it.
+            let due = sharing.out.reading() && sharing.held.is_none() && sharing.next <= now;
+            let free = due.then(|| sharing.out.take()).flatten();
+            let free = free.and_then(|held| held.memory().map(|memory| (held, memory)));
+            if let Some((held, memory)) = free {
+                sharing.feed.ask(&memory);
+                sharing.held = Some(held);
+            }
+            turned.is_ok()
+        });
+        let waiting = self.shares.iter().filter(|sharing| {
+            sharing.out.reading() && sharing.held.is_none() && sharing.next > now
+        });
+        waiting.map(|sharing| sharing.next - now).min()
+    }
+}
+
+/// Answers what waits on the user, keeps what is shared going, and tells
+/// applications when the look of the desktop changes, until the bus or the
+/// session has gone.
+fn serve(
+    portal: &Portal,
+    config: &Path,
+    desk: Desk,
+    (folder, remote): (&Path, Option<String>),
+) -> Failure {
+    // A folder that is not there cannot be watched for what is put in it.
+    let _ = fs::create_dir_all(config);
+    let mut watcher = Watcher::new(config).ok();
+    let mut last = look(config);
+    let mut backend = Backend {
+        portal,
+        desk,
+        folder,
+        remote,
+        pending: None,
+        pipes: None,
+        shares: Vec::new(),
+    };
+    loop {
+        let Ok(answer) = backend.desk.turn() else {
+            return "the session has ended".into();
+        };
+        let answered = backend.pending.take_if(|_| answer.is_some());
+        if let Some((answer, pending)) = answer.zip(answered) {
+            backend.answered(answer, pending);
+        }
+        let wait = backend.keep();
+        // What was asked of the compositor meanwhile, the next picture
+        // above all, is sent before waiting for its answer.
+        let _ = backend.desk.connection().flush();
         let asking = portal.asking();
         let mut sources = vec![
             PollFd::new(portal, PollFlags::IN),
             PollFd::new(&asking, PollFlags::IN),
-            PollFd::new(&desk, PollFlags::IN),
+            PollFd::new(&backend.desk, PollFlags::IN),
         ];
+        let pipes = backend
+            .pipes
+            .iter()
+            .map(|pipes| PollFd::new(pipes, PollFlags::IN));
+        sources.extend(pipes);
         sources.extend(
             watcher
                 .as_ref()
                 .map(|watcher| PollFd::new(watcher, PollFlags::IN)),
         );
         // If the wait fails, what there is to do is looked for all the same.
-        let _ = poll(&mut sources, None);
+        let wait = wait.and_then(|wait| Timespec::try_from(wait).ok());
+        let _ = poll(&mut sources, wait.as_ref());
         let gone = sources.first().is_some_and(|bus| !bus.revents().is_empty());
         drop(sources);
         if gone {
             return "the bus has gone, or another copy has taken over".into();
         }
         for asked in portal.asked() {
-            match asked {
-                // One question at a time: another while one is up fails.
-                Asked::Screenshot { call, app, .. } if pending.is_some() => {
-                    let app = called(&app);
-                    note(&format!(
-                        "{app} asked for a picture while another was being asked about"
-                    ));
-                    portal.respond(&call, Response::Failed, None);
-                }
-                // Nor is one that cannot be asked.
-                Asked::Screenshot { call, request, app } => {
-                    note(&format!(
-                        "{} asked for a picture of the screen",
-                        called(&app)
-                    ));
-                    if desk.ask(&app) {
-                        pending = Some((call, request));
-                    } else {
-                        note("the user cannot be asked: the compositor does not offer the means");
-                        portal.respond(&call, Response::Failed, None);
-                    }
-                }
-                Asked::Withdrawn(request) => {
-                    let withdrawn = pending.take_if(|(_, asked)| *asked == request);
-                    if let Some((call, _)) = withdrawn {
-                        note("the portal no longer wants the picture it asked for");
-                        desk.dismiss();
-                        portal.respond(&call, Response::Refused, None);
-                    }
-                }
-            }
+            backend.heard(asked);
         }
         // What is said to have changed is read, so that it is not said
         // again. Whether anything did is seen by looking.
         let changed = watcher.as_mut().map(Watcher::drain);
         if changed.is_some_and(|changed| changed.unwrap_or(false)) {
-            desk.reread();
+            backend.desk.reread();
         }
         let now = look(config);
         portal.changed(last, now);

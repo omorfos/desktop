@@ -219,8 +219,33 @@ calls for them.
       a region, only all of it; an application is named by its
       identifier, not by the name it shows; and the question borrows the
       launcher's look in place of a part of its own.
-- [ ] Sharing the screen through the portal, as a PipeWire stream, with
-      the user asked what to share each time.
+- [x] Sharing the screen through the portal, as a PipeWire stream, with
+      the user asked each time, and the mark on the screen while it is
+      shared. The compositor puts each picture straight into memory the
+      reader maps, nothing copied on the way; only while something reads
+      the stream, only as the screen changes, and no more than sixty times
+      a second. A reader that comes anew, as a call's preview and then the
+      call, is shown the screen at once, and sharing carries on through
+      the session being locked, showing nothing of it.
+- [ ] Known gaps in sharing the screen: the first screen is shared, with
+      no choice of screen, window or region; a screen that changes size
+      ends the sharing; the size the application is told is in pixels,
+      not in units of layout; the pointer can be drawn in but not sent
+      beside the pictures; a choice cannot be remembered for next time;
+      the user cannot stop sharing from the desktop, only from the
+      application; and the compositor still reads each picture back from
+      the GPU and turns its colours on the CPU, where buffers of the GPU
+      handed to the reader would copy nothing at all (next).
+- [ ] Sharing the screen made cheap, which it is not yet: sharing a
+      screen four thousand pixels across, omorfos was seen at 50-60% of a
+      core and Firefox at 95%, and the desktop lagged a little. In order:
+      the pointer sent beside the pictures as PipeWire's cursor metadata,
+      so that moving it makes no new picture of the screen; buffers of the
+      GPU handed to the reader (DMA-BUF, with the formats and modifiers
+      agreed with it), so that nothing is read back or turned on the CPU
+      and the reader can take them as they are, with tests that need a GPU
+      run on a machine that has one and skipped in CI; and what is left
+      measured again before anything else is tried.
 - [ ] The portal's settings read from `appearance` once there is one
       (stage 4), with reduced motion and high contrast; today light or
       dark is worked out from the theme's colours.
@@ -465,6 +490,9 @@ Security:
       with the connection, for the portals to ask the user by.
 - [ ] Smithay asked for a safe way to write into a buffer a program
       shares, so that the one `unsafe` block can go (ADR 40).
+- [ ] A safe way offered to the PipeWire bindings to hold a stream's
+      buffer and to give one memory of the caller's own, so that
+      `omorfos-pipewire` can go (ADR 41). Wanted soon.
 - [ ] A review of everything a client can make the compositor allocate or
       wait for.
 
@@ -511,7 +539,10 @@ Known gaps carried forward:
       is never started. It could not be made to happen again in two
       hundred and fifty runs with the test saying more, so the test now
       says what the launcher and the compositor made of it when it does.
-      It may be a fault of the launcher's and not only of the test.
+      It did once more, under the coverage run: the launcher had sent its
+      request and ended well, and the compositor had no problem to tell.
+      So the request was sent, and either it was not read or the program
+      started from it never ran.
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Not
       planned while ours use the IPC socket; to be looked at again if

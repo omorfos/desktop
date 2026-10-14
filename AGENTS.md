@@ -6,10 +6,11 @@ work on omorfos. Deeper detail lives in `docs/`.
 ## What this is
 
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
-Rust and inspired by Fluxbox. It needs `pkg-config` and the development
-files for libxkbcommon, pixman, udev, libinput, libseat and GBM to build,
-and `dbus-daemon` and `Xwayland` to run the tests. `Xwayland` needs
-`libEGL` to start at all, which its package only recommends.
+Rust and inspired by Fluxbox. It needs `pkg-config`, `clang` and the
+development files for libxkbcommon, pixman, udev, libinput, libseat, GBM and
+PipeWire to build, and `dbus-daemon`, `pipewire` and `Xwayland` to run the
+tests. `Xwayland` needs `libEGL` to start at all, which its package only
+recommends.
 It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 
@@ -26,9 +27,11 @@ It is a fresh implementation, not a port: see
 ## Priorities, in order
 
 1. **Security.** No `unsafe` in our crates (`forbid`), but for one block
-   in `omorfos-shm`
-   ([ADR 40](docs/adr/0040-one-unsafe-block.md)). Treat every Wayland
-   client, IPC peer and config file as untrusted input.
+   in `omorfos-shm` ([ADR 40](docs/adr/0040-one-unsafe-block.md)) and
+   the buffers of PipeWire streams in `omorfos-pipewire`
+   ([ADR 41](docs/adr/0041-pipewire-buffers.md)), both to go as soon as
+   safe ways exist. Treat every Wayland client, IPC peer and config file
+   as untrusted input.
 2. **Correctness.** 100% coverage, enforced in CI.
 3. **Performance.** No work when nothing changes; no allocation in hot paths.
 4. **Clean architecture.** Dependencies point inwards; the domain knows
