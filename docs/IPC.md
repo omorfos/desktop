@@ -93,6 +93,9 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "focused": true,
       "shown": true,
       "minimized": false,
+      "shaded": false,
+      "above": false,
+      "sticky": false,
       "handle": "5d3a0f6c1b2e4a7f8c9d0e1f2a3b4c5d"
     }
   ],
@@ -100,6 +103,12 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
   "events": []
 }
 ```
+
+`shaded`, `above` and `sticky` say how a window's frame stands apart, as
+the titlebar's menu, the actions of those names and rules set it: rolled
+up into its titlebar, kept above the windows that are not, and on every
+workspace of its screen. A sticky window's `workspace` is the one it was
+on when it was made so; it shows on whichever is shown.
 
 A window's `handle` is what it is called in the list of windows that
 `ext-foreign-toplevel-list-v1` gives a program with the `panel` role, so

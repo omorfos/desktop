@@ -335,6 +335,7 @@ mod tests {
             focused: false,
             shown: true,
             minimized: false,
+            standing: omorfos_ipc::Standing::default(),
             handle: String::new(),
         }
     }
@@ -607,6 +608,7 @@ mod tests {
         assert_eq!(window_label(&untitled), "app");
         let minimized = Window {
             minimized: true,
+            standing: omorfos_ipc::Standing::default(),
             ..titled
         };
         assert_eq!(window_label(&minimized), "(notes)");

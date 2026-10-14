@@ -380,6 +380,11 @@ impl Compositor {
                     focused: listed.focused,
                     shown: listed.shown,
                     minimized: listed.minimized,
+                    standing: omorfos_ipc::Standing {
+                        shaded: listed.standing.shaded,
+                        above: listed.standing.above,
+                        sticky: listed.standing.sticky,
+                    },
                     handle: self.handle_of(listed.window.id),
                 })
                 .collect(),

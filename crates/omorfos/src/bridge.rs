@@ -80,6 +80,9 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
             fullscreen: rule.fullscreen,
             decorations: rule.decorations,
             private: rule.private,
+            shaded: rule.shaded,
+            above: rule.above,
+            sticky: rule.sticky,
         },
     };
     rules.rules.iter().map(convert).collect()
@@ -302,6 +305,10 @@ rules:
     decorations: false
   - match: { title: '*Bank*' }
     private: true
+  - match: { app_id: notes }
+    shaded: true
+    above: true
+    sticky: false
 ";
         let rules = rules(&config("rules.yaml", yaml).rules);
         assert_eq!(
@@ -330,6 +337,16 @@ rules:
                     title: Some(Pattern::new("*Bank*")),
                     effects: Effects {
                         private: Some(true),
+                        ..Effects::default()
+                    },
+                },
+                Rule {
+                    app_id: Some(Pattern::new("notes")),
+                    title: None,
+                    effects: Effects {
+                        shaded: Some(true),
+                        above: Some(true),
+                        sticky: Some(false),
                         ..Effects::default()
                     },
                 },

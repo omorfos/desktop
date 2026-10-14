@@ -39,6 +39,16 @@ pub struct Rule {
     /// not only when it opens: a title that comes to match hides it.
     #[serde(default)]
     pub private: Option<bool>,
+    /// Open the window rolled up into its titlebar, or not. A window
+    /// without a titlebar is not rolled up.
+    #[serde(default)]
+    pub shaded: Option<bool>,
+    /// Open the window kept above those that are not, or not.
+    #[serde(default)]
+    pub above: Option<bool>,
+    /// Open the window on every workspace of its screen, or not.
+    #[serde(default)]
+    pub sticky: Option<bool>,
 }
 
 /// Selects windows by application and title.

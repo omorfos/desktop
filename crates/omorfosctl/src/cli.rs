@@ -318,6 +318,7 @@ mod tests {
                 focused: true,
                 shown: true,
                 minimized: false,
+                standing: omorfos_ipc::Standing::default(),
                 handle: String::new(),
             }],
             problems: problems.iter().map(ToString::to_string).collect(),

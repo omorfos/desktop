@@ -43,6 +43,8 @@ pub struct Listed<'a> {
     pub shown: bool,
     /// Whether it has keyboard focus.
     pub focused: bool,
+    /// How its frame stands apart from the others, as the user asked.
+    pub standing: Standing,
 }
 
 /// An application window.
@@ -1248,7 +1250,12 @@ impl Desktop {
             maximized: effects.maximized.unwrap_or(false),
             fullscreen: room.is_some(),
             minimized: false,
-            standing: Standing::default(),
+            // Only a frame with a titlebar can be rolled up into it.
+            standing: Standing {
+                shaded: effects.shaded.unwrap_or(false) && decorated,
+                above: effects.above.unwrap_or(false),
+                sticky: effects.sticky.unwrap_or(false),
+            },
         };
         let filled = room.map(|tiling| tiling.filled(group.serial));
         self.push_focused(set, workspace, group);
@@ -1366,6 +1373,7 @@ impl Desktop {
                         minimized: group.minimized,
                         shown: tab == group.active,
                         focused: focused && tab == group.active,
+                        standing: group.standing,
                     })
             })
     }
@@ -2440,6 +2448,27 @@ mod tests {
     }
 
     #[test]
+    fn rules_open_windows_shaded_kept_above_or_on_every_workspace() {
+        let mut desktop = desktop();
+        let kept = Effects {
+            shaded: Some(true),
+            above: Some(true),
+            sticky: Some(true),
+            ..Effects::default()
+        };
+        desktop.set_rules(vec![rule("notes", kept), rule("bare", kept)]);
+        let notes = open(&mut desktop, "notes");
+        let standing = frame(&desktop, notes).standing;
+        assert!(standing.shaded && standing.above && standing.sticky);
+        // Without a titlebar there is nothing to roll up into.
+        let bare = desktop.add_window("bare", "bare window".to_owned(), SIZE, POINTER, false);
+        let standing = frame(&desktop, bare).standing;
+        assert!(!standing.shaded && standing.above && standing.sticky);
+        let other = open(&mut desktop, "foot");
+        assert_eq!(frame(&desktop, other).standing, Standing::default());
+    }
+
+    #[test]
     fn rules_set_the_initial_state_of_matching_windows() {
         let mut desktop = desktop();
         desktop.set_rules(vec![rule(
@@ -2449,7 +2478,7 @@ mod tests {
                 maximized: Some(true),
                 fullscreen: Some(true),
                 decorations: Some(false),
-                private: None,
+                ..Effects::default()
             },
         )]);
         let player = open(&mut desktop, "mpv");

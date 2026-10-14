@@ -28,6 +28,14 @@
       "additionalProperties": false,
       "description": "What to do with a new window that matches.",
       "properties": {
+        "above": {
+          "default": null,
+          "description": "Open the window kept above those that are not, or not.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "decorations": {
           "default": null,
           "description": "Draw a titlebar and border around the window, or not.",
@@ -59,6 +67,22 @@
         "private": {
           "default": null,
           "description": "Leave the window blank in any picture taken of the screen, or not.\nUnlike the others this holds for as long as the window matches,\nnot only when it opens: a title that comes to match hides it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "shaded": {
+          "default": null,
+          "description": "Open the window rolled up into its titlebar, or not. A window\nwithout a titlebar is not rolled up.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sticky": {
+          "default": null,
+          "description": "Open the window on every workspace of its screen, or not.",
           "type": [
             "boolean",
             "null"
