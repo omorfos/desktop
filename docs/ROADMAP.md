@@ -249,6 +249,12 @@ calls for them.
       from the GPU and writes only that, and what changes. The backend
       says in the log how the pointer was asked for, and how many pictures
       and buffers of the pointer alone it sent.
+- [x] Programs hand over pictures in the memory of the graphics card
+      (`linux-dmabuf`), in what the card can draw, which are drawn without
+      being copied. Without, a program that draws with the card, as a
+      browser does, drew everything without it: Firefox was at 95% of a
+      core while a screen was shared. Tested on a card where there is one,
+      and skipped in CI.
 - [ ] Sharing the screen made cheap, which it is not yet: sharing a
       screen four thousand pixels across, omorfos was seen at 50-60% of a
       core and Firefox at 95%; with the pointer sent beside the pictures,

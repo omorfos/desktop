@@ -23,6 +23,7 @@ use omorfos_core::{
     WindowId, WorkspaceId,
 };
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
+use smithay::backend::allocator::Format;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
@@ -60,6 +61,7 @@ use smithay::wayland::compositor::{
     CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
 };
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
+use smithay::wayland::dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState};
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState};
 use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fractional_scale};
 use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
@@ -223,6 +225,9 @@ pub struct Compositor {
     pub(crate) surfaces: CompositorState,
     pub(crate) xdg_shell: XdgShellState,
     pub(crate) shm: ShmState,
+    /// Buffers in the memory of the graphics card, which programs hand over
+    /// once the backend says which card and what it can draw.
+    pub(crate) gpu_buffers: GpuBuffers,
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
     _decorations: XdgDecorationState,
@@ -369,7 +374,6 @@ impl Compositor {
         let idle = IdleNotifierState::new(&display, event_loop.clone());
         let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
-        let shm = ShmState::new::<Self>(&display, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
         let layer_shell = WlrLayerShellState::new_with_filter::<Self, _>(&display, Self::outside);
         let data_device = DataDeviceState::new::<Self>(&display);
@@ -393,10 +397,11 @@ impl Compositor {
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
+                    shm: ShmState::new::<Self>(&display, Vec::new()),
+                    gpu_buffers: GpuBuffers::default(),
                     display,
                     surfaces,
                     xdg_shell,
-                    shm,
                     seats,
                     _output_manager_state: output_manager_state,
                     seat,
@@ -554,6 +559,29 @@ impl Compositor {
     /// ask it to look like.
     pub fn show_pointer(&mut self) {
         self.draws_pointer = true;
+    }
+
+    /// Lets programs hand over pictures in the memory of the graphics card
+    /// whose device number is `device`, in the formats and layouts it can
+    /// draw, `formats`, which it then draws without copying them. Until
+    /// this is called a program can hand over only shared memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the table of formats a program is given cannot
+    /// be made.
+    pub fn offer_gpu_buffers(
+        &mut self,
+        device: u64,
+        formats: impl IntoIterator<Item = Format>,
+    ) -> io::Result<()> {
+        let feedback = DmabufFeedbackBuilder::new(device, formats).build();
+        feedback.map(|feedback| {
+            let state = &mut self.gpu_buffers.state;
+            let global =
+                state.create_global_with_default_feedback::<Self>(&self.display, &feedback);
+            self.gpu_buffers.global = Some(global);
+        })
     }
 
     /// Says where cursor themes are installed. Until this is called there
@@ -2146,6 +2174,23 @@ pub(crate) enum Look {
     Icon(CursorIcon),
     /// A picture an application drew.
     Surface(WlSurface),
+}
+
+/// What programs hand over pictures in the memory of the graphics card by.
+#[derive(Debug)]
+pub(crate) struct GpuBuffers {
+    pub(crate) state: DmabufState,
+    /// What they are offered by, once the backend has said which card.
+    global: Option<DmabufGlobal>,
+}
+
+impl Default for GpuBuffers {
+    fn default() -> Self {
+        Self {
+            state: DmabufState::new(),
+            global: None,
+        }
+    }
 }
 
 /// The pictures of the pointer the compositor has loaded.

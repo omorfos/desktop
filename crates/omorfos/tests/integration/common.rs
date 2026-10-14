@@ -58,6 +58,9 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1,
 };
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{
+    zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
+};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
     zwp_primary_selection_device_v1 as primary_device,
@@ -595,6 +598,8 @@ pub(crate) enum Event {
     PointerTip(i32, i32),
     ShotReady,
     ShotFailed(capture_frame::FailureReason),
+    /// A buffer in the memory of the graphics card could not be made.
+    GpuBufferFailed,
     Key {
         code: u32,
         pressed: bool,
@@ -635,6 +640,7 @@ pub(crate) struct ClientState {
     fractions: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     viewporter: Option<wp_viewporter::WpViewporter>,
     single_pixels: Option<wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1>,
+    gpu_buffers: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
@@ -853,6 +859,30 @@ impl Client {
         let pool = shm.create_pool(file.as_fd(), width * height * 4, &self.handle(), ());
         let buffer = pool.create_buffer(0, width, height, width * 4, format, &self.handle(), ());
         (file, buffer)
+    }
+
+    /// Whether pictures can be handed over in the memory of the graphics
+    /// card.
+    pub(crate) fn offers_gpu_buffers(&self) -> bool {
+        self.state.gpu_buffers.is_some()
+    }
+
+    /// A buffer in the memory of the graphics card, of one plane: the file
+    /// it is, `size` pixels of `format` in the layout `modifier`, rows of
+    /// `stride` bytes.
+    pub(crate) fn gpu_buffer(
+        &self,
+        file: std::os::fd::BorrowedFd<'_>,
+        (size, stride): ((i32, i32), u32),
+        (format, modifier): (u32, u64),
+    ) -> wl_buffer::WlBuffer {
+        let buffers = self.state.gpu_buffers.as_ref().unwrap();
+        let params = buffers.create_params(&self.handle(), ());
+        let high = u32::try_from(modifier >> 32).unwrap();
+        let low = u32::try_from(modifier & u64::from(u32::MAX)).unwrap();
+        params.add(file, 0, 0, stride, high, low);
+        let flags = zwp_linux_buffer_params_v1::Flags::empty();
+        params.create_immed(size.0, size.1, format, flags, &self.handle(), ())
     }
 
     /// A buffer of one pixel that is not memory shared with the compositor.
@@ -1375,6 +1405,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.fractions = Some(registry.bind(name, version, handle, ()));
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
+            "zwp_linux_dmabuf_v1" => {
+                state.gpu_buffers = Some(registry.bind(name, version.min(3), handle, ()));
+            }
             "wp_single_pixel_buffer_manager_v1" => {
                 state.single_pixels = Some(registry.bind(name, version, handle, ()));
             }
@@ -1912,6 +1945,22 @@ delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(ClientState: wp_viewporter::WpViewporter);
 delegate_noop!(ClientState: wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1);
+delegate_noop!(ClientState: ignore zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1);
+
+impl Dispatch<zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
+        event: zwp_linux_buffer_params_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if matches!(event, zwp_linux_buffer_params_v1::Event::Failed) {
+            state.events.push(Event::GpuBufferFailed);
+        }
+    }
+}
 delegate_noop!(ClientState: ext_session_lock_manager_v1::ExtSessionLockManagerV1);
 delegate_noop!(ClientState: ext_idle_notifier_v1::ExtIdleNotifierV1);
 delegate_noop!(ClientState: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);

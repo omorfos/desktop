@@ -55,6 +55,9 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --lock
 
 The tools are in `~/.cargo/bin`. If tests were added that start processes,
 watch files or start an X server, stress them as `docs/TESTING.md` says.
+If the change touches buffers of the graphics card, pictures of the screen
+or sharing it, run the tests that need a card, which CI skips, as
+`docs/TESTING.md` says, and say in the report whether they ran.
 
 ## 4. Build for trying by hand
 

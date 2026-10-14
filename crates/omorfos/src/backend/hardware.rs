@@ -153,6 +153,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }));
     let compositor = session.compositor_mut();
     hardware.borrow_mut().scan(compositor);
+    offer_gpu_buffers(&mut hardware.borrow_mut(), compositor);
     compositor.set_cursor_themes(cursor_themes());
     compositor.show_pointer();
     announce_session(compositor);
@@ -270,6 +271,30 @@ fn watch_devices(
         },
     )?;
     Ok(())
+}
+
+/// Lets programs hand over pictures in the memory of the graphics card
+/// that draws, in what it can draw, so that it draws them without copying:
+/// a program that draws with the card, as a browser does, has to, or it
+/// draws everything without it. Without, a program hands over shared memory.
+fn offer_gpu_buffers(hardware: &mut Hardware, compositor: &mut Compositor) {
+    let node = hardware.renderer;
+    let formats = hardware
+        .gpus
+        .single_renderer(&node)
+        .map(|renderer| renderer.dmabuf_formats());
+    let offered = formats
+        .map_err(|error| error.to_string())
+        .and_then(|formats| {
+            let offered = compositor.offer_gpu_buffers(node.dev_id(), formats);
+            offered.map_err(|error| error.to_string())
+        });
+    if let Err(error) = offered {
+        let _ = writeln!(
+            stderr(),
+            "omorfos: programs cannot hand over buffers of the graphics card: {error}"
+        );
+    }
 }
 
 /// Tells whatever else starts programs for the user about this session,
