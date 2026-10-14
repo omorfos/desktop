@@ -243,15 +243,27 @@ calls for them.
       buffer of that alone when only the pointer has changed, no more than
       sixty times a second. The compositor lets a program that may take
       pictures follow the pointer by itself.
+- [x] Only what has changed copied while the screen is shared: the
+      backend says, for each of the stream's buffers, what has changed
+      since a picture was last put in it, and the compositor reads back
+      from the GPU and writes only that, and what changes. The backend
+      says in the log how the pointer was asked for, and how many pictures
+      and buffers of the pointer alone it sent.
 - [ ] Sharing the screen made cheap, which it is not yet: sharing a
       screen four thousand pixels across, omorfos was seen at 50-60% of a
-      core and Firefox at 95%, and the desktop lagged a little. Next:
-      buffers of the
-      GPU handed to the reader (DMA-BUF, with the formats and modifiers
-      agreed with it), so that nothing is read back or turned on the CPU
-      and the reader can take them as they are, with tests that need a GPU
-      run on a machine that has one and skipped in CI; and what is left
-      measured again before anything else is tried.
+      core and Firefox at 95%; with the pointer sent beside the pictures,
+      under 30% with only the pointer moving, and 40% and more, with
+      lag, with a video playing. Profiled with only what changes copied,
+      three quarters of omorfos's time while a video was shared went on
+      the pixels on the CPU: turning their colours (made faster, but it
+      is bound by memory at four or five thousandths of a second a 4K
+      picture) and copying them out of the GPU and into the stream. Next:
+      buffers of the GPU handed to the reader
+      (DMA-BUF, with the formats and modifiers agreed with it), so that
+      nothing is read back or turned on the CPU and the reader can take
+      them as they are, with tests that need a GPU run on a machine that
+      has one and skipped in CI. Reading back still waits on the GPU in
+      the compositor's loop, which is what holds input up.
 - [ ] The portal's settings read from `appearance` once there is one
       (stage 4), with reduced motion and high contrast; today light or
       dark is worked out from the theme's colours.

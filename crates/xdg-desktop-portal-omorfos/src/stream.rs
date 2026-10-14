@@ -145,6 +145,7 @@ impl Pipes {
                     size,
                     taken: Cell::new(0),
                     sent: Cell::new(0),
+                    alone: Cell::new(0),
                 })
             })
         })
@@ -174,10 +175,12 @@ pub struct Share {
     reading: Rc<Cell<bool>>,
     removals: Removals,
     size: (u32, u32),
-    /// How many buffers have been taken to put pictures in, and how many
-    /// have gone to what reads the stream.
+    /// How many buffers have been taken, and how many have gone to what
+    /// reads the stream with a picture in them, and with only where the
+    /// pointer is.
     taken: Cell<u32>,
     sent: Cell<u32>,
+    alone: Cell<u32>,
 }
 
 impl Share {
@@ -194,11 +197,11 @@ impl Share {
         self.reading.get()
     }
 
-    /// How many pictures have been begun, and how many have gone to what
-    /// reads the stream.
+    /// How many buffers have been taken, and how many have gone to what
+    /// reads the stream with a picture, and with the pointer alone.
     #[must_use]
-    pub fn counted(&self) -> (u32, u32) {
-        (self.taken.get(), self.sent.get())
+    pub fn counted(&self) -> (u32, u32, u32) {
+        (self.taken.get(), self.sent.get(), self.alone.get())
     }
 
     /// A buffer to put the next picture in, if one is free: one that what
@@ -218,9 +221,9 @@ impl Share {
         let (width, height) = self.size;
         let stride = i32::try_from(width * PIXEL).unwrap_or(i32::MAX);
         let filled = filled && held.filled(width * height * PIXEL, stride);
-        if let Some(pointer) = pointer {
-            let _ = held.point(pointer);
-        }
+        let told = pointer.is_some_and(|pointer| held.point(pointer));
+        self.alone
+            .set(self.alone.get() + u32::from(told && !filled));
         drop(held);
         let sent = self.sent.get();
         if sent == 0 && filled {

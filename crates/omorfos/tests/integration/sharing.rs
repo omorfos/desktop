@@ -28,10 +28,14 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
-use crate::common::{Event, HEIGHT, Session, WIDTH, key};
+use crate::common::{Event, HEIGHT, LayerShape, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 use omorfos::Input;
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
+use wayland_protocols_wlr::layer_shell::v1::client::{
+    zwlr_layer_shell_v1::Layer,
+    zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity},
+};
 
 /// A bus of the test's own, gone when the test is.
 struct Daemon {
@@ -480,14 +484,36 @@ fn a_call_is_given_the_screen_to_read_once_the_user_says_so() {
     });
     assert_eq!(viewer.at(WIDTH, (WIDTH / 2, HEIGHT / 2)), Some(BACKGROUND));
     // What changes on the screen is what is read next, each time, as the
-    // memory it is put in goes round.
-    for colour in [GREEN, RED, GREEN, RED, GREEN, RED, GREEN] {
-        app.fill(&window.surface, (200, 100), colour);
+    // memory it is put in goes round: a change in one place and then in
+    // another, so that memory that missed the first while it was being read
+    // is brought up to date too.
+    let corner = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Bottom | Anchor::Right,
+        size: (40, 40),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let (square, _layer) = session.open_layer(&mut app, &corner, (40, 40), RED);
+    let mut shown = (RED, RED);
+    for step in 0..8 {
+        let colour = if step % 4 < 2 { GREEN } else { RED };
+        if step % 2 == 0 {
+            app.fill(&window.surface, (200, 100), colour);
+            shown.0 = colour;
+        } else {
+            app.fill(&square, (40, 40), colour);
+            shown.1 = colour;
+        }
         session.roundtrip(&mut app);
         session.eventually(|session| {
             session.draw();
             viewer.turn(node);
-            viewer.at(WIDTH, (10, 10)) == Some(colour)
+            let read = (
+                viewer.at(WIDTH, (10, 10)),
+                viewer.at(WIDTH, (WIDTH - 20, HEIGHT - 20)),
+            );
+            read == (Some(shown.0), Some(shown.1))
         });
     }
     let output = session.output();

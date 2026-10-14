@@ -149,6 +149,24 @@ fn boxed(picture: Option<(&[u8], (u32, u32))>) -> Vec<u8> {
     boxed
 }
 
+/// Adds pixels read red first to `to`, turned to the order a program is
+/// given them in: blue first and red third, with nothing in the fourth.
+///
+/// A whole pixel is turned at a time, which the compiler makes a few
+/// instructions for many pixels at once: this runs over every pixel of
+/// every picture of a screen being shared.
+fn turn(from: &[u8], to: &mut Vec<u8>) {
+    let (from, _) = from.as_chunks::<4>();
+    let start = to.len();
+    to.resize(start + from.len() * 4, 0);
+    let (into, _) = to[start..].as_chunks_mut::<4>();
+    for (into, from) in into.iter_mut().zip(from) {
+        let pixel = u32::from_le_bytes(*from);
+        let turned = (pixel & 0x0000_ff00) | ((pixel & 0xff) << 16) | ((pixel >> 16) & 0xff);
+        *into = (turned | 0xff00_0000).to_le_bytes();
+    }
+}
+
 /// Says a picture has been taken, and when.
 fn ready(frame: &ExtImageCopyCaptureFrameV1, clock: Duration) {
     let seconds = clock.as_secs();
@@ -258,6 +276,9 @@ struct Shot {
     frame: ExtImageCopyCaptureFrameV1,
     session: ExtImageCopyCaptureSessionV1,
     buffer: Option<WlBuffer>,
+    /// What the program says is out of date in its buffer, which is
+    /// written with what has changed.
+    stale: Damage,
     stage: Stage,
 }
 
@@ -267,6 +288,9 @@ struct Shot {
 pub(crate) struct Due {
     shot: usize,
     damage: Damage,
+    /// What is written: what has changed, and what the program said was
+    /// out of date in its buffer, within the picture.
+    write: Damage,
     /// How much of the drawing it is: all of a screen, or as much from
     /// its top left corner as a window takes.
     size: Size<i32, Physical>,
@@ -375,42 +399,74 @@ impl Capture {
                 Some(vec![Rectangle::from_size(taking.size)])
             };
             let size = taking.size;
-            due.extend(damage.map(|damage| Due { shot, damage, size }));
+            let whole = Rectangle::from_size(size);
+            let stale = self.shots[shot].stale.iter();
+            due.extend(damage.map(|damage| {
+                let write = damage.iter().chain(stale);
+                let write = write.filter_map(|part| part.intersection(whole)).collect();
+                Due {
+                    shot,
+                    damage,
+                    write,
+                    size,
+                }
+            }));
         }
         due
     }
 
-    /// Gives programs the pictures that were due. `pixels` is the drawing
-    /// they are taken from, as wide and as high as `drawn`, four bytes to
-    /// a pixel as red, green, blue and one to spare; or nothing, if it
-    /// could not be read.
+    /// What of the drawing has to be read to give the pictures due: all
+    /// that any of them writes, as one rectangle. Nothing, if none writes
+    /// anything.
+    pub(crate) fn reading(due: &[Due]) -> Option<Rectangle<i32, Physical>> {
+        let parts = due.iter().flat_map(|due| due.write.iter().copied());
+        parts.reduce(Rectangle::merge)
+    }
+
+    /// Gives programs the pictures that were due, writing into each only
+    /// what it needs. `pixels` is the part of the drawing `read` says, four
+    /// bytes to a pixel as red, green, blue and one to spare; or nothing,
+    /// if it could not be read.
     pub(crate) fn hand(
         &mut self,
         due: Vec<Due>,
         pixels: Option<&[u8]>,
-        drawn: Size<i32, Physical>,
+        read: Rectangle<i32, Physical>,
         clock: Duration,
     ) {
         let across = |pixels: i32| usize::try_from(pixels).unwrap_or_default();
-        // A row of the drawing, which is never of no length to cut by.
-        let row = (across(drawn.w) * 4).max(4);
-        for Due { shot, damage, size } in due {
+        // A row of what was read.
+        let row = across(read.size.w) * 4;
+        let pixels = pixels.unwrap_or_default();
+        for Due {
+            shot,
+            damage,
+            write,
+            size,
+        } in due
+        {
             let size = (across(size.w), across(size.h));
-            self.scratch.clear();
-            // As much of each row, from the top, as the picture is wide.
-            for row in pixels.unwrap_or_default().chunks(row).take(size.1) {
-                let (row, _) = row.get(..size.0 * 4).unwrap_or_default().as_chunks::<4>();
-                // A program is given blue first and red third.
-                let turned = row.iter();
-                let turned =
-                    turned.flat_map(|[red, green, blue, _]| [*blue, *green, *red, u8::MAX]);
-                self.scratch.extend(turned);
-            }
             let shot = &mut self.shots[shot];
             shot.stage = Stage::Over;
             let buffer = shot.buffer.as_ref();
-            let written = buffer.is_some_and(|buffer| {
-                omorfos_shm::write(buffer, Format::Xrgb8888, size, &self.scratch)
+            let written = write.iter().all(|part| {
+                let (x, y) = (across(part.loc.x), across(part.loc.y));
+                let (wide, high) = (across(part.size.w), across(part.size.h));
+                // Where the part is in what was read, which holds it.
+                let (left, top) = (
+                    across(part.loc.x - read.loc.x),
+                    across(part.loc.y - read.loc.y),
+                );
+                self.scratch.clear();
+                for line in top..top + high {
+                    let start = line * row + left * 4;
+                    let from = pixels.get(start..start + wide * 4).unwrap_or_default();
+                    turn(from, &mut self.scratch);
+                }
+                let part = (x, y, wide, high);
+                buffer.is_some_and(|buffer| {
+                    omorfos_shm::write_part(buffer, Format::Xrgb8888, size, part, &self.scratch)
+                })
             });
             if !written {
                 shot.frame.failed(FailureReason::BufferConstraints);
@@ -896,6 +952,7 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for Compositor {
                 frame,
                 session: session.clone(),
                 buffer: None,
+                stale: Vec::new(),
                 stage: Stage::Open,
             });
         }
@@ -933,12 +990,14 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for Compositor {
                 width,
                 height,
             } => {
-                // All of the picture is written each time, so what the
-                // program says is stale in its buffer needs no keeping.
+                // What the program says is out of date in its buffer is
+                // written with the picture, as well as what has changed.
                 if x < 0 || y < 0 || width <= 0 || height <= 0 {
                     let said = "what is stale in a buffer cannot lie outside it or be nothing";
                     frame.post_error(FrameError::InvalidBufferDamage, said);
                 }
+                let part = Rectangle::new((x, y).into(), (width, height).into());
+                shot.stale.push(part);
             }
             FrameRequest::Capture if shot.buffer.is_none() => {
                 frame.post_error(FrameError::NoBuffer, "there is nothing to take it in");
@@ -950,5 +1009,17 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for Compositor {
 
     fn destroyed(state: &mut Self, _: ClientId, frame: &ExtImageCopyCaptureFrameV1, (): &()) {
         state.capture.shots.retain(|shot| shot.frame != *frame);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pixels_read_red_first_are_given_blue_first_with_nothing_in_the_fourth() {
+        let mut turned = vec![9];
+        turn(&[1, 2, 3, 4, 10, 20, 30, 40, 99], &mut turned);
+        assert_eq!(turned, [9, 3, 2, 1, 255, 30, 20, 10, 255]);
     }
 }
