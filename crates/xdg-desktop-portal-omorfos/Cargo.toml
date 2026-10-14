@@ -21,7 +21,7 @@ omorfos-ui = { path = "../omorfos-ui" }
 # The question is asked on the screen as a Wayland client. All are already
 # in the tree through Smithay's nested backend.
 wayland-client = "0.31.15"
-wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 # Turns the keys the compositor reports into what they are, by its
 # layout. Without its default features it maps nothing into memory.
@@ -30,14 +30,18 @@ xkbcommon = { version = "0.8.0", default-features = false }
 omorfos-config = { path = "../omorfos-config" }
 # Streams the screen being shared to the application that shares it. It
 # binds libpipewire, so building needs its headers and clang. The feature is
-# the PipeWire that a stream can drive itself from, 0.3.34, from 2021.
-pipewire = { version = "0.10.1", features = ["v0_3_34"] }
+# the PipeWire that says the layout of memory of the graphics card a stream
+# is in, 0.3.65, from 2023, which can also drive itself, from 0.3.34.
+pipewire = { version = "0.10.1", features = ["v0_3_65"] }
 # Holds the stream's buffers while the compositor puts a picture in them.
 omorfos-pipewire = { path = "../omorfos-pipewire" }
+# Makes the memory of a screen being shared on the graphics card, so that
+# neither program touches its pixels. Already in the tree through Smithay.
+gbm = { version = "0.18.0", default-features = false }
 # Already in the tree through Smithay. Waits for the bus or the
 # configuration to have something to say (`event`), and makes what the
 # thread that answers the bus says it is done by (`pipe`).
-rustix = { version = "1.1.5", default-features = false, features = ["event", "pipe"] }
+rustix = { version = "1.1.5", default-features = false, features = ["event", "fs", "pipe"] }
 # The portals are spoken to over D-Bus. Already in the tree through the
 # notifications.
 zbus = "5.19.0"

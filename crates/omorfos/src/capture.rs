@@ -9,6 +9,8 @@
 
 use std::time::{Duration, Instant};
 
+use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::allocator::{Format as DrmFormat, Fourcc};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Element;
 use smithay::backend::renderer::element::solid::SolidColorBuffer;
@@ -44,6 +46,7 @@ use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
 use smithay::utils::{Physical, Point, Rectangle, Size};
+use smithay::wayland::dmabuf::get_dmabuf;
 
 use crate::Scale;
 use omorfos_config::{Part, States};
@@ -84,6 +87,30 @@ pub(crate) enum Pass {
     },
     /// A window by itself.
     Window(WindowId),
+}
+
+/// The graphics card pictures can be taken in the memory of: its device
+/// number, and the layouts of a picture blue first, a row at a time or
+/// otherwise, it can draw into.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Gpu {
+    pub(crate) device: u64,
+    pub(crate) layouts: Vec<u64>,
+}
+
+impl Gpu {
+    /// The card whose device number is `device`, which can draw `formats`.
+    pub(crate) fn of(device: u64, formats: &[DrmFormat]) -> Self {
+        let blue_first = formats
+            .iter()
+            .filter(|format| format.code == Fourcc::Xrgb8888);
+        Self {
+            device,
+            layouts: blue_first
+                .map(|format| u64::from(format.modifier))
+                .collect(),
+        }
+    }
 }
 
 /// How large a picture of the pointer is, across and down, in pixels: as
@@ -208,9 +235,9 @@ impl Taking {
     /// somewhere.
     fn of(
         session: ExtImageCopyCaptureSessionV1,
-        subject: Subject,
-        pointer: bool,
+        (subject, pointer): (Subject, bool),
         (output, size, scale): Standing,
+        gpu: Option<&Gpu>,
     ) -> Self {
         let mut taking = Self {
             session,
@@ -223,14 +250,15 @@ impl Taking {
             taken: false,
             blank: SolidColorBuffer::default(),
         };
-        taking.stand((taking.output.clone(), size, scale));
+        taking.stand((taking.output.clone(), size, scale), gpu);
         taking
     }
 
     /// Notes where what is taken stands now. If its size is not what it
     /// was, the program is told what a buffer has to be to take a picture
-    /// in, and the next picture is all new.
-    fn stand(&mut self, (output, size, scale): Standing) {
+    /// in, shared memory or, if there is one, memory of the graphics card,
+    /// and the next picture is all new.
+    fn stand(&mut self, (output, size, scale): Standing, gpu: Option<&Gpu>) {
         let same = size == self.size && scale.to_bits() == self.scale.to_bits();
         self.output = output;
         if same {
@@ -245,6 +273,13 @@ impl Taking {
         self.session
             .buffer_size(size.w.unsigned_abs(), size.h.unsigned_abs());
         self.session.shm_format(Format::Xrgb8888);
+        if let Some(gpu) = gpu {
+            self.session
+                .dmabuf_device(gpu.device.to_ne_bytes().to_vec());
+            let layouts = gpu.layouts.iter().flat_map(|layout| layout.to_ne_bytes());
+            self.session
+                .dmabuf_format(Fourcc::Xrgb8888 as u32, layouts.collect());
+        }
         self.session.done();
     }
 
@@ -296,9 +331,19 @@ pub(crate) struct Due {
     size: Size<i32, Physical>,
 }
 
+impl Due {
+    /// How large the picture is.
+    pub(crate) const fn size(&self) -> Size<i32, Physical> {
+        self.size
+    }
+}
+
 /// Everything to do with pictures of the screen being taken.
 #[derive(Debug, Default)]
 pub(crate) struct Capture {
+    /// The graphics card pictures can be taken in the memory of, once the
+    /// backend has said which.
+    pub(crate) gpu: Option<Gpu>,
     takings: Vec<Taking>,
     following: Vec<Following>,
     shots: Vec<Shot>,
@@ -439,14 +484,14 @@ impl Capture {
         let row = across(read.size.w) * 4;
         let pixels = pixels.unwrap_or_default();
         for Due {
-            shot,
+            shot: index,
             damage,
             write,
             size,
         } in due
         {
             let size = (across(size.w), across(size.h));
-            let shot = &mut self.shots[shot];
+            let shot = &mut self.shots[index];
             shot.stage = Stage::Over;
             let buffer = shot.buffer.as_ref();
             let written = write.iter().all(|part| {
@@ -468,21 +513,52 @@ impl Capture {
                     omorfos_shm::write_part(buffer, Format::Xrgb8888, size, part, &self.scratch)
                 })
             });
-            if !written {
-                shot.frame.failed(FailureReason::BufferConstraints);
-                continue;
-            }
-            let taking = self.takings.iter_mut();
-            for taking in taking.filter(|taking| taking.session == shot.session) {
-                taking.taken = true;
-            }
-            shot.frame.transform(Transform::Normal);
-            for part in damage {
-                shot.frame
-                    .damage(part.loc.x, part.loc.y, part.size.w, part.size.h);
-            }
-            ready(&shot.frame, clock);
+            self.finish(index, written.then_some(damage), clock);
         }
+    }
+
+    /// The pictures due that are to be drawn into memory of the graphics
+    /// card, with what each is drawn into, and those to be written into
+    /// shared memory.
+    pub(crate) fn split(&self, due: Vec<Due>) -> (Vec<(Due, Dmabuf)>, Vec<Due>) {
+        let mut on_card = Vec::new();
+        let mut in_memory = Vec::new();
+        for due in due {
+            let buffer = self.shots[due.shot].buffer.as_ref();
+            let card = buffer.and_then(|buffer| get_dmabuf(buffer).ok()).cloned();
+            match card {
+                Some(card) => on_card.push((due, card)),
+                None => in_memory.push(due),
+            }
+        }
+        (on_card, in_memory)
+    }
+
+    /// Gives a program a picture drawn into the memory of the graphics
+    /// card, if it could be.
+    pub(crate) fn give(&mut self, due: Due, drawn: bool, clock: Duration) {
+        self.shots[due.shot].stage = Stage::Over;
+        self.finish(due.shot, drawn.then_some(due.damage), clock);
+    }
+
+    /// Tells a program its picture has been taken, and what changed in it:
+    /// or, without that, that it could not be put in what it was given.
+    fn finish(&mut self, index: usize, damage: Option<Damage>, clock: Duration) {
+        let shot = &self.shots[index];
+        let Some(damage) = damage else {
+            shot.frame.failed(FailureReason::BufferConstraints);
+            return;
+        };
+        let taking = self.takings.iter_mut();
+        for taking in taking.filter(|taking| taking.session == shot.session) {
+            taking.taken = true;
+        }
+        shot.frame.transform(Transform::Normal);
+        for part in damage {
+            shot.frame
+                .damage(part.loc.x, part.loc.y, part.size.w, part.size.h);
+        }
+        ready(&shot.frame, clock);
     }
 
     /// Has a program take no more pictures through this.
@@ -577,7 +653,8 @@ impl Compositor {
             let stands = standing.next().flatten();
             let gone = stands.is_none();
             // What has gone is left as it stood, to be told it has stopped.
-            taking.stand(stands.unwrap_or((taking.output.clone(), taking.size, taking.scale)));
+            let stands = stands.unwrap_or((taking.output.clone(), taking.size, taking.scale));
+            taking.stand(stands, capture.gpu.as_ref());
             taking.blank.update(taking.size.to_logical(1), veiled);
             gone
         });
@@ -711,7 +788,12 @@ impl Compositor {
             session.stopped();
             return;
         };
-        let taking = Taking::of(session, subject, pointer, stands);
+        let taking = Taking::of(
+            session,
+            (subject, pointer),
+            stands,
+            self.capture.gpu.as_ref(),
+        );
         self.capture.takings.push(taking);
     }
 

@@ -255,21 +255,21 @@ calls for them.
       browser does, drew everything without it: Firefox was at 95% of a
       core while a screen was shared. Tested on a card where there is one,
       and skipped in CI.
-- [ ] Sharing the screen made cheap, which it is not yet: sharing a
-      screen four thousand pixels across, omorfos was seen at 50-60% of a
-      core and Firefox at 95%; with the pointer sent beside the pictures,
-      under 30% with only the pointer moving, and 40% and more, with
-      lag, with a video playing. Profiled with only what changes copied,
-      three quarters of omorfos's time while a video was shared went on
-      the pixels on the CPU: turning their colours (made faster, but it
-      is bound by memory at four or five thousandths of a second a 4K
-      picture) and copying them out of the GPU and into the stream. Next:
-      buffers of the GPU handed to the reader
-      (DMA-BUF, with the formats and modifiers agreed with it), so that
-      nothing is read back or turned on the CPU and the reader can take
-      them as they are, with tests that need a GPU run on a machine that
-      has one and skipped in CI. Reading back still waits on the GPU in
-      the compositor's loop, which is what holds input up.
+- [x] Sharing the screen in the memory of the graphics card: the stream
+      offers memory of the card in each layout the compositor can draw
+      into and the card can make, and shared memory last; what reads it
+      takes the first it can. The compositor draws each picture straight
+      into that memory, and nothing reads a pixel back or turns it. Where
+      the card cannot be had, or what reads the stream cannot take its
+      memory, pictures go through shared memory as before. Tested on a card
+      where there is one, and skipped in CI. Tried by hand, sharing a 4K
+      screen with a video playing took omorfos from 60% of a core to 18%,
+      about what the screen costs it with nothing shared, without stutter.
+- [ ] Known gaps in sharing in the memory of the card: the compositor
+      waits for the card to finish each picture in its loop, which a fence
+      the backend waits on would spare it; only layouts of one part are
+      offered; and what reads the stream is not asked which layouts it
+      prefers, only offered those that can be made, each in turn.
 - [ ] The portal's settings read from `appearance` once there is one
       (stage 4), with reduced motion and high contrast; today light or
       dark is worked out from the theme's colours.

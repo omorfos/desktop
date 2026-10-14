@@ -19,6 +19,7 @@ mod compositor;
 mod corners;
 mod cursor;
 mod ghost;
+mod gpu;
 mod handlers;
 mod input;
 mod ipc;

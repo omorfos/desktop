@@ -12,6 +12,7 @@
 
 mod appearance;
 mod bus;
+mod card;
 mod feed;
 mod prompt;
 mod screencast;
@@ -26,6 +27,7 @@ use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
 pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
+use card::Card;
 pub use feed::{Feed, Seen};
 use omorfos_config::{Store, Watcher};
 use omorfos_pipewire::{Held, Picture};
@@ -323,7 +325,14 @@ impl Backend<'_> {
             let begun = Feed::new(self.desk.connection(), pointer);
             let begun = begun.and_then(|feed| {
                 let pointer = feed.pointer().map(|seen| seen.size);
-                pipes.share(feed.size(), pointer).map(|out| (feed, out))
+                // Memory of the card the compositor draws with, if it can
+                // be had, in the layouts both can use.
+                let (number, offered) = feed.card();
+                let card = Card::open(number);
+                let layouts = card.layouts(feed.size(), &offered);
+                pipes
+                    .share(feed.size(), pointer, (card, layouts))
+                    .map(|out| (feed, out))
             });
             self.pipes = Some(pipes);
             begun
@@ -450,7 +459,7 @@ impl Backend<'_> {
             let free = due.then(|| sharing.out.take()).flatten();
             let free = free.and_then(|held| held.memory().map(|memory| (held, memory)));
             if let Some((held, memory)) = free {
-                sharing.feed.ask(&memory);
+                sharing.feed.ask(&memory, sharing.out.layout());
                 sharing.held = Some(held);
             }
             turned.is_ok()

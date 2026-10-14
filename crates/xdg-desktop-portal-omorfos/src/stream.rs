@@ -8,6 +8,7 @@
 //! on the way.
 
 use std::cell::Cell;
+use std::fs::File;
 use std::io::Cursor;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::rc::Rc;
@@ -20,9 +21,12 @@ use pw::spa::pod::serialize::PodSerializer;
 use pw::spa::pod::{Object, Pod, Property, PropertyFlags, Value};
 use pw::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
 
-use omorfos_pipewire::{Held, Pointer, Removals, pointer_room};
+use omorfos_pipewire::{Held, Made, Pointer, Removals, pointer_room};
+use pw::spa::param::video::VideoFlags;
+use rustix::fs::{MemfdFlags, memfd_create};
 
 use crate::Failure;
+use crate::card::Card;
 
 /// The bytes a pixel takes: blue, green, red and one spare, which is how
 /// the compositor gives pictures.
@@ -69,12 +73,19 @@ impl Pipes {
     /// Begins a stream of pictures `size` pixels large, as a screen of the
     /// desktop is shared, with room beside each to say where the pointer
     /// is and what it looks like, in a picture of it `pointer` pixels
-    /// large, if it is sent beside them.
+    /// large, if it is sent beside them. The pictures are in memory of
+    /// `card`, in one of its `layouts`, if what reads the stream can take
+    /// that, and in shared memory if not.
     ///
     /// # Errors
     ///
     /// Returns an error if PipeWire will not have it.
-    pub fn share(&self, size: (u32, u32), pointer: Option<(u32, u32)>) -> Result<Share, Failure> {
+    pub(crate) fn share(
+        &self,
+        size: (u32, u32),
+        pointer: Option<(u32, u32)>,
+        (card, layouts): (Card, Vec<u64>),
+    ) -> Result<Share, Failure> {
         let kind = properties! {
             *pw::keys::MEDIA_CLASS => "Video/Source",
             *pw::keys::MEDIA_TYPE => "Video",
@@ -87,7 +98,9 @@ impl Pipes {
             let node = Rc::new(Cell::new(None));
             let reading = Rc::new(Cell::new(false));
             let removals = Removals::default();
+            let layout = Rc::new(Cell::new(None));
             let (named, read, removed) = (Rc::clone(&node), Rc::clone(&reading), removals.clone());
+            let (chosen, agreeing) = (Rc::clone(&layout), Rc::clone(&layout));
             let listener = stream
                 .add_local_listener::<()>()
                 .state_changed(move |stream, (), was, now| {
@@ -112,26 +125,40 @@ impl Pipes {
                     if agreed {
                         let mut agreed = spa::param::video::VideoInfoRaw::new();
                         let read = param.map(|param| agreed.parse(param).is_ok());
+                        // What reads the stream took memory of the card in
+                        // a layout, or shared memory.
+                        let card = agreed.flags().contains(VideoFlags::MODIFIER);
+                        let layout = card.then_some(agreed.modifier());
+                        agreeing.set(layout);
                         let (format, at) = (agreed.format(), agreed.size());
+                        let memory = layout.map_or_else(
+                            || "shared memory".to_owned(),
+                            |layout| {
+                                format!("memory of the graphics card, laid out as {layout:#x}")
+                            },
+                        );
                         note(&format!(
-                            "agreed with what reads the stream ({read:?}): {format:?}, {} by {}",
+                            "agreed with what reads the stream ({read:?}): {format:?}, {} by {}, \
+                             in {memory}",
                             at.width, at.height
                         ));
-                        let room = [Some(buffers(size)), pointer.map(beside)];
+                        let room = [Some(buffers(size, card)), pointer.map(beside)];
                         let room = room.iter().flatten();
                         let room = room.filter_map(|room| Pod::from_bytes(room));
                         let _ = stream.update_params(&mut room.collect::<Vec<_>>());
                     }
                 });
             // The memory of each buffer is made here, so that the
-            // compositor can be given it.
+            // compositor can be given it: on the card, in the layout agreed,
+            // or shared.
+            let make = move || card.make(size, chosen.get(), || shared(size));
             let listener = removed
-                .furnish(listener, size.0 * size.1 * PIXEL)
+                .furnish(listener, make)
                 .register()
                 .map_err(Failure::from);
             listener.and_then(|listener| {
-                let offer = format(size);
-                let offer = Pod::from_bytes(&offer).into_iter();
+                let offers = offers(size, &layouts);
+                let offer = offers.iter().filter_map(|offer| Pod::from_bytes(offer));
                 let flags = StreamFlags::DRIVER | StreamFlags::ALLOC_BUFFERS;
                 let direction = spa::utils::Direction::Output;
                 let connected =
@@ -142,6 +169,7 @@ impl Pipes {
                     node,
                     reading,
                     removals,
+                    layout,
                     size,
                     taken: Cell::new(0),
                     sent: Cell::new(0),
@@ -174,6 +202,9 @@ pub struct Share {
     /// Whether something is reading the stream.
     reading: Rc<Cell<bool>>,
     removals: Removals,
+    /// The layout of memory of the graphics card agreed with what reads
+    /// the stream, or nothing, for shared memory.
+    layout: Rc<Cell<Option<u64>>>,
     size: (u32, u32),
     /// How many buffers have been taken, and how many have gone to what
     /// reads the stream with a picture in them, and with only where the
@@ -204,6 +235,13 @@ impl Share {
         (self.taken.get(), self.sent.get(), self.alone.get())
     }
 
+    /// The layout of memory of the graphics card agreed with what reads
+    /// the stream, or nothing, for shared memory.
+    #[must_use]
+    pub fn layout(&self) -> Option<u64> {
+        self.layout.get()
+    }
+
     /// A buffer to put the next picture in, if one is free: one that what
     /// reads the stream has finished with.
     #[must_use]
@@ -218,9 +256,10 @@ impl Share {
     /// pointer is, if it is sent beside the pictures. Without either, it
     /// is nothing new.
     pub fn give(&self, mut held: Held, filled: bool, pointer: Option<&Pointer<'_>>) {
-        let (width, height) = self.size;
-        let stride = i32::try_from(width * PIXEL).unwrap_or(i32::MAX);
-        let filled = filled && held.filled(width * height * PIXEL, stride);
+        let (_, height) = self.size;
+        let stride = held.stride();
+        let size = stride * height;
+        let filled = filled && held.filled(size, i32::try_from(stride).unwrap_or(i32::MAX));
         let told = pointer.is_some_and(|pointer| held.point(pointer));
         self.alone
             .set(self.alone.get() + u32::from(told && !filled));
@@ -235,11 +274,39 @@ impl Share {
     }
 }
 
-/// The format a stream offers: raw video of one size, blue first, as
-/// often as there is something new.
-fn format((width, height): (u32, u32)) -> Vec<u8> {
+/// Shared memory for a picture `size` large, a file of its own.
+fn shared((width, height): (u32, u32)) -> Option<Made> {
+    let size = width * height * PIXEL;
+    let file = memfd_create(
+        "omorfos-screen",
+        MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING,
+    );
+    let file = file.ok().map(File::from);
+    let file = file.filter(|file| file.set_len(u64::from(size)).is_ok());
+    file.map(|file| Made {
+        file: file.into(),
+        offset: 0,
+        stride: width * PIXEL,
+        size,
+        card: false,
+        mappable: true,
+    })
+}
+
+/// The formats a stream offers, the first that what reads it can take
+/// being the one agreed: memory of the graphics card in each of the
+/// `layouts` it can be made in, and shared memory.
+fn offers(size: (u32, u32), layouts: &[u64]) -> Vec<Vec<u8>> {
+    let card = layouts.iter().map(|layout| format(size, Some(*layout)));
+    card.chain(std::iter::once(format(size, None))).collect()
+}
+
+/// A format a stream offers: raw video of one size, blue first, as often
+/// as there is something new, in memory of the graphics card in `layout`
+/// if there is one, which what reads it has to take as it is.
+fn format((width, height): (u32, u32), layout: Option<u64>) -> Vec<u8> {
     use spa::param::format::{FormatProperties, MediaSubtype, MediaType};
-    let offer = spa::pod::object!(
+    let mut offer = spa::pod::object!(
         spa::utils::SpaTypes::ObjectParamFormat,
         spa::param::ParamType::EnumFormat,
         spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
@@ -260,18 +327,29 @@ fn format((width, height): (u32, u32)) -> Vec<u8> {
             spa::utils::Fraction { num: 0, denom: 1 }
         ),
     );
+    offer.properties.extend(layout.map(|layout| Property {
+        key: FormatProperties::VideoModifier.as_raw(),
+        flags: PropertyFlags::MANDATORY,
+        value: Value::Long(layout.cast_signed()),
+    }));
     serialize(&Value::Object(offer))
 }
 
-/// How much room a stream wants for its pictures, and in what memory.
-fn buffers((width, height): (u32, u32)) -> Vec<u8> {
+/// How much room a stream wants for its pictures, and in what memory: of
+/// the graphics card, or shared through a file, which the compositor can
+/// be given either way.
+fn buffers((width, height): (u32, u32), card: bool) -> Vec<u8> {
     let int = |key: u32, value: u32| Property {
         key,
         flags: PropertyFlags::empty(),
         value: Value::Int(i32::try_from(value).unwrap_or(i32::MAX)),
     };
-    // Memory shared through a file, which the compositor can be given.
-    let memory = 1 << spa::sys::SPA_DATA_MemFd;
+    let kind = if card {
+        spa::sys::SPA_DATA_DmaBuf
+    } else {
+        spa::sys::SPA_DATA_MemFd
+    };
+    let memory = 1 << kind;
     let room = Object {
         type_: spa::utils::SpaTypes::ObjectParamBuffers.as_raw(),
         id: spa::param::ParamType::Buffers.as_raw(),
@@ -315,4 +393,46 @@ fn serialize(value: &Value) -> Vec<u8> {
     written
         .map(|(bytes, _)| bytes.into_inner())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pw::spa::pod::PodPropFlags;
+    use pw::spa::utils::Id;
+
+    /// What a description says of `key`, as PipeWire reads it, and how.
+    fn property(bytes: &[u8], key: u32, read: fn(&Pod) -> i64) -> Option<(i64, PodPropFlags)> {
+        let object = Pod::from_bytes(bytes).unwrap().as_object().unwrap();
+        let found = object.find_prop(Id(key));
+        found.map(|found| (read(found.value()), found.flags()))
+    }
+
+    #[test]
+    fn memory_of_the_card_is_offered_in_each_layout_it_can_be_made_in_and_shared_memory_last() {
+        use spa::param::format::FormatProperties;
+        let key = FormatProperties::VideoModifier.as_raw();
+        let long = |value: &Pod| value.get_long().unwrap();
+        let offers = offers((640, 480), &[0, 7]);
+        let layouts: Vec<_> = offers
+            .iter()
+            .map(|offer| property(offer, key, long))
+            .collect();
+        let mandatory = PodPropFlags::MANDATORY;
+        assert_eq!(layouts, [Some((0, mandatory)), Some((7, mandatory)), None]);
+    }
+
+    #[test]
+    fn buffers_are_said_to_be_in_the_memory_that_was_agreed() {
+        let int = |value: &Pod| i64::from(value.get_int().unwrap());
+        let kind = |card| {
+            let room = buffers((640, 480), card);
+            let kind = property(&room, spa::sys::SPA_PARAM_BUFFERS_dataType, int);
+            kind.map(|(kind, _)| kind)
+        };
+        let card = 1 << spa::sys::SPA_DATA_DmaBuf;
+        let shared = 1 << spa::sys::SPA_DATA_MemFd;
+        assert_eq!(kind(true), Some(card));
+        assert_eq!(kind(false), Some(shared));
+    }
 }

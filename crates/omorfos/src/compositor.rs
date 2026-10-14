@@ -25,6 +25,8 @@ use omorfos_core::{
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use smithay::backend::allocator::Format;
 use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::damage::{
     Error as RenderError, OutputDamageTracker, RenderOutputResult,
 };
@@ -84,10 +86,11 @@ use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
 use crate::bridge::{self, Bindings};
-use crate::capture::{self, Capture, Pass};
+use crate::capture::{self, Capture, Gpu, Pass};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
+use crate::gpu;
 use crate::input::Drag;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
@@ -575,8 +578,12 @@ impl Compositor {
         device: u64,
         formats: impl IntoIterator<Item = Format>,
     ) -> io::Result<()> {
+        let formats: Vec<Format> = formats.into_iter().collect();
+        let gpu = Gpu::of(device, &formats);
         let feedback = DmabufFeedbackBuilder::new(device, formats).build();
         feedback.map(|feedback| {
+            // Pictures of the screen can be taken in the card's memory too.
+            self.capture.gpu = Some(gpu);
             let state = &mut self.gpu_buffers.state;
             let global =
                 state.create_global_with_default_feedback::<Self>(&self.display, &feedback);
@@ -1586,7 +1593,7 @@ impl Compositor {
         age: usize,
     ) -> Result<Drawn, RenderError<R::Error>>
     where
-        R: Renderer + ImportAll + ImportMem + ExportMem,
+        R: Renderer + ImportAll + ImportMem + ExportMem + Bind<Dmabuf>,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let head = self.head(output);
@@ -1623,6 +1630,16 @@ impl Compositor {
                 Pass::Window(window) => (self.alone(renderer, window, view.scale), BLACK),
             };
             let due = self.capture.due(output, pass, &elements);
+            // A picture asked for in the memory of the graphics card is
+            // drawn there and nothing of it is read back; the rest are
+            // read back from what the screen is drawn into.
+            let (on_card, due) = self.capture.split(due);
+            let scale = view.scale.factor();
+            for (due, mut buffer) in on_card {
+                let at = (due.size(), scale);
+                let drawn = gpu::draw(renderer, &mut buffer, at, &elements, behind);
+                self.capture.give(due, drawn, self.animation.clock);
+            }
             if due.is_empty() {
                 continue;
             }
