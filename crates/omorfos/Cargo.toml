@@ -33,6 +33,9 @@ assets = [
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
+    ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
+    ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
+    ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
     # The built-in theme, to copy from.

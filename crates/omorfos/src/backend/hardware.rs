@@ -159,6 +159,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_panel(panel());
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
+    // Only here, where omorfos is the whole session: nested, the desktop
+    // it runs inside answers the portals.
+    let own = env::current_exe().ok();
+    compositor.set_portal(super::portal_program(own.as_deref()));
     compositor.start_xwayland(None);
     compositor.autostart();
 
@@ -272,11 +276,23 @@ fn watch_devices(
 /// the session unless told. This backend is the user's whole session, so
 /// they are told; the nested one must not, or it would redirect the
 /// programs of the desktop it runs inside.
+///
+/// The portal service is started by systemd too, and may be running
+/// still from a session before this one, knowing that session's desktop
+/// and nothing of this one's. Once the session has been told of, it is
+/// started again if it is running, so that it asks omorfos what is
+/// omorfos's to answer. What it is told of is handed to the shell as
+/// arguments, never as text for the shell to read.
 fn announce_session(compositor: &mut Compositor) {
     let told = compositor.session_environment().into_iter();
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
-    let arguments = std::iter::once("--systemd".to_owned()).chain(told);
-    if let Some(tell) = Command::new("dbus-update-activation-environment", arguments) {
+    let script = "dbus-update-activation-environment --systemd \"$@\"; \
+                  systemctl --user try-restart xdg-desktop-portal.service; true";
+    let arguments = ["-c", script, "sh"]
+        .map(str::to_owned)
+        .into_iter()
+        .chain(told);
+    if let Some(tell) = Command::new("sh", arguments) {
         compositor.perform(&Action::Spawn(tell.into()));
     }
 }

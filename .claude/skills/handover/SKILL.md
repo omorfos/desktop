@@ -53,7 +53,7 @@ watch files or start an X server, stress them as `docs/TESTING.md` says.
 
 ```sh
 cargo build --profile nightly --locked -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p xdg-desktop-portal-omorfos
 ls -l target/nightly/omorfos
 ```
 
@@ -68,7 +68,7 @@ Leave the work uncommitted. Tell the maintainer:
   so that a stale install shows:
 
   ```sh
-  sudo install -m755 target/nightly/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot} /usr/local/bin/
+  sudo install -m755 target/nightly/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,xdg-desktop-portal-omorfos} /usr/local/bin/
   ```
 
 - what is next in the order.

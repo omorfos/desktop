@@ -1077,6 +1077,14 @@ impl Compositor {
         self.set_component(Program::Notifier, program.into());
     }
 
+    /// Says where the program that answers the portals is: a name to look
+    /// up in `PATH`, or a path. It is then started with the session,
+    /// unless the configuration turns it off. Until this is called there
+    /// is none to start.
+    pub fn set_portal(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Portal, program.into());
+    }
+
     /// Says where one of the programs that run for the whole session is,
     /// in place of wherever it was said to be before.
     fn set_component(&mut self, kind: Program, program: PathBuf) {
@@ -2220,6 +2228,7 @@ const MENU_PADDING: u32 = 4;
 enum Program {
     Panel,
     Notifier,
+    Portal,
 }
 
 impl Program {
@@ -2228,6 +2237,7 @@ impl Program {
         match self {
             Self::Panel => general.panel.enabled,
             Self::Notifier => general.notifications.enabled,
+            Self::Portal => general.portals.enabled,
         }
     }
 }

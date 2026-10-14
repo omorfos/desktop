@@ -42,6 +42,8 @@ pub struct General {
     pub notifications: Notifications,
     /// Pictures of the screen.
     pub screenshots: Screenshots,
+    /// What applications ask the desktop through the portals.
+    pub portals: Portals,
     /// Programs written for X11.
     pub xwayland: Xwayland,
     /// The program that locks the session, and its arguments, such as
@@ -86,6 +88,23 @@ pub enum X11Scaling {
     /// dense it is. Those that take that in are sharp and the right size;
     /// those that do not are sharp and small.
     Native,
+}
+
+/// What applications ask the desktop through the portals
+/// (`xdg-desktop-portal`), such as whether it is light or dark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Portals {
+    /// Whether omorfos answers them. Turn it off to have another
+    /// program answer, or none.
+    pub enabled: bool,
+}
+
+impl Default for Portals {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// Pictures of the screen, as `omorfos-screenshot` takes them.
@@ -542,6 +561,18 @@ mod tests {
         let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
+    }
+
+    #[test]
+    fn the_portals_are_answered_unless_turned_off() {
+        assert!(General::default().portals.enabled);
+        assert!(
+            !parse("portals: { enabled: false }")
+                .unwrap()
+                .portals
+                .enabled
+        );
+        assert!(parse("portals: { on: false }").is_err());
     }
 
     #[test]

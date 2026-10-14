@@ -1,0 +1,541 @@
+//! The service on the bus that the portals pass applications' questions
+//! to.
+//!
+//! Applications do not speak to this. They speak to `xdg-desktop-portal`,
+//! which passes on what only the desktop can answer to whichever program
+//! has the name its configuration gives for that desktop, by interfaces
+//! the portal's own documentation sets out. This takes the name and
+//! answers.
+//!
+//! Messages are read one at a time and answered here, by name, with no
+//! machinery in between, so that every answer there is can be seen and
+//! tested. They come from other programs: one that does not have the shape
+//! it should is answered with an error and otherwise passed over.
+
+use std::collections::HashMap;
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::thread;
+
+use rustix::pipe::{PipeFlags, pipe_with};
+use zbus::blocking::connection::Builder;
+use zbus::blocking::{Connection, MessageIterator};
+use zbus::fdo::RequestNameFlags;
+use zbus::message::{Message, Type};
+use zbus::zvariant::{Structure, Value};
+
+use crate::{Appearance, Failure};
+
+/// The name the portals pass questions for omorfos to.
+pub const NAME: &str = "org.freedesktop.impl.portal.desktop.omorfos";
+
+/// The object they are passed to.
+pub const PATH: &str = "/org/freedesktop/portal/desktop";
+
+/// The interface what the desktop looks like is asked by.
+pub const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
+
+/// The group of settings that say how the desktop looks.
+pub const LOOKS: &str = "org.freedesktop.appearance";
+
+/// Which version of the interface is spoken.
+const VERSION: u32 = 1;
+
+/// What the service says of itself to a program that asks how to use it.
+const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="org.freedesktop.impl.portal.Settings">
+    <method name="ReadAll">
+      <arg direction="in" name="namespaces" type="as"/>
+      <arg direction="out" name="value" type="a{sa{sv}}"/>
+    </method>
+    <method name="Read">
+      <arg direction="in" name="namespace" type="s"/>
+      <arg direction="in" name="key" type="s"/>
+      <arg direction="out" name="value" type="v"/>
+    </method>
+    <signal name="SettingChanged">
+      <arg name="namespace" type="s"/>
+      <arg name="key" type="s"/>
+      <arg name="value" type="v"/>
+    </signal>
+    <property name="version" type="u" access="read"/>
+  </interface>
+</node>
+"#;
+
+/// How the desktop looks just now, asked each time it is wanted.
+pub type Look = Box<dyn Fn() -> Appearance + Send>;
+
+/// The service on the bus.
+///
+/// Messages are answered on a thread of its own. The descriptor this is
+/// becomes readable when the bus has gone, for an event loop to wait on.
+#[derive(Debug)]
+pub struct Portal {
+    connection: Connection,
+    /// Readable when the bus has gone.
+    gone: OwnedFd,
+}
+
+impl Portal {
+    /// Joins the bus at `address`, or the session's own if there is none
+    /// given, and takes the name the portals pass questions for omorfos
+    /// to. `look` says how the desktop looks whenever that is asked.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bus cannot be joined, or if another program
+    /// already has the name.
+    pub fn open(address: Option<&str>, look: Look) -> Result<Self, Failure> {
+        let builder = address.map_or_else(Builder::session, Builder::address);
+        let connection = builder.and_then(Builder::build).map_err(Failure::from);
+        let pipe = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
+        let joined = connection.and_then(|connection| pipe.map(|pipe| (connection, pipe)));
+        joined.and_then(|(connection, (gone, going))| {
+            // Listening before asking for the name, so that nothing sent
+            // to the name is missed.
+            let messages = MessageIterator::from(&connection);
+            // A copy left over from a session before this one, which did
+            // not stop when that one did, gives the name up to this one;
+            // and this one gives it up in turn to the next.
+            let flags = RequestNameFlags::DoNotQueue
+                | RequestNameFlags::ReplaceExisting
+                | RequestNameFlags::AllowReplacement;
+            let named = connection.request_name_with_flags(NAME, flags);
+            let taken = |error: zbus::Error| {
+                let message = format!(
+                    "cannot take the name the portals speak to omorfos by ({error}); another \
+                     program has it and will not give it up"
+                );
+                Failure::from(message)
+            };
+            named.map_err(taken).map(|_| {
+                let answering = connection.clone();
+                thread::spawn(move || {
+                    let messages = messages.map_while(Result::ok);
+                    for message in messages.take_while(|message| !lost(message)) {
+                        answer(&answering, &message, &look);
+                    }
+                    // If nobody is waiting any more, there is nobody to tell.
+                    let _ = rustix::io::write(&going, &[1]);
+                });
+                Self { connection, gone }
+            })
+        })
+    }
+
+    /// Tells applications what of the desktop's look has changed, if
+    /// anything has. If the bus has gone they cannot be told, which shows
+    /// by what this is becoming readable.
+    pub fn changed(&self, from: Appearance, to: Appearance) {
+        let was = settings(from).into_iter();
+        for ((key, now), (_, before)) in settings(to).into_iter().zip(was) {
+            if now != before {
+                let nobody = None::<&str>;
+                let body = (LOOKS, key, now);
+                let _ =
+                    self.connection
+                        .emit_signal(nobody, PATH, SETTINGS, "SettingChanged", &body);
+            }
+        }
+    }
+}
+
+impl AsFd for Portal {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.gone.as_fd()
+    }
+}
+
+/// Whether a message says that the name has gone to another program,
+/// which is a copy of this one that has taken over.
+fn lost(message: &Message) -> bool {
+    let header = message.header();
+    let member = header.member().map(ToString::to_string);
+    let lost = header.message_type() == Type::Signal && member.as_deref() == Some("NameLost");
+    lost && message
+        .body()
+        .deserialize::<String>()
+        .is_ok_and(|name| name == NAME)
+}
+
+/// How the desktop looks, as the settings applications read: whether it
+/// is dark, the colour that picks things out, and whether contrast is to
+/// be higher than usual, which it is not.
+fn settings(look: Appearance) -> [(&'static str, Value<'static>); 3] {
+    let (red, green, blue) = look.accent;
+    [
+        ("color-scheme", Value::U32(look.scheme())),
+        (
+            "accent-color",
+            Value::Structure(Structure::from((red, green, blue))),
+        ),
+        ("contrast", Value::U32(0)),
+    ]
+}
+
+/// Whether a list of groups of settings asks for how the desktop looks:
+/// one of them is that group, or stands for it by ending in `*`, or the
+/// list is empty, which asks for everything.
+fn asked(groups: &[String]) -> bool {
+    let stands = |group: &String| {
+        let start = group.strip_suffix('*');
+        group == LOOKS || start.is_some_and(|start| LOOKS.starts_with(start))
+    };
+    groups.is_empty() || groups.iter().any(stands)
+}
+
+/// Answers one message.
+fn answer(connection: &Connection, message: &Message, look: &Look) {
+    let header = message.header();
+    // Replies and signals pass by on the same connection.
+    if header.message_type() != Type::MethodCall {
+        return;
+    }
+    let interface = header.interface().map(ToString::to_string);
+    let member = header.member().map(ToString::to_string);
+    let called = (interface.as_deref().unwrap_or(SETTINGS), member.as_deref());
+    let body = message.body();
+    let refuse = |name: &str, why: &str| connection.reply_error(&header, name, &why);
+    let malformed = || {
+        let name = "org.freedesktop.DBus.Error.InvalidArgs";
+        refuse(name, "the arguments are not those of this method")
+    };
+    let sent = match called {
+        (SETTINGS, Some("ReadAll")) => match body.deserialize::<Vec<String>>() {
+            Ok(groups) => {
+                let looks = asked(&groups).then(|| (LOOKS, HashMap::from(settings(look()))));
+                let all: HashMap<&str, HashMap<&str, Value<'_>>> = looks.into_iter().collect();
+                connection.reply(&header, &all)
+            }
+            Err(_) => malformed(),
+        },
+        (SETTINGS, Some("Read")) => match body.deserialize::<(String, String)>() {
+            Ok((group, key)) => {
+                let mut settings = settings(look()).into_iter();
+                let setting = settings.find(|(name, _)| group == LOOKS && *name == key);
+                if let Some((_, value)) = setting {
+                    connection.reply(&header, &value)
+                } else {
+                    let name = "org.freedesktop.portal.Error.NotFound";
+                    refuse(name, "there is no such setting")
+                }
+            }
+            Err(_) => malformed(),
+        },
+        ("org.freedesktop.DBus.Properties", Some("Get")) => {
+            match body.deserialize::<(String, String)>() {
+                Ok((_, property)) if property == "version" => {
+                    connection.reply(&header, &Value::U32(VERSION))
+                }
+                Ok(_) => {
+                    let name = "org.freedesktop.DBus.Error.UnknownProperty";
+                    refuse(name, "there is no such property")
+                }
+                Err(_) => malformed(),
+            }
+        }
+        ("org.freedesktop.DBus.Properties", Some("GetAll")) => {
+            let all = HashMap::from([("version", Value::U32(VERSION))]);
+            connection.reply(&header, &all)
+        }
+        ("org.freedesktop.DBus.Introspectable", Some("Introspect")) => {
+            connection.reply(&header, &INTROSPECTION)
+        }
+        ("org.freedesktop.DBus.Peer", Some("Ping")) => connection.reply(&header, &()),
+        _ => {
+            let name = "org.freedesktop.DBus.Error.UnknownMethod";
+            refuse(name, "there is no such method here")
+        }
+    };
+    // An answer that cannot be sent means the bus is going, which shows
+    // when the next message is waited for.
+    let _ = sent;
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Child, Command, Stdio};
+
+    use zbus::zvariant::OwnedValue;
+
+    use super::*;
+
+    /// A bus of the test's own, gone when the test is.
+    pub(crate) struct Daemon {
+        child: Child,
+        pub(crate) address: String,
+        _directory: tempfile::TempDir,
+    }
+
+    impl Daemon {
+        pub(crate) fn start() -> Self {
+            let directory = tempfile::TempDir::new().unwrap();
+            let listen = format!("--address=unix:path={}/bus", directory.path().display());
+            let mut child = Command::new("dbus-daemon")
+                .args(["--session", "--nofork", "--print-address=1", &listen])
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("dbus-daemon is needed to test the portals");
+            let mut address = String::new();
+            let stdout = child.stdout.take().unwrap();
+            BufReader::new(stdout).read_line(&mut address).unwrap();
+            Self {
+                child,
+                address: address.trim().to_owned(),
+                _directory: directory,
+            }
+        }
+
+        /// A program on the bus that is not the service, as the portal
+        /// that passes questions on is.
+        pub(crate) fn peer(&self) -> Connection {
+            Builder::address(self.address.as_str())
+                .unwrap()
+                .build()
+                .unwrap()
+        }
+
+        pub(crate) fn stop(&mut self) {
+            self.child.kill().unwrap();
+            self.child.wait().unwrap();
+        }
+    }
+
+    impl Drop for Daemon {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    /// Everything about how the desktop looks, as a peer is told it.
+    pub(crate) type Told = HashMap<String, HashMap<String, OwnedValue>>;
+
+    /// Asks the service for the settings in some groups.
+    pub(crate) fn read_all(peer: &Connection, groups: &[&str]) -> Told {
+        let reply = peer
+            .call_method(Some(NAME), PATH, Some(SETTINGS), "ReadAll", &(groups,))
+            .unwrap();
+        reply.body().deserialize().unwrap()
+    }
+
+    /// Whether the desktop is dark, as a peer is told: 1 for dark, 2 for
+    /// light.
+    pub(crate) fn scheme(told: &Told) -> u32 {
+        let value = &told[LOOKS]["color-scheme"];
+        value.downcast_ref::<u32>().unwrap()
+    }
+
+    /// Has a peer hear the signals of the service from now on.
+    pub(crate) fn listen_for_changes(peer: &Connection) -> MessageIterator {
+        let rule = format!("type='signal',interface='{SETTINGS}'");
+        let bus = "org.freedesktop.DBus";
+        peer.call_method(
+            Some(bus),
+            "/org/freedesktop/DBus",
+            Some(bus),
+            "AddMatch",
+            &(rule,),
+        )
+        .unwrap();
+        MessageIterator::from(peer)
+    }
+
+    /// The next setting the service says has changed, and what to.
+    pub(crate) fn next_change(heard: &mut MessageIterator) -> (String, OwnedValue) {
+        let signals = heard.map_while(Result::ok);
+        let mut changes = signals.filter(|message| {
+            let member = message.header().member().map(ToString::to_string);
+            member.as_deref() == Some("SettingChanged")
+        });
+        let change = changes.next().unwrap();
+        let (group, key, value): (String, String, OwnedValue) =
+            change.body().deserialize().unwrap();
+        assert_eq!(group, LOOKS);
+        (key, value)
+    }
+
+    const DARK: Appearance = Appearance {
+        dark: true,
+        accent: (0.25, 0.5, 1.0),
+    };
+
+    /// The service on a bus, saying the desktop looks as given.
+    fn service(daemon: &Daemon, look: Appearance) -> Portal {
+        Portal::open(Some(&daemon.address), Box::new(move || look)).unwrap()
+    }
+
+    #[test]
+    fn an_application_is_told_how_the_desktop_looks() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+
+        let told = read_all(&peer, &[LOOKS]);
+        assert_eq!(scheme(&told), 1);
+        let accent = &told[LOOKS]["accent-color"];
+        let accent: (f64, f64, f64) = accent.try_clone().unwrap().try_into().unwrap();
+        assert_eq!(accent, (0.25, 0.5, 1.0));
+        assert_eq!(told[LOOKS]["contrast"].downcast_ref::<u32>().unwrap(), 0);
+
+        // One setting by itself is the same.
+        let reply = peer
+            .call_method(
+                Some(NAME),
+                PATH,
+                Some(SETTINGS),
+                "Read",
+                &(LOOKS, "color-scheme"),
+            )
+            .unwrap();
+        let value: OwnedValue = reply.body().deserialize().unwrap();
+        assert_eq!(value.downcast_ref::<u32>().unwrap(), 1);
+    }
+
+    #[test]
+    fn what_is_asked_for_by_group_is_what_is_given() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        // Nothing named asks for everything, and a group can be named
+        // by how it begins.
+        assert!(read_all(&peer, &[]).contains_key(LOOKS));
+        assert!(read_all(&peer, &["org.freedesktop.*"]).contains_key(LOOKS));
+        assert!(read_all(&peer, &["org.gnome.desktop.interface", LOOKS]).contains_key(LOOKS));
+        assert_eq!(read_all(&peer, &["org.gnome.*"]), Told::new());
+        assert_eq!(
+            read_all(&peer, &["org.gnome.desktop.interface"]),
+            Told::new()
+        );
+    }
+
+    #[test]
+    fn what_does_not_exist_or_is_asked_wrongly_is_answered_with_an_error() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let named = |result: zbus::Result<Message>| result.unwrap_err().to_string();
+        let settings = Some(SETTINGS);
+        let said = named(peer.call_method(Some(NAME), PATH, settings, "Read", &(LOOKS, "font")));
+        assert!(said.contains("NotFound"), "{said}");
+        let said =
+            named(peer.call_method(Some(NAME), PATH, settings, "Read", &("other", "contrast")));
+        assert!(said.contains("NotFound"), "{said}");
+        let said = named(peer.call_method(Some(NAME), PATH, settings, "Read", &(7_u32,)));
+        assert!(said.contains("InvalidArgs"), "{said}");
+        let said = named(peer.call_method(Some(NAME), PATH, settings, "ReadAll", &("all",)));
+        assert!(said.contains("InvalidArgs"), "{said}");
+        let said = named(peer.call_method(Some(NAME), PATH, settings, "Write", &()));
+        assert!(said.contains("UnknownMethod"), "{said}");
+
+        let properties = Some("org.freedesktop.DBus.Properties");
+        let said =
+            named(peer.call_method(Some(NAME), PATH, properties, "Get", &(SETTINGS, "name")));
+        assert!(said.contains("UnknownProperty"), "{said}");
+        let said = named(peer.call_method(Some(NAME), PATH, properties, "Get", &(1_u32,)));
+        assert!(said.contains("InvalidArgs"), "{said}");
+    }
+
+    #[test]
+    fn it_says_which_version_it_speaks_and_how_it_is_used() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let properties = Some("org.freedesktop.DBus.Properties");
+        let reply = peer
+            .call_method(Some(NAME), PATH, properties, "Get", &(SETTINGS, "version"))
+            .unwrap();
+        let version: OwnedValue = reply.body().deserialize().unwrap();
+        assert_eq!(version.downcast_ref::<u32>().unwrap(), 1);
+        let reply = peer
+            .call_method(Some(NAME), PATH, properties, "GetAll", &(SETTINGS,))
+            .unwrap();
+        let all: HashMap<String, OwnedValue> = reply.body().deserialize().unwrap();
+        assert_eq!(all["version"].downcast_ref::<u32>().unwrap(), 1);
+
+        let how = Some("org.freedesktop.DBus.Introspectable");
+        let reply = peer
+            .call_method(Some(NAME), PATH, how, "Introspect", &())
+            .unwrap();
+        let said: String = reply.body().deserialize().unwrap();
+        assert!(said.contains("SettingChanged"), "{said}");
+        // A method called without saying of which interface is taken to
+        // be of this one.
+        let none = None::<&str>;
+        let reply = peer.call_method(Some(NAME), PATH, none, "ReadAll", &(vec![LOOKS],));
+        assert!(reply.is_ok());
+        let alive = Some("org.freedesktop.DBus.Peer");
+        assert!(
+            peer.call_method(Some(NAME), PATH, alive, "Ping", &())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn applications_are_told_what_has_changed_and_nothing_that_has_not() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let mut heard = listen_for_changes(&peer);
+
+        let light = Appearance {
+            dark: false,
+            ..DARK
+        };
+        // Nothing changed, nothing said; then light, which is all that is.
+        portal.changed(DARK, DARK);
+        portal.changed(DARK, light);
+        let (key, value) = next_change(&mut heard);
+        assert_eq!(
+            (key.as_str(), value.downcast_ref::<u32>().unwrap()),
+            ("color-scheme", 2)
+        );
+
+        let red = Appearance {
+            accent: (1.0, 0.0, 0.0),
+            ..light
+        };
+        portal.changed(light, red);
+        let (key, value) = next_change(&mut heard);
+        assert_eq!(key, "accent-color");
+        let accent: (f64, f64, f64) = value.try_into().unwrap();
+        assert_eq!(accent, (1.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_copy_that_is_left_over_gives_the_name_up_to_a_new_one() {
+        use rustix::event::{PollFd, PollFlags, poll};
+
+        let daemon = Daemon::start();
+        let first = service(&daemon, DARK);
+        let light = Appearance {
+            dark: false,
+            ..DARK
+        };
+        let _second = service(&daemon, light);
+        // The first has stopped answering, which shows as it does when
+        // the bus has gone, and the second answers in its place.
+        let mut gone = [PollFd::new(&first, PollFlags::IN)];
+        poll(&mut gone, None).unwrap();
+        assert_eq!(scheme(&read_all(&daemon.peer(), &[LOOKS])), 2);
+
+        // A program that holds the name and will not give it up keeps it.
+        let other = Daemon::start();
+        let holder = other.peer();
+        holder
+            .request_name_with_flags(NAME, RequestNameFlags::DoNotQueue.into())
+            .unwrap();
+        let refused = Portal::open(Some(&other.address), Box::new(|| DARK));
+        let said = refused.unwrap_err().to_string();
+        assert!(said.contains("will not give it up"), "{said}");
+    }
+
+    #[test]
+    fn a_bus_that_is_not_there_cannot_be_joined() {
+        let nowhere = Portal::open(Some("unix:path=/nowhere/bus"), Box::new(|| DARK));
+        assert!(nowhere.is_err());
+    }
+}
