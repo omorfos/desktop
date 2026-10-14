@@ -20,7 +20,7 @@ use pw::spa::pod::serialize::PodSerializer;
 use pw::spa::pod::{Object, Pod, Property, PropertyFlags, Value};
 use pw::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
 
-use omorfos_pipewire::{Held, Removals};
+use omorfos_pipewire::{Held, Pointer, Removals, pointer_room};
 
 use crate::Failure;
 
@@ -67,12 +67,14 @@ impl Pipes {
     }
 
     /// Begins a stream of pictures `size` pixels large, as a screen of the
-    /// desktop is shared.
+    /// desktop is shared, with room beside each to say where the pointer
+    /// is and what it looks like, in a picture of it `pointer` pixels
+    /// large, if it is sent beside them.
     ///
     /// # Errors
     ///
     /// Returns an error if PipeWire will not have it.
-    pub fn share(&self, size: (u32, u32)) -> Result<Share, Failure> {
+    pub fn share(&self, size: (u32, u32), pointer: Option<(u32, u32)>) -> Result<Share, Failure> {
         let kind = properties! {
             *pw::keys::MEDIA_CLASS => "Video/Source",
             *pw::keys::MEDIA_TYPE => "Video",
@@ -115,8 +117,9 @@ impl Pipes {
                             "agreed with what reads the stream ({read:?}): {format:?}, {} by {}",
                             at.width, at.height
                         ));
-                        let room = buffers(size);
-                        let room = Pod::from_bytes(&room).into_iter();
+                        let room = [Some(buffers(size)), pointer.map(beside)];
+                        let room = room.iter().flatten();
+                        let room = room.filter_map(|room| Pod::from_bytes(room));
                         let _ = stream.update_params(&mut room.collect::<Vec<_>>());
                     }
                 });
@@ -207,12 +210,17 @@ impl Share {
         held
     }
 
-    /// Gives a buffer back to the stream: to what reads it, if a picture
-    /// was put in it, which fills all of it; or to be filled again, if not.
-    pub fn give(&self, mut held: Held, filled: bool) {
+    /// Gives a buffer back to the stream, for what reads it: with a picture,
+    /// if one was put in it, which fills all of it; and saying where the
+    /// pointer is, if it is sent beside the pictures. Without either, it
+    /// is nothing new.
+    pub fn give(&self, mut held: Held, filled: bool, pointer: Option<&Pointer<'_>>) {
         let (width, height) = self.size;
         let stride = i32::try_from(width * PIXEL).unwrap_or(i32::MAX);
         let filled = filled && held.filled(width * height * PIXEL, stride);
+        if let Some(pointer) = pointer {
+            let _ = held.point(pointer);
+        }
         drop(held);
         let sent = self.sent.get();
         if sent == 0 && filled {
@@ -270,6 +278,29 @@ fn buffers((width, height): (u32, u32)) -> Vec<u8> {
             int(spa::sys::SPA_PARAM_BUFFERS_size, width * height * PIXEL),
             int(spa::sys::SPA_PARAM_BUFFERS_stride, width * PIXEL),
             int(spa::sys::SPA_PARAM_BUFFERS_dataType, memory),
+        ],
+    };
+    serialize(&Value::Object(room))
+}
+
+/// How much room the stream wants beside each picture to say where the
+/// pointer is and what it looks like, in a picture of it `size` pixels
+/// large.
+fn beside(size: (u32, u32)) -> Vec<u8> {
+    let room = Object {
+        type_: spa::utils::SpaTypes::ObjectParamMeta.as_raw(),
+        id: spa::param::ParamType::Meta.as_raw(),
+        properties: vec![
+            Property {
+                key: spa::sys::SPA_PARAM_META_type,
+                flags: PropertyFlags::empty(),
+                value: Value::Id(spa::utils::Id(spa::sys::SPA_META_Cursor)),
+            },
+            Property {
+                key: spa::sys::SPA_PARAM_META_size,
+                flags: PropertyFlags::empty(),
+                value: Value::Int(i32::try_from(pointer_room(size)).unwrap_or(i32::MAX)),
+            },
         ],
     };
     serialize(&Value::Object(room))

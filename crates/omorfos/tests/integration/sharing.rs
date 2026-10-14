@@ -29,7 +29,9 @@ use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
 use crate::common::{Event, HEIGHT, Session, WIDTH, key};
-use crate::windows::{BACKGROUND, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use omorfos::Input;
+use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
 /// A bus of the test's own, gone when the test is.
 struct Daemon {
@@ -172,7 +174,12 @@ fn path(text: &str) -> ObjectPath<'_> {
 
 /// Makes a session and chooses what to share in it, with the pointer
 /// drawn in or not.
-fn make(peer: &Connection, session: &str, pointer: bool) {
+/// How a call asks for the pointer to be shown, by the portal's numbers.
+const HIDDEN: u32 = 1;
+const DRAWN: u32 = 2;
+const BESIDE: u32 = 4;
+
+fn make(peer: &Connection, session: &str, cursor: u32) {
     let none: HashMap<&str, Value<'_>> = HashMap::new();
     let request = "/org/freedesktop/portal/desktop/request/1_1/make";
     let made = call(
@@ -181,7 +188,6 @@ fn make(peer: &Connection, session: &str, pointer: bool) {
         &(path(request), path(session), "org.example.Call", none),
     );
     assert_eq!(made.unwrap().0, 0);
-    let cursor = if pointer { 2_u32 } else { 1 };
     let options = HashMap::from([
         ("types", Value::U32(1)),
         ("cursor_mode", Value::U32(cursor)),
@@ -220,7 +226,7 @@ fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
     for pressed in [true, false] {
         session
             .compositor_mut()
-            .input(omorfos::Input::Key { code, pressed }, 0);
+            .input(Input::Key { code, pressed }, 0);
     }
 }
 
@@ -257,7 +263,78 @@ struct Viewer {
     _listener: pw::stream::StreamListener<()>,
     node: Rc<Cell<Option<u32>>>,
     seen: Rc<RefCell<Option<Vec<u8>>>>,
+    /// Where it was last told the pointer is, where its position is in its
+    /// picture, and the colour of that picture a little inside it.
+    pointer: Rc<Cell<Option<Pointed>>>,
     link: Option<pw::link::Link>,
+}
+
+/// The pictures a viewer wants: blue first, of any size.
+fn wanted() -> Vec<u8> {
+    let wants = spa::pod::object!(
+        spa::utils::SpaTypes::ObjectParamFormat,
+        spa::param::ParamType::EnumFormat,
+        spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+        spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+        spa::pod::property!(
+            FormatProperties::VideoFormat,
+            Id,
+            spa::param::video::VideoFormat::BGRx
+        ),
+        spa::pod::property!(
+            FormatProperties::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            spa::utils::Rectangle {
+                width: 640,
+                height: 480
+            },
+            spa::utils::Rectangle {
+                width: 1,
+                height: 1
+            },
+            spa::utils::Rectangle {
+                width: 8192,
+                height: 8192
+            }
+        ),
+    );
+    let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &PodValue::Object(wants));
+    bytes.unwrap().0.into_inner()
+}
+
+/// Where a viewer was told the pointer is, where its position is in its
+/// picture, and the colour of that picture a little inside it.
+type Pointed = ((i32, i32), (i32, i32), u32);
+
+/// What the viewer asks to be told of the pointer: as much room as a call
+/// asks for, beside each picture.
+fn told_of_the_pointer() -> Vec<u8> {
+    let room = |side: i32| 28 + 20 + side * side * 4;
+    let wants = spa::pod::Object {
+        type_: spa::utils::SpaTypes::ObjectParamMeta.as_raw(),
+        id: spa::param::ParamType::Meta.as_raw(),
+        properties: vec![
+            spa::pod::Property::new(
+                spa::sys::SPA_PARAM_META_type,
+                PodValue::Id(spa::utils::Id(spa::sys::SPA_META_Cursor)),
+            ),
+            spa::pod::Property::new(
+                spa::sys::SPA_PARAM_META_size,
+                PodValue::Choice(spa::pod::ChoiceValue::Int(spa::utils::Choice(
+                    spa::utils::ChoiceFlags::empty(),
+                    spa::utils::ChoiceEnum::Range {
+                        default: room(64),
+                        min: room(1),
+                        max: room(384),
+                    },
+                ))),
+            ),
+        ],
+    };
+    let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &PodValue::Object(wants));
+    bytes.unwrap().0.into_inner()
 }
 
 impl Viewer {
@@ -273,7 +350,8 @@ impl Viewer {
         let stream = pw::stream::StreamRc::new(core.clone(), "viewer", kind).unwrap();
         let node = Rc::new(Cell::new(None));
         let seen = Rc::new(RefCell::new(None));
-        let (named, kept) = (Rc::clone(&node), Rc::clone(&seen));
+        let pointer = Rc::new(Cell::new(None));
+        let (named, kept, told) = (Rc::clone(&node), Rc::clone(&seen), Rc::clone(&pointer));
         let listener = stream
             .add_local_listener::<()>()
             .state_changed(move |stream, (), _, now| {
@@ -281,8 +359,27 @@ impl Viewer {
                     named.set(Some(stream.node_id()));
                 }
             })
+            .param_changed(|stream, (), id, param| {
+                if id == spa::param::ParamType::Format.as_raw() && param.is_some() {
+                    let wants = told_of_the_pointer();
+                    let wants = Pod::from_bytes(&wants).unwrap();
+                    stream.update_params(&mut [wants]).unwrap();
+                }
+            })
             .process(move |stream, ()| {
                 if let Some(mut buffer) = stream.dequeue_buffer() {
+                    let cursor = buffer.find_meta::<spa::buffer::meta::MetaCursor>();
+                    if let Some(cursor) = cursor.filter(|cursor| cursor.is_valid()) {
+                        let (at, tip) = (cursor.position(), cursor.hotspot());
+                        let bitmap = cursor.bitmap().and_then(|bitmap| bitmap.bitmap_data());
+                        let colour = bitmap.map(|bytes| {
+                            let at = (4 * 256 + 4) * 4;
+                            u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
+                        });
+                        let was = told.get().map(|(_, _, colour)| colour);
+                        let colour = colour.or(was).unwrap_or_default();
+                        told.set(Some(((at.x, at.y), (tip.x, tip.y), colour)));
+                    }
                     let data = &mut buffer.datas_mut()[0];
                     let size = usize::try_from(data.chunk().size()).unwrap();
                     let picture = data.data().map(|bytes| bytes[..size].to_vec());
@@ -293,37 +390,7 @@ impl Viewer {
             })
             .register()
             .unwrap();
-        let wants = spa::pod::object!(
-            spa::utils::SpaTypes::ObjectParamFormat,
-            spa::param::ParamType::EnumFormat,
-            spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
-            spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
-            spa::pod::property!(
-                FormatProperties::VideoFormat,
-                Id,
-                spa::param::video::VideoFormat::BGRx
-            ),
-            spa::pod::property!(
-                FormatProperties::VideoSize,
-                Choice,
-                Range,
-                Rectangle,
-                spa::utils::Rectangle {
-                    width: 640,
-                    height: 480
-                },
-                spa::utils::Rectangle {
-                    width: 1,
-                    height: 1
-                },
-                spa::utils::Rectangle {
-                    width: 8192,
-                    height: 8192
-                }
-            ),
-        );
-        let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &PodValue::Object(wants));
-        let bytes = bytes.unwrap().0.into_inner();
+        let bytes = wanted();
         let flags = pw::stream::StreamFlags::MAP_BUFFERS;
         stream
             .connect(
@@ -341,6 +408,7 @@ impl Viewer {
             _listener: listener,
             node,
             seen,
+            pointer,
             link: None,
         }
     }
@@ -394,7 +462,7 @@ fn a_call_is_given_the_screen_to_read_once_the_user_says_so() {
 
     let peer = daemon.peer();
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/call";
-    make(&peer, call_session, false);
+    make(&peer, call_session, HIDDEN);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
     press(&mut session, key::RETURN);
@@ -452,8 +520,18 @@ fn sharing(
     daemon: &Daemon,
     call_session: &'static str,
 ) -> (Connection, u32) {
+    sharing_with(session, daemon, call_session, HIDDEN)
+}
+
+/// The same, with the pointer shown as `cursor` asks.
+fn sharing_with(
+    session: &mut Session,
+    daemon: &Daemon,
+    call_session: &'static str,
+    cursor: u32,
+) -> (Connection, u32) {
     let peer = daemon.peer();
-    make(&peer, call_session, false);
+    make(&peer, call_session, cursor);
     let (response, results) = shared(session, daemon, call_session, key::RETURN);
     assert_eq!(response, 0);
     (peer, stream(&results).0)
@@ -512,6 +590,89 @@ fn a_call_that_begins_reading_again_is_shown_the_screen_at_once() {
         session.draw();
         viewer.turn(node);
         viewer.at(WIDTH, (10, 10)) == Some(GREEN)
+    });
+}
+
+#[test]
+fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_the_pictures() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, BLUE), ("text", 8, GREEN)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    let over = |x: f64, y: f64| Input::Motion { x, y };
+    session.compositor_mut().input(over(300.0, 200.0), 0);
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let called = "/org/freedesktop/portal/desktop/session/1_1/beside";
+    let (_peer, node) = sharing_with(&mut session, &daemon, called, BESIDE);
+    // It was over the question, which has gone.
+    session.compositor_mut().input(over(300.0, 200.0), 0);
+
+    // The pointer is not in the pictures; what reads them is told where it
+    // is and what it looks like.
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pointer.get() == Some(((300, 200), (1, 1), BLUE))
+    });
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.at(WIDTH, (10, 10)).is_some()
+    });
+    assert_eq!(viewer.at(WIDTH, (303, 203)), Some(BACKGROUND));
+
+    // It moving is told, with nothing on the screen changing.
+    session.compositor_mut().input(over(310.0, 205.0), 0);
+    session.eventually(|session| {
+        session.step();
+        viewer.turn(node);
+        viewer.pointer.get() == Some(((310, 205), (1, 1), BLUE))
+    });
+    // And so is it looking different.
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    session.compositor_mut().input(over(50.0, 50.0), 0);
+    session.roundtrip(&mut app);
+    app.set_cursor_shape(Shape::Text);
+    session.roundtrip(&mut app);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pointer.get() == Some(((50, 50), (1, 1), GREEN))
+    });
+
+    // Away from the screen shared, it is not to be seen, and back over it
+    // it is again.
+    session.add_output((WIDTH, HEIGHT));
+    session
+        .compositor_mut()
+        .input(over(f64::from(WIDTH + 10), 10.0), 0);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer
+            .pointer
+            .get()
+            .is_some_and(|(_, _, colour)| colour == 0)
+    });
+    session.compositor_mut().input(over(320.0, 240.0), 0);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pointer.get() == Some(((320, 240), (1, 1), BLUE))
+    });
+
+    // What reads it anew is told at once, though the pointer does not move.
+    drop(viewer);
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pointer.get() == Some(((320, 240), (1, 1), BLUE))
     });
 }
 
@@ -588,7 +749,7 @@ fn a_call_is_refused_the_screen_when_the_user_says_no() {
     let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
     let peer = daemon.peer();
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/no";
-    make(&peer, call_session, false);
+    make(&peer, call_session, HIDDEN);
     let refused = shared(&mut session, &daemon, call_session, key::ESCAPE);
     assert_eq!(refused, (1, HashMap::new()));
     assert!(
@@ -601,12 +762,12 @@ fn a_call_is_refused_the_screen_when_the_user_says_no() {
     peer.call_method(Some(NAME), call_session, Some(SESSION), "Close", &())
         .unwrap();
     let again = "/org/freedesktop/portal/desktop/session/1_1/again";
-    make(&peer, again, false);
+    make(&peer, again, HIDDEN);
     let starting = begin(&daemon, again);
     asked(&mut session);
     // Another asked while that question is up fails at once.
     let other = "/org/freedesktop/portal/desktop/session/1_1/other";
-    make(&peer, other, false);
+    make(&peer, other, HIDDEN);
     assert_eq!(answered(&mut session, begin(&daemon, other)).0, 2);
     // And the portal withdraws what it asked, which is a no.
     let request = "/org/freedesktop/portal/desktop/request/1_1/start";
@@ -672,7 +833,7 @@ fn without_pipewire_or_leave_to_take_pictures_the_call_is_told_it_failed() {
     let mut session = Session::new();
     let _running = start(&mut session, &daemon, ITS_OWN, "/nowhere/pipewire-0");
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/pw";
-    make(&daemon.peer(), call_session, false);
+    make(&daemon.peer(), call_session, HIDDEN);
     assert_eq!(
         shared(&mut session, &daemon, call_session, key::RETURN).0,
         2,
@@ -686,7 +847,7 @@ fn without_pipewire_or_leave_to_take_pictures_the_call_is_told_it_failed() {
     let not_let = Roles::PANEL.with(Roles::OVERLAY);
     let _running = start(&mut session, &daemon, not_let, remote.to_str().unwrap());
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/role";
-    make(&daemon.peer(), call_session, false);
+    make(&daemon.peer(), call_session, HIDDEN);
     assert_eq!(
         shared(&mut session, &daemon, call_session, key::RETURN).0,
         2,
@@ -718,7 +879,7 @@ fn a_screen_that_changes_ends_its_sharing_and_the_session_is_closed() {
 
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/gone";
     // With the pointer in it, as a call that shows where one points asks.
-    make(&peer, call_session, true);
+    make(&peer, call_session, DRAWN);
     assert_eq!(
         shared(&mut session, &daemon, call_session, key::RETURN).0,
         0

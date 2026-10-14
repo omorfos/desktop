@@ -25,7 +25,7 @@ use zbus::fdo::RequestNameFlags;
 use zbus::message::{Message, Type};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Structure, Value};
 
-use crate::screencast::{self, SCREENCAST, SESSION, Sessions};
+use crate::screencast::{self, Pointer, SCREENCAST, SESSION, Sessions};
 use crate::{Appearance, Failure};
 
 /// The name the portals pass questions for omorfos to.
@@ -49,13 +49,13 @@ pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
 
 /// What can be read of each interface: which version of it is spoken,
 /// and, of sharing the screen, that screens can be shared, with the
-/// pointer in them or without.
+/// pointer not shown, drawn in, or sent beside the pictures.
 const PROPERTIES: [(&str, &str, u32); 6] = [
     (SETTINGS, "version", 1),
     (SCREENSHOT, "version", 2),
     (SCREENCAST, "version", 5),
     (SCREENCAST, "AvailableSourceTypes", 1),
-    (SCREENCAST, "AvailableCursorModes", 1 | 2),
+    (SCREENCAST, "AvailableCursorModes", 1 | 2 | 4),
     (SESSION, "version", 1),
 ];
 
@@ -87,7 +87,7 @@ pub enum Asked {
     /// The request known by this object is no longer wanted.
     Withdrawn(OwnedObjectPath),
     /// A screen to be shared with an application, in the session the
-    /// portal made for it, with the pointer drawn in or not.
+    /// portal made for it, with the pointer shown as asked.
     Share {
         /// The call, to be answered once the user has.
         call: Message,
@@ -97,8 +97,8 @@ pub enum Asked {
         session: OwnedObjectPath,
         /// The application, as the sandbox names it.
         app: String,
-        /// Whether the pointer is to be in what is shared.
-        pointer: bool,
+        /// How the pointer is to be shown in what is shared.
+        pointer: Pointer,
     },
     /// The session known by this object has ended, and whatever it shares
     /// is to stop.

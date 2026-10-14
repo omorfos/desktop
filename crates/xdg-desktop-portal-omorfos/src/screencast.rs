@@ -19,8 +19,33 @@ pub const SESSION: &str = "org.freedesktop.impl.portal.Session";
 /// What a session was made for, until it ends.
 #[derive(Debug, Default)]
 pub(crate) struct Session {
-    /// Whether the pointer is to be drawn into what is shared.
-    pointer: bool,
+    /// How the pointer is to be shown in what is shared.
+    pointer: Pointer,
+}
+
+/// How the pointer is shown in what is shared.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Pointer {
+    /// Not at all, which is what the portal asks unless it says.
+    #[default]
+    Hidden,
+    /// Drawn into the pictures.
+    Drawn,
+    /// Sent beside them, so that it moving makes no new picture and what
+    /// reads them draws it where it is.
+    Beside,
+}
+
+impl Pointer {
+    /// How the pointer is to be shown, by the number the portal has for
+    /// it: 1 not at all, 2 drawn in, 4 sent beside. Any other is not at all.
+    fn of(mode: Option<u32>) -> Self {
+        match mode {
+            Some(2) => Self::Drawn,
+            Some(4) => Self::Beside,
+            _ => Self::Hidden,
+        }
+    }
 }
 
 /// The sessions there are, by the object each is known by.
@@ -43,11 +68,6 @@ type Begun = (
     String,
     HashMap<String, OwnedValue>,
 );
-
-/// How the pointer is to be shown, by the number the portal has for it:
-/// drawn into the pictures. The others are not drawn at all, and sent
-/// beside them, which is not offered.
-const EMBEDDED: u32 = 2;
 
 /// Answers a message about sharing the screen, if it is one, and returns
 /// whether it could be answered. Nothing, if it is about something else.
@@ -86,7 +106,7 @@ pub(crate) fn answer(
                 let cursor = options.get("cursor_mode");
                 let cursor = cursor.and_then(|mode| mode.downcast_ref::<u32>().ok());
                 let made = sessions.get_mut(&session);
-                let known = made.map(|made| made.pointer = cursor == Some(EMBEDDED));
+                let known = made.map(|made| made.pointer = Pointer::of(cursor));
                 if known.is_some() { given() } else { failed() }
             }
             Err(_) => malformed(),

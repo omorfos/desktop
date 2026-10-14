@@ -205,8 +205,10 @@ calls for them.
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
-      given as it is stored, not as it is seen; the pointer by itself
-      is not given; and the mark sits over the end of a panel at the top.
+      given as it is stored, not as it is seen; a pointer an application
+      draws itself is given by itself as the ordinary one; the pointer's
+      look is not worked out again when what is under it goes, only when
+      it next moves; and the mark sits over the end of a panel at the top.
 - [x] The portals answered by a program of our own,
       `xdg-desktop-portal-omorfos`, started with the session: so far
       the settings that tell applications light from dark and the
@@ -230,17 +232,21 @@ calls for them.
 - [ ] Known gaps in sharing the screen: the first screen is shared, with
       no choice of screen, window or region; a screen that changes size
       ends the sharing; the size the application is told is in pixels,
-      not in units of layout; the pointer can be drawn in but not sent
-      beside the pictures; a choice cannot be remembered for next time;
+      not in units of layout; a choice cannot be remembered for next time;
       the user cannot stop sharing from the desktop, only from the
       application; and the compositor still reads each picture back from
       the GPU and turns its colours on the CPU, where buffers of the GPU
       handed to the reader would copy nothing at all (next).
+- [x] The pointer sent beside the pictures when a call asks, as
+      PipeWire's cursor metadata, so that moving it makes no new picture of
+      the screen: where it is with every buffer, its picture with it, and a
+      buffer of that alone when only the pointer has changed, no more than
+      sixty times a second. The compositor lets a program that may take
+      pictures follow the pointer by itself.
 - [ ] Sharing the screen made cheap, which it is not yet: sharing a
       screen four thousand pixels across, omorfos was seen at 50-60% of a
-      core and Firefox at 95%, and the desktop lagged a little. In order:
-      the pointer sent beside the pictures as PipeWire's cursor metadata,
-      so that moving it makes no new picture of the screen; buffers of the
+      core and Firefox at 95%, and the desktop lagged a little. Next:
+      buffers of the
       GPU handed to the reader (DMA-BUF, with the formats and modifiers
       agreed with it), so that nothing is read back or turned on the CPU
       and the reader can take them as they are, with tests that need a GPU

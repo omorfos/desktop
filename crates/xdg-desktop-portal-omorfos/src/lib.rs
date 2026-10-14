@@ -26,12 +26,12 @@ use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
 pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
-pub use feed::Feed;
+pub use feed::{Feed, Seen};
 use omorfos_config::{Store, Watcher};
-use omorfos_pipewire::Held;
+use omorfos_pipewire::{Held, Picture};
 pub use prompt::{Answer, Desk, Question, asking, button_at, paint};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
-pub use screencast::{SCREENCAST, SESSION, streams};
+pub use screencast::{Pointer, SCREENCAST, SESSION, streams};
 pub use stream::{Pipes, Share};
 use zbus::message::Message;
 use zbus::zvariant::OwnedObjectPath;
@@ -142,9 +142,9 @@ enum Pending {
     /// A picture of the screen: the call, and the request it may be
     /// withdrawn by.
     Picture(Message, OwnedObjectPath),
-    /// Sharing the screen: the same, the session it is for, and whether
-    /// the pointer is to be drawn in.
-    Share(Message, OwnedObjectPath, OwnedObjectPath, bool),
+    /// Sharing the screen: the same, the session it is for, and how the
+    /// pointer is to be shown.
+    Share(Message, OwnedObjectPath, OwnedObjectPath, Pointer),
 }
 
 impl Pending {
@@ -180,6 +180,64 @@ struct Sharing {
     held: Option<Held>,
     /// When the next picture may be asked for.
     next: Instant,
+    /// What what reads the stream was last told of the pointer, if it is
+    /// sent beside the pictures, and whether there is more to tell it.
+    told: Option<Told>,
+    pointing: bool,
+}
+
+/// What what reads a stream was last told of the pointer: where it is, if
+/// over the screen; where its position is in its picture; and which
+/// picture of it that was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Told {
+    at: Option<(i32, i32)>,
+    tip: (i32, i32),
+    taken: u64,
+}
+
+/// What to tell what reads a stream of the pointer as it is seen: where it
+/// is, and its picture, or that it is not to be seen while it is not over
+/// the screen. The picture goes with every buffer, so that what reads the
+/// stream is never left without it for having missed one, as it can as it
+/// begins.
+fn telling(seen: Seen<'_>) -> (omorfos_pipewire::Pointer<'_>, Told) {
+    let told = Told {
+        at: seen.at,
+        tip: seen.tip,
+        taken: seen.taken,
+    };
+    let look = if seen.at.is_some() {
+        Picture::Shown(seen.picture)
+    } else {
+        Picture::Hidden
+    };
+    let pointer = omorfos_pipewire::Pointer {
+        at: seen.at.unwrap_or_default(),
+        tip: seen.tip,
+        size: seen.size,
+        picture: look,
+    };
+    (pointer, told)
+}
+
+impl Sharing {
+    /// Tells what reads the stream of the pointer by itself, if it has
+    /// moved or looks different, when it is time and a buffer is free:
+    /// there was no picture to tell it with.
+    fn tell(&mut self, now: Instant) {
+        let pointer = self.feed.pointer().map(telling);
+        let moved = pointer.filter(|(_, told)| Some(*told) != self.told);
+        let moved = moved.filter(|_| self.out.reading());
+        self.pointing = moved.is_some();
+        let free = moved.filter(|_| self.next <= now);
+        let free = free.and_then(|pointer| self.out.take().map(|held| (held, pointer)));
+        if let Some((held, (pointer, told))) = free {
+            self.out.give(held, false, Some(&pointer));
+            (self.told, self.pointing) = (Some(told), false);
+            self.next = now + BETWEEN;
+        }
+    }
 }
 
 impl Drop for Sharing {
@@ -233,6 +291,8 @@ impl Backend<'_> {
                             call: Some(call),
                             held: None,
                             next: Instant::now(),
+                            told: None,
+                            pointing: false,
                         };
                         self.shares.push(sharing);
                     }
@@ -253,14 +313,17 @@ impl Backend<'_> {
 
     /// Begins sharing the first screen: pictures of it, and the stream
     /// they go into.
-    fn share(&mut self, pointer: bool) -> Result<(Feed, Share), Failure> {
+    fn share(&mut self, pointer: Pointer) -> Result<(Feed, Share), Failure> {
         let pipes = self
             .pipes
             .take()
             .map_or_else(|| Pipes::connect(self.remote.as_deref()), Ok);
         pipes.and_then(|pipes| {
             let begun = Feed::new(self.desk.connection(), pointer);
-            let begun = begun.and_then(|feed| pipes.share(feed.size()).map(|out| (feed, out)));
+            let begun = begun.and_then(|feed| {
+                let pointer = feed.pointer().map(|seen| seen.size);
+                pipes.share(feed.size(), pointer).map(|out| (feed, out))
+            });
             self.pipes = Some(pipes);
             begun
         })
@@ -362,9 +425,14 @@ impl Backend<'_> {
             let over = turned.as_ref().ok().copied().flatten();
             let given = over.and_then(|filled| sharing.held.take().map(|held| (held, filled)));
             if let Some((held, filled)) = given {
-                sharing.out.give(held, filled);
+                let pointer = sharing.feed.pointer().map(telling);
+                sharing
+                    .out
+                    .give(held, filled, pointer.as_ref().map(|(pointer, _)| pointer));
+                sharing.told = pointer.map(|(_, told)| told);
                 sharing.next = now + BETWEEN;
             }
+            sharing.tell(now);
             // The next picture is asked for when something reads them, the
             // one before has been put in its buffer, it is time, and
             // PipeWire has a buffer free: one is handed back when what reads
@@ -379,7 +447,8 @@ impl Backend<'_> {
             turned.is_ok()
         });
         let waiting = self.shares.iter().filter(|sharing| {
-            sharing.out.reading() && sharing.held.is_none() && sharing.next > now
+            let wants = sharing.held.is_none() || sharing.pointing;
+            sharing.out.reading() && wants && sharing.next > now
         });
         waiting.map(|sharing| sharing.next - now).min()
     }
