@@ -24,7 +24,7 @@ use smithay::reexports::wayland_protocols::ext::image_capture_source::v1::server
 };
 use smithay::reexports::wayland_protocols::ext::image_copy_capture::v1::server::{
     ext_image_copy_capture_cursor_session_v1::{
-        ExtImageCopyCaptureCursorSessionV1, Request as CursorRequest,
+        Error as CursorError, ExtImageCopyCaptureCursorSessionV1, Request as CursorRequest,
     },
     ext_image_copy_capture_frame_v1::{
         Error as FrameError, ExtImageCopyCaptureFrameV1, FailureReason, Request as FrameRequest,
@@ -43,7 +43,7 @@ use smithay::reexports::wayland_server::protocol::wl_shm::Format;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::utils::{Physical, Rectangle, Size};
+use smithay::utils::{Physical, Point, Rectangle, Size};
 
 use crate::Scale;
 use omorfos_config::{Part, States};
@@ -84,6 +84,78 @@ pub(crate) enum Pass {
     },
     /// A window by itself.
     Window(WindowId),
+}
+
+/// How large a picture of the pointer is, across and down, in pixels: as
+/// large as any pointer is drawn, with the pointer at its top left corner.
+pub(crate) const POINTER: u32 = 256;
+
+/// A program following the pointer over a screen: told whether it is over
+/// it and where, and given pictures of it once it asks.
+#[derive(Debug)]
+struct Following {
+    cursor: ExtImageCopyCaptureCursorSessionV1,
+    output: Output,
+    /// What pictures of the pointer are asked for through, once they are.
+    session: Option<ExtImageCopyCaptureSessionV1>,
+    /// Where it was last told the pointer is on the screen, in its pixels,
+    /// if it is over it.
+    at: Option<Point<i32, Physical>>,
+    /// Where in the pointer's picture it was last told its position is,
+    /// if it is shown.
+    tip: Option<(u32, u32)>,
+    /// Which picture of the pointer it was last given, by its serial: 0
+    /// while it is hidden. Nothing, before the first.
+    given: Option<u64>,
+}
+
+impl Following {
+    /// Tells the program what has changed of the pointer: whether it is
+    /// over the screen, where on it, and where in its picture its position
+    /// is, if it is shown.
+    fn tell(&mut self, at: Option<Point<i32, Physical>>, tip: Option<(u32, u32)>) {
+        let (was, tipped) = (self.at, self.tip);
+        if was.is_none() && at.is_some() {
+            self.cursor.enter();
+        }
+        if was.is_some() && at.is_none() {
+            self.cursor.leave();
+        }
+        if tip != tipped {
+            let (x, y) = tip.unwrap_or_default();
+            self.cursor.hotspot(x.cast_signed(), y.cast_signed());
+        }
+        let moved = at.filter(|_| at != was);
+        if let Some(at) = moved {
+            self.cursor.position(at.x, at.y);
+        }
+        (self.at, self.tip) = (at, tip);
+    }
+}
+
+/// A picture of the pointer as a program is given it: `POINTER` pixels
+/// square, the pointer's own at its top left corner, as much of it as
+/// fits, and nothing anywhere else. Nothing at all, while it is hidden.
+fn boxed(picture: Option<(&[u8], (u32, u32))>) -> Vec<u8> {
+    let row = POINTER as usize * 4;
+    let mut boxed = vec![0; row * POINTER as usize];
+    let (pixels, (width, _)) = picture.unwrap_or_default();
+    let across = (width as usize * 4).max(4);
+    let rows = pixels.chunks_exact(across).zip(boxed.chunks_exact_mut(row));
+    for (from, to) in rows {
+        let fits = from.len().min(row);
+        to[..fits].copy_from_slice(&from[..fits]);
+    }
+    boxed
+}
+
+/// Says a picture has been taken, and when.
+fn ready(frame: &ExtImageCopyCaptureFrameV1, clock: Duration) {
+    let seconds = clock.as_secs();
+    let high = u32::try_from(seconds >> 32).unwrap_or(u32::MAX);
+    let low = u32::try_from(seconds & u64::from(u32::MAX)).unwrap_or(u32::MAX);
+    frame.presentation_time(high, low, clock.subsec_nanos());
+    frame.ready();
 }
 
 /// Where what pictures are taken of stands just now: the screen it is on,
@@ -204,6 +276,7 @@ pub(crate) struct Due {
 #[derive(Debug, Default)]
 pub(crate) struct Capture {
     takings: Vec<Taking>,
+    following: Vec<Following>,
     shots: Vec<Shot>,
     /// Screens a program has stopped taking pictures of since the mark
     /// was last seen to.
@@ -352,17 +425,16 @@ impl Capture {
                 shot.frame
                     .damage(part.loc.x, part.loc.y, part.size.w, part.size.h);
             }
-            let seconds = clock.as_secs();
-            let high = u32::try_from(seconds >> 32).unwrap_or(u32::MAX);
-            let low = u32::try_from(seconds & u64::from(u32::MAX)).unwrap_or(u32::MAX);
-            shot.frame
-                .presentation_time(high, low, clock.subsec_nanos());
-            shot.frame.ready();
+            ready(&shot.frame, clock);
         }
     }
 
     /// Has a program take no more pictures through this.
     fn end(&mut self, session: &ExtImageCopyCaptureSessionV1) {
+        let following = self.following.iter_mut();
+        for following in following.filter(|following| following.session.as_ref() == Some(session)) {
+            following.session = None;
+        }
         let ended = self
             .takings
             .extract_if(.., |taking| taking.session == *session);
@@ -386,6 +458,17 @@ impl Compositor {
     #[must_use]
     pub fn captured(&self, output: &Output) -> bool {
         self.capture.marks(output)
+    }
+
+    /// Where the pointer's position is on a screen, in its pixels from its
+    /// top left corner, if it is over it.
+    fn pointed(&self, output: &Output) -> Option<Point<i32, Physical>> {
+        let head = self.head(output);
+        let over = head.filter(|head| head.area().to_f64().contains(self.pointer_location));
+        over.map(|head| {
+            let from = self.pointer_location - head.area().loc.to_f64();
+            from.to_physical(head.scale.factor()).to_i32_round()
+        })
     }
 
     /// Where what pictures are taken of stands: a screen where it is, and
@@ -424,6 +507,7 @@ impl Compositor {
         let standing: Vec<_> = subjects
             .map(|taking| self.stands(&taking.subject))
             .collect();
+        self.settle_following();
         let veiled = color(
             self.config()
                 .theme
@@ -447,10 +531,15 @@ impl Compositor {
         }
         // A picture asked for that will not be taken is said to have failed.
         for shot in &mut capture.shots {
-            let live = capture
-                .takings
-                .iter()
-                .any(|taking| taking.session == shot.session);
+            let following = capture.following.iter();
+            let followed = following
+                .filter_map(|following| following.session.as_ref())
+                .any(|session| *session == shot.session);
+            let live = followed
+                || capture
+                    .takings
+                    .iter()
+                    .any(|taking| taking.session == shot.session);
             if shot.stage == Stage::Asked && (locked || !live) {
                 shot.stage = Stage::Over;
                 let stopped = FailureReason::Stopped;
@@ -482,6 +571,70 @@ impl Compositor {
         }
     }
 
+    /// Keeps programs following the pointer in step: one over a screen that
+    /// has gone is told there will be no more pictures; the rest are told
+    /// where the pointer is, and given a picture of it that is new, unless
+    /// the session is locked.
+    fn settle_following(&mut self) {
+        let following = self.capture.following.iter();
+        let there: Vec<_> = following
+            .map(|following| self.head(&following.output).is_some())
+            .collect();
+        // One following the pointer over a screen that has gone is told
+        // there will be no more pictures of it.
+        let mut there = there.into_iter();
+        let gone = self
+            .capture
+            .following
+            .extract_if(.., |_| !there.next().unwrap_or(false));
+        for following in gone.collect::<Vec<_>>() {
+            if following.at.is_some() {
+                following.cursor.leave();
+            }
+            following
+                .session
+                .iter()
+                .for_each(ExtImageCopyCaptureSessionV1::stopped);
+        }
+        let following = self.capture.following.iter();
+        let pointed: Vec<_> = following
+            .map(|following| self.pointed(&following.output))
+            .collect();
+        let locked = self.is_locked();
+        // A program following the pointer is told where it is, and given
+        // a picture of it that is new.
+        let clock = self.clock();
+        let (picture, capture) = self.pointer_picture();
+        let ours = picture.map(|picture| (&picture.bytes[..], picture.pixels));
+        for (following, at) in capture.following.iter_mut().zip(pointed) {
+            following.tell(at, picture.map(|picture| picture.tip));
+        }
+        let serial = picture.map_or(0, |picture| picture.serial);
+        for shot in &mut capture.shots {
+            let mut following = capture.following.iter_mut();
+            let of = following.find(|following| following.session.as_ref() == Some(&shot.session));
+            let new = of.filter(|following| following.given != Some(serial));
+            let Some(following) = new.filter(|_| shot.stage == Stage::Asked && !locked) else {
+                continue;
+            };
+            shot.stage = Stage::Over;
+            let boxed = boxed(ours);
+            let size = (POINTER as usize, POINTER as usize);
+            let buffer = shot.buffer.as_ref();
+            let written = buffer
+                .is_some_and(|buffer| omorfos_shm::write(buffer, Format::Argb8888, size, &boxed));
+            if !written {
+                shot.frame.failed(FailureReason::BufferConstraints);
+                continue;
+            }
+            following.given = Some(serial);
+            let whole = POINTER.cast_signed();
+            shot.frame.transform(Transform::Normal);
+            shot.frame.damage(0, 0, whole, whole);
+            ready(&shot.frame, clock);
+        }
+    }
+
     /// Starts a program taking pictures of what `source` stands for, if
     /// it may and the screen is still there.
     fn take(
@@ -504,6 +657,36 @@ impl Compositor {
         };
         let taking = Taking::of(session, subject, pointer, stands);
         self.capture.takings.push(taking);
+    }
+
+    /// Starts a program following the pointer over the screen `source`
+    /// stands for, if it may. Over a window, or over a screen that has
+    /// gone, it is not followed.
+    fn follow(
+        &mut self,
+        client: &Client,
+        cursor: ExtImageCopyCaptureCursorSessionV1,
+        source: &ExtImageCaptureSourceV1,
+    ) {
+        let may = Self::roles(Some(client)).has(Roles::CAPTURE);
+        if !may {
+            self.refuse(Some(client), "follow the pointer", "capture");
+        }
+        let subject = source.data::<Option<Subject>>().cloned().flatten();
+        let output = match subject.filter(|_| may) {
+            Some(Subject::Screen(output)) => self.head(&output).map(|_| output),
+            _ => None,
+        };
+        self.capture
+            .following
+            .extend(output.map(|output| Following {
+                cursor,
+                output,
+                session: None,
+                at: None,
+                tip: None,
+                given: None,
+            }));
     }
 }
 
@@ -636,8 +819,11 @@ impl Dispatch<ExtImageCopyCaptureManagerV1, ()> for Compositor {
                 let pointer = options.contains(Options::PaintCursors);
                 state.take(client, session, &source, pointer);
             }
-            ManagerRequest::CreatePointerCursorSession { session, .. } => {
-                data_init.init(session, ());
+            ManagerRequest::CreatePointerCursorSession {
+                session, source, ..
+            } => {
+                let cursor = data_init.init(session, ());
+                state.follow(client, cursor, &source);
             }
             _ => {}
         }
@@ -646,20 +832,46 @@ impl Dispatch<ExtImageCopyCaptureManagerV1, ()> for Compositor {
 
 impl Dispatch<ExtImageCopyCaptureCursorSessionV1, ()> for Compositor {
     fn request(
-        _: &mut Self,
+        state: &mut Self,
         _: &Client,
-        _: &ExtImageCopyCaptureCursorSessionV1,
+        cursor: &ExtImageCopyCaptureCursorSessionV1,
         request: CursorRequest,
         (): &(),
         _: &DisplayHandle,
         data_init: &mut DataInit<'_, Self>,
     ) {
-        // The pointer by itself is not given as pictures: a program asks
-        // for it to be in those of the screen. One that asks is told at
-        // once that there will be none.
         if let CursorRequest::GetCaptureSession { session } = request {
-            data_init.init(session, ()).stopped();
+            let session = data_init.init(session, ());
+            let following = state.capture.following.iter_mut();
+            let mut following = following.filter(|following| following.cursor == *cursor);
+            match following.next() {
+                Some(following) if following.session.is_some() => {
+                    let said = "pictures of the pointer are asked for already";
+                    cursor.post_error(CursorError::DuplicateSession, said);
+                }
+                // Pictures of the pointer are as large as any pointer, and
+                // see through where it is not.
+                Some(following) => {
+                    session.buffer_size(POINTER, POINTER);
+                    session.shm_format(Format::Argb8888);
+                    session.done();
+                    following.session = Some(session);
+                }
+                // A program that may not follow the pointer, or not over
+                // what it named, is told there will be no pictures.
+                None => session.stopped(),
+            }
         }
+    }
+
+    fn destroyed(
+        state: &mut Self,
+        _: ClientId,
+        cursor: &ExtImageCopyCaptureCursorSessionV1,
+        (): &(),
+    ) {
+        let following = &mut state.capture.following;
+        following.retain(|following| following.cursor != *cursor);
     }
 }
 
