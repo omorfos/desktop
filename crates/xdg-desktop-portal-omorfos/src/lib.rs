@@ -12,17 +12,18 @@
 
 mod appearance;
 mod bus;
+mod prompt;
 
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
-use std::io::Read;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 pub use appearance::Appearance;
-pub use bus::{LOOKS, Look, NAME, PATH, Portal, SETTINGS};
+pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
 use omorfos_config::{Store, Watcher};
+pub use prompt::{Answer, Desk, asking, button_at, paint};
 use rustix::event::{PollFd, PollFlags, poll};
 
 /// Why the program cannot go on, in words for the user.
@@ -54,11 +55,16 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let wayland = wayland.map(|(runtime, display)| Path::new(&runtime).join(display));
     let address = variable("DBUS_SESSION_BUS_ADDRESS");
     let address = address.as_deref().and_then(|address| address.to_str());
-    let Some((config, wayland)) = config.zip(wayland) else {
+    let found = config.zip(wayland).zip(home.map(PathBuf::from));
+    let Some(((config, wayland), home)) = found else {
         return "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
                 not set"
             .into();
     };
+    // Pictures go where the screenshot tool puts them.
+    let named = config.parent().map(|above| above.join("user-dirs.dirs"));
+    let named = named.and_then(|file| fs::read_to_string(file).ok());
+    let folder = omorfos_screenshot::pictures(named.as_deref(), &home).join("Screenshots");
     let session = omorfos_shell::connect(&wayland);
     let session = session.map_err(|error| Failure::from(format!("{}: {error}", wayland.display())));
     let asked = config.clone();
@@ -66,23 +72,101 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         let portal = Portal::open(address, Box::new(move || look(&asked)));
         portal.map(|portal| (portal, session))
     });
+    let portal = portal.and_then(|(portal, session)| {
+        let desk = Desk::new(session, Store::open(&config));
+        desk.map(|desk| (portal, desk))
+    });
     match portal {
-        Ok((portal, session)) => serve(&portal, &config, session),
+        Ok((portal, desk)) => serve(&portal, &config, desk, &folder),
         Err(failure) => failure,
     }
 }
 
-/// Tells applications when the look of the desktop changes, until the bus
-/// or the session has gone.
-fn serve(portal: &Portal, config: &Path, mut session: UnixStream) -> Failure {
+/// An address for a file, as one is given to an application: anything in
+/// its path other than letters, numbers, `/` and `-._~` written as a byte
+/// in hexadecimal.
+#[must_use]
+pub fn address(path: &Path) -> String {
+    let bytes = path.as_os_str().as_encoded_bytes().iter();
+    let written = bytes.map(|byte| {
+        let plain = byte.is_ascii_alphanumeric() || b"/-._~".contains(byte);
+        if plain {
+            char::from(*byte).to_string()
+        } else {
+            format!("%{byte:02X}")
+        }
+    });
+    format!("file://{}", written.collect::<String>())
+}
+
+/// Takes a picture of every screen, as one, saves it in `folder`, and
+/// returns its address. Nothing, if it could not be taken or saved.
+fn take(desk: &Desk, folder: &Path) -> Option<String> {
+    let shots = omorfos_screenshot::shoot(desk.connection(), None).ok();
+    let shot = shots.map(|(shots, _)| omorfos_screenshot::together(&shots));
+    let saved = shot.and_then(|shot| {
+        let saved = fs::create_dir_all(folder);
+        let stamp = omorfos_screenshot::stamp();
+        saved
+            .and_then(|()| omorfos_screenshot::save(folder, &stamp, None, &shot))
+            .ok()
+    });
+    saved.map(|path| address(&path))
+}
+
+/// Says in the session's log what became of something asked, so that
+/// what went wrong can be found out. If even that cannot be said, there is
+/// nobody to say it to.
+fn note(said: &str) {
+    let _ = writeln!(io::stderr(), "xdg-desktop-portal-omorfos: {said}");
+}
+
+/// What an application is called in the log.
+fn called(app: &str) -> &str {
+    if app.is_empty() { "a program" } else { app }
+}
+
+/// A question that waits on the user: the call to answer, and the object
+/// the portal may withdraw it by.
+type Pending = (zbus::message::Message, zbus::zvariant::OwnedObjectPath);
+
+/// Answers what waits on the user, and tells applications when the look of
+/// the desktop changes, until the bus or the session has gone.
+fn serve(portal: &Portal, config: &Path, mut desk: Desk, folder: &Path) -> Failure {
     // A folder that is not there cannot be watched for what is put in it.
     let _ = fs::create_dir_all(config);
     let mut watcher = Watcher::new(config).ok();
     let mut last = look(config);
+    let mut pending: Option<Pending> = None;
     loop {
+        let Ok(answer) = desk.turn() else {
+            return "the session has ended".into();
+        };
+        let answered = pending.take_if(|_| answer.is_some());
+        if let Some((answer, (call, _))) = answer.zip(answered) {
+            // The question is taken off the screen at once, and before a
+            // picture is taken, so that it is not in it.
+            let _ = desk.turn();
+            if answer == Answer::Give {
+                let taken = take(&desk, folder);
+                let response = if let Some(taken) = &taken {
+                    note(&format!("the picture was taken and saved at {taken}"));
+                    Response::Given
+                } else {
+                    note("the user said yes, and the picture could not be taken or saved");
+                    Response::Failed
+                };
+                portal.respond(&call, response, taken);
+            } else {
+                note("the user said no");
+                portal.respond(&call, Response::Refused, None);
+            }
+        }
+        let asking = portal.asking();
         let mut sources = vec![
             PollFd::new(portal, PollFlags::IN),
-            PollFd::new(&session, PollFlags::IN),
+            PollFd::new(&asking, PollFlags::IN),
+            PollFd::new(&desk, PollFlags::IN),
         ];
         sources.extend(
             watcher
@@ -91,25 +175,50 @@ fn serve(portal: &Portal, config: &Path, mut session: UnixStream) -> Failure {
         );
         // If the wait fails, what there is to do is looked for all the same.
         let _ = poll(&mut sources, None);
-        let ready = |index: usize| {
-            sources
-                .get(index)
-                .is_some_and(|it| !it.revents().is_empty())
-        };
-        let (gone, said) = (ready(0), ready(1));
+        let gone = sources.first().is_some_and(|bus| !bus.revents().is_empty());
         drop(sources);
         if gone {
             return "the bus has gone, or another copy has taken over".into();
         }
-        // Nothing is asked of the compositor, so nothing is to come from it
-        // but its going. Anything that does come is passed over.
-        let mut heard = [0; 256];
-        if said && session.read(&mut heard).unwrap_or(0) == 0 {
-            return "the session has ended".into();
+        for asked in portal.asked() {
+            match asked {
+                // One question at a time: another while one is up fails.
+                Asked::Screenshot { call, app, .. } if pending.is_some() => {
+                    let app = called(&app);
+                    note(&format!(
+                        "{app} asked for a picture while another was being asked about"
+                    ));
+                    portal.respond(&call, Response::Failed, None);
+                }
+                // Nor is one that cannot be asked.
+                Asked::Screenshot { call, request, app } => {
+                    note(&format!(
+                        "{} asked for a picture of the screen",
+                        called(&app)
+                    ));
+                    if desk.ask(&app) {
+                        pending = Some((call, request));
+                    } else {
+                        note("the user cannot be asked: the compositor does not offer the means");
+                        portal.respond(&call, Response::Failed, None);
+                    }
+                }
+                Asked::Withdrawn(request) => {
+                    let withdrawn = pending.take_if(|(_, asked)| *asked == request);
+                    if let Some((call, _)) = withdrawn {
+                        note("the portal no longer wants the picture it asked for");
+                        desk.dismiss();
+                        portal.respond(&call, Response::Refused, None);
+                    }
+                }
+            }
         }
         // What is said to have changed is read, so that it is not said
         // again. Whether anything did is seen by looking.
-        let _ = watcher.as_mut().map(Watcher::drain);
+        let changed = watcher.as_mut().map(Watcher::drain);
+        if changed.is_some_and(|changed| changed.unwrap_or(false)) {
+            desk.reread();
+        }
         let now = look(config);
         portal.changed(last, now);
         last = now;
@@ -118,16 +227,14 @@ fn serve(portal: &Portal, config: &Path, mut session: UnixStream) -> Failure {
 
 #[cfg(test)]
 mod tests {
-    use std::thread::{self, JoinHandle};
+    use std::thread;
 
-    use std::io::Write;
     use std::os::unix::net::UnixListener;
 
     use super::*;
-    use crate::bus::tests::{Daemon, listen_for_changes, next_change, read_all, scheme};
+    use crate::bus::tests::Daemon;
 
-    /// A stand-in for the compositor: a socket the program connects to,
-    /// and the connection it makes, once it has made it.
+    /// A stand-in for a compositor, which hangs up on what connects.
     struct Compositor {
         _folder: tempfile::TempDir,
         runtime: OsString,
@@ -144,99 +251,22 @@ mod tests {
                 listener,
             }
         }
-
-        /// The program's connection to it.
-        fn accepted(&self) -> UnixStream {
-            self.listener.accept().unwrap().0
-        }
-    }
-
-    /// Starts the program on a bus, with a folder for a home, in the
-    /// session of a compositor.
-    fn started(daemon: &Daemon, home: &Path, compositor: &Compositor) -> JoinHandle<String> {
-        let (address, home) = (daemon.address.clone(), home.to_owned());
-        let runtime = compositor.runtime.clone();
-        let running = thread::spawn(move || {
-            let variable = |name: &str| match name {
-                "HOME" => Some(home.clone().into_os_string()),
-                "DBUS_SESSION_BUS_ADDRESS" => Some(OsString::from(&address)),
-                "XDG_RUNTIME_DIR" => Some(runtime.clone()),
-                "WAYLAND_DISPLAY" => Some(OsString::from("wayland-test")),
-                _ => None,
-            };
-            start(&variable).to_string()
-        });
-        // It has the name once the bus says someone has.
-        let peer = daemon.peer();
-        let bus = "org.freedesktop.DBus";
-        let owned = || {
-            let asked = peer.call_method(Some(bus), "/", Some(bus), "NameHasOwner", &(NAME,));
-            asked.unwrap().body().deserialize::<bool>().unwrap()
-        };
-        while !owned() && !running.is_finished() {
-            thread::sleep(std::time::Duration::from_millis(2));
-        }
-        running
     }
 
     #[test]
-    fn applications_are_told_how_the_theme_looks_and_when_it_changes() {
-        let mut daemon = Daemon::start();
-        let home = tempfile::TempDir::new().unwrap();
-        let compositor = Compositor::new();
-        let running = started(&daemon, home.path(), &compositor);
-        let peer = daemon.peer();
+    fn an_application_without_a_name_is_called_a_program() {
+        assert_eq!(called("org.example.App"), "org.example.App");
+        assert_eq!(called(""), "a program");
+    }
+
+    #[test]
+    fn an_address_is_given_for_a_file_with_what_would_be_misread_written_out() {
+        let path = Path::new("/home/ada/Pictures/Screenshots/Screenshot 2026-10-14 10-00-00.png");
         assert_eq!(
-            scheme(&read_all(&peer, &[LOOKS])),
-            1,
-            "the built-in theme is dark"
+            address(path),
+            "file:///home/ada/Pictures/Screenshots/Screenshot%202026-10-14%2010-00-00.png"
         );
-
-        // The theme is made light, and applications are told so. A file
-        // that is not the theme changes nothing and says nothing.
-        let mut heard = listen_for_changes(&peer);
-        let config = home.path().join(".config/omorfos");
-        fs::write(config.join("notes.txt"), "nothing to do with it").unwrap();
-        let light = "menu { background: #ffffff; color: #101010; }";
-        fs::write(config.join("theme.css"), light).unwrap();
-        let (key, value) = next_change(&mut heard);
-        assert_eq!(
-            (key.as_str(), value.downcast_ref::<u32>().unwrap()),
-            ("color-scheme", 2)
-        );
-        assert_eq!(scheme(&read_all(&peer, &[LOOKS])), 2);
-
-        daemon.stop();
-        assert!(running.join().unwrap().starts_with("the bus has gone"));
-    }
-
-    #[test]
-    fn it_ends_when_the_session_does() {
-        let daemon = Daemon::start();
-        let home = tempfile::TempDir::new().unwrap();
-        let compositor = Compositor::new();
-        let running = started(&daemon, home.path(), &compositor);
-        let mut session = compositor.accepted();
-        // What the compositor says, which it would not, is passed over.
-        session.write_all(b"something").unwrap();
-        assert_eq!(scheme(&read_all(&daemon.peer(), &[LOOKS])), 1);
-        assert!(!running.is_finished());
-        drop(session);
-        assert_eq!(running.join().unwrap(), "the session has ended");
-    }
-
-    #[test]
-    fn a_configuration_that_cannot_be_watched_is_still_answered_for() {
-        let mut daemon = Daemon::start();
-        let home = tempfile::TempDir::new().unwrap();
-        // A home that is a file has no folder in it to watch.
-        let file = home.path().join("file");
-        fs::write(&file, "").unwrap();
-        let compositor = Compositor::new();
-        let running = started(&daemon, &file, &compositor);
-        assert_eq!(scheme(&read_all(&daemon.peer(), &[LOOKS])), 1);
-        daemon.stop();
-        assert!(running.join().unwrap().starts_with("the bus has gone"));
+        assert_eq!(address(Path::new("/a/ü#~_.x")), "file:///a/%C3%BC%23~_.x");
     }
 
     #[test]
@@ -264,6 +294,24 @@ mod tests {
             _ => None,
         };
         let said = start(&variable).to_string();
+        assert!(!said.contains("not an omorfos session"), "{said}");
+
+        // There are both, and what seemed a compositor hangs up.
+        let compositor = Compositor::new();
+        let hangs_up = compositor.runtime.clone();
+        let daemon = Daemon::start();
+        let address = daemon.address.clone();
+        let variable = move |name: &str| match name {
+            "HOME" => Some(OsString::from("/nowhere")),
+            "XDG_RUNTIME_DIR" => Some(hangs_up.clone()),
+            "WAYLAND_DISPLAY" => Some(OsString::from("wayland-test")),
+            "DBUS_SESSION_BUS_ADDRESS" => Some(OsString::from(&address)),
+            _ => None,
+        };
+        let refused = thread::spawn(move || start(&variable).to_string());
+        let (stream, _) = compositor.listener.accept().unwrap();
+        drop(stream);
+        let said = refused.join().unwrap();
         assert!(!said.contains("not an omorfos session"), "{said}");
     }
 }

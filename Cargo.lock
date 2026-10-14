@@ -1668,6 +1668,7 @@ dependencies = [
  "wayland-protocols-wlr",
  "x11rb",
  "xcursor",
+ "xdg-desktop-portal-omorfos",
  "zbus",
 ]
 
@@ -3420,9 +3421,15 @@ name = "xdg-desktop-portal-omorfos"
 version = "0.1.0"
 dependencies = [
  "omorfos-config",
+ "omorfos-screenshot",
  "omorfos-shell",
+ "omorfos-ui",
  "rustix 1.1.5",
  "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "xkbcommon",
  "zbus",
 ]
 

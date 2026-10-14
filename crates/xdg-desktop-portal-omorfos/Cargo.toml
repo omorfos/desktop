@@ -12,8 +12,20 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Connects to the compositor, to end when the session does.
+# Connects to the compositor, and hands it the question drawn.
 omorfos-shell = { path = "../omorfos-shell" }
+# Takes pictures of the screen and saves them as the screenshot tool does.
+omorfos-screenshot = { path = "../omorfos-screenshot" }
+# Draws the question.
+omorfos-ui = { path = "../omorfos-ui" }
+# The question is asked on the screen as a Wayland client. All are already
+# in the tree through Smithay's nested backend.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# Turns the keys the compositor reports into what they are, by its
+# layout. Without its default features it maps nothing into memory.
+xkbcommon = { version = "0.8.0", default-features = false }
 # Says what the desktop looks like, which applications are told.
 omorfos-config = { path = "../omorfos-config" }
 # Already in the tree through Smithay. Waits for the bus or the

@@ -766,7 +766,15 @@ that picks things out. An application that follows the desktop, as most
 written with GTK or Qt do, is then dark when your theme is and light when
 it is.
 
-Both are read from the theme, so there is nothing to set. The desktop is
+An application can also ask for a picture of the screen, as a browser or
+a chat in a sandbox does. Each time, a question goes up in the middle of
+the screen, over everything, saying which application asks: Enter or
+**Take picture** gives it a picture of every screen, as one, saved among
+your pictures as `Print` saves them; Escape or **Cancel** gives it
+nothing. The question is not in the picture, and the red mark shows while
+it is taken. The question has the look of the launcher.
+
+How the desktop looks is read from the theme, so there is nothing to set. The desktop is
 dark if menus are written in something lighter than what they are
 written on, and the colour is the one the row of a menu under the
 pointer is lit with. Change `theme.css` and applications are told at

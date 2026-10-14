@@ -36,6 +36,7 @@ assets = [
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
+    ["../../packaging/omorfos-session.target", "usr/lib/systemd/user/", "644"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
     # The built-in theme, to copy from.
@@ -85,6 +86,7 @@ omorfos-panel = { path = "../omorfos-panel" }
 omorfos-launcher = { path = "../omorfos-launcher" }
 omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
+xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 # Reads back the pictures the screenshot tool saves.
 png = "0.18.1"
 # Sends notifications in the tests, as a program would.

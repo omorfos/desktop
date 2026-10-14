@@ -181,6 +181,22 @@ until there is a file manager here to do it.
 - **A new copy takes the name over.** Should one be left over all the
   same, after a crash say, the new one is given the name and the old one
   is told and stops, rather than the new one being refused it.
-- **The portal service is started again at login** if it is running,
-  once systemd has been told of the session. It may be left from a
-  session of another desktop, knowing nothing of omorfos.
+- **systemd is told when the session begins and ends**, by
+  `omorfos-session.target`, which brings up its graphical session. The
+  portal services belong to that, so they stop when the session does.
+  Left running, they outlived it: the GTK backend lost its display and
+  was started again without one, which left a start pending on the bus
+  that the next session's portal waited on until it was killed, and
+  every GTK application with it. The target is started again at login
+  in case a session ended without stopping it.
+- **The portal service is started again once ours has its name**, if it
+  is running by then. Started a moment before, it gave the Screenshot
+  interface to another backend for the whole session.
+
+**The question is the backend's own.** Asked for a picture, it puts a
+question in the middle of the screen, over everything and with the
+keyboard, and only once the user has said yes takes the picture, after
+taking the question down. The compositor starts it able to do both, and
+nothing else is trusted with either. It learns what the compositor
+offers before it takes its name on the bus, so that it is never asked
+something before it knows whether it can ask the user.

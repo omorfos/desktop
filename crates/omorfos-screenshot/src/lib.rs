@@ -19,7 +19,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub use client::{Failure, Shot};
+pub use client::{Camera, Failure, Shot, shoot};
 use omorfos_config::{Kept, Store};
 pub use save::{encode, pictures, save, together};
 
@@ -54,6 +54,13 @@ pub fn told(arguments: &[OsString]) -> Result<Told, Failure> {
         }
     }
     Ok(told)
+}
+
+/// When a picture is taken, as it is named after: the date and the time
+/// of day where the user is, to the second.
+#[must_use]
+pub fn stamp() -> String {
+    jiff::Zoned::now().strftime("%Y-%m-%d %H-%M-%S").to_string()
 }
 
 /// What the window with focus is called in the list of windows, as the
@@ -140,9 +147,10 @@ pub fn start(
         None
     };
 
-    let (shots, camera) = client::shoot(&wayland, window)?;
+    let connection = client::connect(&wayland)?;
+    let (shots, camera) = shoot(&connection, window)?;
     let saved = if kept.saves() {
-        let stamp = jiff::Zoned::now().strftime("%Y-%m-%d %H-%M-%S").to_string();
+        let stamp = stamp();
         // A screen is named in the file only when there is more than one.
         let several = shots.len() > 1;
         let saved = fs::create_dir_all(&folder).and_then(|()| {

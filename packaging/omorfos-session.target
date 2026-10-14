@@ -1,0 +1,8 @@
+[Unit]
+Description=omorfos session
+Documentation=https://github.com/omorfos/desktop
+# The user's services that belong to a graphical session, such as the
+# portals, run while this does and are stopped with it.
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
