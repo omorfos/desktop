@@ -21,8 +21,9 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 
 use pipewire::spa::sys::{
-    SPA_CHUNK_FLAG_CORRUPTED, SPA_CHUNK_FLAG_NONE, SPA_DATA_FLAG_MAPPABLE, SPA_DATA_FLAG_READWRITE,
-    SPA_DATA_MemFd, spa_data,
+    SPA_CHUNK_FLAG_NONE, SPA_DATA_FLAG_MAPPABLE, SPA_DATA_FLAG_READWRITE, SPA_DATA_MemFd,
+    SPA_META_Cursor, SPA_VIDEO_FORMAT_BGRA, spa_data, spa_meta, spa_meta_bitmap, spa_meta_cursor,
+    spa_point, spa_rectangle,
 };
 use pipewire::stream::{ListenerLocalBuilder, StreamRc};
 use pipewire::sys::pw_buffer;
@@ -100,6 +101,44 @@ impl Removals {
     }
 }
 
+/// How many bytes what is said of the pointer takes, before its picture.
+const CURSOR: u32 = 28;
+const BITMAP: u32 = 20;
+const _: () = assert!(size_of::<spa_meta_cursor>() == CURSOR as usize);
+const _: () = assert!(size_of::<spa_meta_bitmap>() == BITMAP as usize);
+
+/// How much room to ask for, beside each picture, to say where the pointer
+/// is and what it looks like, in a picture of it `size` pixels large.
+#[must_use]
+pub const fn pointer_room((width, height): (u32, u32)) -> u32 {
+    let pixels = width.saturating_mul(height).saturating_mul(4);
+    (CURSOR + BITMAP).saturating_add(pixels)
+}
+
+/// Where the pointer is and what it looks like, as what reads a stream is
+/// told beside a picture.
+#[derive(Debug, Clone, Copy)]
+pub struct Pointer<'a> {
+    /// Where its position is in the picture, in pixels.
+    pub at: (i32, i32),
+    /// Where its position is in its own picture.
+    pub tip: (i32, i32),
+    /// How large its own picture is, in pixels.
+    pub size: (u32, u32),
+    /// What it looks like.
+    pub picture: Picture<'a>,
+}
+
+/// What the pointer looks like.
+#[derive(Debug, Clone, Copy)]
+pub enum Picture<'a> {
+    /// As these pixels: four bytes to a pixel as blue, green, red and
+    /// alpha, premultiplied, row by row.
+    Shown(&'a [u8]),
+    /// As nothing: it is not over what is shared, or is hidden.
+    Hidden,
+}
+
 /// Memory a picture is put in: a file shared with whatever reads the
 /// stream, where in it the buffer starts, and how many bytes it has.
 #[derive(Debug)]
@@ -147,8 +186,9 @@ impl Held {
                 taken: removals.count.get(),
             };
             // Until a picture is put in it, it is said to have none, so that
-            // given back unfilled it is not read as one.
-            let _ = held.chunk(0, 0, SPA_CHUNK_FLAG_CORRUPTED);
+            // given back unfilled it is read as nothing new: the pointer
+            // alone, if it has moved.
+            let _ = held.chunk(0, 0, SPA_CHUNK_FLAG_NONE);
             held
         })
     }
@@ -219,6 +259,104 @@ impl Held {
         said.is_some()
     }
 
+    /// Says beside its picture, if it has one, where the pointer is and
+    /// what it looks like. Returns whether it could be said: not if what
+    /// reads the stream did not ask to be told, or PipeWire has taken the
+    /// buffer away.
+    pub fn point(&mut self, pointer: &Pointer<'_>) -> bool {
+        let (width, height) = pointer.size;
+        let needed = pointer_room(pointer.size);
+        let pixels = (needed - CURSOR - BITMAP) as usize;
+        let meta = self.meta(SPA_META_Cursor);
+        // What is said of the pointer is said whole, or not at all.
+        let meta = meta.filter(|meta| meta.size >= needed);
+        let meta = meta.and_then(|meta| NonNull::new(meta.data.cast::<u8>()));
+        let said = meta.map(|at| {
+            let told = spa_meta_cursor {
+                id: 1,
+                flags: 0,
+                position: spa_point {
+                    x: pointer.at.0,
+                    y: pointer.at.1,
+                },
+                hotspot: spa_point {
+                    x: pointer.tip.0,
+                    y: pointer.tip.1,
+                },
+                bitmap_offset: CURSOR,
+            };
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: the metadata is the buffer's, which is live, and has
+            // room for this, as was checked; nothing else writes it while
+            // the buffer is held. It need not be aligned.
+            unsafe {
+                at.cast::<spa_meta_cursor>().write_unaligned(told);
+            }
+            let header = spa_meta_bitmap {
+                format: SPA_VIDEO_FORMAT_BGRA,
+                size: spa_rectangle { width, height },
+                stride: (width * 4).cast_signed(),
+                offset: BITMAP,
+            };
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: as above: the bitmap comes after what was written
+            // and there is room for it and its pixels after it.
+            let bitmap = unsafe { at.add(CURSOR as usize) };
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: as above, for the bitmap's header.
+            unsafe {
+                bitmap.cast::<spa_meta_bitmap>().write_unaligned(header);
+            }
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: as above: the pixels are what follows the header.
+            let after = unsafe { bitmap.add(BITMAP as usize) };
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: as above: `pixels` bytes of the room that was
+            // checked for, which nothing else reads or writes meanwhile.
+            let room = unsafe { std::slice::from_raw_parts_mut(after.as_ptr(), pixels) };
+            // A picture that is not as large as it is said to be is not
+            // shown.
+            match pointer.picture {
+                Picture::Shown(bytes) if bytes.len() == room.len() => {
+                    room.copy_from_slice(bytes);
+                }
+                _ => room.fill(0),
+            }
+        });
+        said.is_some()
+    }
+
+    /// The buffer's metadata of a kind, if it has it and is still the
+    /// stream's.
+    fn meta(&self, kind: u32) -> Option<spa_meta> {
+        let live = self.live().then_some(self.buffer);
+        // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+        #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+        // SAFETY: the buffer is live, so PipeWire has not freed it.
+        let spa = live.and_then(|buffer| NonNull::new(unsafe { buffer.as_ref() }.buffer));
+        spa.and_then(|spa| {
+            // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+            #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+            // SAFETY: as above, for what the buffer points at.
+            let spa = unsafe { spa.as_ref() };
+            let metas = NonNull::new(spa.metas).filter(|_| spa.n_metas > 0);
+            metas.and_then(|metas| {
+                // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
+                #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
+                // SAFETY: as above: the buffer has `n_metas` of them, at
+                // `metas`, which nothing else writes while it is held.
+                let metas =
+                    unsafe { std::slice::from_raw_parts(metas.as_ptr(), spa.n_metas as usize) };
+                metas.iter().find(|meta| meta.type_ == kind).copied()
+            })
+        })
+    }
+
     /// The first part of the buffer, which is where a picture goes, if it
     /// has one and is still the stream's.
     fn first(&self) -> Option<&spa_data> {
@@ -241,6 +379,7 @@ fn first(buffer: NonNull<pw_buffer>) -> Option<NonNull<spa_data>> {
     // for a buffer that has none.
     let spa = unsafe { buffer.as_ref() }.buffer;
     NonNull::new(spa).and_then(|spa| {
+        // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
         #[expect(unsafe_code, reason = "see docs/adr/0041-pipewire-buffers.md")]
         // SAFETY: as above, for what the buffer points at.
         let spa = unsafe { spa.as_ref() };

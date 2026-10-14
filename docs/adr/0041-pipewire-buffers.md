@@ -53,6 +53,10 @@ does (ADR 40), and only for this. Everything else still forbids it.
   it, and is not touched once PipeWire has taken it away, which PipeWire
   says it does before it frees one. Nothing is handed out that outlives
   what it points at: the file is copied, not lent.
+- **It also says where the pointer is**, beside each picture, as
+  PipeWire's cursor metadata, which the bindings can read but not write.
+  `Held::point` finds the buffer's metadata and writes it only if it has
+  room for all of it, the pointer's picture included.
 - **Every block carries a `TODO`** saying that it is to go, and naming
   this record.
 - **It is to be taken out as soon as it can be.** The wish is plain: no
