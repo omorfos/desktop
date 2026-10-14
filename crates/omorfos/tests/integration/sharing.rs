@@ -817,15 +817,7 @@ fn a_screen_is_shared_in_the_memory_of_the_card_where_there_is_one() {
 /// The device number of the graphics card to try with, if this machine has
 /// one this user may use.
 fn render_node() -> Option<u64> {
-    use std::os::unix::fs::MetadataExt;
-    let path = std::path::Path::new("/dev/dri/renderD128");
-    let usable = std::fs::File::options()
-        .read(true)
-        .write(true)
-        .open(path)
-        .is_ok();
-    let number = std::fs::metadata(path).ok().map(|told| told.rdev());
-    number.filter(|_| usable)
+    crate::common::graphics_card().map(|(_, number)| number)
 }
 
 #[test]
