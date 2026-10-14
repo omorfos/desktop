@@ -131,12 +131,7 @@ impl Pipes {
                         let layout = card.then_some(agreed.modifier());
                         agreeing.set(layout);
                         let (format, at) = (agreed.format(), agreed.size());
-                        let memory = layout.map_or_else(
-                            || "shared memory".to_owned(),
-                            |layout| {
-                                format!("memory of the graphics card, laid out as {layout:#x}")
-                            },
-                        );
+                        let memory = memory(layout);
                         note(&format!(
                             "agreed with what reads the stream ({read:?}): {format:?}, {} by {}, \
                              in {memory}",
@@ -272,6 +267,13 @@ impl Share {
         // The stream drives itself: it is told that there is something.
         let _ = self.stream.trigger_process();
     }
+}
+
+/// What memory was agreed, in words for the log: of the graphics card laid
+/// out as `layout`, or shared.
+fn memory(layout: Option<u64>) -> String {
+    let card = layout.map(|layout| format!("memory of the graphics card, laid out as {layout:#x}"));
+    card.unwrap_or_else(|| "shared memory".to_owned())
 }
 
 /// Shared memory for a picture `size` large, a file of its own.
@@ -420,6 +422,13 @@ mod tests {
             .collect();
         let mandatory = PodPropFlags::MANDATORY;
         assert_eq!(layouts, [Some((0, mandatory)), Some((7, mandatory)), None]);
+    }
+
+    #[test]
+    fn the_log_says_which_memory_was_agreed() {
+        assert_eq!(memory(None), "shared memory");
+        let card = "memory of the graphics card, laid out as 0x100000000000001";
+        assert_eq!(memory(Some(0x0100_0000_0000_0001)), card);
     }
 
     #[test]

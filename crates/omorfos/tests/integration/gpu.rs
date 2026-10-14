@@ -9,8 +9,6 @@
 use std::fs::File;
 use std::io::Write;
 use std::os::fd::AsFd;
-use std::os::unix::fs::MetadataExt;
-use std::path::Path;
 
 use smithay::backend::allocator::{Format, Fourcc, Modifier};
 use smithay::reexports::gbm;
@@ -34,10 +32,7 @@ fn drawable() -> [Format; 1] {
 /// The graphics card to try with, and its device number, if this machine
 /// has one this user may use.
 fn card() -> Option<(File, u64)> {
-    let path = Path::new("/dev/dri/renderD128");
-    let file = File::options().read(true).write(true).open(path).ok();
-    let number = std::fs::metadata(path).ok().map(|told| told.rdev());
-    file.zip(number)
+    crate::common::graphics_card()
 }
 
 #[test]

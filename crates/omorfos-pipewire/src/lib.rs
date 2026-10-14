@@ -243,7 +243,7 @@ impl Held {
         let made = files.iter().find(|(at, ..)| *at == place.1);
         let stride = made.map_or(0, |(.., stride)| *stride);
         self.first().and_then(|data| {
-            let kind = data.type_ == SPA_DATA_MemFd || data.type_ == SPA_DATA_DmaBuf;
+            let kind = [SPA_DATA_MemFd, SPA_DATA_DmaBuf].contains(&data.type_);
             let shared = kind && data.fd >= 0;
             let fd = i32::try_from(data.fd).ok().filter(|_| shared);
             let file = fd.and_then(|fd| {

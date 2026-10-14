@@ -2100,3 +2100,16 @@ pub(crate) fn between(color: u32, one: u32, other: u32) -> bool {
         .all(|(channel, (one, other))| (one.min(other)..=one.max(other)).contains(&channel));
     within && color != one && color != other
 }
+
+/// The graphics card to try the tests that need one with, and its device
+/// number, if this machine has one this user may use; none if
+/// `OMORFOS_TESTS_WITHOUT_CARD` is set, so that coverage can be measured
+/// as CI, which has no card, measures it.
+pub(crate) fn graphics_card() -> Option<(std::fs::File, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let wanted = std::env::var_os("OMORFOS_TESTS_WITHOUT_CARD").is_none();
+    let path = Path::new("/dev/dri/renderD128");
+    let file = std::fs::File::options().read(true).write(true).open(path);
+    let number = std::fs::metadata(path).ok().map(|told| told.rdev());
+    file.ok().zip(number).filter(|_| wanted)
+}

@@ -57,7 +57,10 @@ The tools are in `~/.cargo/bin`. If tests were added that start processes,
 watch files or start an X server, stress them as `docs/TESTING.md` says.
 If the change touches buffers of the graphics card, pictures of the screen
 or sharing it, run the tests that need a card, which CI skips, as
-`docs/TESTING.md` says, and say in the report whether they ran.
+`docs/TESTING.md` says, and say in the report whether they ran. On a
+machine with a card, run the coverage gate a second time as CI does,
+`OMORFOS_TESTS_WITHOUT_CARD=1 cargo coverage --locked`: what only the card
+reaches counts here and not there.
 
 ## 4. Build for trying by hand
 

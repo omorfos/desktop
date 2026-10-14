@@ -124,6 +124,15 @@ cargo test -p omorfos --all-features --locked --test integration gpu -- --nocapt
 
 A test that printed `not tried` did not run.
 
+What a card reaches is measured by the coverage gate here, and not in
+CI, so 100% here can hide what CI finds wanting. Measure it as CI does,
+with the tests that need a card passing without trying, before taking
+the gate's word:
+
+```sh
+OMORFOS_TESTS_WITHOUT_CARD=1 cargo coverage --locked
+```
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X
