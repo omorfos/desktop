@@ -3,6 +3,9 @@
 
 use omorfos_core::geometry::Size as DomainSize;
 use omorfos_core::{Desktop, Edges, WindowId};
+use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
+use smithay::delegate_dmabuf;
 use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state};
 use smithay::desktop::{LayerSurface, PopupKind, Window, WindowSurfaceType, layer_map_for_output};
 use smithay::input::pointer::CursorImageStatus;
@@ -539,6 +542,18 @@ impl BufferHandler for Compositor {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
 }
 
+impl DmabufHandler for Compositor {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.gpu_buffers.state
+    }
+
+    fn dmabuf_imported(&mut self, _: &DmabufGlobal, _: Dmabuf, notifier: ImportNotifier) {
+        // Only what the card can draw is offered, which Smithay has checked
+        // the buffer is: whether it can be drawn is found when it is.
+        let _ = notifier.successful::<Self>();
+    }
+}
+
 impl OutputHandler for Compositor {}
 
 delegate_compositor!(Compositor);
@@ -556,6 +571,7 @@ delegate_fractional_scale!(Compositor);
 delegate_cursor_shape!(Compositor);
 delegate_viewporter!(Compositor);
 delegate_single_pixel_buffer!(Compositor);
+delegate_dmabuf!(Compositor);
 
 #[cfg(test)]
 mod tests {

@@ -15,6 +15,7 @@ mod cursors;
 mod decorations;
 mod dragging;
 mod executable;
+mod gpu;
 mod idle;
 mod input;
 mod ipc;

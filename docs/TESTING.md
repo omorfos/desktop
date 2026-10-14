@@ -103,6 +103,27 @@ instant.
 - A call to the X server that waits for an answer is made inside
   `meanwhile`, which keeps the compositor running until it returns.
 
+### The graphics card
+
+What depends on the memory of a graphics card is tested where there is
+one, in the same files as everything else, through the `gbm` crate Smithay
+re-exports: `gpu.rs` makes a buffer on the card and hands it over, and the
+software renderer draws it. A test that needs a card opens
+`/dev/dri/renderD128` first and, if it cannot, says so and passes without
+trying anything: CI runners have none. The coverage gate is measured in
+CI, so what only a card reaches is kept out of decisions, as the hardware
+backend is.
+
+Run them on a machine with a card, as the user logged in to it, whenever
+a change touches buffers of the card, pictures of the screen, or sharing
+it:
+
+```sh
+cargo test -p omorfos --all-features --locked --test integration gpu -- --nocapture
+```
+
+A test that printed `not tried` did not run.
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X
