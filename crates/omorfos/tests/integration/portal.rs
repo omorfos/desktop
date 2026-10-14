@@ -88,6 +88,16 @@ fn start_at_home(
     roles: Roles,
     home: &Path,
 ) -> JoinHandle<String> {
+    start_with_pipewire(session, daemon, roles, (home, ""))
+}
+
+/// The same, with PipeWire where `remote` says.
+fn start_with_pipewire(
+    session: &mut Session,
+    daemon: &Daemon,
+    roles: Roles,
+    (home, remote): (&Path, &str),
+) -> JoinHandle<String> {
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-portal")).unwrap();
     session.inner().serve(socket, roles).unwrap();
@@ -96,11 +106,14 @@ fn start_at_home(
         ("WAYLAND_DISPLAY", OsString::from("wayland-portal")),
         ("HOME", home.as_os_str().to_owned()),
         ("DBUS_SESSION_BUS_ADDRESS", OsString::from(&daemon.address)),
+        ("PIPEWIRE_REMOTE", OsString::from(remote)),
     ];
     let running = std::thread::spawn(move || {
         let variable = |name: &str| {
             let found = variables.iter().find(|(known, _)| *known == name);
-            found.map(|(_, value)| value.clone())
+            found
+                .map(|(_, value)| value.clone())
+                .filter(|value| !value.is_empty())
         };
         xdg_desktop_portal_omorfos::start(&variable).to_string()
     });

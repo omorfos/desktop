@@ -28,6 +28,12 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 xkbcommon = { version = "0.8.0", default-features = false }
 # Says what the desktop looks like, which applications are told.
 omorfos-config = { path = "../omorfos-config" }
+# Streams the screen being shared to the application that shares it. It
+# binds libpipewire, so building needs its headers and clang. The feature is
+# the PipeWire that a stream can drive itself from, 0.3.34, from 2021.
+pipewire = { version = "0.10.1", features = ["v0_3_34"] }
+# Holds the stream's buffers while the compositor puts a picture in them.
+omorfos-pipewire = { path = "../omorfos-pipewire" }
 # Already in the tree through Smithay. Waits for the bus or the
 # configuration to have something to say (`event`), and makes what the
 # thread that answers the bus says it is done by (`pipe`).

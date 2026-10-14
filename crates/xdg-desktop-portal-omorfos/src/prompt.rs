@@ -56,12 +56,41 @@ pub enum Answer {
     Keep,
 }
 
+/// What an application asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Question {
+    /// A picture of the screen, once.
+    Picture,
+    /// To see the screen for as long as it is shared.
+    Share,
+}
+
+impl Question {
+    /// What it is said to want, what that would let it see, and what the
+    /// button that gives it says.
+    #[must_use]
+    pub const fn words(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Self::Picture => (
+                "wants a picture of your screen",
+                "It would see everything on every screen.",
+                "Take picture",
+            ),
+            Self::Share => (
+                "wants to share your screen",
+                "It would see everything on it until you stop.",
+                "Share",
+            ),
+        }
+    }
+}
+
 /// What the box says an application wants: it, by name, or a program if
 /// it has none, as one not in a sandbox has not.
 #[must_use]
-pub fn asking(app: &str) -> String {
+pub fn asking(app: &str, question: Question) -> String {
     let who = if app.is_empty() { "A program" } else { app };
-    format!("{who} wants a picture of your screen")
+    format!("{who} {}", question.words().0)
 }
 
 /// The button at a place on the box, if there is one.
@@ -79,7 +108,12 @@ pub fn button_at((x, y): (i32, i32)) -> Option<Answer> {
 /// Paints the box: what is asked, and the two buttons, the one that gives
 /// in the colour of what is picked out.
 #[must_use]
-pub fn paint(theme: &Theme, text: &mut Text, scale: Scale, app: &str) -> Canvas {
+pub fn paint(
+    theme: &Theme,
+    text: &mut Text,
+    scale: Scale,
+    (app, question): (&str, Question),
+) -> Canvas {
     let (width, height) = SIZE;
     let mut canvas = Canvas::scaled(width, height, scale);
     let whole_box = theme.style(Part::Launcher, States::NONE);
@@ -87,15 +121,21 @@ pub fn paint(theme: &Theme, text: &mut Text, scale: Scale, app: &str) -> Canvas 
     let room = width - MARGIN.unsigned_abs() * 2;
     let font = theme.font(Part::Launcher, States::NONE);
     let line = (MARGIN, MARGIN, room, 24);
-    text.draw(&mut canvas, &asking(app), line, whole_box.color, font);
+    text.draw(
+        &mut canvas,
+        &asking(app, question),
+        line,
+        whole_box.color,
+        font,
+    );
     let said = theme.style(Part::LauncherDescription, States::NONE);
     let font = theme.font(Part::LauncherDescription, States::NONE);
     let line = (MARGIN, MARGIN + 28, room, 20);
-    let warning = "It would see everything on every screen.";
+    let (_, warning, give) = question.words();
     text.draw(&mut canvas, warning, line, said.color, font);
     let picked = States::NONE.with(State::Active);
     let buttons = [
-        (GIVE, "Take picture", Part::LauncherItem, picked),
+        (GIVE, give, Part::LauncherItem, picked),
         (KEEP, "Cancel", Part::LauncherInput, States::NONE),
     ];
     for ((left, top, across, down), label, part, states) in buttons {
@@ -157,7 +197,7 @@ struct Shell {
     face: Option<Face>,
     /// The application being asked about while the question is up, and
     /// what it is put on the screen with.
-    asked: Option<(String, Globals)>,
+    asked: Option<(String, Question, Globals)>,
     answer: Option<Answer>,
     over: (i32, i32),
     store: Store,
@@ -227,7 +267,7 @@ impl Shell {
         if !mem::take(&mut self.stale) {
             return Ok(());
         }
-        let Some((app, globals)) = self.asked.clone() else {
+        let Some((app, question, globals)) = self.asked.clone() else {
             self.face.take().into_iter().for_each(Face::close);
             return Ok(());
         };
@@ -272,7 +312,7 @@ impl Shell {
             return Ok(());
         }
         let theme = &self.store.current().theme;
-        let canvas = paint(theme, &mut self.text, face.scale, &app);
+        let canvas = paint(theme, &mut self.text, face.scale, (&app, question));
         picture(shm, &canvas, handle).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
             // However many pixels the picture has, it covers this much.
@@ -345,13 +385,13 @@ impl Desk {
         &self.connection
     }
 
-    /// Asks the user whether `app` is to have a picture of the screen.
-    /// Returns whether it can be asked: it cannot if the compositor does
-    /// not offer what a question is put on the screen with.
-    pub fn ask(&mut self, app: &str) -> bool {
+    /// Asks the user whether `app` is to have what it asks for. Returns
+    /// whether it can be asked: it cannot if the compositor does not offer
+    /// what a question is put on the screen with.
+    pub fn ask(&mut self, app: &str, question: Question) -> bool {
         let globals = self.shell.globals();
         let asked = globals.is_some();
-        self.shell.asked = globals.map(|globals| (app.to_owned(), globals));
+        self.shell.asked = globals.map(|globals| (app.to_owned(), question, globals));
         self.shell.answer = None;
         self.shell.stale = true;
         asked
@@ -592,10 +632,18 @@ mod tests {
     #[test]
     fn the_box_says_which_application_asks_or_that_a_program_does() {
         assert_eq!(
-            asking("org.example.App"),
+            asking("org.example.App", Question::Picture),
             "org.example.App wants a picture of your screen"
         );
-        assert_eq!(asking(""), "A program wants a picture of your screen");
+        assert_eq!(
+            asking("", Question::Picture),
+            "A program wants a picture of your screen"
+        );
+        assert_eq!(
+            asking("", Question::Share),
+            "A program wants to share your screen"
+        );
+        assert_eq!(Question::Share.words().2, "Share");
     }
 
     #[test]
@@ -612,7 +660,12 @@ mod tests {
     #[test]
     fn the_button_that_gives_is_in_the_colour_of_what_is_picked_out() {
         let theme = Theme::default();
-        let canvas = paint(&theme, &mut Text::new(), Scale::ONE, "org.example.App");
+        let canvas = paint(
+            &theme,
+            &mut Text::new(),
+            Scale::ONE,
+            ("org.example.App", Question::Picture),
+        );
         let picked = theme.style(Part::LauncherItem, States::NONE.with(State::Active));
         let unpicked = theme.style(Part::LauncherInput, States::NONE);
         let argb = |color: omorfos_config::Color| {

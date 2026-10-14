@@ -95,18 +95,29 @@ Everything else, and how to change any of it, is in
 ## What it needs
 
 To build: Rust (the version is pinned in `rust-toolchain.toml`),
-`pkg-config`, and the development files for libxkbcommon, pixman, udev,
-libinput, libseat and GBM. On Debian and Ubuntu:
+`pkg-config`, `clang`, and the development files for libxkbcommon, pixman,
+udev, libinput, libseat, GBM and PipeWire. On Debian and Ubuntu:
 
 ```sh
 sudo apt install pkg-config libxkbcommon-dev libpixman-1-dev libudev-dev \
-  libinput-dev libseat-dev libgbm-dev
+  libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libclang-dev clang
 ```
 
 To run: EGL and OpenGL ES (`libegl1 libgles2`), and a seat from logind or
-seatd. `Xwayland` is wanted for programs written for X11, `foot` is the
-terminal the default keys start, and a D-Bus session is what
-notifications arrive over. None of the three is required.
+seatd. The rest is wanted, and done without if it is not there:
+
+| | For |
+|---|---|
+| `Xwayland` | Programs written for X11 |
+| `foot` | The terminal the default keys start |
+| A D-Bus session, and `dbus-update-activation-environment` | Notifications, and telling D-Bus and systemd of the session |
+| `xdg-desktop-portal` | Applications following the look of the desktop, and asking for screenshots |
+| `xdg-desktop-portal-gtk` | Choosing files, which omorfos leaves to it |
+| `gdbus` (`libglib2.0-bin`) | Starting the portal at login once omorfos's own part of it is there |
+| PipeWire | Sharing the screen in a browser or a call |
+
+To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
+which needs `libEGL`, and the DejaVu fonts to draw as CI does.
 
 ## Documentation
 

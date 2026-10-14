@@ -35,6 +35,7 @@ mod roles;
 mod scaling;
 mod screenshot;
 mod session;
+mod sharing;
 mod taskbar;
 mod tiles;
 mod windows;
