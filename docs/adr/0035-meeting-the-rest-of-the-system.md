@@ -189,9 +189,16 @@ until there is a file manager here to do it.
   that the next session's portal waited on until it was killed, and
   every GTK application with it. The target is started again at login
   in case a session ended without stopping it.
-- **The portal service is started again once ours has its name**, if it
-  is running by then. Started a moment before, it gave the Screenshot
-  interface to another backend for the whole session.
+- **The portal service is started afresh once ours has its name**, and
+  the GTK backend before it. Started a moment before, the portal gave the
+  Screenshot interface to another backend for the whole session. Started
+  after the last session ended, by a program finishing up (Firefox does),
+  it started a GTK backend that found no display, and the bus was never
+  told that start had failed: for two minutes it held every request for
+  the GTK backend, the next session's portal hung on it and was killed,
+  and applications lost their settings and the screen to share. A backend
+  that takes its name ends a start pending for it, so starting both
+  afresh, whether or not they run, leaves nothing of the kind behind.
 
 **The question is the backend's own.** Asked for a picture, it puts a
 question in the middle of the screen, over everything and with the
@@ -200,3 +207,14 @@ taking the question down. The compositor starts it able to do both, and
 nothing else is trusted with either. It learns what the compositor
 offers before it takes its name on the bus, so that it is never asked
 something before it knows whether it can ask the user.
+
+**Sharing the screen goes through PipeWire, from the backend.** The
+backend takes pictures of the screen as the compositor gives them, each
+once something on it has changed, and puts each in a PipeWire stream of
+its own, whose number the application is told. The compositor knows
+nothing of PipeWire. The `pipewire` crate binds libpipewire, which needs
+its headers and clang to build, and the stream is filled through its safe
+calls alone: PipeWire makes the memory, which is why it is copied into
+rather than given. Copying is the first way, and buffers of the GPU, which
+copy nothing, are to come. The tests run a PipeWire of their own, and read
+the stream as an application would.

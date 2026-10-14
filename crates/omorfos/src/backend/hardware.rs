@@ -288,16 +288,22 @@ fn watch_devices(
 ///
 /// The portal service may already have been started by then, by a program
 /// that asked it something, and looked for what answers for omorfos before
-/// it was there. Once that has taken its name, the service is started again
-/// if it is running. What the session is told of is handed to the shell as
-/// arguments, never as text for the shell to read.
+/// it was there; or after the last session ended, by a program finishing
+/// up, when the GTK backend it started could not open a display and left
+/// a start pending on the bus that the portal then waits on. So once ours
+/// has its name, the GTK backend and then the portal service are started
+/// afresh, each by itself so that one not installed does not keep the
+/// other from starting: a backend that takes its name ends whatever start
+/// was pending for it. What the session is told of is handed to the shell
+/// as arguments, never as text for the shell to read.
 fn announce_session(compositor: &mut Compositor) {
     let told = compositor.session_environment().into_iter();
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
     let script = "dbus-update-activation-environment --systemd \"$@\"; \
                   systemctl --user restart omorfos-session.target; \
                   gdbus wait --session --timeout 10 org.freedesktop.impl.portal.desktop.omorfos \
-                  && systemctl --user try-restart xdg-desktop-portal.service; true";
+                  && { systemctl --user restart xdg-desktop-portal-gtk.service; \
+                       systemctl --user restart xdg-desktop-portal.service; }; true";
     let arguments = ["-c", script, "sh"]
         .map(str::to_owned)
         .into_iter()
