@@ -50,6 +50,13 @@ pub struct Effects {
     /// Whether the window is left out of pictures taken of the screen.
     /// This is asked of a window as it is now, not only as it opened.
     pub private: Option<bool>,
+    /// Whether the window opens rolled up into its titlebar. One without a
+    /// titlebar cannot be.
+    pub shaded: Option<bool>,
+    /// Whether the window opens kept above those that are not.
+    pub above: Option<bool>,
+    /// Whether the window opens on every workspace of its screen.
+    pub sticky: Option<bool>,
 }
 
 impl Effects {
@@ -63,6 +70,9 @@ impl Effects {
             fullscreen: later.fullscreen.or(self.fullscreen),
             decorations: later.decorations.or(self.decorations),
             private: later.private.or(self.private),
+            shaded: later.shaded.or(self.shaded),
+            above: later.above.or(self.above),
+            sticky: later.sticky.or(self.sticky),
         }
     }
 }
@@ -224,7 +234,7 @@ mod tests {
                 maximized: None,
                 fullscreen: Some(true),
                 decorations: Some(false),
-                private: None,
+                ..Effects::default()
             }
         );
         assert_eq!(resolve(&rules, "vlc", "").workspace, Some(3));

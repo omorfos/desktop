@@ -4,7 +4,8 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** stage 1, quick wins.
+**Next:** stage 3, what a day's use needs. Of stage 1 only pushing the
+work and seeing it pass in CI is left, which the maintainer does.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -62,7 +63,7 @@ Small, independent, and each an improvement the day it lands.
       others, show on every workspace, send to a workspace (ADR 31). The
       first three of those are also actions, to bind keys to: `shade`,
       `keep_above` and `stick`.
-- [ ] What a window is kept as, told to panels and taskbars over IPC and
+- [x] What a window is kept as, told to panels and taskbars over IPC and
       set by rules: shaded, above, on every workspace.
 - [x] The root menu, and the titlebar's, driven from the keyboard:
       arrows, Enter, Escape.
@@ -201,7 +202,7 @@ calls for them.
       window, its menus if it is written for X11, and its last moment as
       it fades when closed, are in a picture; and a program cannot yet
       say of its own window that it is private.
-- [ ] The stream that sharing a screen in a browser or a call needs
+- [x] The stream that sharing a screen in a browser or a call needs
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
@@ -233,10 +234,9 @@ calls for them.
       no choice of screen, window or region; a screen that changes size
       ends the sharing; the size the application is told is in pixels,
       not in units of layout; a choice cannot be remembered for next time;
-      the user cannot stop sharing from the desktop, only from the
-      application; and the compositor still reads each picture back from
-      the GPU and turns its colours on the CPU, where buffers of the GPU
-      handed to the reader would copy nothing at all (next).
+      and the user cannot stop sharing from the desktop, only from the
+      application. A reader that cannot take buffers of the GPU is still
+      given pictures read back and turned on the CPU.
 - [x] The pointer sent beside the pictures when a call asks, as
       PipeWire's cursor metadata, so that moving it makes no new picture of
       the screen: where it is with every buffer, its picture with it, and a

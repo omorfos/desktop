@@ -285,11 +285,18 @@ rules:
     fullscreen: true
   - match: { title: "*Bank*" }
     private: true
+  - match: { app_id: "*notes*" }
+    above: true
+    sticky: true
 ```
 
 A rule needs `app_id`, `title` or both; `*` stands for any run of
 characters. Every matching rule applies, in order. Properties are
-`workspace`, `maximized`, `fullscreen`, `decorations` and `private`.
+`workspace`, `maximized`, `fullscreen`, `decorations`, `private`, and
+`shaded` (rolled up into its titlebar), `above` (kept above the windows
+that are not) and `sticky` (on every workspace of its screen), which are
+what the titlebar's menu changes too. A window without a titlebar is not
+rolled up.
 Without a `decorations` rule, a window is framed if it asks omorfos to
 decorate it.
 

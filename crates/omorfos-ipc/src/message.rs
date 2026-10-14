@@ -163,12 +163,31 @@ pub struct Window {
     pub shown: bool,
     /// Whether its frame is minimized.
     pub minimized: bool,
+    /// How its frame stands apart from the others. Written as fields of
+    /// the window itself.
+    #[serde(flatten)]
+    pub standing: Standing,
     /// What it is called in the list of windows a taskbar is given
     /// (`ext-foreign-toplevel-list-v1`), for a program that speaks that
     /// as well and wants to know which of those windows this is. Empty
     /// from a compositor that does not say.
     #[serde(default)]
     pub handle: String,
+}
+
+/// How a window's frame stands apart from the others, as the user or a
+/// rule asked. Each is false from a compositor that does not say.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Standing {
+    /// Whether it is rolled up into its titlebar.
+    #[serde(default)]
+    pub shaded: bool,
+    /// Whether it is kept above the frames that are not.
+    #[serde(default)]
+    pub above: bool,
+    /// Whether it is on every workspace of its output, whichever is shown.
+    #[serde(default)]
+    pub sticky: bool,
 }
 
 /// Writes a message as one line, newline included.
@@ -265,6 +284,7 @@ mod tests {
                 focused: true,
                 shown: true,
                 minimized: false,
+                standing: Standing::default(),
                 handle: "3f2a".to_owned(),
             }],
             problems: vec!["keys.yaml:2:3: nope".to_owned()],
@@ -307,6 +327,24 @@ mod tests {
         let workspace: Workspace = serde_json::from_str(old).unwrap();
         assert!(workspace.kept);
         assert_eq!(workspace.id, 0);
+    }
+
+    #[test]
+    fn how_a_window_stands_is_written_with_the_window_and_is_nothing_if_not_said() {
+        let said = json!({
+            "id": 7, "app_id": "notes", "title": "", "workspace": 1,
+            "focused": false, "shown": true, "minimized": false, "above": true,
+        });
+        let window: Window = serde_json::from_value(said).unwrap();
+        let above = Standing {
+            above: true,
+            ..Standing::default()
+        };
+        assert_eq!(window.standing, above);
+        let written = serde_json::to_value(&window).unwrap();
+        assert_eq!(written["above"], json!(true));
+        assert_eq!(written["shaded"], json!(false));
+        assert_eq!(written["sticky"], json!(false));
     }
 
     #[test]

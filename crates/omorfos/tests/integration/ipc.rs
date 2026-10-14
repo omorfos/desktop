@@ -140,6 +140,37 @@ fn an_action_is_performed_exactly_as_a_key_binding_would() {
 }
 
 #[test]
+fn how_a_window_stands_is_told_as_rules_and_actions_set_it() {
+    let rules = "rules:\n  - match: { app_id: notes }\n    above: true\n    sticky: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    let mut notes = session.connect();
+    session.open_decorated(&mut notes, "notes", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let standing = |state: &State| {
+        let window = state.windows.iter().find(|window| window.app_id == "notes");
+        let standing = window.map(|window| window.standing);
+        standing.map(|standing| (standing.shaded, standing.above, standing.sticky))
+    };
+    assert_eq!(
+        standing(&state(&mut session, &mut peer)),
+        Some((false, true, true))
+    );
+
+    // Rolled up from the keyboard, it is said to be.
+    let reply = session.ask(
+        &mut peer,
+        &Request::Perform {
+            action: json!("shade"),
+        },
+    );
+    assert_eq!(reply, Reply::Done);
+    assert_eq!(
+        standing(&state(&mut session, &mut peer)),
+        Some((true, true, true))
+    );
+}
+
+#[test]
 fn something_that_is_not_an_action_is_refused_with_the_reason() {
     let mut session = Session::new();
     let mut peer = Client::connect(&session.listen()).unwrap();
