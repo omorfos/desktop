@@ -9,7 +9,7 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
 use std::time::Duration;
 
-use crate::common::{Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
+use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, RED};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
@@ -784,6 +784,31 @@ fn a_window_kept_above_stays_over_the_one_that_is_clicked() {
         .perform(&omorfos_config::Action::FocusNext);
     session.step();
     assert_eq!(session.draw().at(shared.0, shared.1), 0xff00_ff00);
+}
+
+#[test]
+fn a_window_still_has_the_pointer_after_the_menu_of_another_was_used() {
+    let mut session = Session::new();
+    let mut terminal = session.connect();
+    session.open_decorated(&mut terminal, "terminal", (200, 100), RED);
+    // A browser, which draws its own titlebar, over part of the terminal.
+    let mut browser = session.connect();
+    session.open(&mut browser, "browser", (300, 200), 0xff00_ff00);
+    let clear = (250, 180);
+    let clicked = |browser: &mut Client, session: &mut Session| {
+        click(session, clear);
+        session.roundtrip(browser);
+        let told = browser.take_events();
+        told.iter()
+            .any(|event| matches!(event, Event::PointerButton { .. }))
+    };
+    assert!(clicked(&mut browser, &mut session), "before");
+
+    // The terminal is kept above, from its titlebar, and then not.
+    choose(&mut session, 6);
+    assert!(clicked(&mut browser, &mut session), "beside one kept above");
+    choose(&mut session, 6);
+    assert!(clicked(&mut browser, &mut session), "once it is not");
 }
 
 #[test]

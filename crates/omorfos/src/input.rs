@@ -812,7 +812,11 @@ impl Compositor {
         }
         if let (true, Some(Under::Frame(id, hit))) = (pressed, under) {
             self.press_frame(id, &hit, button, time);
-            if self.drag.is_some() {
+            // A press that begins a drag or opens the window's menu is
+            // ours, as the root menu's is: had the window been told of it,
+            // its release, which the menu takes, would never be, and the
+            // pointer would stay held by where it was pressed.
+            if self.drag.is_some() || self.menu.is_some() {
                 self.move_pointer(None, time);
                 return;
             }
