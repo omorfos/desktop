@@ -200,6 +200,18 @@ dragged. And the line has a part of the theme of its own, `tile-line`,
 drawn in its text colour as `menu-separator` is, which is a window's
 border colour unless the theme says otherwise.
 
+Choosing a window for an empty part came last. Each part with nothing in
+it shows the windows of the desktop the workspace was made from, the one
+on top first, in rows and columns as near square as they go, each its
+own shape with room round it and no larger than it is. They are the
+compositor's: the pointer over one is on no window, and washes it over
+as a part offered while dragging is washed; a click of the left button
+puts it in that part. They are drawn as the windows are now, and the
+windows are told what they drew was shown, so a film plays in one. A
+window a rule calls private is a blank in the colour of `capture`, as in
+a picture of the screen. There are no titles under them yet, which a
+private window, being blank, needs most.
+
 Three and four came next, with focus and changing places by direction
 (`Super+Ctrl` and an arrow, and with `Shift`). How a third part is made
 was settled here: `tile` on a window that fills a part has it take a

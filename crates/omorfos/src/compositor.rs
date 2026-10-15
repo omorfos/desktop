@@ -37,6 +37,7 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
+use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
@@ -1806,6 +1807,9 @@ impl Compositor {
                     // The line between windows that share a workspace.
                     let lines = self.lines(|at| view.pixel(at), view.scale.factor());
                     elements.extend(lines.map(Element::Solid));
+                    // Under them, the windows offered in a part with nothing
+                    // in it.
+                    elements.extend(self.offer_elements(renderer, view));
                 }
                 self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
                 self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
@@ -2152,6 +2156,7 @@ impl Compositor {
                     });
             }
         }
+        self.send_offered_frames(output, elapsed);
         for layer in layer_map_for_output(output).layers() {
             layer.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
                 Some(output.clone())
@@ -2168,15 +2173,15 @@ impl Compositor {
 
 /// One output's view of the space, for drawing on it.
 #[derive(Debug, Clone, Copy)]
-struct View {
+pub(crate) struct View {
     /// Where in the space the output's top-left corner is.
     origin: Point<i32, Logical>,
-    scale: Scale,
+    pub(crate) scale: Scale,
 }
 
 impl View {
     /// The pixel of the output that a point of the space falls on.
-    fn pixel(self, at: Point<f64, Logical>) -> Point<i32, Physical> {
+    pub(crate) fn pixel(self, at: Point<f64, Logical>) -> Point<i32, Physical> {
         let within = at - self.origin.to_f64();
         within.to_physical(self.scale.factor()).to_i32_round()
     }
@@ -2283,12 +2288,13 @@ impl PointerImage {
 render_elements! {
     /// Everything the compositor draws: client surfaces and its own
     /// decorations.
-    Element<R> where R: ImportAll + ImportMem;
+    pub(crate) Element<R> where R: ImportAll + ImportMem;
     Surface=WaylandSurfaceRenderElement<R>,
     Strip=Strip<WaylandSurfaceRenderElement<R>>,
     Ghost=Ghost<R>,
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
+    Cropped=CropRenderElement<WaylandSurfaceRenderElement<R>>,
 }
 
 /// The widest the problem notice gets, and its distance from the edges of
