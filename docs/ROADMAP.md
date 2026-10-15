@@ -134,9 +134,10 @@ calls for them.
       back where it was, and the titlebar's button meaning fullscreen.
 - [x] In a fullscreen workspace, the panels and the titlebar brought
       back by resting the pointer against an edge (ADR 36).
-- [ ] The same by pushing against the edge, without the wait, on a real
-      mouse or touchpad; and not at all while a program holds the
-      pointer, once programs can.
+- [x] The same by pushing against the edge, without the wait, on a real
+      mouse or touchpad.
+- [ ] Not at all while a program holds the pointer, once programs can
+      (`pointer-constraints`, below).
 - [x] Tiled workspaces (ADR 39): a workspace made for up to four
       windows that fill the screen between them. First the model, with
       two windows side by side made from the titlebar's menu and by a

@@ -257,7 +257,14 @@ impl Compositor {
             Input::Key { code, pressed } => Placed::Key { code, pressed },
             Input::Motion { x, y } => Placed::Motion { x, y },
             Input::MotionBy { dx, dy } => {
+                // What of the move did not happen, the pointer being held at
+                // an edge it was against already, is a push against it. A
+                // move that only reaches the edge, however fast, is not:
+                // that is a pointer on its way to what is there.
+                let held = self.held_at();
                 let to = self.moved_by(dx, dy);
+                let past = self.pointer_location.y + dy - to.y;
+                self.hover.reveal.push(past, held, time);
                 Placed::Motion { x: to.x, y: to.y }
             }
             Input::Button { button, pressed } => Placed::Button { button, pressed },

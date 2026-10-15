@@ -74,7 +74,7 @@ titlebar with its buttons and its menu. Pushing against the bottom
 brings up the dock.
 
 - **Pushing, not touching.** They come when the pointer is moved on
-  against the edge a little way, or rests on it for a third of a second.
+  against the edge a good way, or rests on it for six tenths of a second.
   A pointer that only reaches the top, on its way to something the
   program has there, brings nothing.
 - **They are laid over the window**, which is not told to be any other
@@ -129,6 +129,38 @@ them. They stay while the pointer is on them. A key sends them away, and
 they do not come back until the pointer has left the edge and returned,
 so that a pointer left at the top does not bring them back over what is
 being typed.
+
+Pushing came after, once a test could move the pointer by a distance as
+a mouse does. What of a move does not happen, the pointer being held at
+the top or the bottom of its screen it was against already, is counted
+as a push against that edge; a hundred units of layout pushed within a
+second of the push beginning bring back what is there at once, as
+resting does, and a push that has not gone so far by then begins again.
+The move that reaches the edge is not counted, however much of it went
+past: a mouse moved quickly to the top goes far past it in one move, and
+that is a pointer on its way to what is there, which brought the
+titlebar back at every touch when it was counted.
+
+Tried by hand on a touchpad, thirty units were too few: the tail of a
+quick move up and away again, which a touchpad throws, went that far,
+and the titlebar came at every touch. The hundred units in a second are
+what GNOME asks of its pressure barriers. Resting was made longer at the
+same time, from a third of a second to six tenths: at a third, a pointer
+left at the top of a video or a terminal brought things back so soon
+that it felt like touching, and pushing was no quicker.
+
+That was not enough either. Logged on the same touchpad, a flick at the
+top and away went on past the edge by a quarter of the screen's height
+after reaching it, in six events over less than a twentieth of a second:
+far more than any deliberate push needs, so no distance could tell them
+apart. Time could. A push counts only once the pointer has been held
+against the edge for 150 milliseconds, by which a flick is long over and
+one held there on purpose is still being pushed. What was pushed counts
+only while the pointer stays against the edge: leaving it, even for a moment, begins again from
+nothing. A push after a key has sent things away brings nothing back,
+as resting does not, until the pointer has left the edge and come
+again. A pointer moved to a place, as a tablet or a test does, cannot
+push, and still has resting.
 
 A titlebar is laid over a fullscreen window only if omorfos draws that
 window's titlebar on a desktop. A program that draws its own has its own

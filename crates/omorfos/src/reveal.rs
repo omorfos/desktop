@@ -1,10 +1,10 @@
 //! Finding the panels and the titlebar again on a workspace made for a
 //! fullscreen window.
 //!
-//! Such a workspace shows the window and nothing else. Resting the pointer
-//! against the top of the screen brings back whatever panels are along the
-//! top, and under them the window's titlebar; against the bottom, the
-//! panels along the bottom. They are laid over the window, which is not
+//! Such a workspace shows the window and nothing else. Pushing the pointer
+//! on against the top of the screen, or resting it there, brings back
+//! whatever panels are along the top, and under them the window's titlebar;
+//! against the bottom, the panels along the bottom. They are laid over the window, which is not
 //! told to be any other size, and go again when the pointer leaves them or
 //! a key is pressed.
 //!
@@ -23,8 +23,25 @@ use crate::compositor::Compositor;
 
 /// How long the pointer rests against an edge before what is there comes
 /// back. Long enough that a pointer on its way to something the program
-/// has at the edge brings nothing.
-const REST: Duration = Duration::from_millis(300);
+/// has at the edge, or left there, brings nothing.
+const REST: Duration = Duration::from_millis(600);
+
+/// How far the pointer is pushed on past an edge it is against, in units of
+/// layout, within `PRESSING` of being pushed at all, before what is there
+/// comes back without waiting. A pointer that only reaches the edge, on
+/// its way to something the program has there, has gone no further.
+/// These are what GNOME asks of its pressure barriers.
+const PUSH: f64 = 100.0;
+
+/// How long, in the thousandths of a second input is timed in, a push has
+/// to reach `PUSH` in. After that it begins again.
+const PRESSING: u32 = 1000;
+
+/// How long, in the same, the pointer has been held against an edge before
+/// pushing on counts. A pointer thrown at the edge, as a touchpad throws it,
+/// goes on past it for a few hundredths of a second after it arrives, and
+/// further than a deliberate push does; one pushed on goes on for longer.
+const SETTLE: u32 = 150;
 
 /// How long what was brought back stays once the pointer has stopped
 /// somewhere else. While the pointer is moving it stays, so that a
@@ -60,6 +77,13 @@ pub(crate) struct Reveal {
     /// Set by a key, which sends what was brought back away: nothing
     /// comes back until the pointer has left the edge and returned.
     quiet: bool,
+    /// How far the pointer has been pushed on past the top and past the
+    /// bottom of the output it is on, while against the edge, and when it
+    /// began to be.
+    pushed: (f64, f64),
+    pressed: Option<u32>,
+    /// When the pointer first moved while held against the edge.
+    held: Option<u32>,
     /// Where the pointer last was, and when it last moved.
     last: (f64, f64),
     moved: Option<Instant>,
@@ -74,6 +98,43 @@ impl Reveal {
     pub(crate) fn deadline(&self) -> Option<Instant> {
         let waiting = self.resting.filter(|_| self.shown.is_none() && !self.quiet);
         waiting.map(|(.., since)| since + REST).or(self.until)
+    }
+
+    /// Notes how far the pointer would have gone past the top or the bottom
+    /// of its output, down being further, as only a mouse or touchpad
+    /// moving it on against the edge says: if it was against that edge
+    /// already, `held` says, as at the top and at the bottom.
+    ///
+    /// A push counts once the pointer has been against the edge for
+    /// `SETTLE`, and from when it began, at `time`, for a second; one that
+    /// has not gone far enough by then begins again.
+    pub(crate) fn push(&mut self, past: f64, (top, bottom): (bool, bool), time: u32) {
+        // Only once the pointer has been against the edge for a while: what
+        // a throw carries on past it first does not count.
+        self.held = self.held.or((top || bottom).then_some(time));
+        let settled = self
+            .held
+            .is_some_and(|held| time.wrapping_sub(held) >= SETTLE);
+        let (up, down) = ((-past).max(0.0), past.max(0.0));
+        let up = up * f64::from(u8::from(top && settled));
+        let down = down * f64::from(u8::from(bottom && settled));
+        let pressed = (up > 0.0 || down > 0.0).then_some(time);
+        let began = self.pressed.or(pressed);
+        let stale = began.is_some_and(|began| time.wrapping_sub(began) > PRESSING);
+        if stale {
+            self.pushed = (0.0, 0.0);
+        }
+        self.pressed = if stale { pressed } else { began };
+        self.pushed.0 += up;
+        self.pushed.1 += down;
+    }
+
+    /// How far the pointer has been pushed on past an edge.
+    const fn pushed(&self, side: Side) -> f64 {
+        match side {
+            Side::Top => self.pushed.0,
+            Side::Bottom => self.pushed.1,
+        }
     }
 
     /// Sends away what was brought back, as a key does, and a press in a
@@ -105,6 +166,13 @@ impl Compositor {
         let side = side.or(bottom.then_some(Side::Bottom));
         side.filter(|_| self.given_over(index))
             .map(|side| (index, side))
+    }
+
+    /// Whether the pointer is against the top and the bottom of the output
+    /// it is on.
+    pub(crate) fn held_at(&self) -> (bool, bool) {
+        let against = self.edge(|_, _| 1.0).map(|(_, side)| side);
+        (against == Some(Side::Top), against == Some(Side::Bottom))
     }
 
     /// Brings back what the pointer has rested for, and sends away what it
@@ -141,11 +209,20 @@ impl Compositor {
         };
         self.hover.reveal.resting = against.map(since);
         self.hover.reveal.quiet = self.hover.reveal.quiet && against.is_some();
+        // Pushed on against an edge, or rested against it for long enough:
+        // what was pushed counts only while the pointer stays against it.
+        let quiet = self.hover.reveal.quiet;
+        let pushed = |(_, side): &(usize, Side)| self.hover.reveal.pushed(*side) >= PUSH && !quiet;
+        let pushed = against.filter(pushed);
         let rested = |(.., since): &(usize, Side, Instant)| {
-            now.saturating_duration_since(*since) >= REST && !self.hover.reveal.quiet
+            now.saturating_duration_since(*since) >= REST && !quiet
         };
         let due = self.hover.reveal.resting.filter(rested);
-        self.hover.reveal.shown = kept.or(due.map(|(output, side, _)| (output, side)));
+        let due = due.map(|(output, side, _)| (output, side)).or(pushed);
+        self.hover.reveal.shown = kept.or(due);
+        self.hover.reveal.pushed = against.map_or((0.0, 0.0), |_| self.hover.reveal.pushed);
+        self.hover.reveal.pressed = self.hover.reveal.pressed.filter(|_| against.is_some());
+        self.hover.reveal.held = self.hover.reveal.held.filter(|_| against.is_some());
         // The titlebar is laid over the window under whatever panels are
         // along the top.
         for output in 0..self.heads.len() {

@@ -191,8 +191,10 @@ window's border. When a window closes or leaves, the one beside it has
 its room. A window that opens when every part is taken opens on the
 desktop.
 
-On such a workspace, rest the pointer against the top of the screen for a
-third of a second and whatever panels are along the top come back. Where
+On such a workspace, rest the pointer against the top of the screen for
+six tenths of a second, or hold it there and push on against the top a
+good way, and whatever panels are along the top come back at once. A
+quick flick at the top and away brings nothing. Where
 one window has the workspace to itself its titlebar comes back under
 them: its buttons, its menu, and the second button to leave fullscreen. Against the bottom, the panels along the
 bottom come back. They are laid over the window, which does not change
