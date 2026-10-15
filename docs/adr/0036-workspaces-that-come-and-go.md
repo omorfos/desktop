@@ -180,6 +180,20 @@ Some things were settled in building solos that the above leaves open:
   shown, whether the user asked for the window or not. The compositor
   cannot yet tell the two apart. Activation tokens can, and when they are
   heeded a window nobody asked for should open there unseen.
+
+  They are heeded now, and it does. What says a window was asked for:
+  the activation token omorfos hands each program it starts, in
+  `XDG_ACTIVATION_TOKEN` and `DESKTOP_STARTUP_ID`, or one a program made
+  from something the user did, used to activate the window before it
+  opens or after, or named by a program written for X11 in
+  `_NET_STARTUP_ID`; and, for the many programs that pass no token on,
+  the window being the first of a process omorfos started. Each says so
+  once. A program started some other way, from a terminal say, that
+  passes no token opens unseen: being unseen is the safe mistake, the
+  window being on the desktop and in the taskbar, where a window that
+  took the screen from a film is not undone. A program written for X11
+  names its own process, so one could say it is another; all that
+  gains it is being shown.
 - A fullscreen window sent to a desktop or to another screen leaves
   fullscreen to go.
 - Minimizing a fullscreen window shows the desktop it came from; its solo

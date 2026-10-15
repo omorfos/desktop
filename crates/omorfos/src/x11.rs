@@ -627,6 +627,7 @@ impl Compositor {
         let decorated = !x11.is_decorated();
         let at = self.pointer_position();
         let id = self.desktop.add_window(app_id, title, size, at, decorated);
+        let (pid, startup) = (x11.pid(), x11.startup_id());
         self.windows.push(Mapped {
             id,
             window,
@@ -634,6 +635,9 @@ impl Compositor {
             role: Role::X11(x11),
             listed,
         });
+        if self.asked_for(surface, pid, startup) {
+            self.desktop.activate(id);
+        }
     }
 
     /// Lets go of a window of a program written for X11 that is no longer

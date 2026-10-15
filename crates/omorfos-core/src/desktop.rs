@@ -1281,9 +1281,13 @@ impl Desktop {
     ///
     /// It matters on a workspace made for a fullscreen window. What
     /// belongs to a window there opens over it, where it is. Anything else
-    /// opening while such a workspace is shown opens on the desktop the
-    /// fullscreen window came from, which is then shown: a second window
-    /// of the same program as much as another program's.
+    /// opening while such a workspace is shown, with no part left for it,
+    /// opens on the desktop the fullscreen window came from without that
+    /// being shown: a second window of the same program as much as another
+    /// program's. One the user asked for is then [activated], which shows
+    /// it.
+    ///
+    /// [activated]: Desktop::activate
     pub fn add_window_of(
         &mut self,
         parent: Option<WindowId>,
@@ -1306,6 +1310,8 @@ impl Desktop {
         let free = beside.is_none() && effects.workspace.is_none();
         let made = showing.solo.filter(|_| free);
         let room = made.filter(|tiling| tiling.has_room());
+        // Failing that, the desktop it was made from, which is not shown
+        // for it.
         let home = made.filter(|_| room.is_none());
         let home = home.map(|solo| self.sets[set].place(solo.origin));
         let workspace = beside.map_or(home.unwrap_or(shown), |at| at.workspace);
@@ -1351,9 +1357,6 @@ impl Desktop {
         self.current = set;
         if filled.is_some() {
             self.sets[set].workspaces[workspace].solo = filled;
-        }
-        if let Some(home) = home {
-            self.turn(set, home);
         }
         if effects.fullscreen == Some(true) {
             self.set_fullscreen(id, true);
@@ -2658,6 +2661,7 @@ mod tests {
         let frame = frame(&desktop, player);
         assert!(frame.maximized && frame.fullscreen && !frame.window().decorated);
         let other = open(&mut desktop, "foot");
+        desktop.activate(other);
         assert!(!self::frame(&desktop, other).maximized);
     }
 
@@ -3188,8 +3192,11 @@ mod tests {
             "in the order of the parts"
         );
 
-        // With both halves taken, the next is for the desktop.
+        // With both halves taken, the next is for the desktop, unseen.
         let third = open(&mut desktop, "third");
+        assert_eq!(desktop.workspace_of(third), Some(0));
+        assert_eq!(desktop.focused(), Some(browser), "the keyboard stays");
+        desktop.activate(third);
         assert_eq!(desktop.active_workspace(), 0);
         assert_eq!(stack(&desktop), [third]);
     }
@@ -3418,8 +3425,12 @@ mod tests {
         let which: Vec<usize> = desktop.lines(0).iter().map(|line| line.which).collect();
         assert_eq!(which, [0, 1, 2]);
 
-        // With every part taken, the next window is for the desktop.
+        // With every part taken, the next window is for the desktop, which
+        // is not shown for it until it is asked for.
         let fifth = open(&mut desktop, "fifth");
+        assert_eq!(desktop.workspace_of(fifth), Some(0));
+        assert_eq!(stack(&desktop), [a, c, b, d]);
+        desktop.activate(fifth);
         assert_eq!(desktop.active_workspace(), 0);
         assert_eq!(stack(&desktop), [fifth]);
     }
@@ -3735,6 +3746,7 @@ mod tests {
         desktop.focus_toward(Half::Left);
         assert_eq!(part(&desktop, editor), part(&before, editor));
         let loose = open(&mut desktop, "loose");
+        desktop.activate(loose);
         desktop.swap_toward(loose, Half::Left);
         assert_eq!(stack(&desktop), [loose]);
     }
@@ -4032,6 +4044,9 @@ mod tests {
         // A window that is nobody's is not for this workspace, though it
         // be another of the same program's.
         let second = open(&mut desktop, "video");
+        assert_eq!(desktop.workspace_of(second), Some(0));
+        assert_eq!(stack(&desktop), [video, dialog], "nor is it shown");
+        desktop.activate(second);
         assert_eq!(desktop.active_workspace(), 0);
         assert_eq!(stack(&desktop), [second]);
         assert_eq!(desktop.workspace_of(video), Some(1));
