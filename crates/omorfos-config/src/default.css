@@ -105,6 +105,14 @@ notice {
 }
 notice-heading { color: var(--accent); }
 
+tooltip {
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 /* The mark shown while a program takes pictures of the screen. */
 capture {
   background: var(--background);

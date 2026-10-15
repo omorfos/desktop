@@ -774,6 +774,15 @@ mod tests {
     }
 
     #[test]
+    fn a_tooltip_is_a_rounded_box_of_text_on_the_surface() {
+        let theme = Theme::default();
+        let tooltip = theme.style(Part::Tooltip, States::NONE);
+        assert_eq!((tooltip.background, tooltip.color), (SURFACE, TEXT));
+        assert_eq!(tooltip.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(tooltip.radius, 6);
+    }
+
+    #[test]
     fn the_notice_is_outlined_and_headed_in_the_accent() {
         let theme = Theme::default();
         let notice = theme.style(Part::Notice, States::NONE);

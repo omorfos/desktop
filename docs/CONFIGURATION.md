@@ -437,6 +437,14 @@ notice {
 }
 notice-heading { color: var(--accent); }
 
+tooltip {
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 /* The mark shown while a program takes pictures of the screen. */
 capture {
   background: var(--background);
@@ -552,7 +560,7 @@ workspace:active, task:active { border-bottom: none; }
 
 **Parts** are `desktop`, `window`, `tile-line`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `capture`, `panel`, `workspace`, `task`,
+`menu-separator`, `notice`, `notice-heading`, `capture`, `tooltip`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title` and `notification-body`. `*` is every part. Several can share a rule:
@@ -951,11 +959,16 @@ pictures the same way, with `may: [capture]`. Started without it, it is
 given none, and you are told once what asked.
 
 While a program is taking pictures of a screen, and for a moment after, a
-red dot is shown in the top right corner of that screen. It is drawn by
+red dot is shown in the top right corner of that screen, under
+any panel along the top. It is drawn by
 omorfos over everything else, it is not in the pictures, and nothing can
 turn it off: its colours can be changed, with the `capture` part of the
 theme. So a picture cannot be taken of your screen without your seeing
-that it was.
+that it was. Rest the pointer on it to be told which programs are taking
+pictures, of the screen or of a window on it, by the name of each
+program's file: the portal that shares a screen with a browser or a call,
+`xdg-desktop-portal-omorfos`, is named itself, not the program it shares
+with. It is themed as `tooltip`.
 
 A window that a rule in `rules.yaml` calls `private` is blank in every
 picture, of the screen or of itself, in the background colour of the

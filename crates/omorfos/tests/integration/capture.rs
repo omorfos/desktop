@@ -1068,3 +1068,83 @@ fn pictures_go_on_being_given_while_a_private_window_is_open() {
     let (_, events) = snap(&mut session, &mut camera, &taking);
     assert_eq!(events.last(), Some(&Event::ShotReady), "drawn: {events:?}");
 }
+
+#[test]
+fn the_mark_is_under_a_panel_along_the_top_and_not_over_its_end() {
+    use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+    use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
+        Anchor, KeyboardInteractivity,
+    };
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let panel = crate::common::LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    session.open_layer(&mut client, &panel, (WIDTH, 30), BLUE);
+    let mut camera = camera(&mut session);
+    let _taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let screen = session.draw();
+    assert_eq!(
+        screen.at(MARK.0, MARK.1),
+        BLUE,
+        "the end of the panel shows"
+    );
+    assert_eq!(screen.at(MARK.0, MARK.1 + 30), DOT, "the mark is under it");
+}
+
+#[test]
+fn resting_on_the_mark_says_which_program_takes_pictures_of_what() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let screen = camera.capture(0, false);
+    let window = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    let rest = |session: &mut Session, (x, y): (i32, i32)| {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+        session.step();
+        session.step();
+    };
+    rest(&mut session, (400, 300));
+    assert_eq!(
+        session.compositor().mark_tooltip(),
+        [""; 0],
+        "not until rested on"
+    );
+
+    // Programs are called what their files are called: here, this one.
+    rest(&mut session, MARK);
+    let program = std::env::current_exe().unwrap();
+    let program = program.file_name().unwrap().to_string_lossy().into_owned();
+    let says = [
+        format!("{program} is taking pictures of this screen"),
+        format!("{program} is taking pictures of a window on this screen"),
+    ];
+    assert_eq!(session.compositor().mark_tooltip(), says);
+    let picture = session.draw();
+    assert_ne!(
+        picture.at(MARK.0, MARK.1 + 20),
+        BACKGROUND,
+        "under the mark"
+    );
+
+    rest(&mut session, (400, 300));
+    assert_eq!(session.compositor().mark_tooltip(), [""; 0]);
+    assert_eq!(session.draw().at(MARK.0, MARK.1 + 20), BACKGROUND);
+
+    // Once they have stopped, for as long as the mark stays.
+    screen.destroy();
+    window.destroy();
+    session.roundtrip(&mut camera);
+    rest(&mut session, MARK);
+    let said = ["Pictures of this screen were taken a moment ago"];
+    assert_eq!(session.compositor().mark_tooltip(), said);
+}

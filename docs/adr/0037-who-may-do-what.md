@@ -96,7 +96,10 @@ and no role alters them.
   it, in a corner, over everything, for as long as any program is taking
   pictures, whoever the program is and however it was allowed. The mark
   is left out of the pictures. The bar may say more; the mark does not
-  depend on the bar.
+  depend on the bar. The pointer resting on it is told, in a tooltip of
+  the compositor's own, which programs are taking pictures and of what,
+  each by the name of its file as the system knows it, which a program
+  cannot choose for itself as it can its title.
 - **One locker.** While a session is locked nothing else is drawn or
   given input (ADR 14), and the lock is not lifted by anyone but the
   locker that holds it. A locker that dies leaves the session locked.
