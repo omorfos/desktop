@@ -1371,6 +1371,7 @@ impl Compositor {
                         Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
+                    let private = self.desktop.private(*id);
                     // Every window of the frame is in the picture, so that
                     // showing another of its tabs is not a coming in.
                     let mut opacity = 1.0;
@@ -1392,8 +1393,8 @@ impl Compositor {
                             outer: frame.geometry,
                             origin,
                             chrome,
-                            veil: (self.desktop.private(*id))
-                                .then(|| veils.veil(*id, frame.geometry.size)),
+                            veil: private.then(|| veils.veil(*id, frame.geometry.size)),
+                            private,
                         },
                     ));
                 }
@@ -1460,6 +1461,7 @@ impl Compositor {
                 opacity: was.share,
                 level: Level::Layer(was.layer),
                 what: What::Surface(None, pieces),
+                private: false,
             });
             animation.gone.extend(gone);
         }
@@ -1853,14 +1855,15 @@ impl Compositor {
             let at = Point::<i32, Logical>::from((up.x, up.y));
             elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
         }
-        self.gone_elements(renderer, view, Level::Over, &mut elements);
+        self.gone_elements(renderer, view, (Level::Over, shown.mark), &mut elements);
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them. What
         // has gone from among each of them is over those that are left.
         let layers = [Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background];
         let frames = [Some(true), Some(false), None, None];
         for (layer, fullscreen) in layers.into_iter().zip(frames) {
-            self.gone_elements(renderer, view, Level::Layer(layer), &mut elements);
+            let seen = shown.mark;
+            self.gone_elements(renderer, view, (Level::Layer(layer), seen), &mut elements);
             self.layer_elements(
                 renderer,
                 output,
@@ -1883,7 +1886,8 @@ impl Compositor {
                     // in it.
                     elements.extend(self.offer_elements(renderer, view));
                 }
-                self.gone_elements(renderer, view, Level::Frames(fullscreen), &mut elements);
+                let frames = (Level::Frames(fullscreen), shown.mark);
+                self.gone_elements(renderer, view, frames, &mut elements);
                 self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
             }
         }
@@ -1949,19 +1953,22 @@ impl Compositor {
     }
 
     /// Adds what has gone from one level of what is drawn and is still
-    /// fading, the last to go first.
+    /// fading, the last to go first. A window a rule called private is
+    /// not in a picture as it fades, any more than it was before: only
+    /// where it is `seen`.
     fn gone_elements<R>(
         &self,
         renderer: &mut R,
         view: View,
-        level: Level,
+        (level, seen): (Level, bool),
         elements: &mut Vec<Element<R>>,
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let gone = self.animation.gone.iter().rev();
-        for gone in gone.filter(|gone| gone.level == level) {
+        let shown = |gone: &&Gone| gone.level == level && (seen || !gone.private);
+        for gone in gone.filter(shown) {
             let opacity = gone.opacity;
             match &gone.what {
                 What::Surface(chrome, pieces) => {
@@ -2543,6 +2550,8 @@ struct Gone {
     /// Where among what is drawn it belongs.
     level: Level,
     what: What,
+    /// Whether a rule called it private when it went.
+    private: bool,
 }
 
 /// Where among what is drawn something that has gone belongs.
@@ -2610,6 +2619,7 @@ impl Animation {
                 from: shown.opacity,
                 opacity: shown.opacity,
                 level: Level::Frames(shown.over),
+                private: shown.private,
                 what: What::Surface(shown.chrome.map(Box::new), pieces),
             });
             self.gone.extend(gone);
@@ -2631,6 +2641,7 @@ impl Animation {
             opacity: from,
             level: Level::Over,
             what,
+            private: false,
         }
     }
 
@@ -2814,6 +2825,9 @@ pub(crate) struct Shown {
     /// rule says it is private. Kept, so that a picture after the first
     /// is not thought to differ where it is.
     veil: Option<SolidColorBuffer>,
+    /// Whether a rule calls it private, which it still is once the veil
+    /// it was drawn with has gone to the next frame.
+    private: bool,
 }
 
 /// What stands for private windows in pictures taken of the screen, kept

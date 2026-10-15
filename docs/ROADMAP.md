@@ -213,10 +213,14 @@ calls for them.
       choice of the rule (`private: blur`), once glass has brought the
       blur and a way to draw a window by itself. A blur hides less than
       a blank does, which the guide is to say.
+- [x] A private window's last moment, as it fades when closed, left out
+      of pictures as the window was.
 - [ ] Known gaps in what is private: a notification about a private
-      window, its menus if it is written for X11, and its last moment as
-      it fades when closed, are in a picture; and a program cannot yet
-      say of its own window that it is private.
+      window, and its menus if it is written for X11, are in a picture;
+      and a program cannot yet say of its own window that it is private.
+- [ ] Sharing the screen in Firefox froze once, on real hardware, just
+      after a private window opened, and not again with every picture
+      logged: what failed, if anything, is not known.
 - [x] The stream that sharing a screen in a browser or a call needs
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.
