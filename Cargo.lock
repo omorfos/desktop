@@ -1801,6 +1801,7 @@ name = "omorfos"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
+ "omorfos-clipboard",
  "omorfos-config",
  "omorfos-core",
  "omorfos-ipc",
@@ -1824,6 +1825,15 @@ dependencies = [
  "xcursor",
  "xdg-desktop-portal-omorfos",
  "zbus",
+]
+
+[[package]]
+name = "omorfos-clipboard"
+version = "0.1.0"
+dependencies = [
+ "omorfos-shell",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]

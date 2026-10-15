@@ -79,7 +79,7 @@ autostart:
 | `lock` | Lock the session | `omorfos-lock`, and only one program at a time |
 | `ask` | Show the sealed prompt (below) | `omorfos-ask` |
 | `capture` | Take pictures of the screen and of windows | The portal backend, which asks the user each time |
-| `clipboard` | Read and set the clipboard at any time | The clipboard's history |
+| `clipboard` | Read and set the clipboard at any time | `omorfos-clipboard`, which keeps it, and the clipboard's history |
 | `input` | Type and click as the user; see what is typed into fields, as an input method must | Nobody. An input method is given it by the user |
 | `screens` | Arrange the screens; change their colour, as a night light does | Settings |
 

@@ -44,6 +44,16 @@ pub fn notifier_program(own: Option<&Path>) -> PathBuf {
     beside(own, NOTIFIER)
 }
 
+/// What the executable that keeps what is copied is called.
+const KEEPER: &str = "omorfos-clipboard";
+
+/// Where the program that keeps what is copied is, found as
+/// [`panel_program`] finds the panel.
+#[must_use]
+pub fn keeper_program(own: Option<&Path>) -> PathBuf {
+    beside(own, KEEPER)
+}
+
 /// What the executable that answers the portals is called.
 const PORTAL: &str = "xdg-desktop-portal-omorfos";
 
@@ -119,6 +129,7 @@ mod tests {
         assert_eq!(launcher_program(None), Path::new(LAUNCHER));
         assert_eq!(notifier_program(None), Path::new(NOTIFIER));
         assert_eq!(portal_program(None), Path::new(PORTAL));
+        assert_eq!(keeper_program(None), Path::new(KEEPER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

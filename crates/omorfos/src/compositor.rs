@@ -1154,6 +1154,15 @@ impl Compositor {
         self.set_component(Program::Notifier, program.into());
     }
 
+    /// Says where the program that keeps what is copied is, once the
+    /// program it was copied from has closed: a name to look up in `PATH`,
+    /// or a path. It is then started with the session, unless the
+    /// configuration turns it off. Until this is called there is none to
+    /// start.
+    pub fn set_keeper(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Keeper, program.into());
+    }
+
     /// Says where the program that answers the portals is: a name to look
     /// up in `PATH`, or a path. It is then started with the session,
     /// unless the configuration turns it off. Until this is called there
@@ -2370,6 +2379,7 @@ enum Program {
     Panel,
     Notifier,
     Portal,
+    Keeper,
 }
 
 impl Program {
@@ -2379,6 +2389,7 @@ impl Program {
             Self::Panel => general.panel.enabled,
             Self::Notifier => general.notifications.enabled,
             Self::Portal => general.portals.enabled,
+            Self::Keeper => general.clipboard.enabled,
         }
     }
 
@@ -2389,6 +2400,7 @@ impl Program {
         match self {
             Self::Panel | Self::Notifier => Roles::PANEL,
             Self::Portal => Roles::PANEL.with(Roles::OVERLAY).with(Roles::CAPTURE),
+            Self::Keeper => Roles::CLIPBOARD,
         }
     }
 }

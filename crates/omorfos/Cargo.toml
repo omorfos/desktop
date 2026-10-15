@@ -38,6 +38,7 @@ assets = [
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
+    ["target/release/omorfos-clipboard", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
@@ -91,6 +92,7 @@ omorfos-panel = { path = "../omorfos-panel" }
 omorfos-launcher = { path = "../omorfos-launcher" }
 omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
+omorfos-clipboard = { path = "../omorfos-clipboard" }
 xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 # Reads back the pictures the screenshot tool saves.
 png = "0.18.1"

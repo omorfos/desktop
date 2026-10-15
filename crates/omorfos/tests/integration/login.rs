@@ -120,6 +120,30 @@ fn the_notifications_are_started_with_the_session_unless_turned_off() {
 }
 
 #[test]
+fn what_keeps_the_clipboard_is_started_with_the_session_unless_turned_off() {
+    let mut session = Session::new();
+    session.listen();
+    let directory = session.config.path().to_owned();
+    let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
+    session.compositor_mut().set_keeper(stand_in_panel());
+    session.compositor_mut().autostart();
+    session.eventually(|_| started() == "x");
+
+    let off = "clipboard: { enabled: false }\n";
+    let mut session = Session::with_config(&[("config.yaml", off)]);
+    session.listen();
+    let directory = session.config.path().to_owned();
+    session.compositor_mut().set_keeper(stand_in_panel());
+    session.compositor_mut().set_panel(stand_in_panel());
+    session.compositor_mut().autostart();
+    let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
+    // The panel is, and nothing else.
+    session.eventually(|_| started() == "x");
+    session.advance(std::time::Duration::from_millis(100));
+    assert_eq!(started(), "x");
+}
+
+#[test]
 fn what_answers_the_portals_is_started_with_the_session_unless_turned_off() {
     let mut session = Session::new();
     session.listen();

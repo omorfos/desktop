@@ -690,6 +690,18 @@ pub(crate) struct ClientState {
     data_device: Option<wl_data_device::WlDataDevice>,
     /// What this client hands over when asked for what it copied.
     copied: String,
+    /// Whether it holds on to what asks for what it copied, without
+    /// handing anything over, until told to.
+    pub(crate) holding: bool,
+    /// The forms of what it copied it holds on to whatever asks for, as it
+    /// does all of them while `holding`.
+    pub(crate) withheld: Vec<String>,
+    /// What asked for what it copied while it was holding on.
+    held: Vec<std::os::fd::OwnedFd>,
+    /// How many times it has been asked for what it copied.
+    pub(crate) asked: usize,
+    /// Whether what it copied has been replaced on the clipboard.
+    pub(crate) replaced: bool,
     /// The clipboard as last offered to this client, if it holds anything.
     pub(crate) selection: Option<wl_data_offer::WlDataOffer>,
     /// The formats the offered clipboard can be had in.
@@ -1283,19 +1295,38 @@ impl Client {
 
     /// Puts `text` on the clipboard, as an application does on Ctrl+C.
     pub(crate) fn copy(&mut self, text: &str) {
+        self.copy_as(text, &[TEXT]);
+    }
+
+    /// Puts `text` on the clipboard, offered in each of `formats`.
+    pub(crate) fn copy_as(&mut self, text: &str, formats: &[&str]) {
         text.clone_into(&mut self.state.copied);
+        self.state.replaced = false;
         let source = self
             .state
             .clipboards
             .as_ref()
             .unwrap()
             .create_data_source(&self.handle(), ());
-        source.offer(TEXT.to_owned());
+        for format in formats {
+            source.offer((*format).to_owned());
+        }
         self.state
             .data_device
             .as_ref()
             .unwrap()
             .set_selection(Some(&source), self.state.serial);
+    }
+
+    /// Hands over what was copied to whatever asked for it while this
+    /// client was holding on, and holds on no longer.
+    pub(crate) fn hand_over(&mut self) {
+        self.state.holding = false;
+        for fd in self.state.held.drain(..) {
+            std::fs::File::from(fd)
+                .write_all(self.state.copied.as_bytes())
+                .unwrap();
+        }
     }
 
     /// Asks for the clipboard's text, as an application does on Ctrl+V.
@@ -1356,7 +1387,7 @@ pub(crate) struct Task {
 }
 
 /// The format the test client copies and pastes.
-const TEXT: &str = "text/plain;charset=utf-8";
+pub(crate) const TEXT: &str = "text/plain;charset=utf-8";
 
 /// How a layer-shell surface asks to be placed.
 pub(crate) struct LayerShape {
@@ -1718,11 +1749,23 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_data_source::Event::Send { fd, .. } = event {
-            // Hand over what was copied and close the pipe by dropping it.
-            std::fs::File::from(fd)
-                .write_all(state.copied.as_bytes())
-                .unwrap();
+        match event {
+            wl_data_source::Event::Send { fd, mime_type }
+                if state.holding || state.withheld.contains(&mime_type) =>
+            {
+                state.asked += 1;
+                state.held.push(fd);
+            }
+            wl_data_source::Event::Send { fd, .. } => {
+                state.asked += 1;
+                // Hand over what was copied and close the pipe by dropping
+                // it.
+                std::fs::File::from(fd)
+                    .write_all(state.copied.as_bytes())
+                    .unwrap();
+            }
+            wl_data_source::Event::Cancelled => state.replaced = true,
+            _ => {}
         }
     }
 }

@@ -1,0 +1,339 @@
+//! Keeps what is copied in the omorfos desktop after the program it was
+//! copied from closes.
+//!
+//! What is on the clipboard is the copying program's to give, and once it
+//! closes there is nothing to paste. This program reads whatever is copied,
+//! in every form it is offered in, as soon as it is copied, and offers it in
+//! the copying program's place, which is then free to close. The compositor
+//! lets it, being started with `may: [clipboard]`; started any other way it
+//! is refused and says so.
+//!
+//! What a password manager copies, which says so with
+//! `x-kde-passwordManagerHint`, is not kept: it goes when the password
+//! manager takes it away, as it means to. Nor is what is only selected,
+//! pasted with the middle button. What is too large to keep, or not handed
+//! over soon enough, is left with the program that copied it.
+
+use std::error::Error;
+use std::ffi::OsString;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::os::fd::AsFd;
+use std::path::Path;
+use std::sync::{Arc, mpsc};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::protocol::{wl_registry, wl_seat};
+use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
+use wayland_protocols::ext::data_control::v1::client::{
+    ext_data_control_device_v1::{self as device, ExtDataControlDeviceV1},
+    ext_data_control_manager_v1::ExtDataControlManagerV1,
+    ext_data_control_offer_v1::{self as offer, ExtDataControlOfferV1},
+    ext_data_control_source_v1::{self as source, ExtDataControlSourceV1},
+};
+
+/// Why the keeper could not go on.
+pub type Failure = Box<dyn Error + Send + Sync>;
+
+/// The form offered beside the others by what this program keeps, by
+/// which it knows its own.
+const MARK: &str = "application/x-omorfos-kept";
+
+/// The form a password manager offers what it copies in besides, to say it
+/// is not to be kept.
+const SECRET: &str = "x-kde-passwordManagerHint";
+
+/// What a program written for X11 offers that is not data but asks
+/// something of it, as the conventions for its clipboard have them.
+const ASKED: [&str; 5] = ["TARGETS", "MULTIPLE", "TIMESTAMP", "SAVE_TARGETS", "DELETE"];
+
+/// How much is kept, and how long it is waited for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// The most that is kept of one copy, in all its forms together, in
+    /// bytes. Anything larger is left with the program that copied it.
+    pub most: usize,
+    /// How long a program that copied has to hand over all of it.
+    pub wait: Duration,
+}
+
+impl Default for Limits {
+    /// A picture of a large screen, in a few forms, kept for two seconds'
+    /// wait.
+    fn default() -> Self {
+        Self {
+            most: 64 << 20,
+            wait: Duration::from_secs(2),
+        }
+    }
+}
+
+/// What has been copied, in each form it is offered in.
+type Kept = Vec<(String, Arc<[u8]>)>;
+
+/// Keeps what is copied for as long as the session lasts, and returns why
+/// it could not go on.
+///
+/// `variable` looks up an environment variable. The compositor is found
+/// by `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, unless it handed over a
+/// connection.
+#[must_use]
+pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
+    start_with(variable, Limits::default())
+}
+
+/// The same, keeping no more and waiting no longer than `limits` say.
+#[must_use]
+pub fn start_with(variable: &dyn Fn(&str) -> Option<OsString>, limits: Limits) -> Failure {
+    let get = |name: &str| variable(name).filter(|value| !value.is_empty());
+    let wayland = get("XDG_RUNTIME_DIR").zip(get("WAYLAND_DISPLAY"));
+    let wayland = wayland.map(|(directory, display)| Path::new(&directory).join(display));
+    let Some(socket) = wayland else {
+        return "this is not an omorfos session: XDG_RUNTIME_DIR or WAYLAND_DISPLAY is not set"
+            .into();
+    };
+    let stream = omorfos_shell::connect(&socket);
+    let connection =
+        stream.and_then(|stream| Connection::from_socket(stream).map_err(std::io::Error::other));
+    match connection {
+        Ok(connection) => keep(&connection, limits),
+        Err(error) => format!("{}: {error}", socket.display()).into(),
+    }
+}
+
+/// Keeps what is copied, over `connection`, until it ends.
+#[must_use]
+pub fn keep(connection: &Connection, limits: Limits) -> Failure {
+    let ready = registry_queue_init::<State>(connection).map_err(Failure::from);
+    let found = ready.and_then(|(globals, queue)| {
+        let handle = queue.handle();
+        let manager = globals.bind::<ExtDataControlManagerV1, _, _>(&handle, 1..=1, ());
+        let seat = globals.bind::<wl_seat::WlSeat, _, _>(&handle, 1..=1, ());
+        let found = manager.ok().zip(seat.ok());
+        found.map(|found| (found, queue)).ok_or_else(|| {
+            "the compositor does not let this program keep the clipboard: it is to be started \
+             with `may: [clipboard]`"
+                .into()
+        })
+    });
+    let ((manager, seat), mut queue) = match found {
+        Ok(found) => found,
+        Err(failure) => return failure,
+    };
+    let handle = queue.handle();
+    let mut state = State::default();
+    let device = manager.get_data_device(&seat, &handle, ());
+    loop {
+        // What was copied while the last was being read is seen to first.
+        let waiting = state.copied.is_none();
+        if let Some(error) = waiting
+            .then(|| queue.blocking_dispatch(&mut state).err())
+            .flatten()
+        {
+            return format!("the session ended: {error}").into();
+        }
+        let Some((offer, kinds)) = state.copied.take() else {
+            continue;
+        };
+        // What this program offers itself is kept already, and what a
+        // password manager copies is not to be.
+        let mine = kinds.iter().any(|kind| kind == MARK || kind == SECRET);
+        state.changed = false;
+        let read = (!mine).then(|| read(connection, &offer, &kinds, limits));
+        offer.destroy();
+        // Something else copied while it was read, or the clipboard
+        // emptied, as it is when the program that copied goes, leaves it
+        // out of date; and nothing at all is not worth keeping.
+        let outdated = queue.roundtrip(&mut state).is_err() || state.changed;
+        let something = |kept: &Kept| kept.iter().any(|(_, data)| !data.is_empty());
+        if let Some(kept) = read.flatten().filter(|_| !outdated).filter(something) {
+            let source = manager.create_data_source(&handle, kept.clone());
+            for (kind, _) in &kept {
+                source.offer(kind.clone());
+            }
+            source.offer(MARK.to_owned());
+            device.set_selection(Some(&source));
+        }
+    }
+}
+
+/// Reads what was copied, in each of `kinds` there is data in, all at
+/// once: the forms that come within `limits`, unless together they are
+/// more than it allows.
+fn read(
+    connection: &Connection,
+    offer: &ExtDataControlOfferV1,
+    kinds: &[String],
+    limits: Limits,
+) -> Option<Kept> {
+    let most = u64::try_from(limits.most).unwrap_or(u64::MAX);
+    // A program written for X11 offers some things that are not data but
+    // what it can be asked to do, and some forms more than once. The rest
+    // are kept in the order they were offered, which says which is best.
+    let new = |(at, kind): &(usize, &String)| !kinds[..*at].contains(kind);
+    let data = |(_, kind): &(usize, &String)| !ASKED.contains(&kind.as_str());
+    let kinds: Vec<&String> = kinds
+        .iter()
+        .enumerate()
+        .filter(new)
+        .filter(data)
+        .map(|(_, kind)| kind)
+        .collect();
+    let asked: Vec<_> = kinds.iter().map(|kind| ask(offer, kind, most)).collect();
+    // A failure to send is seen by the next wait for events.
+    let _ = connection.flush();
+    let until = Instant::now() + limits.wait;
+    let got = asked.iter().map(|answer| {
+        let left = until.saturating_duration_since(Instant::now());
+        answer.recv_timeout(left).ok().flatten()
+    });
+    // What does not come in time, or cannot be read, is gone without.
+    let kept = kinds
+        .into_iter()
+        .zip(got)
+        .filter_map(|(kind, data)| data.map(|data| (kind.clone(), Arc::from(data))));
+    let kept: Kept = kept.collect();
+    let small = kept.iter().map(|(_, data)| data.len()).sum::<usize>() <= limits.most;
+    small.then_some(kept)
+}
+
+/// Asks for what was copied in the form `kind`, which arrives on what is
+/// returned: all of it, or nothing if it was more than `most` bytes or
+/// could not be read. A program that never hands it over holds a thread
+/// until it closes.
+fn ask(offer: &ExtDataControlOfferV1, kind: &str, most: u64) -> mpsc::Receiver<Option<Vec<u8>>> {
+    let (sender, receiver) = mpsc::channel();
+    let pipe = std::io::pipe();
+    let reader = pipe.map(|(reader, writer)| {
+        offer.receive(kind.to_owned(), writer.as_fd());
+        reader
+    });
+    let _ = reader.map(|reader| {
+        thread::spawn(move || {
+            let mut got = Vec::new();
+            let read = reader.take(most.saturating_add(1)).read_to_end(&mut got);
+            let fits = |length: &usize| u64::try_from(*length).is_ok_and(|length| length <= most);
+            let _ = sender.send(read.ok().filter(fits).map(|_| got));
+        })
+    });
+    receiver
+}
+
+/// What the compositor has said.
+#[derive(Debug, Default)]
+struct State {
+    /// What is offered and has not been said to be on the clipboard yet,
+    /// with the forms it is offered in.
+    offers: Vec<(ExtDataControlOfferV1, Vec<String>)>,
+    /// What was last copied, with its forms, until it is read.
+    copied: Option<(ExtDataControlOfferV1, Vec<String>)>,
+    /// Whether the clipboard has changed since it was last read.
+    changed: bool,
+}
+
+impl State {
+    /// Lets go of what is offered for being selected, which is not kept.
+    fn forget(&mut self, event: &device::Event) {
+        if let device::Event::PrimarySelection { id: Some(offer) } = event {
+            self.offers.retain(|(waiting, _)| waiting != offer);
+            offer.destroy();
+        }
+    }
+
+    /// Takes what is offered as `offer` out of what is waiting.
+    fn take(
+        &mut self,
+        offer: &ExtDataControlOfferV1,
+    ) -> Option<(ExtDataControlOfferV1, Vec<String>)> {
+        let at = self.offers.iter().position(|(waiting, _)| waiting == offer);
+        at.map(|at| self.offers.swap_remove(at))
+    }
+}
+
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Only what there is at first is wanted, and that is bound by then.
+    }
+}
+
+impl Dispatch<ExtDataControlDeviceV1, ()> for State {
+    fn event(
+        state: &mut Self,
+        _: &ExtDataControlDeviceV1,
+        event: device::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            device::Event::DataOffer { id } => state.offers.push((id, Vec::new())),
+            device::Event::Selection { id } => {
+                state.changed = true;
+                state.copied = id.and_then(|offer| state.take(&offer));
+            }
+            // What is only selected is not kept, and nothing else is
+            // said that matters.
+            other => state.forget(&other),
+        }
+    }
+
+    wayland_client::event_created_child!(State, ExtDataControlDeviceV1, [
+        device::EVT_DATA_OFFER_OPCODE => (ExtDataControlOfferV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtDataControlOfferV1, ()> for State {
+    fn event(
+        state: &mut Self,
+        offer: &ExtDataControlOfferV1,
+        event: offer::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A form with no name cannot usefully be asked for.
+        if let offer::Event::Offer { mime_type } = event
+            && !mime_type.is_empty()
+        {
+            let waiting = state.offers.iter_mut();
+            let waiting = waiting.filter(|(waiting, _)| waiting == offer);
+            waiting.for_each(|(_, kinds)| kinds.push(mime_type.clone()));
+        }
+    }
+}
+
+impl Dispatch<ExtDataControlSourceV1, Kept> for State {
+    fn event(
+        _: &mut Self,
+        source: &ExtDataControlSourceV1,
+        event: source::Event,
+        kept: &Kept,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            source::Event::Send { mime_type, fd } => {
+                // Handed over on a thread of its own, since a program that
+                // asks may take its time reading, or never read at all.
+                let found = kept.iter().find(|(kind, _)| *kind == mime_type);
+                let data = found.map(|(_, data)| Arc::clone(data));
+                let _ =
+                    data.map(|data| thread::spawn(move || drop(File::from(fd).write_all(&data))));
+            }
+            // Something else has been copied, and what this held is let go.
+            _ => source.destroy(),
+        }
+    }
+}
+
+delegate_noop!(State: ExtDataControlManagerV1);
+delegate_noop!(State: ignore wl_seat::WlSeat);

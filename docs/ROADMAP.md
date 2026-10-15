@@ -190,10 +190,14 @@ calls for them.
       `screenshots.destination`, `--to`, and `Shift+Print`. With it the
       `clipboard` role and `ext-data-control-v1`, since a program
       without a window cannot otherwise set the clipboard.
-- [ ] A clipboard that outlives the program that copied: a manager of
+- [x] A clipboard that outlives the program that copied: a manager of
       our own with the `clipboard` role, which would also let
-      `omorfos-screenshot` stop at once. Today it stays running to give
-      its picture when pasted.
+      `omorfos-screenshot` stop at once (ADR 42).
+- [ ] What `omorfos-clipboard` keeps, offered as a history to choose
+      from (ADR 34 has its look).
+- [ ] Forgetting what was copied after a while, for passwords copied
+      from where nothing says they are secret: Proton Pass in Firefox
+      clears what it copied only while its popup stays open.
 - [x] The `private` rule, which leaves a window blank in any picture
       taken of the screen, for as long as it matches (ADR 38).
 - [x] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
