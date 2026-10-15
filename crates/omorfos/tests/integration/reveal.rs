@@ -17,7 +17,7 @@ const LEFT: u32 = 0x110;
 const TITLEBAR: u32 = 0xff23_262e;
 /// How long the pointer rests against an edge before what is there comes
 /// back.
-const REST: Duration = Duration::from_millis(300);
+const REST: Duration = Duration::from_millis(600);
 
 /// A panel 20 high along one edge of the screen.
 fn panel(edge: Anchor) -> LayerShape {
@@ -253,13 +253,121 @@ fn a_pointer_that_does_not_rest_brings_nothing_back() {
     // for long enough, and the time at the one does not count for the
     // other.
     point(&mut session, 600, 0);
-    session.advance(Duration::from_millis(200));
+    session.advance(Duration::from_millis(400));
     point(&mut session, 600, 479);
-    session.advance(Duration::from_millis(200));
+    session.advance(Duration::from_millis(400));
     assert_eq!(seen(&mut session), [BACKGROUND; 3]);
 
-    session.advance(Duration::from_millis(100));
+    session.advance(Duration::from_millis(200));
     assert_eq!(seen(&mut session), [BACKGROUND, BACKGROUND, BLUE]);
+}
+
+/// Moves the pointer by a distance, as a mouse or touchpad does, at a
+/// time in thousandths of a second.
+fn push(session: &mut Session, dy: f64, time: u32) {
+    session
+        .compositor_mut()
+        .input(Input::MotionBy { dx: 0.0, dy }, time);
+    session.step();
+}
+
+#[test]
+fn pushing_the_pointer_on_against_an_edge_brings_back_what_is_there_without_the_rest() {
+    let (mut session, _client) = fullscreen();
+
+    // Reaching the top brings nothing, however fast and far the move
+    // that reaches it, and nor does what is pushed in the first moments
+    // there; pushing on past it a good way after that does, long before
+    // a rest would have.
+    point(&mut session, 600, 200);
+    push(&mut session, -400.0, 0);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "only reached");
+    push(&mut session, -150.0, 10);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not held there yet");
+    push(&mut session, -60.0, 160);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not pushed far enough");
+    push(&mut session, -60.0, 170);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+
+    // The same at the bottom, once what the top brought back has gone.
+    point(&mut session, 600, 240);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(seen(&mut session), [BACKGROUND; 3]);
+    point(&mut session, 600, 479);
+    push(&mut session, 120.0, 200);
+    push(&mut session, 120.0, 350);
+    assert_eq!(seen(&mut session), [BACKGROUND, BACKGROUND, BLUE]);
+}
+
+#[test]
+fn a_pointer_thrown_at_an_edge_and_back_brings_nothing() {
+    let (mut session, _client) = fullscreen();
+
+    // What a touchpad sends for a flick at the top and away: the move
+    // that reaches it, then a quarter of the screen's height more past
+    // it within a few hundredths of a second, then back down.
+    point(&mut session, 600, 200);
+    push(&mut session, -241.0, 0);
+    for (dy, time) in [
+        (-82.0, 7),
+        (-93.0, 14),
+        (-31.0, 21),
+        (-25.0, 28),
+        (-16.0, 35),
+    ] {
+        push(&mut session, dy, time);
+    }
+    push(&mut session, 100.0, 80);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(seen(&mut session), [BACKGROUND; 3]);
+}
+
+#[test]
+fn a_push_that_takes_more_than_a_second_begins_again() {
+    let (mut session, _client) = fullscreen();
+    point(&mut session, 600, 0);
+    push(&mut session, -60.0, 0);
+    push(&mut session, -60.0, 200);
+    push(&mut session, -60.0, 1500);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "too slow to count");
+    push(&mut session, -60.0, 1600);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+}
+
+#[test]
+fn a_push_that_leaves_the_edge_begins_again_and_one_after_a_key_brings_nothing() {
+    let (mut session, _client) = fullscreen();
+    point(&mut session, 600, 0);
+    push(&mut session, -60.0, 0);
+    push(&mut session, -60.0, 200);
+    // Away from the edge and back: what was pushed before does not
+    // count, and the pointer has to be held there again first.
+    push(&mut session, 50.0, 210);
+    point(&mut session, 600, 0);
+    push(&mut session, -60.0, 220);
+    push(&mut session, -60.0, 300);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not held there again");
+    push(&mut session, -60.0, 400);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not pushed far enough");
+    push(&mut session, -60.0, 410);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+
+    // Sent away by a key, it does not come back for pushing, until the
+    // pointer has left the edge and come again.
+    for pressed in [true, false] {
+        let code = key::A;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+    push(&mut session, -150.0, 600);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3], "not after a key");
+    push(&mut session, 50.0, 610);
+    point(&mut session, 600, 0);
+    push(&mut session, -150.0, 620);
+    push(&mut session, -150.0, 800);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
 }
 
 #[test]
