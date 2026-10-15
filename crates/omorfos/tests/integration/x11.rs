@@ -16,7 +16,7 @@ use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
 use std::time::Duration;
 
 use omorfos::Input;
-use omorfos_config::Action;
+use omorfos_config::{Action, Half};
 use omorfos_core::geometry::Rect;
 use x11rb::connection::Connection;
 use x11rb::protocol::Event as Told;
@@ -407,6 +407,44 @@ fn a_window_of_a_program_written_for_x11_is_maximized_and_made_fullscreen_like_a
     session.compositor_mut().perform(&Action::Maximize);
     session.step();
     assert_eq!(size_of(&mut session, &program, window), (200, 100));
+}
+
+#[test]
+fn a_line_stops_where_a_window_of_a_program_written_for_x11_can_be_no_smaller() {
+    use x11rb::properties::WmSizeHints;
+
+    let (mut session, program) = session();
+    open(&mut session, &program, "first", (200, 100), 0x00ff_0000);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = create(
+        &mut session,
+        &program,
+        "second",
+        (0, 0, 200, 100),
+        (0x0000_00ff, false),
+    );
+    meanwhile(&mut session, || {
+        let mut hints = WmSizeHints::new();
+        hints.min_size = Some((300, 50));
+        hints.set_normal_hints(&program, second).unwrap();
+        program.flush().unwrap();
+    });
+    show(&mut session, &program, second, true);
+    session.eventually(|session| windows(session).len() == 2);
+
+    let (x, y) = (f64::from(WIDTH / 2), 300.0);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    let button = |pressed| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    let x = f64::from(WIDTH - 10);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    let first = frame(&session).0;
+    assert_eq!(first.size.width, WIDTH.unsigned_abs() - 300);
 }
 
 #[test]

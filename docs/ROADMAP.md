@@ -146,8 +146,11 @@ calls for them.
 - [x] What is brought back at an edge staying while the pointer moves,
       so that a titlebar away from the edge can be reached.
 - [x] The lines between tiles drawn and dragged.
-- [ ] A line that stops where a window says it can be no smaller, and a
+- [x] A line that stops where a window says it can be no smaller, and a
       part of the theme for the line.
+- [ ] A window that says it can be no smaller than its part, when the
+      part is made or the window says so later, given more room without
+      the line being dragged.
 - [x] Three and four windows, changing places and focus by direction.
 - [x] A window changed over with another by dragging its titlebar onto
       the other's part.

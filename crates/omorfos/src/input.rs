@@ -402,7 +402,7 @@ impl Compositor {
                     self.desktop.set_geometry(window, resized);
                 }
                 Drag::Tab { .. } | Drag::Tile { .. } => {}
-                Drag::Line { line, .. } => self.drag_line(line, position),
+                Drag::Line { line, .. } => self.move_line(line, Some(position)),
             }
             // The drag has the pointer; no window sees it meanwhile.
             self.move_pointer(None, time);
@@ -684,7 +684,7 @@ impl Compositor {
             let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
             if twice {
                 self.hover.lines.pressed = None;
-                self.desktop.move_line(output, which, None);
+                self.move_line((output, which), None);
             } else {
                 let line = (output, which);
                 self.drag = Some(Drag::Line { line, across });

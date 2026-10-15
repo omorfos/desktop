@@ -185,9 +185,10 @@ the panels are hidden. A window that has a workspace to itself has
 nothing over it, as fullscreen means.
 
 There is a line wherever two parts meet: drag it to give one more room
-and the other less, down to a sixth of the screen, and double-click it to
-put it back in the middle. It is drawn in the colour the theme gives a
-window's border. When a window closes or leaves, the one beside it has
+and the other less, down to a sixth of the screen or to the least a
+window says it can be, and double-click it to put it back in the middle.
+The theme draws it as `tile-line`, in a window's border colour unless
+told otherwise. When a window closes or leaves, the one beside it has
 its room. A window that opens when every part is taken opens on the
 desktop.
 
@@ -353,6 +354,9 @@ window {
   border-radius: 8px;
 }
 window:focus { border-color: var(--accent); }
+
+/* The line between windows that share a workspace. */
+tile-line { color: var(--border); }
 
 titlebar {
   height: 28px;
@@ -537,7 +541,7 @@ workspace, task {
 workspace:active, task:active { border-bottom: none; }
 ```
 
-**Parts** are `desktop`, `window`, `titlebar`, `tab`, `button-close`,
+**Parts** are `desktop`, `window`, `tile-line`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
 `menu-separator`, `notice`, `notice-heading`, `capture`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
@@ -559,7 +563,7 @@ is measured to the outside of its border.
 | Property | Value | Notes |
 |---|---|---|
 | `background` | a color | also written `background-color` |
-| `color` | a color | text; for `menu-separator`, the line |
+| `color` | a color | text; for `menu-separator` and `tile-line`, the line |
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |

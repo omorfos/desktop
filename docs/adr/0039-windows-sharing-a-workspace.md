@@ -185,6 +185,21 @@ either edge. What a window says is the least it can be is not asked yet,
 so a window can be given less room than it will draw in, and then draws
 over the line.
 
+Both came later. The line stops where a window on either side would have
+less than it says it can be (`xdg_toplevel`'s least size, or an X11
+program's size hints), with the titlebar over it added; a frame of tabs
+needs what the largest of them needs, and a side cut in two the other
+way what the larger of its two needs. The least is asked for as the line
+moves, not kept, since nothing else needs it. What a program says is not
+trusted: where two windows ask for more than there is, the one after the
+line has what it asked for, and no window can ask for so much that the
+other has less than its sixth. Only moving the line is held back: a part
+made smaller than its window needs when the workspace is cut, or a
+window that asks for more later, is not given room until the line is
+dragged. And the line has a part of the theme of its own, `tile-line`,
+drawn in its text colour as `menu-separator` is, which is a window's
+border colour unless the theme says otherwise.
+
 Three and four came next, with focus and changing places by direction
 (`Super+Ctrl` and an arrow, and with `Shift`). How a third part is made
 was settled here: `tile` on a window that fills a part has it take a

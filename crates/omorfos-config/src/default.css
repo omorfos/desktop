@@ -32,6 +32,9 @@ window {
 }
 window:focus { border-color: var(--accent); }
 
+/* The line between windows that share a workspace. */
+tile-line { color: var(--border); }
+
 titlebar {
   height: 28px;
   background: var(--surface-dim);
