@@ -8,8 +8,8 @@ use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
-/// The colour of a window's border in the built-in theme, which the line
-/// is drawn in.
+/// The colour of the line in the built-in theme, which is that of a
+/// window's border.
 const LINE: u32 = 0xff2c_303a;
 const YELLOW: u32 = 0xffff_ff00;
 const MAGENTA: u32 = 0xffff_00ff;
@@ -76,8 +76,8 @@ fn a_line_is_drawn_between_two_windows_that_share_a_workspace() {
     session.step();
     assert!(!session.draw().damaged, "and not drawn again as it is");
 
-    // It takes the colour the theme gives a window's border.
-    session.write_config("theme.css", "window { border: 1px solid #ff00ff; }\n");
+    // It takes the colour the theme gives it.
+    session.write_config("theme.css", "tile-line { color: #ff00ff; }\n");
     session.eventually(|session| session.draw().at(320, 300) == MAGENTA);
 }
 
@@ -141,6 +141,40 @@ fn dragging_the_line_gives_one_window_more_room_and_the_other_less() {
     point(&mut session, 630, 300);
     button(&mut session, LEFT, false, 1000);
     assert_eq!(parts(&session), [(0, 0, 534, 480), (534, 0, 106, 480)]);
+}
+
+#[test]
+fn the_line_stops_where_a_window_says_it_can_be_no_smaller() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let first = session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    first.role.set_min_size(250, 0);
+    first.surface.commit();
+    // A window with a titlebar over it says how small it can be under that.
+    second.role.set_min_size(300, 0);
+    second.surface.commit();
+    session.roundtrip(&mut client);
+
+    point(&mut session, 320, 300);
+    button(&mut session, LEFT, true, 0);
+    point(&mut session, 100, 300);
+    assert_eq!(parts(&session)[0], (0, 0, 250, 480), "the first's least");
+    point(&mut session, 600, 300);
+    assert_eq!(parts(&session)[0], (0, 0, 340, 480), "the second's least");
+    button(&mut session, LEFT, false, 0);
+
+    // The middle, too, is only as near as the second lets it be.
+    second.role.set_min_size(400, 0);
+    second.surface.commit();
+    session.roundtrip(&mut client);
+    point(&mut session, 340, 300);
+    button(&mut session, LEFT, true, 1000);
+    button(&mut session, LEFT, false, 1000);
+    button(&mut session, LEFT, true, 1100);
+    button(&mut session, LEFT, false, 1100);
+    assert_eq!(parts(&session)[0], (0, 0, 240, 480));
 }
 
 #[test]

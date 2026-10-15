@@ -16,6 +16,9 @@ pub enum Part {
     /// A window's frame: the border around it and how far its corners are
     /// rounded. It can be [`State::Focused`].
     Window,
+    /// The line between windows that share a workspace, drawn a hair wide
+    /// in its text colour.
+    TileLine,
     /// The bar across the top of a frame. It can be [`State::Focused`],
     /// with its window.
     Titlebar,
@@ -86,9 +89,10 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::Desktop,
         Self::Window,
+        Self::TileLine,
         Self::Titlebar,
         Self::Tab,
         Self::ButtonClose,
@@ -120,6 +124,7 @@ impl Part {
         match self {
             Self::Desktop => "desktop",
             Self::Window => "window",
+            Self::TileLine => "tile-line",
             Self::Titlebar => "titlebar",
             Self::Tab => "tab",
             Self::ButtonClose => "button-close",
@@ -481,6 +486,7 @@ mod tests {
             [
                 "desktop",
                 "window",
+                "tile-line",
                 "titlebar",
                 "tab",
                 "button-close",

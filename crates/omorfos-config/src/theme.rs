@@ -767,6 +767,13 @@ mod tests {
     }
 
     #[test]
+    fn the_line_between_windows_is_drawn_as_their_borders_are() {
+        let theme = Theme::default();
+        let line = theme.style(Part::TileLine, States::NONE);
+        assert_eq!(line.color, BORDER);
+    }
+
+    #[test]
     fn the_notice_is_outlined_and_headed_in_the_accent() {
         let theme = Theme::default();
         let notice = theme.style(Part::Notice, States::NONE);

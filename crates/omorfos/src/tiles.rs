@@ -10,10 +10,13 @@ use omorfos_core::{Arrangement, WindowId};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::utils::{Logical, Point};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::xdg::SurfaceCachedState;
 
-use crate::compositor::{Compositor, color, logical_size};
+use crate::compositor::{Compositor, Mapped, color, logical_size};
 use crate::input::Drag;
 use crate::outputs::Head;
+use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
 /// of layout. The line itself is a hair wide.
@@ -39,11 +42,10 @@ pub(crate) struct Lines {
 
 impl Compositor {
     /// Brings the lines that are drawn up to date with where the desktop
-    /// has them and how the theme has them look: the colour of a window's
-    /// border.
+    /// has them and how the theme has them look.
     pub(crate) fn lay_lines(&mut self) {
-        let ink = self.config().theme.style(Part::Window, States::NONE);
-        let ink = ink.border.top.color;
+        let ink = self.config().theme.style(Part::TileLine, States::NONE);
+        let ink = ink.color;
         let outputs = 0..self.heads.len();
         let lines = outputs.flat_map(|output| self.desktop.lines(output));
         // With them, the part a frame being dragged would be put in if it
@@ -208,8 +210,28 @@ impl Compositor {
         })
     }
 
-    /// Moves one of the lines of an output to where the pointer is.
-    pub(crate) fn drag_line(&mut self, (output, which): (usize, usize), to: DomainPoint) {
-        self.desktop.move_line(output, which, Some(to));
+    /// Moves one of the lines of an output to `to`, or with `None` back to
+    /// the middle, as far as the windows either side of it can be made
+    /// smaller.
+    pub(crate) fn move_line(&mut self, (output, which): (usize, usize), to: Option<DomainPoint>) {
+        let windows = &self.windows;
+        let least = |id: WindowId| {
+            let mapped = windows.iter().find(|mapped| mapped.id == id);
+            mapped.map_or_else(DomainSize::default, least)
+        };
+        self.desktop.move_line(output, which, to, least);
     }
+}
+
+/// The least a window says it can be, as its program last told: nothing
+/// where it has not said.
+fn least(mapped: &Mapped) -> DomainSize {
+    let size = match &mapped.role {
+        Role::Xdg(toplevel) => with_states(toplevel.wl_surface(), |states| {
+            let mut cached = states.cached_state.get::<SurfaceCachedState>();
+            cached.current().min_size
+        }),
+        Role::X11(surface) => surface.min_size().unwrap_or_default(),
+    };
+    DomainSize::new(size.w.max(0).unsigned_abs(), size.h.max(0).unsigned_abs())
 }
