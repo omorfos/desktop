@@ -347,26 +347,84 @@ pub(crate) fn tooltip(text: &mut Text, theme: &Theme, lines: &[String], scale: S
     canvas
 }
 
-/// The size of the mark that says the screen is being captured, and of
-/// the dot in the middle of it.
-pub(crate) const CAPTURE_MARK: (u32, u32) = (24, 16);
+/// What the mark that says something is captured shows a sign of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Signs {
+    /// That pictures are taken of the screen.
+    pub(crate) screen: bool,
+    /// That a microphone, or the sound that plays, is recorded.
+    pub(crate) sound: bool,
+    /// That a camera is.
+    pub(crate) camera: bool,
+}
+
+impl Signs {
+    /// Whether there is anything to show.
+    pub(crate) const fn any(self) -> bool {
+        self.screen || self.sound || self.camera
+    }
+
+    /// The signs there are, in the order they are shown.
+    fn shown(self) -> impl Iterator<Item = Sign> {
+        let signs = [
+            (self.screen, Sign::Screen),
+            (self.sound, Sign::Sound),
+            (self.camera, Sign::Camera),
+        ];
+        signs
+            .into_iter()
+            .filter(|(shown, _)| *shown)
+            .map(|(_, sign)| sign)
+    }
+}
+
+/// One sign of the mark.
+#[derive(Debug, Clone, Copy)]
+enum Sign {
+    Screen,
+    Sound,
+    Camera,
+}
+
+/// How much room the mark has round its signs, and how much each has.
+const CAPTURE_EDGE: u32 = 4;
+const CAPTURE_SIGN: u32 = 16;
 const CAPTURE_DOT: u32 = 8;
 
-/// Paints the mark that says the screen is being captured: a dot in the
-/// part's text colour on its background.
-pub(crate) fn capture_mark(theme: &Theme, scale: Scale) -> Canvas {
+/// The size of the mark with `signs`: a sign's room each, side by side.
+pub(crate) fn capture_mark_size(signs: Signs) -> (u32, u32) {
+    let count = u32::try_from(signs.shown().count()).unwrap_or(1).max(1);
+    (CAPTURE_EDGE * 2 + CAPTURE_SIGN * count, CAPTURE_SIGN)
+}
+
+/// Paints the mark that says something is captured: a sign for each of
+/// `signs`, in the part's text colour on its background. A dot for the
+/// screen, a microphone for sound, and a camera.
+pub(crate) fn capture_mark(theme: &Theme, scale: Scale, signs: Signs) -> Canvas {
     let style = theme.style(Part::Capture, States::NONE);
-    let (width, height) = CAPTURE_MARK;
+    let (width, height) = capture_mark_size(signs);
     let mut canvas = Canvas::scaled(width, height, scale);
     canvas.draw_box((0, 0, width, height), &style);
-    let dot = Style {
+    let ink = |radius: u32| Style {
         background: style.color,
-        radius: CAPTURE_DOT / 2,
+        radius,
         ..Style::NONE
     };
-    let left = ((width - CAPTURE_DOT) / 2).cast_signed();
-    let top = ((height - CAPTURE_DOT) / 2).cast_signed();
-    canvas.draw_box((left, top, CAPTURE_DOT, CAPTURE_DOT), &dot);
+    for (index, sign) in signs.shown().enumerate() {
+        let across = u32::try_from(index).unwrap_or(0);
+        let left = (CAPTURE_EDGE + CAPTURE_SIGN * across).cast_signed();
+        let shapes: &[(i32, i32, u32, u32, u32)] = match sign {
+            // A dot in the middle.
+            Sign::Screen => &[(4, 4, CAPTURE_DOT, CAPTURE_DOT, CAPTURE_DOT / 2)],
+            // A microphone on a stand.
+            Sign::Sound => &[(5, 2, 6, 8, 3), (7, 10, 2, 2, 0), (4, 12, 8, 2, 1)],
+            // A camera, its body and its lens.
+            Sign::Camera => &[(1, 4, 10, 8, 2), (11, 6, 4, 4, 1)],
+        };
+        for (x, y, wide, high, radius) in shapes {
+            canvas.draw_box((left + x, *y, *wide, *high), &ink(*radius));
+        }
+    }
     canvas
 }
 

@@ -84,6 +84,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
+    compositor.set_recorder(recorder());
     compositor.start_xwayland(None);
     compositor.autostart();
 
@@ -124,6 +125,11 @@ pub(super) fn notifier() -> PathBuf {
 /// Where the program that keeps what is copied, for this compositor, is.
 pub(super) fn keeper() -> PathBuf {
     super::keeper_program(env::current_exe().ok().as_deref())
+}
+
+/// Where the program that watches what records, for this compositor, is.
+pub(super) fn recorder() -> PathBuf {
+    super::recorder_program(env::current_exe().ok().as_deref())
 }
 
 /// Where the launcher that goes with this compositor is.

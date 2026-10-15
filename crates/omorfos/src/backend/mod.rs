@@ -44,6 +44,16 @@ pub fn notifier_program(own: Option<&Path>) -> PathBuf {
     beside(own, NOTIFIER)
 }
 
+/// What the executable that watches what records is called.
+const RECORDER: &str = "omorfos-recording";
+
+/// Where the program that watches what records is, found as
+/// [`panel_program`] finds the panel.
+#[must_use]
+pub fn recorder_program(own: Option<&Path>) -> PathBuf {
+    beside(own, RECORDER)
+}
+
 /// What the executable that keeps what is copied is called.
 const KEEPER: &str = "omorfos-clipboard";
 
@@ -130,6 +140,7 @@ mod tests {
         assert_eq!(notifier_program(None), Path::new(NOTIFIER));
         assert_eq!(portal_program(None), Path::new(PORTAL));
         assert_eq!(keeper_program(None), Path::new(KEEPER));
+        assert_eq!(recorder_program(None), Path::new(RECORDER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

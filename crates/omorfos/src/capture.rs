@@ -58,6 +58,8 @@ use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 
 use crate::compositor::{Compositor, Painted, color};
 use crate::paint;
+use crate::paint::Signs;
+use crate::recording::{Recorded, Recording};
 use crate::roles::Roles;
 
 /// How long the mark stays after the last picture of a screen was asked
@@ -373,13 +375,16 @@ pub(crate) struct Capture {
     /// Screens the mark stays on for a while yet, and until when.
     fading: Vec<(Output, Instant)>,
     /// The mark, painted for each scale it is shown at.
-    marks: Vec<(Scale, Painted)>,
+    marks: Vec<((Scale, Signs), Painted)>,
     /// A picture being turned into the order of colours a program is
     /// given it in, kept so as not to be made anew for every picture.
     scratch: Vec<u8>,
     /// What a picture of a window by itself was last drawn in, and its
     /// size, kept so as not to be made anew for every picture.
     alone: Option<(Size<i32, Buffer>, Box<dyn Held>)>,
+    /// What records from a microphone or a camera, which the mark shows
+    /// as well.
+    pub(crate) recording: Recording,
 }
 
 impl Capture {
@@ -419,8 +424,11 @@ impl Capture {
     }
 
     /// The mark as painted for a scale, if it has been.
-    pub(crate) fn mark(&self, scale: Scale) -> Option<&Painted> {
-        let painted = self.marks.iter().find(|(painted, _)| *painted == scale);
+    pub(crate) fn mark(&self, scale: Scale, signs: Signs) -> Option<&Painted> {
+        let painted = self
+            .marks
+            .iter()
+            .find(|(painted, _)| *painted == (scale, signs));
         painted.map(|(_, mark)| mark)
     }
 
@@ -760,18 +768,28 @@ impl Compositor {
             .extend(ended.map(|output| (output, now + LINGER)));
         capture.fading.retain(|(_, until)| *until > now);
 
-        let unpainted = |head: &&crate::outputs::Head| {
-            self.capture.marks(&head.output) && self.capture.mark(head.scale).is_none()
-        };
-        let scales: Vec<Scale> = self
+        let wanted = self
             .heads
             .iter()
-            .filter(unpainted)
-            .map(|head| head.scale)
-            .collect();
-        for scale in scales {
-            let mark = Painted::new(&paint::capture_mark(&self.config().theme, scale));
-            self.capture.marks.push((scale, mark));
+            .map(|head| (head.scale, self.signs(&head.output)));
+        let wanted = wanted
+            .filter(|(scale, signs)| signs.any() && self.capture.mark(*scale, *signs).is_none());
+        let wanted: Vec<(Scale, Signs)> = wanted.collect();
+        for (scale, signs) in wanted {
+            let theme = &self.config().theme;
+            let mark = Painted::new(&paint::capture_mark(theme, scale, signs));
+            self.capture.marks.push(((scale, signs), mark));
+        }
+    }
+
+    /// What the mark on a screen shows a sign of: pictures taken of it, and
+    /// a microphone or a camera recorded from, which shows on every screen.
+    pub(crate) fn signs(&self, output: &Output) -> Signs {
+        let recording = &self.capture.recording;
+        Signs {
+            screen: self.capture.marks(output),
+            sound: recording.any(&[Recorded::Microphone, Recorded::Sound]),
+            camera: recording.any(&[Recorded::Camera]),
         }
     }
 

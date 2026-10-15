@@ -966,9 +966,15 @@ turn it off: its colours can be changed, with the `capture` part of the
 theme. So a picture cannot be taken of your screen without your seeing
 that it was. Rest the pointer on it to be told which programs are taking
 pictures, of the screen or of a window on it, by the name of each
-program's file: the portal that shares a screen with a browser or a call,
-`xdg-desktop-portal-omorfos`, is named itself, not the program it shares
-with. It is themed as `tooltip`.
+program's file. It is themed as `tooltip`.
+
+The same mark shows a microphone while something records sound, and a
+camera while something records from one, on every screen, beside the dot
+for the screen, as `omorfos-recording` finds them in PipeWire. Its
+tooltip names each program and what it records, and a program a screen
+is shared with through the portal is named as that, with the portal. A
+program that opens a camera itself, and not through PipeWire, as some do,
+is not seen.
 
 A window that a rule in `rules.yaml` calls `private` is blank in every
 picture, of the screen or of itself, in the background colour of the

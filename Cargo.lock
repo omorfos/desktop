@@ -1931,6 +1931,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-recording"
+version = "0.1.0"
+dependencies = [
+ "pipewire",
+ "tempfile",
+]
+
+[[package]]
 name = "omorfos-screenshot"
 version = "0.1.0"
 dependencies = [
