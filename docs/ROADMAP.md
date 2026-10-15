@@ -224,11 +224,13 @@ calls for them.
 - [x] The stream that sharing a screen in a browser or a call needs
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.
+- [x] What is under a pointer that does not move found again when a
+      window comes, goes or moves under it: that window is told, and the
+      pointer looks as it ordinarily does until it says otherwise.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
       given as it is stored, not as it is seen; a pointer an application
-      draws itself is given by itself as the ordinary one; the pointer's
-      look is not worked out again when what is under it goes, only when
-      it next moves; and the mark sits over the end of a panel at the top.
+      draws itself is given by itself as the ordinary one; and the mark
+      sits over the end of a panel at the top.
 - [x] The portals answered by a program of our own,
       `xdg-desktop-portal-omorfos`, started with the session: so far
       the settings that tell applications light from dark and the

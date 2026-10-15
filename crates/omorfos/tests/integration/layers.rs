@@ -261,6 +261,7 @@ fn a_fullscreen_window_covers_panels_but_not_overlays() {
 #[test]
 fn the_pointer_reaches_layer_surfaces() {
     let mut session = Session::new();
+    move_to(&mut session, 630, 470);
     let mut client = session.connect();
     session.open_layer(&mut client, &panel(), (WIDTH, 30), YELLOW);
     session.open(&mut client, "app", (200, 100), RED);
@@ -309,6 +310,7 @@ fn the_pointer_reaches_a_fullscreen_window_under_an_overlay_elsewhere() {
 #[test]
 fn a_bottom_layer_gets_the_pointer_where_no_window_covers_it() {
     let mut session = Session::new();
+    move_to(&mut session, 630, 470);
     let mut client = session.connect();
     session.open_layer(&mut client, &corner(Layer::Bottom), (100, 50), YELLOW);
     client.take_events();
