@@ -28,6 +28,7 @@ mod lock;
 mod outputs;
 mod paint;
 mod palette;
+mod recording;
 mod restarts;
 mod reveal;
 mod roles;

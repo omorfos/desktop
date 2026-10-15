@@ -101,6 +101,7 @@ use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
 use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
+use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
@@ -741,6 +742,7 @@ impl Compositor {
             self.hover.reveal.deadline(),
             self.hover.palette.deadline(),
             self.capture.deadline(),
+            self.capture.recording.deadline(),
             screens_off,
             moving,
             said,
@@ -773,6 +775,7 @@ impl Compositor {
         if self.debouncer.fire(now) {
             self.reload_config();
         }
+        self.settle_recording(now);
         self.settle_capture(now);
         // Collect children that have exited so they do not linger as
         // zombies, noting those that did not exit as they should have.
@@ -1105,7 +1108,22 @@ impl Compositor {
     /// understand. An ordinary program finds the socket by its name and is
     /// given nothing to read.
     fn start(&mut self, program: &OsStr, arguments: &[String], roles: Roles) -> Option<u32> {
+        self.launch(program, arguments, (roles, false))
+    }
+
+    /// Starts a program as [`Compositor::start`] does, and, if it is
+    /// `heard`, listens to what it says, as the watcher of what records
+    /// says it.
+    fn launch(
+        &mut self,
+        program: &OsStr,
+        arguments: &[String],
+        (roles, heard): (Roles, bool),
+    ) -> Option<u32> {
         let mut process = std::process::Command::new(program);
+        if heard {
+            process.stdout(Stdio::piped());
+        }
         // The token says the window it opens was asked for.
         let ticket = self.ticket();
         process
@@ -1125,9 +1143,12 @@ impl Compositor {
                 .env("WAYLAND_SOCKET", "0");
         }
         let started = match process.spawn() {
-            Ok(child) => {
+            Ok(mut child) => {
                 self.wake_when_exited(&child);
                 let process = child.id();
+                if let Some(said) = child.stdout.take() {
+                    self.listen_to(said);
+                }
                 self.children.push(child);
                 Some(process)
             }
@@ -1164,6 +1185,14 @@ impl Compositor {
     /// start.
     pub fn set_keeper(&mut self, program: impl Into<PathBuf>) {
         self.set_component(Program::Keeper, program.into());
+    }
+
+    /// Says where the program that watches what records from a microphone
+    /// or a camera is: a name to look up in `PATH`, or a path. It is then
+    /// started with the session, and nothing turns it off. Until this is
+    /// called there is none to start.
+    pub fn set_recorder(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Recorder, program.into());
     }
 
     /// Says where the program that answers the portals is: a name to look
@@ -1207,7 +1236,9 @@ impl Compositor {
         for component in &mut components {
             if component.kind.wanted(&config.general) {
                 let program = component.program.as_os_str();
-                component.process = self.start(program, &[], component.kind.roles());
+                let heard = component.kind == Program::Recorder;
+                let how = (component.kind.roles(), heard);
+                component.process = self.launch(program, &[], how);
             }
         }
         self.components = components;
@@ -1239,7 +1270,9 @@ impl Compositor {
             }
             if component.restarts.allow(now) {
                 let program = component.program.as_os_str();
-                component.process = self.start(program, &[], component.kind.roles());
+                let heard = component.kind == Program::Recorder;
+                let how = (component.kind.roles(), heard);
+                component.process = self.launch(program, &[], how);
             } else {
                 self.problems.push(format!(
                     "`{}` keeps stopping, and will not be started again until you log in",
@@ -1721,9 +1754,9 @@ impl Compositor {
         let area = self.area_of(output);
         let free = layer_map_for_output(output).non_exclusive_zone();
         let right = area.loc.x + free.loc.x + free.size.w;
-        let left = right - capture::MARGIN - paint::CAPTURE_MARK.0.cast_signed();
+        let (width, height) = paint::capture_mark_size(self.signs(output));
+        let left = right - capture::MARGIN - width.cast_signed();
         let top = area.loc.y + free.loc.y + capture::MARGIN;
-        let (width, height) = paint::CAPTURE_MARK;
         Rectangle::new(
             (left, top).into(),
             (width.cast_signed(), height.cast_signed()).into(),
@@ -1733,26 +1766,65 @@ impl Compositor {
     /// What the mark on `output` says when the pointer rests on it: which
     /// programs are taking pictures there, and of what.
     fn mark_says(&self, output: &Output) -> Vec<String> {
-        let takers = self.capture.takers(output);
-        let said = takers.into_iter().map(|(client, window)| {
-            let pid = client
-                .get_credentials(&self.display)
-                .ok()
-                .map(|known| known.pid);
-            let program = pid.and_then(|pid| fs::read_link(format!("/proc/{pid}/exe")).ok());
-            let name = program.as_deref().and_then(Path::file_name);
-            let name = name.map_or(Cow::Borrowed("A program"), |name| name.to_string_lossy());
+        let recorders = &self.capture.recording.now;
+        let mut said = Vec::new();
+        for (client, window) in self.capture.takers(output) {
+            let pid = client.get_credentials(&self.display).ok();
+            let pid = pid.and_then(|known| u32::try_from(known.pid).ok());
             let what = if window {
                 "a window on this screen"
             } else {
                 "this screen"
             };
-            format!("{name} is taking pictures of {what}")
-        });
-        let mut said: Vec<String> = said.collect();
-        if said.is_empty() {
-            said.push("Pictures of this screen were taken a moment ago".to_owned());
+            // A program that shares what it takes, as the portal does, is
+            // named with what it shares it with, which PipeWire knows.
+            let shown = recorders.iter().filter(|recorder| {
+                recorder.kind == Recorded::Screen
+                    && recorder.through.is_some_and(|through| Some(through) == pid)
+            });
+            let shown: Vec<String> = shown
+                .map(|recorder| {
+                    let (seer, sharer) = (program(Some(recorder.pid)), program(pid));
+                    format!("{seer} is shown {what}, through {sharer}")
+                })
+                .collect();
+            if shown.is_empty() {
+                said.push(format!("{} is taking pictures of {what}", program(pid)));
+            }
+            said.extend(shown);
         }
+        let screen = !said.is_empty();
+        let recording = recorders.iter().filter_map(|recorder| {
+            let what = match recorder.kind {
+                Recorded::Microphone => "is recording from the microphone",
+                Recorded::Sound => "is recording the sound that plays",
+                Recorded::Camera => "is using the camera",
+                Recorded::Screen => return None,
+            };
+            Some((
+                recorder.kind,
+                format!("{} {what}", program(Some(recorder.pid))),
+            ))
+        });
+        let recording: Vec<(Recorded, String)> = recording.collect();
+        let has = |kinds: &[Recorded]| recording.iter().any(|(kind, _)| kinds.contains(kind));
+        let (sound, camera) = (
+            has(&[Recorded::Microphone, Recorded::Sound]),
+            has(&[Recorded::Camera]),
+        );
+        said.extend(recording.into_iter().map(|(_, line)| line));
+        // What has stopped, and is still on the mark for a moment.
+        let signs = self.signs(output);
+        let ago = [
+            (
+                signs.screen && !screen,
+                "Pictures of this screen were taken a moment ago",
+            ),
+            (signs.sound && !sound, "Sound was recorded a moment ago"),
+            (signs.camera && !camera, "The camera was used a moment ago"),
+        ];
+        let ago = ago.into_iter().filter(|(stopped, _)| *stopped);
+        said.extend(ago.map(|(_, line)| line.to_owned()));
         said
     }
 
@@ -1764,7 +1836,7 @@ impl Compositor {
         let marked = self
             .heads
             .iter()
-            .filter(|head| self.capture.marks(&head.output));
+            .filter(|head| self.signs(&head.output).any());
         let mut under = marked.filter(|head| self.mark_area(&head.output).to_f64().contains(point));
         let wanted = under.next().map(|head| {
             let mark = self.mark_area(&head.output);
@@ -1918,7 +1990,8 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let mut elements: Vec<Element<R>> = Vec::new();
-        if shown.mark && self.capture.marks(output) {
+        let signs = self.signs(output);
+        if shown.mark && signs.any() {
             // Over everything, the pointer too: nothing hides it; and over
             // that, what it says when the pointer rests on it.
             let tooltip = self
@@ -1932,7 +2005,7 @@ impl Compositor {
             });
             elements.extend(tooltip);
             let at = self.mark_area(output).loc;
-            let mark = self.capture.mark(view.scale);
+            let mark = self.capture.mark(view.scale, signs);
             elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
         }
         if shown.pointer {
@@ -2533,6 +2606,17 @@ impl Notice {
     }
 }
 
+/// What the program running as the process numbered `pid` is called: the
+/// name of its file, which it cannot choose as it can a title.
+fn program(pid: Option<u32>) -> String {
+    let file = pid.and_then(|pid| fs::read_link(format!("/proc/{pid}/exe")).ok());
+    let name = file.as_deref().and_then(Path::file_name);
+    name.map_or_else(
+        || "A program".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
 /// The width of a menu panel, in pixels.
 const MENU_WIDTH: u32 = 220;
 /// The height of a separator row in a menu.
@@ -2548,6 +2632,7 @@ enum Program {
     Notifier,
     Portal,
     Keeper,
+    Recorder,
 }
 
 impl Program {
@@ -2558,6 +2643,8 @@ impl Program {
             Self::Notifier => general.notifications.enabled,
             Self::Portal => general.portals.enabled,
             Self::Keeper => general.clipboard.enabled,
+            // The mark is not to be turned off, nor what it shows.
+            Self::Recorder => true,
         }
     }
 
@@ -2569,6 +2656,9 @@ impl Program {
             Self::Panel | Self::Notifier => Roles::PANEL,
             Self::Portal => Roles::PANEL.with(Roles::OVERLAY).with(Roles::CAPTURE),
             Self::Keeper => Roles::CLIPBOARD,
+            // It speaks to PipeWire, and to the compositor only over the
+            // pipe it says what it finds through.
+            Self::Recorder => Roles::NONE,
         }
     }
 }

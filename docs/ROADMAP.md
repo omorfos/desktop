@@ -231,11 +231,12 @@ calls for them.
       top, in the corner the panels leave, and not over its end.
 - [x] Resting the pointer on the mark says which programs take pictures,
       of the screen or of a window on it (`tooltip` in the theme).
-- [ ] The program a screen is shared with named, not the portal that
-      shares it: found from where its stream goes in PipeWire.
-- [ ] The mark shown while a microphone or a camera is being recorded
-      from, through PipeWire, with what records named the same way. A
-      camera a program opens itself, not through PipeWire, is not seen.
+- [x] The program a screen is shared with named, not the portal that
+      shares it: found from where its stream goes in PipeWire (ADR 43).
+- [x] The mark shown while a microphone or a camera is being recorded
+      from, through PipeWire, with what records named the same way.
+- [ ] A camera a program opens itself, not through PipeWire, seen as well:
+      by which processes have the camera device open.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
       given as it is stored, not as it is seen; and a pointer an
       application draws itself is given by itself as the ordinary one.

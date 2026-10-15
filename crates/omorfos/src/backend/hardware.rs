@@ -45,7 +45,7 @@ use smithay::reexports::input::{AccelProfile, Device, DeviceCapability, Libinput
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
-use super::winit::{cursor_themes, keeper, launcher, listen, notifier, on_input, panel};
+use super::winit::{cursor_themes, keeper, launcher, listen, notifier, on_input, panel, recorder};
 use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -161,6 +161,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
+    compositor.set_recorder(recorder());
     // Only here, where omorfos is the whole session: nested, the desktop
     // it runs inside answers the portals.
     let own = env::current_exe().ok();

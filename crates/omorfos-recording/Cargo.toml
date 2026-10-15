@@ -1,0 +1,23 @@
+[package]
+name = "omorfos-recording"
+description = "Tells the omorfos desktop what records from a microphone or a camera, as PipeWire knows it"
+keywords = ["wayland", "compositor", "pipewire"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Already in the tree through the portal. Binds libpipewire, whose graph is
+# where what records is to be seen.
+pipewire = { version = "0.10.1", features = ["v0_3_65"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true
