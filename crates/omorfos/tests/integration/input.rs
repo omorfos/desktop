@@ -60,6 +60,10 @@ fn focused_app(session: &Session) -> Option<String> {
 #[test]
 fn the_pointer_enters_moves_within_and_leaves_a_window() {
     let mut session = Session::new();
+    // The pointer starts away from where things open.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 630.0, y: 470.0 }, 0);
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
     client.take_events();
@@ -204,6 +208,10 @@ fn the_keys_that_switch_virtual_terminal_are_kept_for_the_backend() {
 #[test]
 fn the_pointer_is_where_it_looks_on_a_window_that_draws_its_own_shadow() {
     let mut session = Session::new();
+    // The pointer starts away from where things open.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 630.0, y: 470.0 }, 0);
     let mut client = session.connect();
     // The window proper is the middle of a larger surface, as it is for an
     // application that draws a shadow around itself.

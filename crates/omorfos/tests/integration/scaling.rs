@@ -181,6 +181,10 @@ fn decorations_are_drawn_at_the_scale() {
 #[test]
 fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
     let mut session = at_scale(2.0);
+    // The pointer starts away from where the window opens.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 300.0, y: 230.0 }, 0);
     let mut client = session.connect();
     session.open(&mut client, "app", (100, 50), RED);
     client.take_events();

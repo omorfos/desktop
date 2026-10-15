@@ -95,6 +95,7 @@ use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
 use crate::input::Drag;
+use crate::input::Focused;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
 use crate::outputs::Head;
@@ -1413,6 +1414,7 @@ impl Compositor {
 
         self.fade_layers(&config.theme);
         self.repaint_overlays();
+        self.repoint();
         self.update_pointer();
         self.announce_scale();
         self.update_idle_inhibition();
@@ -2499,6 +2501,9 @@ pub(crate) struct Hover {
     /// The arrangements a window can be put in, offered when it rests on
     /// the second button of a titlebar.
     pub(crate) palette: Palette,
+    /// The surface of a program it was last said to be over, and where on
+    /// it; and the time it last moved.
+    pub(crate) pointed: (Focused, u32),
 }
 
 /// What is changing colour, coming in or going.

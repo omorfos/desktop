@@ -490,12 +490,14 @@ fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
     assert_eq!(picture.at(350, 350), BACKGROUND, "and below");
 
     // The pointer over it is the compositor's, and washes it over.
+    session.roundtrip(&mut client);
     client.take_events();
     point(&mut session, 480, 240);
     session.roundtrip(&mut client);
     let entered =
         |event: &crate::common::Event| matches!(event, crate::common::Event::PointerEnter { .. });
-    assert!(!client.take_events().iter().any(entered));
+    let events = client.take_events();
+    assert!(!events.iter().any(entered), "{events:?}");
     assert_ne!(session.draw().at(480, 240), RED);
     point(&mut session, 100, 240);
     assert_eq!(session.draw().at(480, 240), RED, "and not once it leaves");

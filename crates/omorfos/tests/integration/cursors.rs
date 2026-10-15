@@ -6,7 +6,7 @@ use omorfos_config::Action;
 use serde_json::json;
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
-use crate::common::{Client, Session, Toplevel};
+use crate::common::{Client, Event, Session, Toplevel};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
@@ -87,6 +87,33 @@ fn the_pointer_is_drawn_from_the_cursor_theme() {
 }
 
 #[test]
+fn a_window_that_goes_from_under_a_still_pointer_takes_its_look_with_it() {
+    let mut session = themed();
+    let mut back = session.connect();
+    session.open(&mut back, "back", (300, 200), RED);
+    let (mut front, window) = hovered(&mut session);
+    front.set_cursor_shape(Shape::Text);
+    session.roundtrip(&mut front);
+    assert_eq!(color_at(&mut session, 50, 50), BLUE);
+
+    // It closes; the pointer does not move. The window under it is told
+    // so, and until it says what the pointer is to look like it is the
+    // ordinary one.
+    back.take_events();
+    window.role.destroy();
+    window.xdg_surface.destroy();
+    window.surface.destroy();
+    session.roundtrip(&mut front);
+    session.roundtrip(&mut back);
+    let entered = |event: &Event| matches!(event, Event::PointerEnter { .. });
+    assert!(back.take_events().iter().any(entered));
+    assert_eq!(color_at(&mut session, 50, 50), GREEN);
+    back.set_cursor_shape(Shape::Text);
+    session.roundtrip(&mut back);
+    assert_eq!(color_at(&mut session, 50, 50), BLUE);
+}
+
+#[test]
 fn an_application_names_the_shape_of_the_pointer_over_it() {
     let mut session = themed();
     let (mut client, _window) = hovered(&mut session);
@@ -134,11 +161,7 @@ fn an_application_draws_the_pointer_itself_or_hides_it() {
     client.take_events();
     session.send_frames(std::time::Duration::from_millis(16));
     session.roundtrip(&mut client);
-    assert!(
-        client
-            .take_events()
-            .contains(&crate::common::Event::FrameDone)
-    );
+    assert!(client.take_events().contains(&Event::FrameDone));
 
     client.set_cursor(None, (0, 0));
     session.roundtrip(&mut client);

@@ -18,6 +18,11 @@ use crate::compositor::{Compositor, Look};
 use crate::reveal::Placing;
 use omorfos_core::KeyOutcome;
 
+/// The surface of a program the pointer is over, and where its corner is,
+/// as the program is told: nothing while the compositor's own things have
+/// the pointer.
+pub(crate) type Focused = Option<(WlSurface, Point<f64, Logical>)>;
+
 /// An input event, reduced to what the compositor acts on.
 ///
 /// Backends translate whatever their input source produces into this, which
@@ -514,11 +519,15 @@ impl Compositor {
         })
     }
 
-    pub(crate) fn move_pointer(
-        &mut self,
-        focus: Option<(WlSurface, Point<f64, Logical>)>,
-        time: u32,
-    ) {
+    pub(crate) fn move_pointer(&mut self, focus: Focused, time: u32) {
+        // Over another surface, the pointer looks as it ordinarily does
+        // until that surface's program says otherwise: what the last one
+        // asked for is not this one's.
+        let surface = |pointed: &Focused| pointed.as_ref().map(|(surface, _)| surface.clone());
+        if surface(&focus) != surface(&self.hover.pointed.0) {
+            self.cursor = CursorImageStatus::default_named();
+        }
+        self.hover.pointed = (focus.clone(), time);
         let pointer = self.pointer.clone();
         let event = MotionEvent {
             location: self.pointer_location,
@@ -527,6 +536,29 @@ impl Compositor {
         };
         pointer.motion(self, focus, &event);
         pointer.frame(self);
+    }
+
+    /// Tells the program under a pointer that has not moved that it is,
+    /// when something has come or gone or moved under it: as moving the
+    /// pointer would, and only then.
+    /// Nothing changes while the session is locked: the locker has the
+    /// pointer, and what is behind it is not there to be pointed at.
+    pub(crate) fn repoint(&mut self) {
+        if self.is_locked() {
+            return;
+        }
+        let ours = self.drag.is_some()
+            || self.menu.is_some()
+            || self.over_notice()
+            || self.over_line().is_some()
+            || self.over_palette()
+            || self.over_offer().is_some();
+        let under = self.under();
+        let focus = under.as_ref().and_then(Under::focus).filter(|_| !ours);
+        let (pointed, time) = &self.hover.pointed;
+        if focus != *pointed {
+            self.move_pointer(focus, *time);
+        }
     }
 
     /// Closes the menus that asked for it, if a press lands anywhere but on
@@ -796,15 +828,8 @@ impl Compositor {
             self.press_button(window, which);
         }
         if pressed {
-            // Something may have come or gone under a pointer that has not
-            // moved since, as a launcher does when it opens. The press is
-            // for what is there now, which is told the pointer is on it
-            // first.
-            let focus = under.as_ref().and_then(Under::focus);
-            let on = focus.as_ref().map(|(surface, _)| surface);
-            if on != self.pointer.current_focus().as_ref() {
-                self.move_pointer(focus, time);
-            }
+            // What came or went under a pointer that has not moved since,
+            // as a launcher does when it opens, has been told already.
             self.dismiss_popups(under.as_ref());
             // A panel that accepts the keyboard, such as one with a search
             // box, has it from a click on it until a click elsewhere.

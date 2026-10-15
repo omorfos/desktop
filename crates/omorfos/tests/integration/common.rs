@@ -712,6 +712,10 @@ pub(crate) struct ClientState {
     pub(crate) outputs: usize,
     /// The serial of the most recent input event, for requests that need one.
     pub(crate) serial: u32,
+    /// The serial of the last time the pointer entered one of this
+    /// client's surfaces, which is what asking for a look of the pointer
+    /// has to give.
+    entered: u32,
     pub(crate) events: Vec<Event>,
 }
 
@@ -1111,7 +1115,7 @@ impl Client {
     /// be hidden.
     pub(crate) fn set_cursor(&self, picture: Option<&wl_surface::WlSurface>, hotspot: (i32, i32)) {
         let pointer = self.state.pointer.as_ref().unwrap();
-        pointer.set_cursor(self.state.serial, picture, hotspot.0, hotspot.1);
+        pointer.set_cursor(self.state.entered, picture, hotspot.0, hotspot.1);
     }
 
     /// Asks for the pointer to be one of the named shapes while it is over
@@ -1120,7 +1124,7 @@ impl Client {
         let pointer = self.state.pointer.as_ref().unwrap();
         let shapes = self.state.shapes.as_ref().unwrap();
         let device = shapes.get_pointer(pointer, &self.handle(), ());
-        device.set_shape(self.state.serial, shape);
+        device.set_shape(self.state.entered, shape);
     }
 
     /// Asks to be told the exact scale `surface` is shown at.
@@ -1915,6 +1919,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientState {
                 ..
             } => {
                 state.serial = serial;
+                state.entered = serial;
                 state.events.push(Event::PointerEnter {
                     x: surface_x,
                     y: surface_y,
