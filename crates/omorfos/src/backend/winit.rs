@@ -19,7 +19,7 @@ use smithay::backend::input::{
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
@@ -232,7 +232,9 @@ impl Screen {
             let age = self.backend.buffer_age().unwrap_or(0);
             let damage = {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
-                let result = compositor.render(
+                // A window by itself is drawn in a buffer of the card's
+                // that can be read back from.
+                let result = compositor.render::<_, GlesRenderbuffer>(
                     &self.output,
                     renderer,
                     &mut framebuffer,

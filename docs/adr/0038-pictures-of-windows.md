@@ -127,13 +127,22 @@ and the dock that this record is mostly about.
   part of the theme, so the mark and the blank are one thing to style.
 
 **A picture of one window** is what the window draws, without the frame
-omorfos puts round it, as the protocol means it. It is drawn by itself in
-the corner of the screen the window is on, before that screen is drawn,
-and cut from what is read back: the same reading as for a picture of the
-screen, which is the one that has been tried on real hardware. So it can
-be no larger than that screen. A window out of sight can have its
-picture taken, since what it last drew is still held; one a rule calls
-private is a blank of its size.
+omorfos puts round it, as the protocol means it. It was drawn by itself
+in the corner of the screen the window is on, before that screen was
+drawn, and cut from what was read back; so it could be no larger than
+that screen, and what was see-through in it came out black. It is drawn
+now in a picture of its own, as large as the window and clear where
+nothing is drawn, and read back from that: a renderer can draw into such
+a picture and read it back on real hardware too, which drawing from it
+again needs and does not have (see "Made small in one step"). It is
+offered see-through (`Argb8888`) as well as solid, and `omorfos-screenshot`
+saves it see-through. It is all that the window draws: a program that
+draws its own titlebar draws a shadow round what it says is the window,
+and the picture was cut to that at first, which left the shadow out;
+tried by hand, that looked cropped. A window out of sight can have its picture taken, since what it
+last drew is still held; one a rule calls private is a blank of its size.
+A window can say it is as large as it likes, and is drawn no larger than
+16384 pixels across or down.
 
 **Made small in one step, for now.** The first window drawn small is one
 offered in a part of a workspace with nothing in it (ADR 39), and it is

@@ -41,7 +41,9 @@ use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::backend::renderer::{Color32F, ExportMem, ImportAll, ImportMem, Renderer, Texture};
+use smithay::backend::renderer::{
+    Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, Texture,
+};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
@@ -87,7 +89,7 @@ use smithay::wayland::viewporter::ViewporterState;
 use crate::Scale;
 use crate::asked::Asked;
 use crate::bridge::{self, Bindings};
-use crate::capture::{self, Capture, Gpu, Pass};
+use crate::capture::{self, Capture, Due, Gpu, Pass};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
@@ -1598,11 +1600,14 @@ impl Compositor {
     ///
     /// `age` is how many frames old the framebuffer's contents are, or `0`
     /// if unknown, and lets the damage tracker redraw only what changed.
+    /// `P` is what the renderer draws a picture of a window by itself in,
+    /// to be read back: one as large as the window, and see-through where
+    /// it is.
     ///
     /// # Errors
     ///
     /// Returns an error if the renderer fails.
-    pub fn render<R>(
+    pub fn render<R, P>(
         &mut self,
         output: &Output,
         renderer: &mut R,
@@ -1611,8 +1616,9 @@ impl Compositor {
         age: usize,
     ) -> Result<Drawn, RenderError<R::Error>>
     where
-        R: Renderer + ImportAll + ImportMem + ExportMem + Bind<Dmabuf>,
+        R: Renderer + ImportAll + ImportMem + ExportMem + Bind<Dmabuf> + Offscreen<P> + Bind<P>,
         R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
     {
         let head = self.head(output);
         let view = View {
@@ -1645,7 +1651,10 @@ impl Compositor {
                     };
                     (self.elements(renderer, output, view, shown), behind)
                 }
-                Pass::Window(window) => (self.alone(renderer, window, view.scale), BLACK),
+                Pass::Window(window) => (
+                    self.alone(renderer, window, view.scale),
+                    Color32F::TRANSPARENT,
+                ),
             };
             let due = self.capture.due(output, pass, &elements);
             // A picture asked for in the memory of the graphics card is
@@ -1657,6 +1666,12 @@ impl Compositor {
                 let at = (due.size(), scale);
                 let drawn = gpu::draw(renderer, &mut buffer, at, &elements, behind);
                 self.capture.give(due, drawn, self.animation.clock);
+            }
+            // A window by itself is drawn in a picture of its own, as large
+            // as it is, whatever the screen is.
+            if let Pass::Window(_) = pass {
+                self.read_alone::<R, P>(renderer, &elements, due, scale);
+                continue;
             }
             if due.is_empty() {
                 continue;
@@ -1694,6 +1709,46 @@ impl Compositor {
         drawn.map(|drawn| Drawn::of(drawn, before))
     }
 
+    /// Draws a window by itself, as `elements` have it, in a picture as
+    /// large as the largest of those `due`, and gives them what they need
+    /// of it.
+    fn read_alone<R, P>(
+        &mut self,
+        renderer: &mut R,
+        elements: &[Element<R>],
+        due: Vec<Due>,
+        scale: f64,
+    ) where
+        R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
+        R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
+    {
+        let largest = |one: Size<i32, Physical>, other: Size<i32, Physical>| {
+            Size::from((one.w.max(other.w), one.h.max(other.h)))
+        };
+        let Some(size) = due.iter().map(Due::size).reduce(largest) else {
+            return;
+        };
+        let part = Capture::reading(&due).unwrap_or_default();
+        let (at, of) = ((part.loc.x, part.loc.y), (part.size.w, part.size.h));
+        let reading = Rectangle::new(at.into(), of.into());
+        let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+        let picture = self.capture.alone::<R, P>(renderer, size);
+        let target = picture.and_then(|picture| renderer.bind(picture).ok());
+        let read = target.and_then(|mut target| {
+            let clear = Color32F::TRANSPARENT;
+            let drawn = tracker.render_output(renderer, &mut target, 0, elements, clear);
+            let read = drawn
+                .ok()
+                .map(|_| renderer.copy_framebuffer(&target, reading, Fourcc::Abgr8888));
+            read.and_then(Result::ok)
+        });
+        let pixels = read
+            .as_ref()
+            .and_then(|read| renderer.map_texture(read).ok());
+        self.capture.hand(due, pixels, part, self.animation.clock);
+    }
+
     /// A window by itself, from the top left corner of the screen, as a
     /// picture of it is taken: what it draws, without the frame omorfos
     /// puts round it. A blank, if a rule says it is private.
@@ -1712,9 +1767,9 @@ impl Compositor {
         }
         let mapped = self.windows.iter().find(|mapped| mapped.id == window);
         let surfaces = mapped.into_iter().flat_map(|mapped| {
-            // A window's surface may start above and left of what is seen
-            // of it, where it draws its own shadows.
-            let within = Point::<i32, Logical>::default() - mapped.window.geometry().loc;
+            // All that the window draws, the shadow it may draw round
+            // what it says is the window included.
+            let within = Point::<i32, Logical>::default() - mapped.window.bbox().loc;
             let at = within.to_f64().to_physical(scale.factor()).to_i32_round();
             let scale = smithay::utils::Scale::from(scale.factor());
             mapped

@@ -935,7 +935,9 @@ that may:
 
 `--to file`, `--to clipboard` or `--to both` says where one picture goes,
 whatever the configuration says, and `--window` that it is of the window
-with focus; the two can be said together. A program says which window it
+with focus; the two can be said together. A picture of a window is the
+whole of it, however large, and see-through where the window is, as the
+shadow some programs draw round their windows is. A program says which window it
 wants a picture of by the window's entry in the list of windows, so one
 that takes pictures of windows needs the `panel` role as well, to be
 given that list. A picture put on the clipboard is kept by

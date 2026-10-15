@@ -7,10 +7,12 @@
 //! screen that no program can remove and that is left out of the pictures.
 //! See `docs/adr/0037-who-may-do-what.md`.
 
+use std::any::Any;
 use std::time::{Duration, Instant};
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Format as DrmFormat, Fourcc};
+use smithay::backend::renderer::Offscreen;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Element;
 use smithay::backend::renderer::element::solid::SolidColorBuffer;
@@ -45,8 +47,9 @@ use smithay::reexports::wayland_server::protocol::wl_shm::Format;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::utils::{Physical, Point, Rectangle, Size};
+use smithay::utils::{Buffer, Physical, Point, Rectangle, Size};
 use smithay::wayland::dmabuf::get_dmabuf;
+use smithay::wayland::shm::with_buffer_contents;
 
 use crate::Scale;
 use omorfos_config::{Part, States};
@@ -112,6 +115,10 @@ impl Gpu {
         }
     }
 }
+
+/// The most pixels across or down a picture of a window has: a window can
+/// say it is larger than any memory there is to draw it in.
+const LARGEST: i32 = 16384;
 
 /// How large a picture of the pointer is, across and down, in pixels: as
 /// large as any pointer is drawn, with the pointer at its top left corner.
@@ -182,7 +189,10 @@ fn boxed(picture: Option<(&[u8], (u32, u32))>) -> Vec<u8> {
 /// A whole pixel is turned at a time, which the compiler makes a few
 /// instructions for many pixels at once: this runs over every pixel of
 /// every picture of a screen being shared.
-fn turn(from: &[u8], to: &mut Vec<u8>) {
+/// What is see-through is kept so, for a picture taken `see_through`;
+/// otherwise every pixel is made solid.
+fn turn(from: &[u8], to: &mut Vec<u8>, see_through: bool) {
+    let solid = if see_through { 0 } else { 0xff00_0000 };
     let (from, _) = from.as_chunks::<4>();
     let start = to.len();
     to.resize(start + from.len() * 4, 0);
@@ -190,9 +200,15 @@ fn turn(from: &[u8], to: &mut Vec<u8>) {
     for (into, from) in into.iter_mut().zip(from) {
         let pixel = u32::from_le_bytes(*from);
         let turned = (pixel & 0x0000_ff00) | ((pixel & 0xff) << 16) | ((pixel >> 16) & 0xff);
-        *into = (turned | 0xff00_0000).to_le_bytes();
+        *into = (turned | (pixel & 0xff00_0000) | solid).to_le_bytes();
     }
 }
+
+/// What a picture of a window by itself is drawn in, of whatever kind the
+/// renderer draws in, kept from one picture to the next.
+pub(crate) trait Held: Any + std::fmt::Debug {}
+
+impl<T: Any + std::fmt::Debug> Held for T {}
 
 /// Says a picture has been taken, and when.
 fn ready(frame: &ExtImageCopyCaptureFrameV1, clock: Duration) {
@@ -272,6 +288,10 @@ impl Taking {
         };
         self.session
             .buffer_size(size.w.unsigned_abs(), size.h.unsigned_abs());
+        // A window may be see-through, as a screen is not.
+        if let Subject::Window(_) = self.subject {
+            self.session.shm_format(Format::Argb8888);
+        }
         self.session.shm_format(Format::Xrgb8888);
         if let Some(gpu) = gpu {
             self.session
@@ -357,6 +377,9 @@ pub(crate) struct Capture {
     /// A picture being turned into the order of colours a program is
     /// given it in, kept so as not to be made anew for every picture.
     scratch: Vec<u8>,
+    /// What a picture of a window by itself was last drawn in, and its
+    /// size, kept so as not to be made anew for every picture.
+    alone: Option<(Size<i32, Buffer>, Box<dyn Held>)>,
 }
 
 impl Capture {
@@ -494,6 +517,12 @@ impl Capture {
             let shot = &mut self.shots[index];
             shot.stage = Stage::Over;
             let buffer = shot.buffer.as_ref();
+            // Written in the form the program chose of those it was offered.
+            let format = buffer
+                .and_then(|buffer| with_buffer_contents(buffer, |_, _, data| data.format).ok());
+            let format =
+                format.filter(|format| [Format::Argb8888, Format::Xrgb8888].contains(format));
+            let see_through = format == Some(Format::Argb8888);
             let written = write.iter().all(|part| {
                 let (x, y) = (across(part.loc.x), across(part.loc.y));
                 let (wide, high) = (across(part.size.w), across(part.size.h));
@@ -506,15 +535,40 @@ impl Capture {
                 for line in top..top + high {
                     let start = line * row + left * 4;
                     let from = pixels.get(start..start + wide * 4).unwrap_or_default();
-                    turn(from, &mut self.scratch);
+                    turn(from, &mut self.scratch, see_through);
                 }
                 let part = (x, y, wide, high);
-                buffer.is_some_and(|buffer| {
-                    omorfos_shm::write_part(buffer, Format::Xrgb8888, size, part, &self.scratch)
+                buffer.zip(format).is_some_and(|(buffer, format)| {
+                    omorfos_shm::write_part(buffer, format, size, part, &self.scratch)
                 })
             });
             self.finish(index, written.then_some(damage), clock);
         }
+    }
+
+    /// What a picture of a window by itself `size` pixels large is drawn
+    /// in: the one the last was drawn in, if it is as large, or a new one.
+    /// Nothing, if none can be made.
+    pub(crate) fn alone<R, P>(
+        &mut self,
+        renderer: &mut R,
+        size: Size<i32, Physical>,
+    ) -> Option<&mut P>
+    where
+        R: Offscreen<P>,
+        P: Held,
+    {
+        let size = Size::<i32, Buffer>::from((size.w, size.h));
+        let kept = self.alone.as_ref().is_some_and(|(made, _)| *made == size);
+        if !kept {
+            let made = renderer.create_buffer(Fourcc::Abgr8888, size).ok();
+            self.alone = made.map(|made| (size, Box::new(made) as Box<dyn Held>));
+        }
+        let held = self
+            .alone
+            .as_mut()
+            .map(|(_, held)| &mut **held as &mut dyn Any);
+        held.and_then(<dyn Any>::downcast_mut)
     }
 
     /// The pictures due that are to be drawn into memory of the graphics
@@ -605,8 +659,8 @@ impl Compositor {
 
     /// Where what pictures are taken of stands: a screen where it is, and
     /// a window on the screen that shows it, or on the first if none
-    /// does, as large as it is and no larger than that screen. Nothing,
-    /// if it has gone.
+    /// does, as large as it is, however large that screen, up to `LARGEST`.
+    /// Nothing, if it has gone.
     fn stands(&self, subject: &Subject) -> Option<Standing> {
         match subject {
             Subject::Screen(output) => {
@@ -620,10 +674,10 @@ impl Compositor {
                 let head = on.or(self.heads.first());
                 mapped.zip(head).map(|(mapped, head)| {
                     let scale = head.scale.factor();
-                    let size = mapped.window.geometry().size;
+                    // All it draws, its shadow included.
+                    let size = mapped.window.bbox().size;
                     let size: Size<i32, Physical> = size.to_f64().to_physical(scale).to_i32_round();
-                    let most = head.pixels();
-                    let size = Size::from((size.w.clamp(1, most.w), size.h.clamp(1, most.h)));
+                    let size = Size::from((size.w.clamp(1, LARGEST), size.h.clamp(1, LARGEST)));
                     (head.output.clone(), size, scale)
                 })
             }
@@ -1099,9 +1153,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pixels_read_red_first_are_given_blue_first_with_nothing_in_the_fourth() {
+    fn pixels_read_red_first_are_given_blue_first_and_solid_unless_see_through() {
         let mut turned = vec![9];
-        turn(&[1, 2, 3, 4, 10, 20, 30, 40, 99], &mut turned);
+        turn(&[1, 2, 3, 4, 10, 20, 30, 40, 99], &mut turned, false);
         assert_eq!(turned, [9, 3, 2, 1, 255, 30, 20, 10, 255]);
+        let mut turned = Vec::new();
+        turn(&[1, 2, 3, 4, 10, 20, 30, 40], &mut turned, true);
+        assert_eq!(turned, [3, 2, 1, 4, 30, 20, 10, 40]);
     }
 }
