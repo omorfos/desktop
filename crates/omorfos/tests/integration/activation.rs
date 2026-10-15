@@ -83,3 +83,67 @@ fn activating_something_that_is_not_a_window_does_nothing() {
 
     assert_eq!(focused_app(&session).as_deref(), Some("app"));
 }
+
+/// A session showing a red window fullscreen, on a workspace of its own.
+fn fullscreen() -> (Session, Client) {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "player", (200, 100), RED);
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Fullscreen);
+    session.step();
+    (session, client)
+}
+
+fn active(session: &Session) -> usize {
+    session.compositor().desktop().active_workspace()
+}
+
+#[test]
+fn a_window_nobody_asked_for_waits_unseen_and_one_asked_for_is_shown() {
+    let (mut session, _player) = fullscreen();
+    let token = session.started_saying("$XDG_ACTIVATION_TOKEN");
+    assert_eq!(token.len(), 32, "{token:?}");
+
+    // It opens on the desktop, and the user stays where they were.
+    let mut program = session.connect();
+    let window = session.open(&mut program, "started", (200, 100), BLUE);
+    assert_eq!(active(&session), 1);
+    assert_eq!(focused_app(&session).as_deref(), Some("player"));
+
+    // The program says the user asked for it, with the token it was
+    // started with: it is shown.
+    program.activate(&token, &window.surface);
+    session.roundtrip(&mut program);
+    assert_eq!(active(&session), 0);
+    assert_eq!(focused_app(&session).as_deref(), Some("started"));
+
+    // A token says so once.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::NextWorkspace);
+    session.step();
+    assert_eq!(active(&session), 1);
+    program.activate(&token, &window.surface);
+    session.roundtrip(&mut program);
+    assert_eq!(active(&session), 1);
+}
+
+#[test]
+fn a_window_asked_for_before_it_opens_is_shown_when_it_does() {
+    let (mut session, _player) = fullscreen();
+    let token = session.started_saying("$DESKTOP_STARTUP_ID");
+    let mut program = session.connect();
+    let window = program.toplevel("started", "started");
+    session.roundtrip(&mut program);
+    program.activate(&token, &window.surface);
+    session.roundtrip(&mut program);
+    assert_eq!(active(&session), 1, "not before it opens");
+
+    program.fill(&window.surface, (200, 100), BLUE);
+    session.roundtrip(&mut program);
+    session.roundtrip(&mut program);
+    assert_eq!(active(&session), 0);
+    assert_eq!(focused_app(&session).as_deref(), Some("started"));
+}

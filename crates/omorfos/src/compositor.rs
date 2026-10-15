@@ -83,9 +83,9 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::viewporter::ViewporterState;
-use smithay::wayland::xdg_activation::XdgActivationState;
 
 use crate::Scale;
+use crate::asked::Asked;
 use crate::bridge::{self, Bindings};
 use crate::capture::{self, Capture, Gpu, Pass};
 use crate::corners::{self, Names, Strip};
@@ -252,7 +252,6 @@ pub struct Compositor {
     pub(crate) screens: Vec<Screen>,
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
-    pub(crate) activation: XdgActivationState,
     /// The clipboard as given to a program that may read and set it at
     /// any time.
     pub(crate) clipboards: DataControlState,
@@ -323,7 +322,9 @@ pub struct Compositor {
     pub(crate) presence: Presence,
     /// Programs written for X11, and the X server they run through.
     pub(crate) x11: X11,
-    children: Vec<Child>,
+    pub(crate) children: Vec<Child>,
+    /// What says windows that are to open were asked for.
+    pub(crate) asked: Asked,
     /// Whether the programs to start with the session have been.
     started: bool,
     /// The programs that come with omorfos and run for the whole session,
@@ -397,7 +398,7 @@ impl Compositor {
                     _viewporter: ViewporterState::new::<Self>(&display),
                     _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
                     capture: Capture::offer(&display),
-                    activation: XdgActivationState::new::<Self>(&display),
+                    asked: Asked::new(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
@@ -782,6 +783,7 @@ impl Compositor {
             }
             exited.is_none()
         });
+        self.forget_ended();
         self.revive(&failed, now);
         self.serve_ipc();
         self.manage_x11(now);
@@ -1101,10 +1103,14 @@ impl Compositor {
     /// given nothing to read.
     fn start(&mut self, program: &OsStr, arguments: &[String], roles: Roles) -> Option<u32> {
         let mut process = std::process::Command::new(program);
+        // The token says the window it opens was asked for.
+        let ticket = self.ticket();
         process
             .args(arguments)
             .stdin(Stdio::null())
-            .envs(self.session_environment());
+            .envs(self.session_environment())
+            .env("XDG_ACTIVATION_TOKEN", &ticket)
+            .env("DESKTOP_STARTUP_ID", &ticket);
         let trusted = (roles != Roles::NONE).then(UnixStream::pair);
         let handed = trusted.and_then(Result::ok).and_then(|(ours, theirs)| {
             let known = self.insert_client(ours, roles).ok();
@@ -1115,7 +1121,7 @@ impl Compositor {
                 .stdin(OwnedFd::from(theirs))
                 .env("WAYLAND_SOCKET", "0");
         }
-        match process.spawn() {
+        let started = match process.spawn() {
             Ok(child) => {
                 self.wake_when_exited(&child);
                 let process = child.id();
@@ -1127,7 +1133,9 @@ impl Compositor {
                     .push(format!("cannot start `{}`: {error}", program.display()));
                 None
             }
-        }
+        };
+        self.started(ticket, started);
+        started
     }
 
     /// Says where the panel that comes with omorfos is: a name to look up

@@ -328,6 +328,27 @@ impl Session {
         assert!(!expired.get(), "the event loop was never woken");
     }
 
+    /// Has the compositor start a shell that says what `words` come to,
+    /// and goes on for a few seconds after; returns what it said, once it
+    /// has.
+    pub(crate) fn started_saying(&mut self, words: &str) -> String {
+        static SAID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let said = SAID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let marker = self.config.path().join(format!("said-{said}"));
+        let writing = self.config.path().join(format!("saying-{said}"));
+        let script = format!(
+            "printf '%s' \"{words}\" > '{}' && mv '{}' '{}'; exec sleep 5",
+            writing.display(),
+            writing.display(),
+            marker.display()
+        );
+        let command = omorfos_config::Command::new("sh", ["-c".to_owned(), script]).unwrap();
+        self.compositor_mut()
+            .perform(&omorfos_config::Action::Spawn(command.into()));
+        self.eventually(|_| marker.exists());
+        std::fs::read_to_string(&marker).unwrap()
+    }
+
     /// Writes a configuration file. A theme changes colours at once and
     /// has things there at once, as the one the session started with does.
     pub(crate) fn write_config(&self, name: &str, contents: &str) {

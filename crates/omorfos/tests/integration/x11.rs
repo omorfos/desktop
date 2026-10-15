@@ -1192,3 +1192,71 @@ fn programs_written_for_x11_are_stretched_to_size_unless_asked_to_draw_for_the_s
     }
     assert_eq!(resources(&mut session, &program), "Xft.dpi:\t96\n");
 }
+
+#[test]
+fn a_window_of_a_program_written_for_x11_is_shown_if_omorfos_started_it() {
+    let (mut session, program) = session();
+    open(&mut session, &program, "player", (200, 100), 0x00ff_0000);
+    session.compositor_mut().perform(&Action::Fullscreen);
+    session.step();
+    let active = |session: &Session| session.compositor().desktop().active_workspace();
+    let said = session.started_saying("$DESKTOP_STARTUP_ID $$");
+    let (token, process) = said.split_once(' ').unwrap();
+    let process: u32 = process.parse().unwrap();
+    let (startup, utf8) = (
+        atom(&mut session, &program, "_NET_STARTUP_ID"),
+        atom(&mut session, &program, "UTF8_STRING"),
+    );
+    let pid = atom(&mut session, &program, "_NET_WM_PID");
+    let next = |session: &mut Session| {
+        session.compositor_mut().perform(&Action::NextWorkspace);
+        session.step();
+    };
+    let shown = |session: &mut Session, name: &str, say: &(dyn Fn(u32) + Sync)| {
+        let window = create(
+            session,
+            &program,
+            name,
+            (0, 0, 200, 100),
+            (0x0000_00ff, false),
+        );
+        meanwhile(session, || {
+            say(window);
+            program.flush().unwrap();
+        });
+        let all = |session: &Session| session.compositor().desktop().windows().count();
+        let before = all(session);
+        show(session, &program, window, true);
+        session.eventually(|session| all(session) > before);
+        session.step();
+        active(session) == 0
+    };
+
+    // Named by the token it was started with.
+    let named = |window| {
+        let bytes = token.as_bytes();
+        program
+            .change_property8(PropMode::REPLACE, window, startup, utf8, bytes)
+            .unwrap();
+    };
+    assert!(shown(&mut session, "named", &named));
+
+    // The first window of the process it started.
+    next(&mut session);
+    let first = |window| {
+        program
+            .change_property32(
+                PropMode::REPLACE,
+                window,
+                pid,
+                AtomEnum::CARDINAL,
+                &[process],
+            )
+            .unwrap();
+    };
+    assert!(shown(&mut session, "first", &first));
+
+    // And neither: nobody asked for it.
+    next(&mut session);
+    assert!(!shown(&mut session, "unasked", &|_| ()));
+}

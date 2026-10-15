@@ -136,7 +136,10 @@ along the whole row and reach it, and the number keys count desktops only.
 It goes when the window closes or leaves fullscreen, which takes the
 window back where it was. A dialog that belongs to it opens over it; any
 other window, another of the same program included, opens on the desktop
-it came from, which is then shown. Maximizing is another thing: it fills the desktop the window
+it came from. That desktop is shown with it if you asked for it, by
+starting it from omorfos (the launcher, a key, the menu) or from a
+program that says you did; otherwise it waits there, in the taskbar,
+and you stay where you were. Maximizing is another thing: it fills the desktop the window
 is on and keeps the panel and the titlebar.
 
 Up to four windows can share such a workspace. "Tile" in the menu of a

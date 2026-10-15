@@ -238,9 +238,11 @@ fn a_dialog_opens_over_its_fullscreen_window_and_any_other_window_on_the_desktop
     assert_eq!((active(&session), frames(&session)), (1, 2));
 
     // Another window of the same program is not: it opens on the desktop
-    // the fullscreen one came from, which is shown for it.
+    // the fullscreen one came from, which nobody asked to see.
     session.open(&mut client, "player", (200, 100), RED);
-    assert_eq!((active(&session), frames(&session)), (0, 1));
+    assert_eq!((active(&session), frames(&session)), (1, 2));
+    let windows = session.compositor().desktop().windows().count();
+    assert_eq!(windows, 3);
 }
 
 #[test]

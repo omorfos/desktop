@@ -200,6 +200,12 @@ impl Compositor {
             role: Role::Xdg(toplevel),
             listed,
         });
+        let client = surface.client();
+        let credentials = client.and_then(|client| client.get_credentials(&self.display).ok());
+        let pid = credentials.and_then(|credentials| u32::try_from(credentials.pid).ok());
+        if self.asked_for(surface, pid, None) {
+            self.desktop.activate(id);
+        }
     }
 
     /// Takes a window that has gone out of the desktop.
@@ -510,7 +516,7 @@ impl ServerDndGrabHandler for Compositor {}
 
 impl XdgActivationHandler for Compositor {
     fn activation_state(&mut self) -> &mut XdgActivationState {
-        &mut self.activation
+        &mut self.asked.tokens
     }
 
     fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
@@ -522,12 +528,17 @@ impl XdgActivationHandler for Compositor {
 
     fn request_activation(
         &mut self,
-        _token: XdgActivationToken,
+        token: XdgActivationToken,
         _data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
-        if let Some(id) = self.window_id(&surface) {
-            self.desktop.activate(id);
+        // A token says so once.
+        self.asked.tokens.remove_token(&token);
+        match self.window_id(&surface) {
+            Some(id) => self.desktop.activate(id),
+            // Before its window is shown, as a program started with a token
+            // may activate it: it is shown when it opens.
+            None => self.ask_early(surface),
         }
     }
 }

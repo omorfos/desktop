@@ -170,7 +170,7 @@ calls for them.
       private one, shown blank, needs most.
 - [ ] Windows made small by halves (ADR 38), once the renderer for
       real hardware can draw from what it drew: before the switcher.
-- [ ] A window that nobody asked for, opening while a fullscreen
+- [x] A window that nobody asked for, opening while a fullscreen
       workspace is shown, left on the desktop unseen (activation
       tokens).
 - [x] Roles (ADR 37): components started by being handed their
