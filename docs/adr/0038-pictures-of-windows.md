@@ -125,6 +125,10 @@ and the dock that this record is mostly about.
   that a program taking pictures is not told that part of the screen
   changed when it did not. It is the background colour of the `capture`
   part of the theme, so the mark and the blank are one thing to style.
+- **It does not fade into a picture.** A window that closes fades out on
+  the screen as it last was, from what was drawn of it; for a private
+  window that is its contents, so in a picture it is gone at once, and
+  only the screen shows it fade.
 
 **A picture of one window** is what the window draws, without the frame
 omorfos puts round it, as the protocol means it. It was drawn by itself

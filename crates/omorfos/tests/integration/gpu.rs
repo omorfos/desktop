@@ -193,3 +193,59 @@ fn a_picture_of_the_screen_is_drawn_straight_into_the_memory_of_the_card() {
         .unwrap();
     assert_eq!(seen, (RED, BACKGROUND));
 }
+
+#[test]
+fn pictures_in_the_memory_of_the_card_go_on_while_a_private_window_is_open() {
+    let Some((card, number)) = card() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    let rules = "rules:\n  - match: { app_id: wallet }\n    private: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(number, drawable())
+        .unwrap();
+    session.compositor_mut().show_pointer();
+    let mut app = session.connect();
+    session.open(&mut app, "notes", (200, 100), RED);
+    let mut camera = session.connect_as(Roles::CAPTURE);
+    let device = gbm::Device::new(card).unwrap();
+    let flags = gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING;
+    let (across, down) = (WIDTH.unsigned_abs(), HEIGHT.unsigned_abs());
+    let picture = device
+        .create_buffer_object::<()>(across, down, gbm::Format::Xrgb8888, flags)
+        .unwrap();
+    let file = picture.fd().unwrap();
+    let format = (Fourcc::Xrgb8888 as u32, u64::from(picture.modifier()));
+    let buffer = camera.gpu_buffer(file.as_fd(), ((WIDTH, HEIGHT), picture.stride()), format);
+
+    let taking = camera.capture(0, true);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    let snap = |session: &mut Session, camera: &mut Client| {
+        let frame = camera.shot(&taking);
+        frame.attach_buffer(&buffer);
+        frame.damage_buffer(0, 0, WIDTH, HEIGHT);
+        frame.capture();
+        session.roundtrip(camera);
+        session.draw();
+        session.roundtrip(camera);
+        frame.destroy();
+        camera.take_events()
+    };
+    let events = snap(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    let _wallet = session.open(&mut app, "wallet", (200, 100), GREEN);
+    let events = snap(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "opened: {events:?}");
+    for (x, y) in [(300.0, 300.0), (310.0, 320.0)] {
+        session
+            .compositor_mut()
+            .input(omorfos::Input::Motion { x, y }, 0);
+        session.step();
+        let events = snap(&mut session, &mut camera);
+        assert_eq!(events.last(), Some(&Event::ShotReady), "moved: {events:?}");
+    }
+}

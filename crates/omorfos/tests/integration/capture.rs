@@ -651,6 +651,61 @@ const PRIVATE: [(&str, &str); 2] = [
 ];
 
 #[test]
+fn a_private_window_that_closes_is_not_in_a_picture_as_it_fades() {
+    let rules = PRIVATE[0];
+    let theme = ("theme.css", "window { transition: 100ms linear; }\n");
+    let mut session = Session::with_config(&[rules, theme]);
+    let mut app = session.connect();
+    let wallet = session.open(&mut app, "wallet", (200, 100), RED);
+    let notes = session.open(&mut app, "notes", (200, 100), BLUE);
+    session.advance(Duration::from_millis(100));
+    let corner = |id: &str| {
+        let frames = session.compositor().desktop().frames();
+        let mut frames = frames.filter(|frame| frame.window().app_id == id);
+        let at = frames.next().unwrap().geometry;
+        (
+            at.origin.x,
+            at.origin.y,
+            at.size.width.cast_signed(),
+            at.size.height.cast_signed(),
+        )
+    };
+    // Where one is and the other is not.
+    let (x, y, ..) = corner("wallet");
+    let at_wallet = (x + 2, y + 2);
+    let (x, y, width, height) = corner("notes");
+    let at_notes = (x + width - 3, y + height - 3);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    snap(&mut session, &mut camera, &taking);
+
+    for window in [wallet, notes] {
+        window.role.destroy();
+        window.xdg_surface.destroy();
+        window.surface.destroy();
+    }
+    session.roundtrip(&mut app);
+    session.advance(Duration::from_millis(50));
+    let screen = session.draw();
+    assert!(crate::common::between(
+        screen.at(at_wallet.0, at_wallet.1),
+        BACKGROUND,
+        RED
+    ));
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(
+        shot.at(at_wallet.0, at_wallet.1),
+        BACKGROUND,
+        "gone at once"
+    );
+    let fading = shot.at(at_notes.0, at_notes.1);
+    assert!(
+        crate::common::between(fading, BACKGROUND, BLUE),
+        "{fading:#x}"
+    );
+}
+
+#[test]
 fn a_private_window_is_blank_in_a_picture_and_not_on_the_screen() {
     let mut session = Session::with_config(&PRIVATE);
     let mut app = session.connect();
@@ -985,4 +1040,31 @@ fn programs_that_want_the_same_are_given_it_from_one_drawing() {
     for ((file, _), _) in &alone {
         assert_eq!(Picture::read(file, 200).at(199, 99), RED);
     }
+}
+
+#[test]
+fn pictures_go_on_being_given_while_a_private_window_is_open() {
+    let mut session = Session::with_config(&PRIVATE);
+    let mut app = session.connect();
+    let notes = session.open(&mut app, "notes", (200, 100), BLUE);
+    session.compositor_mut().show_pointer();
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, true);
+    let (_, events) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+
+    let _wallet = session.open(&mut app, "wallet", (200, 100), RED);
+    let (_, events) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "opened: {events:?}");
+
+    for (x, y) in [(300.0, 300.0), (310.0, 320.0), (50.0, 400.0)] {
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+        session.step();
+        let (_, events) = snap(&mut session, &mut camera, &taking);
+        assert_eq!(events.last(), Some(&Event::ShotReady), "moved: {events:?}");
+    }
+    app.fill(&notes.surface, (200, 100), GREEN);
+    session.roundtrip(&mut app);
+    let (_, events) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "drawn: {events:?}");
 }
