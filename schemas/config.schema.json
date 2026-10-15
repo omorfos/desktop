@@ -15,6 +15,18 @@
         }
       ]
     },
+    "Clipboard": {
+      "additionalProperties": false,
+      "description": "The clipboard.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether what is copied is kept by `omorfos-clipboard` once the\nprogram it was copied from has closed. Turn it off to have another\nprogram keep it, or none. What a password manager copies is never\nkept.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Command": {
       "description": "A program followed by its arguments, run without a shell.",
       "items": {
@@ -466,6 +478,10 @@
         "$ref": "#/$defs/Started"
       },
       "type": "array"
+    },
+    "clipboard": {
+      "$ref": "#/$defs/Clipboard",
+      "description": "The clipboard."
     },
     "cursor": {
       "$ref": "#/$defs/Cursor",

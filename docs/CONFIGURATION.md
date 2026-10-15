@@ -68,6 +68,8 @@ notifications:
   timeout: 5              # seconds one stays; 0 until it is clicked
 screenshots:
   destination: file       # file | clipboard | both
+clipboard:
+  enabled: true           # keep what is copied after its program closes
 portals:
   enabled: true           # tell applications how the desktop looks
 xwayland:
@@ -821,6 +823,27 @@ portals:
 Like `autostart`, this takes effect the next time you log in. Run inside
 another desktop, in a window, omorfos leaves the portals to that desktop.
 
+## The clipboard
+
+What you copy is kept after the program you copied it from closes, by
+`omorfos-clipboard`, which omorfos starts with the session. It reads what
+is copied, in every form the program offers it in, as soon as it is
+copied, and offers it in the program's place.
+
+Some things are left with the program that copied them, and go when it
+closes: what a password manager copies, which it marks as secret, so that
+it goes when the password manager takes it away; what is only selected,
+for the middle button; and what is larger than 64 MiB, or not handed over
+in any form within two seconds. To keep nothing, or have another clipboard manager do
+it, with `may: [clipboard]`:
+
+```yaml
+clipboard:
+  enabled: false
+```
+
+Like `autostart`, this takes effect the next time you log in.
+
 ## Who may do what
 
 A program sees and works its own windows. Some things reach further, and
@@ -915,10 +938,11 @@ whatever the configuration says, and `--window` that it is of the window
 with focus; the two can be said together. A program says which window it
 wants a picture of by the window's entry in the list of windows, so one
 that takes pictures of windows needs the `panel` role as well, to be
-given that list. A picture on the clipboard is given by
-the program that put it there each time it is pasted, so
-`omorfos-screenshot` stays running, unseen, until you copy something
-else.
+given that list. A picture put on the clipboard is kept by
+`omorfos-clipboard`, and `omorfos-screenshot` stops as soon as it has
+handed it over. With the clipboard not kept, it is given by
+`omorfos-screenshot` itself each time it is pasted, which stays running,
+unseen, until you copy something else.
 
 Any program that speaks `ext-image-copy-capture-v1` can be let take
 pictures the same way, with `may: [capture]`. Started without it, it is

@@ -42,6 +42,8 @@ pub struct General {
     pub notifications: Notifications,
     /// Pictures of the screen.
     pub screenshots: Screenshots,
+    /// The clipboard.
+    pub clipboard: Clipboard,
     /// What applications ask the desktop through the portals.
     pub portals: Portals,
     /// Programs written for X11.
@@ -88,6 +90,24 @@ pub enum X11Scaling {
     /// dense it is. Those that take that in are sharp and the right size;
     /// those that do not are sharp and small.
     Native,
+}
+
+/// The clipboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Clipboard {
+    /// Whether what is copied is kept by `omorfos-clipboard` once the
+    /// program it was copied from has closed. Turn it off to have another
+    /// program keep it, or none. What a password manager copies is never
+    /// kept.
+    pub enabled: bool,
+}
+
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// What applications ask the desktop through the portals
@@ -561,6 +581,14 @@ mod tests {
         let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
+    }
+
+    #[test]
+    fn what_is_copied_is_kept_unless_turned_off() {
+        assert!(General::default().clipboard.enabled);
+        let general = parse("clipboard: { enabled: false }").unwrap();
+        assert!(!general.clipboard.enabled);
+        assert!(parse("clipboard: { history: 10 }").is_err());
     }
 
     #[test]

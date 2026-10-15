@@ -19,6 +19,7 @@ mod gpu;
 mod idle;
 mod input;
 mod ipc;
+mod keeper;
 mod launcher;
 mod layers;
 mod lock;

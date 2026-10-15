@@ -41,8 +41,8 @@ pub use config::{Config, FILES, MAX_FILE_SIZE};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Acceleration, Cursor, Focus, FocusModel, General, Idle, Kept, Keyboard, Launcher, Mouse,
-    NamedOutput, Notifications, Output, OutputScale, Outputs, Panel, Placement, Portals,
+    Acceleration, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept, Keyboard, Launcher,
+    Mouse, NamedOutput, Notifications, Output, OutputScale, Outputs, Panel, Placement, Portals,
     Screenshots, Speed, Touchpad, Workspaces, X11Scaling, Xwayland,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};

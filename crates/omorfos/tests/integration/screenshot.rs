@@ -334,6 +334,22 @@ fn told_to_it_puts_the_picture_on_the_clipboard_and_holds_it_there() {
 }
 
 #[test]
+fn with_the_clipboard_kept_the_picture_is_handed_over_and_the_tool_stops() {
+    let mut session = Session::new();
+    let limits = omorfos_clipboard::Limits::default();
+    let keeper = crate::keeper::keeper(&mut session, Roles::CLIPBOARD, limits);
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+
+    let tool = start_with(&mut session, BOTH, &[], &["--to", "clipboard"]);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths, Vec::<PathBuf>::new());
+    assert_eq!(pasted(&mut session, &mut app, (10, 10)), RED, "kept");
+    drop(session);
+    keeper.join().unwrap();
+}
+
+#[test]
 fn the_configuration_says_where_a_picture_goes_when_nothing_else_does() {
     let mut session = Session::new();
     let mut app = session.connect();
