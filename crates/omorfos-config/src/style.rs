@@ -52,6 +52,9 @@ pub enum Part {
     /// The mark shown while a program takes pictures of the screen: a
     /// dot in its text colour on its background. It cannot be hidden.
     Capture,
+    /// What the compositor says of something the pointer rests on, such
+    /// as the mark: what is being done, and by which program.
+    Tooltip,
     /// The panel's bar along the edge of a screen. Its margin is room
     /// left between it and the edges of the screen.
     Panel,
@@ -89,7 +92,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 27] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -104,6 +107,7 @@ impl Part {
         Self::Notice,
         Self::NoticeHeading,
         Self::Capture,
+        Self::Tooltip,
         Self::Panel,
         Self::Workspace,
         Self::Task,
@@ -136,6 +140,7 @@ impl Part {
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
             Self::Capture => "capture",
+            Self::Tooltip => "tooltip",
             Self::Panel => "panel",
             Self::Workspace => "workspace",
             Self::Task => "task",
@@ -498,6 +503,7 @@ mod tests {
                 "notice",
                 "notice-heading",
                 "capture",
+                "tooltip",
                 "panel",
                 "workspace",
                 "task",

@@ -401,6 +401,23 @@ impl Capture {
         taking || fading || self.ended.contains(output)
     }
 
+    /// The programs taking pictures on a screen, each once for what it
+    /// takes: whether that is a window on it, or the screen.
+    pub(crate) fn takers(&self, output: &Output) -> Vec<(Client, bool)> {
+        let mut takers: Vec<(Client, bool)> = Vec::new();
+        let here = self
+            .takings
+            .iter()
+            .filter(|taking| taking.output == *output);
+        for taking in here {
+            let window = matches!(taking.subject, Subject::Window(_));
+            let taker = taking.session.client().map(|client| (client, window));
+            let new = taker.filter(|taker| !takers.contains(taker));
+            takers.extend(new);
+        }
+        takers
+    }
+
     /// The mark as painted for a scale, if it has been.
     pub(crate) fn mark(&self, scale: Scale) -> Option<&Painted> {
         let painted = self.marks.iter().find(|(painted, _)| *painted == scale);

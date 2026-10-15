@@ -227,10 +227,18 @@ calls for them.
 - [x] What is under a pointer that does not move found again when a
       window comes, goes or moves under it: that window is told, and the
       pointer looks as it ordinarily does until it says otherwise.
+- [x] The mark that says the screen is captured under a panel along the
+      top, in the corner the panels leave, and not over its end.
+- [x] Resting the pointer on the mark says which programs take pictures,
+      of the screen or of a window on it (`tooltip` in the theme).
+- [ ] The program a screen is shared with named, not the portal that
+      shares it: found from where its stream goes in PipeWire.
+- [ ] The mark shown while a microphone or a camera is being recorded
+      from, through PipeWire, with what records named the same way. A
+      camera a program opens itself, not through PipeWire, is not seen.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
-      given as it is stored, not as it is seen; a pointer an application
-      draws itself is given by itself as the ordinary one; and the mark
-      sits over the end of a panel at the top.
+      given as it is stored, not as it is seen; and a pointer an
+      application draws itself is given by itself as the ordinary one.
 - [x] The portals answered by a program of our own,
       `xdg-desktop-portal-omorfos`, started with the session: so far
       the settings that tell applications light from dark and the

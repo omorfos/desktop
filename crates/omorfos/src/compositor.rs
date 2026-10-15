@@ -9,7 +9,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1415,6 +1415,7 @@ impl Compositor {
         self.fade_layers(&config.theme);
         self.repaint_overlays();
         self.repoint();
+        self.note_mark();
         self.update_pointer();
         self.announce_scale();
         self.update_idle_inhibition();
@@ -1713,6 +1714,101 @@ impl Compositor {
         drawn.map(|drawn| Drawn::of(drawn, before))
     }
 
+    /// Where the mark that says the screen is captured is on `output`: in
+    /// the corner of what the panels leave, so as not to cover the end of
+    /// one along the top.
+    fn mark_area(&self, output: &Output) -> Rectangle<i32, Logical> {
+        let area = self.area_of(output);
+        let free = layer_map_for_output(output).non_exclusive_zone();
+        let right = area.loc.x + free.loc.x + free.size.w;
+        let left = right - capture::MARGIN - paint::CAPTURE_MARK.0.cast_signed();
+        let top = area.loc.y + free.loc.y + capture::MARGIN;
+        let (width, height) = paint::CAPTURE_MARK;
+        Rectangle::new(
+            (left, top).into(),
+            (width.cast_signed(), height.cast_signed()).into(),
+        )
+    }
+
+    /// What the mark on `output` says when the pointer rests on it: which
+    /// programs are taking pictures there, and of what.
+    fn mark_says(&self, output: &Output) -> Vec<String> {
+        let takers = self.capture.takers(output);
+        let said = takers.into_iter().map(|(client, window)| {
+            let pid = client
+                .get_credentials(&self.display)
+                .ok()
+                .map(|known| known.pid);
+            let program = pid.and_then(|pid| fs::read_link(format!("/proc/{pid}/exe")).ok());
+            let name = program.as_deref().and_then(Path::file_name);
+            let name = name.map_or(Cow::Borrowed("A program"), |name| name.to_string_lossy());
+            let what = if window {
+                "a window on this screen"
+            } else {
+                "this screen"
+            };
+            format!("{name} is taking pictures of {what}")
+        });
+        let mut said: Vec<String> = said.collect();
+        if said.is_empty() {
+            said.push("Pictures of this screen were taken a moment ago".to_owned());
+        }
+        said
+    }
+
+    /// Brings what the mark says up to date with where the pointer is:
+    /// shown while it rests on the mark of a screen being captured, and
+    /// painted again only when what it says differs.
+    fn note_mark(&mut self) {
+        let point = self.pointer_location;
+        let marked = self
+            .heads
+            .iter()
+            .filter(|head| self.capture.marks(&head.output));
+        let mut under = marked.filter(|head| self.mark_area(&head.output).to_f64().contains(point));
+        let wanted = under.next().map(|head| {
+            let mark = self.mark_area(&head.output);
+            (
+                head.output.clone(),
+                self.mark_says(&head.output),
+                head.scale,
+                mark,
+            )
+        });
+        let theme = &self.store.current().theme;
+        let had = self.hover.mark.take();
+        self.hover.mark = wanted.map(|(output, says, scale, mark)| {
+            let same =
+                |note: &MarkNote| note.says == says && note.scale == scale && note.theme == *theme;
+            had.filter(same).unwrap_or_else(|| {
+                let canvas = paint::tooltip(&mut self.text, theme, &says, scale);
+                let (width, height) = canvas.units();
+                // Under the mark, at its right.
+                let left = mark.loc.x + mark.size.w - width.cast_signed();
+                let top = mark.loc.y + mark.size.h + 4;
+                MarkNote {
+                    output,
+                    says,
+                    scale,
+                    theme: theme.clone(),
+                    area: Rect::new(DomainPoint::new(left, top), DomainSize::new(width, height)),
+                    pixels: Painted::new(&canvas),
+                }
+            })
+        });
+    }
+
+    /// What the mark that says the screen is captured says, while the
+    /// pointer rests on it: a line for each program taking pictures. Empty
+    /// while it is not shown.
+    #[must_use]
+    pub fn mark_tooltip(&self) -> &[String] {
+        self.hover
+            .mark
+            .as_ref()
+            .map_or(&[], |note| note.says.as_slice())
+    }
+
     /// Draws a window by itself, as `elements` have it, in a picture as
     /// large as the largest of those `due`, and gives them what they need
     /// of it.
@@ -1823,11 +1919,19 @@ impl Compositor {
     {
         let mut elements: Vec<Element<R>> = Vec::new();
         if shown.mark && self.capture.marks(output) {
-            // Over everything, the pointer too: nothing hides it.
-            let area = self.area_of(output);
-            let left = area.loc.x + area.size.w - capture::MARGIN;
-            let left = left - paint::CAPTURE_MARK.0.cast_signed();
-            let at = Point::<i32, Logical>::from((left, area.loc.y + capture::MARGIN));
+            // Over everything, the pointer too: nothing hides it; and over
+            // that, what it says when the pointer rests on it.
+            let tooltip = self
+                .hover
+                .mark
+                .as_ref()
+                .filter(|note| note.output == *output);
+            let tooltip = tooltip.and_then(|note| {
+                let at = Point::<i32, Logical>::from((note.area.origin.x, note.area.origin.y));
+                note.pixels.element(renderer, at.to_f64(), view, 1.0)
+            });
+            elements.extend(tooltip);
+            let at = self.mark_area(output).loc;
             let mark = self.capture.mark(view.scale);
             elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
         }
@@ -2504,6 +2608,21 @@ pub(crate) struct Hover {
     /// The surface of a program it was last said to be over, and where on
     /// it; and the time it last moved.
     pub(crate) pointed: (Focused, u32),
+    /// What the mark that says a screen is captured says, while it rests
+    /// on it.
+    mark: Option<MarkNote>,
+}
+
+/// What the mark that says a screen is captured says, painted.
+#[derive(Debug)]
+struct MarkNote {
+    output: Output,
+    says: Vec<String>,
+    scale: Scale,
+    theme: Theme,
+    /// Where it is shown, under the mark.
+    area: Rect,
+    pixels: Painted,
 }
 
 /// What is changing colour, coming in or going.
