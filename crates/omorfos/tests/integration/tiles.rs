@@ -3,7 +3,7 @@
 use omorfos::Input;
 use omorfos_config::{Action, Half};
 
-use crate::common::{Client, Session};
+use crate::common::{Client, Session, Toplevel};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -464,4 +464,66 @@ fn a_window_carried_by_its_titlebar_to_another_part_changes_places() {
         BACKGROUND,
         "nothing is offered now"
     );
+}
+
+/// A session with a red window on the desktop and a blue one tiled on the
+/// left of a workspace, its right half with nothing in it.
+fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
+    let mut session = Session::with_config(config);
+    let mut client = session.connect();
+    let waiting = session.open(&mut client, "waiting", (400, 300), RED);
+    session.open(&mut client, "first", (200, 100), BLUE);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    session.step();
+    (session, client, waiting)
+}
+
+#[test]
+fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
+    let (mut session, mut client, _waiting) = waiting(&[]);
+    // Made as small as it has to be to fit the half, with room round it.
+    let picture = session.draw();
+    assert_eq!(picture.at(350, 150), RED);
+    assert_eq!(picture.at(610, 335), RED);
+    assert_eq!(picture.at(340, 150), BACKGROUND, "room to the left");
+    assert_eq!(picture.at(350, 130), BACKGROUND, "and above");
+    assert_eq!(picture.at(350, 350), BACKGROUND, "and below");
+
+    // The pointer over it is the compositor's, and washes it over.
+    client.take_events();
+    point(&mut session, 480, 240);
+    session.roundtrip(&mut client);
+    let entered =
+        |event: &crate::common::Event| matches!(event, crate::common::Event::PointerEnter { .. });
+    assert!(!client.take_events().iter().any(entered));
+    assert_ne!(session.draw().at(480, 240), RED);
+    point(&mut session, 100, 240);
+    assert_eq!(session.draw().at(480, 240), RED, "and not once it leaves");
+
+    // Only the left button chooses it; that puts it in the part.
+    point(&mut session, 480, 240);
+    button(&mut session, RIGHT, true, 0);
+    button(&mut session, RIGHT, false, 0);
+    assert_eq!(parts(&session).len(), 1);
+    button(&mut session, LEFT, true, 0);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(parts(&session), [(0, 0, 320, 480), (320, 0, 320, 480)]);
+}
+
+#[test]
+fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
+    let rules = "rules:\n  - match: { app_id: waiting }\n    private: true\n";
+    let theme = "capture { background: #00ff00; }";
+    let config = [("rules.yaml", rules), ("theme.css", theme)];
+    let (mut session, mut client, waiting) = waiting(&config);
+    assert_eq!(session.draw().at(480, 240), GREEN);
+
+    // Told that what it drew has been shown, as on the screen.
+    client.take_events();
+    client.request_frame(&waiting.surface);
+    session.roundtrip(&mut client);
+    session.send_frames(std::time::Duration::from_millis(16));
+    session.roundtrip(&mut client);
+    let done = |event: &crate::common::Event| matches!(event, crate::common::Event::FrameDone);
+    assert!(client.take_events().iter().any(done));
 }

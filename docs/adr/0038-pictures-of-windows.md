@@ -135,6 +135,19 @@ be no larger than that screen. A window out of sight can have its
 picture taken, since what it last drew is still held; one a rule calls
 private is a blank of its size.
 
+**Made small in one step, for now.** The first window drawn small is one
+offered in a part of a workspace with nothing in it (ADR 39), and it is
+drawn straight at its small size, with the renderer's smoothing, not by
+halves. Halving needs the renderer to draw into a picture and then draw
+from it, and on real hardware omorfos draws through Smithay's renderer
+for several cards, which can draw into a picture of one card but gives
+no way to draw from it again. A part is half the screen or a quarter,
+so a window is made a third or a sixth of its size there; text may be
+rough, and is readable. Halving waits for the switcher, which makes
+windows smaller still, and for a way past that renderer: drawing with
+the card's own renderer, or reading the picture back and halving it in
+memory, each with its cost.
+
 **A window is named by its entry in the list of windows**, which only a
 program with the `panel` role is given. So taking a picture of a window
 needs `panel` as well as `capture`. The socket for scripts says what each

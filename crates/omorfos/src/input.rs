@@ -420,9 +420,10 @@ impl Compositor {
             self.move_pointer(None, time);
             return;
         }
-        if self.over_line().is_some() || self.over_palette() {
+        if self.over_line().is_some() || self.over_palette() || self.over_offer().is_some() {
             // The line between two windows is ours, and neither window's;
-            // and so are the pictures of arrangements.
+            // and so are the pictures of arrangements and of the windows
+            // offered in a part with nothing in it.
             self.move_pointer(None, time);
             return;
         }
@@ -670,6 +671,15 @@ impl Compositor {
             // them it only takes them away.
             if pressed {
                 self.choose_arrangement();
+                self.move_pointer(None, time);
+            }
+            return true;
+        }
+        if let Some(window) = self.over_offer() {
+            // A press on a window offered in a part with nothing in it puts
+            // it there.
+            if pressed && button == BUTTON_LEFT {
+                self.choose_offered(window);
                 self.move_pointer(None, time);
             }
             return true;

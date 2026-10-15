@@ -307,6 +307,72 @@ pub struct Line {
     pub across: bool,
 }
 
+/// A window of a desktop offered in a part of a workspace that has nothing
+/// in it, to be put there by a click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Offer {
+    /// The window offered.
+    pub window: WindowId,
+    /// Where its picture is: the shape of the window, and no larger.
+    pub at: Rect,
+}
+
+/// The room, in units of layout, left round each window offered in a part
+/// with nothing in it, and between one and the next.
+const OFFER_ROOM: u32 = 24;
+
+/// Where in `area` each of the windows of `sizes` is shown small, in rows
+/// and columns as near to square as there can be, each as large as its
+/// share of the area lets it be and no larger than it is.
+fn offered(area: Rect, sizes: &[Size]) -> Vec<Rect> {
+    let count = u32::try_from(sizes.len()).unwrap_or(u32::MAX);
+    // As many columns as the square root, rounded up, and one at least.
+    let square = count.isqrt();
+    let columns = (square + u32::from(square * square < count)).max(1);
+    let rows = count.div_ceil(columns);
+    let share = |along: u32, many: u32| {
+        let room = OFFER_ROOM.saturating_mul(many + 1);
+        along.saturating_sub(room) / many.max(1)
+    };
+    let cell = Size::new(
+        share(area.size.width, columns),
+        share(area.size.height, rows),
+    );
+    let step = |many: u32, cell: u32| (OFFER_ROOM + cell).saturating_mul(many).cast_signed();
+    sizes
+        .iter()
+        .zip(0..)
+        .map(|(size, index)| {
+            let (width, height) = (size.width.max(1), size.height.max(1));
+            // As wide as the cell, unless that makes it too tall.
+            let wide = u64::from(width) * u64::from(cell.height)
+                >= u64::from(height) * u64::from(cell.width);
+            let (width, height) = if wide {
+                let across = width.min(cell.width);
+                (across, scaled(height, across, width))
+            } else {
+                let down = height.min(cell.height);
+                (scaled(width, down, height), down)
+            };
+            let corner = area.origin.offset(
+                OFFER_ROOM.cast_signed() + step(index % columns, cell.width),
+                OFFER_ROOM.cast_signed() + step(index / columns, cell.height),
+            );
+            let centred = corner.offset(
+                (cell.width.saturating_sub(width) / 2).cast_signed(),
+                (cell.height.saturating_sub(height) / 2).cast_signed(),
+            );
+            Rect::new(centred, Size::new(width, height))
+        })
+        .collect()
+}
+
+/// `length` made smaller by as much as `to` is than `from`.
+fn scaled(length: u32, to: u32, from: u32) -> u32 {
+    let scaled = u64::from(length) * u64::from(to) / u64::from(from.max(1));
+    u32::try_from(scaled).unwrap_or(length)
+}
+
 /// A way for up to four windows to share a workspace: how it is cut into
 /// parts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1930,6 +1996,59 @@ impl Desktop {
         cut.map_or_else(Vec::new, |(tiling, area)| tiling.lines(area))
     }
 
+    /// The windows offered in each part with nothing in it of the workspace
+    /// an output is showing, if it is one that windows share: those of the
+    /// desktop it was made from, the one on top first, each where its
+    /// picture is. Outputs are counted in the order they were given.
+    #[must_use]
+    pub fn offers(&self, output: usize) -> Vec<Offer> {
+        let Some((set, screen)) = self.sets.get(output).zip(self.outputs.get(output)) else {
+            return Vec::new();
+        };
+        let shown = &set.workspaces[set.active];
+        let Some(tiling) = shown.solo else {
+            return Vec::new();
+        };
+        let metrics = self.settings.decoration;
+        let from = set.workspaces.iter().filter(|on| on.solo.is_none());
+        let from = from.filter(|on| on.id == tiling.origin);
+        let groups = from.flat_map(|on| on.groups.iter().rev());
+        let (windows, sizes): (Vec<WindowId>, Vec<Size>) = groups
+            .map(|group| {
+                let size = group.geometry.size;
+                let inner = Size::new(
+                    size.width.saturating_sub(metrics.border.saturating_mul(2)),
+                    size.height
+                        .saturating_sub(metrics.border)
+                        .saturating_sub(metrics.titlebar),
+                );
+                let size = if group.decorated() { inner } else { size };
+                (group.tabs[group.active].id, size)
+            })
+            .unzip();
+        let empty = tiling.slots().filter(|(_, part)| *part == Part::Empty);
+        empty
+            .flat_map(|(at, _)| {
+                let places = offered(tiling.rect(at, screen.area), &sizes);
+                windows.iter().zip(places).map(|(window, at)| Offer {
+                    window: *window,
+                    at,
+                })
+            })
+            .collect()
+    }
+
+    /// Puts a window offered in a part with nothing in it in the part at
+    /// `point`, on the workspace its output is showing. Does nothing where
+    /// there is no such part.
+    pub fn choose(&mut self, id: WindowId, point: Point) {
+        let Some(at) = self.locate(id) else { return };
+        let set = &self.sets[at.set];
+        let shown = set.workspaces[set.active].id;
+        self.join(id, shown);
+        self.swap_at(id, point);
+    }
+
     /// Moves one of the lines of the workspace an output is showing to
     /// `point`, or as near it as leaves each part a sixth of the output;
     /// or with `None` puts it back in the middle. Does nothing where there
@@ -2335,13 +2454,13 @@ mod tests {
         desktop.add_window(app_id, format!("{app_id} window"), SIZE, POINTER, true)
     }
 
-    /// The line that cuts the workspace an output is showing in two, if it
-    /// is cut.
     /// What a window that says nothing of how small it can be can be.
     fn none(_: WindowId) -> Size {
         Size::default()
     }
 
+    /// The line that cuts the workspace an output is showing in two, if it
+    /// is cut.
     fn line(desktop: &Desktop, output: usize) -> Option<Line> {
         desktop.lines(output).first().copied()
     }
@@ -3185,6 +3304,60 @@ mod tests {
         assert_eq!(part(&desktop, editor), (0, 0, 1600, 1080));
         desktop.move_line(0, 0, Some(Point::new(100, 0)), wide);
         assert_eq!(part(&desktop, editor), (0, 0, 1200, 1080));
+    }
+
+    #[test]
+    fn the_windows_of_the_desktop_are_offered_in_a_part_with_nothing_in_it() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "a");
+        let b = open(&mut desktop, "b");
+        let c = open(&mut desktop, "c");
+        assert_eq!(desktop.offers(0), [], "a desktop has no parts");
+        desktop.tile(c, Half::Left);
+
+        // The one on top first, side by side, each its own shape.
+        let at = |x: i32| Rect::new(Point::new(x, 373), Size::new(444, 333));
+        let offers = desktop.offers(0);
+        let offered = |window, x| Offer { window, at: at(x) };
+        assert_eq!(offers, [offered(b, 984), offered(a, 1452)]);
+
+        // Chosen, it fills the part, and nothing more is offered.
+        desktop.choose(a, Point::new(1500, 500));
+        assert_eq!(part(&desktop, a), (960, 0, 960, 1080));
+        assert_eq!(desktop.offers(0), []);
+        assert_eq!(desktop.offers(1), [], "nor on an output there is not");
+    }
+
+    #[test]
+    fn a_window_offered_is_shown_no_larger_than_it_is() {
+        let mut desktop = desktop();
+        // Tall, and with no titlebar of ours to take from its size.
+        let tall = desktop.add_window("tall", "tall", Size::new(200, 900), POINTER, false);
+        let other = open(&mut desktop, "other");
+        desktop.tile(other, Half::Left);
+        let at = Rect::new(Point::new(1340, 90), Size::new(200, 900));
+        let only = Offer { window: tall, at };
+        assert_eq!(desktop.offers(0), [only]);
+    }
+
+    #[test]
+    fn a_window_chosen_goes_to_the_part_it_was_chosen_in() {
+        let mut desktop = desktop();
+        let waiting = open(&mut desktop, "waiting");
+        let a = open(&mut desktop, "a");
+        desktop.tile(a, Half::Left);
+        desktop.tile(a, Half::Top);
+        // Below it and to the right are both offered it.
+        let offers = desktop.offers(0);
+        assert_eq!(offers.len(), 2);
+        assert!(offers[0].at.origin.y > 540 && offers[0].at.origin.x < 960);
+        assert!(offers[1].at.origin.x > 960);
+
+        let before = desktop.clone();
+        desktop.choose(WindowId::from_raw(99), Point::new(1500, 500));
+        assert_eq!(desktop, before, "one that is not there is not chosen");
+        desktop.choose(waiting, Point::new(1500, 500));
+        assert_eq!(part(&desktop, waiting), (960, 0, 960, 1080));
     }
 
     #[test]

@@ -4,16 +4,23 @@
 //! Where the line is, and how far it may go, is the desktop model's
 //! business. See `docs/adr/0039-windows-sharing-a-workspace.md`.
 
+use std::time::Duration;
+
 use omorfos_config::{Color, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Arrangement, WindowId};
+use omorfos_core::{Arrangement, Offer, WindowId};
+use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::utils::{Logical, Point};
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::utils::CropRenderElement;
+use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
+use smithay::output::Output;
+use smithay::utils::{Logical, Point, Rectangle};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::SurfaceCachedState;
 
-use crate::compositor::{Compositor, Mapped, color, logical_size};
+use crate::compositor::{Compositor, Element, Mapped, View, color, logical_size};
 use crate::input::Drag;
 use crate::outputs::Head;
 use crate::x11::Role;
@@ -38,6 +45,9 @@ pub(crate) struct Lines {
     /// When a line was last pressed on, which is what a second press has
     /// to follow closely to be a double click.
     pub(crate) pressed: Option<u32>,
+    /// The windows offered in parts with nothing in them, on every output,
+    /// as they were when the lines were last laid.
+    offers: Vec<Offer>,
 }
 
 impl Compositor {
@@ -62,7 +72,27 @@ impl Compositor {
         };
         let offered = self.offered().map(|(_, at, ..)| at);
         let offered = offered.or_else(|| self.carried_to()).map(|at| (at, wash));
-        let lines: Vec<(Rect, Color)> = lines.map(|line| (line.at, ink)).chain(offered).collect();
+        // Over the windows offered in a part with nothing in it, the same
+        // wash on the one under the pointer, and a blank in the colour of
+        // the `capture` part on any a rule says is private.
+        let outputs = 0..self.heads.len();
+        self.hover.lines.offers = outputs
+            .flat_map(|output| self.desktop.offers(output))
+            .collect();
+        let point = self.pointer_position();
+        let blank = self.config().theme.style(Part::Capture, States::NONE);
+        let offers = self.hover.lines.offers.iter();
+        let offers = offers.flat_map(|offer| {
+            let private = self.desktop.private(offer.window);
+            let under = offer.at.contains(point);
+            let blank = private.then_some((offer.at, blank.background));
+            blank.into_iter().chain(under.then_some((offer.at, wash)))
+        });
+        let lines: Vec<(Rect, Color)> = lines
+            .map(|line| (line.at, ink))
+            .chain(offered)
+            .chain(offers)
+            .collect();
         let drawn = self.hover.lines.drawn.iter();
         let same = drawn
             .map(|(at, ink, _)| (*at, *ink))
@@ -184,6 +214,79 @@ impl Compositor {
             let at = pixel(corner.to_f64());
             SolidColorRenderElement::from_buffer(buffer, at, scale, 1.0, Kind::Unspecified)
         })
+    }
+
+    /// The window offered in a part with nothing in it that is under the
+    /// pointer, if one is.
+    pub(crate) fn over_offer(&self) -> Option<WindowId> {
+        let point = self.pointer_position();
+        let offers = self.hover.lines.offers.iter();
+        let mut under = offers.filter(|offer| offer.at.contains(point));
+        under.next().map(|offer| offer.window)
+    }
+
+    /// Puts the window offered under the pointer in the part it is offered
+    /// in.
+    pub(crate) fn choose_offered(&mut self, window: WindowId) {
+        self.desktop.choose(window, self.pointer_position());
+    }
+
+    /// The windows offered in parts with nothing in them, drawn small where
+    /// each is offered, to be under the lines and what is laid over them.
+    /// One a rule says is private is not drawn: a blank is laid over it.
+    pub(crate) fn offer_elements<R>(&self, renderer: &mut R, view: View) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let offers = self.hover.lines.offers.iter();
+        let offers = offers.filter(|offer| !self.desktop.private(offer.window));
+        let shown =
+            offers.filter_map(|offer| self.mapped(offer.window).map(|mapped| (offer, mapped)));
+        let pictures = shown.flat_map(|(offer, mapped)| {
+            // As small as it has to be to fit, which with its shape kept is
+            // as small across as down.
+            let size = mapped.window.geometry().size;
+            let factor = f64::from(offer.at.size.width) / f64::from(size.w.max(1));
+            let scale = view.scale.factor() * factor;
+            let corner = Point::<i32, Logical>::from((offer.at.origin.x, offer.at.origin.y));
+            let corner = view.pixel(corner.to_f64());
+            let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
+            let at = corner - within.to_i32_round();
+            let picture = logical_size(offer.at.size).to_f64();
+            let crop = Rectangle::new(
+                corner,
+                picture.to_physical(view.scale.factor()).to_i32_round(),
+            );
+            let scale = smithay::utils::Scale::from(scale);
+            let surfaces = mapped
+                .window
+                .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0);
+            surfaces
+                .into_iter()
+                .filter_map(move |surface| CropRenderElement::from_element(surface, scale, crop))
+        });
+        pictures.map(Element::Cropped).collect()
+    }
+
+    /// Tells each window offered in a part with nothing in it on `output`
+    /// that what it drew has been shown, so that its picture there is
+    /// kept up to date as it would be on the screen.
+    pub(crate) fn send_offered_frames(&self, output: &Output, elapsed: Duration) {
+        let here = self.head(output).map(Head::area);
+        let offers = self.hover.lines.offers.iter();
+        let offers = offers.filter(|offer| {
+            let corner = Point::<i32, Logical>::from((offer.at.origin.x, offer.at.origin.y));
+            here.is_some_and(|here| here.contains(corner))
+        });
+        for mapped in offers.filter_map(|offer| self.mapped(offer.window)) {
+            let output = output.clone();
+            mapped
+                .window
+                .send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
+                    Some(output.clone())
+                });
+        }
     }
 
     /// The line the pointer can take hold of where it is: which output's,

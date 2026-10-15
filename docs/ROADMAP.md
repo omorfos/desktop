@@ -164,8 +164,12 @@ calls for them.
       when the pointer rests on it.
 - [x] A window dragged to an edge of the screen put in a tiled
       workspace, with the half it would take shown before it is let go.
-- [ ] Choosing a window for an empty part from those on the desktop,
-      shown small (ADR 38).
+- [x] Choosing a window for an empty part from those on the desktop,
+      shown small (ADR 38), made small in one step for now.
+- [ ] Titles under the windows offered in an empty part, which a
+      private one, shown blank, needs most.
+- [ ] Windows made small by halves (ADR 38), once the renderer for
+      real hardware can draw from what it drew: before the switcher.
 - [ ] A window that nobody asked for, opening while a fullscreen
       workspace is shown, left on the desktop unseen (activation
       tokens).

@@ -192,6 +192,10 @@ told otherwise. When a window closes or leaves, the one beside it has
 its room. A window that opens when every part is taken opens on the
 desktop.
 
+A part with nothing in it shows the windows of the desktop the workspace
+was made from, small. Click one to put it there. A window a rule makes
+`private` is shown as a blank, in the colour of the `capture` part.
+
 On such a workspace, rest the pointer against the top of the screen for
 six tenths of a second, or hold it there and push on against the top a
 good way, and whatever panels are along the top come back at once. A
