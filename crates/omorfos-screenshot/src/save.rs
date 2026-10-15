@@ -63,15 +63,30 @@ pub fn save(folder: &Path, stamp: &str, screen: Option<&str>, shot: &Shot) -> io
 /// it: a PNG has at least one pixel.
 pub fn encode(shot: &Shot, to: impl Write) -> io::Result<()> {
     let mut encoder = png::Encoder::new(to, shot.width, shot.height);
-    encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
+    // A picture that is see-through somewhere is kept so.
+    let see_through = shot.alpha.as_ref().map(|alpha| {
+        let colours = shot.pixels.as_chunks::<3>().0.iter();
+        let pixels = colours
+            .zip(alpha)
+            .flat_map(|([red, green, blue], alpha)| [*red, *green, *blue, *alpha]);
+        pixels.collect::<Vec<u8>>()
+    });
+    let colour = if see_through.is_some() {
+        png::ColorType::Rgba
+    } else {
+        png::ColorType::Rgb
+    };
+    encoder.set_color(colour);
+    let pixels = see_through.as_deref().unwrap_or(&shot.pixels);
     let begun = encoder.write_header();
-    let done = begun.and_then(|mut writer| writer.write_image_data(&shot.pixels));
+    let done = begun.and_then(|mut writer| writer.write_image_data(pixels));
     done.map_err(io::Error::other)
 }
 
 /// One picture of several screens, side by side in the order given, each
-/// from the top, on black where one is shorter than another.
+/// from the top, on black where one is shorter than another. Screens are
+/// solid all over.
 #[must_use]
 pub fn together(shots: &[Shot]) -> Shot {
     let width: u32 = shots.iter().map(|shot| shot.width).sum();
@@ -96,6 +111,7 @@ pub fn together(shots: &[Shot]) -> Shot {
         width,
         height,
         pixels,
+        alpha: None,
     }
 }
 
@@ -153,6 +169,7 @@ mod tests {
             width: 2,
             height: 1,
             pixels: vec![255, 0, 0, 0, 0, 255],
+            alpha: None,
         };
         let first = save(folder.path(), "now", None, &shot).unwrap();
         let second = save(folder.path(), "now", None, &shot).unwrap();
@@ -168,6 +185,24 @@ mod tests {
     }
 
     #[test]
+    fn a_see_through_picture_is_saved_see_through() {
+        let shot = Shot {
+            screen: "window".to_owned(),
+            width: 2,
+            height: 1,
+            pixels: vec![255, 0, 0, 0, 0, 255],
+            alpha: Some(vec![128, 255]),
+        };
+        let mut png = Vec::new();
+        encode(&shot, &mut png).unwrap();
+        let mut reader = png::Decoder::new(io::Cursor::new(png)).read_info().unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        assert_eq!(pixels[..8], [255, 0, 0, 128, 0, 0, 255, 255]);
+    }
+
+    #[test]
     fn several_screens_make_one_picture_side_by_side() {
         let red = [255, 0, 0];
         let blue = [0, 0, 255];
@@ -176,12 +211,14 @@ mod tests {
             width: 1,
             height: 2,
             pixels: [red, red].concat(),
+            alpha: None,
         };
         let short = Shot {
             screen: "right".to_owned(),
             width: 2,
             height: 1,
             pixels: [blue, blue].concat(),
+            alpha: None,
         };
         let both = together(&[tall.clone(), short]);
         assert_eq!((both.width, both.height), (3, 2));
@@ -203,6 +240,7 @@ mod tests {
             width: 1,
             height: 1,
             pixels: vec![0, 0, 0],
+            alpha: None,
         };
         assert!(save(&folder.path().join("missing"), "now", None, &shot).is_err());
     }

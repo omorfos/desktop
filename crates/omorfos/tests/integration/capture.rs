@@ -718,7 +718,17 @@ fn snap_sized(
     taking: &Taking,
     size: (i32, i32),
 ) -> (Picture, Vec<Event>) {
-    let (file, buffer) = client.shot_buffer(size);
+    snap_as(session, client, taking, (size, Format::Xrgb8888))
+}
+
+/// The same, in a buffer of pixels of `format`.
+fn snap_as(
+    session: &mut Session,
+    client: &mut Client,
+    taking: &Taking,
+    (size, format): ((i32, i32), Format),
+) -> (Picture, Vec<Event>) {
+    let (file, buffer) = client.shot_buffer_of(size, format);
     let frame = client.shot(taking);
     frame.attach_buffer(&buffer);
     frame.damage_buffer(0, 0, size.0, size.1);
@@ -726,6 +736,105 @@ fn snap_sized(
     let events = develop(session, client);
     frame.destroy();
     (Picture::read(&file, size.0), events)
+}
+
+#[test]
+fn a_picture_of_a_window_is_see_through_where_the_window_is() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    // Half see-through red, as a buffer of a window has it: with the red
+    // already made half as strong.
+    let glass = 0x8080_0000;
+    session.open(&mut app, "glass", (200, 100), glass);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("glass");
+    session.roundtrip(&mut camera);
+    camera.take_events();
+
+    let see_through = ((200, 100), Format::Argb8888);
+    let (shot, _) = snap_as(&mut session, &mut camera, &taking, see_through);
+    assert_eq!(shot.at(100, 50), glass);
+    // In a buffer that cannot be see-through it is as dark as it is red.
+    let solid = camera.capture_window("glass");
+    session.roundtrip(&mut camera);
+    let (shot, _) = snap_as(
+        &mut session,
+        &mut camera,
+        &solid,
+        ((200, 100), Format::Xrgb8888),
+    );
+    assert_eq!(shot.at(100, 50), 0xff80_0000);
+}
+
+#[test]
+fn a_picture_of_a_window_after_the_first_waits_for_it_to_change() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    snap_sized(&mut session, &mut camera, &taking, (200, 100));
+
+    let (file, buffer) = camera.shot_buffer((200, 100));
+    let frame = camera.shot(&taking);
+    frame.attach_buffer(&buffer);
+    frame.damage_buffer(0, 0, 200, 100);
+    frame.capture();
+    assert_eq!(
+        develop(&mut session, &mut camera),
+        [],
+        "nothing has changed"
+    );
+
+    app.fill(&window.surface, (200, 100), GREEN);
+    session.roundtrip(&mut app);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady));
+    assert_eq!(Picture::read(&file, 200).at(10, 10), GREEN);
+}
+
+#[test]
+fn a_picture_of_a_window_has_the_shadow_it_draws_round_itself() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    // A window that draws a shadow ten pixels wide round what it says is
+    // the window, as a program that draws its own titlebar does.
+    let window = app.toplevel("shadowed", "shadowed");
+    session.roundtrip(&mut app);
+    window.xdg_surface.set_window_geometry(10, 10, 180, 80);
+    app.fill(&window.surface, (200, 100), 0x4000_0000);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("shadowed");
+    session.roundtrip(&mut camera);
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(200, 100));
+
+    let see_through = ((200, 100), Format::Argb8888);
+    let (shot, _) = snap_as(&mut session, &mut camera, &taking, see_through);
+    assert_eq!(shot.at(0, 0), 0x4000_0000, "the shadow, faint");
+    assert_eq!(shot.at(199, 99), 0x4000_0000);
+}
+
+#[test]
+fn a_window_larger_than_its_screen_is_given_whole() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let size = (WIDTH + 160, HEIGHT + 120);
+    session.open(&mut app, "large", size, RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("large");
+    session.roundtrip(&mut camera);
+    let large = (size.0.unsigned_abs(), size.1.unsigned_abs());
+    assert_eq!(
+        camera.take_events()[0],
+        Event::CaptureSize(large.0, large.1)
+    );
+
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, size);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    assert_eq!(shot.at(size.0 - 1, size.1 - 1), RED, "to its far corner");
 }
 
 #[test]
@@ -739,8 +848,10 @@ fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
     let taking = camera.capture_window("editor");
     session.roundtrip(&mut camera);
     // As large as the window draws itself: the frame round it is not its.
+    // It may be see-through, as a screen is not.
     let told = [
         Event::CaptureSize(200, 100),
+        Event::CaptureFormat(Format::Argb8888),
         Event::CaptureFormat(Format::Xrgb8888),
         Event::CaptureKnown,
     ];

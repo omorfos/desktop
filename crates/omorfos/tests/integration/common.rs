@@ -535,7 +535,7 @@ impl Session {
         let result = self
             .inner
             .compositor_mut()
-            .render(
+            .render::<_, Image<'static, 'static>>(
                 &monitor.output,
                 &mut self.renderer,
                 &mut target,

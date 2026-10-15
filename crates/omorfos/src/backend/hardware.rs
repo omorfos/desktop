@@ -28,7 +28,7 @@ use smithay::backend::drm::{
 use smithay::backend::input::InputEvent;
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
 use smithay::backend::renderer::multigpu::GpuManager;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::{Bind, ImportDma};
@@ -653,7 +653,7 @@ impl Screen {
         let mut renderer = gpus.single_renderer(renderer)?;
         let drawn = {
             let mut framebuffer = renderer.bind(&mut buffer)?;
-            let result = compositor.render(
+            let result = compositor.render::<_, GlesRenderbuffer>(
                 &self.output,
                 &mut renderer,
                 &mut framebuffer,

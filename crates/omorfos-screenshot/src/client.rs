@@ -11,7 +11,7 @@ use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
+use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_device_v1::{self as device, ExtDataControlDeviceV1},
     ext_data_control_manager_v1::ExtDataControlManagerV1,
@@ -47,6 +47,10 @@ pub struct Shot {
     pub height: u32,
     /// Its pixels from the top left, three bytes to each: red, green, blue.
     pub pixels: Vec<u8>,
+    /// How solid each pixel is, from 0 for not at all to 255, for a
+    /// picture of a window that is see-through; nothing for one that is
+    /// solid all over, as a screen is.
+    pub alpha: Option<Vec<u8>>,
 }
 
 /// How far the picture of one screen has got.
@@ -72,6 +76,8 @@ struct Screen {
     size: (u32, u32),
     /// The memory the picture is taken in.
     memory: Option<File>,
+    /// Whether it can be had see-through, as a window can.
+    see_through: bool,
 }
 
 /// What the compositor has said, and what has been asked of it.
@@ -239,6 +245,7 @@ impl Screen {
             stage: Stage::Asked,
             size: (0, 0),
             memory: None,
+            see_through: false,
         }
     }
 
@@ -253,16 +260,27 @@ impl Screen {
             memory.read_exact_at(&mut bytes, 0).ok().map(|()| bytes)
         });
         bytes.map(|bytes| {
-            // Blue is first of the four bytes of a pixel, and red third.
+            // Blue is first of the four bytes of a pixel, red third, and how
+            // solid it is last. What is see-through has its colour made as
+            // much fainter as it is see-through, which a PNG does not.
             let (pixels, _) = bytes.as_chunks::<4>();
-            let pixels = pixels.iter();
-            let pixels = pixels.flat_map(|[blue, green, red, _]| [*red, *green, *blue]);
+            let see_through = screen.see_through;
+            let colour = |[blue, green, red, alpha]: &[u8; 4]| {
+                let solid = if see_through { *alpha } else { u8::MAX };
+                let full = |colour: u8| {
+                    let full = u16::from(colour) * 255 / u16::from(solid).max(1);
+                    u8::try_from(full).unwrap_or(u8::MAX)
+                };
+                [full(*red), full(*green), full(*blue)]
+            };
+            let alpha = see_through.then(|| pixels.iter().map(|[.., alpha]| *alpha).collect());
             let numbered = format!("screen-{}", index + 1);
             Shot {
                 screen: screen.name.clone().unwrap_or(numbered),
                 width,
                 height,
-                pixels: pixels.collect(),
+                pixels: pixels.iter().flat_map(colour).collect(),
+                alpha,
             }
         })
     }
@@ -391,6 +409,10 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
         for screen in state.screen(*index) {
             match event {
                 session::Event::BufferSize { width, height } => screen.size = (width, height),
+                // A window may be had see-through; a screen is not offered so.
+                session::Event::ShmFormat {
+                    format: WEnum::Value(wl_shm::Format::Argb8888),
+                } => screen.see_through = true,
                 session::Event::Stopped => screen.stage = Stage::Refused,
                 session::Event::Done => {
                     // The size is known: the picture is asked for, in
@@ -404,9 +426,13 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
                     );
                     let sizes = sizes.0.ok().zip(sizes.1.ok()).zip(sizes.2.ok());
                     let made = memory(length).ok().zip(sizes).zip(shm.as_ref());
+                    let format = if screen.see_through {
+                        wl_shm::Format::Argb8888
+                    } else {
+                        wl_shm::Format::Xrgb8888
+                    };
                     screen.memory = made.map(|((memory, ((length, width), height)), shm)| {
                         let pool = shm.create_pool(memory.as_fd(), length, handle, ());
-                        let format = wl_shm::Format::Xrgb8888;
                         let buffer =
                             pool.create_buffer(0, width, height, width * 4, format, handle, ());
                         pool.destroy();

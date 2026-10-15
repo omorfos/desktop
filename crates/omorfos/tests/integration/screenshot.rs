@@ -79,8 +79,11 @@ fn saved(path: &Path, (x, y): (usize, usize)) -> ((u32, u32), u32) {
     let mut reader = png::Decoder::new(file).read_info().unwrap();
     let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut pixels).unwrap();
-    let at = (y * usize::try_from(info.width).unwrap() + x) * 3;
-    let color = u32::from_be_bytes([0xff, pixels[at], pixels[at + 1], pixels[at + 2]]);
+    // Three bytes to a pixel, or four with how solid it is.
+    let per = info.color_type.samples();
+    let at = (y * usize::try_from(info.width).unwrap() + x) * per;
+    let solid = if per == 4 { pixels[at + 3] } else { 0xff };
+    let color = u32::from_be_bytes([solid, pixels[at], pixels[at + 1], pixels[at + 2]]);
     ((info.width, info.height), color)
 }
 
@@ -440,6 +443,18 @@ fn told_to_it_takes_the_window_with_focus_in_place_of_the_screens() {
     // As large as the window, and all of it the window.
     assert_eq!(saved(&paths[0], (0, 0)), ((200, 100), GREEN));
     assert_eq!(saved(&paths[0], (199, 99)).1, GREEN);
+}
+
+#[test]
+fn a_window_that_is_see_through_is_saved_so() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    // Half see-through red, its red made half as strong, as a buffer has it.
+    session.open(&mut app, "glass", (200, 100), 0x8080_0000);
+
+    let tool = start_window(&mut session, WINDOWS);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(saved(&paths[0], (100, 50)), ((200, 100), 0x80ff_0000));
 }
 
 #[test]

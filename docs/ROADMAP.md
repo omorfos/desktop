@@ -203,9 +203,12 @@ calls for them.
 - [x] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
       and the screenshot tool taking one of the window with focus, with
       `--window` and `Alt+Print`.
-- [ ] Known gaps in pictures of a window: one larger than its screen is
-      cut to the screen; what is see-through in it is black; and it is
-      given without the frame omorfos draws, with no way to ask for it.
+- [x] Pictures of a window as large as it is, and see-through where it
+      is, saved so by `omorfos-screenshot --window`.
+- [ ] Known gaps in pictures of a window: it is given without the frame
+      omorfos draws, with no way to ask for it; and one taken in the
+      memory of the graphics card is solid, see-through only in shared
+      memory.
 - [ ] A private window blurred in pictures in place of blank, as a
       choice of the rule (`private: blur`), once glass has brought the
       blur and a way to draw a window by itself. A blur hides less than
