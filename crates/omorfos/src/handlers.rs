@@ -52,6 +52,7 @@ use smithay::{
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
 use crate::roles::Roles;
+use crate::tiles;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::xwayland::XWaylandClientData;
 
@@ -87,6 +88,9 @@ impl CompositorHandler for Compositor {
         }
         if let Some(mapped) = self.windows.iter().find(|mapped| mapped.surface == root) {
             mapped.window.on_commit();
+            // A window may say anew how small it can be, which a part it
+            // fills is made room for.
+            self.desktop.set_least(mapped.id, tiles::least(mapped));
             // A window may resize itself. Believe its size only once it has
             // acknowledged the size we last asked for; before that, a
             // differing size is just the old one still in flight.
@@ -202,6 +206,9 @@ impl Compositor {
             role: Role::Xdg(toplevel),
             listed,
         });
+        // How small it said it can be before it was shown.
+        let least = self.windows.last().map(tiles::least).unwrap_or_default();
+        self.desktop.set_least(id, least);
         let client = surface.client();
         let credentials = client.and_then(|client| client.get_credentials(&self.display).ok());
         let pid = credentials.and_then(|credentials| u32::try_from(credentials.pid).ok());

@@ -445,6 +445,15 @@ fn a_line_stops_where_a_window_of_a_program_written_for_x11_can_be_no_smaller() 
     session.step();
     let first = frame(&session).0;
     assert_eq!(first.size.width, WIDTH.unsigned_abs() - 300);
+
+    // Said later, without anything new drawn, room is made at once.
+    meanwhile(&mut session, || {
+        let mut hints = WmSizeHints::new();
+        hints.min_size = Some((400, 50));
+        hints.set_normal_hints(&program, second).unwrap();
+        program.flush().unwrap();
+    });
+    session.eventually(|session| frame(session).0.size.width == WIDTH.unsigned_abs() - 400);
 }
 
 #[test]

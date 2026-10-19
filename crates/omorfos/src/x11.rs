@@ -51,6 +51,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use crate::compositor::{Compositor, Mapped, logical_size, set};
 use crate::input::Wanted;
 use crate::restarts::Restarts;
+use crate::tiles;
 
 /// What a window is to the program it belongs to.
 #[derive(Debug, Clone, PartialEq)]
@@ -635,6 +636,9 @@ impl Compositor {
             role: Role::X11(x11),
             listed,
         });
+        // How small it said it can be before it was shown.
+        let least = self.windows.last().map(tiles::least).unwrap_or_default();
+        self.desktop.set_least(id, least);
         if self.asked_for(surface, pid, startup) {
             self.desktop.activate(id);
         }
@@ -749,6 +753,13 @@ impl XwmHandler for Compositor {
             mapped.listed.send_done();
             let id = mapped.id;
             self.desktop.set_title(id, title);
+        }
+        // A program written for X11 says how small it can be in a property
+        // of its own, which it may change without drawing anything new.
+        let hints = (property == WmWindowProperty::NormalHints).then_some(());
+        let least = self.managed(&window).zip(hints);
+        if let Some((id, least)) = least.map(|(mapped, ())| (mapped.id, tiles::least(mapped))) {
+            self.desktop.set_least(id, least);
         }
     }
 

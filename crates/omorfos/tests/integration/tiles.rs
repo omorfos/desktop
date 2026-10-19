@@ -178,6 +178,29 @@ fn the_line_stops_where_a_window_says_it_can_be_no_smaller() {
 }
 
 #[test]
+fn a_window_that_says_it_can_be_no_smaller_is_given_room_without_the_line_dragged() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    assert_eq!(parts(&session)[0], (0, 0, 320, 480));
+
+    second.role.set_min_size(400, 0);
+    second.surface.commit();
+    session.roundtrip(&mut client);
+    assert_eq!(parts(&session)[0], (0, 0, 240, 480), "as much as it says");
+    let (size, _) = client.last_configure();
+    assert_eq!(size.0, 400, "and it is told so");
+
+    // Saying it no longer, it goes back to where the line was.
+    second.role.set_min_size(0, 0);
+    second.surface.commit();
+    session.roundtrip(&mut client);
+    assert_eq!(parts(&session)[0], (0, 0, 320, 480));
+}
+
+#[test]
 fn pressing_the_line_twice_puts_it_back_in_the_middle() {
     let (mut session, _client) = shared(Half::Left);
     point(&mut session, 320, 300);
