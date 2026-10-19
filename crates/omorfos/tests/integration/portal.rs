@@ -630,6 +630,24 @@ fn a_window_picked_that_has_gone_is_a_failure() {
 }
 
 #[test]
+fn once_a_picture_is_given_the_screen_is_no_longer_taken() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "done");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, asking).0, 0);
+    // The portal stays, and so would what it took pictures with, and the
+    // mark that says the screen is being taken, were it not let go.
+    session.eventually(|session| {
+        session.draw();
+        !session.compositor().captured(&session.output())
+    });
+}
+
+#[test]
 fn picking_nothing_is_saying_no() {
     let daemon = Daemon::start();
     let mut session = Session::new();
@@ -658,10 +676,20 @@ fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
     // with it, and nothing more comes of it; then the next is asked.
     press(&mut session, key::RETURN);
     session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) == BACKGROUND);
+    // The portal hears what was picked a moment after the picker has gone,
+    // on its own time: until then, what is asked is taken for asked while
+    // it is still picked, as a person could not ask so soon.
+    let until = std::time::Instant::now() + Duration::from_millis(300);
+    while std::time::Instant::now() < until {
+        session.step();
+        std::thread::sleep(Duration::from_millis(2));
+    }
     let next = ask(&daemon, "after");
     asked(&mut session);
     press(&mut session, key::ESCAPE);
     assert_eq!(answered(&mut session, next).0, 1);
+    let folder = session.config.path().join("Pictures/Screenshots");
+    assert!(!folder.exists(), "no picture saved that nobody wanted");
 }
 
 #[test]

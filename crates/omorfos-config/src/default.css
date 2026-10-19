@@ -128,6 +128,10 @@ capture {
   border-radius: 8px;
 }
 
+/* The line round a screen while it is shared or recorded, which is in no
+ * picture of it. */
+capture-border { border: 2px solid var(--capture); }
+
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
  * from the edges of the screen. */

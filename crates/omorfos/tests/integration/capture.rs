@@ -116,6 +116,28 @@ fn a_mark_is_shown_while_pictures_are_taken_and_is_not_in_them() {
 }
 
 #[test]
+fn a_line_goes_round_a_screen_only_once_it_is_taken_again_and_again() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let edge = (0, HEIGHT / 2);
+    // One picture, as a screenshot takes, has the mark and no line.
+    let _ = snap(&mut session, &mut camera, &taking);
+    let screen = session.draw();
+    assert_eq!(screen.at(MARK.0, MARK.1), DOT);
+    assert_eq!(
+        screen.at(edge.0, edge.1),
+        BACKGROUND,
+        "no line for one picture"
+    );
+    // Another asked for, as sharing goes on taking them, and the line is
+    // round it. It is in no picture, which the tests of sharing show.
+    let _ = snap(&mut session, &mut camera, &taking);
+    assert_ne!(session.draw().at(edge.0, edge.1), BACKGROUND, "the line");
+}
+
+#[test]
 fn the_mark_is_only_on_the_screen_pictures_are_taken_of() {
     let mut session = Session::new();
     session.add_output((WIDTH, HEIGHT));

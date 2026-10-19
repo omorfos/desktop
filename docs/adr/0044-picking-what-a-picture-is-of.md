@@ -59,6 +59,15 @@ whatever has moved since, and the picker is in no picture.
   `--window` takes one: the parts that others covered are in it, and so
   it is the window as it is when it is clicked, not as it was when the
   key was pressed. A window that has gone meanwhile is a failure.
+- **The screen to share is picked the same way**, where there is more
+  than one, after the user has said yes: only a whole screen can be,
+  the one under the pointer shown bright and bordered, and a click or
+  Enter shares it. A window or a region would change size while it is
+  shared, which the stream cannot yet follow.
+- **The picker says what to do**, in a line at the bottom of each screen,
+  out of the way of what is along the top, in the look of `tooltip`, in
+  words its caller gives, so that sharing can say "share". It is no
+  wider than the screen.
 - **The look is the theme's `picker` part**: its background is the dim,
   see-through black by default, and its border is round what is drawn,
   the accent.

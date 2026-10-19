@@ -287,8 +287,17 @@ calls for them.
       a second. A reader that comes anew, as a call's preview and then the
       call, is shown the screen at once, and sharing carries on through
       the session being locked, showing nothing of it.
-- [ ] Known gaps in sharing the screen: the first screen is shared, with
-      no choice of screen, window or region; a screen that changes size
+- [x] The screen to share picked, where there is more than one, as a
+      picture is picked: the one under the pointer, by a click or Enter.
+      The picker says what to do at the bottom of each screen, and a line
+      round a screen that is shared or recorded says so, in nothing that
+      is shared.
+- [ ] A layer surface with a subsurface that reaches past its screen is
+      not drawn at all, found as the picker's line of what to do was
+      made, which is now kept within the screen. To be found out and
+      put right in the compositor.
+- [ ] Known gaps in sharing the screen: a window or a region cannot be
+      shared, which needs a stream that changes size; a screen that changes size
       ends the sharing; the size the application is told is in pixels,
       not in units of layout; a choice cannot be remembered for next time;
       and the user cannot stop sharing from the desktop, only from the

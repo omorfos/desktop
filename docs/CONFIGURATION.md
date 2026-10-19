@@ -465,6 +465,10 @@ capture {
   border-radius: 8px;
 }
 
+/* The line round a screen while it is shared or recorded, which is in no
+ * picture of it. */
+capture-border { border: 2px solid var(--capture); }
+
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
  * from the edges of the screen. */
@@ -600,7 +604,8 @@ workspace:active, task:active { border-bottom: none; }
 
 **Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `capture`, `tooltip`, `panel`, `workspace`, `task`,
+`menu-separator`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
+`workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `question`, `question-detail`,
@@ -862,10 +867,12 @@ it would give outlined in the middle.
 
 An application can ask to share the screen too, as a browser or a call
 does. The same question goes up, saying that it wants to share your
-screen: **Share** or Enter gives it the first screen as a live stream,
-through PipeWire, for as long as the application keeps it; **Cancel** or
-Escape gives it nothing. While it is shared the red mark stays on that
-screen. To stop sharing, stop it in the application.
+screen: **Cancel** or Escape gives it nothing, and **Share** or Enter
+gives it the screen as a live stream, through PipeWire, for as long as
+the application keeps it. With more than one screen you then pick which:
+the screens go still and dim but for the one under the pointer, and a
+click or Enter shares that one, Escape none. While it is shared the red
+mark stays on that screen. To stop sharing, stop it in the application.
 
 How the desktop looks is read from the theme, so there is nothing to set. The desktop is
 dark if menus are written in something lighter than what they are
@@ -977,7 +984,8 @@ region, click where there is no window to take that screen, press Enter
 to take every screen, side by side, or Escape or another button to take
 nothing. A region or a screen is cut from the screens as they were when
 you pressed the key; a window is taken as it is when you click, the parts
-of it others covered too. The dim is the theme's `picker` part. To have `Print` put its picture on the clipboard, or both, say so
+of it others covered too. The dim is the theme's `picker` part, and a
+line at the bottom of each screen, drawn as `tooltip`, says what to do. To have `Print` put its picture on the clipboard, or both, say so
 in `config.yaml`:
 
 ```yaml
@@ -1034,6 +1042,11 @@ theme. So a picture cannot be taken of your screen without your seeing
 that it was. Rest the pointer on it to be told which programs are taking
 pictures, of the screen or of a window on it, by the name of each
 program's file. It is themed as `tooltip`.
+
+While the screen itself is shared or recorded, and not only a window on
+it, a red line goes round it as well, which is no more in what is shared
+than the dot is. It is the `capture-border` part's border; `border: none`
+takes it away, and the dot stays.
 
 The same mark shows a microphone while something records sound, and a
 camera while something records from one, on every screen, beside the dot

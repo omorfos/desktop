@@ -66,7 +66,8 @@ struct Watching {
     shm: Option<wl_shm::WlShm>,
     sources: Option<ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<ExtImageCopyCaptureManagerV1>,
-    output: Option<wl_output::WlOutput>,
+    /// The screens, by what they are called once they have said.
+    outputs: Vec<(wl_output::WlOutput, String)>,
     seat: Option<wl_seat::WlSeat>,
     /// What memory of the graphics card is named to the compositor by.
     cards: Option<ZwpLinuxDmabufV1>,
@@ -90,8 +91,8 @@ struct Watching {
     changed: Vec<Part>,
 }
 
-/// Pictures of the first screen, taken over a connection to the compositor
-/// that is shared with the rest of the program.
+/// Pictures of a screen, taken over a connection to the compositor that is
+/// shared with the rest of the program.
 #[derive(Debug)]
 pub struct Feed {
     queue: EventQueue<Watching>,
@@ -184,22 +185,33 @@ pub struct Seen<'a> {
 }
 
 impl Feed {
-    /// Begins taking pictures of the first screen, with the pointer drawn
-    /// in, followed beside them, or neither.
+    /// Begins taking pictures of the screen called `screen`, or of the
+    /// first if none is named, with the pointer drawn in, followed beside
+    /// them, or neither.
     ///
     /// # Errors
     ///
     /// Returns an error if the compositor gives this program no pictures,
-    /// or the memory to take them in cannot be had.
-    pub fn new(connection: &Connection, pointer: Pointer) -> Result<Self, Failure> {
+    /// the screen is not there, or the memory to take them in cannot be
+    /// had.
+    pub fn new(
+        connection: &Connection,
+        screen: Option<&str>,
+        pointer: Pointer,
+    ) -> Result<Self, Failure> {
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
         let mut watching = Watching::default();
         connection.display().get_registry(&handle, ());
+        // Once to be told what there is, and again for what the screens
+        // are called, which each says once it is bound.
         let listed = queue.roundtrip(&mut watching).map_err(Failure::from);
-        let session = listed.and_then(|_| {
+        let named = listed.and_then(|_| queue.roundtrip(&mut watching).map_err(Failure::from));
+        let session = named.and_then(|_| {
             let offered = watching.sources.clone().zip(watching.capturers.clone());
-            let offered = offered.zip(watching.output.clone());
+            let mut outputs = watching.outputs.iter();
+            let output = outputs.find(|(_, called)| screen.is_none_or(|screen| screen == called));
+            let offered = offered.zip(output.map(|(output, _)| output.clone()));
             let options = if pointer == Pointer::Drawn {
                 Options::PaintCursors
             } else {
@@ -427,6 +439,24 @@ impl Drop for Feed {
     }
 }
 
+impl Dispatch<wl_output::WlOutput, ()> for Watching {
+    fn event(
+        watching: &mut Self,
+        output: &wl_output::WlOutput,
+        event: wl_output::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_output::Event::Name { name } = event {
+            let known = watching.outputs.iter_mut();
+            for (_, called) in known.filter(|(known, _)| known == output) {
+                called.clone_from(&name);
+            }
+        }
+    }
+}
+
 impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
     fn event(
         watching: &mut Self,
@@ -439,7 +469,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
         // A registry also says when something goes, which ends the session
         // of a screen that went, as the session itself says.
         if let wl_registry::Event::Global {
-            name, interface, ..
+            name,
+            interface,
+            version,
         } = event
         {
             match interface.as_str() {
@@ -450,8 +482,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
                 "ext_image_copy_capture_manager_v1" => {
                     watching.capturers = Some(registry.bind(name, 1, handle, ()));
                 }
-                "wl_output" if watching.output.is_none() => {
-                    watching.output = Some(registry.bind(name, 1, handle, ()));
+                "wl_output" => {
+                    let output = registry.bind(name, version.min(4), handle, ());
+                    watching.outputs.push((output, String::new()));
                 }
                 "zwp_linux_dmabuf_v1" => {
                     watching.cards = Some(registry.bind(name, 3, handle, ()));
@@ -597,7 +630,6 @@ delegate_noop!(Watching: ignore ZwpLinuxBufferParamsV1);
 delegate_noop!(Watching: ignore wl_pointer::WlPointer);
 delegate_noop!(Watching: wl_shm_pool::WlShmPool);
 delegate_noop!(Watching: ignore wl_buffer::WlBuffer);
-delegate_noop!(Watching: ignore wl_output::WlOutput);
 delegate_noop!(Watching: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(Watching: ExtImageCaptureSourceV1);
 delegate_noop!(Watching: ExtImageCopyCaptureManagerV1);

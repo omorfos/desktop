@@ -238,6 +238,34 @@ fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
     }
 }
 
+/// Clicks at `at` until the call has been answered, as a screen to share
+/// is picked once the picture of each is up, and returns how.
+fn picked_screen(
+    session: &mut Session,
+    asking: JoinHandle<Answered>,
+    (x, y): (i32, i32),
+) -> Answered {
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.eventually(|session| {
+        session.compositor_mut().input(at, 0);
+        session.step();
+        for pressed in [true, false] {
+            let button = Input::Button {
+                button: 0x110,
+                pressed,
+            };
+            session.compositor_mut().input(button, 0);
+        }
+        drop(session.draw_on(1));
+        session.draw();
+        asking.is_finished()
+    });
+    asking.join().unwrap()
+}
+
 /// Draws until a call has been answered, and returns how.
 fn answered(session: &mut Session, asking: JoinHandle<Answered>) -> Answered {
     session.eventually(|session| {
@@ -521,6 +549,32 @@ fn a_call_is_given_the_screen_to_read_once_the_user_says_so() {
         viewer.at(WIDTH, (10, 10)) == Some(RED)
     });
     assert_eq!(viewer.at(WIDTH, (WIDTH / 2, HEIGHT / 2)), Some(BACKGROUND));
+    // A line round the screen says it is shared, and is not in what is.
+    let line = omorfos_config::Theme::default()
+        .style(
+            omorfos_config::Part::CaptureBorder,
+            omorfos_config::States::NONE,
+        )
+        .border
+        .top
+        .color;
+    let line = u32::from_be_bytes([line.alpha, line.red, line.green, line.blue]);
+    // Once the next picture has been asked for: the first could be a
+    // screenshot's.
+    session.eventually(|session| {
+        viewer.turn(node);
+        session.draw().at(0, HEIGHT / 2) == line
+    });
+    let picture = session.draw();
+    for (x, y) in [
+        (0, HEIGHT / 2),
+        (WIDTH - 1, HEIGHT / 2),
+        (WIDTH / 2, HEIGHT - 1),
+    ] {
+        assert_eq!(picture.at(x, y), line, "the line, at {x}, {y}");
+    }
+    assert_eq!(picture.at(2, HEIGHT / 2), BACKGROUND, "two wide");
+    assert_eq!(viewer.at(WIDTH, (0, HEIGHT / 2)), Some(BACKGROUND));
     // What changes on the screen is what is read next, each time, as the
     // memory it is put in goes round: a change in one place and then in
     // another, so that memory that missed the first while it was being read
@@ -575,6 +629,11 @@ fn a_call_is_given_the_screen_to_read_once_the_user_says_so() {
         session.draw();
         !session.compositor().captured(&output)
     });
+    assert_eq!(
+        session.draw().at(0, HEIGHT / 2),
+        BACKGROUND,
+        "and the line has gone"
+    );
 }
 
 /// Shares the screen with a call in a new session, as the user says yes,
@@ -1024,10 +1083,11 @@ fn a_screen_that_changes_ends_its_sharing_and_the_session_is_closed() {
     let call_session = "/org/freedesktop/portal/desktop/session/1_1/gone";
     // With the pointer in it, as a call that shows where one points asks.
     make(&peer, call_session, DRAWN);
-    assert_eq!(
-        shared(&mut session, &daemon, call_session, key::RETURN).0,
-        0
-    );
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    // With two screens, the one to share is picked.
+    assert_eq!(picked_screen(&mut session, starting, (10, 10)).0, 0);
     session.resize_output((320, 240));
     session.eventually(|session| {
         session.draw();
@@ -1040,4 +1100,179 @@ fn a_screen_that_changes_ends_its_sharing_and_the_session_is_closed() {
     });
     let path = closed.unwrap().header().path().map(ToString::to_string);
     assert_eq!(path.as_deref(), Some(call_session));
+}
+
+/// Starts the portal with two screens, the second 320 by 240, asks to
+/// share in a new session, says yes, and returns the session's path, the
+/// call and what it waits for.
+fn picking_a_screen(
+    session: &mut Session,
+    daemon: &Daemon,
+    roles: Roles,
+    remote: &str,
+    call_session: &'static str,
+) -> (Connection, JoinHandle<Answered>) {
+    session.add_output((320, 240));
+    // It runs until the session ends, and is not waited for.
+    drop(start(session, daemon, roles, remote));
+    let peer = daemon.peer();
+    make(&peer, call_session, HIDDEN);
+    let starting = begin(daemon, call_session);
+    asked(session);
+    press(session, key::RETURN);
+    (peer, starting)
+}
+
+/// Moves the pointer to a place.
+fn point(session: &mut Session, (x, y): (i32, i32)) {
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    session.step();
+}
+
+#[test]
+fn with_two_screens_the_one_the_user_picks_is_shared() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/picked";
+    let (_peer, starting) = picking_a_screen(
+        &mut session,
+        &daemon,
+        ITS_OWN,
+        remote.to_str().unwrap(),
+        call_session,
+    );
+    // The screen under the pointer is bright, and the other dimmed.
+    session.eventually(|session| {
+        point(session, (WIDTH + 100, 100));
+        let other = session.draw().at(5, 5);
+        let under = session.draw_on(1).at(100, 100);
+        other != BACKGROUND && under == BACKGROUND
+    });
+    let (response, results) = picked_screen(&mut session, starting, (WIDTH + 100, 100));
+    assert_eq!(response, 0);
+    assert_eq!(stream(&results).1, (320, 240), "the second screen");
+}
+
+#[test]
+fn enter_shares_the_screen_the_pointer_is_on() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/entered";
+    let (_peer, starting) = picking_a_screen(
+        &mut session,
+        &daemon,
+        ITS_OWN,
+        remote.to_str().unwrap(),
+        call_session,
+    );
+    session.eventually(|session| {
+        point(session, (WIDTH + 100, 100));
+        press(session, key::RETURN);
+        drop(session.draw_on(1));
+        session.draw();
+        starting.is_finished()
+    });
+    let (response, results) = starting.join().unwrap();
+    assert_eq!(response, 0);
+    assert_eq!(stream(&results).1, (320, 240));
+}
+
+#[test]
+fn escape_while_a_screen_is_picked_shares_nothing() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/escaped";
+    let (_peer, starting) = picking_a_screen(
+        &mut session,
+        &daemon,
+        ITS_OWN,
+        remote.to_str().unwrap(),
+        call_session,
+    );
+    session.eventually(|session| {
+        press(session, key::ESCAPE);
+        drop(session.draw_on(1));
+        session.draw();
+        starting.is_finished()
+    });
+    assert_eq!(starting.join().unwrap(), (1, HashMap::new()));
+    assert!(!session.compositor().captured(&session.output()));
+}
+
+#[test]
+fn a_session_that_ends_while_its_screen_is_picked_is_told_no_at_once() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/ended";
+    let (peer, starting) = picking_a_screen(
+        &mut session,
+        &daemon,
+        ITS_OWN,
+        remote.to_str().unwrap(),
+        call_session,
+    );
+    // Up: the first screen is dimmed.
+    session.eventually(|session| {
+        drop(session.draw_on(1));
+        session.draw().at(5, 5) != BACKGROUND
+    });
+    peer.call_method(Some(NAME), call_session, Some(SESSION), "Close", &())
+        .unwrap();
+    assert_eq!(answered(&mut session, starting), (1, HashMap::new()));
+    // The picker stays until the user is done, and nothing comes of it.
+    let screen = (WIDTH + 100, 100);
+    session.eventually(|session| {
+        point(session, screen);
+        press(session, key::RETURN);
+        drop(session.draw_on(1));
+        session.draw().at(5, 5) == BACKGROUND
+    });
+    // Once the portal has heard what was picked, which it says on its own
+    // time, the next is asked about as the first was, and not refused as
+    // asked while another is.
+    wait(&mut session, Duration::from_millis(300), || {});
+    let next = "/org/freedesktop/portal/desktop/session/1_1/next";
+    make(&peer, next, HIDDEN);
+    let starting = begin(&daemon, next);
+    session.eventually(|session| {
+        let looks = omorfos_config::Theme::default();
+        let looks = looks.style(omorfos_config::Part::Launcher, omorfos_config::States::NONE);
+        let shown = looks.background;
+        let shown = u32::from_be_bytes([shown.alpha, shown.red, shown.green, shown.blue]);
+        // On the screen the pointer is on.
+        let up = session.draw_on(1).at(160, 120) == shown;
+        up || session.draw().at(WIDTH / 2, HEIGHT / 2) == shown || starting.is_finished()
+    });
+    assert!(!starting.is_finished(), "asked about, not refused");
+    assert!(!session.compositor().captured(&session.output()));
+}
+
+#[test]
+fn without_leave_to_take_pictures_two_screens_cannot_be_picked_from() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/unseen";
+    let roles = Roles::PANEL.with(Roles::OVERLAY);
+    let (_peer, starting) = picking_a_screen(
+        &mut session,
+        &daemon,
+        roles,
+        remote.to_str().unwrap(),
+        call_session,
+    );
+    assert_eq!(answered(&mut session, starting).0, 2);
 }

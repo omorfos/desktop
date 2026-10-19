@@ -3734,6 +3734,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-icons",
  "omorfos-ipc",
+ "omorfos-picker",
  "omorfos-pipewire",
  "omorfos-screenshot",
  "omorfos-shell",

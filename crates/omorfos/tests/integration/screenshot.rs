@@ -752,3 +752,24 @@ fn a_click_where_there_is_no_window_takes_the_screen() {
     let paths = finish(&mut session, tool).unwrap();
     assert_eq!(saved(&paths[0], (0, 0)).0, (640, 480));
 }
+
+#[test]
+fn the_picker_says_what_to_do_at_the_bottom_of_each_screen() {
+    let mut session = Session::new();
+    session.add_output((320, 240));
+    let tool = picking(&mut session, 2);
+    // Over the dim, in the middle across, a line in a box of its own; and
+    // nothing of it further down.
+    let differs = |picture: &crate::common::Picture, (middle, bottom): (i32, i32)| {
+        picture.at(middle, bottom - 26) != picture.at(middle, 120)
+    };
+    session.eventually(|session| {
+        let second = session.draw_on(1);
+        differs(&session.draw(), (WIDTH / 2, HEIGHT)) && differs(&second, (160, 240))
+    });
+    press(&mut session, crate::common::key::ESCAPE);
+    assert_eq!(
+        picked(&mut session, tool, 2).unwrap(),
+        [PathBuf::from("nothing was picked")]
+    );
+}

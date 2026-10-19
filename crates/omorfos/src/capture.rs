@@ -47,7 +47,7 @@ use smithay::reexports::wayland_server::protocol::wl_shm::Format;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::utils::{Buffer, Physical, Point, Rectangle, Size};
+use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Size};
 use smithay::wayland::dmabuf::get_dmabuf;
 use smithay::wayland::shm::with_buffer_contents;
 
@@ -244,6 +244,9 @@ struct Taking {
     /// Whether a picture has been taken. The first is taken at once, and
     /// those after it when something has changed.
     taken: bool,
+    /// How many pictures have been asked for, up to two: one is a
+    /// screenshot, and more is the screen being shared or recorded.
+    asked: u8,
     /// What a window is in its pictures while a rule says it is private.
     blank: SolidColorBuffer,
 }
@@ -266,6 +269,7 @@ impl Taking {
             scale,
             pointer,
             taken: false,
+            asked: 0,
             blank: SolidColorBuffer::default(),
         };
         taking.stand((taking.output.clone(), size, scale), gpu);
@@ -385,6 +389,33 @@ pub(crate) struct Capture {
     /// What records from a microphone or a camera, which the mark shows
     /// as well.
     pub(crate) recording: Recording,
+    /// The line round each screen that is shared: what it was made for,
+    /// and its four sides, each where it goes on the screen.
+    edges: Vec<(Output, Edge, [Side; 4])>,
+}
+
+/// A side of the line round a shared screen, and where it goes on it.
+type Side = (Point<i32, Logical>, SolidColorBuffer);
+
+/// What the line round a shared screen is made for: the screen's size,
+/// and how wide the line is and its colour.
+type Edge = (Size<i32, Logical>, u32, omorfos_config::Color);
+
+/// The four sides of a line `wide` across round a screen `size` large, in
+/// `colour`: the top and the bottom the whole way across, and the left and
+/// the right between them.
+fn sides((size, wide, colour): Edge) -> [Side; 4] {
+    let thick = wide.cast_signed().min(size.w / 2).min(size.h / 2);
+    let ink = color(colour);
+    let made =
+        |at: (i32, i32), long: (i32, i32)| (Point::from(at), SolidColorBuffer::new(long, ink));
+    let between = size.h - 2 * thick;
+    [
+        made((0, 0), (size.w, thick)),
+        made((0, size.h - thick), (size.w, thick)),
+        made((0, thick), (thick, between)),
+        made((size.w - thick, thick), (thick, between)),
+    ]
 }
 
 impl Capture {
@@ -430,6 +461,27 @@ impl Capture {
             .iter()
             .find(|(painted, _)| *painted == (scale, signs));
         painted.map(|(_, mark)| mark)
+    }
+
+    /// Whether a screen is being shared or recorded: a program is taking
+    /// picture after picture of it, and not of a window on it. One that
+    /// asks for a single picture, as a screenshot does, is not sharing it,
+    /// and the line round the screen would only flicker.
+    pub(crate) fn shared(&self, output: &Output) -> bool {
+        let screens = self
+            .takings
+            .iter()
+            .filter(|taking| taking.output == *output && taking.asked > 1);
+        screens
+            .into_iter()
+            .any(|taking| matches!(taking.subject, Subject::Screen(_)))
+    }
+
+    /// The four sides of the line round `output`, while it is shared, each
+    /// where it goes on the screen.
+    pub(crate) fn edges(&self, output: &Output) -> impl Iterator<Item = &Side> {
+        let edges = self.edges.iter().filter(move |(of, ..)| of == output);
+        edges.flat_map(|(.., sides)| sides)
     }
 
     /// Forgets how the mark was painted, for a theme that has changed.
@@ -786,6 +838,33 @@ impl Compositor {
             let theme = &self.config().theme;
             let mark = Painted::new(&paint::capture_mark(theme, scale, signs));
             self.capture.marks.push(((scale, signs), mark));
+        }
+        // A line round each screen that is shared, made again only when
+        // the screen or the look of the line changes.
+        let line = self.config().theme.style(Part::CaptureBorder, States::NONE);
+        let line = line.border.top;
+        let wanted = self
+            .heads
+            .iter()
+            .filter(|head| self.capture.shared(&head.output));
+        let wanted = wanted.filter(|_| line.width > 0);
+        let wanted: Vec<(Output, Edge)> = wanted
+            .map(|head| {
+                (
+                    head.output.clone(),
+                    (head.area().size, line.width, line.color),
+                )
+            })
+            .collect();
+        let edges = &mut self.capture.edges;
+        edges.retain(|(output, edge, _)| wanted.contains(&(output.clone(), *edge)));
+        for (output, edge) in wanted {
+            if !edges
+                .iter()
+                .any(|(of, made, _)| *of == output && *made == edge)
+            {
+                edges.push((output, edge, sides(edge)));
+            }
         }
     }
 
@@ -1181,7 +1260,13 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for Compositor {
             FrameRequest::Capture if shot.buffer.is_none() => {
                 frame.post_error(FrameError::NoBuffer, "there is nothing to take it in");
             }
-            FrameRequest::Capture => shot.stage = Stage::Asked,
+            FrameRequest::Capture => {
+                shot.stage = Stage::Asked;
+                let takings = state.capture.takings.iter_mut();
+                for taking in takings.filter(|taking| taking.session == shot.session) {
+                    taking.asked = taking.asked.saturating_add(1).min(2);
+                }
+            }
             _ => {}
         }
     }

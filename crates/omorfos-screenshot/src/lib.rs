@@ -23,6 +23,10 @@ pub use client::{Camera, Failure, Shot, shoot};
 use omorfos_config::{Kept, Store};
 pub use save::{crop, encode, pictures, save, together};
 
+/// What the picker says to do at the top of each screen.
+const HINT: &str =
+    "Drag over an area, or click a window or a screen. Enter takes every screen, Esc cancels.";
+
 /// How the program is used, said when it is used otherwise.
 const USAGE: &str = "usage: omorfos-screenshot [--window | --pick] [--to file|clipboard|both]";
 
@@ -224,7 +228,13 @@ pub fn pick(
     placed: &[omorfos_ipc::Placed],
     theme: &omorfos_config::Theme,
 ) -> Result<Option<Vec<Shot>>, Failure> {
-    let picked = omorfos_picker::pick(connection, stills(&shots, placed), theme)?;
+    let stills = stills(&shots, placed);
+    let picked = omorfos_picker::pick(
+        connection,
+        stills,
+        (omorfos_picker::Pickable::Anything, HINT),
+        theme,
+    )?;
     let kept = picked.map(|picked| kept(shots, placed, picked));
     kept.map(|kept| match kept {
         Chosen::Taken(shots) => Ok(shots),
