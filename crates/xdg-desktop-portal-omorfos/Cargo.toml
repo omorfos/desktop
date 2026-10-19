@@ -18,6 +18,9 @@ omorfos-shell = { path = "../omorfos-shell" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
 # Draws the question.
 omorfos-ui = { path = "../omorfos-ui" }
+# Names the application that asks by its desktop entry, as the launcher
+# reads them.
+omorfos-icons = { path = "../omorfos-icons" }
 # The question is asked on the screen as a Wayland client. All are already
 # in the tree through Smithay's nested backend.
 wayland-client = "0.31.15"

@@ -264,13 +264,14 @@ calls for them.
 - [x] The Screenshot portal, with the user asked each time by a
       question of the backend's own, over everything, which is not in the
       picture.
+- [x] An application that asks the portals named by its desktop entry,
+      not by the identifier its sandbox gives it.
 - [x] Colours picked for applications through the Screenshot portal,
       from a still picture of the screen, the picking being the consent,
       under a crosshair and beside a round loupe.
 - [ ] Known gaps in the Screenshot portal: the user cannot choose a
       screen, a window or a region, only all of it, and a colour is
-      picked from the first screen only; an application is named by its
-      identifier, not by the name it shows; and the question borrows the
+      picked from the first screen only; and the question borrows the
       launcher's look in place of a part of its own.
 - [x] Sharing the screen through the portal, as a PipeWire stream, with
       the user asked each time, and the mark on the screen while it is

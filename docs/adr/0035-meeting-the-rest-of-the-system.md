@@ -206,7 +206,11 @@ keyboard, and only once the user has said yes takes the picture, after
 taking the question down. The compositor starts it able to do both, and
 nothing else is trusted with either. It learns what the compositor
 offers before it takes its name on the bus, so that it is never asked
-something before it knows whether it can ask the user.
+something before it knows whether it can ask the user. It names the
+application that asks as its desktop entry does, found by the identifier
+the sandbox gives it, which is looked up only if it is a plain name that
+cannot reach outside the directory of entries; and by that identifier if
+there is no entry.
 
 **A colour is picked, not asked about.** Asked for a colour on the
 screen, the backend takes a picture of the first screen and shows it

@@ -811,7 +811,9 @@ it is.
 
 An application can also ask for a picture of the screen, as a browser or
 a chat in a sandbox does. Each time, a question goes up in the middle of
-the screen, over everything, saying which application asks: Enter or
+the screen, over everything, saying which application asks, by the name
+its desktop entry gives it, or by what its sandbox calls it if it has
+none: Enter or
 **Take picture** gives it a picture of every screen, as one, saved among
 your pictures as `Print` saves them; Escape or **Cancel** gives it
 nothing. The question is not in the picture, and the red mark shows while
