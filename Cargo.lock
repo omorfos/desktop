@@ -1934,6 +1934,7 @@ dependencies = [
 name = "omorfos-recording"
 version = "0.1.0"
 dependencies = [
+ "inotify",
  "pipewire",
  "tempfile",
 ]
