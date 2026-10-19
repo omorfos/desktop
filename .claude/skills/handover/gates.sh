@@ -45,6 +45,12 @@ uncovered() {
     ignored=$(sed -n 's/.*"--ignore-filename-regex=\(.*\)",$/\1/p' .cargo/config.toml)
     # Written in TOML, a backslash is two.
     ignored=${ignored//\\\\/\\}
+    # A run in which tests failed reaches less than it would have, and
+    # what it did not reach says nothing.
+    if grep -q "^test result: FAILED" "$log"; then
+        echo "Tests failed, so what coverage did not reach is not listed."
+        return
+    fi
     echo "Not reached, by where each region begins:"
     cargo llvm-cov report --json --ignore-filename-regex="$ignored" 2>/dev/null |
         jq -r '.data[0].files[] | .filename as $file | .segments[]
