@@ -81,14 +81,17 @@ fn end(session: Session, keeper: JoinHandle<String>) -> String {
 #[test]
 fn what_is_copied_can_be_pasted_after_the_program_that_copied_closes() {
     let (mut session, keeper, mut editor) = kept(Limits::default());
-    // Selecting, for the middle button, is not kept.
-    editor.select("only selected");
-    session.roundtrip(&mut editor);
     let forms = [TEXT, "text/plain", ""];
     copied(&mut session, &mut editor, ("kept", &forms), |editor| {
         editor.state.replaced
     });
     assert_eq!(editor.state.asked, 2, "in every form it has a name for");
+    // Selecting, for the middle button, is not kept. It is done once the
+    // keeper has shown it is there by keeping a copy: the keeper is told
+    // of what is selected only as it changes, so one that came later would
+    // not be told of it at all.
+    editor.select("only selected");
+    session.roundtrip(&mut editor);
     drop(editor);
     assert_eq!(pasted(&mut session).as_deref(), Some("kept"));
 
