@@ -168,6 +168,12 @@ calls for them.
       shown small (ADR 38), made small in one step for now.
 - [x] Titles under the windows offered in an empty part, which a
       private one, shown blank, needs most.
+- [ ] A window offered in an empty part as one box, its picture and its
+      title: washed over whole, chosen by a click on either, with a faint
+      border, which shows where a private window's blank is, and a state
+      of the `offer` part for the title under the pointer; the wash shown
+      over a private window's blank, under which it is hidden now; and the
+      titles of a row on one line, under the tallest of its pictures.
 - [ ] Icons beside the titles of windows offered in an empty part, and
       in place of a private window's blank (ADR 38), once there are icons
       from the icon theme.

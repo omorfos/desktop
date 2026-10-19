@@ -20,6 +20,13 @@ is the order things are done in, and what the maintainer expects to be told.
 
 - The model first (`omorfos-core`, `omorfos-config`), with its tests, then
   the compositor, then a test through a real client.
+- Write the failing test first, and after each step run the tests of what
+  is being changed, which take a second or two, not the whole suite:
+
+  ```sh
+  .claude/skills/handover/gates.sh area -p omorfos-core tiles::
+  ```
+
 - After changing configuration types, regenerate the schemas:
   `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
 - Update `docs/CONFIGURATION.md` for anything a user can set or do. Its
@@ -40,18 +47,20 @@ is the order things are done in, and what the maintainer expects to be told.
 
 ## 3. Gates
 
-All of them, on the tree as it will be committed:
+In tiers, as `docs/TESTING.md` says under "Tiers". Before handing over,
+the `handover` tier, on the tree as it will be committed: `typos`,
+`cargo fmt`, clippy with all features, every test once under the
+coverage gate, and the nightly build.
 
 ```sh
-typos
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo coverage --locked
-cargo test --workspace --all-features --doc --locked
-cargo deny check
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
+.claude/skills/handover/gates.sh handover
 ```
+
+The `rest` tier, clippy without features, the coverage gate without a
+graphics card, the doctests, `cargo deny` and `cargo doc`, is started in
+the background as the build is handed over (step 5), and has to have
+passed before anything is committed. Never two runs of the gates at
+once: they share the machine, and the X11 tests time out.
 
 The tools are in `~/.cargo/bin`. The hook in `.claude/settings.json`
 formats a Rust file each time it is edited or written as a file, but not
@@ -63,22 +72,17 @@ many runs passed. A test that fails only sometimes is a bug ("Flaky tests"
 there), never one to run again until it passes.
 If the change touches buffers of the graphics card, pictures of the screen
 or sharing it, run the tests that need a card, which CI skips, as
-`docs/TESTING.md` says, and say in the report whether they ran. On a
-machine with a card, run the coverage gate a second time as CI does,
-`OMORFOS_TESTS_WITHOUT_CARD=1 cargo coverage --locked`: what only the card
-reaches counts here and not there.
+`docs/TESTING.md` says, and say in the report whether they ran.
 
 ## 4. Build for trying by hand
 
-```sh
-cargo build --profile nightly --locked -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p xdg-desktop-portal-omorfos
-ls -l target/nightly/omorfos
-```
+The `handover` tier builds it, with the nightly profile, and says the
+size of `target/nightly/omorfos`.
 
 ## 5. Report, and stop there
 
-Leave the work uncommitted. Tell the maintainer:
+Leave the work uncommitted, start the `rest` tier in the background, and
+tell the maintainer:
 
 - what to try, step by step, and what they should see;
 - what they might not expect: a default that changed, something that
@@ -90,16 +94,16 @@ Leave the work uncommitted. Tell the maintainer:
   sudo install -m755 target/nightly/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,xdg-desktop-portal-omorfos} /usr/local/bin/
   ```
 
-- what is next in the order.
+- what is next in the order;
+- that the `rest` tier is running, and, once it ends, how.
 
 Say what was not verified. Code in the hardware backend is never run by
 the tests; say so when a change depends on it.
 
 ## 6. On "commit and merge"
 
-- If anything changed since the gates ran, run at least `cargo fmt --all
-  --check`, clippy and the whole test suite again, as the last thing before
-  `git commit`.
+- The `rest` tier has to have passed. If anything changed since the gates
+  ran, run `gates.sh all` again, as the last thing before `git commit`.
 - One logical change per commit, each of which builds and passes alone. If
   a change has to be split, split it by whole files. Never by staging
   hunks and stashing the rest: that broke `main` once.
