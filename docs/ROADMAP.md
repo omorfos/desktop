@@ -264,6 +264,9 @@ calls for them.
 - [x] The Screenshot portal, with the user asked each time by a
       question of the backend's own, over everything, which is not in the
       picture.
+- [x] The portals' question drawn as parts of the theme of its own,
+      `question`, `question-detail` and `question-button`, not the
+      launcher's.
 - [x] An application that asks the portals named by its desktop entry,
       not by the identifier its sandbox gives it.
 - [x] Colours picked for applications through the Screenshot portal,
@@ -271,8 +274,7 @@ calls for them.
       under a crosshair and beside a round loupe.
 - [ ] Known gaps in the Screenshot portal: the user cannot choose a
       screen, a window or a region, only all of it, and a colour is
-      picked from the first screen only; and the question borrows the
-      launcher's look in place of a part of its own.
+      picked from the first screen only.
 - [x] Sharing the screen through the portal, as a PipeWire stream, with
       the user asked each time, and the mark on the screen while it is
       shared. The compositor puts each picture straight into memory the

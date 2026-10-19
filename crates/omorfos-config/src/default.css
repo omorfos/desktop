@@ -206,3 +206,23 @@ notification-title {
   font-weight: bold;
 }
 notification-body { color: var(--text-dim); }
+
+/* What the portals ask: whether an application may see the screen. The
+ * button that gives is :active. The border is also the ring of the loupe
+ * a colour on the screen is picked with. */
+question {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+question-detail { color: var(--text-dim); }
+question-button {
+  background: var(--surface-dim);
+  color: var(--text);
+  border-radius: 6px;
+}
+question-button:active {
+  background: var(--accent);
+  color: var(--background);
+}

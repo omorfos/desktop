@@ -543,6 +543,26 @@ notification-title {
   font-weight: bold;
 }
 notification-body { color: var(--text-dim); }
+
+/* What the portals ask: whether an application may see the screen. The
+ * button that gives is :active. The border is also the ring of the loupe
+ * a colour on the screen is picked with. */
+question {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+question-detail { color: var(--text-dim); }
+question-button {
+  background: var(--surface-dim);
+  color: var(--text);
+  border-radius: 6px;
+}
+question-button:active {
+  background: var(--accent);
+  color: var(--background);
+}
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -576,7 +596,8 @@ workspace:active, task:active { border-bottom: none; }
 `menu-separator`, `notice`, `notice-heading`, `capture`, `tooltip`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
-`notification-title` and `notification-body`. `*` is every part. Several can share a rule:
+`notification-title`, `notification-body`, `question`, `question-detail`
+and `question-button`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
@@ -817,7 +838,9 @@ none: Enter or
 **Take picture** gives it a picture of every screen, as one, saved among
 your pictures as `Print` saves them; Escape or **Cancel** gives it
 nothing. The question is not in the picture, and the red mark shows while
-it is taken. The question has the look of the launcher.
+it is taken. The question is drawn as `question`, what giving would let
+the application see as `question-detail`, and the buttons as
+`question-button`, the one that gives `:active`.
 
 An application can ask for a colour on the screen too, as a drawing
 program's colour picker does. Nothing is asked: a still picture of the

@@ -93,11 +93,19 @@ pub enum Part {
     NotificationTitle,
     /// The rest of what a notification says.
     NotificationBody,
+    /// The question the portals put to the user, over everything: whether
+    /// an application may have what it asks for. Its border is also the
+    /// ring of the loupe a colour is picked with.
+    Question,
+    /// What giving an application what it asks for would let it see.
+    QuestionDetail,
+    /// A button of the question. The one that gives is [`State::Active`].
+    QuestionButton,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 31] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -126,6 +134,9 @@ impl Part {
         Self::Notification,
         Self::NotificationTitle,
         Self::NotificationBody,
+        Self::Question,
+        Self::QuestionDetail,
+        Self::QuestionButton,
     ];
 
     /// What the part is called in a stylesheet.
@@ -160,6 +171,9 @@ impl Part {
             Self::Notification => "notification",
             Self::NotificationTitle => "notification-title",
             Self::NotificationBody => "notification-body",
+            Self::Question => "question",
+            Self::QuestionDetail => "question-detail",
+            Self::QuestionButton => "question-button",
         }
     }
 }
@@ -523,7 +537,10 @@ mod tests {
                 "launcher-backdrop",
                 "notification",
                 "notification-title",
-                "notification-body"
+                "notification-body",
+                "question",
+                "question-detail",
+                "question-button"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();
