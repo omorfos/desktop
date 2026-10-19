@@ -198,21 +198,34 @@ fn picked(
     shots: Vec<Shot>,
     theme: &omorfos_config::Theme,
 ) -> Result<Option<Vec<Shot>>, Failure> {
+    let picked = omorfos_picker::pick(connection, stills(&shots), theme)?;
+    Ok(picked.map(|picked| kept(shots, picked)))
+}
+
+/// The pictures of `shots` to pick from, one for each screen.
+#[must_use]
+pub fn stills(shots: &[Shot]) -> Vec<omorfos_picker::Still> {
     let stills = shots.iter().map(|shot| omorfos_picker::Still {
         screen: shot.screen.clone(),
         size: (shot.width, shot.height),
         pixels: shot.pixels.clone(),
     });
-    let picked = omorfos_picker::pick(connection, stills.collect(), theme)?;
+    stills.collect()
+}
+
+/// What is kept of `shots`, the pictures of every screen, for what was
+/// `picked` of them: all of them, one, or a region cut from one.
+#[must_use]
+pub fn kept(shots: Vec<Shot>, picked: omorfos_picker::Picked) -> Vec<Shot> {
     let mut shots = shots.into_iter();
-    Ok(picked.map(|picked| match picked {
+    match picked {
         omorfos_picker::Picked::Everything => shots.collect(),
         omorfos_picker::Picked::Screen(screen) => shots.nth(screen).into_iter().collect(),
         omorfos_picker::Picked::Region { screen, area } => {
             let shot = shots.nth(screen);
             shot.map(|shot| crop(&shot, area)).into_iter().collect()
         }
-    }))
+    }
 }
 
 #[cfg(test)]

@@ -841,11 +841,13 @@ An application can also ask for a picture of the screen, as a browser or
 a chat in a sandbox does. Each time, a question goes up in the middle of
 the screen, over everything, saying which application asks, by the name
 its desktop entry gives it, or by what its sandbox calls it if it has
-none: Enter or
-**Take picture** gives it a picture of every screen, as one, saved among
-your pictures as `Print` saves them; Escape or **Cancel** gives it
-nothing. The question is not in the picture, and the red mark shows while
-it is taken. The question is drawn as `question`, what giving would let
+none. Escape or **Cancel** gives it nothing. Enter or **Take picture**
+takes a picture of every screen, and then you pick what of it the
+application is given, as `Shift+Print` picks: drag to draw a region,
+click to take that screen, Enter to take every screen, as one, and
+Escape or another button to give it nothing after all. What is picked is
+saved among your pictures as `Print` saves them. The question is not in
+the picture, and the red mark shows while it is taken. The question is drawn as `question`, what giving would let
 the application see as `question-detail`, and the buttons as
 `question-button`, the one that gives `:active`.
 

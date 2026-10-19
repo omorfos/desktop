@@ -23,6 +23,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
@@ -119,11 +120,10 @@ pub fn address(path: &Path) -> String {
     format!("file://{}", written.collect::<String>())
 }
 
-/// Takes a picture of every screen, as one, saves it in `folder`, and
-/// returns its address. Nothing, if it could not be taken or saved.
-fn take(desk: &Desk, folder: &Path) -> Option<String> {
-    let shots = omorfos_screenshot::shoot(desk.connection(), None).ok();
-    let shot = shots.map(|(shots, _)| omorfos_screenshot::together(&shots));
+/// Saves what is left of `shots` in `folder`, as one picture, and returns
+/// its address. Nothing, if there is nothing or it could not be saved.
+fn kept(shots: &[omorfos_screenshot::Shot], folder: &Path) -> Option<String> {
+    let shot = (!shots.is_empty()).then(|| omorfos_screenshot::together(shots));
     let saved = shot.and_then(|shot| {
         let saved = fs::create_dir_all(folder);
         let stamp = omorfos_screenshot::stamp();
@@ -133,6 +133,21 @@ fn take(desk: &Desk, folder: &Path) -> Option<String> {
     });
     saved.map(|path| address(&path))
 }
+
+/// What is being picked, on a thread of its own, for a picture asked for:
+/// the call, the request it may be withdrawn by, the pictures of every
+/// screen it is picked from, and where it says what was picked.
+struct Picking {
+    call: Message,
+    request: OwnedObjectPath,
+    shots: Vec<omorfos_screenshot::Shot>,
+    done: Receiver<Option<omorfos_picker::Picked>>,
+    /// Whether the portal no longer wants it, and has been told so.
+    withdrawn: bool,
+}
+
+/// How often what is being picked is looked at, while it is.
+const PICKING: Duration = Duration::from_millis(50);
 
 /// A picture of the first screen, to pick a colour from. Nothing, if it
 /// could not be taken.
@@ -286,6 +301,8 @@ struct Backend<'a> {
     /// Where programs install what they share, desktop entries among it.
     entries: Vec<PathBuf>,
     pending: Option<Pending>,
+    /// What is being picked, once the user said yes to a picture.
+    picking: Option<Picking>,
     pipes: Option<Pipes>,
     shares: Vec<Sharing>,
 }
@@ -297,16 +314,33 @@ impl Backend<'_> {
         // picture is taken, so that it is not in it.
         let _ = self.desk.turn();
         match (answer, pending) {
-            (Answer::Give, Pending::Picture(call, _)) => {
-                let taken = take(&self.desk, self.folder);
-                let response = if let Some(taken) = &taken {
-                    note(&format!("the picture was taken and saved at {taken}"));
-                    Response::Given
+            (Answer::Give, Pending::Picture(call, request)) => {
+                // Then they pick what of the screens it is, over pictures
+                // of them taken now, on a thread of its own, so that what
+                // else there is to do goes on meanwhile.
+                let shots = omorfos_screenshot::shoot(self.desk.connection(), None).ok();
+                if let Some((shots, _)) = shots {
+                    let (told, done) = channel();
+                    let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
+                    let stills = omorfos_screenshot::stills(&shots);
+                    std::thread::spawn(move || {
+                        let picked = omorfos_picker::pick(&connection, stills, &theme);
+                        // What cannot be shown to pick from is taken for a no.
+                        let _ = told.send(picked.ok().flatten());
+                    });
+                    note("the user said yes, and picks what the picture is of");
+                    let picking = Picking {
+                        call,
+                        request,
+                        shots,
+                        done,
+                        withdrawn: false,
+                    };
+                    self.picking = Some(picking);
                 } else {
-                    note("the user said yes, and the picture could not be taken or saved");
-                    Response::Failed
-                };
-                self.portal.respond(&call, response, taken);
+                    note("the user said yes, and the picture could not be taken");
+                    self.portal.respond(&call, Response::Failed, None);
+                }
             }
             (Answer::Give, Pending::Share(call, _, session, pointer)) => {
                 match self.share(pointer) {
@@ -351,6 +385,38 @@ impl Backend<'_> {
         }
     }
 
+    /// Answers what was being picked, once it has been, with a picture of
+    /// it saved among the user's pictures; and not at all if the portal no
+    /// longer wants it, which it has been told.
+    fn picked(&mut self) {
+        let done = self
+            .picking
+            .as_ref()
+            .and_then(|picking| picking.done.try_recv().ok());
+        let picking = self.picking.take_if(|_| done.is_some());
+        let Some((picking, done)) = picking.zip(done) else {
+            return;
+        };
+        let wanted = !picking.withdrawn;
+        let saved = done.map(|picked| {
+            let shots = omorfos_screenshot::kept(picking.shots, picked);
+            kept(&shots, self.folder)
+        });
+        let response = match &saved {
+            Some(Some(_)) => Response::Given,
+            Some(None) => Response::Failed,
+            None => Response::Refused,
+        };
+        let saved = saved.flatten();
+        if wanted {
+            match &saved {
+                Some(saved) => note(&format!("the picture was taken and saved at {saved}")),
+                None => note("no picture was given"),
+            }
+            self.portal.respond(&picking.call, response, saved);
+        }
+    }
+
     /// Begins sharing the first screen: pictures of it, and the stream
     /// they go into.
     fn share(&mut self, pointer: Pointer) -> Result<(Feed, Share), Failure> {
@@ -378,7 +444,8 @@ impl Backend<'_> {
 
     /// Takes in what has been asked.
     fn heard(&mut self, asked: Asked) {
-        let pending = self.pending.is_some();
+        // A picture being picked is asked about still.
+        let pending = self.pending.is_some() || self.picking.is_some();
         match asked {
             // One question at a time: another while one is up fails.
             Asked::Screenshot { call, app, .. }
@@ -444,6 +511,16 @@ impl Backend<'_> {
                     note("the portal no longer wants what it asked for");
                     self.desk.dismiss();
                     self.portal.respond(pending.call(), Response::Refused, None);
+                }
+                // What is being picked is up until the user is done with it;
+                // the application is told now that it has nothing.
+                let picking = self.picking.iter_mut();
+                let picking =
+                    picking.filter(|picking| picking.request == request && !picking.withdrawn);
+                for picking in picking {
+                    note("the portal no longer wants what is being picked");
+                    picking.withdrawn = true;
+                    self.portal.respond(&picking.call, Response::Refused, None);
                 }
             }
             Asked::Ended(session) => {
@@ -551,6 +628,7 @@ fn serve(
         remote,
         entries,
         pending: None,
+        picking: None,
         pipes: None,
         shares: Vec::new(),
     };
@@ -562,7 +640,11 @@ fn serve(
         if let Some((answer, pending)) = answer.zip(answered) {
             backend.answered(answer, pending);
         }
+        backend.picked();
         let wait = backend.keep();
+        // What is being picked says when it is done only when it is looked at.
+        let picking = backend.picking.as_ref().map(|_| PICKING);
+        let wait = [wait, picking].into_iter().flatten().min();
         // What was asked of the compositor meanwhile, the next picture
         // above all, is sent before waiting for its answer.
         let _ = backend.desk.connection().flush();
