@@ -17,11 +17,12 @@ use std::time::{Duration, Instant};
 use omorfos_config::Action;
 use omorfos_core::WindowId;
 use omorfos_ipc::{
-    MAX_MESSAGE, PROTOCOL, Reply, Request, State, Window, Workspace, decode, encode,
+    MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, State, Window, Workspace, decode, encode,
 };
 use serde::Deserialize;
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
+use smithay::utils::Rectangle;
 
 use crate::{Compositor, bridge};
 
@@ -287,6 +288,7 @@ impl Compositor {
             Request::State | Request::Subscribe | Request::ShowProblems => {
                 Reply::State(self.ipc_state())
             }
+            Request::Placed => Reply::Placed(self.placed()),
             Request::Reload => {
                 self.reload_config();
                 Reply::Done
@@ -334,6 +336,37 @@ impl Compositor {
             }
             _ => None,
         }
+    }
+
+    /// Where each window that can be seen is on each screen it is on, the
+    /// one on top first: those over the panels, then the rest.
+    fn placed(&self) -> Vec<Placed> {
+        let mut top_first: Vec<_> = self.scene.iter().rev().collect();
+        top_first.sort_by_key(|shown| !shown.over);
+        // Nothing of a window rolled up into its titlebar is to be seen.
+        let seen = top_first.into_iter().filter(|shown| !shown.shaded);
+        let pixels = |units: i32| u32::try_from(units).unwrap_or_default();
+        let mut placed = Vec::new();
+        for shown in seen {
+            let area = Rectangle::new(shown.origin, shown.window.geometry().size);
+            let on = self.heads.iter().filter_map(|head| {
+                let screen = head.area();
+                let part = area.intersection(screen)?;
+                let from = part.loc - screen.loc;
+                let scale = head.scale;
+                Some(Placed {
+                    id: shown.id.raw(),
+                    handle: self.handle_of(shown.id),
+                    output: head.output.name(),
+                    x: pixels(scale.pixels(from.x)),
+                    y: pixels(scale.pixels(from.y)),
+                    width: pixels(scale.pixels(part.size.w)),
+                    height: pixels(scale.pixels(part.size.h)),
+                })
+            });
+            placed.extend(on);
+        }
+        placed
     }
 
     fn ipc_state(&self) -> State {

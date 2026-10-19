@@ -52,6 +52,7 @@ and reads one reply.
 | `"reload"` | `"done"` |
 | `{"perform": {"action": ...}}` | `"done"` |
 | `{"activate": {"window": 7}}` | `"done"` |
+| `"placed"` | `{"placed": [...]}`, where the windows that can be seen are |
 
 Anything that cannot be understood or carried out is answered with
 `{"error": {"message": "..."}}`, and the connection stays open. That
@@ -142,6 +143,28 @@ is empty while no screen is connected. Windows are listed in a stable order (by
 when their frame was created, then tab order), so a task list does not
 reshuffle. `shown` is false for a tab that is not the one its frame is
 showing.
+
+### Where windows are
+
+```json
+{
+  "placed": [
+    { "id": 7, "handle": "5d3a0f6c1b2e4a7f8c9d0e1f2a3b4c5d", "output": "eDP-1",
+      "x": 120, "y": 64, "width": 1280, "height": 800 }
+  ]
+}
+```
+
+`"placed"` is answered with each window that can be seen, the one on top
+first, and with where it is on each screen it is on: the part of it on
+that screen, in the screen's pixels from its top left corner, as a
+picture of the screen has them. Only what the window draws is counted,
+not its frame, and a window rolled up into its titlebar is not there.
+This is how a program that takes pictures, the picker of `Shift+Print`
+among them, knows which window is under the pointer.
+
+It is not in the state, and not sent to subscribers, since it changes
+each time a window moves.
 
 ### Versioning
 
