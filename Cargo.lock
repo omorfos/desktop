@@ -3733,7 +3733,7 @@ dependencies = [
  "gbm",
  "omorfos-config",
  "omorfos-icons",
- "omorfos-picker",
+ "omorfos-ipc",
  "omorfos-pipewire",
  "omorfos-screenshot",
  "omorfos-shell",

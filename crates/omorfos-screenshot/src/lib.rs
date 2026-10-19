@@ -70,12 +70,28 @@ pub fn stamp() -> String {
     jiff::Zoned::now().strftime("%Y-%m-%d %H-%M-%S").to_string()
 }
 
+/// What the compositor answers `request` with at its socket for scripts.
+/// Nothing, if it cannot be asked.
+fn asked(socket: Option<&Path>, request: &omorfos_ipc::Request) -> Option<omorfos_ipc::Reply> {
+    let client = socket.and_then(|socket| omorfos_ipc::Client::connect(socket).ok());
+    client.and_then(|mut client| client.request(request).ok())
+}
+
+/// Where the windows that can be seen are, the one on top first, as the
+/// compositor says at its socket for scripts, `socket`. None, if it cannot
+/// be asked: then only screens and regions can be picked.
+#[must_use]
+pub fn placed(socket: Option<&Path>) -> Vec<omorfos_ipc::Placed> {
+    let reply = asked(socket, &omorfos_ipc::Request::Placed);
+    let placed = reply.and_then(omorfos_ipc::Reply::into_placed);
+    placed.unwrap_or_default()
+}
+
 /// What the window with focus is called in the list of windows, as the
 /// compositor says at its socket for scripts. Nothing, if it cannot be
 /// asked or no window has focus.
-fn focused(socket: Option<PathBuf>) -> Option<String> {
-    let client = socket.and_then(|socket| omorfos_ipc::Client::connect(&socket).ok());
-    let reply = client.and_then(|mut client| client.request(&omorfos_ipc::Request::State).ok());
+fn focused(socket: Option<&Path>) -> Option<String> {
+    let reply = asked(socket, &omorfos_ipc::Request::State);
     let state = reply.and_then(omorfos_ipc::Reply::into_state);
     let mut windows = state.into_iter().flat_map(|state| state.windows);
     windows
@@ -140,12 +156,12 @@ pub fn start(
     let store = Store::open(config);
     let kept = store.current().general.screenshots.destination;
     let kept = told.to.unwrap_or(kept);
+    let socket = get("OMORFOS_SOCKET");
+    let (runtime, display) = (get("XDG_RUNTIME_DIR"), get("WAYLAND_DISPLAY"));
+    let socket =
+        omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
     let window = if told.window {
-        let socket = get("OMORFOS_SOCKET");
-        let (runtime, display) = (get("XDG_RUNTIME_DIR"), get("WAYLAND_DISPLAY"));
-        let socket =
-            omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
-        let focused = focused(socket);
+        let focused = focused(socket.as_deref());
         Some(focused.ok_or("there is no window with focus to take a picture of")?)
     } else {
         None
@@ -155,7 +171,8 @@ pub fn start(
     let (shots, camera) = shoot(&connection, window)?;
     let shots = if told.pick {
         let theme = &store.current().theme;
-        let Some(picked) = picked(&connection, shots, theme)? else {
+        let placed = placed(socket.as_deref());
+        let Some(picked) = pick(&connection, shots, &placed, theme)? else {
             let _ = writeln!(out, "nothing was picked");
             return Ok(());
         };
@@ -191,39 +208,91 @@ pub fn start(
     Ok(())
 }
 
-/// What the user picks of `shots`, the pictures of every screen: all of
-/// them, one, or a region of one. Nothing, if they picked nothing.
-fn picked(
+/// What the user picks of `shots`, the pictures of every screen just
+/// taken, with `placed` saying where the windows on them are, over the
+/// compositor `connection` is to: all of them, one, or a region of one,
+/// as they were taken; or a picture taken now of the window picked, as a
+/// whole. Nothing, if they picked nothing.
+///
+/// # Errors
+///
+/// Returns why nothing could be picked from, or why the window picked
+/// could not be taken.
+pub fn pick(
     connection: &wayland_client::Connection,
     shots: Vec<Shot>,
+    placed: &[omorfos_ipc::Placed],
     theme: &omorfos_config::Theme,
 ) -> Result<Option<Vec<Shot>>, Failure> {
-    let picked = omorfos_picker::pick(connection, stills(&shots), theme)?;
-    Ok(picked.map(|picked| kept(shots, picked)))
+    let picked = omorfos_picker::pick(connection, stills(&shots, placed), theme)?;
+    let kept = picked.map(|picked| kept(shots, placed, picked));
+    kept.map(|kept| match kept {
+        Chosen::Taken(shots) => Ok(shots),
+        Chosen::Window(handle) => shoot(connection, Some(handle)).map(|(shots, _)| shots),
+    })
+    .transpose()
 }
 
-/// The pictures of `shots` to pick from, one for each screen.
-#[must_use]
-pub fn stills(shots: &[Shot]) -> Vec<omorfos_picker::Still> {
+/// What was picked: pictures already taken, or a window to take one of,
+/// by what it is called in the list of windows.
+#[derive(Debug, PartialEq, Eq)]
+enum Chosen {
+    Taken(Vec<Shot>),
+    Window(String),
+}
+
+/// What windows of `placed` are on the screen a picture is of, the one on
+/// top first.
+fn on<'a>(
+    placed: &'a [omorfos_ipc::Placed],
+    shot: &Shot,
+) -> impl Iterator<Item = &'a omorfos_ipc::Placed> {
+    let screen = shot.screen.clone();
+    placed.iter().filter(move |place| place.output == screen)
+}
+
+/// The pictures of `shots` to pick from, one for each screen, with the
+/// windows of `placed` that are on it.
+fn stills(shots: &[Shot], placed: &[omorfos_ipc::Placed]) -> Vec<omorfos_picker::Still> {
     let stills = shots.iter().map(|shot| omorfos_picker::Still {
         screen: shot.screen.clone(),
         size: (shot.width, shot.height),
         pixels: shot.pixels.clone(),
+        windows: on(placed, shot)
+            .map(|place| omorfos_picker::Area {
+                x: place.x,
+                y: place.y,
+                width: place.width,
+                height: place.height,
+            })
+            .collect(),
     });
     stills.collect()
 }
 
-/// What is kept of `shots`, the pictures of every screen, for what was
-/// `picked` of them: all of them, one, or a region cut from one.
-#[must_use]
-pub fn kept(shots: Vec<Shot>, picked: omorfos_picker::Picked) -> Vec<Shot> {
+/// What is kept of `shots`, the pictures of every screen with the windows
+/// of `placed` on them, for what was `picked` of them: all of them, one,
+/// or a region cut from one; or the window picked, to be taken now.
+fn kept(
+    shots: Vec<Shot>,
+    placed: &[omorfos_ipc::Placed],
+    picked: omorfos_picker::Picked,
+) -> Chosen {
     let mut shots = shots.into_iter();
     match picked {
-        omorfos_picker::Picked::Everything => shots.collect(),
-        omorfos_picker::Picked::Screen(screen) => shots.nth(screen).into_iter().collect(),
+        omorfos_picker::Picked::Everything => Chosen::Taken(shots.collect()),
+        omorfos_picker::Picked::Screen(screen) => {
+            Chosen::Taken(shots.nth(screen).into_iter().collect())
+        }
+        omorfos_picker::Picked::Window { screen, window } => {
+            let shot = shots.nth(screen);
+            let mut windows = shot.iter().flat_map(|shot| on(placed, shot));
+            let handle = windows.nth(window).map(|place| place.handle.clone());
+            Chosen::Window(handle.unwrap_or_default())
+        }
         omorfos_picker::Picked::Region { screen, area } => {
             let shot = shots.nth(screen);
-            shot.map(|shot| crop(&shot, area)).into_iter().collect()
+            Chosen::Taken(shot.map(|shot| crop(&shot, area)).into_iter().collect())
         }
     }
 }

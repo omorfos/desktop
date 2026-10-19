@@ -17,8 +17,9 @@ picture asks with an `interactive` option that says so.
 pictures are taken first, as ever; then each screen is shown its own,
 still, over all of it and with the keyboard, dimmed, under a crosshair.
 A drag draws a region, which is bright and bordered, and letting go
-takes it; a click takes that screen; Enter takes every screen; Escape or
-another button takes nothing. What is taken is cut from the pictures
+takes it; the window under the pointer is shown so until a drag begins,
+and a click takes it, or the screen where there is none; Enter takes
+every screen; Escape or another button takes nothing. What is taken is cut from the pictures
 already taken, so it is what the screen showed when the user asked,
 whatever has moved since, and the picker is in no picture.
 
@@ -48,6 +49,16 @@ whatever has moved since, and the picker is in no picture.
   withdraws its request while the user picks is told no at once, and
   the picker stays until the user is done with it, so that nothing
   vanishes under the pointer; what is picked then is not kept.
+- **The compositor says where windows are at its socket for scripts**,
+  asked with `"placed"` as the pictures are taken: each window that can
+  be seen, top first, with the part of it on each screen in that
+  screen's pixels. It is a request of its own, and not part of the
+  state, which would otherwise be sent to every panel each time a
+  window moved. A program that cannot ask picks screens and regions.
+- **A window clicked is taken whole and anew**, by its handle, as
+  `--window` takes one: the parts that others covered are in it, and so
+  it is the window as it is when it is clicked, not as it was when the
+  key was pressed. A window that has gone meanwhile is a failure.
 - **The look is the theme's `picker` part**: its background is the dim,
   see-through black by default, and its border is round what is drawn,
   the accent.
@@ -72,4 +83,5 @@ whatever has moved since, and the picker is in no picture.
 
 - A region is of one screen: a drag that goes on to another stops at the
   edge of the screen it began on.
-- Until step 3, a window is had with `Alt+Print` or by drawing round it.
+- What the picker outlines is what the window draws, not its frame,
+  since a picture of a window is without the frame.

@@ -111,6 +111,8 @@ fn start_with_pipewire(
         ("HOME", home.as_os_str().to_owned()),
         ("DBUS_SESSION_BUS_ADDRESS", OsString::from(&daemon.address)),
         ("PIPEWIRE_REMOTE", OsString::from(remote)),
+        // Where a test that wants it says where windows are.
+        ("OMORFOS_SOCKET", runtime.join("ipc.sock").into_os_string()),
     ];
     let running = std::thread::spawn(move || {
         let variable = |name: &str| {
@@ -520,6 +522,71 @@ fn an_application_is_given_what_the_user_picks_of_the_screen() {
         "the region and no more"
     );
     assert_eq!(colour(&path, (5, 5)), RED);
+}
+
+/// Where the first window that can be seen is: its middle, and its size.
+fn first_window(session: &mut Session, ipc: &Path) -> ((i32, i32), (u32, u32)) {
+    let mut peer = omorfos_ipc::Client::connect(ipc).unwrap();
+    let reply = session.ask(&mut peer, &omorfos_ipc::Request::Placed);
+    let place = reply.into_placed().unwrap().remove(0);
+    let along = |at: u32, size: u32| i32::try_from(at + size / 2).unwrap();
+    let middle = (along(place.x, place.width), along(place.y, place.height));
+    (middle, (place.width, place.height))
+}
+
+#[test]
+fn an_application_is_given_the_window_the_user_clicks_on_whole() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let ipc = session.listen();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let (middle, size) = first_window(&mut session, &ipc);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "window");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    drag(&mut session, middle, middle);
+    let (response, results) = answered(&mut session, asking);
+    assert_eq!(response, 0);
+    let path = file(&results);
+    let decoded = png::Decoder::new(BufReader::new(std::fs::File::open(&path).unwrap()));
+    let info = decoded.read_info().unwrap().info().clone();
+    assert_eq!((info.width, info.height), size, "the window and no more");
+    assert_eq!(colour(&path, (0, 0)), RED);
+}
+
+#[test]
+fn a_window_picked_that_has_gone_is_a_failure() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let ipc = session.listen();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let (middle, _) = first_window(&mut session, &ipc);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "gone");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    let at = Input::Motion {
+        x: f64::from(middle.0),
+        y: f64::from(middle.1),
+    };
+    session.compositor_mut().input(at, 0);
+    session.step();
+    let button = |pressed| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    session.step();
+    // It closes while the button is down, after it was shown to be picked.
+    window.role.destroy();
+    window.xdg_surface.destroy();
+    window.surface.destroy();
+    session.roundtrip(&mut app);
+    session.compositor_mut().input(button(false), 0);
+    assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
 }
 
 #[test]

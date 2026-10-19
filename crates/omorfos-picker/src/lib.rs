@@ -1,11 +1,13 @@
 //! Lets the user pick what a picture is to be of on the omorfos desktop:
-//! every screen, one screen, or a region of one.
+//! every screen, one screen, a window, or a region of one screen.
 //!
 //! Each screen is shown still, as the picture of it it was given, over all
 //! of it and with the keyboard, and dimmed. A drag draws a region, which
-//! is shown bright with a border round it, and letting go picks it; a
-//! click picks that screen; Enter picks every screen; and Escape or
-//! another button picks nothing. The pointer is a crosshair meanwhile.
+//! is shown bright with a border round it, and letting go picks it. The
+//! window under the pointer is shown so until a drag begins, and a click
+//! picks it; a click where there is none picks that screen. Enter picks
+//! every screen, and Escape or another button nothing. The pointer is a
+//! crosshair meanwhile.
 //!
 //! The dim and the border are each a surface of their own, a pixel of
 //! colour made as large as it is to be, so that a drag moves them and
@@ -50,8 +52,8 @@ const LEFT: u32 = 0x110;
 const LARGEST_KEYMAP: u32 = 1024 * 1024;
 
 /// A picture of a screen, to pick from: what the screen is called, how
-/// many pixels across and down it is, and its pixels from the top left,
-/// three bytes to each, red, green and blue.
+/// many pixels across and down it is, its pixels from the top left, three
+/// bytes to each, red, green and blue, and where the windows on it are.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Still {
     /// What the screen is called, which the picture is shown on.
@@ -60,6 +62,8 @@ pub struct Still {
     pub size: (u32, u32),
     /// Its pixels.
     pub pixels: Vec<u8>,
+    /// Where each window on it is in the picture, the one on top first.
+    pub windows: Vec<Area>,
 }
 
 impl Still {
@@ -312,9 +316,17 @@ impl State {
             return;
         }
         for (index, screen) in self.screens.iter().enumerate() {
-            let drag = self.drag.filter(|(on, ..)| *on == index);
             let shown = screen.shown.unwrap_or_default();
+            // What a drag that has gone far enough draws, or else the window
+            // under the pointer, which a click would pick.
+            let drag = self
+                .drag
+                .filter(|(on, from, to)| *on == index && !area::click(*from, *to));
             let drawn = drag.map(|(_, from, to)| area::between(from, to, shown));
+            let still = &self.stills[screen.still];
+            let over = self.over.filter(|(on, _)| *on == index);
+            let under = over.and_then(|(_, at)| area::under(at, &still.windows, shown, still.size));
+            let drawn = drawn.or(under.map(|(_, rect)| rect));
             let rects = dimmed(drawn, shown).into_iter();
             let rects = rects.chain(bordered(drawn, self.look.thick));
             for (band, rect) in screen.bands.iter().zip(rects) {
@@ -362,8 +374,9 @@ impl State {
                 let picked = drag.map(|(on, from, to)| {
                     let screen = &self.screens[on];
                     let shown = screen.shown.unwrap_or_default();
-                    let pixels = self.stills[screen.still].size;
-                    area::picked(screen.still, (from, to), shown, pixels)
+                    let still = &self.stills[screen.still];
+                    let windows = &still.windows;
+                    area::picked(screen.still, (from, to), windows, shown, still.size)
                 });
                 self.ended(picked.map(Outcome::Picked));
             }
