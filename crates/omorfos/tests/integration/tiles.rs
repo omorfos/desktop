@@ -491,6 +491,19 @@ fn a_window_carried_by_its_titlebar_to_another_part_changes_places() {
 
 /// A session with a red window on the desktop and a blue one tiled on the
 /// left of a workspace, its right half with nothing in it.
+/// Whether anything other than the background is drawn in `picture`
+/// between `left` and `right` across and `top` and `bottom` down.
+fn inked(
+    picture: &crate::common::Picture,
+    (left, top, right, bottom): (i32, i32, i32, i32),
+) -> bool {
+    (top..bottom).any(|y| (left..right).any(|x| picture.at(x, y) != BACKGROUND))
+}
+
+/// Where the title of the window `waiting` offers is written, under its
+/// picture: across its share of the part.
+const TITLE: (i32, i32, i32, i32) = (344, 334, 616, 354);
+
 fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
     let mut session = Session::with_config(config);
     let mut client = session.connect();
@@ -504,13 +517,23 @@ fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
 #[test]
 fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
     let (mut session, mut client, _waiting) = waiting(&[]);
-    // Made as small as it has to be to fit the half, with room round it.
+    // Made as small as it has to be to fit the half with its title under
+    // it, with room round them.
     let picture = session.draw();
     assert_eq!(picture.at(350, 150), RED);
-    assert_eq!(picture.at(610, 335), RED);
+    assert_eq!(picture.at(610, 325), RED);
     assert_eq!(picture.at(340, 150), BACKGROUND, "room to the left");
-    assert_eq!(picture.at(350, 130), BACKGROUND, "and above");
-    assert_eq!(picture.at(350, 350), BACKGROUND, "and below");
+    assert_eq!(picture.at(350, 120), BACKGROUND, "and above");
+    assert!(!inked(&picture, (344, 330, 616, 334)), "a gap under it");
+    // Its title is written there, in the middle, and nothing under that.
+    assert!(inked(&picture, TITLE), "its title");
+    let (left, top, right, bottom) = TITLE;
+    assert!(
+        !inked(&picture, (left, top, left + 10, bottom)),
+        "in the middle"
+    );
+    assert!(!inked(&picture, (right - 10, top, right, bottom)));
+    assert!(!inked(&picture, (left, bottom, right, 480)), "and below");
 
     // The pointer over it is the compositor's, and washes it over.
     session.roundtrip(&mut client);
@@ -541,7 +564,14 @@ fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
     let theme = "capture { background: #00ff00; }";
     let config = [("rules.yaml", rules), ("theme.css", theme)];
     let (mut session, mut client, waiting) = waiting(&config);
-    assert_eq!(session.draw().at(480, 240), GREEN);
+    let picture = session.draw();
+    assert_eq!(picture.at(480, 240), GREEN);
+    assert!(inked(&picture, TITLE), "told by its title");
+
+    // A title that changes is written anew: none, and nothing is.
+    waiting.role.set_title(String::new());
+    session.roundtrip(&mut client);
+    assert!(!inked(&session.draw(), TITLE));
 
     // Told that what it drew has been shown, as on the screen.
     client.take_events();

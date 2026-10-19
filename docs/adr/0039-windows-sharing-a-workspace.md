@@ -217,8 +217,14 @@ as a part offered while dragging is washed; a click of the left button
 puts it in that part. They are drawn as the windows are now, and the
 windows are told what they drew was shown, so a film plays in one. A
 window a rule calls private is a blank in the colour of `capture`, as in
-a picture of the screen. There are no titles under them yet, which a
-private window, being blank, needs most.
+a picture of the screen.
+
+Titles came after: each window has its title under it, on a line kept
+for it in its share of the part, in the `offer` part of the theme and cut
+short where it does not fit. For a private window, shown blank, it is
+what tells it apart, as ADR 38 has its title stand for its picture. A
+title is painted once, and again only when it, the room for it, the
+scale or the theme changes.
 
 Three and four came next, with focus and changing places by direction
 (`Super+Ctrl` and an arrow, and with `Shift`). How a third part is made

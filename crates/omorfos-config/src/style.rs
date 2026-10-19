@@ -19,6 +19,9 @@ pub enum Part {
     /// The line between windows that share a workspace, drawn a hair wide
     /// in its text colour.
     TileLine,
+    /// A window's title under its picture, where it is offered in a part
+    /// of a workspace with nothing in it: in its text colour and font.
+    Offer,
     /// The bar across the top of a frame. It can be [`State::Focused`],
     /// with its window.
     Titlebar,
@@ -92,10 +95,11 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
+        Self::Offer,
         Self::Titlebar,
         Self::Tab,
         Self::ButtonClose,
@@ -129,6 +133,7 @@ impl Part {
             Self::Desktop => "desktop",
             Self::Window => "window",
             Self::TileLine => "tile-line",
+            Self::Offer => "offer",
             Self::Titlebar => "titlebar",
             Self::Tab => "tab",
             Self::ButtonClose => "button-close",
@@ -492,6 +497,7 @@ mod tests {
                 "desktop",
                 "window",
                 "tile-line",
+                "offer",
                 "titlebar",
                 "tab",
                 "button-close",

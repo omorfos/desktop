@@ -767,6 +767,12 @@ mod tests {
     }
 
     #[test]
+    fn a_window_offered_has_its_title_in_the_text_colour() {
+        let theme = Theme::default();
+        assert_eq!(theme.style(Part::Offer, States::NONE).color, TEXT);
+    }
+
+    #[test]
     fn the_line_between_windows_is_drawn_as_their_borders_are() {
         let theme = Theme::default();
         let line = theme.style(Part::TileLine, States::NONE);

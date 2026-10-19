@@ -35,6 +35,10 @@ window:focus { border-color: var(--accent); }
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
 
+/* A window's title under its picture, where it is offered in a part with
+ * nothing in it. */
+offer { color: var(--text); }
+
 titlebar {
   height: 28px;
   background: var(--surface-dim);
