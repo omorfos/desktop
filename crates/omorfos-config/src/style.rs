@@ -101,11 +101,15 @@ pub enum Part {
     QuestionDetail,
     /// A button of the question. The one that gives is [`State::Active`].
     QuestionButton,
+    /// The screens shown still to pick what a picture is to be of: its
+    /// background dims what is not picked, and its border is round what
+    /// is drawn.
+    Picker,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -137,6 +141,7 @@ impl Part {
         Self::Question,
         Self::QuestionDetail,
         Self::QuestionButton,
+        Self::Picker,
     ];
 
     /// What the part is called in a stylesheet.
@@ -174,6 +179,7 @@ impl Part {
             Self::Question => "question",
             Self::QuestionDetail => "question-detail",
             Self::QuestionButton => "question-button",
+            Self::Picker => "picker",
         }
     }
 }
@@ -540,7 +546,8 @@ mod tests {
                 "notification-body",
                 "question",
                 "question-detail",
-                "question-button"
+                "question-button",
+                "picker"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();

@@ -21,10 +21,10 @@ use std::path::{Path, PathBuf};
 
 pub use client::{Camera, Failure, Shot, shoot};
 use omorfos_config::{Kept, Store};
-pub use save::{encode, pictures, save, together};
+pub use save::{crop, encode, pictures, save, together};
 
 /// How the program is used, said when it is used otherwise.
-const USAGE: &str = "usage: omorfos-screenshot [--window] [--to file|clipboard|both]";
+const USAGE: &str = "usage: omorfos-screenshot [--window | --pick] [--to file|clipboard|both]";
 
 /// What a run was told on its command line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,6 +33,8 @@ pub struct Told {
     pub to: Option<Kept>,
     /// Whether to take the window with focus in place of the screens.
     pub window: bool,
+    /// Whether to let the user pick a screen or a region of one first.
+    pub pick: bool,
 }
 
 /// What a run was told.
@@ -46,12 +48,17 @@ pub fn told(arguments: &[OsString]) -> Result<Told, Failure> {
     while let Some(word) = words.next() {
         match word {
             Some("--window") => told.window = true,
+            Some("--pick") => told.pick = true,
             Some("--to") => {
                 let place = words.next().flatten().and_then(Kept::named);
                 told.to = Some(place.ok_or(USAGE)?);
             }
             _ => return Err(USAGE.into()),
         }
+    }
+    // A window is what is taken, and not what is picked.
+    if told.window && told.pick {
+        return Err(USAGE.into());
     }
     Ok(told)
 }
@@ -130,11 +137,8 @@ pub fn start(
     let beside = config.parent().map(|above| above.join("user-dirs.dirs"));
     let named = beside.and_then(|file| fs::read_to_string(file).ok());
     let folder = pictures(named.as_deref(), &home).join("Screenshots");
-    let kept = Store::open(config)
-        .current()
-        .general
-        .screenshots
-        .destination;
+    let store = Store::open(config);
+    let kept = store.current().general.screenshots.destination;
     let kept = told.to.unwrap_or(kept);
     let window = if told.window {
         let socket = get("OMORFOS_SOCKET");
@@ -149,6 +153,16 @@ pub fn start(
 
     let connection = client::connect(&wayland)?;
     let (shots, camera) = shoot(&connection, window)?;
+    let shots = if told.pick {
+        let theme = &store.current().theme;
+        let Some(picked) = picked(&connection, shots, theme)? else {
+            let _ = writeln!(out, "nothing was picked");
+            return Ok(());
+        };
+        picked
+    } else {
+        shots
+    };
     let saved = if kept.saves() {
         let stamp = stamp();
         // A screen is named in the file only when there is more than one.
@@ -177,6 +191,30 @@ pub fn start(
     Ok(())
 }
 
+/// What the user picks of `shots`, the pictures of every screen: all of
+/// them, one, or a region of one. Nothing, if they picked nothing.
+fn picked(
+    connection: &wayland_client::Connection,
+    shots: Vec<Shot>,
+    theme: &omorfos_config::Theme,
+) -> Result<Option<Vec<Shot>>, Failure> {
+    let stills = shots.iter().map(|shot| omorfos_picker::Still {
+        screen: shot.screen.clone(),
+        size: (shot.width, shot.height),
+        pixels: shot.pixels.clone(),
+    });
+    let picked = omorfos_picker::pick(connection, stills.collect(), theme)?;
+    let mut shots = shots.into_iter();
+    Ok(picked.map(|picked| match picked {
+        omorfos_picker::Picked::Everything => shots.collect(),
+        omorfos_picker::Picked::Screen(screen) => shots.nth(screen).into_iter().collect(),
+        omorfos_picker::Picked::Region { screen, area } => {
+            let shot = shots.nth(screen);
+            shot.map(|shot| crop(&shot, area)).into_iter().collect()
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,11 +236,16 @@ mod tests {
         assert_eq!((window.window, window.to), (true, None));
         let both = told(&[word("--to"), word("clipboard"), word("--window")]).unwrap();
         assert_eq!((both.window, both.to), (true, Some(Kept::Clipboard)));
+
+        // And to let the user pick first.
+        let pick = told(&[word("--pick"), word("--to"), word("clipboard")]).unwrap();
+        assert_eq!((pick.pick, pick.to), (true, Some(Kept::Clipboard)));
     }
 
     #[test]
     fn told_anything_else_it_says_how_it_is_used() {
-        let wrong: [&[OsString]; 4] = [
+        let wrong: [&[OsString]; 5] = [
+            &[word("--window"), word("--pick")],
             &[word("--to"), word("printer")],
             &[word("--to")],
             &[word("--help")],

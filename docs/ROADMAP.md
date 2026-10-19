@@ -272,6 +272,12 @@ calls for them.
 - [x] Colours picked for applications through the Screenshot portal,
       from a still picture of the screen, the picking being the consent,
       under a crosshair and beside a round loupe.
+- [x] A screen or a region of one picked over still pictures of the
+      screens, with `Shift+Print` and `omorfos-screenshot --pick` (ADR
+      44).
+- [ ] The portal picking the same way, after the user has said yes.
+- [ ] Windows in the picker: the compositor saying where each is, the one
+      under the pointer outlined, and a click taking it whole.
 - [ ] Known gaps in the Screenshot portal: the user cannot choose a
       screen, a window or a region, only all of it, and a colour is
       picked from the first screen only.

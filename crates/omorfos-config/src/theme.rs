@@ -767,6 +767,14 @@ mod tests {
     }
 
     #[test]
+    fn the_picker_dims_what_is_not_picked_and_borders_what_is_in_the_accent() {
+        let theme = Theme::default();
+        let picker = theme.style(Part::Picker, States::NONE);
+        assert_eq!(picker.background, Color::rgba(0, 0, 0, 0x66));
+        assert_eq!(picker.border, Edges::all(line(ACCENT, 2)));
+    }
+
+    #[test]
     fn the_question_of_the_portals_is_a_box_whose_button_that_gives_is_the_accent() {
         let theme = Theme::default();
         let question = theme.style(Part::Question, States::NONE);

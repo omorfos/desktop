@@ -1924,6 +1924,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-picker"
+version = "0.1.0"
+dependencies = [
+ "omorfos-config",
+ "omorfos-shell",
+ "omorfos-ui",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "xkbcommon",
+]
+
+[[package]]
 name = "omorfos-pipewire"
 version = "0.1.0"
 dependencies = [
@@ -1947,6 +1960,7 @@ dependencies = [
  "jiff",
  "omorfos-config",
  "omorfos-ipc",
+ "omorfos-picker",
  "omorfos-shell",
  "png",
  "rustix 1.1.5",

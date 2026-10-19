@@ -226,3 +226,10 @@ question-button:active {
   background: var(--accent);
   color: var(--background);
 }
+
+/* The screens shown still, to pick what a picture is to be of: what is not
+ * picked is dimmed by the background, and what is drawn has the border. */
+picker {
+  background: #00000066;
+  border: 2px solid var(--accent);
+}

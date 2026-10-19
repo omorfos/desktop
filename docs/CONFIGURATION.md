@@ -563,6 +563,13 @@ question-button:active {
   background: var(--accent);
   color: var(--background);
 }
+
+/* The screens shown still, to pick what a picture is to be of: what is not
+ * picked is dimmed by the background, and what is drawn has the border. */
+picker {
+  background: #00000066;
+  border: 2px solid var(--accent);
+}
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -596,8 +603,8 @@ workspace:active, task:active { border-bottom: none; }
 `menu-separator`, `notice`, `notice-heading`, `capture`, `tooltip`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
-`notification-title`, `notification-body`, `question`, `question-detail`
-and `question-button`. `*` is every part. Several can share a rule:
+`notification-title`, `notification-body`, `question`, `question-detail`,
+`question-button` and `picker`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
@@ -959,9 +966,14 @@ that is there already is never written over.
 `Alt+Print` takes the window with focus by itself, as large as it is and
 without the frame omorfos draws round it.
 
-`Shift+Print` puts the picture on the clipboard instead, to be pasted, and
-saves nothing. With several screens that is one picture of them all,
-side by side. To have `Print` do that, or both, say so in `config.yaml`:
+`Shift+Print` lets you pick what the picture is of first, and puts it on
+the clipboard, to be pasted, and saves nothing. The screens go still and
+dim, the pointer a crosshair: drag to draw a region, click a screen to
+take it, press Enter to take every screen, side by side, or Escape or
+another button to take nothing. What you pick is cut from the screens as
+they were when you pressed the key, and the dim is the theme's `picker`
+part. To have `Print` put its picture on the clipboard, or both, say so
+in `config.yaml`:
 
 ```yaml
 screenshots:
@@ -978,8 +990,8 @@ that may:
 - keys: Shift+Print
   action:
     spawn:
-      run: [omorfos-screenshot, --to, clipboard]
-      may: [capture, clipboard]
+      run: [omorfos-screenshot, --pick, --to, clipboard]
+      may: [capture, clipboard, panel, overlay]
 - keys: Alt+Print
   action:
     spawn:
@@ -988,8 +1000,10 @@ that may:
 ```
 
 `--to file`, `--to clipboard` or `--to both` says where one picture goes,
-whatever the configuration says, and `--window` that it is of the window
-with focus; the two can be said together. A picture of a window is the
+whatever the configuration says, `--window` that it is of the window
+with focus, and `--pick` that you pick what it is of, which needs the
+`panel` and `overlay` roles to be put over the screen. `--to` can be said
+with either of the other two. A picture of a window is the
 whole of it, however large, and see-through where the window is, as the
 shadow some programs draw round their windows is. A program says which window it
 wants a picture of by the window's entry in the list of windows, so one
