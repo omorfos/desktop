@@ -349,17 +349,17 @@ pub(crate) fn tooltip(text: &mut Text, theme: &Theme, lines: &[String], scale: S
 
 /// Paints a window's title as it is written under its picture where it is
 /// offered in a part with nothing in it: in the `offer` part's colour and
-/// font, `height` tall and only as wide as it is, but no wider than
-/// `room`, where it is cut short.
+/// font in `states`, `height` tall and only as wide as it is, but no wider
+/// than `room`, where it is cut short.
 pub(crate) fn offer_title(
     text: &mut Text,
-    theme: &Theme,
+    (theme, states): (&Theme, States),
     title: &str,
     (room, height): (u32, u32),
     scale: Scale,
 ) -> Canvas {
-    let style = theme.style(Part::Offer, States::NONE);
-    let font = theme.font(Part::Offer, States::NONE);
+    let style = theme.style(Part::Offer, states);
+    let font = theme.font(Part::Offer, states);
     let width = text.measure(title, font).clamp(1, room.max(1));
     let mut canvas = Canvas::scaled(width, height, scale);
     text.draw(&mut canvas, title, (0, 0, width, height), style.color, font);

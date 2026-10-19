@@ -501,8 +501,8 @@ fn inked(
 }
 
 /// Where the title of the window `waiting` offers is written, under its
-/// picture: across its share of the part.
-const TITLE: (i32, i32, i32, i32) = (344, 334, 616, 354);
+/// picture: across its box, inside its padding.
+const TITLE: (i32, i32, i32, i32) = (352, 328, 608, 348);
 
 fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
     let mut session = Session::with_config(config);
@@ -518,14 +518,22 @@ fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
 fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
     let (mut session, mut client, _waiting) = waiting(&[]);
     // Made as small as it has to be to fit the half with its title under
-    // it, with room round them.
+    // it, in a box with room round them.
     let picture = session.draw();
-    assert_eq!(picture.at(350, 150), RED);
-    assert_eq!(picture.at(610, 325), RED);
-    assert_eq!(picture.at(340, 150), BACKGROUND, "room to the left");
-    assert_eq!(picture.at(350, 120), BACKGROUND, "and above");
-    assert!(!inked(&picture, (344, 330, 616, 334)), "a gap under it");
-    // Its title is written there, in the middle, and nothing under that.
+    assert_eq!(picture.at(360, 140), RED);
+    assert_eq!(picture.at(600, 320), RED);
+    assert_eq!(picture.at(348, 200), BACKGROUND, "room inside the box");
+    assert_eq!(picture.at(360, 128), BACKGROUND, "and above");
+    assert!(!inked(&picture, (352, 324, 608, 328)), "a gap under it");
+    // The box has the border windows have, as the line beside it does.
+    let border = picture.at(320, 200);
+    assert_ne!(border, BACKGROUND);
+    for (x, y) in [(344, 200), (615, 200), (480, 124), (480, 355)] {
+        assert_eq!(picture.at(x, y), border, "at {x}, {y}");
+    }
+    assert_eq!(picture.at(343, 200), BACKGROUND, "and nothing outside it");
+    // Its title is written under the picture, in the middle, and nothing
+    // under that.
     assert!(inked(&picture, TITLE), "its title");
     let (left, top, right, bottom) = TITLE;
     assert!(
@@ -533,9 +541,10 @@ fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
         "in the middle"
     );
     assert!(!inked(&picture, (right - 10, top, right, bottom)));
-    assert!(!inked(&picture, (left, bottom, right, 480)), "and below");
+    assert!(!inked(&picture, (left, bottom, right, 354)), "and below");
 
-    // The pointer over it is the compositor's, and washes it over.
+    // The pointer over it is the compositor's, and washes the whole box
+    // over, title and all, which is brighter.
     session.roundtrip(&mut client);
     client.take_events();
     point(&mut session, 480, 240);
@@ -544,12 +553,22 @@ fn a_window_of_the_desktop_is_offered_small_in_a_part_with_nothing_in_it() {
         |event: &crate::common::Event| matches!(event, crate::common::Event::PointerEnter { .. });
     let events = client.take_events();
     assert!(!events.iter().any(entered), "{events:?}");
-    assert_ne!(session.draw().at(480, 240), RED);
+    let washed = session.draw();
+    assert_ne!(washed.at(480, 240), RED);
+    assert_ne!(washed.at(348, 200), BACKGROUND, "the box is washed");
+    let lit = |picture: &crate::common::Picture| {
+        let rows = TITLE.1..TITLE.3;
+        rows.flat_map(|y| (TITLE.0..TITLE.2).map(move |x| (x, y)))
+            .map(|(x, y)| picture.at(x, y))
+            .collect::<Vec<_>>()
+    };
+    assert_ne!(lit(&washed), lit(&picture), "and its title");
     point(&mut session, 100, 240);
     assert_eq!(session.draw().at(480, 240), RED, "and not once it leaves");
 
-    // Only the left button chooses it; that puts it in the part.
-    point(&mut session, 480, 240);
+    // Only the left button chooses it, on its picture or its title; that
+    // puts it in the part.
+    point(&mut session, 480, 338);
     button(&mut session, RIGHT, true, 0);
     button(&mut session, RIGHT, false, 0);
     assert_eq!(parts(&session).len(), 1);
@@ -567,6 +586,10 @@ fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
     let picture = session.draw();
     assert_eq!(picture.at(480, 240), GREEN);
     assert!(inked(&picture, TITLE), "told by its title");
+    // Washed over under the pointer as any other is.
+    point(&mut session, 480, 240);
+    assert_ne!(session.draw().at(480, 240), GREEN);
+    point(&mut session, 100, 240);
 
     // A title that changes is written anew: none, and nothing is.
     waiting.role.set_title(String::new());

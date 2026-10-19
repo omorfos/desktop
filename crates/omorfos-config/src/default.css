@@ -35,9 +35,13 @@ window:focus { border-color: var(--accent); }
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
 
-/* A window's title under its picture, where it is offered in a part with
- * nothing in it. */
-offer { color: var(--text); }
+/* A window offered in a part with nothing in it: the box round its picture
+ * and its title, and the title, brighter under the pointer. */
+offer {
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+offer:hover { color: var(--text); }
 
 titlebar {
   height: 28px;

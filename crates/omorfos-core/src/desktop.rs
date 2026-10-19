@@ -329,9 +329,12 @@ pub struct Offer {
     pub window: WindowId,
     /// Where its picture is: the shape of the window, and no larger.
     pub at: Rect,
-    /// Where its title is written, under its picture and as wide as its
-    /// share of the part.
+    /// Where its title is written, under its picture, as wide as its box
+    /// inside its padding.
     pub title: Rect,
+    /// The box round both, which is what is pointed at and chosen. Those
+    /// of a row are of one height.
+    pub whole: Rect,
 }
 
 /// The room, in units of layout, left round each window offered in a part
@@ -343,11 +346,17 @@ const OFFER_ROOM: u32 = 24;
 const OFFER_TITLE: u32 = 20;
 const OFFER_GAP: u32 = 4;
 
+/// The room inside the box of a window offered, round its picture and its
+/// title.
+const OFFER_PAD: u32 = 8;
+
 /// Where in `area` each of the windows of `sizes` is shown small, in rows
-/// and columns as near to square as there can be, each as large as its
-/// share of the area lets it be with its title under it, and no larger
-/// than it is; and where that title is.
-fn offered(area: Rect, sizes: &[Size]) -> Vec<(Rect, Rect)> {
+/// and columns as near to square as there can be, each in a box as wide as
+/// its share of the area and as tall as the tallest of its row needs, with
+/// its title under it: each as large as its share lets it be, and no larger
+/// than it is. The pictures of a row stand on one line, and their titles
+/// are on another under it.
+fn offered(area: Rect, sizes: &[Size]) -> Vec<Placed> {
     let count = u32::try_from(sizes.len()).unwrap_or(u32::MAX);
     // As many columns as the square root, rounded up, and one at least.
     let square = count.isqrt();
@@ -362,39 +371,70 @@ fn offered(area: Rect, sizes: &[Size]) -> Vec<(Rect, Rect)> {
         share(area.size.height, rows),
     );
     let step = |many: u32, cell: u32| (OFFER_ROOM + cell).saturating_mul(many).cast_signed();
-    // What the picture has of its share, with its title under it.
+    // What the picture has of its box, inside its padding and with its
+    // title under it.
     let under = OFFER_GAP + OFFER_TITLE;
-    let room = Size::new(cell.width, cell.height.saturating_sub(under));
-    sizes
+    let room = Size::new(
+        cell.width.saturating_sub(OFFER_PAD * 2),
+        cell.height.saturating_sub(under + OFFER_PAD * 2),
+    );
+    let fitted: Vec<Size> = sizes
         .iter()
-        .zip(0..)
-        .map(|(size, index)| {
+        .map(|size| {
             let (width, height) = (size.width.max(1), size.height.max(1));
             // As wide as its room, unless that makes it too tall.
             let wide = u64::from(width) * u64::from(room.height)
                 >= u64::from(height) * u64::from(room.width);
-            let (width, height) = if wide {
+            if wide {
                 let across = width.min(room.width);
-                (across, scaled(height, across, width))
+                Size::new(across, scaled(height, across, width))
             } else {
                 let down = height.min(room.height);
-                (scaled(width, down, height), down)
-            };
+                Size::new(scaled(width, down, height), down)
+            }
+        })
+        .collect();
+    let across = usize::try_from(columns).unwrap_or(usize::MAX);
+    let tallest: Vec<u32> = fitted
+        .chunks(across)
+        .map(|row| row.iter().map(|size| size.height).max().unwrap_or(0))
+        .collect();
+    fitted
+        .iter()
+        .zip(0..)
+        .zip(
+            tallest
+                .iter()
+                .flat_map(|tallest| std::iter::repeat_n(*tallest, across)),
+        )
+        .map(|((size, index), tallest)| {
             let corner = area.origin.offset(
                 OFFER_ROOM.cast_signed() + step(index % columns, cell.width),
                 OFFER_ROOM.cast_signed() + step(index / columns, cell.height),
             );
-            // The picture and its title together in the middle of the cell.
-            let tall = height.saturating_add(under);
+            // The box in the middle of the cell, and the picture standing
+            // on the line its row's titles are under.
+            let tall = tallest.saturating_add(under + OFFER_PAD * 2);
             let top = corner.offset(0, (cell.height.saturating_sub(tall) / 2).cast_signed());
-            let centred = top.offset((cell.width.saturating_sub(width) / 2).cast_signed(), 0);
-            let title = top.offset(0, height.saturating_add(OFFER_GAP).cast_signed());
-            (
-                Rect::new(centred, Size::new(width, height)),
-                Rect::new(title, Size::new(cell.width, OFFER_TITLE)),
-            )
+            let line = top.offset(0, (OFFER_PAD + tallest).cast_signed());
+            let left = (cell.width.saturating_sub(size.width) / 2).cast_signed();
+            let picture = line.offset(left, -size.height.cast_signed());
+            let title = line.offset(OFFER_PAD.cast_signed(), OFFER_GAP.cast_signed());
+            Placed {
+                picture: Rect::new(picture, *size),
+                title: Rect::new(title, Size::new(room.width, OFFER_TITLE)),
+                whole: Rect::new(top, Size::new(cell.width, tall)),
+            }
         })
         .collect()
+}
+
+/// Where a window offered is shown: its picture, its title, and the box
+/// round both.
+struct Placed {
+    picture: Rect,
+    title: Rect,
+    whole: Rect,
 }
 
 /// `length` made smaller by as much as `to` is than `from`.
@@ -2124,14 +2164,12 @@ impl Desktop {
         empty
             .flat_map(|(at, _)| {
                 let places = offered(roomy.rect(at, screen.area), &sizes);
-                windows
-                    .iter()
-                    .zip(places)
-                    .map(|(window, (at, title))| Offer {
-                        window: *window,
-                        at,
-                        title,
-                    })
+                windows.iter().zip(places).map(|(window, placed)| Offer {
+                    window: *window,
+                    at: placed.picture,
+                    title: placed.title,
+                    whole: placed.whole,
+                })
             })
             .collect()
     }
@@ -3444,15 +3482,14 @@ mod tests {
         assert_eq!(desktop.offers(0), [], "a desktop has no parts");
         desktop.tile(c, Half::Left);
 
-        // The one on top first, side by side, each its own shape, with its
-        // title under it as wide as its share.
-        let at = |x: i32| Rect::new(Point::new(x, 361), Size::new(444, 333));
-        let title = |x: i32| Rect::new(Point::new(x, 698), Size::new(444, 20));
+        // The one on top first, side by side, each its own shape in a box as
+        // wide as its share, with its title under it.
         let offers = desktop.offers(0);
-        let offered = |window, x| Offer {
+        let offered = |window, x: i32| Offer {
             window,
-            at: at(x),
-            title: title(x),
+            at: Rect::new(Point::new(x + 8, 367), Size::new(428, 321)),
+            title: Rect::new(Point::new(x + 8, 692), Size::new(428, 20)),
+            whole: Rect::new(Point::new(x, 359), Size::new(444, 361)),
         };
         assert_eq!(offers, [offered(b, 984), offered(a, 1452)]);
 
@@ -3470,14 +3507,43 @@ mod tests {
         let tall = desktop.add_window("tall", "tall", Size::new(200, 900), POINTER, false);
         let other = open(&mut desktop, "other");
         desktop.tile(other, Half::Left);
-        let at = Rect::new(Point::new(1340, 78), Size::new(200, 900));
-        let title = Rect::new(Point::new(984, 982), Size::new(912, 20));
         let only = Offer {
             window: tall,
-            at,
-            title,
+            at: Rect::new(Point::new(1340, 78), Size::new(200, 900)),
+            title: Rect::new(Point::new(992, 982), Size::new(896, 20)),
+            whole: Rect::new(Point::new(984, 70), Size::new(912, 940)),
         };
         assert_eq!(desktop.offers(0), [only]);
+    }
+
+    #[test]
+    fn the_windows_offered_in_a_row_have_their_titles_on_one_line() {
+        let mut desktop = desktop();
+        desktop.add_window("tall", "tall", Size::new(200, 900), POINTER, false);
+        open(&mut desktop, "wide");
+        let other = open(&mut desktop, "other");
+        desktop.tile(other, Half::Left);
+        let offers = desktop.offers(0);
+        let [wide, tall] = [offers[0], offers[1]];
+        assert_ne!(wide.at.size.height, tall.at.size.height);
+        assert_eq!(
+            wide.title.origin.y, tall.title.origin.y,
+            "titles on one line"
+        );
+        assert_eq!(
+            wide.at.bottom(),
+            tall.at.bottom(),
+            "and pictures on another"
+        );
+        assert_eq!(
+            wide.whole.size.height, tall.whole.size.height,
+            "in boxes alike"
+        );
+        for offer in [wide, tall] {
+            assert!(
+                offer.whole.contains(offer.at.origin) && offer.whole.contains(offer.title.origin)
+            );
+        }
     }
 
     #[test]

@@ -19,8 +19,10 @@ pub enum Part {
     /// The line between windows that share a workspace, drawn a hair wide
     /// in its text colour.
     TileLine,
-    /// A window's title under its picture, where it is offered in a part
-    /// of a workspace with nothing in it: in its text colour and font.
+    /// A window offered in a part of a workspace with nothing in it: its
+    /// border is the box round its picture and its title, and its text
+    /// colour and font are the title's. It is [`State::Hovered`] while the
+    /// pointer is over the box.
     Offer,
     /// The bar across the top of a frame. It can be [`State::Focused`],
     /// with its window.

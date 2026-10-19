@@ -224,7 +224,17 @@ for it in its share of the part, in the `offer` part of the theme and cut
 short where it does not fit. For a private window, shown blank, it is
 what tells it apart, as ADR 38 has its title stand for its picture. A
 title is painted once, and again only when it, the room for it, the
-scale or the theme changes.
+scale, the theme or whether the pointer is over it changes.
+
+Then each became one box, picture and title, as tried by hand: the
+private window's blank, in the desktop's own colour, could not be seen,
+and the wash under the pointer was drawn under that blank, so it did not
+show either; and titles under pictures of different shapes were at
+different heights. Now the box has the `offer` part's border, the whole
+box is washed over under the pointer, over any blank, and chosen by a
+click anywhere in it, and its title is in `offer:hover` meanwhile. The
+boxes of a row are of one height, their pictures standing on one line
+with the titles under it.
 
 Three and four came next, with focus and changing places by direction
 (`Super+Ctrl` and an arrow, and with `Shift`). How a third part is made
