@@ -197,7 +197,7 @@ fn picked(results: &HashMap<String, OwnedValue>) -> u32 {
 /// Draws until the question is on the screen.
 fn asked(session: &mut Session) {
     let looks = Theme::default()
-        .style(Part::Launcher, States::NONE)
+        .style(Part::Question, States::NONE)
         .background;
     let shown = u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue]);
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == shown);
@@ -448,7 +448,7 @@ fn picking_a_colour_the_pointer_is_a_crosshair_beside_a_loupe() {
         session.step();
         session.draw().at(203, 203) == RED
     });
-    let looks = Theme::default().style(Part::Launcher, States::NONE);
+    let looks = Theme::default().style(Part::Question, States::NONE);
     let ring = looks.border.top.color;
     let ring = u32::from_be_bytes([ring.alpha, ring.red, ring.green, ring.blue]);
     let (left, top) = (200 + 24, 200 + 24);
@@ -570,7 +570,7 @@ fn the_question_takes_the_look_of_the_theme_and_ends_with_the_session() {
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
         config.join("theme.css"),
-        "launcher { background: #ff0000; }",
+        "question { background: #ff0000; }",
     )
     .unwrap();
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);

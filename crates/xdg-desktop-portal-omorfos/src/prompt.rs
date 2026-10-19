@@ -4,7 +4,8 @@
 //! The question is a box in the middle of the screen, above everything
 //! and with the keyboard, saying which application asks and what for,
 //! with a button to give it and one not to. Enter gives it and Escape
-//! does not, as do the buttons. It takes the look of the launcher.
+//! does not, as do the buttons. It is drawn as the `question` parts of the
+//! theme.
 //!
 //! A colour is picked from a picture of the screen, shown still over all
 //! of it, under a crosshair and beside a round loupe that shows the pixels
@@ -281,10 +282,10 @@ pub fn paint(
 ) -> Canvas {
     let (width, height) = SIZE;
     let mut canvas = Canvas::scaled(width, height, scale);
-    let whole_box = theme.style(Part::Launcher, States::NONE);
+    let whole_box = theme.style(Part::Question, States::NONE);
     canvas.draw_box((0, 0, width, height), &whole_box);
     let room = width - MARGIN.unsigned_abs() * 2;
-    let font = theme.font(Part::Launcher, States::NONE);
+    let font = theme.font(Part::Question, States::NONE);
     let line = (MARGIN, MARGIN, room, 24);
     text.draw(
         &mut canvas,
@@ -293,15 +294,15 @@ pub fn paint(
         whole_box.color,
         font,
     );
-    let said = theme.style(Part::LauncherDescription, States::NONE);
-    let font = theme.font(Part::LauncherDescription, States::NONE);
+    let said = theme.style(Part::QuestionDetail, States::NONE);
+    let font = theme.font(Part::QuestionDetail, States::NONE);
     let line = (MARGIN, MARGIN + 28, room, 20);
     let (_, warning, give) = question.words();
     text.draw(&mut canvas, warning, line, said.color, font);
     let picked = States::NONE.with(State::Active);
     let buttons = [
-        (GIVE, give, Part::LauncherItem, picked),
-        (KEEP, "Cancel", Part::LauncherInput, States::NONE),
+        (GIVE, give, Part::QuestionButton, picked),
+        (KEEP, "Cancel", Part::QuestionButton, States::NONE),
     ];
     for ((left, top, across, down), label, part, states) in buttons {
         let style = theme.style(part, states);
@@ -515,7 +516,7 @@ impl Shell {
             .store
             .current()
             .theme
-            .style(Part::Launcher, States::NONE);
+            .style(Part::Question, States::NONE);
         let ring = ring.border.top.color;
         let place = still.place(self.over, shown);
         let canvas = place.map(|place| paint_loupe(still, place, ring, face.scale));
@@ -1119,8 +1120,8 @@ mod tests {
             Scale::ONE,
             ("org.example.App", Question::Picture),
         );
-        let picked = theme.style(Part::LauncherItem, States::NONE.with(State::Active));
-        let unpicked = theme.style(Part::LauncherInput, States::NONE);
+        let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
+        let unpicked = theme.style(Part::QuestionButton, States::NONE);
         let argb =
             |color: Color| u32::from_be_bytes([color.alpha, color.red, color.green, color.blue]);
         // Near the top left corner of each, clear of the label.

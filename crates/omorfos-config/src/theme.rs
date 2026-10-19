@@ -767,6 +767,22 @@ mod tests {
     }
 
     #[test]
+    fn the_question_of_the_portals_is_a_box_whose_button_that_gives_is_the_accent() {
+        let theme = Theme::default();
+        let question = theme.style(Part::Question, States::NONE);
+        assert_eq!((question.background, question.color), (SURFACE, TEXT));
+        assert_eq!(question.border, Edges::all(line(ACCENT, 1)));
+        assert_eq!(
+            theme.style(Part::QuestionDetail, States::NONE).color,
+            TEXT_DIM
+        );
+        let button = theme.style(Part::QuestionButton, States::NONE);
+        let gives = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
+        assert_eq!((button.background, button.color), (SURFACE_DIM, TEXT));
+        assert_eq!((gives.background, gives.color), (ACCENT, BACKGROUND));
+    }
+
+    #[test]
     fn a_window_offered_is_boxed_with_its_title_brighter_under_the_pointer() {
         let theme = Theme::default();
         let offer = theme.style(Part::Offer, States::NONE);
