@@ -35,9 +35,17 @@ slowest are run while the maintainer tries a change rather than before.
 | `area <filter>...` | While writing a change, after each step | The tests of what is being changed: a crate (`-p omorfos-core`) or tests of the integration binary by name (`tiles::`) | 1–2 s, and the build |
 | `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, the nightly build | 2 min |
 | `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it without a graphics card, the doctests, `cargo deny`, `cargo doc` | 2 min |
+| `commits [base]` | Before merging more than one commit | Each commit after `base` (`main`) alone, in a worktree of its own: formatting, clippy, the coverage gate | 2 min a commit, more for the first |
+| `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
+
+A failed coverage gate lists what it did not reach in the tier itself.
+`handover` also refuses a line of Rust with the word `DBG` in it, which
+is how a line put in only to find something out is marked, as does the
+commit hook in `.githooks/` once `git config core.hooksPath .githooks`
+has told git where it is.
 
 Nothing is committed until `handover` and `rest` have both passed on
-the tree as it is committed. CI runs them all again on every push, and
+the tree as it is committed, and, for more than one commit, `commits`. CI runs them all again on every push, and
 the nightly stress run (see "Flaky tests") runs the suite many times
 over.
 

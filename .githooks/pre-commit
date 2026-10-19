@@ -1,0 +1,25 @@
+#!/bin/sh
+# Refuses a commit that adds a line of Rust marked as being there only to
+# find something out: one with the word written D, B, G, as a session of
+# debugging writes it. Such a line is put in by hand to see what a test
+# does, and forgotten.
+#
+#   .githooks/pre-commit          what is staged, as git runs it
+#   .githooks/pre-commit --tree   what has changed since the last commit,
+#                                 new files too, as the gates run it
+#
+# Git runs it once told where it is: git config core.hooksPath .githooks
+set -eu
+marked='\bD[B]G\b'
+if [ "${1:-}" = --tree ]; then
+    added=$(git diff HEAD -U0 -- '*.rs' | grep -E "^\+[^+].*$marked" || true)
+    fresh=$(git ls-files --others --exclude-standard -- '*.rs' | xargs -r grep -nHE "$marked" || true)
+    added="$added$fresh"
+else
+    added=$(git diff --cached -U0 -- '*.rs' | grep -E "^\+[^+].*$marked" || true)
+fi
+if [ -n "$added" ]; then
+    echo "Lines left in from debugging, to take out first:" >&2
+    echo "$added" >&2
+    exit 1
+fi
