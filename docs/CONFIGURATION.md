@@ -853,9 +853,9 @@ the application see as `question-detail`, and the buttons as
 `question-button`, the one that gives `:active`.
 
 An application can ask for a colour on the screen too, as a drawing
-program's colour picker does. Nothing is asked: a still picture of the
-first screen goes up over it, and a click, or Enter, gives the
-application the colour under the pointer, and nothing else; Escape or
+program's colour picker does. Nothing is asked: a still picture of each
+screen goes up over it, and a click, or Enter, gives the application the
+colour under the pointer, on whichever screen it is, and nothing else; Escape or
 another button gives it none. The pointer is a crosshair meanwhile, and
 a round loupe beside it shows the pixels round it larger, with the one
 it would give outlined in the middle.
