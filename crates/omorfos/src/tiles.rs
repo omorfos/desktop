@@ -317,18 +317,13 @@ impl Compositor {
     /// the middle, as far as the windows either side of it can be made
     /// smaller.
     pub(crate) fn move_line(&mut self, (output, which): (usize, usize), to: Option<DomainPoint>) {
-        let windows = &self.windows;
-        let least = |id: WindowId| {
-            let mapped = windows.iter().find(|mapped| mapped.id == id);
-            mapped.map_or_else(DomainSize::default, least)
-        };
-        self.desktop.move_line(output, which, to, least);
+        self.desktop.move_line(output, which, to);
     }
 }
 
 /// The least a window says it can be, as its program last told: nothing
 /// where it has not said.
-fn least(mapped: &Mapped) -> DomainSize {
+pub(crate) fn least(mapped: &Mapped) -> DomainSize {
     let size = match &mapped.role {
         Role::Xdg(toplevel) => with_states(toplevel.wl_surface(), |states| {
             let mut cached = states.cached_state.get::<SurfaceCachedState>();

@@ -148,7 +148,7 @@ calls for them.
 - [x] The lines between tiles drawn and dragged.
 - [x] A line that stops where a window says it can be no smaller, and a
       part of the theme for the line.
-- [ ] A window that says it can be no smaller than its part, when the
+- [x] A window that says it can be no smaller than its part, when the
       part is made or the window says so later, given more room without
       the line being dragged.
 - [x] Three and four windows, changing places and focus by direction.

@@ -60,7 +60,8 @@ differently from the right pair.
 - Dragging it gives one side more and the other less, as it is dragged.
   A double click puts it back in the middle.
 - No window is made smaller than it says it can be, and none smaller
-  than a sixth of the screen: the line stops.
+  than a sixth of the screen: the line stops, and makes room by itself
+  for a window that says so later.
 
 ### What a window is told
 
@@ -189,14 +190,21 @@ Both came later. The line stops where a window on either side would have
 less than it says it can be (`xdg_toplevel`'s least size, or an X11
 program's size hints), with the titlebar over it added; a frame of tabs
 needs what the largest of them needs, and a side cut in two the other
-way what the larger of its two needs. The least is asked for as the line
-moves, not kept, since nothing else needs it. What a program says is not
+way what the larger of its two needs. What a program says is not
 trusted: where two windows ask for more than there is, the one after the
 line has what it asked for, and no window can ask for so much that the
-other has less than its sixth. Only moving the line is held back: a part
-made smaller than its window needs when the workspace is cut, or a
-window that asks for more later, is not given room until the line is
-dragged. And the line has a part of the theme of its own, `tile-line`,
+other has less than its sixth.
+
+At first only moving the line was held back, and the least was asked for
+as it moved: a part made smaller than its window needed when the
+workspace was cut, or a window that asked for more later, was given
+nothing until the line was dragged. Now the model keeps what each window
+last said, told as the window is shown, each time it commits, and for a
+program written for X11 each time its size hints change. Each part is
+made as large as its frame needs whenever the workspace is laid out, from
+where the line was put, which is kept: a line moves only as far as a
+window needs, and goes back where it was put once the window no longer
+needs it. And the line has a part of the theme of its own, `tile-line`,
 drawn in its text colour as `menu-separator` is, which is a window's
 border colour unless the theme says otherwise.
 

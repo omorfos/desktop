@@ -58,6 +58,9 @@ pub struct Window {
     pub title: String,
     /// Whether the window gets a titlebar and border.
     pub decorated: bool,
+    /// The size it says it can be no smaller than, without its frame:
+    /// nothing either way where it has not said.
+    pub least: Size,
 }
 
 /// An output: a monitor, or the window a nested compositor draws into.
@@ -203,6 +206,17 @@ struct Group {
 }
 
 impl Group {
+    /// What it can be no smaller than in a part of a workspace windows
+    /// share, where its titlebar is over its window and it has no border:
+    /// as large as the largest any of its tabs says, whichever is shown.
+    fn least(&self, titlebar: u32) -> Size {
+        let width = self.tabs.iter().map(|tab| tab.least.width).max();
+        let height = self.tabs.iter().map(|tab| tab.least.height).max();
+        let over = if self.decorated() { titlebar } else { 0 };
+        let height = height.unwrap_or(0).saturating_add(over);
+        Size::new(width.unwrap_or(0), height)
+    }
+
     /// Where it is among the frames of its workspace, whatever order they
     /// were raised in: those kept above are over those that are not. A
     /// fullscreen frame is under whatever else is on the workspace made
@@ -494,6 +508,15 @@ fn halves(area: Rect, rows: bool, split: u32) -> [Rect; 2] {
     }
 }
 
+/// What each of `groups` can be no smaller than in a part of a workspace
+/// windows share, by its serial: nothing, for one that is not there.
+fn least_of(groups: &[Group], titlebar: u32) -> impl Fn(u64) -> Size + '_ {
+    move |serial| {
+        let group = groups.iter().find(|group| group.serial == serial);
+        group.map_or_else(Size::default, |group| group.least(titlebar))
+    }
+}
+
 /// The split at which the first of two parts has `first` of a length of
 /// `along`, or as near that as leaves each a sixth of it and as much as
 /// it says, in `least`, that it can be no less than. Where there is not
@@ -780,6 +803,18 @@ impl Tiling {
             let to = if across { point.y } else { point.x };
             to.saturating_sub(from).max(0).unsigned_abs()
         });
+        self.cut_at(which, wanted, area, least)
+    }
+
+    /// The same with one of its lines `wanted` from where what it cuts
+    /// begins, or as near it as `cut` allows.
+    fn cut_at(self, which: usize, wanted: u32, area: Rect, least: impl Fn(u64) -> Size) -> Self {
+        let across = (which == 0) == self.stacked;
+        let along = if across {
+            area.size.height
+        } else {
+            area.size.width
+        };
         // What each part can be no less than the way the line goes; a side
         // cut in two the other way, what the larger of its two can be.
         let part = |part: Part| match part {
@@ -799,6 +834,28 @@ impl Tiling {
             Some(side) => cut.sides[side.min(1)].split = split,
         }
         cut
+    }
+
+    /// The same on an output of `area` with each part as large as the
+    /// frame in it says it can be no smaller than, where there is room: a
+    /// line goes only as far as that takes, and back to where it was put
+    /// once it no longer does, since this is not kept. `groups` are the
+    /// frames of the workspace.
+    fn with_room(self, area: Rect, groups: &[Group], titlebar: u32) -> Self {
+        let least = least_of(groups, titlebar);
+        self.lines(area).iter().fold(self, |tiling, line| {
+            let across = (line.which == 0) == tiling.stacked;
+            let along = if across {
+                area.size.height
+            } else {
+                area.size.width
+            };
+            let split = line.which.checked_sub(1);
+            let split = split.map_or(tiling.split, |side| tiling.sides[side.min(1)].split);
+            let first = u64::from(along) * u64::from(split) / u64::from(WHOLE);
+            let first = u32::try_from(first).unwrap_or(along);
+            tiling.cut_at(line.which, first, area, &least)
+        })
     }
 
     /// The part beside another, on the side of it that `toward` says: the
@@ -1336,6 +1393,7 @@ impl Desktop {
             app_id,
             title,
             decorated,
+            least: Size::default(),
         };
         let group = Group {
             serial: self.serial(),
@@ -1502,6 +1560,15 @@ impl Desktop {
         }
     }
 
+    /// Records the size a window says it can be no smaller than, without
+    /// its frame. A part of a workspace windows share that its frame fills
+    /// is made as large as that, where there is room.
+    pub fn set_least(&mut self, id: WindowId, least: Size) {
+        let Some(at) = self.locate(id) else { return };
+        let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
+        group.tabs[at.tab].least = least;
+    }
+
     /// Moves and resizes a window's frame, leaving maximized and fullscreen.
     ///
     /// A frame moved so that most of it is on another output now belongs
@@ -1657,11 +1724,13 @@ impl Desktop {
     /// than the one `id` fills.
     fn part_at(&self, id: WindowId, point: Point) -> Option<Dropped> {
         let (at, tiling, own, area) = self.tiled(id)?;
+        let groups = &self.sets[at.set].workspaces[at.workspace].groups;
+        let roomy = tiling.with_room(area, groups, self.settings.decoration.titlebar);
         let mut others = tiling
             .slots()
             .filter(|(other, part)| *other != own && *part != Part::None);
         let (other, place) = others.find_map(|(other, _)| {
-            let place = tiling.rect(other, area);
+            let place = roomy.rect(other, area);
             place.contains(point).then_some((other, place))
         })?;
         Some((at, tiling, [own, other], place))
@@ -1993,10 +2062,15 @@ impl Desktop {
     /// the order they were given.
     #[must_use]
     pub fn lines(&self, output: usize) -> Vec<Line> {
+        let titlebar = self.settings.decoration.titlebar;
         let cut = self.sets.get(output).zip(self.outputs.get(output));
-        let cut =
-            cut.and_then(|(set, output)| Some((set.workspaces[set.active].solo?, output.area)));
-        cut.map_or_else(Vec::new, |(tiling, area)| tiling.lines(area))
+        let cut = cut.and_then(|(set, output)| {
+            let shown = &set.workspaces[set.active];
+            Some((shown.solo?, &shown.groups, output.area))
+        });
+        cut.map_or_else(Vec::new, |(tiling, groups, area)| {
+            tiling.with_room(area, groups, titlebar).lines(area)
+        })
     }
 
     /// The windows offered in each part with nothing in it of the workspace
@@ -2029,10 +2103,11 @@ impl Desktop {
                 (group.tabs[group.active].id, size)
             })
             .unzip();
+        let roomy = tiling.with_room(screen.area, &shown.groups, metrics.titlebar);
         let empty = tiling.slots().filter(|(_, part)| *part == Part::Empty);
         empty
             .flat_map(|(at, _)| {
-                let places = offered(tiling.rect(at, screen.area), &sizes);
+                let places = offered(roomy.rect(at, screen.area), &sizes);
                 windows.iter().zip(places).map(|(window, at)| Offer {
                     window: *window,
                     at,
@@ -2057,15 +2132,9 @@ impl Desktop {
     /// or with `None` puts it back in the middle. Does nothing where there
     /// is no such line.
     ///
-    /// Nor does it leave a window less room than `least` says it can be
-    /// no smaller than, where there is room for that: the line stops.
-    pub fn move_line(
-        &mut self,
-        output: usize,
-        which: usize,
-        point: Option<Point>,
-        least: impl Fn(WindowId) -> Size,
-    ) {
+    /// Nor does it leave a window less room than it says it can be no
+    /// smaller than, where there is room for that: the line stops.
+    pub fn move_line(&mut self, output: usize, which: usize, point: Option<Point>) {
         if !self.lines(output).iter().any(|line| line.which == which) {
             return;
         }
@@ -2073,20 +2142,7 @@ impl Desktop {
         let titlebar = self.settings.decoration.titlebar;
         let set = &mut self.sets[output];
         let shown = &mut set.workspaces[set.active];
-        let groups = &shown.groups;
-        // A frame that shares a workspace has its titlebar over its window,
-        // and no border, whichever of its tabs is shown.
-        let frame = |serial: u64| {
-            let group = groups.iter().find(|group| group.serial == serial);
-            group.map_or_else(Size::default, |group| {
-                let tabs = group.tabs.iter().map(|tab| least(tab.id));
-                let width = tabs.clone().map(|size| size.width).max();
-                let height = tabs.map(|size| size.height).max();
-                let over = if group.decorated() { titlebar } else { 0 };
-                let height = height.unwrap_or(0).saturating_add(over);
-                Size::new(width.unwrap_or(0), height)
-            })
-        };
+        let frame = least_of(&shown.groups, titlebar);
         shown.solo = shown
             .solo
             .map(|tiling| tiling.cut(which, point, area, frame));
@@ -2237,7 +2293,11 @@ impl Desktop {
             let own = self.outputs.get(index).copied();
             let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
             let part = workspace.solo.filter(|_| group.fullscreen);
-            let part = part.map(|tiling| tiling.part_of(group.serial, screen.area));
+            let part = part.map(|tiling| {
+                let titlebar = self.settings.decoration.titlebar;
+                let roomy = tiling.with_room(screen.area, &workspace.groups, titlebar);
+                roomy.part_of(group.serial, screen.area)
+            });
             let mut geometry = match (part, group.maximized) {
                 (Some(part), _) => part,
                 (None, true) => screen.usable,
@@ -2458,10 +2518,6 @@ mod tests {
     }
 
     /// What a window that says nothing of how small it can be can be.
-    fn none(_: WindowId) -> Size {
-        Size::default()
-    }
-
     /// The line that cuts the workspace an output is showing in two, if it
     /// is cut.
     fn line(desktop: &Desktop, output: usize) -> Option<Line> {
@@ -2562,7 +2618,8 @@ mod tests {
                 id,
                 app_id: "foot".to_owned(),
                 title: "~".to_owned(),
-                decorated: true
+                decorated: true,
+                least: Size::default(),
             }]
         );
         assert_eq!(
@@ -3210,7 +3267,7 @@ mod tests {
         assert_eq!(line(&nowhere, 0), None, "nor is there one with no output");
         desktop.set_fullscreen(editor, true);
         assert_eq!(line(&desktop, 0), None, "nor a window alone");
-        desktop.move_line(0, 0, Some(Point::new(100, 100)), none);
+        desktop.move_line(0, 0, Some(Point::new(100, 100)));
         desktop.tile(editor, Half::Left);
         let browser = open(&mut desktop, "browser");
         let tall = |x: i32| Rect::new(Point::new(x, 0), Size::new(1, 1080));
@@ -3218,7 +3275,7 @@ mod tests {
         assert_eq!((first.at, first.across, first.which), (tall(960), false, 0));
         assert_eq!(line(&desktop, 7), None);
 
-        desktop.move_line(0, 0, Some(Point::new(1201, 300)), none);
+        desktop.move_line(0, 0, Some(Point::new(1201, 300)));
         assert_eq!(
             line(&desktop, 0).unwrap().at,
             tall(1201),
@@ -3235,15 +3292,15 @@ mod tests {
         assert_eq!(widths(&desktop), (1201, 1201, 719));
 
         // Neither is left with less than a sixth of the screen.
-        desktop.move_line(0, 0, Some(Point::new(5, 0)), none);
+        desktop.move_line(0, 0, Some(Point::new(5, 0)));
         assert_eq!(widths(&desktop), (320, 320, 1600));
-        desktop.move_line(0, 0, Some(Point::new(-50, 0)), none);
+        desktop.move_line(0, 0, Some(Point::new(-50, 0)));
         assert_eq!(widths(&desktop), (320, 320, 1600));
-        desktop.move_line(0, 0, Some(Point::new(5000, 0)), none);
+        desktop.move_line(0, 0, Some(Point::new(5000, 0)));
         assert_eq!(widths(&desktop), (1600, 1600, 320));
 
         // And it goes back to the middle when asked.
-        desktop.move_line(0, 0, None, none);
+        desktop.move_line(0, 0, None);
         assert_eq!(widths(&desktop), (960, 960, 960));
     }
 
@@ -3253,30 +3310,27 @@ mod tests {
         let editor = open(&mut desktop, "editor");
         desktop.tile(editor, Half::Left);
         let browser = open(&mut desktop, "browser");
-        let least = |id: WindowId| {
-            if id == editor {
-                Size::new(700, 2000)
-            } else {
-                Size::new(500, 100)
-            }
-        };
+        desktop.set_least(editor, Size::new(700, 2000));
+        desktop.set_least(browser, Size::new(500, 100));
         let width = |desktop: &Desktop| frame(desktop, editor).geometry.size.width;
-        desktop.move_line(0, 0, Some(Point::new(400, 0)), least);
+        desktop.move_line(0, 0, Some(Point::new(400, 0)));
         assert_eq!(width(&desktop), 700, "the editor's least");
-        desktop.move_line(0, 0, Some(Point::new(1800, 0)), least);
+        desktop.move_line(0, 0, Some(Point::new(1800, 0)));
         assert_eq!(width(&desktop), 1420, "the browser's least");
-        desktop.move_line(0, 0, Some(Point::new(1000, 0)), least);
+        desktop.move_line(0, 0, Some(Point::new(1000, 0)));
         assert_eq!(width(&desktop), 1000, "between them, where it is put");
 
         // Where there is not room for both, the second has what it needs.
-        let greedy = |_| Size::new(1200, 0);
-        desktop.move_line(0, 0, None, greedy);
+        desktop.set_least(editor, Size::new(1200, 0));
+        desktop.set_least(browser, Size::new(1200, 0));
+        desktop.move_line(0, 0, None);
         assert_eq!(width(&desktop), 720);
 
         // And none can ask for so much that the other has less than its
         // sixth of the screen.
-        let huge = |id| Size::new(if id == browser { u32::MAX } else { 0 }, 0);
-        desktop.move_line(0, 0, None, huge);
+        desktop.set_least(editor, Size::default());
+        desktop.set_least(browser, Size::new(u32::MAX, 0));
+        desktop.move_line(0, 0, None);
         assert_eq!(width(&desktop), 320);
 
         // A window that shares a workspace has its titlebar over it, and
@@ -3290,14 +3344,16 @@ mod tests {
         desktop.attach(tab, bottom);
         desktop.activate(bottom);
         let titlebar = Settings::default().decoration.titlebar;
-        let tall = |id: WindowId| Size::new(0, if id == tab { 600 } else { 300 });
+        for (id, height) in [(top, 300), (bottom, 300), (tab, 600)] {
+            desktop.set_least(id, Size::new(0, height));
+        }
         let height = |desktop: &Desktop| frame(desktop, top).geometry.size.height;
-        desktop.move_line(0, 0, Some(Point::new(0, 1000)), tall);
+        desktop.move_line(0, 0, Some(Point::new(0, 1000)));
         assert_eq!(height(&desktop), 1080 - 600 - titlebar);
-        desktop.move_line(0, 0, Some(Point::new(0, 0)), tall);
+        desktop.move_line(0, 0, Some(Point::new(0, 0)));
         assert_eq!(height(&desktop), 300 + titlebar);
         desktop.set_decorated(top, false);
-        desktop.move_line(0, 0, Some(Point::new(0, 0)), tall);
+        desktop.move_line(0, 0, Some(Point::new(0, 0)));
         assert_eq!(height(&desktop), 300);
     }
 
@@ -3306,11 +3362,57 @@ mod tests {
         let mut desktop = desktop();
         let editor = open(&mut desktop, "editor");
         desktop.tile(editor, Half::Left);
-        let wide = |_| Size::new(1200, 0);
-        desktop.move_line(0, 0, Some(Point::new(1700, 0)), wide);
+        desktop.set_least(editor, Size::new(1200, 0));
+        desktop.move_line(0, 0, Some(Point::new(1700, 0)));
         assert_eq!(part(&desktop, editor), (0, 0, 1600, 1080));
-        desktop.move_line(0, 0, Some(Point::new(100, 0)), wide);
+        desktop.move_line(0, 0, Some(Point::new(100, 0)));
         assert_eq!(part(&desktop, editor), (0, 0, 1200, 1080));
+    }
+
+    #[test]
+    fn a_window_that_says_it_can_be_no_smaller_is_given_room_without_the_line_moved() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.tile(editor, Half::Left);
+        let browser = open(&mut desktop, "browser");
+        desktop.move_line(0, 0, Some(Point::new(1201, 0)));
+        let width = |desktop: &Desktop| frame(desktop, editor).geometry.size.width;
+        let at = |desktop: &Desktop| line(desktop, 0).map(|line| line.at.origin.x);
+
+        // Said later, the line goes as far as it takes, and is drawn there.
+        desktop.set_least(browser, Size::new(1000, 0));
+        assert_eq!(width(&desktop), 920);
+        assert_eq!(at(&desktop), Some(920));
+        // And it goes back where it was put once that no longer holds.
+        desktop.set_least(browser, Size::default());
+        assert_eq!(width(&desktop), 1201);
+        assert_eq!(at(&desktop), Some(1201));
+        desktop.set_least(WindowId::from_raw(999), Size::new(5000, 5000));
+        assert_eq!(width(&desktop), 1201, "nor does a window there is not");
+
+        // Said before, the part is made as large as it needs.
+        let mut desktop = self::desktop();
+        let editor = open(&mut desktop, "editor");
+        desktop.set_least(editor, Size::new(1300, 0));
+        desktop.tile(editor, Half::Left);
+        assert_eq!(part(&desktop, editor), (0, 0, 1300, 1080));
+    }
+
+    #[test]
+    fn the_line_within_a_side_makes_room_as_well() {
+        let mut desktop = desktop();
+        let top = open(&mut desktop, "top");
+        desktop.tile(top, Half::Left);
+        let right = open(&mut desktop, "right");
+        desktop.tile(top, Half::Top);
+        let bottom = open(&mut desktop, "bottom");
+        assert_eq!(frame(&desktop, right).geometry.size.width, 960);
+        let height = |desktop: &Desktop| frame(desktop, top).geometry.size.height;
+        let before = height(&desktop);
+        desktop.set_least(bottom, Size::new(0, 900));
+        let titlebar = Settings::default().decoration.titlebar;
+        assert_eq!(height(&desktop), 1080 - 900 - titlebar);
+        assert!(height(&desktop) < before);
     }
 
     #[test]
@@ -3376,7 +3478,7 @@ mod tests {
         let wide = |y: i32| Rect::new(Point::new(0, y), Size::new(1920, 1));
         assert_eq!((first.at, first.across), (wide(540), true));
 
-        desktop.move_line(0, 0, Some(Point::new(700, 300)), none);
+        desktop.move_line(0, 0, Some(Point::new(700, 300)));
         assert_eq!(line(&desktop, 0).unwrap().at, wide(300));
         assert_eq!(frame(&desktop, editor).geometry.origin.y, 300);
         assert_eq!(frame(&desktop, editor).geometry.size.height, 780);
@@ -3537,7 +3639,7 @@ mod tests {
         // screen between them, as they were: one above the other.
         let mut desktop = self::desktop();
         let [a, b, c, d] = quarters(&mut desktop);
-        desktop.move_line(0, 1, Some(Point::new(0, 300)), none);
+        desktop.move_line(0, 1, Some(Point::new(0, 300)));
         desktop.remove_window(c);
         desktop.remove_window(d);
         assert_eq!(part(&desktop, a), (0, 0, 1920, 300));
@@ -3551,22 +3653,22 @@ mod tests {
         let mut desktop = desktop();
         let [a, b, c, d] = quarters(&mut desktop);
 
-        desktop.move_line(0, 2, Some(Point::new(1500, 200)), none);
+        desktop.move_line(0, 2, Some(Point::new(1500, 200)));
         assert_eq!(part(&desktop, c), (960, 0, 960, 200));
         assert_eq!(part(&desktop, d), (960, 200, 960, 880));
         assert_eq!(part(&desktop, a), (0, 0, 960, 540), "the left is as it was");
 
-        desktop.move_line(0, 0, Some(Point::new(600, 0)), none);
+        desktop.move_line(0, 0, Some(Point::new(600, 0)));
         assert_eq!(part(&desktop, b), (0, 540, 600, 540));
         assert_eq!(part(&desktop, c), (600, 0, 1320, 200));
-        desktop.move_line(0, 2, None, none);
+        desktop.move_line(0, 2, None);
         assert_eq!(part(&desktop, c), (600, 0, 1320, 540));
 
         // One that is not there is not moved, and nothing else is.
         desktop.remove_window(b);
         let before = desktop.clone();
-        desktop.move_line(0, 1, Some(Point::new(0, 100)), none);
-        desktop.move_line(0, 9, Some(Point::new(0, 100)), none);
+        desktop.move_line(0, 1, Some(Point::new(0, 100)));
+        desktop.move_line(0, 9, Some(Point::new(0, 100)));
         assert_eq!(desktop, before);
 
         // Where the workspace is cut across, its sides are cut down.
@@ -3575,9 +3677,9 @@ mod tests {
         desktop.tile(above, Half::Top);
         let below = open(&mut desktop, "below");
         desktop.tile(below, Half::Right);
-        desktop.move_line(0, 2, Some(Point::new(500, 900)), none);
+        desktop.move_line(0, 2, Some(Point::new(500, 900)));
         assert_eq!(part(&desktop, below), (500, 540, 1420, 540));
-        desktop.move_line(0, 0, Some(Point::new(500, 900)), none);
+        desktop.move_line(0, 0, Some(Point::new(500, 900)));
         assert_eq!(part(&desktop, above), (0, 0, 1920, 900));
     }
 
@@ -3770,10 +3872,10 @@ mod tests {
         assert_eq!(desktop.focused(), Some(d), "nothing that way");
 
         // Of two beside it, the one it shares more of its edge with.
-        desktop.move_line(0, 1, Some(Point::new(0, 300)), none);
+        desktop.move_line(0, 1, Some(Point::new(0, 300)));
         desktop.focus_toward(Half::Left);
         assert_eq!(desktop.focused(), Some(b), "below the line at 300");
-        desktop.move_line(0, 1, Some(Point::new(0, 900)), none);
+        desktop.move_line(0, 1, Some(Point::new(0, 900)));
         desktop.focus_toward(Half::Right);
         desktop.focus_toward(Half::Left);
         assert_eq!(desktop.focused(), Some(a), "above the line at 900");
@@ -5400,7 +5502,7 @@ mod tests {
             let id = ids[random(ids.len())];
             let other = ids[random(ids.len())];
             let screens = [SCREEN, SECOND_SCREEN];
-            match random(39) {
+            match random(40) {
                 0 | 1 => ids.push(open(&mut desktop, "app")),
                 27 => desktop.toggle_shaded(id),
                 28 => desktop.toggle_above(id),
@@ -5419,7 +5521,14 @@ mod tests {
                 32 => desktop.tile(id, HALVES[random(4)]),
                 33 => desktop.swap_toward(id, HALVES[random(4)]),
                 34 => desktop.focus_toward(HALVES[random(4)]),
-                35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400)), none),
+                35 => desktop.move_line(random(2), random(3), Some(Point::new(700, 400))),
+                39 => {
+                    let least = Size::new(
+                        u32::try_from(random(2400)).unwrap(),
+                        u32::try_from(random(1400)).unwrap(),
+                    );
+                    desktop.set_least(id, least);
+                }
                 37 => desktop.arrange(id, Arrangement::ALL[random(7)], random(4)),
                 38 => desktop.swap_at(id, Point::new(1000, 600)),
                 36 => {
