@@ -579,6 +579,37 @@ fn the_question_takes_the_look_of_the_theme_and_ends_with_the_session() {
     drop(asking);
 }
 
+/// The first line of the question, as drawn, from asking it for
+/// `org.example.App` with what `prepare` puts in the program's home first.
+fn first_line(prepare: impl Fn(&Path)) -> Vec<u32> {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    prepare(session.config.path());
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "named");
+    asked(&mut session);
+    let (left, top) = ((WIDTH - 440) / 2, (HEIGHT - 150) / 2);
+    let picture = session.draw();
+    let line = (top + 20..top + 44).flat_map(|y| (left + 20..left + 420).map(move |x| (x, y)));
+    let pixels = line.map(|(x, y)| picture.at(x, y)).collect();
+    press(&mut session, key::ESCAPE);
+    answered(&mut session, asking);
+    pixels
+}
+
+#[test]
+fn the_question_names_an_application_as_its_desktop_entry_does() {
+    let entry = |home: &Path| {
+        let applications = home.join(".local/share/applications");
+        std::fs::create_dir_all(&applications).unwrap();
+        let said = "[Desktop Entry]\nType=Application\nName=Example\n";
+        std::fs::write(applications.join("org.example.App.desktop"), said).unwrap();
+    };
+    // What it says differs from what it says of the same application by
+    // its identifier alone: written in any font, other words are other ink.
+    assert_ne!(first_line(entry), first_line(|_| ()));
+}
+
 #[test]
 fn the_question_is_drawn_at_the_scale_of_its_screen() {
     let daemon = Daemon::start();

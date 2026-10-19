@@ -1,5 +1,5 @@
 //! The icons of programs: finding the picture a desktop entry names and
-//! reading it.
+//! reading it; and the name an application's desktop entry gives it.
 //!
 //! Icons are other programs' files, in two formats: PNG, in one directory
 //! for each size it comes in, and SVG, which is drawn at whatever size is
@@ -130,6 +130,50 @@ pub fn data_directories(
     let shared = set(data_dirs).unwrap_or(OsStr::new("/usr/local/share:/usr/share"));
     let shared = std::env::split_paths(shared).filter(|path| path.is_absolute());
     own.into_iter().chain(shared).collect()
+}
+
+/// The most of a desktop entry that is read for an application's name, in
+/// bytes. Real ones are a few kilobytes, most of it translations.
+const LONGEST_ENTRY: u64 = 256 * 1024;
+
+/// The longest identifier an application is looked up by.
+const LONGEST_ID: usize = 255;
+
+/// What an application calls itself, by its identifier `app_id`, such as
+/// `org.mozilla.firefox`: the name its desktop entry gives, from the
+/// `applications` directory of the first of `directories` (see
+/// [`data_directories`]) that has one. Nothing, for an identifier that is
+/// not one, since it is another program's word and is not to reach
+/// outside the directory, or where no entry gives a name.
+#[must_use]
+pub fn named(app_id: &str, directories: &[PathBuf]) -> Option<String> {
+    let allowed = |byte: u8| byte.is_ascii_alphanumeric() || b"._-".contains(&byte);
+    let valid = (1..=LONGEST_ID).contains(&app_id.len()) && app_id.bytes().all(allowed);
+    let file = format!("{app_id}.desktop");
+    let entries = directories.iter().filter(|_| valid);
+    let entries = entries.map(|directory| directory.join("applications").join(&file));
+    let mut read = entries.filter_map(|path| {
+        let mut entry = String::new();
+        let file = File::open(path).ok();
+        let read = file.and_then(|file| file.take(LONGEST_ENTRY).read_to_string(&mut entry).ok());
+        read.map(|_| entry)
+    });
+    read.find_map(|entry| name(&entry))
+}
+
+/// The name a desktop entry gives, untranslated: `Name` in its
+/// `[Desktop Entry]`, if it is not empty.
+fn name(entry: &str) -> Option<String> {
+    let mut inside = false;
+    entry.lines().map(str::trim).find_map(|line| {
+        if line.starts_with('[') {
+            inside = line == "[Desktop Entry]";
+        }
+        let named = line.split_once('=').filter(|_| inside);
+        let named = named.filter(|(key, _)| key.trim() == "Name");
+        let named = named.map(|(_, value)| value.trim());
+        named.filter(|value| !value.is_empty()).map(str::to_owned)
+    })
 }
 
 /// Reads a PNG from memory, as an icon would be read from a file. Nothing
@@ -285,6 +329,52 @@ fn svg(bytes: &[u8], pixels: u32) -> Option<Image> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_application_is_named_by_its_desktop_entry() {
+        let named = |entry: &str| name(entry);
+        let entry = "[Desktop Entry]\nType=Application\nName[pl]=Przykład\nName = Example \n";
+        assert_eq!(named(entry).as_deref(), Some("Example"), "not translated");
+        let elsewhere = "[Desktop Action new]\nName=New Window\n[Desktop Entry]\nName=Main\n";
+        assert_eq!(
+            named(elsewhere).as_deref(),
+            Some("Main"),
+            "its own section only"
+        );
+        assert_eq!(named("[Desktop Entry]\nName=\n"), None, "nor an empty name");
+        assert_eq!(named("Name=Stray\n"), None, "nor one outside any section");
+    }
+
+    #[test]
+    fn an_application_is_looked_up_where_entries_are_installed_and_nowhere_else() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let applications = second.path().join("applications");
+        fs::create_dir_all(&applications).unwrap();
+        let entry = "[Desktop Entry]\nName=Example App\n";
+        fs::write(applications.join("org.example.App.desktop"), entry).unwrap();
+        fs::write(second.path().join("outside.desktop"), entry).unwrap();
+        let directories = [first.path().to_owned(), second.path().to_owned()];
+        let found = named("org.example.App", &directories);
+        assert_eq!(
+            found.as_deref(),
+            Some("Example App"),
+            "in the first that has it"
+        );
+        assert_eq!(named("org.example.Other", &directories), None);
+        // An identifier is another program's word: one that is not a name,
+        // or that would reach outside, is looked for nowhere.
+        let long = "a".repeat(256);
+        for wrong in [
+            "",
+            "../outside",
+            "applications/../../outside",
+            "a b",
+            long.as_str(),
+        ] {
+            assert_eq!(named(wrong, &directories), None, "{wrong:?}");
+        }
+    }
 
     /// The colour of the text an icon stands beside.
     const INK: Color = Color::rgb(0, 0, 255);

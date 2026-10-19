@@ -68,6 +68,13 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let remote = variable("PIPEWIRE_REMOTE").and_then(|remote| remote.into_string().ok());
     let address = variable("DBUS_SESSION_BUS_ADDRESS");
     let address = address.as_deref().and_then(|address| address.to_str());
+    // Where applications' desktop entries are, to name one that asks by.
+    let (data_home, data_dirs) = (variable("XDG_DATA_HOME"), variable("XDG_DATA_DIRS"));
+    let entries = omorfos_icons::data_directories(
+        data_home.as_deref(),
+        home.as_deref(),
+        data_dirs.as_deref(),
+    );
     let found = config.zip(wayland).zip(home.map(PathBuf::from));
     let Some(((config, wayland), home)) = found else {
         return "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
@@ -90,7 +97,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         desk.map(|desk| (portal, desk))
     });
     match portal {
-        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote)),
+        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote, entries)),
         Err(failure) => failure,
     }
 }
@@ -276,6 +283,8 @@ struct Backend<'a> {
     folder: &'a Path,
     /// Where PipeWire is, if not where the environment says.
     remote: Option<String>,
+    /// Where programs install what they share, desktop entries among it.
+    entries: Vec<PathBuf>,
     pending: Option<Pending>,
     pipes: Option<Pipes>,
     shares: Vec<Sharing>,
@@ -448,9 +457,12 @@ impl Backend<'_> {
         }
     }
 
-    /// Puts a question to the user, if they can be asked.
+    /// Puts a question to the user, if they can be asked, naming the
+    /// application as its desktop entry does, or failing that by what the
+    /// sandbox calls it.
     fn ask(&mut self, app: &str, question: Question, pending: Pending) {
-        if self.desk.ask(app, question) {
+        let shown = omorfos_icons::named(app, &self.entries);
+        if self.desk.ask(shown.as_deref().unwrap_or(app), question) {
             self.pending = Some(pending);
         } else {
             note("the user cannot be asked: the compositor does not offer the means");
@@ -526,7 +538,7 @@ fn serve(
     portal: &Portal,
     config: &Path,
     desk: Desk,
-    (folder, remote): (&Path, Option<String>),
+    (folder, remote, entries): (&Path, Option<String>, Vec<PathBuf>),
 ) -> Failure {
     // A folder that is not there cannot be watched for what is put in it.
     let _ = fs::create_dir_all(config);
@@ -537,6 +549,7 @@ fn serve(
         desk,
         folder,
         remote,
+        entries,
         pending: None,
         pipes: None,
         shares: Vec::new(),
