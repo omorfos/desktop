@@ -323,7 +323,8 @@ calls for them.
 - [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
       another's: started by a key, by being away, by the lid and by
       logind. It is the most security-critical program here after the
-      compositor and is written and reviewed as such.
+      compositor and is written and reviewed as such. The on-screen
+      keyboard (stage 7) is to be usable on it.
 - [ ] Sleep, restart and shut down, by logind, and what the lid and the
       power button do.
 - [ ] Screens arranged by the user: above and below as well as side by
@@ -547,6 +548,18 @@ decision of stage 2.
       the machine plays, and the microphone. Sound comes from PipeWire.
       What is being recorded, and which sounds, is shown the whole time.
 - [ ] About: what the system is, shown from the bar's menu.
+- [ ] **On-screen keyboard**, for accessibility, and for a touch screen
+      with no keyboard. Above every window and panel by default, and
+      never taking the keyboard's focus, so that what it types goes to
+      the application that has it, whatever that is, a program written
+      for X11 included. It types through the compositor
+      (`virtual-keyboard-unstable-v1`, or `input-method-v2` so that it
+      can come up when a text field is focused), with a role of its own
+      (ADR 37), since a program that may type into every other is among
+      the most trusted there are. It is to be there on the lock screen
+      and on the login screen too (stage 8), where there is no other way
+      to type a secret without a keyboard, so it is started by those as
+      well as in the session, and wears the theme in each.
 
 ## 8. Reach and hardening
 
@@ -627,7 +640,7 @@ A way in:
       checks the secret and starts the session, so that nothing of ours
       runs as root (ADR 35). It runs on the compositor itself, wears the
       design language, and shares what asks for a secret with the lock
-      screen.
+      screen, and the on-screen keyboard (stage 7) with it.
 
 Reaching people:
 
