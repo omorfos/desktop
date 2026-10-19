@@ -69,7 +69,7 @@ xcursor = "0.3.11"
 # Tells programs written for X11 how dense the screen is, where the X
 # server keeps what such programs look up. Smithay brings it in already;
 # the tests also use it, to open windows as such a program would.
-x11rb = "0.13.2"
+x11rb = "0.14.0"
 # Writes a picture of the screen into memory a program shares.
 omorfos-shm = { path = "../omorfos-shm" }
 smithay = { version = "0.7.0", default-features = false, features = [
