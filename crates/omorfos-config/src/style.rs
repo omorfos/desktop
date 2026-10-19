@@ -57,6 +57,9 @@ pub enum Part {
     /// The mark shown while a program takes pictures of the screen: a
     /// dot in its text colour on its background. It cannot be hidden.
     Capture,
+    /// The line round a screen while it is shared or recorded: its border.
+    /// It is in no picture of the screen.
+    CaptureBorder,
     /// What the compositor says of something the pointer rests on, such
     /// as the mark: what is being done, and by which program.
     Tooltip,
@@ -109,7 +112,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -125,6 +128,7 @@ impl Part {
         Self::Notice,
         Self::NoticeHeading,
         Self::Capture,
+        Self::CaptureBorder,
         Self::Tooltip,
         Self::Panel,
         Self::Workspace,
@@ -163,6 +167,7 @@ impl Part {
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
             Self::Capture => "capture",
+            Self::CaptureBorder => "capture-border",
             Self::Tooltip => "tooltip",
             Self::Panel => "panel",
             Self::Workspace => "workspace",
@@ -531,6 +536,7 @@ mod tests {
                 "notice",
                 "notice-heading",
                 "capture",
+                "capture-border",
                 "tooltip",
                 "panel",
                 "workspace",

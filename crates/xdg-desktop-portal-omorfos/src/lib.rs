@@ -142,16 +142,30 @@ fn kept(shots: &[omorfos_screenshot::Shot], folder: &Path) -> Option<String> {
 /// was picked, or why there are none.
 type Picked = Result<Option<Vec<omorfos_screenshot::Shot>>, omorfos_screenshot::Failure>;
 
-/// What is being picked, on a thread of its own, for a picture asked for:
+/// What came of picking: what a picture is of, or why there is none; or
+/// which screen to share, by what it is called. Nothing if nothing was
+/// picked.
+enum Chose {
+    Picture(Picked),
+    Screen(Option<String>),
+}
+
+/// What is being picked, on a thread of its own, for what was asked for:
 /// the call, the request it may be withdrawn by, and where it says what
-/// was picked.
+/// was picked. For a screen to share, the session it is shared in and how
+/// the pointer is shown.
 struct Picking {
     call: Message,
     request: OwnedObjectPath,
-    done: Receiver<Picked>,
+    done: Receiver<Chose>,
+    share: Option<(OwnedObjectPath, Pointer)>,
     /// Whether the portal no longer wants it, and has been told so.
     withdrawn: bool,
 }
+
+/// What the picker says to do, at the top of each screen, when the screen
+/// to share is picked.
+const SHARE_HINT: &str = "Click the screen you want to share, or press Esc to cancel.";
 
 /// How often what is being picked is looked at, while it is.
 const PICKING: Duration = Duration::from_millis(50);
@@ -181,34 +195,32 @@ fn called(app: &str) -> &str {
     if app.is_empty() { "a program" } else { app }
 }
 
-/// A question that waits on the user, with what is needed to answer it.
-enum Pending {
-    /// A picture of the screen: the call, and the request it may be
-    /// withdrawn by.
-    Picture(Message, OwnedObjectPath),
-    /// Sharing the screen: the same, the session it is for, and how the
-    /// pointer is to be shown.
-    Share(Message, OwnedObjectPath, OwnedObjectPath, Pointer),
-    /// A colour from the screen: the call, and the request.
-    Pick(Message, OwnedObjectPath),
+/// A question that waits on the user: the call to answer, the request it
+/// may be withdrawn by, and what it is for.
+struct Pending {
+    call: Message,
+    request: OwnedObjectPath,
+    wants: Wants,
 }
 
 impl Pending {
-    /// The request it may be withdrawn by.
-    const fn request(&self) -> &OwnedObjectPath {
-        match self {
-            Self::Picture(_, request) | Self::Share(_, request, ..) | Self::Pick(_, request) => {
-                request
-            }
+    const fn new(call: Message, request: OwnedObjectPath, wants: Wants) -> Self {
+        Self {
+            call,
+            request,
+            wants,
         }
     }
+}
 
-    /// The call to answer.
-    const fn call(&self) -> &Message {
-        match self {
-            Self::Picture(call, _) | Self::Share(call, ..) | Self::Pick(call, _) => call,
-        }
-    }
+/// What an application waits on the user for.
+enum Wants {
+    /// A picture of the screen.
+    Picture,
+    /// The screen shared, in a session, with the pointer shown so.
+    Share(OwnedObjectPath, Pointer),
+    /// A colour from the screen.
+    Pick,
 }
 
 /// The shortest time between two pictures of a screen being shared: a
@@ -323,8 +335,13 @@ impl Backend<'_> {
         // The question is taken off the screen at once, and before a
         // picture is taken, so that it is not in it.
         let _ = self.desk.turn();
-        match (answer, pending) {
-            (Answer::Give, Pending::Picture(call, request)) => {
+        let Pending {
+            call,
+            request,
+            wants,
+        } = pending;
+        match (answer, wants) {
+            (Answer::Give, Wants::Picture) => {
                 // Then they pick what of the screens it is, over pictures
                 // of them taken now, on a thread of its own, so that what
                 // else there is to do goes on meanwhile.
@@ -339,13 +356,14 @@ impl Backend<'_> {
                         // bus, so that it waits on the compositor alone.
                         let placed = omorfos_screenshot::placed(socket.as_deref());
                         let picked = omorfos_screenshot::pick(&connection, shots, &placed, &theme);
-                        let _ = told.send(picked);
+                        let _ = told.send(Chose::Picture(picked));
                     });
                     note("the user said yes, and picks what the picture is of");
                     let picking = Picking {
                         call,
                         request,
                         done,
+                        share: None,
                         withdrawn: false,
                     };
                     self.picking = Some(picking);
@@ -354,32 +372,16 @@ impl Backend<'_> {
                     self.portal.respond(&call, Response::Failed, None);
                 }
             }
-            (Answer::Give, Pending::Share(call, _, session, pointer)) => {
-                match self.share(pointer) {
-                    Ok((feed, out)) => {
-                        note("the screen is being shared");
-                        let sharing = Sharing {
-                            session,
-                            feed,
-                            out,
-                            call: Some(call),
-                            held: None,
-                            next: Instant::now(),
-                            told: None,
-                            pointing: false,
-                        };
-                        self.shares.push(sharing);
-                    }
-                    Err(failure) => {
-                        note(&format!(
-                            "the user said yes, and the screen cannot be shared: {failure}"
-                        ));
-                        self.portal.respond(&call, Response::Failed, None);
-                    }
+            (Answer::Give, Wants::Share(session, pointer)) => {
+                // With more than one screen, the user picks which.
+                if self.desk.screens() > 1 {
+                    self.pick_screen(call, request, (session, pointer));
+                } else {
+                    self.begin(&call, session, pointer, None);
                 }
             }
             // A colour is only picked, and anything else picks none.
-            (answer, Pending::Pick(call, _)) => {
+            (answer, Wants::Pick) => {
                 if let Answer::Picked(colour) = answer {
                     note("a colour was picked");
                     self.portal
@@ -390,16 +392,97 @@ impl Backend<'_> {
                 }
             }
             // A question is only answered yes or no.
-            (_, pending) => {
+            (_, Wants::Picture | Wants::Share(..)) => {
                 note("the user said no");
-                self.portal.respond(pending.call(), Response::Refused, None);
+                self.portal.respond(&call, Response::Refused, None);
             }
         }
     }
 
-    /// Answers what was being picked, once it has been, with a picture of
-    /// it saved among the user's pictures; and not at all if the portal no
-    /// longer wants it, which it has been told.
+    /// Has the user pick which screen to share in `session`, with the
+    /// pointer shown as `pointer` says, over pictures of them taken now,
+    /// on a thread of its own as a picture is picked.
+    fn pick_screen(
+        &mut self,
+        call: Message,
+        request: OwnedObjectPath,
+        share: (OwnedObjectPath, Pointer),
+    ) {
+        let Ok((shots, _)) = omorfos_screenshot::shoot(self.desk.connection(), None) else {
+            note("the user said yes, and the screens could not be shown to pick from");
+            self.portal.respond(&call, Response::Failed, None);
+            return;
+        };
+        let names: Vec<String> = shots.iter().map(|shot| shot.screen.clone()).collect();
+        let stills = shots.into_iter().map(|shot| omorfos_picker::Still {
+            screen: shot.screen,
+            size: (shot.width, shot.height),
+            pixels: shot.pixels,
+            windows: Vec::new(),
+        });
+        let stills = stills.collect();
+        let (told, done) = channel();
+        let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
+        std::thread::spawn(move || {
+            let asking = (omorfos_picker::Pickable::Screen, SHARE_HINT);
+            let picked = omorfos_picker::pick(&connection, stills, asking, &theme);
+            // What cannot be shown to pick from is taken for a no, as the
+            // question it follows could be shown.
+            let screen = picked
+                .ok()
+                .flatten()
+                .and_then(omorfos_picker::Picked::screen);
+            let screen = screen.and_then(|screen| names.get(screen).cloned());
+            let _ = told.send(Chose::Screen(screen));
+        });
+        note("the user said yes, and picks which screen to share");
+        self.picking = Some(Picking {
+            call,
+            request,
+            done,
+            share: Some(share),
+            withdrawn: false,
+        });
+    }
+
+    /// Begins sharing `screen`, or the first, in `session`, with the
+    /// pointer shown as `pointer` says, and answers `call` once the stream
+    /// can be read; or answers it that it cannot be.
+    fn begin(
+        &mut self,
+        call: &Message,
+        session: OwnedObjectPath,
+        pointer: Pointer,
+        screen: Option<&str>,
+    ) {
+        match self.share(screen, pointer) {
+            Ok((feed, out)) => {
+                note("the screen is being shared");
+                let sharing = Sharing {
+                    session,
+                    feed,
+                    out,
+                    call: Some(call.clone()),
+                    held: None,
+                    next: Instant::now(),
+                    told: None,
+                    pointing: false,
+                };
+                self.shares.push(sharing);
+            }
+            Err(failure) => {
+                note(&format!(
+                    "the user said yes, and the screen cannot be shared: {failure}"
+                ));
+                self.portal.respond(call, Response::Failed, None);
+            }
+        }
+    }
+
+    /// Answers what was being picked, once it has been: with a picture of
+    /// it saved among the user's pictures, or by sharing the screen picked;
+    /// and not at all if the portal no longer wants it, which it has been
+    /// told.
     fn picked(&mut self) {
         let done = self
             .picking
@@ -410,6 +493,28 @@ impl Backend<'_> {
             return;
         };
         let wanted = !picking.withdrawn;
+        let done = match done {
+            Chose::Picture(done) => done,
+            Chose::Screen(screen) => {
+                let share = picking.share.filter(|_| wanted);
+                let Some((session, pointer)) = share else {
+                    return;
+                };
+                if let Some(screen) = screen {
+                    self.begin(&picking.call, session, pointer, Some(&screen));
+                } else {
+                    note("no screen was picked to share");
+                    self.portal.respond(&picking.call, Response::Refused, None);
+                }
+                return;
+            }
+        };
+        // What is no longer wanted is not kept: no picture is saved that
+        // nobody asked for.
+        if !wanted {
+            note("what was picked is not kept, as it is no longer wanted");
+            return;
+        }
         let failed = done.as_ref().err().map(ToString::to_string);
         let saved = done
             .ok()
@@ -421,24 +526,22 @@ impl Backend<'_> {
         };
         let _ = failed.inspect(|failed| note(&format!("nothing could be picked: {failed}")));
         let saved = saved.flatten().flatten();
-        if wanted {
-            match &saved {
-                Some(saved) => note(&format!("the picture was taken and saved at {saved}")),
-                None => note("no picture was given"),
-            }
-            self.portal.respond(&picking.call, response, saved);
+        match &saved {
+            Some(saved) => note(&format!("the picture was taken and saved at {saved}")),
+            None => note("no picture was given"),
         }
+        self.portal.respond(&picking.call, response, saved);
     }
 
-    /// Begins sharing the first screen: pictures of it, and the stream
-    /// they go into.
-    fn share(&mut self, pointer: Pointer) -> Result<(Feed, Share), Failure> {
+    /// Begins sharing `screen`, or the first: pictures of it, and the
+    /// stream they go into.
+    fn share(&mut self, screen: Option<&str>, pointer: Pointer) -> Result<(Feed, Share), Failure> {
         let pipes = self
             .pipes
             .take()
             .map_or_else(|| Pipes::connect(self.remote.as_deref()), Ok);
         pipes.and_then(|pipes| {
-            let begun = Feed::new(self.desk.connection(), pointer);
+            let begun = Feed::new(self.desk.connection(), screen, pointer);
             let begun = begun.and_then(|feed| {
                 let pointer = feed.pointer().map(|seen| seen.size);
                 // Memory of the card the compositor draws with, if it can
@@ -477,7 +580,8 @@ impl Backend<'_> {
                     "{} asked for a picture of the screen",
                     called(&app)
                 ));
-                self.ask(&app, Question::Picture, Pending::Picture(call, request));
+                let pending = Pending::new(call, request, Wants::Picture);
+                self.ask(&app, Question::Picture, pending);
             }
             Asked::Pick { call, request, app } => {
                 note(&format!(
@@ -488,7 +592,7 @@ impl Backend<'_> {
                 // nothing of the portal's is in it.
                 let stills = stills(&self.desk);
                 if !stills.is_empty() && self.desk.pick(stills) {
-                    self.pending = Some(Pending::Pick(call, request));
+                    self.pending = Some(Pending::new(call, request, Wants::Pick));
                 } else {
                     note("no picture of the screen could be taken, or shown to pick from");
                     self.portal.respond_colour(&call, Response::Failed, None);
@@ -510,20 +614,15 @@ impl Backend<'_> {
                     "{} asked to share the screen, {how}",
                     called(&app)
                 ));
-                self.ask(
-                    &app,
-                    Question::Share,
-                    Pending::Share(call, request, session, pointer),
-                );
+                let pending = Pending::new(call, request, Wants::Share(session, pointer));
+                self.ask(&app, Question::Share, pending);
             }
             Asked::Withdrawn(request) => {
-                let withdrawn = self
-                    .pending
-                    .take_if(|pending| *pending.request() == request);
+                let withdrawn = self.pending.take_if(|pending| pending.request == request);
                 if let Some(pending) = withdrawn {
                     note("the portal no longer wants what it asked for");
                     self.desk.dismiss();
-                    self.portal.respond(pending.call(), Response::Refused, None);
+                    self.portal.respond(&pending.call, Response::Refused, None);
                 }
                 // What is being picked is up until the user is done with it;
                 // the application is told now that it has nothing.
@@ -543,6 +642,17 @@ impl Backend<'_> {
                 if ended.count() > 0 {
                     note("the screen is no longer shared");
                 }
+                // A session that ends while its screen is picked wants it no
+                // more; the picker stays until the user is done with it.
+                let picking = self.picking.iter_mut().filter(|picking| {
+                    let of = picking.share.as_ref().map(|(of, _)| of);
+                    of == Some(&session) && !picking.withdrawn
+                });
+                for picking in picking {
+                    note("the session ended while its screen was being picked");
+                    picking.withdrawn = true;
+                    self.portal.respond(&picking.call, Response::Refused, None);
+                }
             }
         }
     }
@@ -556,7 +666,7 @@ impl Backend<'_> {
             self.pending = Some(pending);
         } else {
             note("the user cannot be asked: the compositor does not offer the means");
-            self.portal.respond(pending.call(), Response::Failed, None);
+            self.portal.respond(&pending.call, Response::Failed, None);
         }
     }
 
@@ -686,6 +796,9 @@ fn serve(
         if gone {
             return "the bus has gone, or another copy has taken over".into();
         }
+        // What was picked meanwhile is answered first, so that what is
+        // asked next is not taken for asked while it is still picked.
+        backend.picked();
         for asked in portal.asked() {
             backend.heard(asked);
         }

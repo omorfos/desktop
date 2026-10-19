@@ -46,6 +46,20 @@ pub enum Picked {
     },
 }
 
+impl Picked {
+    /// The screen it is of, or on, by its place among those it was given
+    /// pictures of. None for every screen.
+    #[must_use]
+    pub const fn screen(self) -> Option<usize> {
+        match self {
+            Self::Everything => None,
+            Self::Screen(screen) | Self::Window { screen, .. } | Self::Region { screen, .. } => {
+                Some(screen)
+            }
+        }
+    }
+}
+
 /// The rectangle between two corners, as far as they are on a screen
 /// `shown` units large.
 pub(crate) fn between(from: (i32, i32), to: (i32, i32), shown: (u32, u32)) -> Rect {
@@ -286,6 +300,22 @@ mod tests {
             Some(1)
         );
         assert_eq!(under((0, 0), &[], SHOWN, pixels), None);
+    }
+
+    #[test]
+    fn what_is_picked_says_which_screen_it_is_on() {
+        let area = WINDOWS[0];
+        assert_eq!(Picked::Everything.screen(), None);
+        assert_eq!(Picked::Screen(2).screen(), Some(2));
+        assert_eq!(
+            Picked::Window {
+                screen: 1,
+                window: 0
+            }
+            .screen(),
+            Some(1)
+        );
+        assert_eq!(Picked::Region { screen: 3, area }.screen(), Some(3));
     }
 
     #[test]

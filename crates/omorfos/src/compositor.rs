@@ -2115,6 +2115,16 @@ impl Compositor {
             let at = self.mark_area(output).loc;
             let mark = self.capture.mark(view.scale, signs);
             elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
+            // And round a screen that is shared, a line, which is no more in
+            // a picture of it than the mark is.
+            let corner = self.area_of(output).loc;
+            for (at, side) in self.capture.edges(output) {
+                let at = view.pixel((corner + *at).to_f64());
+                let scale = view.scale.factor();
+                let side =
+                    SolidColorRenderElement::from_buffer(side, at, scale, 1.0, Kind::Unspecified);
+                elements.push(Element::Solid(side));
+            }
         }
         if shown.pointer {
             self.pointer_elements(renderer, view, &mut elements);

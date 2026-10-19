@@ -1,5 +1,6 @@
 //! Lets the user pick what a picture is to be of on the omorfos desktop:
-//! every screen, one screen, a window, or a region of one screen.
+//! every screen, one screen, a window, or a region of one screen; or,
+//! where only a screen will do, one screen.
 //!
 //! Each screen is shown still, as the picture of it it was given, over all
 //! of it and with the keyboard, and dimmed. A drag draws a region, which
@@ -7,7 +8,10 @@
 //! window under the pointer is shown so until a drag begins, and a click
 //! picks it; a click where there is none picks that screen. Enter picks
 //! every screen, and Escape or another button nothing. The pointer is a
-//! crosshair meanwhile.
+//! crosshair meanwhile. Where only a screen will do, the screen under the
+//! pointer is shown so, and a click or Enter picks it. A line at the
+//! bottom of each screen says what to do, in the look of the theme's
+//! `tooltip`, out of the way of what is along the top.
 //!
 //! The dim and the border are each a surface of their own, a pixel of
 //! colour made as large as it is to be, so that a drag moves them and
@@ -27,7 +31,7 @@ use std::os::unix::fs::FileExt;
 pub use area::{Area, Picked};
 use omorfos_config::{Color, Part, States, Theme};
 use omorfos_shell::{picture, whole};
-use omorfos_ui::Canvas;
+use omorfos_ui::{Canvas, Scale, Text};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat,
     wl_shm, wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
@@ -47,6 +51,11 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 
 /// The left and the right button of a mouse, as Linux numbers them.
 const LEFT: u32 = 0x110;
+
+/// How far the line that says what to do is from the bottom of a
+/// screen, and how tall a line of its text is, in units of layout.
+const HINT_EDGE: i32 = 24;
+const HINT_ROW: u32 = 22;
 
 /// The largest keyboard layout taken in, in bytes.
 const LARGEST_KEYMAP: u32 = 1024 * 1024;
@@ -81,10 +90,20 @@ impl Still {
     }
 }
 
+/// What may be picked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pickable {
+    /// Every screen, one, a window or a region of a screen.
+    Anything,
+    /// One screen, as a whole.
+    Screen,
+}
+
 /// Lets the user pick, over `stills`, pictures of the screens of the
-/// compositor `connection` is to, what a picture is to be of, in the look
-/// `theme` gives the `picker` part. Returns what was picked, or nothing
-/// if the user picked nothing; it waits until they have.
+/// compositor `connection` is to, what a picture is to be of, of what is
+/// `pickable`, in the look `theme` gives the `picker` part, `hint` saying
+/// how at the top of each screen. Returns what was picked, or nothing if
+/// the user picked nothing; it waits until they have.
 ///
 /// # Errors
 ///
@@ -94,12 +113,13 @@ impl Still {
 pub fn pick(
     connection: &Connection,
     stills: Vec<Still>,
+    (pickable, hint): (Pickable, &str),
     theme: &Theme,
 ) -> Result<Option<Picked>, Failure> {
     let mut queue = connection.new_event_queue();
     let handle = queue.handle();
     connection.display().get_registry(&handle, ());
-    let mut state = State::new(stills, theme);
+    let mut state = State::new(stills, (pickable, hint), theme);
     // Twice: once to be told what there is, and again for what the screens
     // are called, which they say once they are bound.
     let known = queue.roundtrip(&mut state);
@@ -172,6 +192,17 @@ struct Screen {
     painted: Option<wl_buffer::WlBuffer>,
     /// The four bands of the dim, then the four sides of the border.
     bands: Vec<Band>,
+    /// The line that says what to do, once it is painted.
+    hint: Option<Hint>,
+}
+
+/// The line at the top of a screen that says what to do: a picture of it,
+/// over the screen's, which takes nothing from the pointer.
+struct Hint {
+    surface: wl_surface::WlSurface,
+    over: wl_subsurface::WlSubsurface,
+    viewport: wp_viewport::WpViewport,
+    painted: wl_buffer::WlBuffer,
 }
 
 /// A drag: on which screen, where it began, and where it has got to.
@@ -197,6 +228,11 @@ struct State {
     /// The screens, by what they are called.
     outputs: Vec<(wl_output::WlOutput, String)>,
     stills: Vec<Still>,
+    pickable: Pickable,
+    /// What to do, as said at the top of each screen, how it is drawn, and
+    /// what it is written with.
+    hint: (String, omorfos_config::Style, omorfos_config::Font),
+    text: Text,
     screens: Vec<Screen>,
     look: Look,
     /// The screen the pointer is over, and where on it.
@@ -212,7 +248,7 @@ struct State {
 }
 
 impl State {
-    fn new(stills: Vec<Still>, theme: &Theme) -> Self {
+    fn new(stills: Vec<Still>, (pickable, hint): (Pickable, &str), theme: &Theme) -> Self {
         let style = theme.style(Part::Picker, States::NONE);
         let look = Look {
             dim: style.background,
@@ -228,6 +264,13 @@ impl State {
             shapes: None,
             outputs: Vec::new(),
             stills,
+            pickable,
+            hint: (
+                hint.to_owned(),
+                theme.style(Part::Tooltip, States::NONE),
+                theme.font(Part::Tooltip, States::NONE).clone(),
+            ),
+            text: Text::new(),
             screens: Vec::new(),
             look,
             over: None,
@@ -312,6 +355,23 @@ impl State {
             self.moved |= painted.is_some();
             screen.painted = screen.painted.take().or(painted);
         }
+        // Then the line that says what to do, over each picture once it is up.
+        let globals = self.globals();
+        for screen in &mut self.screens {
+            let unpainted = screen.hint.is_none() && screen.painted.is_some();
+            let wanted = globals.as_ref().filter(|_| unpainted).zip(screen.shown);
+            let pixels = self.stills[screen.still].size;
+            let hint = wanted.and_then(|(globals, shown)| {
+                Hint::new(
+                    globals,
+                    (&screen.surface, shown, pixels),
+                    (&self.hint, &mut self.text),
+                    handle,
+                )
+            });
+            self.moved |= hint.is_some();
+            screen.hint = screen.hint.take().or(hint);
+        }
         if !mem::take(&mut self.moved) {
             return;
         }
@@ -326,7 +386,11 @@ impl State {
             let still = &self.stills[screen.still];
             let over = self.over.filter(|(on, _)| *on == index);
             let under = over.and_then(|(_, at)| area::under(at, &still.windows, shown, still.size));
-            let drawn = drawn.or(under.map(|(_, rect)| rect));
+            let drawn = match self.pickable {
+                Pickable::Anything => drawn.or(under.map(|(_, rect)| rect)),
+                // Where only a screen will do, it is the one the pointer is on.
+                Pickable::Screen => over.map(|_| (0, 0, shown.0, shown.1)),
+            };
             let rects = dimmed(drawn, shown).into_iter();
             let rects = rects.chain(bordered(drawn, self.look.thick));
             for (band, rect) in screen.bands.iter().zip(rects) {
@@ -376,7 +440,12 @@ impl State {
                     let shown = screen.shown.unwrap_or_default();
                     let still = &self.stills[screen.still];
                     let windows = &still.windows;
-                    area::picked(screen.still, (from, to), windows, shown, still.size)
+                    match self.pickable {
+                        Pickable::Anything => {
+                            area::picked(screen.still, (from, to), windows, shown, still.size)
+                        }
+                        Pickable::Screen => Picked::Screen(screen.still),
+                    }
                 });
                 self.ended(picked.map(Outcome::Picked));
             }
@@ -407,16 +476,21 @@ impl State {
         self.typing = keymap.as_ref().map(xkb::State::new);
     }
 
-    /// Takes in a key going down: Enter picks every screen, and Escape
-    /// nothing.
+    /// Takes in a key going down: Enter picks every screen, or the one
+    /// under the pointer where only a screen will do, and Escape nothing.
     fn pressed(&mut self, code: u32) {
         // The numbers the layout knows keys by are eight higher.
         let code = xkb::Keycode::new(code.saturating_add(8));
         let typing = self.typing.as_ref();
+        // Where only a screen will do, Enter picks the one the pointer is
+        // on, once that is known.
+        let screen = self.over.map(|(on, _)| self.screens[on].still);
+        let enter = match self.pickable {
+            Pickable::Anything => Some(Picked::Everything),
+            Pickable::Screen => screen.map(Picked::Screen),
+        };
         let outcome = typing.and_then(|typing| match typing.key_get_one_sym(code) {
-            xkb::Keysym::Return | xkb::Keysym::KP_Enter => {
-                Some(Outcome::Picked(Picked::Everything))
-            }
+            xkb::Keysym::Return | xkb::Keysym::KP_Enter => enter.map(Outcome::Picked),
             xkb::Keysym::Escape => Some(Outcome::Nothing),
             _ => None,
         });
@@ -471,15 +545,87 @@ impl Screen {
             shown: None,
             painted: None,
             bands,
+            hint: None,
         }
     }
 
     fn close(self) {
+        self.hint.into_iter().for_each(Hint::close);
         self.bands.into_iter().for_each(Band::close);
         self.viewport.destroy();
         self.layer.destroy();
         self.surface.destroy();
         self.painted.iter().for_each(wl_buffer::WlBuffer::destroy);
+    }
+}
+
+impl Hint {
+    /// The line that says what to do, `hint`, written with `text`, at the
+    /// bottom of `parent`, a screen shown `shown` units large from a picture
+    /// `pixels` large, so that it is as sharp as the picture. Nothing, if
+    /// it cannot be painted.
+    fn new(
+        globals: &Globals,
+        (parent, shown, pixels): (&wl_surface::WlSurface, (u32, u32), (u32, u32)),
+        ((words, style, font), text): (
+            &(String, omorfos_config::Style, omorfos_config::Font),
+            &mut Text,
+        ),
+        handle: &QueueHandle<State>,
+    ) -> Option<Self> {
+        let scale = Scale::new(f64::from(pixels.0) / f64::from(shown.0.max(1)));
+        let inset = style.inset();
+        // No wider than the screen, with room either side: what does not fit
+        // is cut off.
+        let widest = shown.0.saturating_sub(HINT_EDGE.unsigned_abs() * 2);
+        let width = text
+            .measure(words, font)
+            .saturating_add(inset.across())
+            .min(widest);
+        let height = HINT_ROW.saturating_add(inset.down());
+        let whole = (0, 0, width, height);
+        let mut canvas = Canvas::scaled(width, height, scale);
+        canvas.draw_box(whole, style);
+        let (left, top, room, _) = omorfos_ui::inset(whole, inset);
+        text.draw(
+            &mut canvas,
+            words,
+            (left, top, room, HINT_ROW),
+            style.color,
+            font,
+        );
+        let painted = picture(&globals.shm, &canvas, handle).ok();
+        painted.map(|painted| {
+            let surface = globals.compositor.create_surface(handle, ());
+            let empty = globals.compositor.create_region(handle, ());
+            surface.set_input_region(Some(&empty));
+            empty.destroy();
+            let over = globals
+                .subsurfaces
+                .get_subsurface(&surface, parent, handle, ());
+            // In the middle, across, however wide the screen.
+            let across = (shown.0.cast_signed() - width.cast_signed()) / 2;
+            let down = shown.1.cast_signed() - height.cast_signed() - HINT_EDGE;
+            over.set_position(across, down);
+            let viewport = globals.viewporter.get_viewport(&surface, handle, ());
+            viewport.set_destination(width.cast_signed(), height.cast_signed());
+            surface.attach(Some(&painted), 0, 0);
+            surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+            surface.commit();
+            Self {
+                surface,
+                over,
+                viewport,
+                painted,
+            }
+        })
+    }
+
+    fn close(self) {
+        self.viewport.destroy();
+        self.over.destroy();
+        self.surface.destroy();
+        self.painted.destroy();
     }
 }
 

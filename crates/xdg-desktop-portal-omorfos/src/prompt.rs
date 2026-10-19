@@ -766,6 +766,12 @@ impl Desk {
         self.shell.stale = true;
     }
 
+    /// How many screens there are.
+    #[must_use]
+    pub const fn screens(&self) -> usize {
+        self.shell.outputs.len()
+    }
+
     /// How the desktop looks, as the configuration says.
     #[must_use]
     pub fn theme(&self) -> Theme {
