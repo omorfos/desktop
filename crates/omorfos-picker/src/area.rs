@@ -1,5 +1,6 @@
-//! What a drag over a screen comes to: the region drawn, or the screen
-//! clicked; and where the dim and the border round it are drawn.
+//! What a drag over a screen comes to: the region drawn, or the window or
+//! the screen clicked; and where the dim and the border round it are
+//! drawn.
 
 /// A rectangle of a screen, in units of layout: its left and top, and how
 /// far across and down it goes.
@@ -28,6 +29,14 @@ pub enum Picked {
     Everything,
     /// One screen, by its place among those it was given pictures of.
     Screen(usize),
+    /// A window, as a whole.
+    Window {
+        /// The screen it was picked on, by its place among those it was
+        /// given pictures of.
+        screen: usize,
+        /// The window, by its place among that screen's.
+        window: usize,
+    },
     /// A region of one screen, in that screen's pixels.
     Region {
         /// The screen, by its place among those it was given pictures of.
@@ -50,20 +59,61 @@ pub(crate) fn between(from: (i32, i32), to: (i32, i32), shown: (u32, u32)) -> Re
     (left, top, across, down)
 }
 
+/// Whether a drag that has gone from `from` to `to` is a click still.
+pub(crate) fn click(from: (i32, i32), to: (i32, i32)) -> bool {
+    from.0.abs_diff(to.0) < CLICK && from.1.abs_diff(to.1) < CLICK
+}
+
+/// The window `at` is on, of `windows`, those on a screen shown `shown`
+/// units large from a picture `pixels` large, the one on top first: which
+/// it is, and where it is drawn in units.
+pub(crate) fn under(
+    at: (i32, i32),
+    windows: &[Area],
+    shown: (u32, u32),
+    pixels: (u32, u32),
+) -> Option<(usize, Rect)> {
+    let units = |along: u32, room: u32, pixels: u32| {
+        let along = u64::from(along) * u64::from(room) / u64::from(pixels.max(1));
+        i32::try_from(along).unwrap_or(i32::MAX)
+    };
+    let drawn = windows.iter().map(|area| {
+        let (left, top) = (
+            units(area.x, shown.0, pixels.0),
+            units(area.y, shown.1, pixels.1),
+        );
+        let right = units(area.x.saturating_add(area.width), shown.0, pixels.0);
+        let bottom = units(area.y.saturating_add(area.height), shown.1, pixels.1);
+        (left, top, right, bottom)
+    });
+    let mut drawn = drawn.enumerate();
+    let found = drawn.find(|(_, (left, top, right, bottom))| {
+        (*left..*right).contains(&at.0) && (*top..*bottom).contains(&at.1)
+    });
+    found.map(|(window, (left, top, right, bottom))| {
+        let size = (right - left).unsigned_abs();
+        (window, (left, top, size, (bottom - top).unsigned_abs()))
+    })
+}
+
 /// What a drag from `from` to `to` over screen `screen` comes to, the
-/// screen shown `shown` units large from a picture `pixels` large: that
-/// screen, for one that hardly moved, as a click; otherwise the region
-/// between the two, in the picture's pixels, a pixel at least each way.
+/// screen shown `shown` units large from a picture `pixels` large with
+/// `windows` on it: the window or else the screen it began on, for one
+/// that hardly moved, as a click; otherwise the region between the two,
+/// in the picture's pixels, a pixel at least each way.
 pub(crate) fn picked(
     screen: usize,
     (from, to): ((i32, i32), (i32, i32)),
+    windows: &[Area],
     shown: (u32, u32),
     pixels: (u32, u32),
 ) -> Picked {
-    let (left, top, across, down) = between(from, to, shown);
-    if across < CLICK && down < CLICK {
-        return Picked::Screen(screen);
+    if click(from, to) {
+        let window = under(from, windows, shown, pixels);
+        let window = window.map(|(window, _)| Picked::Window { screen, window });
+        return window.unwrap_or(Picked::Screen(screen));
     }
+    let (left, top, across, down) = between(from, to, shown);
     let scaled = |at: u32, room: u32, pixels: u32| {
         let at = u64::from(at) * u64::from(pixels) / u64::from(room.max(1));
         u32::try_from(at).unwrap_or(pixels)
@@ -146,7 +196,7 @@ mod tests {
     fn a_drag_that_hardly_moves_is_a_click_on_the_screen() {
         let pixels = (1280, 960);
         assert_eq!(
-            picked(1, ((10, 10), (12, 13)), SHOWN, pixels),
+            picked(1, ((10, 10), (12, 13)), &[], SHOWN, pixels),
             Picked::Screen(1)
         );
         let area = Area {
@@ -156,7 +206,7 @@ mod tests {
             height: 100,
         };
         let region = Picked::Region { screen: 1, area };
-        assert_eq!(picked(1, ((10, 20), (110, 70)), SHOWN, pixels), region);
+        assert_eq!(picked(1, ((10, 20), (110, 70)), &[], SHOWN, pixels), region);
         // Moved only one way, it is a region still, a pixel at least the
         // other way.
         let thin = Area {
@@ -165,7 +215,7 @@ mod tests {
             width: 1,
             height: 100,
         };
-        let picked = picked(0, ((10, 20), (10, 120)), SHOWN, SHOWN);
+        let picked = picked(0, ((10, 20), (10, 120)), &[], SHOWN, SHOWN);
         assert_eq!(
             picked,
             Picked::Region {
@@ -173,6 +223,76 @@ mod tests {
                 area: thin
             }
         );
+    }
+
+    /// Two windows on a picture twice the size it is shown at, the first
+    /// over the second where they meet.
+    const WINDOWS: [Area; 2] = [
+        Area {
+            x: 200,
+            y: 200,
+            width: 400,
+            height: 200,
+        },
+        Area {
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 300,
+        },
+    ];
+
+    #[test]
+    fn a_click_on_a_window_picks_the_one_on_top_and_elsewhere_the_screen() {
+        let pixels = (1280, 960);
+        let click = |at: (i32, i32)| picked(1, (at, (at.0 + 1, at.1 + 1)), &WINDOWS, SHOWN, pixels);
+        assert_eq!(
+            click((120, 120)),
+            Picked::Window {
+                screen: 1,
+                window: 0
+            }
+        );
+        assert_eq!(
+            click((20, 20)),
+            Picked::Window {
+                screen: 1,
+                window: 1
+            }
+        );
+        assert_eq!(click((400, 400)), Picked::Screen(1));
+        // A drag that began on a window draws a region all the same.
+        let drag = picked(1, ((120, 120), (220, 220)), &WINDOWS, SHOWN, pixels);
+        let area = Area {
+            x: 240,
+            y: 240,
+            width: 200,
+            height: 200,
+        };
+        assert_eq!(drag, Picked::Region { screen: 1, area });
+    }
+
+    #[test]
+    fn the_window_under_the_pointer_is_drawn_where_it_is_shown() {
+        let pixels = (1280, 960);
+        assert_eq!(
+            under((120, 120), &WINDOWS, SHOWN, pixels),
+            Some((0, (100, 100, 200, 100)))
+        );
+        // Its right and bottom edges are the next window's, or none's.
+        assert_eq!(under((300, 150), &WINDOWS, SHOWN, pixels), None);
+        assert_eq!(
+            under((149, 99), &WINDOWS, SHOWN, pixels).map(|(window, _)| window),
+            Some(1)
+        );
+        assert_eq!(under((0, 0), &[], SHOWN, pixels), None);
+    }
+
+    #[test]
+    fn a_drag_is_a_click_until_it_has_gone_far_enough_either_way() {
+        assert!(click((10, 10), (13, 7)));
+        assert!(!click((10, 10), (14, 10)));
+        assert!(!click((10, 10), (10, 6)));
     }
 
     #[test]

@@ -187,8 +187,9 @@ pub fn shoot(
         return Err("the compositor does not offer pictures of the screen to this program".into());
     }
     if state.wanted.is_some() && !state.found {
-        let said = "the window with focus is not among the windows omorfos lists to this \
-                    program. It lists them to a program it starts with `may: [capture, panel]`";
+        let said = "the window is not among the windows omorfos lists to this program: it has \
+                    gone, or omorfos lists them only to a program it starts with `may: [capture, \
+                    panel]`";
         return Err(said.into());
     }
     if state

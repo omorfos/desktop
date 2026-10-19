@@ -276,10 +276,9 @@ calls for them.
       screens, with `Shift+Print` and `omorfos-screenshot --pick` (ADR
       44).
 - [x] The portal picking the same way, after the user has said yes.
-- [ ] Windows in the picker: the compositor saying where each is, the one
+- [x] Windows in the picker: the compositor saying where each is, the one
       under the pointer outlined, and a click taking it whole.
-- [ ] Known gaps in the Screenshot portal: the user cannot choose a
-      window but by drawing round it, and a colour is picked from the
+- [ ] Known gaps in the Screenshot portal: a colour is picked from the
       first screen only.
 - [x] Sharing the screen through the portal, as a PipeWire stream, with
       the user asked each time, and the mark on the screen while it is

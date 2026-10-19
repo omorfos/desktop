@@ -64,7 +64,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let (home, config) = (variable("HOME"), variable("XDG_CONFIG_HOME"));
     let config = omorfos_config::config_dir(config.as_deref(), home.as_deref());
     let (runtime, display) = (variable("XDG_RUNTIME_DIR"), variable("WAYLAND_DISPLAY"));
-    let wayland = runtime.zip(display);
+    let wayland = runtime.clone().zip(display.clone());
     let wayland = wayland.map(|(runtime, display)| Path::new(&runtime).join(display));
     let remote = variable("PIPEWIRE_REMOTE").and_then(|remote| remote.into_string().ok());
     let address = variable("DBUS_SESSION_BUS_ADDRESS");
@@ -76,6 +76,10 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         home.as_deref(),
         data_dirs.as_deref(),
     );
+    // Where the compositor says where windows are, to pick one by.
+    let socket = variable("OMORFOS_SOCKET");
+    let socket =
+        omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
     let found = config.zip(wayland).zip(home.map(PathBuf::from));
     let Some(((config, wayland), home)) = found else {
         return "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
@@ -98,7 +102,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         desk.map(|desk| (portal, desk))
     });
     match portal {
-        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote, entries)),
+        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote, entries, socket)),
         Err(failure) => failure,
     }
 }
@@ -134,14 +138,17 @@ fn kept(shots: &[omorfos_screenshot::Shot], folder: &Path) -> Option<String> {
     saved.map(|path| address(&path))
 }
 
+/// What a picture is of, once picked: the pictures, nothing if nothing
+/// was picked, or why there are none.
+type Picked = Result<Option<Vec<omorfos_screenshot::Shot>>, omorfos_screenshot::Failure>;
+
 /// What is being picked, on a thread of its own, for a picture asked for:
-/// the call, the request it may be withdrawn by, the pictures of every
-/// screen it is picked from, and where it says what was picked.
+/// the call, the request it may be withdrawn by, and where it says what
+/// was picked.
 struct Picking {
     call: Message,
     request: OwnedObjectPath,
-    shots: Vec<omorfos_screenshot::Shot>,
-    done: Receiver<Option<omorfos_picker::Picked>>,
+    done: Receiver<Picked>,
     /// Whether the portal no longer wants it, and has been told so.
     withdrawn: bool,
 }
@@ -300,6 +307,8 @@ struct Backend<'a> {
     remote: Option<String>,
     /// Where programs install what they share, desktop entries among it.
     entries: Vec<PathBuf>,
+    /// The compositor's socket for scripts, which says where windows are.
+    socket: Option<PathBuf>,
     pending: Option<Pending>,
     /// What is being picked, once the user said yes to a picture.
     picking: Option<Picking>,
@@ -322,17 +331,19 @@ impl Backend<'_> {
                 if let Some((shots, _)) = shots {
                     let (told, done) = channel();
                     let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
-                    let stills = omorfos_screenshot::stills(&shots);
+                    let socket = self.socket.clone();
                     std::thread::spawn(move || {
-                        let picked = omorfos_picker::pick(&connection, stills, &theme);
-                        // What cannot be shown to pick from is taken for a no.
-                        let _ = told.send(picked.ok().flatten());
+                        // Where the windows are is asked as the pictures
+                        // were taken, and not on the way that answers the
+                        // bus, so that it waits on the compositor alone.
+                        let placed = omorfos_screenshot::placed(socket.as_deref());
+                        let picked = omorfos_screenshot::pick(&connection, shots, &placed, &theme);
+                        let _ = told.send(picked);
                     });
                     note("the user said yes, and picks what the picture is of");
                     let picking = Picking {
                         call,
                         request,
-                        shots,
                         done,
                         withdrawn: false,
                     };
@@ -398,16 +409,17 @@ impl Backend<'_> {
             return;
         };
         let wanted = !picking.withdrawn;
-        let saved = done.map(|picked| {
-            let shots = omorfos_screenshot::kept(picking.shots, picked);
-            kept(&shots, self.folder)
-        });
+        let failed = done.as_ref().err().map(ToString::to_string);
+        let saved = done
+            .ok()
+            .map(|picked| picked.map(|shots| kept(&shots, self.folder)));
         let response = match &saved {
-            Some(Some(_)) => Response::Given,
-            Some(None) => Response::Failed,
-            None => Response::Refused,
+            Some(Some(Some(_))) => Response::Given,
+            None | Some(Some(None)) => Response::Failed,
+            Some(None) => Response::Refused,
         };
-        let saved = saved.flatten();
+        let _ = failed.inspect(|failed| note(&format!("nothing could be picked: {failed}")));
+        let saved = saved.flatten().flatten();
         if wanted {
             match &saved {
                 Some(saved) => note(&format!("the picture was taken and saved at {saved}")),
@@ -615,7 +627,7 @@ fn serve(
     portal: &Portal,
     config: &Path,
     desk: Desk,
-    (folder, remote, entries): (&Path, Option<String>, Vec<PathBuf>),
+    (folder, remote, entries, socket): (&Path, Option<String>, Vec<PathBuf>, Option<PathBuf>),
 ) -> Failure {
     // A folder that is not there cannot be watched for what is put in it.
     let _ = fs::create_dir_all(config);
@@ -627,6 +639,7 @@ fn serve(
         folder,
         remote,
         entries,
+        socket,
         pending: None,
         picking: None,
         pipes: None,

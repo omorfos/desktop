@@ -844,8 +844,9 @@ its desktop entry gives it, or by what its sandbox calls it if it has
 none. Escape or **Cancel** gives it nothing. Enter or **Take picture**
 takes a picture of every screen, and then you pick what of it the
 application is given, as `Shift+Print` picks: drag to draw a region,
-click to take that screen, Enter to take every screen, as one, and
-Escape or another button to give it nothing after all. What is picked is
+click a window to take it whole or anywhere else to take that screen,
+Enter to take every screen, as one, and Escape or another button to give
+it nothing after all. What is picked is
 saved among your pictures as `Print` saves them. The question is not in
 the picture, and the red mark shows while it is taken. The question is drawn as `question`, what giving would let
 the application see as `question-detail`, and the buttons as
@@ -970,11 +971,13 @@ without the frame omorfos draws round it.
 
 `Shift+Print` lets you pick what the picture is of first, and puts it on
 the clipboard, to be pasted, and saves nothing. The screens go still and
-dim, the pointer a crosshair: drag to draw a region, click a screen to
-take it, press Enter to take every screen, side by side, or Escape or
-another button to take nothing. What you pick is cut from the screens as
-they were when you pressed the key, and the dim is the theme's `picker`
-part. To have `Print` put its picture on the clipboard, or both, say so
+dim, the pointer a crosshair, and the window under the pointer is
+outlined: click it to take it whole, as `Alt+Print` does, drag to draw a
+region, click where there is no window to take that screen, press Enter
+to take every screen, side by side, or Escape or another button to take
+nothing. A region or a screen is cut from the screens as they were when
+you pressed the key; a window is taken as it is when you click, the parts
+of it others covered too. The dim is the theme's `picker` part. To have `Print` put its picture on the clipboard, or both, say so
 in `config.yaml`:
 
 ```yaml
@@ -1004,7 +1007,9 @@ that may:
 `--to file`, `--to clipboard` or `--to both` says where one picture goes,
 whatever the configuration says, `--window` that it is of the window
 with focus, and `--pick` that you pick what it is of, which needs the
-`panel` and `overlay` roles to be put over the screen. `--to` can be said
+`panel` and `overlay` roles to be put over the screen. Where the windows
+are to be picked from is asked at the socket for scripts; a program the
+compositor starts is told where that is. `--to` can be said
 with either of the other two. A picture of a window is the
 whole of it, however large, and see-through where the window is, as the
 shadow some programs draw round their windows is. A program says which window it

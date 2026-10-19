@@ -16,8 +16,9 @@ publish.workspace = true
 omorfos-shell = { path = "../omorfos-shell" }
 # Takes pictures of the screen and saves them as the screenshot tool does.
 omorfos-screenshot = { path = "../omorfos-screenshot" }
-# Lets the user pick what a picture is of, once they have said yes.
-omorfos-picker = { path = "../omorfos-picker" }
+# Finds the compositor's socket for scripts, which says where windows are
+# for the user to pick one.
+omorfos-ipc = { path = "../omorfos-ipc" }
 # Draws the question.
 omorfos-ui = { path = "../omorfos-ui" }
 # Names the application that asks by its desktop entry, as the launcher

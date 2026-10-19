@@ -84,7 +84,7 @@ A few keys to begin with:
 | `Super+n` | A new workspace |
 | `Super+1` to `Super+9` | Go to a workspace |
 | `Print` | A picture of every screen, saved in `Pictures/Screenshots` |
-| `Shift+Print` | The same, on the clipboard |
+| `Shift+Print` | Pick a window, a screen or a region, on the clipboard |
 | `Alt+Print` | A picture of the window with focus |
 | `Super+Shift+r` | Read the configuration again |
 | `Super+Shift+e` | End the session |

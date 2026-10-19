@@ -643,3 +643,102 @@ fn picking_it_gives_up_when_the_session_ends() {
     let said = tool.join().unwrap().unwrap_err();
     assert!(said.contains("the session ended"), "{said}");
 }
+
+/// Starts the tool to pick over one screen, told by the socket for
+/// scripts, `ipc`, where the windows are, and draws until it is up.
+fn picking_windows(session: &mut Session, ipc: &Path) -> JoinHandle<Said> {
+    let more = [("OMORFOS_SOCKET", ipc.as_os_str().to_owned())];
+    let tool = start_with(session, PICKING, &more, &["--pick"]);
+    session.eventually(|session| {
+        let shown = session.draw().at(WIDTH - 5, HEIGHT - 5);
+        shown != crate::windows::BACKGROUND || tool.is_finished()
+    });
+    assert!(!tool.is_finished(), "it stopped before it was up");
+    tool
+}
+
+/// Where the windows that can be seen are, the one on top first, as the
+/// socket for scripts, `ipc`, says.
+fn placed(session: &mut Session, ipc: &Path) -> Vec<omorfos_ipc::Placed> {
+    let mut peer = omorfos_ipc::Client::connect(ipc).unwrap();
+    let reply = session.ask(&mut peer, &omorfos_ipc::Request::Placed);
+    reply.into_placed().unwrap()
+}
+
+/// Moves the pointer to a place.
+fn point(session: &mut Session, (x, y): (i32, i32)) {
+    let at = omorfos::Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    session.step();
+}
+
+#[test]
+fn the_window_under_the_pointer_is_outlined_and_a_click_takes_it_whole() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "behind", (300, 200), RED);
+    session.open(&mut app, "front", (200, 100), GREEN);
+    let ipc = session.listen();
+    let placed = placed(&mut session, &ipc);
+    let corner = |along: u32| i32::try_from(along).unwrap();
+    let inside = |place: &omorfos_ipc::Placed, (x, y): (i32, i32)| {
+        let (left, top) = (corner(place.x), corner(place.y));
+        let (right, bottom) = (left + corner(place.width), top + corner(place.height));
+        (left..right).contains(&x) && (top..bottom).contains(&y)
+    };
+    let (front, behind) = (&placed[0], &placed[1]);
+    // A place on the window behind that the one in front does not cover.
+    let (left, top) = (corner(behind.x), corner(behind.y));
+    let (right, bottom) = (
+        left + corner(behind.width) - 10,
+        top + corner(behind.height) - 10,
+    );
+    let corners = [(left + 10, top + 10), (right, bottom)];
+    let uncovered = corners.into_iter().find(|at| !inside(front, *at)).unwrap();
+
+    let tool = picking_windows(&mut session, &ipc);
+    let (x, y) = (corner(front.x), corner(front.y));
+    point(&mut session, (x + 20, y + 20));
+    // Bright, as the window was when the picture was taken, and outlined
+    // just inside; the rest is dimmed.
+    // Where the pointer was before, the window behind was outlined, and
+    // all of the one in front with it was bright.
+    session.eventually(|session| {
+        let picture = session.draw();
+        picture.at(x + 8, y + 8) == GREEN && picture.at(x + 8, y) != GREEN
+    });
+    let picture = session.draw();
+    assert_ne!(picture.at(x + 8, y - 2), RED, "dimmed round it");
+
+    // Taken whole: the part the window in front covered as well.
+    drag(&mut session, uncovered, (uncovered.0 + 1, uncovered.1 + 1));
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths.len(), 1);
+    let (width, height) = (behind.width, behind.height);
+    assert_eq!(saved(&paths[0], (0, 0)), ((width, height), RED));
+    let hidden = (front.x - behind.x + 1, front.y - behind.y + 1);
+    let hidden = (
+        usize::try_from(hidden.0).unwrap(),
+        usize::try_from(hidden.1).unwrap(),
+    );
+    assert_eq!(saved(&paths[0], hidden).1, RED, "under the window in front");
+}
+
+#[test]
+fn a_click_where_there_is_no_window_takes_the_screen() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let ipc = session.listen();
+    let place = placed(&mut session, &ipc).remove(0);
+    let tool = picking_windows(&mut session, &ipc);
+    let below = i32::try_from(place.y + place.height).unwrap() + 20;
+    let at = (i32::try_from(place.x).unwrap(), below.min(HEIGHT - 2));
+    point(&mut session, at);
+    drag(&mut session, at, at);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(saved(&paths[0], (0, 0)).0, (640, 480));
+}
