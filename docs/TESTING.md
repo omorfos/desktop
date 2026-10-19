@@ -22,6 +22,30 @@ client call it.
 Test names are sentences about behaviour:
 `a_submenu_closes_when_the_pointer_moves_to_another_row_of_its_parent`.
 
+## Tiers
+
+Running every test takes about a minute and a half under the coverage
+gate, and the gates run it twice; one module of tests takes a second.
+So the gates come in tiers, each stopping at the first failure, and the
+slowest are run while the maintainer tries a change rather than before.
+`.claude/skills/handover/gates.sh` runs each.
+
+| Tier | When | What | About |
+|---|---|---|---|
+| `area <filter>...` | While writing a change, after each step | The tests of what is being changed: a crate (`-p omorfos-core`) or tests of the integration binary by name (`tiles::`) | 1–2 s, and the build |
+| `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, the nightly build | 2 min |
+| `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it without a graphics card, the doctests, `cargo deny`, `cargo doc` | 2 min |
+
+Nothing is committed until `handover` and `rest` have both passed on
+the tree as it is committed. CI runs them all again on every push, and
+the nightly stress run (see "Flaky tests") runs the suite many times
+over.
+
+The failing test comes first, in `area`, and so does what a change is
+likeliest to break: its own module, then those beside it. A whole run
+finds what the area missed; it is not where a failure should first be
+seen.
+
 ## The integration harness
 
 `crates/omorfos/tests/integration/common.rs` has a `Session` (the

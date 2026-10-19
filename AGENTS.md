@@ -53,7 +53,9 @@ cargo test --workspace --all-features --doc
 cargo deny check
 ```
 
-All five must pass. CI runs the same commands.
+All five must pass. CI runs the same commands. While working,
+`.claude/skills/handover/gates.sh` runs them in tiers, the quickest first,
+as [docs/TESTING.md](docs/TESTING.md) says under "Tiers".
 
 To try a change by hand on real hardware, build with the `nightly` profile
 and install from `target/nightly/`. It is optimised like a release but skips
