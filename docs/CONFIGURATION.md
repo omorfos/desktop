@@ -198,8 +198,10 @@ its room. A window that opens when every part is taken opens on the
 desktop.
 
 A part with nothing in it shows the windows of the desktop the workspace
-was made from, small. Click one to put it there. A window a rule makes
-`private` is shown as a blank, in the colour of the `capture` part.
+was made from, small, each with its title under it, which the theme
+draws as `offer`. Click one to put it there. A window a rule makes
+`private` is shown as a blank, in the colour of the `capture` part, with
+its title under it all the same, since that is how it can be told.
 
 On such a workspace, rest the pointer against the top of the screen for
 six tenths of a second, or hold it there and push on against the top a
@@ -366,6 +368,10 @@ window:focus { border-color: var(--accent); }
 
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
+
+/* A window's title under its picture, where it is offered in a part with
+ * nothing in it. */
+offer { color: var(--text); }
 
 titlebar {
   height: 28px;
@@ -558,7 +564,7 @@ workspace, task {
 workspace:active, task:active { border-bottom: none; }
 ```
 
-**Parts** are `desktop`, `window`, `tile-line`, `titlebar`, `tab`, `button-close`,
+**Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
 `menu-separator`, `notice`, `notice-heading`, `capture`, `tooltip`, `panel`, `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,

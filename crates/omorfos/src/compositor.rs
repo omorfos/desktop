@@ -284,9 +284,9 @@ pub struct Compositor {
     pub(crate) notice: Option<Notice>,
     /// The problems the user has clicked away, hidden until they change.
     pub(crate) dismissed: Vec<String>,
-    text: Text,
+    pub(crate) text: Text,
 
-    store: Store,
+    pub(crate) store: Store,
     watcher: Option<Watcher>,
     debouncer: Debouncer,
     pub(crate) bindings: Bindings,
@@ -2171,6 +2171,7 @@ impl Compositor {
                     elements.extend(lines.map(Element::Solid));
                     // Under them, the windows offered in a part with nothing
                     // in it.
+                    elements.extend(self.offer_titles(renderer, view));
                     elements.extend(self.offer_elements(renderer, view));
                 }
                 let frames = (Level::Frames(fullscreen), shown.mark);
@@ -3076,6 +3077,11 @@ impl Painted {
         Self::from_pixels(canvas.bytes(), pixels, size)
     }
 
+    /// How wide it is on screen, in units of layout.
+    pub(crate) fn width(&self) -> u32 {
+        self.size.w.unsigned_abs()
+    }
+
     /// Readies a picture from a cursor theme to be drawn pixel for pixel at
     /// `scale`.
     fn from_image(image: &cursor::Image, scale: Scale) -> Self {
@@ -3104,7 +3110,7 @@ impl Painted {
     /// see-through as `opacity` says, where 1 is not at all. If it cannot
     /// be uploaded to the renderer it is left out, which is better than
     /// failing the whole frame.
-    fn element<R>(
+    pub(crate) fn element<R>(
         &self,
         renderer: &mut R,
         at: Point<f64, Logical>,

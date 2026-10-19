@@ -4,9 +4,10 @@
 //! Where the line is, and how far it may go, is the desktop model's
 //! business. See `docs/adr/0039-windows-sharing-a-workspace.md`.
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use omorfos_config::{Color, Part, State, States};
+use omorfos_config::{Color, Config, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Arrangement, Offer, WindowId};
 use smithay::backend::renderer::element::AsRenderElements as _;
@@ -20,9 +21,11 @@ use smithay::utils::{Logical, Point, Rectangle};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::SurfaceCachedState;
 
-use crate::compositor::{Compositor, Element, Mapped, View, color, logical_size};
+use crate::Scale;
+use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical_size};
 use crate::input::Drag;
 use crate::outputs::Head;
+use crate::paint;
 use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
@@ -48,6 +51,25 @@ pub(crate) struct Lines {
     /// The windows offered in parts with nothing in them, on every output,
     /// as they were when the lines were last laid.
     offers: Vec<Offer>,
+    /// Their titles, painted, each kept until it would be painted
+    /// differently.
+    titles: Vec<Written>,
+}
+
+/// The title of a window offered in a part with nothing in it, painted,
+/// with what it was painted from.
+#[derive(Debug)]
+struct Written {
+    window: WindowId,
+    title: String,
+    /// How wide it may be, and the scale it was painted at.
+    room: u32,
+    scale: Scale,
+    /// The configuration it was painted by, whose theme it follows.
+    config: Arc<Config>,
+    /// Where it is drawn, in the middle of the line it is written on.
+    at: DomainPoint,
+    pixels: Painted,
 }
 
 impl Compositor {
@@ -57,7 +79,9 @@ impl Compositor {
         let ink = self.config().theme.style(Part::TileLine, States::NONE);
         let ink = ink.color;
         let outputs = 0..self.heads.len();
-        let lines = outputs.flat_map(|output| self.desktop.lines(output));
+        let lines: Vec<_> = outputs
+            .flat_map(|output| self.desktop.lines(output))
+            .collect();
         // With them, the part a frame being dragged would be put in if it
         // were let go: a wash of the colour of a focused window's border.
         let focused = States::NONE.with(State::Focused);
@@ -79,6 +103,7 @@ impl Compositor {
         self.hover.lines.offers = outputs
             .flat_map(|output| self.desktop.offers(output))
             .collect();
+        self.paint_titles();
         let point = self.pointer_position();
         let blank = self.config().theme.style(Part::Capture, States::NONE);
         let offers = self.hover.lines.offers.iter();
@@ -89,6 +114,7 @@ impl Compositor {
             blank.into_iter().chain(under.then_some((offer.at, wash)))
         });
         let lines: Vec<(Rect, Color)> = lines
+            .iter()
             .map(|line| (line.at, ink))
             .chain(offered)
             .chain(offers)
@@ -229,6 +255,77 @@ impl Compositor {
     /// in.
     pub(crate) fn choose_offered(&mut self, window: WindowId) {
         self.desktop.choose(window, self.pointer_position());
+    }
+
+    /// Paints the title of each window offered in a part with nothing in it,
+    /// keeping those that would be painted as they were.
+    fn paint_titles(&mut self) {
+        let config = Arc::clone(self.store.current());
+        let wanted: Vec<_> = self
+            .hover
+            .lines
+            .offers
+            .iter()
+            .map(|offer| {
+                let window = self.desktop.window(offer.window);
+                let title = window.map_or_else(String::new, |window| window.title.clone());
+                let scale = self
+                    .head_for(offer.title)
+                    .map_or(Scale::ONE, |head| head.scale);
+                (offer.window, title, offer.title, scale)
+            })
+            .collect();
+        let mut had = std::mem::take(&mut self.hover.lines.titles);
+        let titles = wanted.into_iter().map(|(window, title, line, scale)| {
+            let room = line.size.width;
+            let same = |kept: &Written| {
+                kept.window == window
+                    && kept.title == title
+                    && kept.room == room
+                    && kept.scale == scale
+                    && Arc::ptr_eq(&kept.config, &config)
+            };
+            let kept = had.iter().position(same).map(|at| had.swap_remove(at));
+            let mut painted = kept.unwrap_or_else(|| {
+                let theme = &config.theme;
+                let canvas = paint::offer_title(
+                    &mut self.text,
+                    theme,
+                    &title,
+                    (room, line.size.height),
+                    scale,
+                );
+                Written {
+                    window,
+                    title,
+                    room,
+                    scale,
+                    config: Arc::clone(&config),
+                    at: line.origin,
+                    pixels: Painted::new(&canvas),
+                }
+            });
+            let width = painted.pixels.width();
+            let left = (room.saturating_sub(width) / 2).cast_signed();
+            painted.at = line.origin.offset(left, 0);
+            painted
+        });
+        self.hover.lines.titles = titles.collect();
+    }
+
+    /// The titles of the windows offered in parts with nothing in them,
+    /// under their pictures.
+    pub(crate) fn offer_titles<R>(&self, renderer: &mut R, view: View) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let titles = self.hover.lines.titles.iter();
+        let titles = titles.filter_map(|title| {
+            let at = Point::<i32, Logical>::from((title.at.x, title.at.y));
+            title.pixels.element(renderer, at.to_f64(), view, 1.0)
+        });
+        titles.collect()
     }
 
     /// The windows offered in parts with nothing in them, drawn small where
