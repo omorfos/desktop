@@ -15,6 +15,10 @@ publish.workspace = true
 # Already in the tree through the portal. Binds libpipewire, whose graph is
 # where what records is to be seen.
 pipewire = { version = "0.10.1", features = ["v0_3_65"] }
+# Already in the tree through the configuration's watcher. Tells when a
+# camera is opened or let go, so that who has one open is looked at only
+# then.
+inotify = { version = "0.11.5", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"

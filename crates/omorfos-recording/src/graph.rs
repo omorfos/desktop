@@ -1,7 +1,8 @@
-//! What is in PipeWire's graph that says something records, and what it
-//! comes to: a line for each program recording, and what from.
+//! What is in PipeWire's graph that says something records, and the
+//! processes that have a camera open themselves; and what it comes to: a
+//! line for each program recording, and what from.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A node of the graph: what kind of thing it is, the client that made it,
 /// and whether it is running, which a stream that records is while it
@@ -17,6 +18,9 @@ pub struct Node {
     /// Whether it says it is a screen, which a source of pictures shared
     /// through the portal does.
     pub screen: bool,
+    /// Whether it is a device's, such as a camera's, which the process
+    /// that made it has open for what records through PipeWire.
+    pub device: bool,
 }
 
 /// What is known of the graph.
@@ -28,6 +32,8 @@ pub struct Graph {
     /// The number of each client's process, as PipeWire found it from the
     /// client's connection, which the client cannot choose.
     clients: BTreeMap<u32, u32>,
+    /// The processes that have a camera open themselves.
+    holding: BTreeSet<u32>,
 }
 
 impl Graph {
@@ -59,6 +65,16 @@ impl Graph {
         }
     }
 
+    /// Notes which processes have a camera open themselves, `pids`: but
+    /// for PipeWire's own, `daemon`, which may have one open for what
+    /// records through it.
+    pub fn holding(&mut self, pids: BTreeSet<u32>, daemon: Option<u32>) {
+        self.holding = pids
+            .into_iter()
+            .filter(|pid| Some(*pid) != daemon)
+            .collect();
+    }
+
     /// Forgets whatever is known by `id`, which has gone.
     pub fn gone(&mut self, id: u32) {
         self.nodes.remove(&id);
@@ -75,7 +91,9 @@ impl Graph {
     /// What records, a line each, in order and each once: `microphone`,
     /// `sound` or `camera` and the number of the process; or `screen`, the
     /// number of the process shown a screen and that of the one sharing
-    /// it. A stream records while it runs, from what is linked into it.
+    /// it. A stream records while it runs, from what is linked into it; and
+    /// a process with a camera open records from it, unless it has it open
+    /// for PipeWire.
     #[must_use]
     pub fn said(&self) -> Vec<String> {
         let mut said = Vec::new();
@@ -100,6 +118,10 @@ impl Graph {
                 said.push(line);
             }
         }
+        let devices = self.nodes.values().filter(|node| node.device);
+        let giving: BTreeSet<u32> = devices.filter_map(|node| self.pid(node)).collect();
+        let holding = self.holding.difference(&giving);
+        said.extend(holding.map(|pid| format!("camera {pid}")));
         said.sort();
         said.dedup();
         said
@@ -115,7 +137,7 @@ mod tests {
             class: class.to_owned(),
             client: Some(client),
             running,
-            screen: false,
+            ..Node::default()
         }
     }
 
@@ -195,5 +217,25 @@ mod tests {
         );
         graph.link(27, Some((1, 17)));
         assert_eq!(graph.said().len(), 4, "the four there were, and no more");
+    }
+
+    #[test]
+    fn a_process_with_a_camera_open_records_from_it_unless_it_is_for_pipewire() {
+        let mut graph = Graph::default();
+        graph.client(90, Some(9));
+        // The camera of the process numbered 9, which gives it to PipeWire.
+        let camera = node("Video/Source", 90, false);
+        graph.node(
+            3,
+            Node {
+                device: true,
+                ..camera
+            },
+        );
+        let pids = [5, 6, 9].into_iter().collect();
+        graph.holding(pids, Some(6));
+        assert_eq!(graph.said(), ["camera 5"], "nor PipeWire's own");
+        graph.holding(BTreeSet::new(), None);
+        assert_eq!(graph.said(), [""; 0]);
     }
 }

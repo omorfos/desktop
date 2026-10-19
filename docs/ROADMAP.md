@@ -235,8 +235,12 @@ calls for them.
       shares it: found from where its stream goes in PipeWire (ADR 43).
 - [x] The mark shown while a microphone or a camera is being recorded
       from, through PipeWire, with what records named the same way.
-- [ ] A camera a program opens itself, not through PipeWire, seen as well:
+- [x] A camera a program opens itself, not through PipeWire, seen as well:
       by which processes have the camera device open.
+- [ ] Known gaps in what records: a program whose open files cannot be
+      looked into, as in some sandboxes, has a camera open unseen; and
+      one that keeps a camera open without taking pictures is said to
+      record.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
       given as it is stored, not as it is seen; and a pointer an
       application draws itself is given by itself as the ordinary one.

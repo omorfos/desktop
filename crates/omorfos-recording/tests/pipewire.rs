@@ -1,13 +1,15 @@
 //! The watcher against a PipeWire of its own, with streams that stand for
 //! a microphone, the sound that plays, a camera and a shared screen, each
-//! recorded from by a stream of this process.
+//! recorded from by a stream of this process; and with files that stand
+//! for cameras, opened by this process itself.
 #![expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
 )]
 
+use std::fs::File;
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -94,13 +96,15 @@ impl Write for Reports {
     }
 }
 
-/// Watches the PipeWire at `socket` on a thread of its own, until told to
-/// stop; and says what it saw end it.
+/// Watches the PipeWire at `socket`, and the cameras in `cameras`, on a
+/// thread of its own, until told to stop; and says what it saw end it.
 fn watching(
     socket: PathBuf,
+    cameras: &Path,
     stop: Arc<AtomicBool>,
 ) -> (Receiver<Vec<String>>, std::thread::JoinHandle<String>) {
     let (to, from) = channel();
+    let cameras = cameras.to_owned();
     let watcher = std::thread::spawn(move || {
         let mut reports = Reports {
             line: Vec::new(),
@@ -109,7 +113,7 @@ fn watching(
         };
         let done = || stop.load(Ordering::Relaxed);
         let remote = socket.to_str().unwrap().to_owned();
-        let watched = omorfos_recording::watch(Some(&remote), &mut reports, &done);
+        let watched = omorfos_recording::watch(Some(&remote), &cameras, &mut reports, &done);
         watched.map_or_else(|failure| failure.to_string(), |()| "stopped".to_owned())
     });
     (from, watcher)
@@ -270,7 +274,8 @@ fn what_records_is_said_and_said_again_when_it_stops() {
     let mut pipewire = Pipewire::start();
     let socket = pipewire.socket();
     let finished = Arc::new(AtomicBool::new(false));
-    let (reports, watcher) = watching(socket.clone(), Arc::clone(&finished));
+    let cameras = tempfile::tempdir().unwrap();
+    let (reports, watcher) = watching(socket.clone(), cameras.path(), Arc::clone(&finished));
     assert_eq!(
         report(&reports, |_| true),
         [""; 0],
@@ -318,17 +323,56 @@ impl Write for Broken {
 fn it_watches_until_told_to_stop_and_says_where_there_is_no_pipewire() {
     let pipewire = Pipewire::start();
     let stop = Arc::new(AtomicBool::new(false));
-    let (reports, watcher) = watching(pipewire.socket(), Arc::clone(&stop));
+    // Nor are cameras where there are none to watch.
+    let nowhere = pipewire.socket().with_file_name("no-cameras");
+    let (reports, watcher) = watching(pipewire.socket(), &nowhere, Arc::clone(&stop));
     report(&reports, |_| true);
     stop.store(true, Ordering::Relaxed);
     assert_eq!(watcher.join().unwrap(), "stopped");
 
     // Nor once what it says cannot be written.
     let remote = pipewire.socket().to_str().unwrap().to_owned();
-    let unheard = omorfos_recording::watch(Some(&remote), &mut Broken, &|| false);
+    let unheard = omorfos_recording::watch(Some(&remote), &nowhere, &mut Broken, &|| false);
     assert!(unheard.is_err());
 
-    let nowhere = pipewire.socket().with_file_name("nowhere-0");
-    let (_, watcher) = watching(nowhere, stop);
+    let (_, watcher) = watching(
+        pipewire.socket().with_file_name("nowhere-0"),
+        &nowhere,
+        stop,
+    );
     assert_ne!(watcher.join().unwrap(), "stopped");
+}
+
+#[test]
+fn a_camera_opened_directly_is_said_of_the_process_that_has_it_open() {
+    let pipewire = Pipewire::start();
+    let devices = tempfile::tempdir().unwrap();
+    let folder = devices.path().canonicalize().unwrap();
+    std::fs::write(folder.join("video0"), "").unwrap();
+    std::fs::write(folder.join("media0"), "").unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let (reports, watcher) = watching(pipewire.socket(), &folder, Arc::clone(&stop));
+    let me = format!("camera {}", std::process::id());
+    let mine = |report: &[String]| report.contains(&me);
+    assert!(
+        !mine(&report(&reports, |_| true)),
+        "nothing records at first"
+    );
+
+    // What is in the folder but is not a camera is not one.
+    let other = File::open(folder.join("media0")).unwrap();
+    let camera = File::open(folder.join("video0")).unwrap();
+    assert_eq!(report(&reports, mine), [me.as_str()]);
+    drop(camera);
+    report(&reports, |report| !mine(report));
+
+    // Nor is a camera that comes later missed.
+    std::fs::write(folder.join("video1"), "").unwrap();
+    let later = File::open(folder.join("video1")).unwrap();
+    report(&reports, mine);
+    drop((later, other));
+    report(&reports, |report| !mine(report));
+
+    stop.store(true, Ordering::Relaxed);
+    assert_eq!(watcher.join().unwrap(), "stopped");
 }

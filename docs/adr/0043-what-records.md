@@ -39,6 +39,16 @@ not to be turned off.
   it speaks for, and that is believed of a client only if it says it is
   that layer and its process runs the same file as PipeWire's own, which
   no other program can make true.
+- **A camera a program opens itself**, as Firefox does, is never in
+  PipeWire's graph. It is seen by the camera (`/dev/video*`) being among
+  the process's open files, in `/proc/<pid>/fd`, and said as a camera of
+  that process. The folder of devices is watched for a camera being
+  opened, let go or plugged in (inotify), and the processes are looked at
+  only then, a tenth of a second later, since the kernel tells of a file
+  being opened just before it is among the process's files. PipeWire's
+  own process and the one that made a device's node in PipeWire, which is
+  WirePlumber's, are left out: they have a camera open for what records
+  through PipeWire, which is said already by its stream.
 - **What it says** is a line for each, the kind and the number of the
   process, and a full stop once it has said everything; each time it
   changes. The compositor believes no more than 64 lines, none longer
@@ -64,9 +74,12 @@ not to be turned off.
 
 - While the watcher is not running, the mark shows pictures of the screen
   only. The compositor starts it again a few times if it stops.
-- A program that opens a camera itself, and not through PipeWire, is not
-  seen. Finding that means looking at which processes have the camera
-  open, and is left for later.
+- A program that opens a camera itself is seen only if its open files
+  can be: those of the user's own processes, but not of one that has made
+  itself impossible to look into, as some sandboxes do, nor of another
+  user's. And a camera that is open is said to record, whether or not
+  pictures are being taken from it at that moment, which some programs
+  keep it open without doing.
 - Taking in what a program shares is believed of PipeWire as it is: a
   program that records through another, or feeds a stream of its own
   into one, is named as PipeWire sees it.

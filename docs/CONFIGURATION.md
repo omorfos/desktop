@@ -973,8 +973,8 @@ camera while something records from one, on every screen, beside the dot
 for the screen, as `omorfos-recording` finds them in PipeWire. Its
 tooltip names each program and what it records, and a program a screen
 is shared with through the portal is named as that, with the portal. A
-program that opens a camera itself, and not through PipeWire, as some do,
-is not seen.
+program that opens a camera itself, and not through PipeWire, as Firefox
+does, is seen by having it open, for as long as it does.
 
 A window that a rule in `rules.yaml` calls `private` is blank in every
 picture, of the screen or of itself, in the background colour of the

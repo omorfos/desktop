@@ -10,18 +10,22 @@
 //! the mark that says something is captured. See
 //! `docs/adr/0043-what-records.md`.
 //!
-//! A program that opens a camera itself, and not through PipeWire, is not
-//! seen.
+//! A program that opens a camera itself, and not through PipeWire, is seen
+//! by having it among its open files, and said in the same way: but only
+//! one whose open files can be seen, which are those of the user's own.
 
+mod cameras;
 mod graph;
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::Write;
+use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use cameras::Cameras;
 pub use graph::{Graph, Node};
 use pipewire as pw;
 use pw::registry::GlobalObject;
@@ -54,9 +58,10 @@ type Bound = BTreeMap<u32, Followed>;
 const PULSE: &str = "pipewire-pulse";
 
 /// Watches the PipeWire at `remote`, or the one a program ordinarily
-/// finds, and says on `out` what records whenever that changes: a line
-/// each, as [`Graph::said`] has them, and then a full stop. It goes on
-/// until `done` says to stop.
+/// finds, and the cameras in the folder of devices `cameras`, and says on
+/// `out` what records whenever that changes: a line each, as
+/// [`Graph::said`] has them, and then a full stop. It goes on until `done`
+/// says to stop. Cameras that cannot be watched are not.
 ///
 /// # Errors
 ///
@@ -64,6 +69,7 @@ const PULSE: &str = "pipewire-pulse";
 /// what it says could not be written.
 pub fn watch(
     remote: Option<&str>,
+    cameras: &Path,
     out: &mut dyn Write,
     done: &dyn Fn() -> bool,
 ) -> Result<(), Failure> {
@@ -107,11 +113,19 @@ pub fn watch(
             unbinding.borrow_mut().remove(&id);
         })
         .register();
+    let mut cameras = Cameras::watch(cameras).ok();
     let mut before = None;
     while !done() {
         main.loop_().iterate(pw::loop_::Timeout::Finite(TURN));
         if lost.get() {
             return Err("PipeWire has gone".into());
+        }
+        let now = Instant::now();
+        let holding = cameras
+            .as_mut()
+            .and_then(|cameras| cameras.due(now).then(|| cameras.holding()));
+        if let Some(pids) = holding {
+            graph.borrow_mut().holding(pids, daemon.get());
         }
         let said = graph.borrow().said();
         if before.as_ref() != Some(&said) {
@@ -157,6 +171,7 @@ fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObj
                 // A screen is offered as a source of pictures, as a camera
                 // is, and says it is a screen.
                 screen: said(*pw::keys::MEDIA_ROLE) == Some("Screen"),
+                device: said(*pw::keys::DEVICE_ID).is_some(),
             };
             graph.borrow_mut().node(id, node);
             let followed = records.then(|| registry.bind::<pw::node::Node, _>(global).ok());
