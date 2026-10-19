@@ -10,6 +10,14 @@ updates:
     groups:
       cargo-minor-and-patch:
         update-types: [minor, patch]
+    # Smithay brings these in as well, and a version of our own other than
+    # Smithay's would be built twice. They are updated with Smithay: its
+    # update fails `cargo deny` on the copy of ours it leaves behind.
+    ignore:
+      - dependency-name: x11rb
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: xkbcommon
+        update-types: [version-update:semver-major, version-update:semver-minor]
 
   - package-ecosystem: github-actions
     directory: /

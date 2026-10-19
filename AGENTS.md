@@ -80,7 +80,9 @@ Packages are built with `--release`.
 - **Never weaken a lint** to make code pass. A local `#[expect(..., reason =
   "...")]` with a real reason is acceptable; a blanket `allow` is not.
 - **New dependencies** must pass `cargo deny check` and be justified in the
-  commit body. Prefer the standard library.
+  commit body. Prefer the standard library. A second version of a crate
+  already in the tree fails it: update both together, or list it under
+  `skip` in `deny.toml` with what holds it back.
 - **Error paths count.** The region gate treats an untested `?`, an untaken
   `let ... else`, and the implicit else of an `if let` as uncovered. Make
   the failure reachable from a test (a real error, not a mock, where
