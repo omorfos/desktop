@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use omorfos_config::{Color, Config, Part, State, States};
+use omorfos_config::{Color, Config, Edges, Line, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Arrangement, Offer, WindowId};
 use smithay::backend::renderer::element::AsRenderElements as _;
@@ -56,15 +56,51 @@ pub(crate) struct Lines {
     titles: Vec<Written>,
 }
 
+/// The lines of a border round `area`, each as wide as it says, inside it.
+fn edges(area: Rect, border: Edges<Line>) -> impl Iterator<Item = (Rect, Color)> {
+    let (left, top) = (area.origin.x, area.origin.y);
+    let (width, height) = (area.size.width, area.size.height);
+    let right = left + width.saturating_sub(border.right.width).cast_signed();
+    let bottom = top + height.saturating_sub(border.bottom.width).cast_signed();
+    let lines = [
+        (
+            DomainPoint::new(left, top),
+            DomainSize::new(width, border.top.width),
+            border.top,
+        ),
+        (
+            DomainPoint::new(left, bottom),
+            DomainSize::new(width, border.bottom.width),
+            border.bottom,
+        ),
+        (
+            DomainPoint::new(left, top),
+            DomainSize::new(border.left.width, height),
+            border.left,
+        ),
+        (
+            DomainPoint::new(right, top),
+            DomainSize::new(border.right.width, height),
+            border.right,
+        ),
+    ];
+    let shown = lines
+        .into_iter()
+        .filter(|(_, size, _)| size.width > 0 && size.height > 0);
+    shown.map(|(at, size, line)| (Rect::new(at, size), line.color))
+}
+
 /// The title of a window offered in a part with nothing in it, painted,
 /// with what it was painted from.
 #[derive(Debug)]
 struct Written {
     window: WindowId,
     title: String,
-    /// How wide it may be, and the scale it was painted at.
+    /// How wide it may be, the scale it was painted at, and whether the
+    /// pointer was over its box.
     room: u32,
     scale: Scale,
+    hovered: bool,
     /// The configuration it was painted by, whose theme it follows.
     config: Arc<Config>,
     /// Where it is drawn, in the middle of the line it is written on.
@@ -106,12 +142,25 @@ impl Compositor {
         self.paint_titles();
         let point = self.pointer_position();
         let blank = self.config().theme.style(Part::Capture, States::NONE);
+        // Each in its box, washed over whole under the pointer, over the
+        // blank of a private one; and round each, the `offer` part's border.
+        let theme = &self.config().theme;
         let offers = self.hover.lines.offers.iter();
         let offers = offers.flat_map(|offer| {
             let private = self.desktop.private(offer.window);
-            let under = offer.at.contains(point);
+            let under = offer.whole.contains(point);
             let blank = private.then_some((offer.at, blank.background));
-            blank.into_iter().chain(under.then_some((offer.at, wash)))
+            let states = if under {
+                States::NONE.with(State::Hovered)
+            } else {
+                States::NONE
+            };
+            let border = theme.style(Part::Offer, states).border;
+            let washed = under.then_some((offer.whole, wash));
+            washed
+                .into_iter()
+                .chain(blank)
+                .chain(edges(offer.whole, border))
         });
         let lines: Vec<(Rect, Color)> = lines
             .iter()
@@ -247,7 +296,7 @@ impl Compositor {
     pub(crate) fn over_offer(&self) -> Option<WindowId> {
         let point = self.pointer_position();
         let offers = self.hover.lines.offers.iter();
-        let mut under = offers.filter(|offer| offer.at.contains(point));
+        let mut under = offers.filter(|offer| offer.whole.contains(point));
         under.next().map(|offer| offer.window)
     }
 
@@ -261,6 +310,7 @@ impl Compositor {
     /// keeping those that would be painted as they were.
     fn paint_titles(&mut self) {
         let config = Arc::clone(self.store.current());
+        let point = self.pointer_position();
         let wanted: Vec<_> = self
             .hover
             .lines
@@ -272,44 +322,53 @@ impl Compositor {
                 let scale = self
                     .head_for(offer.title)
                     .map_or(Scale::ONE, |head| head.scale);
-                (offer.window, title, offer.title, scale)
+                let hovered = offer.whole.contains(point);
+                (offer.window, title, offer.title, (scale, hovered))
             })
             .collect();
         let mut had = std::mem::take(&mut self.hover.lines.titles);
-        let titles = wanted.into_iter().map(|(window, title, line, scale)| {
-            let room = line.size.width;
-            let same = |kept: &Written| {
-                kept.window == window
-                    && kept.title == title
-                    && kept.room == room
-                    && kept.scale == scale
-                    && Arc::ptr_eq(&kept.config, &config)
-            };
-            let kept = had.iter().position(same).map(|at| had.swap_remove(at));
-            let mut painted = kept.unwrap_or_else(|| {
-                let theme = &config.theme;
-                let canvas = paint::offer_title(
-                    &mut self.text,
-                    theme,
-                    &title,
-                    (room, line.size.height),
-                    scale,
-                );
-                Written {
-                    window,
-                    title,
-                    room,
-                    scale,
-                    config: Arc::clone(&config),
-                    at: line.origin,
-                    pixels: Painted::new(&canvas),
-                }
+        let titles = wanted
+            .into_iter()
+            .map(|(window, title, line, (scale, hovered))| {
+                let room = line.size.width;
+                let same = |kept: &Written| {
+                    kept.window == window
+                        && kept.title == title
+                        && kept.room == room
+                        && kept.scale == scale
+                        && kept.hovered == hovered
+                        && Arc::ptr_eq(&kept.config, &config)
+                };
+                let kept = had.iter().position(same).map(|at| had.swap_remove(at));
+                let mut painted = kept.unwrap_or_else(|| {
+                    let states = if hovered {
+                        States::NONE.with(State::Hovered)
+                    } else {
+                        States::NONE
+                    };
+                    let canvas = paint::offer_title(
+                        &mut self.text,
+                        (&config.theme, states),
+                        &title,
+                        (room, line.size.height),
+                        scale,
+                    );
+                    Written {
+                        window,
+                        title,
+                        room,
+                        scale,
+                        hovered,
+                        config: Arc::clone(&config),
+                        at: line.origin,
+                        pixels: Painted::new(&canvas),
+                    }
+                });
+                let width = painted.pixels.width();
+                let left = (room.saturating_sub(width) / 2).cast_signed();
+                painted.at = line.origin.offset(left, 0);
+                painted
             });
-            let width = painted.pixels.width();
-            let left = (room.saturating_sub(width) / 2).cast_signed();
-            painted.at = line.origin.offset(left, 0);
-            painted
-        });
         self.hover.lines.titles = titles.collect();
     }
 

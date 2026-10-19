@@ -767,9 +767,12 @@ mod tests {
     }
 
     #[test]
-    fn a_window_offered_has_its_title_in_the_text_colour() {
+    fn a_window_offered_is_boxed_with_its_title_brighter_under_the_pointer() {
         let theme = Theme::default();
-        assert_eq!(theme.style(Part::Offer, States::NONE).color, TEXT);
+        let offer = theme.style(Part::Offer, States::NONE);
+        let hovered = theme.style(Part::Offer, States::NONE.with(State::Hovered));
+        assert_eq!((offer.color, hovered.color), (TEXT_DIM, TEXT));
+        assert_eq!(offer.border, Edges::all(line(BORDER, 1)));
     }
 
     #[test]
