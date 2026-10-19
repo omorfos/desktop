@@ -241,9 +241,12 @@ calls for them.
       looked into, as in some sandboxes, has a camera open unseen; and
       one that keeps a camera open without taking pictures is said to
       record.
+- [x] A pointer an application draws itself, as programs written for X11
+      do, given to programs following the pointer as it is drawn, not as
+      the ordinary one.
 - [ ] Known gaps in pictures of the screen: a screen that is turned is
-      given as it is stored, not as it is seen; and a pointer an
-      application draws itself is given by itself as the ordinary one.
+      given as it is stored, not as it is seen. There is no turning a
+      screen yet; it comes with arranging the screens, below.
 - [x] The portals answered by a program of our own,
       `xdg-desktop-portal-omorfos`, started with the session: so far
       the settings that tell applications light from dark and the

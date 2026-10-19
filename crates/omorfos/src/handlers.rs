@@ -108,6 +108,8 @@ impl CompositorHandler for Compositor {
 
         self.map_if_ready(surface);
         self.map_x11_if_ready(surface);
+        // The pointer an application draws may be what has changed.
+        self.pointer_changed(&root);
 
         // A panel, dock or wallpaper: lay the layers out again and tell it
         // the size it has been given.

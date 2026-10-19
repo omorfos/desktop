@@ -193,7 +193,7 @@ fn boxed(picture: Option<(&[u8], (u32, u32))>) -> Vec<u8> {
 /// every picture of a screen being shared.
 /// What is see-through is kept so, for a picture taken `see_through`;
 /// otherwise every pixel is made solid.
-fn turn(from: &[u8], to: &mut Vec<u8>, see_through: bool) {
+pub(crate) fn turn(from: &[u8], to: &mut Vec<u8>, see_through: bool) {
     let solid = if see_through { 0 } else { 0xff00_0000 };
     let (from, _) = from.as_chunks::<4>();
     let start = to.len();
@@ -440,6 +440,13 @@ impl Capture {
     /// When the mark next goes from a screen.
     pub(crate) fn deadline(&self) -> Option<Instant> {
         self.fading.iter().map(|(_, until)| *until).min()
+    }
+
+    /// Whether a program following the pointer takes pictures of it.
+    pub(crate) fn pointer_wanted(&self) -> bool {
+        self.following
+            .iter()
+            .any(|following| following.session.is_some())
     }
 
     /// The drawings of a screen from which pictures have been asked for.
@@ -797,7 +804,7 @@ impl Compositor {
     /// has gone is told there will be no more pictures; the rest are told
     /// where the pointer is, and given a picture of it that is new, unless
     /// the session is locked.
-    fn settle_following(&mut self) {
+    pub(crate) fn settle_following(&mut self) {
         let following = self.capture.following.iter();
         let there: Vec<_> = following
             .map(|following| self.head(&following.output).is_some())
@@ -826,7 +833,7 @@ impl Compositor {
         // A program following the pointer is told where it is, and given
         // a picture of it that is new.
         let clock = self.clock();
-        let (picture, capture) = self.pointer_picture();
+        let (picture, settled, capture) = self.pointer_picture();
         let ours = picture.map(|picture| (&picture.bytes[..], picture.pixels));
         for (following, at) in capture.following.iter_mut().zip(pointed) {
             following.tell(at, picture.map(|picture| picture.tip));
@@ -836,7 +843,8 @@ impl Compositor {
             let mut following = capture.following.iter_mut();
             let of = following.find(|following| following.session.as_ref() == Some(&shot.session));
             let new = of.filter(|following| following.given != Some(serial));
-            let Some(following) = new.filter(|_| shot.stage == Stage::Asked && !locked) else {
+            let asked = shot.stage == Stage::Asked && !locked && settled;
+            let Some(following) = new.filter(|_| asked) else {
                 continue;
             };
             shot.stage = Stage::Over;
