@@ -382,6 +382,46 @@ fn without_leave_to_take_pictures_the_application_is_told_it_failed() {
 }
 
 #[test]
+fn a_colour_is_picked_from_whichever_screen_the_pointer_is_on() {
+    let daemon = Daemon::start();
+    let theme = "desktop { background: #00ff00; }";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.add_output((320, 240));
+    let mut app = session.connect();
+    session.open(&mut app, "app", (300, 200), RED);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    // The second screen's picture is taken once it has been drawn.
+    let drawn = |session: &mut Session| drop(session.draw_on(1));
+
+    // From the second, after the pointer was over the first.
+    let asking = ask_by(&daemon, "second", "PickColor");
+    // The loupe is beside the pointer, below and to the right, and its
+    // ring at its edge: then the picture is up.
+    session.eventually(|session| {
+        drawn(session);
+        let at = Input::Motion { x: 100.0, y: 60.0 };
+        session.compositor_mut().input(at, 0);
+        session.step();
+        session.draw().at(100 + 24 + 1, 60 + 24 + 60) != RED
+    });
+    let act = |session: &mut Session| {
+        drawn(session);
+        button_at(session, (WIDTH + 100, 100), LEFT);
+    };
+    let (response, results) = acted_until_answered(&mut session, asking, act);
+    assert_eq!((response, picked(&results)), (0, GREEN));
+
+    // And from the first, where the window is.
+    let asking = ask_by(&daemon, "first", "PickColor");
+    let act = |session: &mut Session| {
+        drawn(session);
+        button_at(session, (100, 60), LEFT);
+    };
+    let (response, results) = acted_until_answered(&mut session, asking, act);
+    assert_eq!((response, picked(&results)), (0, RED));
+}
+
+#[test]
 fn an_application_is_given_the_colour_the_user_picks_from_the_screen() {
     // Picked from the desktop, which a click or a key before the picture
     // is up does nothing to: until it is, there is nothing to tell it by.

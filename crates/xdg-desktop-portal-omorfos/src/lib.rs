@@ -156,16 +156,17 @@ struct Picking {
 /// How often what is being picked is looked at, while it is.
 const PICKING: Duration = Duration::from_millis(50);
 
-/// A picture of the first screen, to pick a colour from. Nothing, if it
-/// could not be taken.
-fn still(desk: &Desk) -> Option<Still> {
+/// A picture of each screen, to pick a colour from. None, if they could
+/// not be taken.
+fn stills(desk: &Desk) -> Vec<Still> {
     let shots = omorfos_screenshot::shoot(desk.connection(), None).ok();
-    let first = shots.and_then(|(shots, _)| shots.into_iter().next());
-    first.map(|shot| Still {
+    let shots = shots.into_iter().flat_map(|(shots, _)| shots);
+    let stills = shots.map(|shot| Still {
         screen: shot.screen,
         size: (shot.width, shot.height),
         pixels: shot.pixels,
-    })
+    });
+    stills.collect()
 }
 
 /// Says in the session's log what became of something asked, so that
@@ -485,8 +486,8 @@ impl Backend<'_> {
                 ));
                 // The picture is taken before anything is put up, so that
                 // nothing of the portal's is in it.
-                let still = still(&self.desk);
-                if still.is_some_and(|still| self.desk.pick(still)) {
+                let stills = stills(&self.desk);
+                if !stills.is_empty() && self.desk.pick(stills) {
                     self.pending = Some(Pending::Pick(call, request));
                 } else {
                     note("no picture of the screen could be taken, or shown to pick from");

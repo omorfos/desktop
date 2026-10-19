@@ -278,8 +278,7 @@ calls for them.
 - [x] The portal picking the same way, after the user has said yes.
 - [x] Windows in the picker: the compositor saying where each is, the one
       under the pointer outlined, and a click taking it whole.
-- [ ] Known gaps in the Screenshot portal: a colour is picked from the
-      first screen only.
+- [x] Colours picked from any screen, each shown still over its own.
 - [x] Sharing the screen through the portal, as a PipeWire stream, with
       the user asked each time, and the mark on the screen while it is
       shared. The compositor puts each picture straight into memory the

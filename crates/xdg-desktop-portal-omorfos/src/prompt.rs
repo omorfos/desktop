@@ -7,8 +7,8 @@
 //! does not, as do the buttons. It is drawn as the `question` parts of the
 //! theme.
 //!
-//! A colour is picked from a picture of the screen, shown still over all
-//! of it, under a crosshair and beside a round loupe that shows the pixels
+//! A colour is picked from pictures of the screens, each shown still over
+//! all of its own, under a crosshair and beside a round loupe that shows the pixels
 //! round the pointer larger: a click of the left button, or Enter, picks
 //! the colour under the pointer, and Escape or another button picks none.
 //! Picking it is the user's say, so nothing else is asked.
@@ -219,8 +219,8 @@ impl Loupe {
 enum Asking {
     /// Whether to give `app` what it asked for.
     Question(String, Question),
-    /// Which colour of the screen in the picture to give.
-    Pick(Still),
+    /// Which colour of the screens in the pictures, one of each, to give.
+    Pick(Vec<Still>),
 }
 
 /// What an application asks for.
@@ -321,8 +321,10 @@ fn note(said: &str) {
     let _ = writeln!(io::stderr(), "xdg-desktop-portal-omorfos: {said}");
 }
 
-/// The box on the screen.
+/// The box on the screen, or a picture over one screen.
 struct Face {
+    /// Which of the pictures it shows, if it is one.
+    still: Option<usize>,
     surface: wl_surface::WlSurface,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
     viewport: wp_viewport::WpViewport,
@@ -370,14 +372,16 @@ struct Shell {
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     /// What the pointer's shape is set by, once it has been.
     shape: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
-    face: Option<Face>,
+    /// The box, or a picture over each screen.
+    faces: Vec<Face>,
     /// The screens, by what they are called.
     outputs: Vec<(wl_output::WlOutput, String)>,
     /// What is being asked while it is up, and what it is put on the
     /// screen with.
     asked: Option<(Asking, Globals)>,
     answer: Option<Answer>,
-    over: (i32, i32),
+    /// Which of the faces the pointer is over, and where on it.
+    over: Option<(usize, (i32, i32))>,
     store: Store,
     text: Text,
     layouts: xkb::Context,
@@ -451,10 +455,16 @@ impl Shell {
     /// yes; or the colour under the pointer, once where it is on the
     /// picture is known, and nothing until then.
     fn giving(&self) -> Option<Answer> {
-        let shown = self.face.as_ref().and_then(|face| face.ready);
         match self.asked.as_ref().map(|(asking, _)| asking) {
-            Some(Asking::Pick(still)) => {
-                let colour = shown.and_then(|shown| still.at(self.over, shown));
+            Some(Asking::Pick(stills)) => {
+                let over = self.over.and_then(|(face, at)| {
+                    let face = self.faces.get(face);
+                    let still =
+                        face.and_then(|face| face.still.and_then(|still| stills.get(still)));
+                    let shown = face.and_then(|face| face.ready);
+                    still.zip(shown).map(|(still, shown)| (still, at, shown))
+                });
+                let colour = over.and_then(|(still, at, shown)| still.at(at, shown));
                 colour.map(Answer::Picked)
             }
             _ => Some(Answer::Give),
@@ -468,7 +478,7 @@ impl Shell {
         let answer = match (picking, button) {
             (true, LEFT_BUTTON) => self.giving(),
             (true, _) => Some(Answer::Keep),
-            (false, LEFT_BUTTON) => button_at(self.over),
+            (false, LEFT_BUTTON) => self.over.and_then(|(_, at)| button_at(at)),
             (false, _) => None,
         };
         self.answered(answer);
@@ -494,46 +504,62 @@ impl Shell {
     /// Shows the loupe where the pointer is over a picture to pick from,
     /// and nothing while where it is is not known.
     fn show_loupe(&mut self, handle: &QueueHandle<Self>) -> io::Result<()> {
-        let (Some((Asking::Pick(still), globals)), Some(face)) = (&self.asked, self.face.as_mut())
-        else {
+        let Some((Asking::Pick(stills), globals)) = &self.asked else {
             return Ok(());
         };
-        let shown = face.ready.unwrap_or(SIZE);
-        let parent = &face.surface;
-        let loupe = face.loupe.get_or_insert_with(|| {
-            let surface = globals.compositor.create_surface(handle, ());
-            let over = globals
-                .subsurfaces
-                .get_subsurface(&surface, parent, handle, ());
-            over.set_desync();
-            let viewport = globals.viewporter.get_viewport(&surface, handle, ());
-            Loupe {
-                surface,
-                over,
-                viewport,
-            }
-        });
+        // It is over one screen at a time: the one the pointer is on.
+        let (on, at) = self.over.unzip();
+        for (index, face) in self.faces.iter_mut().enumerate() {
+            let away = face.loupe.take_if(|_| Some(index) != on);
+            let _ = away.map(|loupe| {
+                loupe.close();
+                face.surface.commit();
+            });
+        }
         let ring = self
             .store
             .current()
             .theme
             .style(Part::Question, States::NONE);
         let ring = ring.border.top.color;
-        let place = still.place(self.over, shown);
-        let canvas = place.map(|place| paint_loupe(still, place, ring, face.scale));
-        let buffer = canvas
-            .map(|canvas| picture(&globals.shm, &canvas, handle))
-            .transpose();
-        let at = loupe_at(self.over, shown);
-        buffer.map(|buffer| {
-            loupe.over.set_position(at.0, at.1);
-            loupe.surface.attach(buffer.as_ref(), 0, 0);
-            let size = LOUPE.cast_signed();
-            loupe.viewport.set_destination(size, size);
-            loupe.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            loupe.surface.commit();
-            // Where it is is taken with what it is over.
-            parent.commit();
+        let face = on.and_then(|on| self.faces.get_mut(on));
+        let still = face.and_then(|face| {
+            let still = face.still.and_then(|still| stills.get(still));
+            still.map(|still| (face, still))
+        });
+        // Nothing, while where the pointer is is not known.
+        still.zip(at).map_or(Ok(()), |((face, still), at)| {
+            let shown = face.ready.unwrap_or(SIZE);
+            let parent = &face.surface;
+            let loupe = face.loupe.get_or_insert_with(|| {
+                let surface = globals.compositor.create_surface(handle, ());
+                let over = globals
+                    .subsurfaces
+                    .get_subsurface(&surface, parent, handle, ());
+                over.set_desync();
+                let viewport = globals.viewporter.get_viewport(&surface, handle, ());
+                Loupe {
+                    surface,
+                    over,
+                    viewport,
+                }
+            });
+            let place = still.place(at, shown);
+            let canvas = place.map(|place| paint_loupe(still, place, ring, face.scale));
+            let buffer = canvas
+                .map(|canvas| picture(&globals.shm, &canvas, handle))
+                .transpose();
+            let at = loupe_at(at, shown);
+            buffer.map(|buffer| {
+                loupe.over.set_position(at.0, at.1);
+                loupe.surface.attach(buffer.as_ref(), 0, 0);
+                let size = LOUPE.cast_signed();
+                loupe.viewport.set_destination(size, size);
+                loupe.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                loupe.surface.commit();
+                // Where it is is taken with what it is over.
+                parent.commit();
+            })
         })
     }
 
@@ -542,87 +568,106 @@ impl Shell {
     /// what it should.
     fn show_face(&mut self, handle: &QueueHandle<Self>) -> io::Result<()> {
         let Some((asking, globals)) = &self.asked else {
-            self.face.take().into_iter().for_each(Face::close);
+            self.faces.drain(..).for_each(Face::close);
             // Where the pointer was on it is nothing to what comes next.
-            self.over = (-1, -1);
+            self.over = None;
             return Ok(());
         };
-        let Globals {
-            compositor,
-            shm,
-            layers,
-            viewporter,
-            scales,
-            ..
-        } = globals;
-        let outputs = &self.outputs;
-        let face = self.face.get_or_insert_with(|| {
-            let surface = compositor.create_surface(handle, ());
+        if self.faces.is_empty() {
             // In the middle of the screen, above everything, with the
-            // keyboard; or a picture of a screen, all over it. Its name is
-            // no part of the theme's, so that it goes at once and is not
-            // in the picture it leads to.
-            let on = match asking {
-                Asking::Pick(still) => outputs.iter().find(|(_, name)| *name == still.screen),
-                Asking::Question(..) => None,
+            // keyboard; or a picture of each screen, all over it.
+            let on: Vec<_> = match asking {
+                Asking::Pick(stills) => {
+                    let outputs = &self.outputs;
+                    let on = stills.iter().enumerate().map(|(index, still)| {
+                        let on = outputs.iter().find(|(_, name)| *name == still.screen);
+                        (Some(index), on.map(|(output, _)| output.clone()))
+                    });
+                    on.collect()
+                }
+                Asking::Question(..) => vec![(None, None)],
             };
-            let layer = layers.get_layer_surface(
-                &surface,
-                on.map(|(output, _)| output),
-                zwlr_layer_shell_v1::Layer::Overlay,
-                "omorfos-prompt".to_owned(),
-                handle,
-                (),
-            );
-            if let Asking::Pick(_) = asking {
-                let all = zwlr_layer_surface_v1::Anchor::all();
-                layer.set_anchor(all);
-                layer.set_exclusive_zone(-1);
-            } else {
-                layer.set_size(SIZE.0, SIZE.1);
-            }
-            let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
-            layer.set_keyboard_interactivity(exclusive);
-            let viewport = viewporter.get_viewport(&surface, handle, ());
-            let fraction = scales.get_fractional_scale(&surface, handle, ());
-            surface.commit();
+            let made = on.into_iter().map(|on| Face::new(globals, on, handle));
+            self.faces = made.collect();
             note("putting the question up");
-            Face {
-                surface,
-                layer,
-                viewport,
-                fraction,
-                ready: None,
-                scale: Scale::ONE,
-                buffer: None,
-                loupe: None,
-            }
-        });
-        let Some(shown) = face.ready else {
-            return Ok(());
-        };
+        }
         let theme = &self.store.current().theme;
-        let canvas = match asking {
-            Asking::Question(app, question) => {
-                paint(theme, &mut self.text, face.scale, (app, *question))
-            }
-            Asking::Pick(still) => still.canvas(),
-        };
-        picture(shm, &canvas, handle).map(|buffer| {
-            face.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers this much.
-            let (width, height) = (shown.0.cast_signed(), shown.1.cast_signed());
-            face.viewport.set_destination(width, height);
-            face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            face.surface.commit();
-            if face.buffer.is_none() {
-                note(&format!(
-                    "the question is up, at {} to one",
-                    face.scale.factor()
-                ));
-            }
-            face.buffer = Some(buffer);
-        })
+        let shm = &globals.shm;
+        let text = &mut self.text;
+        let ready = self
+            .faces
+            .iter_mut()
+            .filter_map(|face| face.ready.map(|shown| (face, shown)));
+        let painted = ready.map(|(face, shown)| {
+            let canvas = match asking {
+                Asking::Question(app, question) => paint(theme, text, face.scale, (app, *question)),
+                Asking::Pick(stills) => {
+                    // Each picture's face is made with it, so there is one.
+                    let still = face.still.and_then(|still| stills.get(still));
+                    still.map_or(Canvas::new(1, 1), Still::canvas)
+                }
+            };
+            picture(shm, &canvas, handle).map(|buffer| {
+                face.surface.attach(Some(&buffer), 0, 0);
+                // However many pixels the picture has, it covers this much.
+                let (width, height) = (shown.0.cast_signed(), shown.1.cast_signed());
+                face.viewport.set_destination(width, height);
+                face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                face.surface.commit();
+                if face.buffer.is_none() {
+                    note(&format!(
+                        "the question is up, at {} to one",
+                        face.scale.factor()
+                    ));
+                }
+                face.buffer = Some(buffer);
+            })
+        });
+        painted.collect()
+    }
+}
+
+impl Face {
+    /// Puts a box or a picture up with `globals`, on the screen `on` says
+    /// if it says one, showing the picture it says if it says one.
+    fn new(
+        globals: &Globals,
+        (still, on): (Option<usize>, Option<wl_output::WlOutput>),
+        handle: &QueueHandle<Shell>,
+    ) -> Self {
+        let surface = globals.compositor.create_surface(handle, ());
+        // Its name is no part of the theme's, so that it goes at once and
+        // is not in the picture it leads to.
+        let layer = globals.layers.get_layer_surface(
+            &surface,
+            on.as_ref(),
+            zwlr_layer_shell_v1::Layer::Overlay,
+            "omorfos-prompt".to_owned(),
+            handle,
+            (),
+        );
+        if still.is_some() {
+            layer.set_anchor(zwlr_layer_surface_v1::Anchor::all());
+            layer.set_exclusive_zone(-1);
+        } else {
+            layer.set_size(SIZE.0, SIZE.1);
+        }
+        let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
+        layer.set_keyboard_interactivity(exclusive);
+        let viewport = globals.viewporter.get_viewport(&surface, handle, ());
+        let fraction = globals.scales.get_fractional_scale(&surface, handle, ());
+        surface.commit();
+        Self {
+            still,
+            surface,
+            layer,
+            viewport,
+            fraction,
+            ready: None,
+            scale: Scale::ONE,
+            buffer: None,
+            loupe: None,
+        }
     }
 }
 
@@ -655,11 +700,11 @@ impl Desk {
                 subsurfaces: None,
                 shapes: None,
                 shape: None,
-                face: None,
+                faces: Vec::new(),
                 outputs: Vec::new(),
                 asked: None,
                 answer: None,
-                over: (-1, -1),
+                over: None,
                 store,
                 text: Text::new(),
                 layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
@@ -692,10 +737,10 @@ impl Desk {
         self.put(Asking::Question(app.to_owned(), question))
     }
 
-    /// Asks the user to pick a colour from `still`, a picture of one of the
-    /// screens, shown over it. Returns whether it can be asked.
-    pub fn pick(&mut self, still: Still) -> bool {
-        self.put(Asking::Pick(still))
+    /// Asks the user to pick a colour from `stills`, pictures of the
+    /// screens, each shown over its own. Returns whether it can be asked.
+    pub fn pick(&mut self, stills: Vec<Still>) -> bool {
+        self.put(Asking::Pick(stills))
     }
 
     /// Puts up what is asked, if it can be: the compositor offers what it
@@ -704,8 +749,8 @@ impl Desk {
         // Each is put up anew, whatever was up before and is not yet taken
         // down: a box and a picture are not the same shape, and where the
         // pointer was on one is nothing to the next.
-        self.shell.face.take().into_iter().for_each(Face::close);
-        self.shell.over = (-1, -1);
+        self.shell.faces.drain(..).for_each(Face::close);
+        self.shell.over = None;
         let globals = self.shell.globals();
         let asked = globals.is_some();
         self.shell.asked = globals.map(|globals| (asking, globals));
@@ -842,17 +887,17 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for Shell {
             // A box is as large as it asked to be; a picture, as the
             // screen it is on.
             let size = (width, height);
-            shell
-                .face
-                .iter_mut()
-                .for_each(|face| face.ready = Some(size));
+            let faces = shell.faces.iter_mut();
+            for face in faces.filter(|face| face.layer == *layer) {
+                face.ready = Some(size);
+            }
             return;
         }
         // The only other thing it says is that the compositor closed it,
         // as when its screen goes, which is taken for a no.
         note("the compositor took the question down");
-        shell.face.take().into_iter().for_each(Face::close);
-        shell.over = (-1, -1);
+        shell.faces.drain(..).for_each(Face::close);
+        shell.over = None;
         shell.answered(Some(Answer::Keep));
     }
 }
@@ -860,7 +905,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for Shell {
 impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
     fn event(
         shell: &mut Self,
-        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        fraction: &wp_fractional_scale_v1::WpFractionalScaleV1,
         event: wp_fractional_scale_v1::Event,
         (): &(),
         _: &Connection,
@@ -868,11 +913,15 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
     ) {
         // The scale comes in parts of 120 to one. Told the one it already
         // has, there is nothing to draw again.
+        let new = |face: &Face, scale: Scale| face.fraction == *fraction && face.scale != scale;
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
             && let scale = Scale::new(f64::from(scale) / 120.0)
-            && shell.face.iter().any(|face| face.scale != scale)
+            && shell.faces.iter().any(|face| new(face, scale))
         {
-            shell.face.iter_mut().for_each(|face| face.scale = scale);
+            let faces = shell.faces.iter_mut();
+            for face in faces.filter(|face| new(face, scale)) {
+                face.scale = scale;
+            }
             shell.stale = true;
         }
     }
@@ -932,11 +981,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         match event {
             wl_pointer::Event::Enter {
                 serial,
+                surface,
                 surface_x,
                 surface_y,
-                ..
             } => {
-                shell.over = (whole(surface_x), whole(surface_y));
+                let on = shell.faces.iter().position(|face| face.surface == surface);
+                shell.over = on.map(|on| (on, (whole(surface_x), whole(surface_y))));
                 shell.moved = true;
                 // Over a picture to pick from, the pointer is a crosshair.
                 if let Some((Asking::Pick(_), globals)) = &shell.asked {
@@ -952,7 +1002,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_y,
                 ..
             } => {
-                shell.over = (whole(surface_x), whole(surface_y));
+                let at = (whole(surface_x), whole(surface_y));
+                shell.over = shell.over.map(|(on, _)| (on, at));
                 shell.moved = true;
             }
             wl_pointer::Event::Button {
