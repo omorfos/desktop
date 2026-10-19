@@ -115,9 +115,64 @@ pub fn together(shots: &[Shot]) -> Shot {
     }
 }
 
+/// The part of a picture in `area`, as far as it is in the picture.
+#[must_use]
+pub fn crop(shot: &Shot, area: omorfos_picker::Area) -> Shot {
+    let x = area.x.min(shot.width);
+    let y = area.y.min(shot.height);
+    let width = area.width.min(shot.width - x);
+    let height = area.height.min(shot.height - y);
+    let row = |at: u32| usize::try_from(at).unwrap_or_default();
+    let mut pixels = Vec::new();
+    for down in y..y + height {
+        let from = (row(down) * row(shot.width) + row(x)) * 3;
+        let part = shot.pixels.get(from..from + row(width) * 3);
+        pixels.extend(part.unwrap_or_default());
+    }
+    Shot {
+        screen: shot.screen.clone(),
+        width,
+        height,
+        pixels,
+        alpha: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_region_is_cut_from_its_picture_as_far_as_it_is_in_it() {
+        // Three pixels across and two down, each its own colour.
+        let shot = Shot {
+            screen: "DP-1".to_owned(),
+            width: 3,
+            height: 2,
+            pixels: (0..18).collect(),
+            alpha: None,
+        };
+        let area = |x, y, width, height| omorfos_picker::Area {
+            x,
+            y,
+            width,
+            height,
+        };
+        let cut = crop(&shot, area(1, 0, 2, 2));
+        assert_eq!((cut.width, cut.height), (2, 2));
+        assert_eq!(cut.pixels, [3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17]);
+        let past = crop(&shot, area(2, 1, 10, 10));
+        assert_eq!(
+            (past.width, past.height, past.pixels),
+            (1, 1, vec![15, 16, 17])
+        );
+        // Nor from pixels the picture says it has and has not.
+        let truncated = Shot {
+            pixels: vec![1, 2, 3],
+            ..shot
+        };
+        assert_eq!(crop(&truncated, area(0, 1, 1, 1)).pixels, Vec::<u8>::new());
+    }
 
     #[test]
     fn pictures_are_kept_where_the_user_keeps_pictures() {

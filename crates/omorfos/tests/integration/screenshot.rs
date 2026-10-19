@@ -17,6 +17,9 @@ use crate::windows::{GREEN, RED};
 /// What the tool said: where it saved pictures, or why it took none.
 type Said = Result<Vec<PathBuf>, String>;
 
+/// How many times the tool has been started, which names its socket.
+static STARTED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Starts the tool in a session whose socket gives `roles`, with `more`
 /// in its environment besides. Its home folder is the session's own.
 fn start(session: &mut Session, roles: Roles, more: &[(&str, OsString)]) -> JoinHandle<Said> {
@@ -31,7 +34,9 @@ fn start_with(
     arguments: &[&str],
 ) -> JoinHandle<Said> {
     let runtime = session.config.path().to_owned();
-    let name = format!("wayland-{}-{}", more.len(), arguments.len());
+    // Each a socket of its own, however many a test starts.
+    let started = STARTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = format!("wayland-tool-{started}");
     let socket = ListeningSocket::bind_absolute(runtime.join(&name)).unwrap();
     session.inner().serve(socket, roles).unwrap();
     let mut variables = vec![
@@ -478,4 +483,163 @@ fn not_told_what_windows_there_are_it_says_how_it_could_be() {
     let tool = start_window(&mut session, Roles::CAPTURE);
     let said = finish(&mut session, tool).unwrap_err();
     assert!(said.contains("may: [capture, panel]"), "{said}");
+}
+
+/// May take pictures and put the picker over the screen to pick from, as
+/// `Shift+Print` starts the tool.
+const PICKING: Roles = Roles::CAPTURE.with(Roles::PANEL).with(Roles::OVERLAY);
+
+/// Draws every one of `screens`, and returns what is on the first.
+fn draw_all(session: &mut Session, screens: usize) -> crate::common::Picture {
+    (1..screens).for_each(|screen| drop(session.draw_on(screen)));
+    session.draw()
+}
+
+/// Starts the tool to pick, over `screens`, and draws until what it is
+/// picked from is up: the first screen is dimmed.
+fn picking(session: &mut Session, screens: usize) -> JoinHandle<Said> {
+    let tool = start_with(session, PICKING, &[], &["--pick"]);
+    session.eventually(|session| {
+        let shown = draw_all(session, screens).at(WIDTH - 5, HEIGHT - 5);
+        shown != crate::windows::BACKGROUND || tool.is_finished()
+    });
+    assert!(!tool.is_finished(), "it stopped before it was up");
+    tool
+}
+
+/// Draws every one of `screens` until the tool has finished, and returns
+/// what it said.
+fn picked(session: &mut Session, tool: JoinHandle<Said>, screens: usize) -> Said {
+    session.eventually(|session| {
+        draw_all(session, screens);
+        tool.is_finished()
+    });
+    tool.join().unwrap()
+}
+
+/// Presses a key and lets go of it.
+fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
+    for pressed in [true, false] {
+        session
+            .compositor_mut()
+            .input(omorfos::Input::Key { code, pressed }, 0);
+    }
+}
+
+/// Presses the left button at `from`, moves to `to`, and lets go.
+fn drag(session: &mut Session, from: (i32, i32), to: (i32, i32)) {
+    let at = |(x, y): (i32, i32)| omorfos::Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    let button = |pressed| omorfos::Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(at(from), 0);
+    session.step();
+    session.compositor_mut().input(button(true), 0);
+    session.step();
+    session.compositor_mut().input(at(to), 0);
+    session.step();
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+}
+
+#[test]
+fn a_region_drawn_over_the_still_screen_is_what_is_saved() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let tool = picking(&mut session, 1);
+    // A region is the window's colour, as the screen was when it began.
+    drag(&mut session, (5, 5), (105, 55));
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths.len(), 1);
+    assert_eq!(saved(&paths[0], (5, 5)), ((100, 50), RED));
+}
+
+#[test]
+fn a_drag_on_to_another_screen_stops_at_the_edge_of_its_own() {
+    let mut session = Session::new();
+    session.add_output((320, 240));
+    let tool = picking(&mut session, 2);
+    drag(&mut session, (WIDTH - 100, 10), (WIDTH + 50, 60));
+    let paths = picked(&mut session, tool, 2).unwrap();
+    assert_eq!(saved(&paths[0], (0, 0)).0, (100, 50));
+}
+
+#[test]
+fn a_click_picks_that_screen_and_enter_every_screen() {
+    let mut session = Session::new();
+    session.add_output((320, 240));
+    let tool = picking(&mut session, 2);
+    drag(&mut session, (WIDTH + 10, 10), (WIDTH + 11, 11));
+    let paths = picked(&mut session, tool, 2).unwrap();
+    assert_eq!(paths.len(), 1, "{paths:?}");
+    assert_eq!(saved(&paths[0], (0, 0)).0, (320, 240), "the second screen");
+
+    let tool = picking(&mut session, 2);
+    press(&mut session, crate::common::key::RETURN);
+    let paths = picked(&mut session, tool, 2).unwrap();
+    assert_eq!(paths.len(), 2, "each screen, {paths:?}");
+}
+
+#[test]
+fn escape_picks_nothing_and_nothing_is_saved() {
+    let mut session = Session::new();
+    let tool = picking(&mut session, 1);
+    // A key that is neither Enter nor Escape is passed over.
+    press(&mut session, crate::common::key::A);
+    press(&mut session, crate::common::key::ESCAPE);
+    let said = finish(&mut session, tool).unwrap();
+    assert_eq!(said, [PathBuf::from("nothing was picked")]);
+    let folder = session.config.path().join("Pictures/Screenshots");
+    assert!(!folder.exists(), "nothing was saved");
+}
+
+#[test]
+fn a_button_other_than_the_left_picks_nothing() {
+    let mut session = Session::new();
+    let tool = picking(&mut session, 1);
+    let button = |pressed| omorfos::Input::Button {
+        button: 0x111,
+        pressed,
+    };
+    let over = omorfos::Input::Motion { x: 100.0, y: 100.0 };
+    session.compositor_mut().input(over, 0);
+    session.step();
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(button(false), 0);
+    let said = finish(&mut session, tool).unwrap();
+    assert_eq!(said, [PathBuf::from("nothing was picked")]);
+    let folder = session.config.path().join("Pictures/Screenshots");
+    assert!(!folder.exists(), "nothing was saved");
+}
+
+#[test]
+fn not_let_put_anything_over_the_screen_it_says_how_it_could_be() {
+    let mut session = Session::new();
+    let tool = start_with(&mut session, Roles::CAPTURE, &[], &["--pick"]);
+    let said = finish(&mut session, tool).unwrap_err();
+    assert!(said.contains("may: [panel, overlay]"), "{said}");
+}
+
+#[test]
+fn a_screen_that_goes_while_it_is_picked_from_picks_nothing() {
+    let mut session = Session::new();
+    let tool = picking(&mut session, 1);
+    let output = session.output();
+    session.compositor_mut().remove_output(&output);
+    let said = finish(&mut session, tool).unwrap();
+    assert_eq!(said, [PathBuf::from("nothing was picked")]);
+}
+
+#[test]
+fn picking_it_gives_up_when_the_session_ends() {
+    let mut session = Session::new();
+    let tool = picking(&mut session, 1);
+    drop(session);
+    let said = tool.join().unwrap().unwrap_err();
+    assert!(said.contains("the session ended"), "{said}");
 }

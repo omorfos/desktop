@@ -19,6 +19,8 @@ jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-sy
 omorfos-ipc = { path = "../omorfos-ipc" }
 # Says where the user wants pictures to go.
 omorfos-config = { path = "../omorfos-config" }
+# Lets the user pick a screen or a region, told `--pick`.
+omorfos-picker = { path = "../omorfos-picker" }
 omorfos-shell = { path = "../omorfos-shell" }
 # Already in the tree through the icons. Writes the pictures.
 png = "0.18.1"

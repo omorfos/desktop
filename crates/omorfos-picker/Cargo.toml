@@ -1,0 +1,31 @@
+[package]
+name = "omorfos-picker"
+description = "Lets the user pick a screen or a region of it on the omorfos desktop, over still pictures of the screens"
+keywords = ["wayland", "compositor", "screenshot"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# What the dim and the border round what is picked look like.
+omorfos-config = { path = "../omorfos-config" }
+# Hands the compositor what is drawn, and whole units of layout.
+omorfos-shell = { path = "../omorfos-shell" }
+# Draws the pictures.
+omorfos-ui = { path = "../omorfos-ui" }
+# The picker is a Wayland client. All are already in the tree through
+# Smithay's nested backend.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# Turns the keys the compositor reports into what they are, by its
+# layout. Without its default features it maps nothing into memory.
+xkbcommon = { version = "0.8.0", default-features = false }
+
+[lints]
+workspace = true

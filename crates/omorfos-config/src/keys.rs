@@ -530,14 +530,21 @@ bindings:
         let started = Started::screenshot();
         assert_eq!(started.run.program(), "omorfos-screenshot");
         assert_eq!(started.may, [crate::Role::Capture, crate::Role::Clipboard]);
-        // With Shift it goes on the clipboard and nowhere else.
+        // With Shift the user picks what it is of, over everything, and it
+        // goes on the clipboard and nowhere else.
         let copied = Started::screenshot_copied();
         assert_eq!(
             action_for("Shift+Print"),
             Some(Action::Spawn(copied.clone()))
         );
-        assert_eq!(copied.run.arguments(), ["--to", "clipboard"]);
-        assert_eq!(copied.may, started.may);
+        assert_eq!(copied.run.arguments(), ["--pick", "--to", "clipboard"]);
+        let may = [
+            crate::Role::Capture,
+            crate::Role::Clipboard,
+            crate::Role::Panel,
+            crate::Role::Overlay,
+        ];
+        assert_eq!(copied.may, may);
         // With Alt it is of the window with focus, which it has to be
         // told of to ask for.
         let window = Started::screenshot_window();
