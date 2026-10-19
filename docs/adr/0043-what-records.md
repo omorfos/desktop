@@ -73,7 +73,11 @@ not to be turned off.
 ## Consequences
 
 - While the watcher is not running, the mark shows pictures of the screen
-  only. The compositor starts it again a few times if it stops.
+  only. The compositor starts it again a few times if it stops. It stops
+  itself once nobody reads what it says, looking each turn whether the
+  other end of its output is closed, so that it does not outlive the
+  compositor that started it while PipeWire has nothing new to say: tried
+  by hand, one ran on long after the session that started it was gone.
 - A program that opens a camera itself is seen only if its open files
   can be: those of the user's own processes, but not of one that has made
   itself impossible to look into, as some sandboxes do, nor of another

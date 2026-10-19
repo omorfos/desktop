@@ -306,6 +306,38 @@ fn what_records_is_said_and_said_again_when_it_stops() {
     finished.store(true, Ordering::Relaxed);
 }
 
+#[test]
+fn the_watcher_stops_once_nobody_listens_though_pipewire_says_nothing() {
+    let pipewire = Pipewire::start();
+    let mut watcher = Command::new(env!("CARGO_BIN_EXE_omorfos-recording"));
+    watcher.env_clear();
+    watcher.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
+    watcher.env("XDG_RUNTIME_DIR", pipewire.folder.path());
+    watcher.env("PIPEWIRE_RUNTIME_DIR", pipewire.folder.path());
+    let mut watcher = watcher
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // It finds PipeWire, and says nothing records.
+    let mut said = std::io::BufReader::new(watcher.stdout.take().unwrap());
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut said, &mut line).unwrap();
+    assert_eq!(line, ".\n");
+    // With nothing more to say, it still sees nobody is listening.
+    drop(said);
+    let stopped = (0..500).find_map(|_| {
+        std::thread::sleep(Duration::from_millis(10));
+        watcher.try_wait().unwrap()
+    });
+    if stopped.is_none() {
+        let _ = watcher.kill();
+    }
+    assert!(
+        stopped.is_some_and(|status| status.success()),
+        "{stopped:?}"
+    );
+}
+
 /// What cannot be written to.
 struct Broken;
 
