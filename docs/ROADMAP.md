@@ -238,9 +238,10 @@ calls for them.
 - [x] A camera a program opens itself, not through PipeWire, seen as well:
       by which processes have the camera device open.
 - [ ] Known gaps in what records: a program whose open files cannot be
-      looked into, as in some sandboxes, has a camera open unseen; and
-      one that keeps a camera open without taking pictures is said to
-      record.
+      looked into, as in some sandboxes, has a camera open unseen; one
+      that keeps a camera open without taking pictures is said to
+      record; and with PipeWire 1.0, which does not say its own process,
+      what records sound through PulseAudio is named as `pipewire`.
 - [x] A pointer an application draws itself, as programs written for X11
       do, given to programs following the pointer as it is drawn, not as
       the ordinary one.
