@@ -5,10 +5,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
-use omorfos_ipc::{Client, PROTOCOL, Reply, Request, State};
+use omorfos::Scale;
+use omorfos_ipc::{Client, PROTOCOL, Placed, Reply, Request, State};
 use serde_json::json;
 
-use crate::common::Session;
+use crate::common::{HEIGHT, Session, WIDTH};
 use crate::windows::{BLUE, RED};
 
 fn state(session: &mut Session, peer: &mut Client) -> State {
@@ -634,4 +635,80 @@ fn a_window_joins_a_workspace_that_has_room_for_it_by_what_it_is_known_by() {
             "{reply:?}"
         );
     }
+}
+
+/// Where the windows that can be seen are, as the compositor answers.
+fn placed(session: &mut Session, peer: &mut Client) -> Vec<Placed> {
+    match session.ask(peer, &Request::Placed) {
+        Reply::Placed(placed) => placed,
+        other => unreachable!("expected where windows are, got {other:?}"),
+    }
+}
+
+#[test]
+fn where_the_windows_that_can_be_seen_are_is_told_the_one_on_top_first() {
+    let mut session = Session::new();
+    // A screen with nothing on it has nothing told of it.
+    session.add_output((WIDTH, HEIGHT));
+    let mut client = session.connect();
+    session.open(&mut client, "editor", (200, 100), RED);
+    session.open(&mut client, "terminal", (120, 80), BLUE);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let state = state(&mut session, &mut peer);
+    let placed = placed(&mut session, &mut peer);
+
+    let id = |app: &str| {
+        let window = state.windows.iter().find(|window| window.app_id == app);
+        window
+            .map(|window| (window.id, window.handle.clone()))
+            .unwrap()
+    };
+    let told: Vec<_> = placed
+        .iter()
+        .map(|place| ((place.id, place.handle.clone()), place.output.as_str()))
+        .collect();
+    assert_eq!(told, [(id("terminal"), "test-0"), (id("editor"), "test-0")]);
+    let sizes: Vec<_> = placed
+        .iter()
+        .map(|place| (place.width, place.height))
+        .collect();
+    assert_eq!(sizes, [(120, 80), (200, 100)]);
+    // Where it is said to be is where it is drawn.
+    let picture = session.draw();
+    let top = &placed[0];
+    let corner = |along: u32| i32::try_from(along).unwrap();
+    let (x, y) = (corner(top.x), corner(top.y));
+    let (right, bottom) = (
+        corner(top.x + top.width) - 1,
+        corner(top.y + top.height) - 1,
+    );
+    for (x, y) in [(x, y), (right, bottom)] {
+        assert_eq!(picture.at(x, y), BLUE, "inside, at {x}, {y}");
+    }
+    assert_ne!(picture.at(right + 1, bottom + 1), BLUE, "and no further");
+}
+
+#[test]
+fn where_windows_are_is_told_in_the_pixels_of_the_screen_and_not_of_one_rolled_up() {
+    let mut session = Session::new();
+    session.suggest_scale(Scale::new(2.0));
+    let mut client = session.connect();
+    session.open(&mut client, "editor", (100, 50), RED);
+    let mut notes = session.connect();
+    session.open_decorated(&mut notes, "notes", (60, 40), BLUE);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let sizes = |placed: Vec<Placed>| {
+        let sizes = placed.iter().map(|place| (place.width, place.height));
+        sizes.collect::<Vec<_>>()
+    };
+    assert_eq!(
+        sizes(placed(&mut session, &mut peer)),
+        [(120, 80), (200, 100)]
+    );
+    let shade = Request::Perform {
+        action: json!("shade"),
+    };
+    assert_eq!(session.ask(&mut peer, &shade), Reply::Done);
+    session.draw();
+    assert_eq!(sizes(placed(&mut session, &mut peer)), [(200, 100)]);
 }

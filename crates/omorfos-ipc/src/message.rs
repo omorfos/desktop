@@ -43,6 +43,10 @@ pub enum Request {
         /// The window's [`Window::id`].
         window: u64,
     },
+    /// Ask where the windows that can be seen are, as [`Placed`]. It is
+    /// answered once and is not part of the [`State`], which would
+    /// otherwise be sent again each time a window moved.
+    Placed,
 }
 
 /// What the compositor answers.
@@ -59,6 +63,9 @@ pub enum Reply {
     /// The answer to [`Request::State`], and each update after
     /// [`Request::Subscribe`].
     State(State),
+    /// The answer to [`Request::Placed`]: the part of each window that
+    /// can be seen on each screen it is on, the window on top first.
+    Placed(Vec<Placed>),
     /// The request was carried out.
     Done,
     /// The request could not be understood or carried out.
@@ -74,7 +81,16 @@ impl Reply {
     pub fn into_state(self) -> Option<State> {
         match self {
             Self::State(state) => Some(state),
-            Self::Version { .. } | Self::Done | Self::Error { .. } => None,
+            Self::Version { .. } | Self::Placed(_) | Self::Done | Self::Error { .. } => None,
+        }
+    }
+
+    /// Where the windows are, if that is what was answered.
+    #[must_use]
+    pub fn into_placed(self) -> Option<Vec<Placed>> {
+        match self {
+            Self::Placed(placed) => Some(placed),
+            Self::Version { .. } | Self::State(_) | Self::Done | Self::Error { .. } => None,
         }
     }
 }
@@ -190,6 +206,28 @@ pub struct Standing {
     pub sticky: bool,
 }
 
+/// Where a window is on a screen: the part of it there, in the pixels of
+/// that screen from its top left corner, as a picture of the screen has
+/// them. Only what the window draws is counted, not its frame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Placed {
+    /// The window's [`Window::id`].
+    pub id: u64,
+    /// The window's [`Window::handle`], by which a picture of it alone
+    /// can be asked for.
+    pub handle: String,
+    /// The name of the screen.
+    pub output: String,
+    /// How far from the left of the screen it begins.
+    pub x: u32,
+    /// How far from the top of the screen it begins.
+    pub y: u32,
+    /// How wide it is there.
+    pub width: u32,
+    /// How tall it is there.
+    pub height: u32,
+}
+
 /// Writes a message as one line, newline included.
 #[must_use]
 pub fn encode<T: Serialize>(message: &T) -> String {
@@ -261,6 +299,7 @@ mod tests {
                 action: json!("close"),
             },
             Request::Activate { window: u64::MAX },
+            Request::Placed,
         ] {
             round_trip(&request);
         }
@@ -297,6 +336,15 @@ mod tests {
             },
             Reply::State(state),
             Reply::State(State::default()),
+            Reply::Placed(vec![Placed {
+                id: 3,
+                handle: "3f2a".to_owned(),
+                output: "eDP-1".to_owned(),
+                x: 10,
+                y: 20,
+                width: 640,
+                height: 480,
+            }]),
             Reply::Done,
             Reply::Error {
                 message: "unknown action".to_owned(),
@@ -355,5 +403,24 @@ mod tests {
         };
         assert_eq!(Reply::State(state.clone()).into_state(), Some(state));
         assert_eq!(Reply::Done.into_state(), None);
+        assert_eq!(Reply::Placed(Vec::new()).into_state(), None);
+    }
+
+    #[test]
+    fn where_windows_are_can_be_taken_from_an_answer_that_says() {
+        assert_eq!(Reply::Placed(Vec::new()).into_placed(), Some(Vec::new()));
+        assert_eq!(encode(&Reply::Placed(Vec::new())), "{\"placed\":[]}\n");
+        assert_eq!(encode(&Request::Placed), "\"placed\"\n");
+        assert_eq!(Reply::State(State::default()).into_placed(), None);
+        assert_eq!(Reply::Done.into_placed(), None);
+        let version = Reply::Version {
+            protocol: PROTOCOL,
+            compositor: String::new(),
+        };
+        let error = Reply::Error {
+            message: String::new(),
+        };
+        assert_eq!(version.into_placed(), None);
+        assert_eq!(error.into_placed(), None);
     }
 }
