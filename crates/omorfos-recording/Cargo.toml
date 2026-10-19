@@ -19,6 +19,9 @@ pipewire = { version = "0.10.1", features = ["v0_3_65"] }
 # camera is opened or let go, so that who has one open is looked at only
 # then.
 inotify = { version = "0.11.5", default-features = false }
+# Already in the tree through Smithay. Tells when nobody reads what it
+# writes any more (`event`).
+rustix = { version = "1.1.5", default-features = false, features = ["event"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
