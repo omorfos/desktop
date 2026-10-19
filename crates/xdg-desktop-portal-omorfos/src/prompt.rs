@@ -23,6 +23,7 @@ use std::os::unix::net::UnixStream;
 use omorfos_config::{Color, Part, State, States, Store, Theme};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Area, Canvas, Scale, Text};
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
@@ -720,6 +721,12 @@ impl Desk {
         self.shell.stale = true;
     }
 
+    /// How the desktop looks, as the configuration says.
+    #[must_use]
+    pub fn theme(&self) -> Theme {
+        self.shell.store.current().theme.clone()
+    }
+
     /// Reads the configuration again, for a look that has changed.
     pub fn reread(&mut self) {
         self.shell.stale |= self.shell.store.reload();
@@ -733,11 +740,16 @@ impl Desk {
     ///
     /// Returns an error once the compositor has gone.
     pub fn turn(&mut self) -> Result<Option<Answer>, Failure> {
-        // Whether reading with nothing to read counts as a failure depends
-        // on how the library was built, so the outcome is not looked at
-        // here. A real failure is kept by the connection and comes back
-        // from everything after it, down to the flush that ends the turn.
-        let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
+        // Only what is there is read: while a picture is picked on another
+        // thread, which waits on the connection, reading would wait with it
+        // until the compositor said something, and nothing else would be
+        // done meanwhile. A real failure is kept by the connection and
+        // comes back from everything after it, down to the flush that ends
+        // the turn.
+        let guard = self.queue.prepare_read();
+        let mut socket = [PollFd::new(&self.connection, PollFlags::IN)];
+        let there = poll(&mut socket, Some(&Timespec::default())).is_ok_and(|ready| ready > 0);
+        let _ = guard.filter(|_| there).map(ReadEventsGuard::read);
         let handled = self.queue.dispatch_pending(&mut self.shell);
         handled
             .map_err(Failure::from)

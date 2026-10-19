@@ -276,7 +276,11 @@ fn an_application_is_given_a_picture_once_the_user_says_so() {
     press(&mut session, key::A);
     press(&mut session, key::RETURN);
     press(&mut session, key::RETURN);
-    let (response, results) = answered(&mut session, asking);
+    // Then what the picture is of is picked: Enter, every screen.
+    let (response, results) =
+        acted_until_answered(&mut session, asking, |session: &mut Session| {
+            press(session, key::RETURN);
+        });
     assert_eq!(response, 0);
 
     // The picture is among the user's pictures, and the question that
@@ -331,7 +335,10 @@ fn the_buttons_say_yes_and_no_and_the_rest_of_the_box_nothing() {
     let asking = ask(&daemon, "d");
     asked(&mut session);
     click(&mut session, (360, 114));
-    assert_eq!(answered(&mut session, asking).0, 0, "taken");
+    let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
+        press(session, key::RETURN);
+    });
+    assert_eq!(picked.0, 0, "taken");
 }
 
 #[test]
@@ -462,6 +469,106 @@ fn picking_a_colour_the_pointer_is_a_crosshair_beside_a_loupe() {
     );
     press(&mut session, key::ESCAPE);
     assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+}
+
+/// Says yes to the question, and draws until what the picture is to be
+/// of is up to be picked: the screen is dimmed.
+fn yes_and_picking(session: &mut Session) {
+    press(session, key::RETURN);
+    session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) != BACKGROUND);
+}
+
+/// Presses the left button at `from`, moves to `to`, and lets go.
+fn drag(session: &mut Session, from: (i32, i32), to: (i32, i32)) {
+    let at = |(x, y): (i32, i32)| Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at(from), 0);
+    session.step();
+    for (pressed, place) in [(true, from), (false, to)] {
+        session.compositor_mut().input(at(place), 0);
+        session.step();
+        let button = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+        session.step();
+    }
+}
+
+#[test]
+fn an_application_is_given_what_the_user_picks_of_the_screen() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "region");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    drag(&mut session, (5, 5), (105, 55));
+    let (response, results) = answered(&mut session, asking);
+    assert_eq!(response, 0);
+    let path = file(&results);
+    let decoded = png::Decoder::new(BufReader::new(std::fs::File::open(&path).unwrap()));
+    let info = decoded.read_info().unwrap().info().clone();
+    assert_eq!(
+        (info.width, info.height),
+        (100, 50),
+        "the region and no more"
+    );
+    assert_eq!(colour(&path, (5, 5)), RED);
+}
+
+#[test]
+fn picking_nothing_is_saying_no() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "nothing");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+}
+
+#[test]
+fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "withdrawn");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    let peer = daemon.peer();
+    let request = "/org/freedesktop/portal/desktop/request/1_1/withdrawn";
+    peer.call_method(Some(NAME), request, Some(REQUEST), "Close", &())
+        .unwrap();
+    assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+    // What it would have been picked from is up until the user is done
+    // with it, and nothing more comes of it; then the next is asked.
+    press(&mut session, key::RETURN);
+    session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) == BACKGROUND);
+    let next = ask(&daemon, "after");
+    asked(&mut session);
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, next).0, 1);
+}
+
+#[test]
+fn a_picture_picked_that_cannot_be_saved_is_a_failure() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    // Where pictures go is a file, which nothing can be saved in.
+    std::fs::write(session.config.path().join("Pictures"), "").unwrap();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "unsaved");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
 }
 
 #[test]
@@ -641,8 +748,10 @@ fn after_a_picture_is_taken_the_next_is_asked_about_too() {
     for request in ["m", "n", "o"] {
         let asking = ask(&daemon, request);
         asked(&mut session);
-        press(&mut session, key::RETURN);
-        assert_eq!(answered(&mut session, asking).0, 0, "{request}");
+        let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
+            press(session, key::RETURN);
+        });
+        assert_eq!(picked.0, 0, "{request}");
         session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
     }
 }
@@ -679,6 +788,8 @@ fn asked_first_as_the_portal_asks_the_question_still_goes_up() {
         reply.unwrap().body().deserialize::<Answered>().unwrap()
     });
     asked(&mut session);
-    press(&mut session, key::RETURN);
-    assert_eq!(answered(&mut session, asking).0, 0);
+    let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
+        press(session, key::RETURN);
+    });
+    assert_eq!(picked.0, 0);
 }

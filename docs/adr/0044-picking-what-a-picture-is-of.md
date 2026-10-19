@@ -37,6 +37,17 @@ whatever has moved since, and the picker is in no picture.
 - **`Shift+Print` picks**, and puts what was picked on the clipboard, as
   it put everything before: `omorfos-screenshot --pick --to clipboard`.
   `Print` still takes every screen at once.
+- **The portal picks after the question**, once the user has said yes,
+  over the pictures taken as the question went. The question comes
+  first, so that the application asking is named before anything is
+  shown; picking then says what was given. The picker waits on the
+  portal's connection on a thread of its own, so the portal reads that
+  connection only when there is something to read: otherwise it would
+  wait with the picker, and answer nothing else, until the compositor
+  next said something. An application that
+  withdraws its request while the user picks is told no at once, and
+  the picker stays until the user is done with it, so that nothing
+  vanishes under the pointer; what is picked then is not kept.
 - **The look is the theme's `picker` part**: its background is the dim,
   see-through black by default, and its border is round what is drawn,
   the accent.
