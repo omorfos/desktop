@@ -62,7 +62,9 @@ the background as the build is handed over (step 5), and has to have
 passed before anything is committed. Never two runs of the gates at
 once: they share the machine, and the X11 tests time out.
 
-The tools are in `~/.cargo/bin`. The hook in `.claude/settings.json`
+The tools are in `~/.cargo/bin`. Each tier keeps its whole output in
+`target/gates/<tier>.log`: read that, not a filtered copy, when a step
+fails. The hook in `.claude/settings.json`
 formats a Rust file each time it is edited or written as a file, but not
 one changed by a command, such as a script that rewrites it: the format
 gate still counts. If the change touches anything that runs on a thread
