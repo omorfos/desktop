@@ -7,20 +7,25 @@
 #   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
 #   .claude/skills/handover/gates.sh all               handover, then rest
 #
-# `area` takes what to run: a crate, as `-p omorfos-core`, or tests of the
+# Each tier's whole output is kept in target/gates/<tier>.log. `area` takes
+# what to run: a crate, as `-p omorfos-core`, or tests of the
 # integration binary by name, as `tiles::`; it builds what they need and
 # runs only them. Run from the top of the repository.
 set -uo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# Everything each step says is kept whole in a log of the tier's own, so
+# that what a test that fails only sometimes said is not lost to a filter.
+log=""
+
 step() {
     local started=$SECONDS
-    echo "=== $*"
-    if ! "$@"; then
-        echo "FAILED after $((SECONDS - started))s: $*"
+    echo "=== $*" | tee -a "$log"
+    if ! "$@" 2>&1 | tee -a "$log"; then
+        echo "FAILED after $((SECONDS - started))s: $*, the whole of it in $log"
         exit 1
     fi
-    echo "--- $((SECONDS - started))s"
+    echo "--- $((SECONDS - started))s" | tee -a "$log"
 }
 
 integration() {
@@ -66,6 +71,9 @@ rest() {
 }
 
 tier=${1:-}
+mkdir -p target/gates
+log="target/gates/${tier:-none}.log"
+: > "$log"
 case "$tier" in
     area) shift; area "$@" ;;
     handover) handover ;;
