@@ -442,14 +442,20 @@ fn a_program_following_the_pointer_is_told_where_it_is_and_given_its_picture() {
     assert_eq!(Picture::read(&file, POINTER).at(4, 4), GREEN);
     frame.destroy();
 
-    // A pointer an application draws is given as the ordinary one, and
-    // one it hides as nothing.
+    // A pointer an application draws is given as it draws it, and again
+    // when it changes; one it hides, as nothing.
     let drawn = app.surface();
     app.fill(&drawn, (8, 8), RED);
     app.set_cursor(Some(&drawn), (2, 2));
     session.roundtrip(&mut app);
+    let (events, picture) = point(&mut session, &mut camera, &taking);
+    assert!(events.contains(&Event::PointerTip(2, 2)), "{events:?}");
+    assert_eq!(picture.at(4, 4), RED);
+    assert_eq!(picture.at(100, 100), 0, "what is not the pointer is clear");
+    app.fill(&drawn, (8, 8), GREEN);
+    session.roundtrip(&mut app);
     let (_, picture) = point(&mut session, &mut camera, &taking);
-    assert_eq!(picture.at(4, 4), BLUE);
+    assert_eq!(picture.at(4, 4), GREEN);
     app.set_cursor(None, (0, 0));
     session.roundtrip(&mut app);
     let (events, picture) = point(&mut session, &mut camera, &taking);

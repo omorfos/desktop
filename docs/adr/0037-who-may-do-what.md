@@ -192,9 +192,15 @@ pointer comes over it and leaves, where it is in the screen's pixels,
 and where its position is in its picture, and given that picture, the
 theme's own pixels as they are loaded, at the top left of a square as
 large as any pointer, so that nothing is drawn to give it. A pointer an
-application draws itself is given as the ordinary one: reading what it
-drew would take a second `unsafe` read of a program's memory, or drawing
-it again through the GPU. Following the pointer does not set the mark;
+application draws itself, as every program written for X11 does, is
+drawn again by itself, by the renderer that draws the screen, into a
+square of its own that is read back: reading what the application drew
+straight from its memory would take a second `unsafe` block. It is drawn
+only while a program takes pictures of the pointer, and only when the
+application changes it, comes to give it, or the pointer goes to a screen
+of another scale; a picture asked for meanwhile waits for it, and until
+the first is drawn the pointer is said to be the ordinary one. Following
+the pointer does not set the mark;
 what it is followed for, a picture of the screen, does.
 
 **The clipboard at any time is not offered, like the list of windows.**

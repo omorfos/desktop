@@ -626,7 +626,8 @@ impl Compositor {
         match self.shown {
             Look::Icon(icon) => images.shown = Some(ready(images.shown.take(), icon)),
             // A pointer an application draws is given to programs that take
-            // pictures of it as the ordinary one, which is a picture of ours.
+            // pictures of it as the ordinary one until it has been drawn for
+            // them.
             Look::Surface(_) => {
                 let kept = images.stand_in.take();
                 images.stand_in = Some(ready(kept, CursorIcon::Default));
@@ -642,16 +643,114 @@ impl Compositor {
     }
 
     /// The picture of the pointer as programs that take pictures of it are
-    /// given it, with what they are kept in: what is shown, or the
-    /// ordinary pointer in place of one an application draws. Nothing,
-    /// while it is hidden.
-    pub(crate) fn pointer_picture(&mut self) -> (Option<&PointerImage>, &mut Capture) {
-        let picture = match self.shown {
-            Look::Icon(_) => self.pointer_images.shown.as_ref(),
-            Look::Surface(_) => self.pointer_images.stand_in.as_ref(),
+    /// given it, with what they are kept in: what is shown, or one an
+    /// application draws as it was drawn for them, or until it has been,
+    /// the ordinary pointer. Nothing, while it is hidden. And whether it
+    /// is to be given yet, which it is not while one an application draws
+    /// waits to be drawn again.
+    pub(crate) fn pointer_picture(&mut self) -> (Option<&Given>, bool, &mut Capture) {
+        let images = &self.pointer_images;
+        let picture = match &self.shown {
+            Look::Icon(_) => images.shown.as_ref().map(|image| &image.given),
+            Look::Surface(surface) => {
+                let drawn = images.drawn.as_ref();
+                let drawn = drawn.filter(|drawn| drawn.surface == *surface);
+                let drawn = drawn.map(|drawn| &drawn.given);
+                drawn.or_else(|| images.stand_in.as_ref().map(|image| &image.given))
+            }
             Look::Hidden => None,
         };
-        (picture, &mut self.capture)
+        let waiting = self.pointer_to_draw().is_some();
+        (picture, !waiting, &mut self.capture)
+    }
+
+    /// The pointer an application draws, if a program following the pointer
+    /// is to be given a picture of it and it has not been drawn as it is
+    /// now, at the scale of the screen it is on.
+    fn pointer_to_draw(&self) -> Option<&WlSurface> {
+        let Look::Surface(surface) = &self.shown else {
+            return None;
+        };
+        let scale = self.pointer_scale();
+        let drawn = self.pointer_images.drawn.as_ref();
+        let current = drawn.is_some_and(|drawn| drawn.surface == *surface && drawn.scale == scale)
+            && !self.pointer_images.stale;
+        (!current && self.capture.pointer_wanted()).then_some(surface)
+    }
+
+    /// Draws the pointer an application draws by itself, as large as any
+    /// pointer is drawn, for the programs following the pointer, and gives
+    /// it to those waiting for it.
+    fn draw_pointer<R, P>(&mut self, renderer: &mut R, surface: &WlSurface, scale: Scale)
+    where
+        R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
+        R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
+    {
+        let whole = capture::POINTER.cast_signed();
+        let size = Size::<i32, Physical>::from((whole, whole));
+        let factor = scale.factor();
+        let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+            renderer,
+            surface,
+            Point::<i32, Physical>::default(),
+            factor,
+            1.0,
+            Kind::Cursor,
+        );
+        let elements: Vec<Element<R>> = elements.into_iter().map(Element::Surface).collect();
+        let mut tracker = OutputDamageTracker::new(size, factor, Transform::Normal);
+        let made: Option<P> = renderer
+            .create_buffer(Fourcc::Abgr8888, Size::from((whole, whole)))
+            .ok();
+        let read = made.and_then(|mut picture| {
+            let target = renderer.bind(&mut picture).ok();
+            target.and_then(|mut target| {
+                let clear = Color32F::TRANSPARENT;
+                let drawn = tracker.render_output(renderer, &mut target, 0, &elements, clear);
+                let all = Rectangle::from_size(Size::from((whole, whole)));
+                let read = drawn
+                    .ok()
+                    .map(|_| renderer.copy_framebuffer(&target, all, Fourcc::Abgr8888));
+                read.and_then(Result::ok)
+            })
+        });
+        let pixels = read
+            .as_ref()
+            .and_then(|read| renderer.map_texture(read).ok());
+        let mut bytes = Vec::new();
+        capture::turn(pixels.unwrap_or_default(), &mut bytes, true);
+        let hotspot = cursor_hotspot(surface)
+            .to_f64()
+            .to_physical(factor)
+            .to_i32_round::<i32>();
+        let tip = (
+            hotspot.x.max(0).unsigned_abs(),
+            hotspot.y.max(0).unsigned_abs(),
+        );
+        let images = &mut self.pointer_images;
+        images.loaded += 1;
+        let given = Given {
+            bytes,
+            pixels: (capture::POINTER, capture::POINTER),
+            tip,
+            serial: images.loaded,
+        };
+        images.drawn = Some(DrawnPointer {
+            surface: surface.clone(),
+            scale,
+            given,
+        });
+        images.stale = false;
+        self.settle_following();
+    }
+
+    /// Notes that the pointer an application draws may look different,
+    /// after `surface`, part of it or not, has changed.
+    pub(crate) fn pointer_changed(&mut self, surface: &WlSurface) {
+        let drawn = self.pointer_images.drawn.as_ref();
+        let ours = drawn.is_some_and(|drawn| drawn.surface == *surface);
+        self.pointer_images.stale |= ours;
     }
 
     /// The virtual terminal the user has asked to switch to since this was
@@ -1673,6 +1772,15 @@ impl Compositor {
             let drawn = tracker.render_output(renderer, framebuffer, age, &elements, BLACK);
             return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
         }
+        // A pointer an application draws is drawn by itself for programs
+        // following it, on the screen it is on.
+        let here = self
+            .pointer_head()
+            .is_some_and(|head| head.output == *output);
+        let drawing = self.pointer_to_draw().filter(|_| here).cloned();
+        if let Some(surface) = drawing {
+            self.draw_pointer::<R, P>(renderer, &surface, view.scale);
+        }
         let desktop = self.config().theme.style(Part::Desktop, States::NONE);
         let behind = color(desktop.background);
         // A picture a program is to be given is drawn first, without the
@@ -2089,13 +2197,7 @@ impl Compositor {
                 elements.extend(image.picture.cursor(renderer, at, view));
             }
             (Look::Surface(surface), _) => {
-                let hotspot = with_states(surface, |states| {
-                    let attributes = states.data_map.get::<Mutex<CursorImageAttributes>>();
-                    attributes
-                        .and_then(|attributes| attributes.lock().ok().map(|held| held.hotspot))
-                        .unwrap_or_default()
-                });
-                let at = self.pointer_location - hotspot.to_f64();
+                let at = self.pointer_location - cursor_hotspot(surface).to_f64();
                 let picture = render_elements_from_surface_tree(
                     renderer,
                     surface,
@@ -2479,10 +2581,40 @@ struct PointerImages {
     /// The picture for the shape being shown.
     shown: Option<PointerImage>,
     /// The ordinary pointer, kept to stand in for one an application draws
-    /// itself in pictures of the pointer given to programs.
+    /// itself until that has been drawn for programs following it.
     stand_in: Option<PointerImage>,
-    /// How many have been loaded, which names the next: the first is 1.
+    /// The last pointer an application drew, as drawn for programs
+    /// following it.
+    drawn: Option<DrawnPointer>,
+    /// Whether the application has changed that pointer since.
+    stale: bool,
+    /// How many have been loaded or drawn, which names the next: the first
+    /// is 1.
     loaded: u64,
+}
+
+/// A pointer an application draws, drawn by itself for programs following
+/// the pointer: what it is, at what scale, and the picture.
+#[derive(Debug)]
+struct DrawnPointer {
+    surface: WlSurface,
+    scale: Scale,
+    given: Given,
+}
+
+/// A picture of the pointer as programs that take pictures of it are
+/// given it.
+#[derive(Debug)]
+pub(crate) struct Given {
+    /// The picture's pixels, row by row, as `Argb8888` with premultiplied
+    /// alpha.
+    pub(crate) bytes: Vec<u8>,
+    /// How many pixels it is across and down.
+    pub(crate) pixels: (u32, u32),
+    /// The pixel that is the pointer's position.
+    pub(crate) tip: (u32, u32),
+    /// Which picture this is: no other loaded or drawn has the same.
+    pub(crate) serial: u64,
 }
 
 /// The picture of a named pointer shape, and everything it depends on.
@@ -2494,15 +2626,9 @@ pub(crate) struct PointerImage {
     picture: Painted,
     /// Where in the picture the pointer's position is.
     hotspot: Point<f64, Logical>,
-    /// The picture's pixels, row by row, as `Argb8888` with premultiplied
-    /// alpha, for a program that is given it.
-    pub(crate) bytes: Vec<u8>,
-    /// How many pixels it is across and down.
-    pub(crate) pixels: (u32, u32),
-    /// The pixel that is the pointer's position.
-    pub(crate) tip: (u32, u32),
-    /// Which picture this is: no other loaded has the same.
-    pub(crate) serial: u64,
+    /// The picture as a program that takes pictures of the pointer is
+    /// given it.
+    given: Given,
 }
 
 impl PointerImage {
@@ -2535,12 +2661,24 @@ impl PointerImage {
             theme: theme.clone(),
             picture: Painted::from_image(&image, scale),
             hotspot: Point::<f64, Physical>::from(hotspot).to_logical(scale.factor()),
-            pixels: image.size,
-            tip: image.hotspot,
-            bytes: image.pixels,
-            serial,
+            given: Given {
+                bytes: image.pixels,
+                pixels: image.size,
+                tip: image.hotspot,
+                serial,
+            },
         }
     }
+}
+
+/// Where in the picture an application gave for the pointer its position is.
+fn cursor_hotspot(surface: &WlSurface) -> Point<i32, Logical> {
+    with_states(surface, |states| {
+        let attributes = states.data_map.get::<Mutex<CursorImageAttributes>>();
+        attributes
+            .and_then(|attributes| attributes.lock().ok().map(|held| held.hotspot))
+            .unwrap_or_default()
+    })
 }
 
 render_elements! {
