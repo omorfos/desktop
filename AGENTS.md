@@ -55,7 +55,9 @@ cargo deny check
 
 All five must pass. CI runs the same commands. While working,
 `.claude/skills/handover/gates.sh` runs them in tiers, the quickest first,
-as [docs/TESTING.md](docs/TESTING.md) says under "Tiers".
+as [docs/TESTING.md](docs/TESTING.md) says under "Tiers". Once per clone,
+`git config core.hooksPath .githooks` sets up the commit hook, which
+refuses a line left in from debugging.
 
 To try a change by hand on real hardware, build with the `nightly` profile
 and install from `target/nightly/`. It is optimised like a release but skips

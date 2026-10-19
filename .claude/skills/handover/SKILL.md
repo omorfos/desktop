@@ -64,7 +64,11 @@ once: they share the machine, and the X11 tests time out.
 
 The tools are in `~/.cargo/bin`. Each tier keeps its whole output in
 `target/gates/<tier>.log`: read that, not a filtered copy, when a step
-fails. The hook in `.claude/settings.json`
+fails. When the coverage gate fails, the tier lists each line it did not
+reach, with the file, the line and the column; `gates.sh uncovered` lists
+them again from the last run. Mark a line put in only to find something
+out with the word `DBG`, as `eprintln!("DBG ...")`: the `handover` tier
+and the commit hook refuse a change that still has one. The hook in `.claude/settings.json`
 formats a Rust file each time it is edited or written as a file, but not
 one changed by a command, such as a script that rewrites it: the format
 gate still counts. If the change touches anything that runs on a thread
@@ -108,7 +112,12 @@ the tests; say so when a change depends on it.
   ran, run `gates.sh all` again, as the last thing before `git commit`.
 - One logical change per commit, each of which builds and passes alone. If
   a change has to be split, split it by whole files. Never by staging
-  hunks and stashing the rest: that broke `main` once.
+  hunks and stashing the rest: that broke `main` once. With more than one
+  commit, run `gates.sh commits` before merging: it checks out each in a
+  worktree of its own and runs formatting, clippy and the coverage gate
+  on it alone.
+- The commit hook is in `.githooks/`. If `git config core.hooksPath` does
+  not say `.githooks`, set it, and say so.
 - The message follows `AGENTS.md`: Conventional Commits, a body that says
   why and what and the trade-off, wrapped at 100 columns. Check it:
   `committed --config committed.toml main..HEAD`.
