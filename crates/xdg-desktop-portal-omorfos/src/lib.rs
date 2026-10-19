@@ -31,7 +31,7 @@ use card::Card;
 pub use feed::{Feed, Seen};
 use omorfos_config::{Store, Watcher};
 use omorfos_pipewire::{Held, Picture};
-pub use prompt::{Answer, Desk, Question, asking, button_at, paint};
+pub use prompt::{Answer, Desk, Question, Still, asking, button_at, paint};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 pub use screencast::{Pointer, SCREENCAST, SESSION, streams};
 pub use stream::{Pipes, Share};
@@ -127,6 +127,18 @@ fn take(desk: &Desk, folder: &Path) -> Option<String> {
     saved.map(|path| address(&path))
 }
 
+/// A picture of the first screen, to pick a colour from. Nothing, if it
+/// could not be taken.
+fn still(desk: &Desk) -> Option<Still> {
+    let shots = omorfos_screenshot::shoot(desk.connection(), None).ok();
+    let first = shots.and_then(|(shots, _)| shots.into_iter().next());
+    first.map(|shot| Still {
+        screen: shot.screen,
+        size: (shot.width, shot.height),
+        pixels: shot.pixels,
+    })
+}
+
 /// Says in the session's log what became of something asked, so that
 /// what went wrong can be found out. If even that cannot be said, there is
 /// nobody to say it to.
@@ -147,20 +159,24 @@ enum Pending {
     /// Sharing the screen: the same, the session it is for, and how the
     /// pointer is to be shown.
     Share(Message, OwnedObjectPath, OwnedObjectPath, Pointer),
+    /// A colour from the screen: the call, and the request.
+    Pick(Message, OwnedObjectPath),
 }
 
 impl Pending {
     /// The request it may be withdrawn by.
     const fn request(&self) -> &OwnedObjectPath {
         match self {
-            Self::Picture(_, request) | Self::Share(_, request, ..) => request,
+            Self::Picture(_, request) | Self::Share(_, request, ..) | Self::Pick(_, request) => {
+                request
+            }
         }
     }
 
     /// The call to answer.
     const fn call(&self) -> &Message {
         match self {
-            Self::Picture(call, _) | Self::Share(call, ..) => call,
+            Self::Picture(call, _) | Self::Share(call, ..) | Self::Pick(call, _) => call,
         }
     }
 }
@@ -307,7 +323,19 @@ impl Backend<'_> {
                     }
                 }
             }
-            (Answer::Keep, pending) => {
+            // A colour is only picked, and anything else picks none.
+            (answer, Pending::Pick(call, _)) => {
+                if let Answer::Picked(colour) = answer {
+                    note("a colour was picked");
+                    self.portal
+                        .respond_colour(&call, Response::Given, Some(colour));
+                } else {
+                    note("no colour was picked");
+                    self.portal.respond_colour(&call, Response::Refused, None);
+                }
+            }
+            // A question is only answered yes or no.
+            (_, pending) => {
                 note("the user said no");
                 self.portal.respond(pending.call(), Response::Refused, None);
             }
@@ -344,7 +372,11 @@ impl Backend<'_> {
         let pending = self.pending.is_some();
         match asked {
             // One question at a time: another while one is up fails.
-            Asked::Screenshot { call, app, .. } | Asked::Share { call, app, .. } if pending => {
+            Asked::Screenshot { call, app, .. }
+            | Asked::Share { call, app, .. }
+            | Asked::Pick { call, app, .. }
+                if pending =>
+            {
                 let app = called(&app);
                 note(&format!(
                     "{app} asked something while another was being asked about"
@@ -357,6 +389,21 @@ impl Backend<'_> {
                     called(&app)
                 ));
                 self.ask(&app, Question::Picture, Pending::Picture(call, request));
+            }
+            Asked::Pick { call, request, app } => {
+                note(&format!(
+                    "{} asked for a colour on the screen",
+                    called(&app)
+                ));
+                // The picture is taken before anything is put up, so that
+                // nothing of the portal's is in it.
+                let still = still(&self.desk);
+                if still.is_some_and(|still| self.desk.pick(still)) {
+                    self.pending = Some(Pending::Pick(call, request));
+                } else {
+                    note("no picture of the screen could be taken, or shown to pick from");
+                    self.portal.respond_colour(&call, Response::Failed, None);
+                }
             }
             Asked::Share {
                 call,

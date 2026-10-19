@@ -817,6 +817,14 @@ your pictures as `Print` saves them; Escape or **Cancel** gives it
 nothing. The question is not in the picture, and the red mark shows while
 it is taken. The question has the look of the launcher.
 
+An application can ask for a colour on the screen too, as a drawing
+program's colour picker does. Nothing is asked: a still picture of the
+first screen goes up over it, and a click, or Enter, gives the
+application the colour under the pointer, and nothing else; Escape or
+another button gives it none. The pointer is a crosshair meanwhile, and
+a round loupe beside it shows the pixels round it larger, with the one
+it would give outlined in the middle.
+
 An application can ask to share the screen too, as a browser or a call
 does. The same question goes up, saying that it wants to share your
 screen: **Share** or Enter gives it the first screen as a live stream,

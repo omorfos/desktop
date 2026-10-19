@@ -1,6 +1,7 @@
 //! The program that answers the portals, run against a compositor as it
-//! is in a session: an application asks for a picture of the screen, the
-//! user is asked, and the application is answered.
+//! is in a session: an application asks for a picture of the screen, or a
+//! colour on it, the user is asked or picks, and the application is
+//! answered.
 #![expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
@@ -23,9 +24,12 @@ use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
 use crate::common::{HEIGHT, Session, WIDTH, key};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+
+const WHITE: u32 = 0xffff_ffff;
 
 const LEFT: u32 = 0x110;
+const RIGHT: u32 = 0x111;
 
 /// A bus of the test's own, gone when the test is.
 struct Daemon {
@@ -131,15 +135,63 @@ fn start_with_pipewire(
 /// does, by a request of this name, and waits for the answer on a thread
 /// of its own.
 fn ask(daemon: &Daemon, request: &'static str) -> JoinHandle<Answered> {
+    ask_by(daemon, request, "Screenshot")
+}
+
+/// The same, by `method` of the Screenshot portal: `PickColor` for a
+/// colour on the screen.
+fn ask_by(daemon: &Daemon, request: &'static str, method: &'static str) -> JoinHandle<Answered> {
     let peer = daemon.peer();
     std::thread::spawn(move || {
         let request = format!("/org/freedesktop/portal/desktop/request/1_1/{request}");
         let path = ObjectPath::try_from(request.as_str()).unwrap();
         let options: HashMap<&str, Value<'_>> = HashMap::new();
         let body = (path, "org.example.App", "", options);
-        let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &body);
+        let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), method, &body);
         reply.unwrap().body().deserialize().unwrap()
     })
+}
+
+/// Does `act` until the application has been answered, and returns how: a
+/// picture to pick from looks just as the screen does, so it is not known
+/// to be up but by what comes of acting on it.
+fn acted_until_answered(
+    session: &mut Session,
+    asking: JoinHandle<Answered>,
+    act: impl Fn(&mut Session),
+) -> Answered {
+    session.eventually(|session| {
+        act(session);
+        session.draw();
+        asking.is_finished()
+    });
+    asking.join().unwrap()
+}
+
+/// Presses and lets go of `button` at a place on the screen.
+fn button_at(session: &mut Session, (x, y): (i32, i32), button: u32) {
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    session.step();
+    for pressed in [true, false] {
+        session
+            .compositor_mut()
+            .input(Input::Button { button, pressed }, 0);
+    }
+}
+
+/// The colour an application was given, as `0xAARRGGBB`.
+fn picked(results: &HashMap<String, OwnedValue>) -> u32 {
+    let (red, green, blue) = <(f64, f64, f64)>::try_from(results["color"].clone()).unwrap();
+    let channel = |part: f64| {
+        let byte = (part * 255.0).round();
+        assert!((0.0..=255.0).contains(&byte), "{part}");
+        format!("{byte}").parse::<u8>().unwrap()
+    };
+    u32::from_be_bytes([0xff, channel(red), channel(green), channel(blue)])
 }
 
 /// Draws until the question is on the screen.
@@ -267,6 +319,10 @@ fn the_buttons_say_yes_and_no_and_the_rest_of_the_box_nothing() {
     click(&mut session, (220, 30));
     session.advance(Duration::from_millis(50));
     assert!(!asking.is_finished(), "a click on what is said is nothing");
+    let (left, top) = ((WIDTH - 440) / 2, (HEIGHT - 150) / 2);
+    button_at(&mut session, (left + 360, top + 114), RIGHT);
+    session.advance(Duration::from_millis(50));
+    assert!(!asking.is_finished(), "nor one of another button");
     click(&mut session, (228, 114));
     assert_eq!(answered(&mut session, asking).0, 1, "cancelled");
     // Gone, before the next is asked, so that it is the next that is seen.
@@ -287,6 +343,8 @@ fn one_question_is_asked_at_a_time_and_one_withdrawn_goes() {
     asked(&mut session);
     let second = ask(&daemon, "f");
     assert_eq!(answered(&mut session, second).0, 2, "while another is up");
+    let colour = ask_by(&daemon, "f_colour", "PickColor");
+    assert_eq!(answered(&mut session, colour).0, 2, "nor a colour");
 
     // A withdrawal of a request that is not the one asked changes
     // nothing; of the one asked, it goes, and is answered as refused.
@@ -311,6 +369,107 @@ fn without_leave_to_take_pictures_the_application_is_told_it_failed() {
     let asking = ask(&daemon, "g");
     asked(&mut session);
     press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
+}
+
+#[test]
+fn an_application_is_given_the_colour_the_user_picks_from_the_screen() {
+    // Picked from the desktop, which a click or a key before the picture
+    // is up does nothing to: until it is, there is nothing to tell it by.
+    let daemon = Daemon::start();
+    let theme = "desktop { background: #00ff00; }";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let (corner, middle) = ((WIDTH - 5, HEIGHT - 5), (WIDTH / 2, HEIGHT / 2));
+
+    // A click of the left button picks the colour where it is.
+    for (request, at) in [("pick_a", corner), ("pick_b", middle)] {
+        let asking = ask_by(&daemon, request, "PickColor");
+        let act = |session: &mut Session| button_at(session, at, LEFT);
+        let (response, results) = acted_until_answered(&mut session, asking, act);
+        assert_eq!((response, picked(&results)), (0, GREEN));
+    }
+
+    // So does Enter, where the pointer is, once that is known.
+    let asking = ask_by(&daemon, "pick_c", "PickColor");
+    let act = |session: &mut Session| {
+        let at = Input::Motion { x: 10.0, y: 10.0 };
+        session.compositor_mut().input(at, 0);
+        session.step();
+        press(session, key::RETURN);
+    };
+    let (response, results) = acted_until_answered(&mut session, asking, act);
+    assert_eq!((response, picked(&results)), (0, GREEN));
+
+    // Escape, or a button other than the left, picks nothing.
+    let asking = ask_by(&daemon, "pick_d", "PickColor");
+    let act = |session: &mut Session| press(session, key::ESCAPE);
+    assert_eq!(
+        acted_until_answered(&mut session, asking, act),
+        (1, HashMap::new())
+    );
+    let asking = ask_by(&daemon, "pick_e", "PickColor");
+    let act = |session: &mut Session| button_at(session, corner, RIGHT);
+    assert_eq!(
+        acted_until_answered(&mut session, asking, act),
+        (1, HashMap::new())
+    );
+
+    // Nor is one picked that the portal no longer wants.
+    let asking = ask_by(&daemon, "pick_g", "PickColor");
+    let peer = daemon.peer();
+    let request = "/org/freedesktop/portal/desktop/request/1_1/pick_g";
+    let act = |_: &mut Session| {
+        peer.call_method(Some(NAME), request, Some(REQUEST), "Close", &())
+            .unwrap();
+    };
+    assert_eq!(
+        acted_until_answered(&mut session, asking, act),
+        (1, HashMap::new())
+    );
+}
+
+#[test]
+fn picking_a_colour_the_pointer_is_a_crosshair_beside_a_loupe() {
+    let daemon = Daemon::start();
+    let theme = "desktop { background: #00ff00; }";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let themes = session.install_cursors("default", &[("default", 8, BLUE), ("crosshair", 8, RED)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+
+    // The pointer is a crosshair once the picture is up, and the loupe is
+    // below and to the right of it.
+    let asking = ask_by(&daemon, "loupe", "PickColor");
+    session.eventually(|session| {
+        let at = Input::Motion { x: 200.0, y: 200.0 };
+        session.compositor_mut().input(at, 0);
+        session.step();
+        session.draw().at(203, 203) == RED
+    });
+    let looks = Theme::default().style(Part::Launcher, States::NONE);
+    let ring = looks.border.top.color;
+    let ring = u32::from_be_bytes([ring.alpha, ring.red, ring.green, ring.blue]);
+    let (left, top) = (200 + 24, 200 + 24);
+    let picture = session.draw();
+    assert_eq!(picture.at(left + 60, top), ring, "its ring");
+    assert_eq!(picture.at(left + 60, top + 60), GREEN, "what it shows");
+    assert_eq!(
+        picture.at(left + 56, top + 60),
+        WHITE,
+        "round the pixel picked"
+    );
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+}
+
+#[test]
+fn a_colour_cannot_be_picked_without_leave_to_take_pictures() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, Roles::PANEL.with(Roles::OVERLAY));
+    let asking = ask_by(&daemon, "pick_f", "PickColor");
     assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
 }
 

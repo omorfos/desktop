@@ -84,6 +84,16 @@ pub enum Asked {
         /// The application, as the sandbox names it.
         app: String,
     },
+    /// A colour picked from the screen for an application, by its
+    /// identifier, as for a picture.
+    Pick {
+        /// The call, to be answered once the user has picked.
+        call: Message,
+        /// The object the request is known by.
+        request: OwnedObjectPath,
+        /// The application, as the sandbox names it.
+        app: String,
+    },
     /// The request known by this object is no longer wanted.
     Withdrawn(OwnedObjectPath),
     /// A screen to be shared with an application, in the session the
@@ -158,6 +168,14 @@ const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS 
   </interface>
   <interface name="org.freedesktop.impl.portal.Screenshot">
     <method name="Screenshot">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="parent_window" type="s"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+      <arg direction="out" name="response" type="u"/>
+      <arg direction="out" name="results" type="a{sv}"/>
+    </method>
+    <method name="PickColor">
       <arg direction="in" name="handle" type="o"/>
       <arg direction="in" name="app_id" type="s"/>
       <arg direction="in" name="parent_window" type="s"/>
@@ -274,6 +292,20 @@ impl Portal {
             .reply(&call.header(), &(response as u32, results));
     }
 
+    /// Answers a call to pick a colour that waited on the user, with the
+    /// colour picked, red, green and blue, if one was. The portal is told
+    /// each as a part of one.
+    pub fn respond_colour(&self, call: &Message, response: Response, colour: Option<[u8; 3]>) {
+        let part = |channel: u8| f64::from(channel) / f64::from(u8::MAX);
+        let results: HashMap<&str, Value<'_>> = colour
+            .into_iter()
+            .map(|[red, green, blue]| ("color", Value::from((part(red), part(green), part(blue)))))
+            .collect();
+        let _ = self
+            .connection
+            .reply(&call.header(), &(response as u32, results));
+    }
+
     /// Answers a call to start sharing that waited on the user, with the
     /// stream that shares the screen at `at`, `size` large.
     pub fn respond_shared(&self, call: &Message, node: u32, at: (i32, i32), size: (i32, i32)) {
@@ -336,6 +368,7 @@ impl Asked {
     pub const fn request(&self) -> &OwnedObjectPath {
         match self {
             Self::Screenshot { request, .. }
+            | Self::Pick { request, .. }
             | Self::Share { request, .. }
             | Self::Withdrawn(request)
             | Self::Ended(request) => request,
@@ -346,7 +379,9 @@ impl Asked {
     #[must_use]
     pub const fn call(&self) -> Option<&Message> {
         match self {
-            Self::Screenshot { call, .. } | Self::Share { call, .. } => Some(call),
+            Self::Screenshot { call, .. } | Self::Pick { call, .. } | Self::Share { call, .. } => {
+                Some(call)
+            }
             Self::Withdrawn(_) | Self::Ended(_) => None,
         }
     }
@@ -461,6 +496,18 @@ fn answer(
                 let _ = writeln!(std::io::stderr(), "{said}");
                 malformed()
             }
+        },
+        (SCREENSHOT, Some("PickColor")) => match body.deserialize::<Shoot>() {
+            Ok((request, app, _, _)) => {
+                // Answered once the user has picked.
+                waiting.tell(Asked::Pick {
+                    call: message.clone(),
+                    request,
+                    app,
+                });
+                Ok(())
+            }
+            Err(_) => malformed(),
         },
         (REQUEST, Some("Close")) => {
             let request = header
@@ -690,6 +737,12 @@ pub(crate) mod tests {
         assert!(said.contains("InvalidArgs"), "{said}");
         let said = named(peer.call_method(Some(NAME), PATH, settings, "Write", &()));
         assert!(said.contains("UnknownMethod"), "{said}");
+        let shots = Some(SCREENSHOT);
+        let said = named(peer.call_method(Some(NAME), PATH, shots, "PickColor", &(7_u32,)));
+        assert!(
+            said.contains("InvalidArgs"),
+            "a colour asked for wrongly: {said}"
+        );
 
         let properties = Some("org.freedesktop.DBus.Properties");
         let said =
@@ -786,14 +839,39 @@ pub(crate) mod tests {
         peer: &Connection,
         request: &'static str,
     ) -> thread::JoinHandle<(u32, HashMap<String, OwnedValue>)> {
+        ask_for(peer, request, "Screenshot")
+    }
+
+    /// The same, by `method` of the Screenshot portal.
+    pub(crate) fn ask_for(
+        peer: &Connection,
+        request: &'static str,
+        method: &'static str,
+    ) -> thread::JoinHandle<(u32, HashMap<String, OwnedValue>)> {
         let peer = peer.clone();
         thread::spawn(move || {
             let path = ObjectPath::try_from(request).unwrap();
             let options: HashMap<&str, Value<'_>> = HashMap::new();
             let body = (path, "org.example.App", "", options);
-            let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &body);
+            let reply = peer.call_method(Some(NAME), PATH, Some(SCREENSHOT), method, &body);
             reply.unwrap().body().deserialize().unwrap()
         })
+    }
+
+    #[test]
+    fn a_colour_asked_for_waits_on_the_user_and_is_answered_with_it() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, DARK);
+        let peer = daemon.peer();
+        let request = "/org/freedesktop/portal/desktop/request/1/colour";
+        let asking = ask_for(&peer, request, "PickColor");
+        let asked = heard(&portal).pop().unwrap();
+        assert_eq!(asked.request().as_str(), request);
+        assert!(matches!(&asked, Asked::Pick { app, .. } if app == "org.example.App"));
+        portal.respond_colour(asked.call().unwrap(), Response::Given, Some([255, 51, 0]));
+        let (response, results) = asking.join().unwrap();
+        let colour = <(f64, f64, f64)>::try_from(results["color"].clone()).unwrap();
+        assert_eq!((response, colour), (0, (1.0, 0.2, 0.0)));
     }
 
     #[test]
