@@ -51,6 +51,9 @@ call them by their ids:
   missing on the runner: a package, a directory, a font. Reproduce in the
   container and fix the workflow, and `AGENTS.md` where it lists what is
   needed to build and test.
+- **The nightly stress run failed.** It opens or adds to an issue
+  labelled `flaky` for the architecture; its run keeps the log of each
+  run that failed. Each flake found in it is a failure like those below.
 - **One test fails, on one architecture, sometimes.** A race. Read what
   it waited for and did not get. Before making the test more patient, ask
   whether a session on real hardware could lose the same race: if it
@@ -85,6 +88,10 @@ Only amd64 can be run this way on the maintainer's machine. A fix for
 arm64 is checked by reasoning and by the next push; say so.
 
 ## 4. Fix, and prove it
+
+- A failure that comes only sometimes gets an issue labelled `flaky`, if
+  it has none, with the run and what failed, and what was found as it is
+  found. The commit that fixes it says `Fixes #<issue>` in its body.
 
 - Run the test that failed many times over, and the whole test binary a
   few dozen times, as `docs/TESTING.md` says under "Stress"; and what

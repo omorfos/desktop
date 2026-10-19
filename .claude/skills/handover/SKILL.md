@@ -56,8 +56,11 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --lock
 The tools are in `~/.cargo/bin`. The hook in `.claude/settings.json`
 formats a Rust file each time it is edited or written as a file, but not
 one changed by a command, such as a script that rewrites it: the format
-gate still counts. If tests were added that start processes,
-watch files or start an X server, stress them as `docs/TESTING.md` says.
+gate still counts. If the change touches anything that runs on a thread
+of its own, starts a process, uses a socket or watches a file, stress the
+tests that reach it as `docs/TESTING.md` says, and say in the report how
+many runs passed. A test that fails only sometimes is a bug ("Flaky tests"
+there), never one to run again until it passes.
 If the change touches buffers of the graphics card, pictures of the screen
 or sharing it, run the tests that need a card, which CI skips, as
 `docs/TESTING.md` says, and say in the report whether they ran. On a

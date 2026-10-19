@@ -145,6 +145,30 @@ for i in $(seq 1 100); do "$bin" x11:: >/dev/null 2>&1 || echo "failed on run $i
 for i in $(seq 1 25); do "$bin" >/dev/null 2>&1 || echo "failed on run $i"; done
 ```
 
+## Flaky tests
+
+A test that fails only sometimes, or a gate that falls short only
+sometimes, is a bug: in the test, or in what it tests if a session could
+lose the same race. It is never run again until it passes, by hand or by a
+tool that retries.
+
+- **Covered every time, not most times.** A path a test is meant to reach
+  is reached because the test waits for something only that path does
+  before it goes on, not because threads happened to run in that order.
+  Coverage that falls short only sometimes is a test reaching something by
+  luck. Where nothing can be waited for, shape the code so that the path
+  does not depend on the order.
+- **Stressed before it is handed over.** A change to anything that runs on
+  a thread of its own, starts a process, uses a socket or watches a file
+  is stressed as above, and the report says how many runs passed.
+- **Every night**, `.github/workflows/stress.yml` runs the whole suite 30
+  times and the coverage gate 3 times, on both architectures. A failure
+  opens an issue labelled `flaky` for that architecture, or adds to the one
+  that is open, and the logs of each run that failed are kept with it for
+  30 days. One seen on a push gets an issue of its own, with the run.
+- **Fixed, then closed.** The commit that fixes a flake says `Fixes #N` in
+  its body, which closes the issue once it is on `main`.
+
 ## Writing code the gate accepts
 
 `cargo coverage` fails under 100% of lines, functions and regions. A
