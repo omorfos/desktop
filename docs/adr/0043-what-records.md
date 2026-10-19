@@ -80,6 +80,10 @@ not to be turned off.
   user's. And a camera that is open is said to record, whether or not
   pictures are being taken from it at that moment, which some programs
   keep it open without doing.
+- PipeWire 1.0, as in Ubuntu 24.04, does not say which process it is
+  itself, so what the layer that speaks PulseAudio's protocol passes on
+  is never believed there, and what records sound through it is named as
+  `pipewire`. PipeWire 1.4 says it.
 - Taking in what a program shares is believed of PipeWire as it is: a
   program that records through another, or feeds a stream of its own
   into one, is named as PipeWire sees it.

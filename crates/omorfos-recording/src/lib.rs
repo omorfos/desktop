@@ -89,7 +89,8 @@ pub fn watch(
     let lost = Rc::new(Cell::new(false));
     let losing = Rc::clone(&lost);
     // The number of PipeWire's own process, which the layer that speaks
-    // PulseAudio's protocol is the program of as well.
+    // PulseAudio's protocol is the program of as well. PipeWire 1.0, as
+    // in Ubuntu 24.04, does not say it, and that layer is then not believed.
     let daemon = Rc::new(Cell::new(None));
     let finding = Rc::clone(&daemon);
     let _core = core
@@ -98,7 +99,7 @@ pub fn watch(
             let pid = info
                 .props()
                 .and_then(|props| props.get(*pw::keys::APP_PROCESS_ID));
-            finding.set(pid.and_then(|pid| pid.parse::<u32>().ok()));
+            finding.set(pid.and_then(number));
         })
         .error(move |id, _, _, _| losing.set(losing.get() || id == pw::core::PW_ID_CORE))
         .register();
@@ -158,7 +159,7 @@ type Noting = (
 fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObject<&DictRef>) {
     let (graph, bound, daemon) = noting;
     let said = |key: &str| global.props.and_then(|props| props.get(key));
-    let number = |key: &str| said(key).and_then(|said| said.parse::<u32>().ok());
+    let number = |key: &str| said(key).and_then(number);
     let id = global.id;
     match global.type_ {
         ObjectType::Node => {
@@ -222,11 +223,16 @@ fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObj
 /// only if it runs what PipeWire itself runs, as the real one does, which
 /// no other program can.
 fn pid(props: &DictRef, daemon: Option<u32>) -> Option<u32> {
-    let number = |key: &str| props.get(key).and_then(|said| said.parse::<u32>().ok());
+    let number = |key: &str| props.get(key).and_then(number);
     let connected = number(*pw::keys::SEC_PID);
     let layer = props.get(*pw::keys::CLIENT_API) == Some(PULSE) && same_program(connected, daemon);
     let passed = number(*pw::keys::APP_PROCESS_ID).filter(|_| layer);
     passed.or(connected)
+}
+
+/// The number PipeWire says something is, such as a process's.
+fn number(said: &str) -> Option<u32> {
+    said.parse().ok()
 }
 
 /// Whether two processes run the same file.
