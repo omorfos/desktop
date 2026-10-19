@@ -78,6 +78,11 @@ struct Screen {
     memory: Option<File>,
     /// Whether it can be had see-through, as a window can.
     see_through: bool,
+    /// What the picture is taken through, and in, to be let go once it
+    /// has been: a program that goes on speaking to the compositor, as
+    /// the portal does, would otherwise go on being said to take it.
+    taking: Option<ExtImageCopyCaptureSessionV1>,
+    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 /// What the compositor has said, and what has been asked of it.
@@ -180,6 +185,15 @@ pub fn shoot(
     while alive && !state.finished() {
         alive = queue.blocking_dispatch(&mut state).is_ok();
     }
+    // What the pictures were taken through and in is let go, taken or not.
+    for screen in &mut state.screens {
+        let _ = screen
+            .taking
+            .take()
+            .inspect(ExtImageCopyCaptureSessionV1::destroy);
+        let _ = screen.buffer.take().inspect(wl_buffer::WlBuffer::destroy);
+    }
+    let _ = connection.flush();
     if !alive {
         return Err("the session ended before a picture was taken".into());
     }
@@ -247,6 +261,8 @@ impl Screen {
             size: (0, 0),
             memory: None,
             see_through: false,
+            taking: None,
+            buffer: None,
         }
     }
 
@@ -441,8 +457,10 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
                         frame.attach_buffer(&buffer);
                         frame.damage_buffer(0, 0, width, height);
                         frame.capture();
+                        screen.buffer = Some(buffer);
                         memory
                     });
+                    screen.taking = Some(taking.clone());
                     // Without memory to take it in there is no picture.
                     let failed = screen.memory.is_none().then_some(Stage::Failed);
                     screen.stage = failed.unwrap_or(screen.stage);
@@ -456,18 +474,21 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
 impl Dispatch<ExtImageCopyCaptureFrameV1, usize> for State {
     fn event(
         state: &mut Self,
-        _: &ExtImageCopyCaptureFrameV1,
+        frame: &ExtImageCopyCaptureFrameV1,
         event: frame::Event,
         index: &usize,
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        let ended = match event {
+            frame::Event::Ready => Some(Stage::Taken),
+            frame::Event::Failed { .. } => Some(Stage::Failed),
+            _ => None,
+        };
+        // Done with, either way.
+        let _ = ended.inspect(|_| frame.destroy());
         for screen in state.screen(*index) {
-            match event {
-                frame::Event::Ready => screen.stage = Stage::Taken,
-                frame::Event::Failed { .. } => screen.stage = Stage::Failed,
-                _ => {}
-            }
+            screen.stage = ended.unwrap_or(screen.stage);
         }
     }
 }
