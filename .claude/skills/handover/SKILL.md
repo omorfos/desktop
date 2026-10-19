@@ -53,7 +53,10 @@ cargo deny check
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
 ```
 
-The tools are in `~/.cargo/bin`. If tests were added that start processes,
+The tools are in `~/.cargo/bin`. The hook in `.claude/settings.json`
+formats a Rust file each time it is edited or written as a file, but not
+one changed by a command, such as a script that rewrites it: the format
+gate still counts. If tests were added that start processes,
 watch files or start an X server, stress them as `docs/TESTING.md` says.
 If the change touches buffers of the graphics card, pictures of the screen
 or sharing it, run the tests that need a card, which CI skips, as
