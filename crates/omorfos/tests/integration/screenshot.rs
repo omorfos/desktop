@@ -552,8 +552,18 @@ fn a_region_drawn_over_the_still_screen_is_what_is_saved() {
     let mut app = session.connect();
     session.open(&mut app, "app", (200, 100), RED);
     let tool = picking(&mut session, 1);
+    let button = |pressed| omorfos::Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    point(&mut session, (5, 5));
+    session.compositor_mut().input(button(true), 0);
+    point(&mut session, (105, 55));
+    // While it is drawn it is bright, and round it is dim.
+    session.eventually(|session| session.draw().at(50, 30) == RED);
+    assert_ne!(session.draw().at(150, 30), RED, "dimmed");
+    session.compositor_mut().input(button(false), 0);
     // A region is the window's colour, as the screen was when it began.
-    drag(&mut session, (5, 5), (105, 55));
     let paths = finish(&mut session, tool).unwrap();
     assert_eq!(paths.len(), 1);
     assert_eq!(saved(&paths[0], (5, 5)), ((100, 50), RED));
