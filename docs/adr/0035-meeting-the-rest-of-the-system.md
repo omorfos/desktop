@@ -208,6 +208,22 @@ nothing else is trusted with either. It learns what the compositor
 offers before it takes its name on the bus, so that it is never asked
 something before it knows whether it can ask the user.
 
+**A colour is picked, not asked about.** Asked for a colour on the
+screen, the backend takes a picture of the first screen and shows it
+still, over all of that screen and with the keyboard: a click of the left
+button, or Enter, gives the colour under the pointer, and Escape or
+another button gives none. Over it the pointer is a crosshair, and a
+round loupe beside it shows the fifteen pixels each way round it,
+larger, with the one it would give outlined; the loupe is a surface of
+its own over the picture, so that the pointer moving paints it again and
+not the whole screen. Nothing is asked first, as GNOME and KDE ask
+nothing: the application learns the one colour the user chose, by
+choosing it, which is the consent; asking as well would be asking twice.
+The picture is taken before anything of the backend's is up, so that it
+is not in it, and shown pixel for pixel, so that the colour is the
+screen's. A question or a picture is each put up anew, so that nothing of
+the one before, its shape or where the pointer was on it, carries over.
+
 **Sharing the screen goes through PipeWire, from the backend.** The
 backend takes pictures of the screen as the compositor gives them, each
 once something on it has changed, and puts each in a PipeWire stream of

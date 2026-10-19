@@ -264,9 +264,12 @@ calls for them.
 - [x] The Screenshot portal, with the user asked each time by a
       question of the backend's own, over everything, which is not in the
       picture.
-- [ ] Known gaps in the Screenshot portal: the colour picker it also
-      offers is not answered; the user cannot choose a screen, a window or
-      a region, only all of it; an application is named by its
+- [x] Colours picked for applications through the Screenshot portal,
+      from a still picture of the screen, the picking being the consent,
+      under a crosshair and beside a round loupe.
+- [ ] Known gaps in the Screenshot portal: the user cannot choose a
+      screen, a window or a region, only all of it, and a colour is
+      picked from the first screen only; an application is named by its
       identifier, not by the name it shows; and the question borrows the
       launcher's look in place of a part of its own.
 - [x] Sharing the screen through the portal, as a PipeWire stream, with
