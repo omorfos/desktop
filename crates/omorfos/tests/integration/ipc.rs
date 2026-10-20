@@ -712,3 +712,57 @@ fn where_windows_are_is_told_in_the_pixels_of_the_screen_and_not_of_one_rolled_u
     session.draw();
     assert_eq!(sizes(placed(&mut session, &mut peer)), [(200, 100)]);
 }
+
+#[test]
+fn the_state_says_where_each_screen_stands_and_the_modes_it_can_be_driven_in() {
+    let mut session = Session::new();
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let mode =
+        |width: u16, height: u16, refresh: u32, preferred: bool| omorfos_config::OfferedMode {
+            width,
+            height,
+            refresh,
+            preferred,
+        };
+    // As a screen lists them, the same size and rate more than once.
+    let offered = [
+        mode(1920, 1080, 60, false),
+        mode(2560, 1440, 60, true),
+        mode(2560, 1440, 144, false),
+        mode(1920, 1080, 60, false),
+    ];
+    let output = session.output();
+    session
+        .compositor_mut()
+        .offer_modes(&output, &offered, offered[2]);
+    let second = session.add_output((320, 240));
+    let screens = state(&mut session, &mut peer).screens;
+    let first = &screens[0];
+    assert_eq!(
+        (
+            first.name.as_str(),
+            first.x,
+            first.y,
+            first.width,
+            first.height
+        ),
+        ("test-0", 0, 0, WIDTH.unsigned_abs(), HEIGHT.unsigned_abs())
+    );
+    assert_eq!(first.mode, "2560x1440@144");
+    assert_eq!(first.preferred, "2560x1440@60");
+    assert_eq!(
+        first.modes,
+        ["2560x1440@144", "2560x1440@60", "1920x1080@60"]
+    );
+    // One the backend says nothing of is where it stands, and no more.
+    let other = &screens[1];
+    assert_eq!((other.name.as_str(), other.x), ("test-1", WIDTH));
+    assert_eq!((other.mode.as_str(), other.modes.len()), ("", 0));
+
+    // Modes said of a screen that has gone are nothing.
+    session.compositor_mut().remove_output(&second);
+    session
+        .compositor_mut()
+        .offer_modes(&second, &offered, offered[0]);
+    assert_eq!(state(&mut session, &mut peer).screens.len(), 1);
+}

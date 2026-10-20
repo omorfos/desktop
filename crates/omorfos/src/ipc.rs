@@ -14,7 +14,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use omorfos_config::Action;
+use omorfos_config::{Action, OfferedMode};
 use omorfos_core::WindowId;
 use omorfos_ipc::{
     MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, State, Window, Workspace, decode, encode,
@@ -369,6 +369,35 @@ impl Compositor {
         placed
     }
 
+    /// The screens, in the order they stand, and the ways each can be
+    /// driven, written as the configuration writes a mode.
+    fn ipc_screens(&self) -> Vec<omorfos_ipc::Screen> {
+        let written =
+            |mode: Option<&OfferedMode>| mode.map(ToString::to_string).unwrap_or_default();
+        let screens = self.arranged().into_iter().map(|index| {
+            let head = &self.heads[index];
+            let area = head.area();
+            let mut modes = head.modes.clone();
+            let largest = |mode: &OfferedMode| {
+                let pixels = u32::from(mode.width) * u32::from(mode.height);
+                std::cmp::Reverse((pixels, mode.width, mode.refresh))
+            };
+            modes.sort_by_key(largest);
+            modes.dedup_by_key(|mode| (mode.width, mode.height, mode.refresh));
+            omorfos_ipc::Screen {
+                name: head.output.name(),
+                x: area.loc.x,
+                y: area.loc.y,
+                width: area.size.w.unsigned_abs(),
+                height: area.size.h.unsigned_abs(),
+                mode: written(head.mode.as_ref()),
+                preferred: written(head.modes.iter().find(|mode| mode.preferred)),
+                modes: modes.iter().map(ToString::to_string).collect(),
+            }
+        });
+        screens.collect()
+    }
+
     fn ipc_state(&self) -> State {
         let number = |index: usize| u32::try_from(index + 1).unwrap_or(u32::MAX);
         // The desktop counts outputs in the order they were added, which is
@@ -423,6 +452,7 @@ impl Compositor {
                 .collect(),
             problems: self.problems().to_vec(),
             events: self.events().map(str::to_owned).collect(),
+            screens: self.ipc_screens(),
         }
     }
 }

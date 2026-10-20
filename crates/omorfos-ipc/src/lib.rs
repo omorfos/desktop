@@ -27,6 +27,6 @@ mod message;
 
 pub use client::{Client, socket_path, socket_path_from_env};
 pub use message::{
-    MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, Standing, State, Window, Workspace, decode,
-    encode,
+    MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, Screen, Standing, State, Window, Workspace,
+    decode, encode,
 };
