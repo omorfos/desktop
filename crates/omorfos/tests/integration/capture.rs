@@ -318,6 +318,34 @@ fn a_buffer_that_is_not_as_asked_fails_the_picture() {
 }
 
 #[test]
+fn a_picture_asked_for_before_the_screen_changes_size_fails_and_the_next_is_taken_at_once() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    snap(&mut session, &mut camera, &taking);
+
+    // Asked for in memory made to the size the screen was, and drawn once
+    // it is smaller: the memory would hold the picture, but is not what
+    // pictures are made to now.
+    let (_file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let frame = ask(&camera, &taking, &buffer);
+    session.roundtrip(&mut camera);
+    session.resize_output((320, 240));
+    let events = develop(&mut session, &mut camera);
+    let failed = Event::ShotFailed(FailureReason::BufferConstraints);
+    assert!(events.contains(&failed), "{events:?}");
+    frame.destroy();
+
+    // The next, in memory of the new size, is the first at that size, and
+    // is taken at once, though nothing on the screen has changed.
+    let (file, buffer) = camera.shot_buffer((320, 240));
+    let _frame = ask(&camera, &taking, &buffer);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    assert_eq!(Picture::read(&file, 320).at(10, 10), BACKGROUND);
+}
+
+#[test]
 fn nothing_is_given_while_the_session_is_locked() {
     let mut session = Session::new();
     let mut app = session.connect();

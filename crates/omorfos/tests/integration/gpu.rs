@@ -148,8 +148,82 @@ fn a_program_taking_pictures_is_told_it_may_take_them_in_the_memory_of_the_card(
     let format = (Fourcc::Xrgb8888 as u32, u64::from(Modifier::Linear));
     let stride = (WIDTH * 4).unsigned_abs();
     let buffer = camera.gpu_buffer(memory.as_fd(), ((WIDTH, HEIGHT), stride), format);
+    let failed = [Event::ShotFailed(FailureReason::BufferConstraints)];
+    assert_eq!(shoot(&mut session, &mut camera, &buffer), failed);
+    // Nor what is not the size pictures are now, before anything is tried.
+    let half = (WIDTH / 2, HEIGHT / 2);
+    let buffer = camera.gpu_buffer(memory.as_fd(), (half, stride), format);
+    assert_eq!(shoot(&mut session, &mut camera, &buffer), failed);
+}
+
+#[test]
+fn a_picture_asked_for_in_the_cards_memory_before_the_screen_shrinks_fails_and_the_next_is_at_once()
+{
+    let Some((card, number)) = card() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(number, drawable())
+        .unwrap();
+    let mut camera = session.connect_as(Roles::CAPTURE);
+    let device = gbm::Device::new(card).unwrap();
+    let flags = gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING;
+    let made = |(across, down): (i32, i32)| {
+        let (wide, high) = (across.unsigned_abs(), down.unsigned_abs());
+        device
+            .create_buffer_object::<()>(wide, high, gbm::Format::Xrgb8888, flags)
+            .unwrap()
+    };
+    let named = |camera: &Client, picture: &gbm::BufferObject<()>, size: (i32, i32)| {
+        let file = picture.fd().unwrap();
+        let format = (Fourcc::Xrgb8888 as u32, u64::from(picture.modifier()));
+        camera.gpu_buffer(file.as_fd(), (size, picture.stride()), format)
+    };
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    let ask = |camera: &Client, buffer: &WlBuffer| {
+        let frame = camera.shot(&taking);
+        frame.attach_buffer(buffer);
+        frame.damage_buffer(0, 0, WIDTH, HEIGHT);
+        frame.capture();
+        frame
+    };
+    let develop = |session: &mut Session, camera: &mut Client| {
+        session.roundtrip(camera);
+        session.draw();
+        session.roundtrip(camera);
+        camera.take_events()
+    };
+    let first = made((WIDTH, HEIGHT));
+    let buffer = named(&camera, &first, (WIDTH, HEIGHT));
+    let frame = ask(&camera, &buffer);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    frame.destroy();
+
+    // Asked for in memory made to the size the screen was, and drawn once
+    // it is smaller: the memory could hold the picture, but is not what
+    // pictures are made to now.
+    let frame = ask(&camera, &buffer);
+    session.roundtrip(&mut camera);
+    session.resize_output((320, 240));
+    let events = develop(&mut session, &mut camera);
     let failed = Event::ShotFailed(FailureReason::BufferConstraints);
-    assert_eq!(shoot(&mut session, &mut camera, &buffer), [failed]);
+    assert!(events.contains(&failed), "{events:?}");
+    frame.destroy();
+
+    // The next, in memory of the new size, is the first at that size, and
+    // is taken at once, though nothing on the screen has changed.
+    let smaller = made((320, 240));
+    let buffer = named(&camera, &smaller, (320, 240));
+    let _frame = ask(&camera, &buffer);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
 }
 
 #[test]
