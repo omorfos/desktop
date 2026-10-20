@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
-    OutputScale, Outputs, Role, Rules, Speed, Started, Workspaces,
+    OutputScale, Outputs, Role, Rules, ScreenMode, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -108,6 +108,21 @@ impl JsonSchema for KeyChain {
             "description": "Chords such as `Super+Return`, separated by spaces when chained.",
             "type": "string",
             "pattern": "\\S",
+        })
+    }
+}
+
+impl JsonSchema for ScreenMode {
+    fn schema_name() -> Cow<'static, str> {
+        "ScreenMode".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "The size in pixels, such as `2560x1440`, and how many times a \
+                            second it is drawn if that matters, such as `2560x1440@144`.",
+            "type": "string",
+            "pattern": "^[1-9][0-9]*x[1-9][0-9]*(@[1-9][0-9]*)?$",
         })
     }
 }

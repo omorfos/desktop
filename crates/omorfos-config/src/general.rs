@@ -521,6 +521,131 @@ pub struct NamedOutput {
     /// for every screen applies.
     #[serde(default)]
     pub scale: Option<OutputScale>,
+    /// The size it is driven at, and how often it is drawn. Without this,
+    /// what the screen says suits it best.
+    #[serde(default)]
+    pub mode: Option<ScreenMode>,
+}
+
+/// The size a screen is driven at, in pixels, and how many times a second
+/// it is drawn if that is said: `2560x1440`, or `2560x1440@144`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "String")]
+pub struct ScreenMode {
+    /// How many pixels across.
+    pub width: u16,
+    /// How many pixels down.
+    pub height: u16,
+    /// How many times a second, if that is said.
+    pub refresh: Option<u32>,
+}
+
+impl TryFrom<String> for ScreenMode {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        let (size, refresh) = text
+            .split_once('@')
+            .map_or((text.as_str(), None), |(size, refresh)| {
+                (size, Some(refresh))
+            });
+        let size = size.split_once('x');
+        let size = size.and_then(|(width, height)| width.parse().ok().zip(height.parse().ok()));
+        let size = size.filter(|&(width, height): &(u16, u16)| width > 0 && height > 0);
+        let refresh = refresh.map(|refresh| refresh.parse().ok().filter(|refresh| *refresh > 0));
+        let mode = size
+            .zip(refresh.unwrap_or(Some(0)))
+            .map(|((width, height), refresh)| Self {
+                width,
+                height,
+                refresh: (refresh > 0).then_some(refresh),
+            });
+        mode.ok_or_else(|| {
+            format!(
+                "invalid mode `{text}`: expected the size in pixels, such as `2560x1440`, and \
+                 how many times a second it is drawn if that matters, such as `2560x1440@144`"
+            )
+        })
+    }
+}
+
+impl std::fmt::Display for ScreenMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (width, height) = (self.width, self.height);
+        match self.refresh {
+            Some(refresh) => write!(f, "{width}x{height}@{refresh}"),
+            None => write!(f, "{width}x{height}"),
+        }
+    }
+}
+
+/// One way a screen can be driven, as it says: its size in pixels, how
+/// many times a second it is drawn, and whether it says it suits it best.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OfferedMode {
+    /// How many pixels across.
+    pub width: u16,
+    /// How many pixels down.
+    pub height: u16,
+    /// How many times a second.
+    pub refresh: u32,
+    /// Whether the screen says this suits it best.
+    pub preferred: bool,
+}
+
+impl ScreenMode {
+    /// Which of the ways a screen offers it is driven in, if it offers any,
+    /// by its place among them, for the mode `wanted` if one is: that size
+    /// at that rate, or at the fastest if no rate is said. Otherwise the
+    /// one the screen says suits it best, or the first; and then also what
+    /// the user is to be told of why it is not what they asked.
+    #[must_use]
+    pub fn choose(
+        wanted: Option<&Self>,
+        offered: &[OfferedMode],
+    ) -> Option<(usize, Option<String>)> {
+        let best = offered.iter().position(|mode| mode.preferred);
+        let usual = best.or_else(|| (!offered.is_empty()).then_some(0));
+        let Some(wanted) = wanted else {
+            return usual.map(|at| (at, None));
+        };
+        let sized =
+            |mode: &&OfferedMode| (mode.width, mode.height) == (wanted.width, wanted.height);
+        let fastest = offered
+            .iter()
+            .enumerate()
+            .filter(|(_, mode)| sized(mode))
+            .max_by_key(|(_, mode)| mode.refresh);
+        let exact = wanted.refresh.and_then(|refresh| {
+            let mut modes = offered.iter().enumerate();
+            modes.find(|(_, mode)| sized(mode) && mode.refresh == refresh)
+        });
+        let said = |mode: &OfferedMode| format!("{}x{}@{}", mode.width, mode.height, mode.refresh);
+        match (exact, fastest) {
+            (Some((at, _)), _) => Some((at, None)),
+            // At that size, the fastest; which is what was asked unless a
+            // rate was said that it is not offered at.
+            (None, Some((at, mode))) => {
+                let told = wanted.refresh.map(|refresh| {
+                    let size = (wanted.width, wanted.height);
+                    format!(
+                        "cannot be drawn {refresh} times a second at {}x{}, and is at {}",
+                        size.0,
+                        size.1,
+                        said(mode)
+                    )
+                });
+                Some((at, told))
+            }
+            (None, None) => usual.map(|at| {
+                let instead = said(&offered[at]);
+                (
+                    at,
+                    Some(format!("cannot be driven at {wanted}, and is at {instead}")),
+                )
+            }),
+        }
+    }
 }
 
 /// How large everything is drawn on the screen.
@@ -798,6 +923,102 @@ autostart:
                 "{wrong}: {error}"
             );
         }
+    }
+
+    fn mode(text: &str) -> Result<ScreenMode, String> {
+        ScreenMode::try_from(text.to_owned())
+    }
+
+    #[test]
+    fn a_mode_is_a_size_and_perhaps_how_often_it_is_drawn() {
+        let sized = mode("2560x1440").unwrap();
+        assert_eq!(
+            (sized.width, sized.height, sized.refresh),
+            (2560, 1440, None)
+        );
+        let fast = mode("2560x1440@144").unwrap();
+        assert_eq!(fast.refresh, Some(144));
+        assert_eq!(
+            (sized.to_string(), fast.to_string()),
+            ("2560x1440".to_owned(), "2560x1440@144".to_owned())
+        );
+        for wrong in [
+            "",
+            "2560",
+            "2560x",
+            "x1440",
+            "0x1440",
+            "2560x0",
+            "2560x1440@",
+            "2560x1440@0",
+            "2560x1440@fast",
+            "99999x1",
+        ] {
+            let said = mode(wrong).unwrap_err();
+            assert!(said.contains("invalid mode"), "{wrong}: {said}");
+        }
+        let listed = parse("{}").unwrap();
+        assert_eq!(listed.outputs, Outputs::default());
+    }
+
+    fn offered(width: u16, height: u16, refresh: u32, preferred: bool) -> OfferedMode {
+        OfferedMode {
+            width,
+            height,
+            refresh,
+            preferred,
+        }
+    }
+
+    #[test]
+    fn a_screen_is_driven_as_asked_if_it_can_be_and_as_suits_it_best_otherwise() {
+        let modes = [
+            offered(1920, 1080, 60, false),
+            offered(2560, 1440, 60, true),
+            offered(2560, 1440, 144, false),
+            offered(2560, 1440, 120, false),
+        ];
+        // Asked nothing, as it says suits it best, or the first.
+        assert_eq!(ScreenMode::choose(None, &modes), Some((1, None)));
+        let plain = [offered(800, 600, 60, false), offered(640, 480, 60, false)];
+        assert_eq!(ScreenMode::choose(None, &plain), Some((0, None)));
+        assert_eq!(ScreenMode::choose(None, &[]), None);
+        // A size, at its fastest; a size and a rate, at that.
+        let sized = mode("2560x1440").unwrap();
+        assert_eq!(ScreenMode::choose(Some(&sized), &modes), Some((2, None)));
+        let rated = mode("2560x1440@120").unwrap();
+        assert_eq!(ScreenMode::choose(Some(&rated), &modes), Some((3, None)));
+        // A rate it is not offered at: the fastest at that size, and why.
+        let unrated = mode("2560x1440@75").unwrap();
+        let (at, told) = ScreenMode::choose(Some(&unrated), &modes).unwrap();
+        assert_eq!(at, 2);
+        let told = told.unwrap();
+        assert!(
+            told.contains("75 times a second") && told.contains("2560x1440@144"),
+            "{told}"
+        );
+        // A size it is not offered at: as it suits it best, and why.
+        let elsewhere = mode("3840x2160").unwrap();
+        let (at, told) = ScreenMode::choose(Some(&elsewhere), &modes).unwrap();
+        assert_eq!(at, 1);
+        let told = told.unwrap();
+        assert!(
+            told.contains("3840x2160") && told.contains("2560x1440@60"),
+            "{told}"
+        );
+        assert_eq!(ScreenMode::choose(Some(&elsewhere), &[]), None);
+    }
+
+    #[test]
+    fn a_listed_screen_may_say_what_it_is_driven_at() {
+        let general =
+            parse("outputs:\n  - { name: DP-1, mode: 2560x1440@144 }\n  - { name: eDP-1 }\n")
+                .unwrap();
+        let listed = general.outputs.listed();
+        assert_eq!(listed[0].mode, Some(mode("2560x1440@144").unwrap()));
+        assert_eq!(listed[1].mode, None);
+        let wrong = parse("outputs:\n  - { name: DP-1, mode: big }\n").unwrap_err();
+        assert!(wrong.contains("invalid mode `big`"), "{wrong}");
     }
 
     fn parse(yaml: &str) -> Result<General, String> {

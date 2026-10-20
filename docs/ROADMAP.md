@@ -300,10 +300,9 @@ calls for them.
       the stream offers it, what reads it agrees on it again, and is given
       memory made to it, of the card or shared.
 - [ ] A screen changing size while it is shared has only been tried by
-      the tests, which resize a screen of their own. On the hardware
-      nothing changes a screen's size yet, so it is to be tried by hand
-      with an application reading the stream (OBS, a browser) once the
-      resolution can be chosen, with the screens arranged by the user.
+      the tests, which resize a screen of their own, and a shared window
+      changing size by hand in Firefox. It is to be tried by hand with a
+      screen, now that its `mode` can be changed while it is shared.
 - [x] A window shared by itself, when the application can take one: the
       user picks it over the still screens, or the screen from beside
       every window, and it is shared whatever covers it, at its size as
@@ -382,10 +381,16 @@ calls for them.
       keyboard (stage 7) is to be usable on it.
 - [ ] Sleep, restart and shut down, by logind, and what the lid and the
       power button do.
+- [x] A screen's resolution and refresh rate, as `mode` under `outputs`:
+      that size at that rate, or at the fastest, and what the screen says
+      suits it best if it cannot be had, which the user is told. A change
+      is followed as soon as the file is saved. It is chosen in the
+      configuration crate and only applied by the hardware backend, which
+      no test runs: tried by hand only.
 - [ ] Screens arranged by the user: above and below as well as side by
-      side, resolution, refresh rate, rotation, mirroring, one made
-      primary, and arrangements remembered for the screens that are
-      plugged in.
+      side, rotation, mirroring, one made primary, arrangements remembered
+      for the screens that are plugged in, and the modes a screen offers
+      listed, by `omorfosctl` say.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
