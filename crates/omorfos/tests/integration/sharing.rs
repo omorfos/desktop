@@ -1721,3 +1721,110 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
         !session.compositor().captured(&output)
     });
 }
+
+/// Shares the window of `app`, picked by a click, and returns the stream.
+fn shared_window(
+    session: &mut Session,
+    daemon: &Daemon,
+    app: &mut crate::common::Client,
+    called: &'static str,
+) -> u32 {
+    make_of(&daemon.peer(), called, HIDDEN, SCREENS_AND_WINDOWS);
+    let starting = begin(daemon, called);
+    asked(session);
+    press(session, key::RETURN);
+    let on = Input::Motion { x: 50.0, y: 50.0 };
+    session.eventually(|session| {
+        session.compositor_mut().input(on, 0);
+        session.step();
+        for pressed in [true, false] {
+            let button = Input::Button {
+                button: 0x110,
+                pressed,
+            };
+            session.compositor_mut().input(button, 0);
+        }
+        session.draw();
+        app.receive();
+        starting.is_finished()
+    });
+    let (response, results) = starting.join().unwrap();
+    assert_eq!(response, 0);
+    stream_of_window(&results).0
+}
+
+/// A shared window that grows as it is maximised and shrinks back, in
+/// the memory of the card if `card` is one, while a picture is asked for.
+fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    if let Some(card) = card {
+        session
+            .compositor_mut()
+            .offer_gpu_buffers(card, drawable())
+            .unwrap();
+    }
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let node = shared_window(
+        &mut session,
+        &daemon,
+        &mut app,
+        "/org/freedesktop/portal/desktop/session/1_1/sized",
+    );
+    let mut viewer = Viewer::reading(&remote, card.is_some());
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.pixels() == 200 * 100
+    });
+    // The screen is drawn only once something on it changes, and until
+    // then the picture asked for after the last waits: the window changes
+    // size while it does, and what reads the stream agrees on the new size
+    // before the screen is drawn again. The picture is not asked for twice.
+    for (size, colour) in [((600, 400), GREEN), ((200, 100), BLUE)] {
+        for _ in 0..20 {
+            session.step();
+            app.receive();
+            viewer.turn(node);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        app.fill(&window.surface, size, colour);
+        session.roundtrip(&mut app);
+        for _ in 0..50 {
+            session.step();
+            app.receive();
+            viewer.turn(node);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let (width, height) = size;
+        let pixels = usize::try_from(width * height).unwrap();
+        session.eventually(|session| {
+            session.draw();
+            app.receive();
+            viewer.turn(node);
+            viewer.pixels() == pixels && viewer.at(width, (10, 10)) == Some(colour)
+        });
+    }
+    assert_eq!(viewer.seen().card, card.is_some());
+}
+
+#[test]
+fn a_shared_window_goes_on_being_shared_as_it_grows_and_shrinks_back() {
+    a_shared_window_grows_and_shrinks(None);
+}
+
+#[test]
+fn a_shared_window_in_the_memory_of_the_card_goes_on_as_it_grows_and_shrinks_back() {
+    let Some(card) = render_node() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    a_shared_window_grows_and_shrinks(Some(card));
+}

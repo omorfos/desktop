@@ -93,3 +93,9 @@ does (ADR 40), and only for this. Everything else still forbids it.
   memory made to the old size was asked to hold the new, which ended the
   portal's connection to the compositor, and a picture of the old size
   was said to be of the new.
+- A picture asked for in memory PipeWire then takes away is let go of
+  before the next is asked for, as only one may be asked for at a time.
+  Found by sharing a window that was maximised and then restored: the
+  screen is drawn only when something on it changes, so the picture can
+  still be waited for when the new buffers come, and asking again ended
+  the portal's connection to the compositor.
