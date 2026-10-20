@@ -105,6 +105,10 @@ impl Pipes {
             // does, and the memory made for them with it.
             let sized = Rc::new(Cell::new(size));
             let (roomy, making) = (Rc::clone(&sized), Rc::clone(&sized));
+            // How large what reads the stream last agreed they are, which
+            // the memory it is given is made to.
+            let agreed_at = Rc::new(Cell::new(None));
+            let agreeing_at = Rc::clone(&agreed_at);
             let listener = stream
                 .add_local_listener::<()>()
                 .state_changed(move |stream, (), was, now| {
@@ -135,6 +139,7 @@ impl Pipes {
                         let layout = card.then_some(agreed.modifier());
                         agreeing.set(layout);
                         let (format, at) = (agreed.format(), agreed.size());
+                        agreeing_at.set(Some((at.width, at.height)));
                         let memory = memory(layout);
                         note(&format!(
                             "agreed with what reads the stream ({read:?}): {format:?}, {} by {}, \
@@ -173,6 +178,7 @@ impl Pipes {
                     removals,
                     layout,
                     size: sized,
+                    agreed: agreed_at,
                     layouts,
                     taken: Cell::new(0),
                     sent: Cell::new(0),
@@ -212,6 +218,8 @@ pub struct Share {
     /// they are offered in.
     size: Rc<Cell<(u32, u32)>>,
     layouts: Vec<u64>,
+    /// How large what reads the stream last agreed the pictures are.
+    agreed: Rc<Cell<Option<(u32, u32)>>>,
     /// How many buffers have been taken, and how many have gone to what
     /// reads the stream with a picture in them, and with only where the
     /// pointer is.
@@ -228,10 +236,12 @@ impl Share {
     }
 
     /// Whether something is reading the stream, which is when pictures are
-    /// worth taking.
+    /// worth taking: not from when the pictures change size until what
+    /// reads it has agreed on the new size, as until then the memory it is
+    /// given is made to the old, which a picture would not fit in.
     #[must_use]
     pub fn reading(&self) -> bool {
-        self.reading.get()
+        self.reading.get() && self.agreed.get() == Some(self.size.get())
     }
 
     /// How many buffers have been taken, and how many have gone to what
@@ -268,15 +278,17 @@ impl Share {
         held
     }
 
-    /// Gives a buffer back to the stream, for what reads it: with a picture,
-    /// if one was put in it, which fills all of it; and saying where the
-    /// pointer is, if it is sent beside the pictures. Without either, it
-    /// is nothing new.
-    pub fn give(&self, mut held: Held, filled: bool, pointer: Option<&Pointer<'_>>) {
-        let (_, height) = self.size.get();
+    /// Gives a buffer back to the stream, for what reads it: with a picture
+    /// `picture` pixels large, if one was put in it, as large as the
+    /// pictures were when it was asked for, which may not be what they are
+    /// now; and saying where the pointer is, if it is sent beside the
+    /// pictures. Without either, it is nothing new.
+    pub fn give(&self, mut held: Held, picture: Option<(u32, u32)>, pointer: Option<&Pointer<'_>>) {
         let stride = held.stride();
-        let size = stride * height;
-        let filled = filled && held.filled(size, i32::try_from(stride).unwrap_or(i32::MAX));
+        let filled = picture.is_some_and(|(_, height)| {
+            let size = stride.saturating_mul(height);
+            held.filled(size, i32::try_from(stride).unwrap_or(i32::MAX))
+        });
         let told = pointer.is_some_and(|pointer| held.point(pointer));
         self.alone
             .set(self.alone.get() + u32::from(told && !filled));
