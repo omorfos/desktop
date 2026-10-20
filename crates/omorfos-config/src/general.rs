@@ -499,8 +499,11 @@ impl TryFrom<Vec<NamedOutput>> for Outputs {
             let earlier = &outputs[..*index];
             earlier.iter().any(|other| other.name == output.name)
         });
+        let primaries = outputs.iter().filter(|output| output.primary).count();
         if outputs.iter().any(|output| output.name.is_empty()) {
             Err("an output's name must not be empty".to_owned())
+        } else if primaries > 1 {
+            Err("only one output may be `primary`".to_owned())
         } else if let Some((_, output)) = repeated {
             Err(format!("output `{}` is listed more than once", output.name))
         } else {
@@ -542,6 +545,12 @@ pub struct NamedOutput {
     /// is drawn is turned to match, so that it stands the right way up.
     #[serde(default)]
     pub rotate: Rotation,
+    /// Whether it is the one that comes first: the one the notice of what
+    /// is wrong is shown on, and that windows go to from a screen that is
+    /// unplugged. Without one, the first screen plugged in. One screen at
+    /// most.
+    #[serde(default)]
+    pub primary: bool,
 }
 
 /// Which way a screen is turned, with the top of what it shows: where it
@@ -1153,6 +1162,19 @@ autostart:
             assert!(said.contains("invalid offset"), "{wrong}: {said}");
         }
         assert!(parse("outputs: [{ name: DP-1, align: centre }]\n").is_err());
+    }
+
+    #[test]
+    fn one_listed_screen_may_come_first() {
+        let one = parse("outputs:\n  - { name: DP-1 }\n  - { name: eDP-1, primary: true }\n");
+        let listed = one.unwrap().outputs;
+        let primary = listed.listed().iter().map(|listed| listed.primary);
+        assert_eq!(primary.collect::<Vec<_>>(), [false, true]);
+        let two = parse(
+            "outputs:\n  - { name: DP-1, primary: true }\n  - { name: eDP-1, primary: true }\n",
+        );
+        let said = two.unwrap_err();
+        assert!(said.contains("only one output may be `primary`"), "{said}");
     }
 
     #[test]

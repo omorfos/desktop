@@ -1223,6 +1223,9 @@ pub struct Desktop {
     sets: Vec<Set>,
     /// The set that has the keyboard.
     current: usize,
+    /// The output that comes first: the one frames of an output that goes
+    /// move to.
+    primary: usize,
     /// How many of each output's workspaces are always there.
     kept: usize,
     next_serial: u64,
@@ -1243,6 +1246,7 @@ impl Desktop {
             outputs: Vec::new(),
             sets: Vec::new(),
             current: 0,
+            primary: 0,
             kept: workspaces.clamp(1, Self::MOST_WORKSPACES),
             next_serial: 0,
         };
@@ -1317,8 +1321,16 @@ impl Desktop {
         self.outputs = outputs;
     }
 
+    /// Makes the output at `index`, counted in the order the outputs were
+    /// given, the one that comes first: the frames of one that goes move to
+    /// it. While there is no such output, the first is.
+    pub fn set_primary(&mut self, index: usize) {
+        self.primary = index;
+    }
+
     /// Takes away the output at `index`, counted in the order the outputs
-    /// were given. Its frames move to the first output that remains, each
+    /// were given. Its frames move to the one that comes first of those
+    /// that remain, which is the first unless another is said to be, each
     /// to the workspace of the same number, and its place in the list is
     /// closed up. Does nothing if there is no such output.
     pub fn remove_output(&mut self, index: usize) {
@@ -1333,16 +1345,23 @@ impl Desktop {
         }
     }
 
-    /// Removes a set of workspaces, giving its frames to the first of the
-    /// sets that remain. The last set there is stays.
+    /// Removes a set of workspaces, giving its frames to the one of the
+    /// output that comes first of those that remain. The last set there is
+    /// stays.
     fn remove_set(&mut self, index: usize) {
         if self.sets.len() > 1 {
             let gone = self.sets.remove(index);
-            self.sets[0].absorb(gone);
+            // Counted among those that remain; the first, if it was this.
+            let after = |at: usize| match at {
+                at if at == index => 0,
+                at if at > index => at - 1,
+                at => at,
+            };
+            self.primary = after(self.primary).min(self.sets.len() - 1);
+            self.sets[self.primary].absorb(gone);
             self.current = match self.current {
-                current if current == index => 0,
-                current if current > index => current - 1,
-                current => current,
+                current if current == index => self.primary,
+                current => after(current),
             };
         }
     }
@@ -5282,6 +5301,33 @@ mod tests {
         let before = desktop.clone();
         desktop.move_to_next_output(id);
         assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn frames_of_an_output_that_goes_move_to_the_one_that_comes_first() {
+        let third = Rect::new(Point::new(3200, 0), Size::new(800, 600));
+        let mut desktop = desktop();
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN, third]);
+        desktop.set_primary(2);
+        let on_first = open(&mut desktop, "first");
+        assert_eq!(desktop.current_output(), 0);
+        // The first goes: its frame, and the keyboard, go to the third,
+        // which is counted second from then on.
+        desktop.remove_output(0);
+        desktop.set_outputs(vec![SECOND_SCREEN, third]);
+        let output = |desktop: &Desktop, id: WindowId| {
+            let mut windows = desktop.windows();
+            windows
+                .find(|listed| listed.window.id == id)
+                .map(|listed| listed.output)
+        };
+        assert_eq!(output(&desktop, on_first), Some(1));
+        assert_eq!(desktop.current_output(), 1);
+        // The one that comes first goes: its frames go to the first left.
+        desktop.remove_output(1);
+        desktop.set_outputs(vec![SECOND_SCREEN]);
+        assert_eq!(output(&desktop, on_first), Some(0));
+        assert_eq!(desktop.current_output(), 0);
     }
 
     #[test]

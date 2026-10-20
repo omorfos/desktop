@@ -127,6 +127,10 @@ such as `-30%`: less than nothing to the left, or up. The first listed
 has none before it, and you are told if it is given a `place`, an
 `align` or an `offset`.
 
+One listed screen may be `primary: true`: the notice of what is wrong is
+shown on it, and the windows of a screen that is unplugged go to it.
+Without one, the first screen plugged in is.
+
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen
 was made, `right`, or `inverted`; `normal` is as it was made. It then

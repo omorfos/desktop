@@ -215,10 +215,32 @@ impl Compositor {
         self.heads.iter().find(|head| head.contains(point))
     }
 
-    /// The output the pointer is on, or failing that the first.
+    /// Where among the outputs the one that comes first is: the one the
+    /// configuration makes primary, if it is plugged in, or else the
+    /// first plugged in.
+    pub(crate) fn primary(&self) -> usize {
+        let listed = self.config().general.outputs.listed().iter();
+        let named = listed
+            .filter(|listed| listed.primary)
+            .map(|listed| listed.name.as_str());
+        let named: Vec<&str> = named.collect();
+        let at = self
+            .heads
+            .iter()
+            .position(|head| named.contains(&head.output.name().as_str()));
+        at.unwrap_or(0)
+    }
+
+    /// The output that comes first, if there is one.
+    pub(crate) fn primary_head(&self) -> Option<&Head> {
+        self.heads.get(self.primary())
+    }
+
+    /// The output the pointer is on, or failing that the one that comes
+    /// first.
     pub(crate) fn pointer_head(&self) -> Option<&Head> {
         self.head_at(self.pointer_location)
-            .or_else(|| self.heads.first())
+            .or_else(|| self.primary_head())
     }
 
     /// The scale things at the pointer are drawn at.
@@ -227,7 +249,7 @@ impl Compositor {
     }
 
     /// The output most of a rectangle of the space is on, or failing that
-    /// the first.
+    /// the one that comes first.
     pub(crate) fn head_for(&self, rectangle: Rect) -> Option<&Head> {
         let overlap = |head: &&Head| {
             let shared = domain(head.area()).intersection(rectangle);
@@ -237,7 +259,7 @@ impl Compositor {
         };
         let most = self.heads.iter().max_by_key(overlap);
         most.filter(|head| overlap(head) > 0)
-            .or_else(|| self.heads.first())
+            .or_else(|| self.primary_head())
     }
 
     /// Where the pointer ends up after moving by a distance: anywhere on an
@@ -342,6 +364,7 @@ impl Compositor {
             self.space.map_output(&head.output, at);
             layer_map_for_output(&head.output).arrange();
         }
+        self.desktop.set_primary(self.primary());
         self.update_screens();
         self.configure_lock_surfaces();
     }

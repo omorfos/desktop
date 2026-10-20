@@ -890,3 +890,36 @@ fn a_screen_drawn_into_a_window_is_not_turned_whatever_the_configuration_says() 
         smithay::utils::Transform::Flipped180
     );
 }
+
+#[test]
+fn the_windows_of_a_screen_unplugged_go_to_the_one_that_comes_first() {
+    let primary = "outputs:\n  - { name: test-0 }\n  - { name: test-1 }\n  - { name: test-2, primary: true }\n";
+    let mut session = Session::with_config(&[("config.yaml", primary)]);
+    session.add_output((800, 600));
+    let third = session.add_output((320, 240));
+    let mut client = session.connect();
+    pointer_to(&mut session, 100, 100);
+    session.open(&mut client, "app", (200, 100), RED);
+    let output = session.output();
+    session.compositor_mut().remove_output(&output);
+    session.step();
+    let area = session.compositor().area_of(&third);
+    let (x, ..) = frames(&session)[0];
+    assert!(
+        (area.loc.x..area.loc.x + area.size.w).contains(&x),
+        "on the third: {x} in {area:?}"
+    );
+
+    // Two may not come first.
+    let two =
+        "outputs:\n  - { name: test-1, primary: true }\n  - { name: test-2, primary: true }\n";
+    session.write_config("config.yaml", two);
+    session.compositor_mut().reload_config();
+    let problems = session.compositor().problems();
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("only one output may be `primary`")),
+        "{problems:?}"
+    );
+}
