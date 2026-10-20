@@ -326,9 +326,9 @@ calls for them.
 - [x] The pointer over a window that is shared, drawn into its pictures or
       sent beside them as a call asks, where it is in the window's picture:
       a program may follow it over a window as over a screen.
-- [ ] Known gaps in sharing the screen: a region cannot be shared yet; no
-      line is drawn round a window while it is shared, as there is round a
-      screen; the size the application is told is in pixels,
+- [x] A line round a window while it is shared, as there is round a screen:
+      over its frame and under the windows over it, and in no picture.
+- [ ] Known gaps in sharing the screen: a region cannot be shared yet; the size the application is told is in pixels,
       not in units of layout; a choice cannot be remembered for next time;
       and the user cannot stop sharing from the desktop, only from the
       application. A reader that cannot take buffers of the GPU is still

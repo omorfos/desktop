@@ -89,7 +89,7 @@ use smithay::wayland::viewporter::ViewporterState;
 use crate::Scale;
 use crate::asked::Asked;
 use crate::bridge::{self, Bindings};
-use crate::capture::{self, Capture, Due, Gpu, Pass};
+use crate::capture::{self, Capture, Due, Gpu, Pass, Subject};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
@@ -2134,7 +2134,7 @@ impl Compositor {
             // And round a screen that is shared, a line, which is no more in
             // a picture of it than the mark is.
             let corner = self.area_of(output).loc;
-            for (at, side) in self.capture.edges(output) {
+            for (at, side) in self.capture.edges(&Subject::Screen(output.clone())) {
                 let at = view.pixel((corner + *at).to_f64());
                 let scale = view.scale.factor();
                 let side =
@@ -2327,6 +2327,18 @@ impl Compositor {
                     SolidColorRenderElement::from_buffer(veil, at, scale, 1.0, Kind::Unspecified);
                 elements.push(Element::Solid(blank));
                 continue;
+            }
+            // Round a window that is shared, a line over its frame, which
+            // is no more in a picture than the one round a screen is.
+            let corner = Point::<i32, Logical>::from((shown.outer.origin.x, shown.outer.origin.y));
+            let lined = Subject::Window(shown.id);
+            let sides = self.capture.edges(&lined).filter(|_| seen);
+            for (at, side) in sides {
+                let at = view.pixel((corner + *at).to_f64());
+                let scale = view.scale.factor();
+                let side =
+                    SolidColorRenderElement::from_buffer(side, at, scale, 1.0, Kind::Unspecified);
+                elements.push(Element::Solid(side));
             }
             if let Some(chrome) = &shown.chrome {
                 Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);

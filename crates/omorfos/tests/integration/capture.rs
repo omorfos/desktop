@@ -138,6 +138,33 @@ fn a_line_goes_round_a_screen_only_once_it_is_taken_again_and_again() {
 }
 
 #[test]
+fn a_line_goes_round_a_window_only_once_it_is_taken_again_and_again_and_is_in_no_picture() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut sharer = window_camera(&mut session);
+    session.roundtrip(&mut sharer);
+    let taking = sharer.capture_window("app");
+    session.roundtrip(&mut sharer);
+    // The window's right side, just inside it.
+    let side = (199, 50);
+    let _ = snap_sized(&mut session, &mut sharer, &taking, (200, 100));
+    assert_eq!(
+        session.draw().at(side.0, side.1),
+        RED,
+        "no line for one picture"
+    );
+    let _ = snap_sized(&mut session, &mut sharer, &taking, (200, 100));
+    assert_ne!(session.draw().at(side.0, side.1), RED, "the line");
+    // A picture of the screen taken meanwhile has the window, and no line.
+    let mut screen = camera(&mut session);
+    let whole = screen.capture(0, false);
+    session.roundtrip(&mut screen);
+    let (picture, _) = snap(&mut session, &mut screen, &whole);
+    assert_eq!(picture.at(side.0, side.1), RED, "not in a picture");
+}
+
+#[test]
 fn the_mark_is_only_on_the_screen_pictures_are_taken_of() {
     let mut session = Session::new();
     session.add_output((WIDTH, HEIGHT));

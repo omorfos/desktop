@@ -465,8 +465,8 @@ capture {
   border-radius: 8px;
 }
 
-/* The line round a screen while it is shared or recorded, which is in no
- * picture of it. */
+/* The line round a screen or a window while it is shared or recorded,
+ * which is in no picture of it. */
 capture-border { border: 2px solid var(--capture); }
 
 /* The panel, and what is on it: the workspaces, a task for each window on
@@ -1052,10 +1052,11 @@ that it was. Rest the pointer on it to be told which programs are taking
 pictures, of the screen or of a window on it, by the name of each
 program's file. It is themed as `tooltip`.
 
-While the screen itself is shared or recorded, and not only a window on
-it, a red line goes round it as well, which is no more in what is shared
-than the dot is. It is the `capture-border` part's border; `border: none`
-takes it away, and the dot stays.
+While the screen is shared or recorded, a red line goes round it as well,
+which is no more in what is shared than the dot is; while a window is, the
+line goes round that window's frame, under any window over it. It is the
+`capture-border` part's border; `border: none` takes it away, and the dot
+stays.
 
 The same mark shows a microphone while something records sound, and a
 camera while something records from one, on every screen, beside the dot

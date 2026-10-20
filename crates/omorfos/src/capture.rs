@@ -398,16 +398,17 @@ pub(crate) struct Capture {
     /// What records from a microphone or a camera, which the mark shows
     /// as well.
     pub(crate) recording: Recording,
-    /// The line round each screen that is shared: what it was made for,
-    /// and its four sides, each where it goes on the screen.
-    edges: Vec<(Output, Edge, [Side; 4])>,
+    /// The line round each screen and each window that is shared: what it
+    /// was made for, and its four sides, each where it goes from the
+    /// screen's corner, or from that of the window's frame.
+    edges: Vec<(Subject, Edge, [Side; 4])>,
 }
 
-/// A side of the line round a shared screen, and where it goes on it.
+/// A side of the line round what is shared, and where it goes on it.
 type Side = (Point<i32, Logical>, SolidColorBuffer);
 
-/// What the line round a shared screen is made for: the screen's size,
-/// and how wide the line is and its colour.
+/// What the line round what is shared is made for: the size of the screen
+/// or of the window's frame, and how wide the line is and its colour.
 type Edge = (Size<i32, Logical>, u32, omorfos_config::Color);
 
 /// The four sides of a line `wide` across round a screen `size` large, in
@@ -486,10 +487,19 @@ impl Capture {
             .any(|taking| matches!(taking.subject, Subject::Screen(_)))
     }
 
-    /// The four sides of the line round `output`, while it is shared, each
-    /// where it goes on the screen.
-    pub(crate) fn edges(&self, output: &Output) -> impl Iterator<Item = &Side> {
-        let edges = self.edges.iter().filter(move |(of, ..)| of == output);
+    /// The windows being shared or recorded, as `shared` says of screens.
+    fn shared_windows(&self) -> impl Iterator<Item = WindowId> {
+        let windows = self.takings.iter().filter(|taking| taking.asked > 1);
+        windows.filter_map(|taking| match taking.subject {
+            Subject::Window(window) => Some(window),
+            Subject::Screen(_) => None,
+        })
+    }
+
+    /// The four sides of the line round a screen or a window, while it is
+    /// shared, each where it goes from its corner.
+    pub(crate) fn edges(&self, of: &Subject) -> impl Iterator<Item = &Side> {
+        let edges = self.edges.iter().filter(move |(lined, ..)| lined == of);
         edges.flat_map(|(.., sides)| sides)
     }
 
@@ -877,31 +887,36 @@ impl Compositor {
             let mark = Painted::new(&paint::capture_mark(theme, scale, signs));
             self.capture.marks.push(((scale, signs), mark));
         }
-        // A line round each screen that is shared, made again only when
-        // the screen or the look of the line changes.
+        // A line round each screen and each window that is shared, made
+        // again only when its size or the look of the line changes. A
+        // window's goes round its frame.
         let line = self.config().theme.style(Part::CaptureBorder, States::NONE);
         let line = line.border.top;
-        let wanted = self
+        let screens = self
             .heads
             .iter()
             .filter(|head| self.capture.shared(&head.output));
-        let wanted = wanted.filter(|_| line.width > 0);
-        let wanted: Vec<(Output, Edge)> = wanted
-            .map(|head| {
-                (
-                    head.output.clone(),
-                    (head.area().size, line.width, line.color),
-                )
+        let screens = screens.map(|head| (Subject::Screen(head.output.clone()), head.area().size));
+        let windows = self.capture.shared_windows().filter_map(|window| {
+            let shown = self.scene.iter().find(|shown| shown.id == window);
+            shown.map(|shown| {
+                let size = (shown.outer.size.width, shown.outer.size.height);
+                let size = (size.0.cast_signed(), size.1.cast_signed());
+                (Subject::Window(window), Size::from(size))
             })
+        });
+        let wanted = screens.chain(windows).filter(|_| line.width > 0);
+        let wanted: Vec<(Subject, Edge)> = wanted
+            .map(|(of, size)| (of, (size, line.width, line.color)))
             .collect();
         let edges = &mut self.capture.edges;
-        edges.retain(|(output, edge, _)| wanted.contains(&(output.clone(), *edge)));
-        for (output, edge) in wanted {
+        edges.retain(|(of, edge, _)| wanted.contains(&(of.clone(), *edge)));
+        for (of, edge) in wanted {
             if !edges
                 .iter()
-                .any(|(of, made, _)| *of == output && *made == edge)
+                .any(|(lined, made, _)| *lined == of && *made == edge)
             {
-                edges.push((output, edge, sides(edge)));
+                edges.push((of, edge, sides(edge)));
             }
         }
     }
