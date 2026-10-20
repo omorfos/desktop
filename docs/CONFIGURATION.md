@@ -127,6 +127,18 @@ such as `-30%`: less than nothing to the left, or up. The first listed
 has none before it, and you are told if it is given a `place`, an
 `align` or an `offset`.
 
+To have the screens stand one way at a desk and another away from it,
+list each way under `arrangements`, as `outputs` is listed: the first
+that names just the screens plugged in, in whatever order, is used in
+place of `outputs`, and is followed again as soon as a screen is plugged
+in or taken out.
+
+```yaml
+arrangements:
+  - [{ name: eDP-1, scale: 2 }]
+  - [{ name: HDMI-A-1, primary: true }, { name: eDP-1, place: below }]
+```
+
 One listed screen may be `primary: true`: the notice of what is wrong is
 shown on it, and the windows of a screen that is unplugged go to it.
 Without one, the first screen plugged in is.

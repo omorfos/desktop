@@ -138,7 +138,8 @@ impl Compositor {
         };
         head.set_pixels(size);
         self.heads.push(head);
-        self.lay_out();
+        // Another arrangement may now be the one for the screens there are.
+        self.apply_scale();
         output
     }
 
@@ -167,7 +168,7 @@ impl Compositor {
         self.space.unmap_output(&head.output);
         self.display.remove_global::<Self>(head.global);
         self.forget_lock_surface(&head.output);
-        self.lay_out();
+        self.apply_scale();
         // The pointer does not stay behind where there is no screen.
         let at = self.moved_by(0.0, 0.0);
         self.pointer_location = at;
@@ -215,11 +216,29 @@ impl Compositor {
         self.heads.iter().find(|head| head.contains(point))
     }
 
+    /// The screens as the configuration has them for those called `names`:
+    /// the first arrangement that names just those, or else `outputs`.
+    pub(crate) fn arrangement_for<'a>(
+        &self,
+        names: &(impl Iterator<Item = &'a str> + Clone),
+    ) -> &omorfos_config::Outputs {
+        let general = &self.config().general;
+        let mut arrangements = general.arrangements.iter();
+        let found = arrangements.find(|arrangement| arrangement.are(names.clone()));
+        found.unwrap_or(&general.outputs)
+    }
+
+    /// The screens as the configuration has them for those plugged in.
+    pub(crate) fn arrangement(&self) -> &omorfos_config::Outputs {
+        let names: Vec<String> = self.heads.iter().map(|head| head.output.name()).collect();
+        self.arrangement_for(&names.iter().map(String::as_str))
+    }
+
     /// Where among the outputs the one that comes first is: the one the
     /// configuration makes primary, if it is plugged in, or else the
     /// first plugged in.
     pub(crate) fn primary(&self) -> usize {
-        let listed = self.config().general.outputs.listed().iter();
+        let listed = self.arrangement().listed().iter();
         let named = listed
             .filter(|listed| listed.primary)
             .map(|listed| listed.name.as_str());
@@ -285,7 +304,10 @@ impl Compositor {
     /// suggested.
     fn scale_for(&self, name: &str, suggested: Scale) -> Scale {
         let general = &self.config().general;
-        let named = general.outputs.named(name).and_then(|output| output.scale);
+        let named = self
+            .arrangement()
+            .named(name)
+            .and_then(|output| output.scale);
         bridge::scale(named.unwrap_or(general.output.scale), suggested)
     }
 
@@ -316,7 +338,7 @@ impl Compositor {
     /// turned, as the protocol says it: a turn to the left is a quarter
     /// turn against the clock.
     fn rotation_for(&self, name: &str) -> Transform {
-        let listed = self.config().general.outputs.named(name);
+        let listed = self.arrangement().named(name);
         match listed.map(|listed| listed.rotate).unwrap_or_default() {
             Rotation::Normal => Transform::Normal,
             Rotation::Left => Transform::_90,
@@ -329,7 +351,7 @@ impl Compositor {
     /// configuration lists, in the order it lists them, and then the rest
     /// in the order they were added.
     pub(crate) fn arranged(&self) -> Vec<usize> {
-        let listed = self.config().general.outputs.listed();
+        let listed = self.arrangement().listed();
         let place = |index: &usize| {
             let name = self.heads[*index].output.name();
             let place = listed.iter().position(|output| output.name == name);
@@ -347,7 +369,7 @@ impl Compositor {
     /// brings everything that depends on where they are up to date.
     fn lay_out(&mut self) {
         let order = self.arranged();
-        let listed = &self.config().general.outputs;
+        let listed = self.arrangement();
         let placed: Vec<_> = order
             .iter()
             .map(|index| {
@@ -468,8 +490,15 @@ fn beside(
 }
 
 /// What is wrong with where the screens are said to stand: the first one
-/// listed placed next to the one before it, which there is not.
-pub(crate) fn misplaced(outputs: &omorfos_config::Outputs) -> Option<String> {
+/// listed placed next to the one before it, which there is not, in
+/// `outputs` or in any of the arrangements.
+pub(crate) fn misplaced(general: &omorfos_config::General) -> Vec<String> {
+    let all = std::iter::once(&general.outputs).chain(&general.arrangements);
+    all.filter_map(misplaced_in).collect()
+}
+
+/// The same, for one list of screens.
+fn misplaced_in(outputs: &omorfos_config::Outputs) -> Option<String> {
     let first = outputs.listed().first();
     let placed = first
         .filter(|first| first.place.is_some() || first.align.is_some() || first.offset.is_some());

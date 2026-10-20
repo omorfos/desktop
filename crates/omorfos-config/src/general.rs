@@ -26,6 +26,10 @@ pub struct General {
     /// Particular screens, by name: where each stands and how it is
     /// driven.
     pub outputs: Outputs,
+    /// Screens as `outputs` lists them, for when just those are plugged
+    /// in: the first that names exactly the screens there are is used in
+    /// place of `outputs`.
+    pub arrangements: Vec<Outputs>,
     /// What happens when the user is away.
     pub idle: Idle,
     /// Programs to start with the session, each as a program and its
@@ -482,6 +486,14 @@ impl Outputs {
     #[must_use]
     pub fn listed(&self) -> &[NamedOutput] {
         &self.0
+    }
+
+    /// Whether these are the screens called `names`, and no others, in
+    /// whatever order.
+    pub fn are<'a>(&self, names: impl Iterator<Item = &'a str> + Clone) -> bool {
+        let mut listed = self.0.iter();
+        listed.all(|listed| names.clone().any(|name| name == listed.name))
+            && self.0.len() == names.count()
     }
 
     /// What is said about the screen called `name`, if it is listed.
@@ -1162,6 +1174,32 @@ autostart:
             assert!(said.contains("invalid offset"), "{wrong}: {said}");
         }
         assert!(parse("outputs: [{ name: DP-1, align: centre }]\n").is_err());
+    }
+
+    #[test]
+    fn an_arrangement_is_for_just_the_screens_it_names() {
+        let general = parse(
+            "arrangements:\n  - [{ name: eDP-1 }]\n  - [{ name: HDMI-A-1 }, { name: eDP-1, place: below }]\n",
+        )
+        .unwrap();
+        assert_eq!(general.arrangements.len(), 2);
+        let (alone, docked) = (&general.arrangements[0], &general.arrangements[1]);
+        let names = |names: &'static [&'static str]| names.iter().copied();
+        assert!(alone.are(names(&["eDP-1"])));
+        assert!(
+            !alone.are(names(&["eDP-1", "HDMI-A-1"])),
+            "not with another"
+        );
+        assert!(
+            docked.are(names(&["eDP-1", "HDMI-A-1"])),
+            "in whatever order"
+        );
+        assert!(!docked.are(names(&["eDP-1", "DP-1"])));
+        assert!(
+            !docked.are(names(&["HDMI-A-1"])),
+            "nor with one of them gone"
+        );
+        assert_eq!(parse("{}").unwrap().arrangements, []);
     }
 
     #[test]
