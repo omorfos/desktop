@@ -32,6 +32,7 @@ use card::Card;
 pub use feed::{Feed, Seen};
 use omorfos_config::{Store, Watcher};
 use omorfos_pipewire::{Held, Picture};
+use omorfos_screenshot::Shared;
 pub use prompt::{Answer, Desk, Question, Still, asking, button_at, paint};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 pub use screencast::{Pointer, SCREENCAST, SESSION, streams};
@@ -143,17 +144,16 @@ fn kept(shots: &[omorfos_screenshot::Shot], folder: &Path) -> Option<String> {
 type Picked = Result<Option<Vec<omorfos_screenshot::Shot>>, omorfos_screenshot::Failure>;
 
 /// What came of picking: what a picture is of, or why there is none; or
-/// which screen to share, by what it is called. Nothing if nothing was
-/// picked.
+/// which screen or window to share. Nothing if nothing was picked.
 enum Chose {
     Picture(Picked),
-    Screen(Option<String>),
+    Shared(Option<Shared>),
 }
 
 /// What is being picked, on a thread of its own, for what was asked for:
 /// the call, the request it may be withdrawn by, and where it says what
-/// was picked. For a screen to share, the session it is shared in and how
-/// the pointer is shown.
+/// was picked. For what is to be shared, the session it is shared in and
+/// how the pointer is shown.
 struct Picking {
     call: Message,
     request: OwnedObjectPath,
@@ -166,6 +166,10 @@ struct Picking {
 /// What the picker says to do, at the top of each screen, when the screen
 /// to share is picked.
 const SHARE_HINT: &str = "Click the screen you want to share, or press Esc to cancel.";
+
+/// What it says when a window may be picked to share as well.
+const SHARE_WINDOW_HINT: &str =
+    "Click the window or screen you want to share, or press Esc to cancel.";
 
 /// How often what is being picked is looked at, while it is.
 const PICKING: Duration = Duration::from_millis(50);
@@ -217,8 +221,9 @@ impl Pending {
 enum Wants {
     /// A picture of the screen.
     Picture,
-    /// The screen shared, in a session, with the pointer shown so.
-    Share(OwnedObjectPath, Pointer),
+    /// The screen shared, in a session, with the pointer shown so; or a
+    /// window, if one may be.
+    Share(OwnedObjectPath, Pointer, bool),
     /// A colour from the screen.
     Pick,
 }
@@ -373,10 +378,11 @@ impl Backend<'_> {
                     self.portal.respond(&call, Response::Failed, None);
                 }
             }
-            (Answer::Give, Wants::Share(session, pointer)) => {
-                // With more than one screen, the user picks which.
-                if self.desk.screens() > 1 {
-                    self.pick_screen(call, request, (session, pointer));
+            (Answer::Give, Wants::Share(session, pointer, windows)) => {
+                // With more than one screen, or windows to pick from as
+                // well, the user picks which.
+                if windows || self.desk.screens() > 1 {
+                    self.pick_shared(call, request, (session, pointer), windows);
                 } else {
                     self.begin(&call, session, pointer, None);
                 }
@@ -400,43 +406,55 @@ impl Backend<'_> {
         }
     }
 
-    /// Has the user pick which screen to share in `session`, with the
-    /// pointer shown as `pointer` says, over pictures of them taken now,
-    /// on a thread of its own as a picture is picked.
-    fn pick_screen(
+    /// Has the user pick which screen to share in `session`, or which
+    /// window if `windows`, with the pointer shown as `pointer` says, over
+    /// pictures of the screens taken now, on a thread of its own as a
+    /// picture is picked.
+    fn pick_shared(
         &mut self,
         call: Message,
         request: OwnedObjectPath,
         share: (OwnedObjectPath, Pointer),
+        windows: bool,
     ) {
-        let Ok((shots, _)) = omorfos_screenshot::shoot(self.desk.connection(), None) else {
-            note("the user said yes, and the screens could not be shown to pick from");
-            self.portal.respond(&call, Response::Failed, None);
-            return;
+        let shots = match omorfos_screenshot::shoot(self.desk.connection(), None) {
+            Ok((shots, _)) => shots,
+            Err(failure) => {
+                note(&format!(
+                    "the user said yes, and the screens could not be shown to pick from: {failure}"
+                ));
+                self.portal.respond(&call, Response::Failed, None);
+                return;
+            }
         };
-        let names: Vec<String> = shots.iter().map(|shot| shot.screen.clone()).collect();
-        let stills = shots.into_iter().map(|shot| omorfos_picker::Still {
-            screen: shot.screen,
-            size: (shot.width, shot.height),
-            pixels: shot.pixels,
-            windows: Vec::new(),
-        });
-        let stills = stills.collect();
         let (told, done) = channel();
         let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
+        let socket = self.socket.clone();
         std::thread::spawn(move || {
-            let asking = (omorfos_picker::Pickable::Screen, SHARE_HINT);
-            let picked = omorfos_picker::pick(&connection, stills, asking, &theme);
+            // Where the windows are is asked as the pictures were taken,
+            // and only if a window may be picked.
+            let placed = if windows {
+                omorfos_screenshot::placed(socket.as_deref())
+            } else {
+                Vec::new()
+            };
+            let hint = if windows {
+                SHARE_WINDOW_HINT
+            } else {
+                SHARE_HINT
+            };
+            let picked = omorfos_screenshot::pick_shared(
+                &connection,
+                &shots,
+                (&placed, windows),
+                hint,
+                &theme,
+            );
             // What cannot be shown to pick from is taken for a no, as the
             // question it follows could be shown.
-            let screen = picked
-                .ok()
-                .flatten()
-                .and_then(omorfos_picker::Picked::screen);
-            let screen = screen.and_then(|screen| names.get(screen).cloned());
-            let _ = told.send(Chose::Screen(screen));
+            let _ = told.send(Chose::Shared(picked.ok().flatten()));
         });
-        note("the user said yes, and picks which screen to share");
+        note("the user said yes, and picks what to share");
         self.picking = Some(Picking {
             call,
             request,
@@ -446,19 +464,24 @@ impl Backend<'_> {
         });
     }
 
-    /// Begins sharing `screen`, or the first, in `session`, with the
-    /// pointer shown as `pointer` says, and answers `call` once the stream
-    /// can be read; or answers it that it cannot be.
+    /// Begins sharing `shared`, or the first screen, in `session`, with
+    /// the pointer shown as `pointer` says, and answers `call` once the
+    /// stream can be read; or answers it that it cannot be.
     fn begin(
         &mut self,
         call: &Message,
         session: OwnedObjectPath,
         pointer: Pointer,
-        screen: Option<&str>,
+        shared: Option<&Shared>,
     ) {
-        match self.share(screen, pointer) {
+        match self.share(shared, pointer) {
             Ok((feed, out)) => {
-                note("the screen is being shared");
+                let what = if feed.window() {
+                    "a window"
+                } else {
+                    "the screen"
+                };
+                note(&format!("{what} is being shared"));
                 let sharing = Sharing {
                     session,
                     feed,
@@ -473,7 +496,7 @@ impl Backend<'_> {
             }
             Err(failure) => {
                 note(&format!(
-                    "the user said yes, and the screen cannot be shared: {failure}"
+                    "the user said yes, and it cannot be shared: {failure}"
                 ));
                 self.portal.respond(call, Response::Failed, None);
             }
@@ -496,15 +519,15 @@ impl Backend<'_> {
         let wanted = !picking.withdrawn;
         let done = match done {
             Chose::Picture(done) => done,
-            Chose::Screen(screen) => {
+            Chose::Shared(shared) => {
                 let share = picking.share.filter(|_| wanted);
                 let Some((session, pointer)) = share else {
                     return;
                 };
-                if let Some(screen) = screen {
-                    self.begin(&picking.call, session, pointer, Some(&screen));
+                if let Some(shared) = shared {
+                    self.begin(&picking.call, session, pointer, Some(&shared));
                 } else {
-                    note("no screen was picked to share");
+                    note("nothing was picked to share");
                     self.portal.respond(&picking.call, Response::Refused, None);
                 }
                 return;
@@ -534,15 +557,19 @@ impl Backend<'_> {
         self.portal.respond(&picking.call, response, saved);
     }
 
-    /// Begins sharing `screen`, or the first: pictures of it, and the
-    /// stream they go into.
-    fn share(&mut self, screen: Option<&str>, pointer: Pointer) -> Result<(Feed, Share), Failure> {
+    /// Begins sharing `shared`, or the first screen: pictures of it, and
+    /// the stream they go into.
+    fn share(
+        &mut self,
+        shared: Option<&Shared>,
+        pointer: Pointer,
+    ) -> Result<(Feed, Share), Failure> {
         let pipes = self
             .pipes
             .take()
             .map_or_else(|| Pipes::connect(self.remote.as_deref()), Ok);
         pipes.and_then(|pipes| {
-            let begun = Feed::new(self.desk.connection(), screen, pointer);
+            let begun = Feed::new(self.desk.connection(), shared, pointer);
             let begun = begun.and_then(|feed| {
                 let pointer = feed.pointer().map(|seen| seen.size);
                 // Memory of the card the compositor draws with, if it can
@@ -605,6 +632,7 @@ impl Backend<'_> {
                 session,
                 app,
                 pointer,
+                windows,
             } => {
                 let how = match pointer {
                     Pointer::Hidden => "without the pointer",
@@ -615,7 +643,8 @@ impl Backend<'_> {
                     "{} asked to share the screen, {how}",
                     called(&app)
                 ));
-                let pending = Pending::new(call, request, Wants::Share(session, pointer));
+                let wants = Wants::Share(session, pointer, windows);
+                let pending = Pending::new(call, request, wants);
                 self.ask(&app, Question::Share, pending);
             }
             Asked::Withdrawn(request) => {
@@ -687,7 +716,9 @@ impl Backend<'_> {
             if let Some((node, call)) = known {
                 let (width, height) = sharing.feed.size();
                 let size = (width.cast_signed(), height.cast_signed());
-                portal.respond_shared(call, node, (0, 0), size);
+                // A window has no place on the desktop to be told.
+                let at = (!sharing.feed.window()).then_some((0, 0));
+                portal.respond_shared(call, node, at, size);
                 sharing.call = None;
             }
             let turned = sharing.feed.turn();

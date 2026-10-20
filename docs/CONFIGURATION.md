@@ -869,10 +869,14 @@ An application can ask to share the screen too, as a browser or a call
 does. The same question goes up, saying that it wants to share your
 screen: **Cancel** or Escape gives it nothing, and **Share** or Enter
 gives it the screen as a live stream, through PipeWire, for as long as
-the application keeps it. With more than one screen you then pick which:
-the screens go still and dim but for the one under the pointer, and a
-click or Enter shares that one, Escape none. While it is shared the red
-mark stays on that screen. To stop sharing, stop it in the application.
+the application keeps it. With more than one screen, or if the
+application can take a window as well, you then pick what: the screens
+go still and dim but for what is under the pointer, a window or, beside
+every window, the screen, and a click or Enter shares that, Escape
+nothing. A window is shared by itself, whatever covers it, at its size
+as that changes; the pointer is not shown in it yet. While anything is
+shared the red mark stays on its screen. To stop sharing, stop it in the
+application.
 
 How the desktop looks is read from the theme, so there is nothing to set. The desktop is
 dark if menus are written in something lighter than what they are

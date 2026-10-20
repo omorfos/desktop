@@ -21,7 +21,16 @@ pub const SESSION: &str = "org.freedesktop.impl.portal.Session";
 pub(crate) struct Session {
     /// How the pointer is to be shown in what is shared.
     pointer: Pointer,
+    /// Whether a window may be shared, and not only a screen.
+    windows: bool,
 }
+
+/// The number the portal has for a screen, among the kinds of thing that
+/// may be shared.
+const SCREEN: u32 = 1;
+
+/// The number it has for a window.
+const WINDOW: u32 = 2;
 
 /// How the pointer is shown in what is shared.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -105,16 +114,25 @@ pub(crate) fn answer(
             Ok((_, session, _, options)) => {
                 let cursor = options.get("cursor_mode");
                 let cursor = cursor.and_then(|mode| mode.downcast_ref::<u32>().ok());
+                // What may be shared, of the kinds the portal has numbers
+                // for: 1 a screen, 2 a window. A screen, unless it says.
+                let kinds = options.get("types");
+                let kinds = kinds.and_then(|kinds| kinds.downcast_ref::<u32>().ok());
                 let made = sessions.get_mut(&session);
-                let known = made.map(|made| made.pointer = Pointer::of(cursor));
+                let known = made.map(|made| {
+                    made.pointer = Pointer::of(cursor);
+                    made.windows = kinds.is_some_and(|kinds| kinds & WINDOW != 0);
+                });
                 if known.is_some() { given() } else { failed() }
             }
             Err(_) => malformed(),
         },
         (SCREENCAST, Some("Start")) => match body.deserialize::<Begun>() {
             Ok((request, session, app, _, _)) => {
-                let made = sessions.get(&session).map(|made| made.pointer);
-                if let Some(pointer) = made {
+                let made = sessions
+                    .get(&session)
+                    .map(|made| (made.pointer, made.windows));
+                if let Some((pointer, windows)) = made {
                     // Answered once the user has said.
                     waiting.tell(Asked::Share {
                         call: message.clone(),
@@ -122,6 +140,7 @@ pub(crate) fn answer(
                         session,
                         app,
                         pointer,
+                        windows,
                     });
                     Ok(())
                 } else {
@@ -144,18 +163,20 @@ pub(crate) fn answer(
     Some(sent)
 }
 
-/// What the application is told of what is shared: the stream it is, where
-/// on the desktop the screen is and how large, and that it is a screen.
+/// What the application is told of what is shared: the stream it is, how
+/// large it is, and whether it is a screen, with where on the desktop that
+/// is, or a window, which has no place to be told.
 #[must_use]
 pub fn streams(
     node: u32,
-    (x, y): (i32, i32),
+    at: Option<(i32, i32)>,
     (width, height): (i32, i32),
 ) -> HashMap<&'static str, Value<'static>> {
-    let about = HashMap::from([
-        ("position", Value::from((x, y))),
+    let kind = if at.is_some() { SCREEN } else { WINDOW };
+    let mut about = HashMap::from([
         ("size", Value::from((width, height))),
-        ("source_type", Value::U32(1)),
+        ("source_type", Value::U32(kind)),
     ]);
+    about.extend(at.map(|at| ("position", Value::from(at))));
     HashMap::from([("streams", Value::from(vec![(node, about)]))])
 }

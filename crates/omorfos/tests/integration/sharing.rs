@@ -146,9 +146,11 @@ fn start(session: &mut Session, daemon: &Daemon, roles: Roles, remote: &str) -> 
     let variables = [
         ("XDG_RUNTIME_DIR", runtime.clone().into_os_string()),
         ("WAYLAND_DISPLAY", OsString::from("wayland-sharing")),
-        ("HOME", runtime.into_os_string()),
+        ("HOME", runtime.clone().into_os_string()),
         ("DBUS_SESSION_BUS_ADDRESS", OsString::from(&daemon.address)),
         ("PIPEWIRE_REMOTE", OsString::from(remote)),
+        // Where windows are is asked here, once a test listens.
+        ("OMORFOS_SOCKET", runtime.join("ipc.sock").into_os_string()),
     ];
     let running = std::thread::spawn(move || {
         let variable = |name: &str| {
@@ -189,6 +191,16 @@ const DRAWN: u32 = 2;
 const BESIDE: u32 = 4;
 
 fn make(peer: &Connection, session: &str, cursor: u32) {
+    make_of(peer, session, cursor, SCREENS);
+}
+
+/// The kinds of thing an application asks may be shared: a screen.
+const SCREENS: u32 = 1;
+/// A screen or a window.
+const SCREENS_AND_WINDOWS: u32 = 1 | 2;
+
+/// Makes a session in which what `types` says may be shared.
+fn make_of(peer: &Connection, session: &str, cursor: u32, types: u32) {
     let none: HashMap<&str, Value<'_>> = HashMap::new();
     let request = "/org/freedesktop/portal/desktop/request/1_1/make";
     let made = call(
@@ -198,7 +210,7 @@ fn make(peer: &Connection, session: &str, cursor: u32) {
     );
     assert_eq!(made.unwrap().0, 0);
     let options = HashMap::from([
-        ("types", Value::U32(1)),
+        ("types", Value::U32(types)),
         ("cursor_mode", Value::U32(cursor)),
     ]);
     let chosen = call(
@@ -251,8 +263,9 @@ fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
     }
 }
 
-/// Clicks at `at` until the call has been answered, as a screen to share
-/// is picked once the picture of each is up, and returns how.
+/// Clicks at `at` until the call has been answered, as a screen or a
+/// window to share is picked once the picture of each screen is up, and
+/// returns how.
 fn picked_screen(
     session: &mut Session,
     asking: JoinHandle<Answered>,
@@ -272,8 +285,7 @@ fn picked_screen(
             };
             session.compositor_mut().input(button, 0);
         }
-        drop(session.draw_on(1));
-        session.draw();
+        session.draw_all();
         asking.is_finished()
     });
     asking.join().unwrap()
@@ -290,16 +302,28 @@ fn answered(session: &mut Session, asking: JoinHandle<Answered>) -> Answered {
 
 /// The stream an application is told to read, and how large it is.
 fn stream(results: &HashMap<String, OwnedValue>) -> (u32, (i32, i32)) {
+    let (node, size, kind, placed) = told(results);
+    assert_eq!((kind, placed), (1, true), "a screen, with where it is");
+    (node, size)
+}
+
+/// The stream an application is told to read of a window, and how large
+/// it is.
+fn stream_of_window(results: &HashMap<String, OwnedValue>) -> (u32, (i32, i32)) {
+    let (node, size, kind, placed) = told(results);
+    assert_eq!((kind, placed), (2, false), "a window, which is nowhere");
+    (node, size)
+}
+
+/// What an application is told of the stream it is to read: which it is,
+/// how large, what kind of thing it is of, and whether where that is.
+fn told(results: &HashMap<String, OwnedValue>) -> (u32, (i32, i32), u32, bool) {
     let streams = results["streams"].try_clone().unwrap();
     let streams: Vec<(u32, HashMap<String, OwnedValue>)> = streams.try_into().unwrap();
     let (node, about) = &streams[0];
     let size: (i32, i32) = about["size"].try_clone().unwrap().try_into().unwrap();
-    assert_eq!(
-        about["source_type"].downcast_ref::<u32>().unwrap(),
-        1,
-        "a screen"
-    );
-    (*node, size)
+    let kind = about["source_type"].downcast_ref::<u32>().unwrap();
+    (*node, size, kind, about.contains_key("position"))
 }
 
 /// An application reading a stream in PipeWire, as one sharing the screen
@@ -1055,7 +1079,11 @@ fn what_is_asked_of_a_session_that_was_never_made_fails() {
         )
         .unwrap();
     let types: OwnedValue = reply.body().deserialize().unwrap();
-    assert_eq!(types.downcast_ref::<u32>().unwrap(), 1, "screens");
+    assert_eq!(
+        types.downcast_ref::<u32>().unwrap(),
+        SCREENS_AND_WINDOWS,
+        "screens and windows"
+    );
 }
 
 #[test]
@@ -1389,4 +1417,94 @@ fn a_screen_shared_in_the_memory_of_the_card_goes_on_at_its_new_size() {
     assert_eq!(viewer.at(320, (300, 200)), Some(BACKGROUND));
     assert!(viewer.seen().card, "memory of the card still");
     assert!(!viewer.seen().unreadable, "a buffer no reader could read");
+}
+
+#[test]
+fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let peer = daemon.peer();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/window";
+    make_of(&peer, call_session, HIDDEN, SCREENS_AND_WINDOWS);
+    // With one screen, what to share is picked still, as a window may be.
+    // The window is clicked on until the picture to pick from is up, and
+    // hears of each click: what it is told is read meanwhile.
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    let on = Input::Motion { x: 50.0, y: 50.0 };
+    session.eventually(|session| {
+        session.compositor_mut().input(on, 0);
+        session.step();
+        for pressed in [true, false] {
+            let button = Input::Button {
+                button: 0x110,
+                pressed,
+            };
+            session.compositor_mut().input(button, 0);
+        }
+        session.draw();
+        app.receive();
+        starting.is_finished()
+    });
+    let (response, results) = starting.join().unwrap();
+    assert_eq!(response, 0);
+    let (node, size) = stream_of_window(&results);
+    assert_eq!(size, (200, 100), "as large as the window");
+
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.pixels() == 200 * 100 && viewer.at(200, (10, 10)) == Some(RED)
+    });
+    // Larger, it is shared at its new size.
+    app.fill(&window.surface, (300, 150), GREEN);
+    session.roundtrip(&mut app);
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.pixels() == 300 * 150 && viewer.at(300, (250, 120)) == Some(GREEN)
+    });
+}
+
+#[test]
+fn where_a_window_may_be_shared_the_screen_is_shared_from_beside_the_windows() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let peer = daemon.peer();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/beside";
+    make_of(&peer, call_session, HIDDEN, SCREENS_AND_WINDOWS);
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    // Enter, with the pointer beside every window, picks the screen.
+    let beside = Input::Motion {
+        x: f64::from(WIDTH - 20),
+        y: f64::from(HEIGHT - 20),
+    };
+    session.eventually(|session| {
+        session.compositor_mut().input(beside, 0);
+        session.step();
+        press(session, key::RETURN);
+        session.draw();
+        starting.is_finished()
+    });
+    let (response, results) = starting.join().unwrap();
+    assert_eq!(response, 0);
+    assert_eq!(stream(&results).1, (WIDTH, HEIGHT), "the screen");
 }

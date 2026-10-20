@@ -527,6 +527,14 @@ impl Session {
         self.draw_on(0)
     }
 
+    /// Draws a frame on every output, the first last.
+    pub(crate) fn draw_all(&mut self) {
+        for index in (1..self.monitors.len()).rev() {
+            drop(self.draw_on(index));
+        }
+        drop(self.draw());
+    }
+
     /// Draws a frame on one of the outputs, counted in the order they were
     /// added, and returns what is on it.
     pub(crate) fn draw_on(&mut self, index: usize) -> Picture {
@@ -765,7 +773,9 @@ impl Client {
     }
 
     /// Reads and handles whatever the compositor has sent, without waiting.
-    fn receive(&mut self) {
+    /// A client a test does not read for long enough, while the compositor
+    /// sends it more, is dropped by it once its socket is full.
+    pub(crate) fn receive(&mut self) {
         if let Some(guard) = self.queue.prepare_read() {
             // Nothing to read is not an error here.
             let _ = guard.read();

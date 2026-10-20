@@ -243,6 +243,61 @@ pub fn pick(
     .transpose()
 }
 
+/// What the user picks to share of `shots`, the pictures of every screen
+/// just taken, over the compositor `connection` is to: a screen, by what
+/// it is called; or, if `windows`, a window, by what it is called in the
+/// list of windows, with `placed` saying where they are. `hint` says how
+/// at the top of each screen. Nothing, if they picked nothing.
+///
+/// # Errors
+///
+/// Returns why nothing could be picked from.
+pub fn pick_shared(
+    connection: &wayland_client::Connection,
+    shots: &[Shot],
+    (placed, windows): (&[omorfos_ipc::Placed], bool),
+    hint: &str,
+    theme: &omorfos_config::Theme,
+) -> Result<Option<Shared>, Failure> {
+    let placed = if windows { placed } else { &[] };
+    let pickable = if windows {
+        omorfos_picker::Pickable::ScreenOrWindow
+    } else {
+        omorfos_picker::Pickable::Screen
+    };
+    let picked = omorfos_picker::pick(connection, stills(shots, placed), (pickable, hint), theme);
+    picked.map(|picked| picked.and_then(|picked| shared(shots, placed, picked)))
+}
+
+/// What is to be shared, once picked: a screen, by what it is called, or
+/// a window, by what it is called in the list of windows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shared {
+    /// A screen.
+    Screen(String),
+    /// A window.
+    Window(String),
+}
+
+/// What `picked` of `shots`, with the windows of `placed` on them, is to
+/// share: the screen, or the window.
+fn shared(
+    shots: &[Shot],
+    placed: &[omorfos_ipc::Placed],
+    picked: omorfos_picker::Picked,
+) -> Option<Shared> {
+    let shot = picked.screen().and_then(|screen| shots.get(screen));
+    match picked {
+        omorfos_picker::Picked::Window { window, .. } => {
+            let mut windows = shot.into_iter().flat_map(|shot| on(placed, shot));
+            windows
+                .nth(window)
+                .map(|place| Shared::Window(place.handle.clone()))
+        }
+        _ => shot.map(|shot| Shared::Screen(shot.screen.clone())),
+    }
+}
+
 /// What was picked: pictures already taken, or a window to take one of,
 /// by what it is called in the list of windows.
 #[derive(Debug, PartialEq, Eq)]

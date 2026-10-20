@@ -13,12 +13,18 @@ use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 
 use omorfos_pipewire::Memory;
+use omorfos_screenshot::Shared;
 use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
     wl_buffer, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
+    ext_foreign_toplevel_handle_v1::{self as toplevel, ExtForeignToplevelHandleV1},
+    ext_foreign_toplevel_list_v1::{self as toplevel_list, ExtForeignToplevelListV1},
+};
 use wayland_protocols::ext::image_capture_source::v1::client::{
+    ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
 };
@@ -65,6 +71,11 @@ struct Followed {
 struct Watching {
     shm: Option<wl_shm::WlShm>,
     sources: Option<ExtOutputImageCaptureSourceManagerV1>,
+    /// What a window by itself is asked for through, and the windows
+    /// there are, by what each is called, while one is looked for.
+    windows: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
+    list: Option<ExtForeignToplevelListV1>,
+    listed: Vec<(ExtForeignToplevelHandleV1, String)>,
     capturers: Option<ExtImageCopyCaptureManagerV1>,
     /// The screens, by what they are called once they have said.
     outputs: Vec<(wl_output::WlOutput, String)>,
@@ -115,6 +126,8 @@ pub struct Feed {
     size: (u32, u32),
     /// The pointer, if it is followed beside the pictures.
     following: Option<Following>,
+    /// Whether the pictures are of a window, and not of a screen.
+    window: bool,
 }
 
 /// A part of a picture: where its top left corner is, and how wide and high
@@ -187,20 +200,21 @@ pub struct Seen<'a> {
 }
 
 impl Feed {
-    /// Begins taking pictures of the screen called `screen`, or of the
-    /// first if none is named, with the pointer drawn in, followed beside
-    /// them, or neither.
+    /// Begins taking pictures of what is `shared`, or of the first screen
+    /// if nothing is named, with the pointer drawn in, followed beside
+    /// them, or neither. Over a window the pointer is not followed.
     ///
     /// # Errors
     ///
     /// Returns an error if the compositor gives this program no pictures,
-    /// the screen is not there, or the memory to take them in cannot be
-    /// had.
+    /// the screen or window is not there, or the memory to take them in
+    /// cannot be had.
     pub fn new(
         connection: &Connection,
-        screen: Option<&str>,
+        shared: Option<&Shared>,
         pointer: Pointer,
     ) -> Result<Self, Failure> {
+        let window = matches!(shared, Some(Shared::Window(_)));
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
         let mut watching = Watching::default();
@@ -210,36 +224,38 @@ impl Feed {
         let listed = queue.roundtrip(&mut watching).map_err(Failure::from);
         let named = listed.and_then(|_| queue.roundtrip(&mut watching).map_err(Failure::from));
         let session = named.and_then(|_| {
-            let offered = watching.sources.clone().zip(watching.capturers.clone());
-            let mut outputs = watching.outputs.iter();
-            let output = outputs.find(|(_, called)| screen.is_none_or(|screen| screen == called));
-            let offered = offered.zip(output.map(|(output, _)| output.clone()));
+            let source = watching.source(shared, &handle);
             let options = if pointer == Pointer::Drawn {
                 Options::PaintCursors
             } else {
                 Options::empty()
             };
-            let seat = watching.seat.clone().filter(|_| pointer == Pointer::Beside);
-            let session = offered.map(|((sources, capturers), output)| {
-                let source = sources.create_source(&output, &handle, ());
-                let session = capturers.create_session(&source, options, &handle, Of::Screen(0));
-                // The pointer is followed over the same screen, by itself.
-                let followed = seat.map(|seat| {
-                    let pointer = seat.get_pointer(&handle, ());
-                    let cursor =
-                        capturers.create_pointer_cursor_session(&source, &pointer, &handle, ());
-                    let session = cursor.get_capture_session(&handle, Of::Pointer);
-                    (cursor, session)
+            let seat = watching.seat.clone();
+            let seat = seat.filter(|_| pointer == Pointer::Beside && !window);
+            let session = source
+                .zip(watching.capturers.clone())
+                .map(|(source, capturers)| {
+                    let session =
+                        capturers.create_session(&source, options, &handle, Of::Screen(0));
+                    // The pointer is followed over the same screen, by itself.
+                    let followed = seat.map(|seat| {
+                        let pointer = seat.get_pointer(&handle, ());
+                        let cursor =
+                            capturers.create_pointer_cursor_session(&source, &pointer, &handle, ());
+                        let session = cursor.get_capture_session(&handle, Of::Pointer);
+                        (cursor, session)
+                    });
+                    (session, (capturers, source, options), followed)
                 });
-                (session, (capturers, source, options), followed)
-            });
             let told = queue.roundtrip(&mut watching).map_err(Failure::from);
             told.map(|_| session)
         });
         let ready = session.and_then(|session| {
             let given = session.zip(watching.size).zip(watching.shm.clone());
             let given = given.filter(|_| !watching.stopped);
-            given.ok_or_else(|| "omorfos gives this program no pictures of the screen".into())
+            given.ok_or_else(|| {
+                "omorfos gives this program no pictures of it, or it is not there".into()
+            })
         });
         let ready = ready.and_then(|(((session, taking, followed), size), shm)| {
             let following = followed.map(|followed| follow(&queue, &watching, &shm, followed));
@@ -253,9 +269,16 @@ impl Feed {
                 asked: None,
                 size,
                 following,
+                window,
             })
         });
         ready.inspect(Self::point)
+    }
+
+    /// Whether the pictures are of a window, and not of a screen.
+    #[must_use]
+    pub const fn window(&self) -> bool {
+        self.window
     }
 
     /// The graphics card the compositor can put pictures in the memory of,
@@ -495,6 +518,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
                 "ext_output_image_capture_source_manager_v1" => {
                     watching.sources = Some(registry.bind(name, 1, handle, ()));
                 }
+                "ext_foreign_toplevel_image_capture_source_manager_v1" => {
+                    watching.windows = Some(registry.bind(name, 1, handle, ()));
+                }
+                "ext_foreign_toplevel_list_v1" => {
+                    watching.list = Some(registry.bind(name, 1, handle, ()));
+                }
                 "ext_image_copy_capture_manager_v1" => {
                     watching.capturers = Some(registry.bind(name, 1, handle, ()));
                 }
@@ -511,6 +540,46 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Watching {
                 _ => {}
             }
         }
+    }
+}
+
+impl Watching {
+    /// What pictures are to be taken of: the window or screen `shared`, or
+    /// the first screen if nothing is named, if it is there. The windows
+    /// are not listed any more, once looked through.
+    fn source(
+        &mut self,
+        shared: Option<&Shared>,
+        handle: &QueueHandle<Self>,
+    ) -> Option<ExtImageCaptureSourceV1> {
+        let source = match shared {
+            Some(Shared::Window(wanted)) => {
+                let mut listed = self.listed.iter();
+                let window = listed.find(|(_, called)| called == wanted);
+                let windows = self.windows.as_ref();
+                window
+                    .zip(windows)
+                    .map(|((window, _), windows)| windows.create_source(window, handle, ()))
+            }
+            screen => {
+                let screen = match screen {
+                    Some(Shared::Screen(screen)) => Some(screen.as_str()),
+                    _ => None,
+                };
+                let mut outputs = self.outputs.iter();
+                let output =
+                    outputs.find(|(_, called)| screen.is_none_or(|screen| screen == called));
+                let sources = self.sources.as_ref();
+                output
+                    .zip(sources)
+                    .map(|((output, _), sources)| sources.create_source(output, handle, ()))
+            }
+        };
+        let _ = self.list.take().inspect(ExtForeignToplevelListV1::stop);
+        for (window, _) in self.listed.drain(..) {
+            window.destroy();
+        }
+        source
     }
 }
 
@@ -640,6 +709,43 @@ fn follow(
     })
 }
 
+impl Dispatch<ExtForeignToplevelListV1, ()> for Watching {
+    fn event(
+        _: &mut Self,
+        list: &ExtForeignToplevelListV1,
+        event: toplevel_list::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A window is noted when it says what it is called; and the list,
+        // once it has been stopped, says it is finished.
+        if let toplevel_list::Event::Finished = event {
+            list.destroy();
+        }
+    }
+
+    wayland_client::event_created_child!(Watching, ExtForeignToplevelListV1, [
+        toplevel_list::EVT_TOPLEVEL_OPCODE => (ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtForeignToplevelHandleV1, ()> for Watching {
+    fn event(
+        watching: &mut Self,
+        window: &ExtForeignToplevelHandleV1,
+        event: toplevel::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let toplevel::Event::Identifier { identifier } = event {
+            watching.listed.push((window.clone(), identifier));
+        }
+    }
+}
+
+delegate_noop!(Watching: ExtForeignToplevelImageCaptureSourceManagerV1);
 delegate_noop!(Watching: ignore wl_shm::WlShm);
 delegate_noop!(Watching: ignore wl_seat::WlSeat);
 delegate_noop!(Watching: ignore ZwpLinuxDmabufV1);
