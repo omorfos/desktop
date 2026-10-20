@@ -150,6 +150,8 @@ rest() {
     explain=uncovered step cargo coverage --locked
     step cargo test --workspace --all-features --doc --locked
     step cargo deny check
+    # The workflows, as CI checks them but for what needs the network.
+    step zizmor --offline --no-progress .
     RUSTDOCFLAGS="-D warnings" step cargo doc --workspace --all-features --no-deps --locked
 }
 
