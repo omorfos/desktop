@@ -112,13 +112,21 @@ otherwise, list them under `outputs`:
 
 ```yaml
 outputs:
-  - { name: HDMI-A-1, scale: 1.25 }
+  - { name: HDMI-A-1, scale: 1.25, mode: 2560x1440@144 }
   - { name: eDP-1 }
 ```
 
 The screens listed stand in that order from the left, ahead of any that
 are connected but not listed, and each may have a `scale` of its own in
-place of `output.scale`. A screen's name is the `output` shown by
+place of `output.scale`, and a `mode`: the size it is driven at in
+pixels, and how many times a second it is drawn if that matters. Without
+a rate, the fastest the screen offers at that size; without a mode, what
+the screen says suits it best. A mode the screen does not offer is not
+used, and what it is driven at instead is said among the problems, as a
+mistake in this file is, until the mode is put right. A change of mode
+takes effect as soon as the file is saved. The sizes a screen offers are
+listed, one to a line, in `/sys/class/drm/card*-NAME/modes`, such as
+`/sys/class/drm/card1-DP-1/modes`. A screen's name is the `output` shown by
 `omorfosctl state`. One that is listed but not plugged in is skipped.
 Screens can only be side by side for now, not one above another.
 

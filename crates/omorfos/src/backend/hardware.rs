@@ -19,7 +19,7 @@ use std::io::{Write, stderr};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Acceleration, Action, Command, Mouse, Touchpad};
+use omorfos_config::{Acceleration, Action, Command, Mouse, OfferedMode, ScreenMode, Touchpad};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{
@@ -86,6 +86,13 @@ struct Screen {
     crtc: crtc::Handle,
     /// The screen, as an output of the compositor.
     output: Output,
+    /// What its socket is called, which the configuration knows it by.
+    name: String,
+    /// The ways it can be driven, the one it is driven in, and the mode
+    /// the configuration last asked for, if any.
+    modes: Vec<Mode>,
+    mode: Mode,
+    wanted: Option<ScreenMode>,
     surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
     tracker: OutputDamageTracker,
     /// How long it shows one frame.
@@ -362,6 +369,7 @@ fn turn(
     }
     let general = &compositor.config().general;
     now.configure_pointers(general.touchpad, general.mouse);
+    now.follow_modes(compositor);
     if !now.active {
         return Ok(());
     }
@@ -469,9 +477,35 @@ fn open_card(seat: &mut LibSeatSession) -> Result<Card, Box<dyn Error>> {
     Ok((card, card_events, gbm, gpus, renderer))
 }
 
-/// A screen found plugged in: its socket, the name of that socket, the mode
-/// it prefers and how wide it says it is in millimetres.
-type Found = (connector::Handle, String, Mode, u32);
+/// A screen found plugged in: its socket, the name of that socket, the
+/// ways it can be driven and how wide it says it is in millimetres.
+type Found = (connector::Handle, String, Vec<Mode>, u32);
+
+/// A way a screen can be driven, as the configuration weighs it.
+fn offered(mode: &Mode) -> OfferedMode {
+    let (width, height) = mode.size();
+    OfferedMode {
+        width,
+        height,
+        refresh: mode.vrefresh(),
+        preferred: mode.mode_type().contains(ModeTypeFlags::PREFERRED),
+    }
+}
+
+/// Which of `modes` a screen called `name` is driven in, for what the
+/// configuration asks, and what is wrong with that, which the compositor
+/// says among the problems until it is put right.
+fn chosen(
+    compositor: &mut Compositor,
+    name: &str,
+    (modes, wanted): (&[Mode], Option<&ScreenMode>),
+) -> Option<Mode> {
+    let offers: Vec<OfferedMode> = modes.iter().map(offered).collect();
+    let (at, told) = ScreenMode::choose(wanted, &offers)?;
+    let told = told.map(|told| format!("config.yaml: the screen on {name} {told}"));
+    compositor.screen_wrong(name, told);
+    modes.get(at).copied()
+}
 
 impl Hardware {
     /// Looks at what is plugged in, takes on the screens that are new and
@@ -480,15 +514,27 @@ impl Hardware {
         let found = self.connected();
         let gone = |screen: &Screen| !found.iter().any(|(socket, ..)| *socket == screen.connector);
         for screen in self.screens.extract_if(.., |screen| gone(screen)) {
+            compositor.screen_wrong(&screen.name, None);
             compositor.remove_output(&screen.output);
         }
-        for (connector, name, mode, millimetres) in found {
+        for (connector, name, modes, millimetres) in found {
             if self.screens.iter().any(|s| s.connector == connector) {
                 continue;
             }
+            let outputs = compositor.config().general.outputs.clone();
+            let wanted = outputs.named(&name).and_then(|listed| listed.mode);
+            let Some(mode) = chosen(compositor, &name, (&modes, wanted.as_ref())) else {
+                continue;
+            };
             // A screen that cannot be set up is reported and left dark; the
             // others, and the session, carry on.
-            match self.take_on(compositor, connector, &name, mode, millimetres) {
+            match self.take_on(
+                compositor,
+                connector,
+                (&name, &modes, wanted),
+                mode,
+                millimetres,
+            ) {
                 Ok(screen) => self.screens.push(screen),
                 Err(error) => {
                     let _ = writeln!(
@@ -513,9 +559,10 @@ impl Hardware {
                 if socket.state() != connector::State::Connected {
                     return None;
                 }
-                let preferred = |mode: &&Mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED);
-                let mode = socket.modes().iter().find(preferred);
-                let mode = *mode.or_else(|| socket.modes().first())?;
+                let modes = socket.modes().to_vec();
+                if modes.is_empty() {
+                    return None;
+                }
                 let kind = socket.interface();
                 let name = format!("{}-{}", kind.as_str(), socket.interface_id());
                 let built_in = matches!(
@@ -525,7 +572,7 @@ impl Hardware {
                         | connector::Interface::DSI
                 );
                 let (millimetres, _) = socket.size().unwrap_or_default();
-                Some((!built_in, (*handle, name, mode, millimetres)))
+                Some((!built_in, (*handle, name, modes, millimetres)))
             })
             .collect();
         found.sort_by_key(|(external, _)| *external);
@@ -537,7 +584,7 @@ impl Hardware {
         &mut self,
         compositor: &mut Compositor,
         connector: connector::Handle,
-        name: &str,
+        (name, modes, wanted): (&str, &[Mode], Option<ScreenMode>),
         mode: Mode,
         millimetres: u32,
     ) -> Result<Screen, Box<dyn Error>> {
@@ -563,6 +610,10 @@ impl Hardware {
             crtc,
             tracker: OutputDamageTracker::from_output(&output),
             output,
+            name: name.to_owned(),
+            modes: modes.to_vec(),
+            mode,
+            wanted,
             surface,
             frame: Duration::from_secs(1) / mode.vrefresh().max(1),
             picture: Picture::Stale,
@@ -619,6 +670,46 @@ impl Hardware {
             let _ = device.config_accel_set_profile(profile(mouse.acceleration));
         }
         self.configured = Some((touchpad, mouse));
+    }
+
+    /// Drives each screen in the mode the configuration asks for, once it
+    /// asks for another: the screen is then as large as that mode, which
+    /// the compositor, and anything sharing it, follow.
+    fn follow_modes(&mut self, compositor: &mut Compositor) {
+        // Nothing is made while nothing has changed, which is every turn
+        // but the one after the configuration says otherwise.
+        let outputs = &compositor.config().general.outputs;
+        let changed: Vec<(usize, Option<ScreenMode>)> = self
+            .screens
+            .iter()
+            .enumerate()
+            .filter_map(|(at, screen)| {
+                let wanted = outputs.named(&screen.name).and_then(|listed| listed.mode);
+                (wanted != screen.wanted).then_some((at, wanted))
+            })
+            .collect();
+        for (at, wanted) in changed {
+            let screen = &mut self.screens[at];
+            screen.wanted = wanted;
+            let mode = chosen(compositor, &screen.name, (&screen.modes, wanted.as_ref()));
+            let Some(mode) = mode.filter(|mode| *mode != screen.mode) else {
+                continue;
+            };
+            if let Err(error) = screen.surface.use_mode(mode) {
+                let said = format!(
+                    "config.yaml: the screen on {} cannot be driven in that mode: {error}",
+                    screen.name
+                );
+                compositor.screen_wrong(&screen.name, Some(said));
+                continue;
+            }
+            screen.mode = mode;
+            let (width, height) = mode.size();
+            compositor.resize_output(&screen.output, (i32::from(width), i32::from(height)));
+            screen.tracker = OutputDamageTracker::from_output(&screen.output);
+            screen.frame = Duration::from_secs(1) / mode.vrefresh().max(1);
+            screen.picture = Picture::Stale;
+        }
     }
 
     /// Tells the user about problems, once each time they change.

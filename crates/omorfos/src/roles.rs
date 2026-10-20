@@ -73,6 +73,10 @@ pub(crate) struct Refused {
     told: Vec<String>,
     /// What is to be said when the compositor next knows what time it is.
     pending: Vec<String>,
+    /// What each screen has refused of how it was to be driven, by the
+    /// screen's name, as a mode it does not offer: among the problems
+    /// until it is put right, whatever else changes.
+    pub(crate) screens: Vec<(String, String)>,
 }
 
 impl Refused {

@@ -779,6 +779,23 @@ impl Compositor {
         &self.problems
     }
 
+    /// Says what is wrong with how the screen called `name` is driven, or
+    /// that nothing is: as a mode that it does not offer was asked for. It
+    /// is among the problems until the backend says otherwise, the
+    /// configuration being read again or not.
+    pub fn screen_wrong(&mut self, name: &str, wrong: Option<String>) {
+        let screens = &mut self.refused.screens;
+        let at = screens.iter().position(|(screen, _)| screen == name);
+        let was = at.map(|at| screens.remove(at));
+        if let Some((_, said)) = was {
+            self.problems.retain(|problem| *problem != said);
+        }
+        if let Some(said) = wrong {
+            self.problems.push(said.clone());
+            self.refused.screens.push((name.to_owned(), said));
+        }
+    }
+
     /// What has happened in the last few moments that the user might want
     /// to know of and need do nothing about, described for the user.
     pub fn events(&self) -> impl Iterator<Item = &str> {
@@ -942,6 +959,8 @@ impl Compositor {
         }
         keyboard.change_repeat_info(settings.repeat_rate.into(), settings.repeat_delay.into());
 
+        let screens = self.refused.screens.iter();
+        problems.extend(screens.map(|(_, said)| said.clone()));
         self.problems = problems;
     }
 

@@ -771,3 +771,26 @@ fn a_screen_named_in_the_configuration_has_the_scale_given_for_it() {
     assert_eq!(scale(&session, &second), Scale::new(1.25));
     assert_eq!(scale(&session, &third), Scale::ONE);
 }
+
+#[test]
+fn what_is_wrong_with_how_a_screen_is_driven_is_said_until_it_is_put_right() {
+    let mut session = Session::new();
+    let wrong = "config.yaml: the screen on eDP-1 cannot be driven at 1920x1080".to_owned();
+    session
+        .compositor_mut()
+        .screen_wrong("eDP-1", Some(wrong.clone()));
+    assert!(session.compositor().problems().contains(&wrong));
+    // Reading the configuration again, which says what else is wrong,
+    // leaves it said.
+    session.compositor_mut().reload_config();
+    assert!(session.compositor().problems().contains(&wrong));
+    // Something else wrong with it takes its place, and once nothing is,
+    // nothing is said.
+    let other = "config.yaml: the screen on eDP-1 cannot be drawn 75 times a second".to_owned();
+    session
+        .compositor_mut()
+        .screen_wrong("eDP-1", Some(other.clone()));
+    assert_eq!(session.compositor().problems(), [other]);
+    session.compositor_mut().screen_wrong("eDP-1", None);
+    assert_eq!(session.compositor().problems(), [] as [String; 0]);
+}

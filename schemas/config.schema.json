@@ -197,6 +197,17 @@
       "additionalProperties": false,
       "description": "One screen, by the name of the socket it is plugged into.",
       "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScreenMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The size it is driven at, and how often it is drawn. Without this,\nwhat the screen says suits it best."
+        },
         "name": {
           "description": "The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl\nstate` shows it.",
           "type": "string"
@@ -357,6 +368,11 @@
           "type": "string"
         }
       ]
+    },
+    "ScreenMode": {
+      "description": "The size in pixels, such as `2560x1440`, and how many times a second it is drawn if that matters, such as `2560x1440@144`.",
+      "pattern": "^[1-9][0-9]*x[1-9][0-9]*(@[1-9][0-9]*)?$",
+      "type": "string"
     },
     "Screenshots": {
       "additionalProperties": false,
