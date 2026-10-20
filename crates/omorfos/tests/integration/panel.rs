@@ -543,7 +543,9 @@ fn the_panel_gives_up_when_the_compositor_stops_telling_it_anything() {
 
     drop(news);
 
-    assert!(panel.turn(TIME, Duration::ZERO).is_err());
+    // Seen once the last copy of the stream closes, which another test
+    // starting a program may hold for a moment.
+    session.eventually(|_| panel.turn(TIME, Duration::ZERO).is_err());
 }
 
 #[test]
@@ -568,11 +570,16 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
 
     drop(commands);
     move_to(&mut session, 3, HEIGHT - 5);
-    click(&mut session, LEFT);
-    session.step();
 
-    let turns = (0..20).map(|_| panel.turn(TIME, Duration::ZERO));
-    assert!(turns.into_iter().any(|turn| turn.is_err()));
+    // Asking fails once the last copy of the stream closes, which another
+    // test starting a program may hold for a moment; until then a click is
+    // asked for as ever, so it is clicked again. The panel reads all it is
+    // sent each turn.
+    session.eventually(|session| {
+        click(session, LEFT);
+        session.step();
+        panel.turn(TIME, Duration::ZERO).is_err()
+    });
 }
 
 #[test]
