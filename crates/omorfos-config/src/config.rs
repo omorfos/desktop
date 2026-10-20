@@ -295,7 +295,10 @@ mod tests {
         let (config, diagnostics) = load(&[("menu.yaml", &yaml)]);
         assert_eq!(config.menu, Menu::default());
         assert_eq!(diagnostics.len(), 1);
-        assert!(diagnostics[0].contains("budget"), "{diagnostics:?}");
+        assert!(
+            diagnostics[0].contains("too large or too complex"),
+            "{diagnostics:?}"
+        );
     }
 
     #[test]
