@@ -170,6 +170,21 @@ fn acted_until_answered(
     asking.join().unwrap()
 }
 
+/// Moves the pointer to `at`, on the desktop, and draws until the picture
+/// a colour is picked from is up: the loupe beside the pointer, below and
+/// to the right, with its ring at its edge.
+fn picture_up(session: &mut Session, (x, y): (i32, i32)) {
+    session.eventually(|session| {
+        let at = Input::Motion {
+            x: f64::from(x),
+            y: f64::from(y),
+        };
+        session.compositor_mut().input(at, 0);
+        session.step();
+        session.draw().at(x + 24 + 1, y + 24 + 60) != GREEN
+    });
+}
+
 /// Presses and lets go of `button` at a place on the screen.
 fn button_at(session: &mut Session, (x, y): (i32, i32), button: u32) {
     let at = Input::Motion {
@@ -450,17 +465,21 @@ fn an_application_is_given_the_colour_the_user_picks_from_the_screen() {
     let (response, results) = acted_until_answered(&mut session, asking, act);
     assert_eq!((response, picked(&results)), (0, GREEN));
 
-    // Escape, or a button other than the left, picks nothing.
+    // Escape, or a button other than the left, picks nothing. Each is
+    // done once, with the picture up: done until the answer comes, the
+    // last Escape could reach the next question and be its answer.
     let asking = ask_by(&daemon, "pick_d", "PickColor");
-    let act = |session: &mut Session| press(session, key::ESCAPE);
+    picture_up(&mut session, middle);
+    press(&mut session, key::ESCAPE);
     assert_eq!(
-        acted_until_answered(&mut session, asking, act),
+        acted_until_answered(&mut session, asking, |_| ()),
         (1, HashMap::new())
     );
     let asking = ask_by(&daemon, "pick_e", "PickColor");
-    let act = |session: &mut Session| button_at(session, corner, RIGHT);
+    picture_up(&mut session, middle);
+    button_at(&mut session, middle, RIGHT);
     assert_eq!(
-        acted_until_answered(&mut session, asking, act),
+        acted_until_answered(&mut session, asking, |_| ()),
         (1, HashMap::new())
     );
 
