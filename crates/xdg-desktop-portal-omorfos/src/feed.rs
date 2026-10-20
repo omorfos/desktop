@@ -202,7 +202,7 @@ pub struct Seen<'a> {
 impl Feed {
     /// Begins taking pictures of what is `shared`, or of the first screen
     /// if nothing is named, with the pointer drawn in, followed beside
-    /// them, or neither. Over a window the pointer is not followed.
+    /// them, or neither.
     ///
     /// # Errors
     ///
@@ -230,14 +230,14 @@ impl Feed {
             } else {
                 Options::empty()
             };
-            let seat = watching.seat.clone();
-            let seat = seat.filter(|_| pointer == Pointer::Beside && !window);
+            let seat = watching.seat.clone().filter(|_| pointer == Pointer::Beside);
             let session = source
                 .zip(watching.capturers.clone())
                 .map(|(source, capturers)| {
                     let session =
                         capturers.create_session(&source, options, &handle, Of::Screen(0));
-                    // The pointer is followed over the same screen, by itself.
+                    // The pointer is followed over the same screen or window, by
+                    // itself.
                     let followed = seat.map(|seat| {
                         let pointer = seat.get_pointer(&handle, ());
                         let cursor =

@@ -1797,8 +1797,8 @@ impl Compositor {
                     };
                     (self.elements(renderer, output, view, shown), behind)
                 }
-                Pass::Window(window) => (
-                    self.alone(renderer, window, view.scale),
+                Pass::Window { window, pointer } => (
+                    self.alone(renderer, window, (view.scale, pointer)),
                     Color32F::TRANSPARENT,
                 ),
             };
@@ -1815,7 +1815,7 @@ impl Compositor {
             }
             // A window by itself is drawn in a picture of its own, as large
             // as it is, whatever the screen is.
-            if let Pass::Window(_) = pass {
+            if let Pass::Window { .. } = pass {
                 self.read_alone::<R, P>(renderer, &elements, due, scale);
                 continue;
             }
@@ -2031,19 +2031,34 @@ impl Compositor {
 
     /// A window by itself, from the top left corner of the screen, as a
     /// picture of it is taken: what it draws, without the frame omorfos
-    /// puts round it. A blank, if a rule says it is private.
-    fn alone<R>(&self, renderer: &mut R, window: WindowId, scale: Scale) -> Vec<Element<R>>
+    /// puts round it, and the pointer over it if `pointer`. A blank, if a
+    /// rule says it is private.
+    fn alone<R>(
+        &self,
+        renderer: &mut R,
+        window: WindowId,
+        (scale, pointer): (Scale, bool),
+    ) -> Vec<Element<R>>
     where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let corner = Point::<i32, Physical>::default();
+        // The pointer is drawn where it is over the picture, which begins
+        // where all the window draws does.
+        let mut elements = Vec::new();
+        let begins = self.pictured(window).filter(|_| pointer);
+        if let Some((area, _)) = begins {
+            let origin = area.loc;
+            self.pointer_elements(renderer, View { origin, scale }, &mut elements);
+        }
         if self.desktop.private(window) {
             let blank = self.capture.blank(window).into_iter();
             let blank = blank.map(|blank| {
                 SolidColorRenderElement::from_buffer(blank, corner, 1.0, 1.0, Kind::Unspecified)
             });
-            return blank.map(Element::Solid).collect();
+            elements.extend(blank.map(Element::Solid));
+            return elements;
         }
         let mapped = self.windows.iter().find(|mapped| mapped.id == window);
         let surfaces = mapped.into_iter().flat_map(|mapped| {
@@ -2056,7 +2071,8 @@ impl Compositor {
                 .window
                 .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0)
         });
-        surfaces.map(Element::Surface).collect()
+        elements.extend(surfaces.map(Element::Surface));
+        elements
     }
 
     /// What a locked screen shows: the pointer, over what the locker put

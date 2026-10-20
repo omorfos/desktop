@@ -323,9 +323,11 @@ calls for them.
       the part on it, and one whose picture holds a shadow of its own a
       little smaller; and there is no row of the windows there are, each
       with its title and picture, for one under nothing the pointer is on.
-- [ ] Known gaps in sharing the screen: a region cannot be shared yet;
-      over a window the pointer is neither drawn nor sent beside, and no
-      line is drawn round it while it is shared, as there is round a
+- [x] The pointer over a window that is shared, drawn into its pictures or
+      sent beside them as a call asks, where it is in the window's picture:
+      a program may follow it over a window as over a screen.
+- [ ] Known gaps in sharing the screen: a region cannot be shared yet; no
+      line is drawn round a window while it is shared, as there is round a
       screen; the size the application is told is in pixels,
       not in units of layout; a choice cannot be remembered for next time;
       and the user cannot stop sharing from the desktop, only from the
