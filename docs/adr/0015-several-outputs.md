@@ -34,7 +34,10 @@ default, or left, with the tops in line; or above or below, the middles
 in line. Those not listed stand to the right of all the rest. A place
 next to the one before was chosen over coordinates, which leave gaps and
 overlaps to be made by mistake and have to be worked out again when a
-screen's size changes.
+screen's size changes. A listed screen may be lined up at the start, the
+middle or the end of the edge it shares with the one before it (`align`),
+and moved along it (`offset`), in units or as a share of its own length,
+which stays right when a screen's mode changes.
 
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing

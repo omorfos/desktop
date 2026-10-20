@@ -827,3 +827,47 @@ fn a_screen_stands_where_the_configuration_says_next_to_the_one_listed_before() 
     assert_eq!(at(&session, &second), (0, 480));
     assert_eq!(at(&session, &third), (800, 0));
 }
+
+#[test]
+fn a_screen_is_lined_up_and_moved_along_the_edge_it_shares_with_the_one_before() {
+    // The second, 800 by 600, first; the first, 640 by 480, below it at
+    // the start and moved left by a tenth of its width; the third, 320 by
+    // 240, to its right at the end and moved up 40.
+    let listed = "outputs:\n  - { name: test-1 }\n  - { name: test-0, place: below, align: start, offset: -10% }\n  - { name: test-2, place: right, align: end, offset: -40 }\n";
+    let mut session = Session::with_config(&[("config.yaml", listed)]);
+    let second = session.add_output((800, 600));
+    let third = session.add_output((320, 240));
+    let at = |session: &Session, output: &Output| {
+        let at = session.compositor().area_of(output).loc;
+        (at.x, at.y)
+    };
+    let first = session.output();
+    assert_eq!(at(&session, &second), (64, 0));
+    assert_eq!(at(&session, &first), (0, 600));
+    assert_eq!(at(&session, &third), (640, 600 + 480 - 240 - 40));
+    // Lined up at the middle beside it, and at the end below the one
+    // listed before, which is that one.
+    let middle = "outputs:\n  - { name: test-1 }\n  - { name: test-2, align: middle }\n  - { name: test-0, place: below, align: end }\n";
+    session.write_config("config.yaml", middle);
+    session.compositor_mut().reload_config();
+    assert_eq!(at(&session, &second), (0, 0));
+    assert_eq!(at(&session, &third), (800, 180));
+    assert_eq!(at(&session, &first), (480, 420));
+    assert!(
+        session.compositor().problems().is_empty(),
+        "{:?}",
+        session.compositor().problems()
+    );
+
+    // The first listed has none before it, which the user is told of.
+    let first_placed = "outputs:\n  - { name: test-1, place: below }\n";
+    session.write_config("config.yaml", first_placed);
+    session.compositor_mut().reload_config();
+    let problems = session.compositor().problems();
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("`test-1` is the first screen listed")),
+        "{problems:?}"
+    );
+}

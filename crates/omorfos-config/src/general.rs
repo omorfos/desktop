@@ -528,7 +528,79 @@ pub struct NamedOutput {
     /// Where it stands next to the screen listed before it: to its right,
     /// unless this says otherwise.
     #[serde(default)]
-    pub place: Place,
+    pub place: Option<Place>,
+    /// Where along the edge it shares with the one before it it is lined
+    /// up: at the start, the top or the left; the middle; or the end.
+    /// Without this, the start beside it, and the middle above or below.
+    #[serde(default)]
+    pub align: Option<Align>,
+    /// How far along that edge it is moved from there: right or down, or
+    /// left or up if less than nothing.
+    #[serde(default)]
+    pub offset: Option<Offset>,
+}
+
+/// Where along the edge two screens share one is lined up with the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Align {
+    /// Their tops, or their left sides, in line.
+    Start,
+    /// Their middles in line.
+    Middle,
+    /// Their bottoms, or their right sides, in line.
+    End,
+}
+
+/// How far a screen is moved along the edge it shares with another: in
+/// units of layout, such as `-300`, or as a share of its own length along
+/// that edge, such as `-30%`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "OffsetWritten")]
+pub enum Offset {
+    /// So many units of layout.
+    Units(i32),
+    /// So many hundredths of the screen's own length.
+    Share(i32),
+}
+
+/// An offset as written: a number, or text such as `30%`.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum OffsetWritten {
+    Number(i32),
+    Text(String),
+}
+
+impl TryFrom<OffsetWritten> for Offset {
+    type Error = String;
+
+    fn try_from(written: OffsetWritten) -> Result<Self, Self::Error> {
+        match written {
+            OffsetWritten::Number(units) => Ok(Self::Units(units)),
+            OffsetWritten::Text(text) => {
+                let share = text.strip_suffix('%').and_then(|share| share.parse().ok());
+                share.filter(|share: &i32| share.abs() <= 100).map(Self::Share).ok_or_else(|| {
+                    format!(
+                        "invalid offset `{text}`: expected units of layout, such as `-300`, or a \
+                         share of the screen from -100% to 100%, such as `-30%`"
+                    )
+                })
+            }
+        }
+    }
+}
+
+impl Offset {
+    /// How many units it moves a screen `length` units long along the edge.
+    #[must_use]
+    pub fn along(self, length: i32) -> i32 {
+        match self {
+            Self::Units(units) => units,
+            Self::Share(share) => length * share / 100,
+        }
+    }
 }
 
 /// Where a screen stands next to the one listed before it.
@@ -1027,6 +1099,32 @@ autostart:
             "{told}"
         );
         assert_eq!(ScreenMode::choose(Some(&elsewhere), &[]), None);
+    }
+
+    #[test]
+    fn a_listed_screen_may_be_lined_up_and_moved_along_the_edge_it_shares() {
+        let general = parse(
+            "outputs:\n  - { name: DP-1 }\n  - { name: eDP-1, place: below, align: start, offset: -30% }\n  - { name: HDMI-A-1, align: end, offset: 120 }\n",
+        )
+        .unwrap();
+        let listed = general.outputs.listed();
+        assert_eq!(
+            (listed[0].place, listed[0].align, listed[0].offset),
+            (None, None, None)
+        );
+        assert_eq!(listed[1].place, Some(Place::Below));
+        assert_eq!(listed[1].align, Some(Align::Start));
+        assert_eq!(listed[1].offset, Some(Offset::Share(-30)));
+        assert_eq!(listed[2].offset, Some(Offset::Units(120)));
+        // A share is of the screen's own length; units are units.
+        assert_eq!(Offset::Share(-30).along(1000), -300);
+        assert_eq!(Offset::Units(120).along(1000), 120);
+        for wrong in ["30", "101%", "-101%", "far%", "left"] {
+            let yaml = format!("outputs: [{{ name: DP-1, offset: \"{wrong}\" }}]\n");
+            let said = parse(&yaml).unwrap_err();
+            assert!(said.contains("invalid offset"), "{wrong}: {said}");
+        }
+        assert!(parse("outputs: [{ name: DP-1, align: centre }]\n").is_err());
     }
 
     #[test]

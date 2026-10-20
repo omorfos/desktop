@@ -929,6 +929,7 @@ impl Compositor {
     fn apply_config(&mut self, mut problems: Vec<String>) {
         let config = Arc::clone(self.store.current());
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
+        problems.extend(crate::outputs::misplaced(&config.general.outputs));
 
         self.desktop.set_settings(bridge::settings(&config));
         self.desktop.set_rules(bridge::rules(&config.rules));

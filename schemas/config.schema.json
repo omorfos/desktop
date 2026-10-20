@@ -15,6 +15,26 @@
         }
       ]
     },
+    "Align": {
+      "description": "Where along the edge two screens share one is lined up with the other.",
+      "oneOf": [
+        {
+          "const": "start",
+          "description": "Their tops, or their left sides, in line.",
+          "type": "string"
+        },
+        {
+          "const": "middle",
+          "description": "Their middles in line.",
+          "type": "string"
+        },
+        {
+          "const": "end",
+          "description": "Their bottoms, or their right sides, in line.",
+          "type": "string"
+        }
+      ]
+    },
     "Clipboard": {
       "additionalProperties": false,
       "description": "The clipboard.",
@@ -197,6 +217,17 @@
       "additionalProperties": false,
       "description": "One screen, by the name of the socket it is plugged into.",
       "properties": {
+        "align": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Align"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Where along the edge it shares with the one before it it is lined\nup: at the start, the top or the left; the middle; or the end.\nWithout this, the start beside it, and the middle above or below."
+        },
         "mode": {
           "anyOf": [
             {
@@ -212,8 +243,26 @@
           "description": "The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl\nstate` shows it.",
           "type": "string"
         },
+        "offset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Offset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far along that edge it is moved from there: right or down, or\nleft or up if less than nothing."
+        },
         "place": {
-          "$ref": "#/$defs/Place",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Place"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "Where it stands next to the screen listed before it: to its right,\nunless this says otherwise."
         },
         "scale": {
@@ -250,6 +299,19 @@
         }
       },
       "type": "object"
+    },
+    "Offset": {
+      "oneOf": [
+        {
+          "description": "Units of layout, less than nothing for left or up.",
+          "type": "integer"
+        },
+        {
+          "description": "A share of the screen's own length, such as `-30%`.",
+          "pattern": "^-?(100|[1-9]?[0-9])%$",
+          "type": "string"
+        }
+      ]
     },
     "Output": {
       "additionalProperties": false,
