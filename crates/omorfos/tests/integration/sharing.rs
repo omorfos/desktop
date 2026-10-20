@@ -221,14 +221,26 @@ fn begin(daemon: &Daemon, session: &'static str) -> JoinHandle<Answered> {
     })
 }
 
-/// Draws until the question is on the screen.
-fn asked(session: &mut Session) {
+/// The colour of a question on the screen, where it is.
+fn question() -> u32 {
     let looks = omorfos_config::Theme::default();
     let looks = looks
         .style(omorfos_config::Part::Launcher, omorfos_config::States::NONE)
         .background;
-    let shown = u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue]);
-    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == shown);
+    u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue])
+}
+
+/// Draws until the question is on the screen.
+fn asked(session: &mut Session) {
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == question());
+}
+
+/// Draws until the question is off the screen. The application is
+/// answered before the question is taken away, so a question asked
+/// straight after could otherwise be taken to be up while the last still
+/// is.
+fn unasked(session: &mut Session) {
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) != question());
 }
 
 fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
@@ -974,6 +986,7 @@ fn a_call_is_refused_the_screen_when_the_user_says_no() {
         !session.compositor().captured(&session.output()),
         "nothing was shared"
     );
+    unasked(&mut session);
 
     // The session ends with nothing shared, and the next is asked about
     // as the first was.
