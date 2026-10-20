@@ -296,9 +296,17 @@ calls for them.
       not drawn at all, found as the picker's line of what to do was
       made, which is now kept within the screen. To be found out and
       put right in the compositor.
+- [x] A screen that changes size goes on being shared at its new size:
+      the stream offers it, what reads it agrees on it again, and is given
+      memory made to it, of the card or shared.
+- [ ] A screen changing size while it is shared has only been tried by
+      the tests, which resize a screen of their own. On the hardware
+      nothing changes a screen's size yet, so it is to be tried by hand
+      with an application reading the stream (OBS, a browser) once the
+      resolution can be chosen, with the screens arranged by the user.
 - [ ] Known gaps in sharing the screen: a window or a region cannot be
-      shared, which needs a stream that changes size; a screen that changes size
-      ends the sharing; the size the application is told is in pixels,
+      shared yet, though the stream can now change size as a window does;
+      the size the application is told is in pixels,
       not in units of layout; a choice cannot be remembered for next time;
       and the user cannot stop sharing from the desktop, only from the
       application. A reader that cannot take buffers of the GPU is still
