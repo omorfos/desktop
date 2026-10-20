@@ -294,10 +294,8 @@ impl Taking {
         }
         (self.size, self.scale) = (size, scale);
         self.taken = false;
-        self.tracker = match self.subject {
-            Subject::Screen(_) => OutputDamageTracker::from_output(&self.output),
-            Subject::Window(_) => OutputDamageTracker::new(size, scale, Transform::Normal.into()),
-        };
+        // Pictures are the right way up, however the screen is turned.
+        self.tracker = OutputDamageTracker::new(size, scale, Transform::Normal.into());
         self.session
             .buffer_size(size.w.unsigned_abs(), size.h.unsigned_abs());
         // A window may be see-through, as a screen is not.
@@ -797,7 +795,7 @@ impl Compositor {
         match subject {
             Subject::Screen(output) => {
                 let head = self.head(output);
-                head.map(|head| (head.output.clone(), head.pixels(), head.scale.factor()))
+                head.map(|head| (head.output.clone(), head.upright(), head.scale.factor()))
             }
             Subject::Window(window) => {
                 let mapped = self.windows.iter().find(|mapped| mapped.id == *window);

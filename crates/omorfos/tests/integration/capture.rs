@@ -1270,3 +1270,60 @@ fn resting_on_the_mark_says_which_program_takes_pictures_of_what() {
     let said = ["Pictures of this screen were taken a moment ago"];
     assert_eq!(session.compositor().mark_tooltip(), said);
 }
+
+#[test]
+fn a_screen_turned_is_drawn_turned_and_taken_the_right_way_up() {
+    let turned = "outputs: [{ name: test-0, rotate: left }]\n";
+    let mut session = Session::with_config(&[("config.yaml", turned)]);
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    // Turned to the left, it stands taller than it is wide.
+    let area = session.compositor().area_of(&session.output());
+    assert_eq!((area.size.w, area.size.h), (HEIGHT, WIDTH));
+    // What it is drawn into is the screen as made: the window at the top
+    // left of what it shows is at the bottom left of that.
+    let screen = session.draw();
+    assert_eq!(screen.at(10, HEIGHT - 10), RED);
+    assert_eq!(screen.at(10, 10), BACKGROUND);
+
+    // A program taking pictures of it is told it is as large as it
+    // stands, and is given it the right way up.
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    let upright = (HEIGHT.unsigned_abs(), WIDTH.unsigned_abs());
+    assert!(
+        events.contains(&Event::CaptureSize(upright.0, upright.1)),
+        "{events:?}"
+    );
+    let (file, buffer) = camera.shot_buffer((HEIGHT, WIDTH));
+    let frame = ask(&camera, &taking, &buffer);
+    let events = develop(&mut session, &mut camera);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    frame.destroy();
+    let picture = Picture::read(&file, HEIGHT);
+    assert_eq!(picture.at(10, 10), RED);
+    assert_eq!(picture.at(HEIGHT - 10, WIDTH - 10), BACKGROUND);
+
+    // Turned to the right, the top left of what it shows is at the top
+    // right of the screen as made; upside down, at its bottom right.
+    for (rotate, corner, size) in [
+        ("right", (WIDTH - 10, 10), (HEIGHT, WIDTH)),
+        ("inverted", (WIDTH - 10, HEIGHT - 10), (WIDTH, HEIGHT)),
+    ] {
+        let turned = format!("outputs: [{{ name: test-0, rotate: {rotate} }}]\n");
+        session.write_config("config.yaml", &turned);
+        session.compositor_mut().reload_config();
+        let area = session.compositor().area_of(&session.output());
+        assert_eq!((area.size.w, area.size.h), size, "{rotate}");
+        assert_eq!(session.draw().at(corner.0, corner.1), RED, "{rotate}");
+    }
+
+    // Turned back, it is as it was.
+    session.write_config("config.yaml", "");
+    session.compositor_mut().reload_config();
+    let area = session.compositor().area_of(&session.output());
+    assert_eq!((area.size.w, area.size.h), (WIDTH, HEIGHT));
+    assert_eq!(session.draw().at(10, 10), RED);
+}

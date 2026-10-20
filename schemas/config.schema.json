@@ -265,6 +265,10 @@
           ],
           "description": "Where it stands next to the screen listed before it: to its right,\nunless this says otherwise."
         },
+        "rotate": {
+          "$ref": "#/$defs/Rotation",
+          "description": "Which way the screen is turned, as `xrandr --rotate` says it: what\nis drawn is turned to match, so that it stands the right way up."
+        },
         "scale": {
           "anyOf": [
             {
@@ -456,6 +460,31 @@
         {
           "const": "screens",
           "description": "Arrange the screens and change their colour.",
+          "type": "string"
+        }
+      ]
+    },
+    "Rotation": {
+      "description": "Which way a screen is turned, with the top of what it shows: where it\nis as made, on the left, on the right, or at the bottom.",
+      "oneOf": [
+        {
+          "const": "normal",
+          "description": "As it was made.",
+          "type": "string"
+        },
+        {
+          "const": "left",
+          "description": "A quarter turn to the left: the top of the picture on the left.",
+          "type": "string"
+        },
+        {
+          "const": "right",
+          "description": "A quarter turn to the right: the top of the picture on the right.",
+          "type": "string"
+        },
+        {
+          "const": "inverted",
+          "description": "Upside down.",
           "type": "string"
         }
       ]

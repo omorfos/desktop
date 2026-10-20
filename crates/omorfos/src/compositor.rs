@@ -1834,9 +1834,14 @@ impl Compositor {
                 self.capture.give(due, drawn, self.animation.clock);
             }
             // A window by itself is drawn in a picture of its own, as large
-            // as it is, whatever the screen is.
-            if let Pass::Window { .. } = pass {
-                self.read_alone::<R, P>(renderer, &elements, due, scale);
+            // as it is, whatever the screen is; and so is a screen that is
+            // turned, as what it is drawn into is turned with it, and the
+            // pictures are to be the right way up.
+            let turned = self
+                .head(output)
+                .is_some_and(|head| head.turned() != Transform::Normal);
+            if matches!(pass, Pass::Window { .. }) || turned {
+                self.read_alone::<R, P>(renderer, (&elements, behind), due, scale);
                 continue;
             }
             if due.is_empty() {
@@ -2009,13 +2014,13 @@ impl Compositor {
             .map_or(&[], |note| note.says.as_slice())
     }
 
-    /// Draws a window by itself, as `elements` have it, in a picture as
-    /// large as the largest of those `due`, and gives them what they need
-    /// of it.
+    /// Draws a window by itself, or a screen that is turned, as `elements`
+    /// have it over `behind`, in a picture the right way up as large as the
+    /// largest of those `due`, and gives them what they need of it.
     fn read_alone<R, P>(
         &mut self,
         renderer: &mut R,
-        elements: &[Element<R>],
+        (elements, behind): (&[Element<R>], Color32F),
         due: Vec<Due>,
         scale: f64,
     ) where
@@ -2036,8 +2041,7 @@ impl Compositor {
         let picture = self.capture.alone::<R, P>(renderer, size);
         let target = picture.and_then(|picture| renderer.bind(picture).ok());
         let read = target.and_then(|mut target| {
-            let clear = Color32F::TRANSPARENT;
-            let drawn = tracker.render_output(renderer, &mut target, 0, elements, clear);
+            let drawn = tracker.render_output(renderer, &mut target, 0, elements, behind);
             let read = drawn
                 .ok()
                 .map(|_| renderer.copy_framebuffer(&target, reading, Fourcc::Abgr8888));
