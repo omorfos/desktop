@@ -12,7 +12,7 @@
 use std::ffi::OsString;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos::{Input, Scale};
 use omorfos_config::{Action, Color, Part, State, States, Theme};
@@ -683,18 +683,20 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
     }
     hold(&mut session, DOWN, false);
     press(&mut session, key::RETURN);
-    // This has failed once in a great many runs, with nothing to say why.
-    // If it does again, what the launcher and the compositor made of it
-    // is said, which a bare wait would not.
-    let mut waited = 0;
+    // This has failed now and then, under stress, with the launcher done
+    // and nothing wrong said: so the wait is for long enough by the clock
+    // on the wall, not a count of turns, for a busy machine to start a
+    // program. If it fails again, what the launcher and the compositor
+    // made of it is said, which a bare wait would not.
+    let started = Instant::now();
     while !marker.exists() {
-        waited += 1;
-        if waited > 5000 {
+        let waited = started.elapsed();
+        if waited > Duration::from_secs(30) {
             let ended = launcher.is_finished().then(|| launcher.join().unwrap());
             let problems = session.compositor().problems().to_vec();
             panic!(
-                "the program picked was never started: the launcher ended with {ended:?} \
-                 (nothing, if it is still running), and the compositor says {problems:?}"
+                "the program picked was never started in {waited:?}: the launcher ended with \
+                 {ended:?} (nothing, if it is still running), and the compositor says {problems:?}"
             );
         }
         session.advance(Duration::from_millis(200));
