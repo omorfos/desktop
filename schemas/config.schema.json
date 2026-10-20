@@ -212,6 +212,10 @@
           "description": "The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl\nstate` shows it.",
           "type": "string"
         },
+        "place": {
+          "$ref": "#/$defs/Place",
+          "description": "Where it stands next to the screen listed before it: to its right,\nunless this says otherwise."
+        },
         "scale": {
           "anyOf": [
             {
@@ -291,6 +295,31 @@
         }
       },
       "type": "object"
+    },
+    "Place": {
+      "description": "Where a screen stands next to the one listed before it.",
+      "oneOf": [
+        {
+          "const": "right",
+          "description": "To its right, the tops in line.",
+          "type": "string"
+        },
+        {
+          "const": "left",
+          "description": "To its left, the tops in line.",
+          "type": "string"
+        },
+        {
+          "const": "above",
+          "description": "Above it, the middles in line.",
+          "type": "string"
+        },
+        {
+          "const": "below",
+          "description": "Below it, the middles in line.",
+          "type": "string"
+        }
+      ]
     },
     "Placement": {
       "description": "Where a new window appears when no rule positions it.",

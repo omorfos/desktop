@@ -3,14 +3,16 @@
 //!
 //! Windows, the pointer and everything else are positioned in one space,
 //! measured in units of layout. Each output shows a rectangle of it. The
-//! outputs stand side by side in the order they were added, and each has
-//! its own scale, so a rectangle of the same size in units can be a
+//! outputs stand where the configuration says, next to one another, or
+//! else side by side in the order they were added, and each has its own
+//! scale, so a rectangle of the same size in units can be a
 //! different number of pixels on each.
 //!
 //! See `docs/adr/0015-several-outputs.md`.
 
 use std::cell::Cell;
 
+use omorfos_config::Place;
 use omorfos_core::Screen;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use smithay::desktop::layer_map_for_output;
@@ -264,17 +266,25 @@ impl Compositor {
         order
     }
 
-    /// Stands the outputs side by side from the left, and brings everything
-    /// that depends on where they are up to date.
+    /// Stands each output where the configuration says, next to the one
+    /// listed before it, or else to the right of all the others, and
+    /// brings everything that depends on where they are up to date.
     fn lay_out(&mut self) {
-        let mut left = 0;
-        for index in self.arranged() {
+        let order = self.arranged();
+        let listed = &self.config().general.outputs;
+        let placed: Vec<_> = order
+            .iter()
+            .map(|index| {
+                let head = &self.heads[*index];
+                let named = listed.named(&head.output.name());
+                (head.area().size, named.map(|named| named.place))
+            })
+            .collect();
+        for (index, at) in order.into_iter().zip(arrangement(&placed)) {
             let head = &self.heads[index];
-            let at = Point::from((left, 0));
             head.output.change_current_state(None, None, None, Some(at));
             self.space.map_output(&head.output, at);
             layer_map_for_output(&head.output).arrange();
-            left += head.area().size.w;
         }
         self.update_screens();
         self.configure_lock_surfaces();
@@ -298,4 +308,40 @@ impl Compositor {
             self.screens = screens;
         }
     }
+}
+
+/// Where screens stand, `screens` large, in the order given: each next to
+/// the one before it as its place says, or, for one that is not listed, to
+/// the right of all those before it, its top in line with theirs. Each
+/// corner, from the top left corner of all they cover.
+fn arrangement(screens: &[(Size<i32, Logical>, Option<Place>)]) -> Vec<Point<i32, Logical>> {
+    let mut stood: Vec<Rectangle<i32, Logical>> = Vec::new();
+    for &(size, place) in screens {
+        let before = stood.last().copied();
+        let all = stood.iter().copied().reduce(Rectangle::merge);
+        let middle = |before: Rectangle<i32, Logical>| before.loc.x + (before.size.w - size.w) / 2;
+        let corner = match (before, place) {
+            (None, _) => (0, 0),
+            (Some(before), Some(Place::Right)) => (before.loc.x + before.size.w, before.loc.y),
+            (Some(before), Some(Place::Left)) => (before.loc.x - size.w, before.loc.y),
+            (Some(before), Some(Place::Below)) => (middle(before), before.loc.y + before.size.h),
+            (Some(before), Some(Place::Above)) => (middle(before), before.loc.y - size.h),
+            (Some(_), None) => all.map_or((0, 0), |all| (all.loc.x + all.size.w, all.loc.y)),
+        };
+        stood.push(Rectangle::new(corner.into(), size));
+    }
+    let left = stood
+        .iter()
+        .map(|stood| stood.loc.x)
+        .min()
+        .unwrap_or_default();
+    let top = stood
+        .iter()
+        .map(|stood| stood.loc.y)
+        .min()
+        .unwrap_or_default();
+    stood
+        .into_iter()
+        .map(|stood| stood.loc - Point::from((left, top)))
+        .collect()
 }

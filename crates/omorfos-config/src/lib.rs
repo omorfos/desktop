@@ -42,8 +42,8 @@ pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
     Acceleration, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept, Keyboard, Launcher,
-    Mouse, NamedOutput, Notifications, OfferedMode, Output, OutputScale, Outputs, Panel, Placement,
-    Portals, ScreenMode, Screenshots, Speed, Touchpad, Workspaces, X11Scaling, Xwayland,
+    Mouse, NamedOutput, Notifications, OfferedMode, Output, OutputScale, Outputs, Panel, Place,
+    Placement, Portals, ScreenMode, Screenshots, Speed, Touchpad, Workspaces, X11Scaling, Xwayland,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
