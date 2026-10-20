@@ -20,6 +20,13 @@ use smithay::reexports::wayland_server::{Display, ListeningSocket};
 use crate::Compositor;
 use crate::Roles;
 
+/// How much the compositor keeps, in bytes, of what it has to send a
+/// program that is not reading, once the program's socket is full. A
+/// program busy for a while, with the pointer moved over its window, is
+/// not disconnected for it, while one that never reads is, before it has
+/// cost more than this. See `docs/adr/0045-a-program-that-is-not-reading.md`.
+const KEPT_FOR_A_PROGRAM: usize = 1 << 20;
+
 /// A compositor and the event loop that drives it.
 #[derive(Debug)]
 pub struct Session {
@@ -41,7 +48,14 @@ impl Session {
             .map_err(Box::from)
             .and_then(|event_loop| {
                 Display::new()
-                    .map(|display| (event_loop, display))
+                    .map(|display| {
+                        // Before any program connects: it holds for those
+                        // that connect after.
+                        display
+                            .handle()
+                            .set_default_max_buffer_size(KEPT_FOR_A_PROGRAM);
+                        (event_loop, display)
+                    })
                     .map_err(Box::from)
             })
             .and_then(|(event_loop, display)| {

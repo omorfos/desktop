@@ -775,7 +775,8 @@ impl Client {
 
     /// Reads and handles whatever the compositor has sent, without waiting.
     /// A client a test does not read for long enough, while the compositor
-    /// sends it more, is dropped by it once its socket is full.
+    /// sends it more, is dropped by it once its socket is full and the
+    /// compositor has kept a mebibyte more for it.
     pub(crate) fn receive(&mut self) {
         if let Some(guard) = self.queue.prepare_read() {
             // Nothing to read is not an error here.
