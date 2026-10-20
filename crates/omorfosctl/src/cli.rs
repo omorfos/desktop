@@ -15,6 +15,7 @@ Usage: omorfosctl [--socket PATH] <COMMAND>
 Commands:
   version               Print the compositor's version
   state                 Print workspaces, windows and problems as JSON
+  screens               Print the screens, where they stand and their modes
   watch                 Print the state, one JSON line each time it changes
   action NAME [ARG]...  Perform an action, as named in keys.yaml
   activate ID           Switch to a window, by the id shown in `state`
@@ -40,6 +41,7 @@ enum Command {
     OwnVersion,
     Version,
     State,
+    Screens,
     Watch,
     Perform(Value),
     Activate(u64),
@@ -59,6 +61,7 @@ fn parse(arguments: &[String]) -> Result<(Option<PathBuf>, Command), String> {
         ["-V" | "--version"] => Command::OwnVersion,
         ["version"] => Command::Version,
         ["state"] => Command::State,
+        ["screens"] => Command::Screens,
         ["watch"] => Command::Watch,
         ["config", "check"] => Command::Check,
         ["config", "reload"] => Command::Reload,
@@ -176,6 +179,10 @@ fn execute(command: &Command, client: &mut Client, out: &mut dyn Write) -> Resul
             Ok(true)
         }
         (Command::Check, Reply::State(state)) => Ok(report(&state, out)),
+        (Command::Screens, Reply::State(state)) => {
+            screens(&state, out);
+            Ok(true)
+        }
         (Command::Watch, Reply::State(first)) => {
             let mut next = Ok(Reply::State(first));
             // Until the compositor goes away, or nobody is reading.
@@ -199,6 +206,32 @@ fn execute(command: &Command, client: &mut Client, out: &mut dyn Write) -> Resul
         }
         (Command::Perform(_) | Command::Activate(_), Reply::Done) => Ok(true),
         _ => Err("the compositor sent an unexpected answer".to_owned()),
+    }
+}
+
+/// Prints each screen: where it stands, how large it is there and the mode
+/// it is driven in, and then each mode it can be driven in, as
+/// `config.yaml` writes one.
+fn screens(state: &State, out: &mut dyn Write) {
+    for screen in &state.screens {
+        let driven = if screen.mode.is_empty() {
+            String::new()
+        } else {
+            format!(", driven at {}", screen.mode)
+        };
+        let _ = writeln!(
+            out,
+            "{}: {} by {} units at {},{}{driven}",
+            screen.name, screen.width, screen.height, screen.x, screen.y
+        );
+        for mode in &screen.modes {
+            let best = if *mode == screen.preferred {
+                ", which suits it best"
+            } else {
+                ""
+            };
+            let _ = writeln!(out, "  {mode}{best}");
+        }
     }
 }
 
@@ -323,6 +356,7 @@ mod tests {
             }],
             problems: problems.iter().map(ToString::to_string).collect(),
             events: Vec::new(),
+            screens: Vec::new(),
         }
     }
 
@@ -446,6 +480,38 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<State>(&outcome.out).unwrap(),
             state(&[])
+        );
+    }
+
+    #[test]
+    fn screens_prints_where_each_stands_and_its_modes() {
+        let mut shown = state(&[]);
+        shown.screens = vec![
+            omorfos_ipc::Screen {
+                name: "DP-1".to_owned(),
+                x: 0,
+                y: 0,
+                width: 2560,
+                height: 1440,
+                mode: "2560x1440@144".to_owned(),
+                preferred: "2560x1440@60".to_owned(),
+                modes: vec!["2560x1440@144".to_owned(), "2560x1440@60".to_owned()],
+            },
+            omorfos_ipc::Screen {
+                name: "nested".to_owned(),
+                x: 2560,
+                y: 0,
+                width: 640,
+                height: 480,
+                ..omorfos_ipc::Screen::default()
+            },
+        ];
+        let outcome = invoke(&["screens"], vec![Reply::State(shown)]);
+        assert_eq!(outcome.code, ExitCode::SUCCESS);
+        assert_eq!(
+            outcome.out,
+            "DP-1: 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  2560x1440@144\n  \
+             2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\n"
         );
     }
 

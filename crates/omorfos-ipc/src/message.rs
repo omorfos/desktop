@@ -111,6 +111,37 @@ pub struct State {
     /// while and then is not.
     #[serde(default)]
     pub events: Vec<String>,
+    /// The screens, in the order they stand as the configuration lists
+    /// them, and then the rest. Empty from a compositor too old to say.
+    #[serde(default)]
+    pub screens: Vec<Screen>,
+}
+
+/// A screen, and the ways it can be driven.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Screen {
+    /// Its name, such as `eDP-1`, which `config.yaml` lists it by.
+    pub name: String,
+    /// How far from the left of the space it begins, in units of layout.
+    pub x: i32,
+    /// How far from the top.
+    pub y: i32,
+    /// How wide it is, in units of layout.
+    pub width: u32,
+    /// How tall.
+    pub height: u32,
+    /// The mode it is driven in, as `config.yaml` writes one, such as
+    /// `2560x1440@144`. Empty where the backend does not say, as inside
+    /// another desktop.
+    #[serde(default)]
+    pub mode: String,
+    /// The mode it says suits it best, written so. Empty if it says none.
+    #[serde(default)]
+    pub preferred: String,
+    /// Every mode it can be driven in, written so, each once, the largest
+    /// and fastest first.
+    #[serde(default)]
+    pub modes: Vec<String>,
 }
 
 /// A workspace.
@@ -328,6 +359,16 @@ mod tests {
             }],
             problems: vec!["keys.yaml:2:3: nope".to_owned()],
             events: vec!["something was started again".to_owned()],
+            screens: vec![Screen {
+                name: "eDP-1".to_owned(),
+                x: 0,
+                y: -864,
+                width: 1536,
+                height: 864,
+                mode: "3840x2160@60".to_owned(),
+                preferred: "3840x2160@60".to_owned(),
+                modes: vec!["3840x2160@60".to_owned(), "3840x2160@48".to_owned()],
+            }],
         };
         for reply in [
             Reply::Version {

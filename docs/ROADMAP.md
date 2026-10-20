@@ -395,12 +395,13 @@ calls for them.
       its length (`offset`), as a laptop below a monitor and a little to
       its left is; and the user told when the first listed is given a
       place, which says nothing.
+- [x] The screens and the modes each offers, in the IPC state and by
+      `omorfosctl screens`, written as `mode` takes them.
 - [x] A screen turned on its stand (`rotate`), drawn turned and given in
       pictures the right way up; in a window inside another desktop it is
       not used, and pictures there are the right way up too.
-- [ ] Screens arranged by the user: mirroring, one made primary, arrangements remembered
-      for the screens that are plugged in, and the modes a screen offers
-      listed, by `omorfosctl` say.
+- [ ] Screens arranged by the user: mirroring, one made primary, and
+      arrangements remembered for the screens that are plugged in.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its

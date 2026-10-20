@@ -706,6 +706,13 @@ pub struct OfferedMode {
     pub preferred: bool,
 }
 
+impl std::fmt::Display for OfferedMode {
+    /// As the configuration writes a mode: `2560x1440@144`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}x{}@{}", self.width, self.height, self.refresh)
+    }
+}
+
 impl ScreenMode {
     /// Which of the ways a screen offers it is driven in, if it offers any,
     /// by its place among them, for the mode `wanted` if one is: that size
@@ -733,7 +740,7 @@ impl ScreenMode {
             let mut modes = offered.iter().enumerate();
             modes.find(|(_, mode)| sized(mode) && mode.refresh == refresh)
         });
-        let said = |mode: &OfferedMode| format!("{}x{}@{}", mode.width, mode.height, mode.refresh);
+        let said = OfferedMode::to_string;
         match (exact, fastest) {
             (Some((at, _)), _) => Some((at, None)),
             // At that size, the fastest; which is what was asked unless a

@@ -140,9 +140,8 @@ a rate, the fastest the screen offers at that size; without a mode, what
 the screen says suits it best. A mode the screen does not offer is not
 used, and what it is driven at instead is said among the problems, as a
 mistake in this file is, until the mode is put right. A change of mode
-takes effect as soon as the file is saved. The sizes a screen offers are
-listed, one to a line, in `/sys/class/drm/card*-NAME/modes`, such as
-`/sys/class/drm/card1-DP-1/modes`. A screen's name is the `output` shown by
+takes effect as soon as the file is saved. `omorfosctl screens` lists
+the modes each screen offers, written as `mode` takes them. A screen's name is the `output` shown by
 `omorfosctl state`. One that is listed but not plugged in is skipped.
 
 The workspaces listed are always there. More are made as they are wanted,

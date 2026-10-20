@@ -361,6 +361,7 @@ mod tests {
             ],
             problems: Vec::new(),
             events: Vec::new(),
+            screens: Vec::new(),
         }
     }
 

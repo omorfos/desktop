@@ -9,6 +9,7 @@ integrates beyond what Wayland protocols offer.
 ```sh
 omorfosctl version                 # the compositor's version
 omorfosctl state                   # workspaces, windows and problems, as JSON
+omorfosctl screens                 # the screens, where they stand and their modes
 omorfosctl watch                   # the state again, one line per change
 omorfosctl action close            # any action from keys.yaml
 omorfosctl action workspace 2
@@ -101,9 +102,29 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
     }
   ],
   "problems": [],
-  "events": []
+  "events": [],
+  "screens": [
+    {
+      "name": "eDP-1",
+      "x": 0,
+      "y": 0,
+      "width": 1536,
+      "height": 864,
+      "mode": "3840x2160@60",
+      "preferred": "3840x2160@60",
+      "modes": ["3840x2160@60", "3840x2160@48"]
+    }
+  ]
 }
 ```
+
+`screens` are the screens in the order they stand, as `outputs` in
+`config.yaml` lists them and then the rest, each with where it stands and
+how large it is in units of layout, and the modes it can be driven in,
+written as a `mode` is in `config.yaml`: the one it is driven in, the one
+it says suits it best, and every one it offers, each once, the largest
+and fastest first. The modes are empty where the backend does not say,
+as inside another desktop.
 
 `shaded`, `above` and `sticky` say how a window's frame stands apart, as
 the titlebar's menu, the actions of those names and rules set it: rolled

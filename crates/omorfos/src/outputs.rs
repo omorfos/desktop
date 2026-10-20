@@ -12,7 +12,7 @@
 
 use std::cell::Cell;
 
-use omorfos_config::{Align, Offset, Place, Rotation};
+use omorfos_config::{Align, OfferedMode, Offset, Place, Rotation};
 use omorfos_core::Screen;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use smithay::desktop::layer_map_for_output;
@@ -33,6 +33,10 @@ pub(crate) struct Head {
     transform: Transform,
     /// Which way the configuration says the screen is turned.
     rotation: Transform,
+    /// The ways the backend says it can be driven, and the one it is
+    /// driven in: none, from a backend that does not say.
+    pub(crate) modes: Vec<OfferedMode>,
+    pub(crate) mode: Option<OfferedMode>,
     /// The scale the backend says suits it.
     suggested: Scale,
     /// How many pixels it draws to a unit of layout.
@@ -126,6 +130,8 @@ impl Compositor {
             output: output.clone(),
             transform,
             rotation: self.rotation_for(name),
+            modes: Vec::new(),
+            mode: None,
             suggested,
             scale: self.scale_for(name, suggested),
             blanked: Cell::new(false),
@@ -134,6 +140,16 @@ impl Compositor {
         self.heads.push(head);
         self.lay_out();
         output
+    }
+
+    /// Says the ways `output` can be driven, as its backend has them, and
+    /// the one it is driven in, which programs that ask are told.
+    pub fn offer_modes(&mut self, output: &Output, modes: &[OfferedMode], driven: OfferedMode) {
+        let head = self.heads.iter_mut().find(|head| head.output == *output);
+        if let Some(head) = head {
+            head.modes = modes.to_vec();
+            head.mode = Some(driven);
+        }
     }
 
     /// Takes an output away. Windows left stranded move to the first of
@@ -290,7 +306,7 @@ impl Compositor {
     /// The outputs in the order they stand, from the left: those the
     /// configuration lists, in the order it lists them, and then the rest
     /// in the order they were added.
-    fn arranged(&self) -> Vec<usize> {
+    pub(crate) fn arranged(&self) -> Vec<usize> {
         let listed = self.config().general.outputs.listed();
         let place = |index: &usize| {
             let name = self.heads[*index].output.name();

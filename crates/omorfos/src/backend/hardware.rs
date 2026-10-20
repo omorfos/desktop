@@ -604,6 +604,8 @@ impl Hardware {
         let (width, height) = mode.size();
         let size = (i32::from(width), i32::from(height));
         let output = compositor.add_output(name, size, Transform::Normal);
+        let offers: Vec<OfferedMode> = modes.iter().map(offered).collect();
+        compositor.offer_modes(&output, &offers, offered(&mode));
         compositor.suggest_scale(&output, Scale::for_screen(u32::from(width), millimetres));
         Ok(Screen {
             connector,
@@ -704,6 +706,8 @@ impl Hardware {
                 continue;
             }
             screen.mode = mode;
+            let offers: Vec<OfferedMode> = screen.modes.iter().map(offered).collect();
+            compositor.offer_modes(&screen.output, &offers, offered(&mode));
             let (width, height) = mode.size();
             compositor.resize_output(&screen.output, (i32::from(width), i32::from(height)));
             screen.tracker = OutputDamageTracker::from_output(&screen.output);
