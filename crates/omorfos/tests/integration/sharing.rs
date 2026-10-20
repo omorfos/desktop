@@ -6,13 +6,14 @@
     reason = "test support code fails the test on any error"
 )]
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -298,17 +299,26 @@ struct Viewer {
     stream: pw::stream::StreamRc,
     _listener: pw::stream::StreamListener<()>,
     node: Rc<Cell<Option<u32>>>,
-    seen: Rc<RefCell<Option<Vec<u8>>>>,
+    seen: Arc<Mutex<Seen>>,
+    link: Option<pw::link::Link>,
+}
+
+/// What a viewer has been given. PipeWire hands a picture over on the
+/// thread that turns the viewer, or, in some versions, on a thread of its
+/// own while the viewer is not being turned, so it is behind a lock.
+#[derive(Default)]
+struct Seen {
+    /// The last picture.
+    picture: Option<Vec<u8>>,
     /// Where it was last told the pointer is, where its position is in its
     /// picture, and the colour of that picture a little inside it.
-    pointer: Rc<Cell<Option<Pointed>>>,
-    /// Whether the last picture seen was in memory of the graphics card.
-    card: Rc<Cell<bool>>,
+    pointer: Option<Pointed>,
+    /// Whether the last picture was in memory of the graphics card.
+    card: bool,
     /// Whether it was given memory of the card that said it held a picture
     /// and could not be read, as a reader that reads such memory whatever
     /// its size says fails on.
-    unreadable: Rc<Cell<bool>>,
-    link: Option<pw::link::Link>,
+    unreadable: bool,
 }
 
 /// The pictures a viewer wants: blue first, of any size, in memory of the
@@ -406,13 +416,8 @@ impl Viewer {
         let kind = properties! { *pw::keys::MEDIA_TYPE => "Video", *pw::keys::MEDIA_CATEGORY => "Capture" };
         let stream = pw::stream::StreamRc::new(core.clone(), "viewer", kind).unwrap();
         let node = Rc::new(Cell::new(None));
-        let seen = Rc::new(RefCell::new(None));
-        let pointer = Rc::new(Cell::new(None));
-        let card = Rc::new(Cell::new(false));
-        let on_card = Rc::clone(&card);
-        let unreadable = Rc::new(Cell::new(false));
-        let spoiling = Rc::clone(&unreadable);
-        let (named, kept, told) = (Rc::clone(&node), Rc::clone(&seen), Rc::clone(&pointer));
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let (named, kept) = (Rc::clone(&node), Arc::clone(&seen));
         let listener = stream
             .add_local_listener::<()>()
             .state_changed(move |stream, (), _, now| {
@@ -429,6 +434,7 @@ impl Viewer {
             })
             .process(move |stream, ()| {
                 if let Some(mut buffer) = stream.dequeue_buffer() {
+                    let mut seen = kept.lock().unwrap();
                     let cursor = buffer.find_meta::<spa::buffer::meta::MetaCursor>();
                     if let Some(cursor) = cursor.filter(|cursor| cursor.is_valid()) {
                         let (at, tip) = (cursor.position(), cursor.hotspot());
@@ -437,25 +443,25 @@ impl Viewer {
                             let at = (4 * 256 + 4) * 4;
                             u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
                         });
-                        let was = told.get().map(|(_, _, colour)| colour);
+                        let was = seen.pointer.map(|(_, _, colour)| colour);
                         let colour = colour.or(was).unwrap_or_default();
-                        told.set(Some(((at.x, at.y), (tip.x, tip.y), colour)));
+                        seen.pointer = Some(((at.x, at.y), (tip.x, tip.y), colour));
                     }
                     let data = &mut buffer.datas_mut()[0];
                     let card = data.type_() == spa::buffer::DataType::DmaBuf;
-                    on_card.set(card);
+                    seen.card = card;
                     // Memory of the card is read whatever its size says,
                     // unless it is said to be spoilt; read so, it has to say
                     // how far apart its rows are.
                     let chunk = data.chunk();
                     let spoilt = chunk.flags().contains(spa::buffer::ChunkFlags::CORRUPTED);
                     if card && !spoilt && chunk.stride() == 0 {
-                        spoiling.set(true);
+                        seen.unreadable = true;
                     }
                     let size = usize::try_from(chunk.size()).unwrap();
                     let picture = data.data().map(|bytes| bytes[..size].to_vec());
                     if picture.as_ref().is_some_and(|picture| !picture.is_empty()) {
-                        *kept.borrow_mut() = picture;
+                        seen.picture = picture;
                     }
                 }
             })
@@ -476,9 +482,6 @@ impl Viewer {
             _listener: listener,
             node,
             seen,
-            pointer,
-            card,
-            unreadable,
             link: None,
         }
     }
@@ -506,15 +509,22 @@ impl Viewer {
 
     /// The colour at a place in the last picture seen, as `0xAARRGGBB`,
     /// for a picture `width` pixels across.
+    /// What it has been given so far.
+    fn seen(&self) -> MutexGuard<'_, Seen> {
+        self.seen.lock().unwrap()
+    }
+
     /// How many pixels the last picture seen had.
     fn pixels(&self) -> usize {
-        self.seen.borrow().as_ref().map_or(0, |seen| seen.len() / 4)
+        let seen = self.seen();
+        seen.picture.as_ref().map_or(0, |seen| seen.len() / 4)
     }
 
     fn at(&self, width: i32, (x, y): (i32, i32)) -> Option<u32> {
-        let seen = self.seen.borrow();
+        let seen = self.seen();
         let at = usize::try_from((y * width + x) * 4).unwrap();
-        seen.as_ref()
+        seen.picture
+            .as_ref()
             .map(|seen| u32::from_be_bytes([0xff, seen[at + 2], seen[at + 1], seen[at]]))
     }
 }
@@ -744,7 +754,7 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
     session.eventually(|session| {
         session.draw();
         viewer.turn(node);
-        viewer.pointer.get() == Some(((300, 200), (1, 1), BLUE))
+        viewer.seen().pointer == Some(((300, 200), (1, 1), BLUE))
     });
     session.eventually(|session| {
         session.draw();
@@ -758,7 +768,7 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
     session.eventually(|session| {
         session.step();
         viewer.turn(node);
-        viewer.pointer.get() == Some(((310, 205), (1, 1), BLUE))
+        viewer.seen().pointer == Some(((310, 205), (1, 1), BLUE))
     });
     // And so is it looking different.
     let mut app = session.connect();
@@ -770,7 +780,7 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
     session.eventually(|session| {
         session.draw();
         viewer.turn(node);
-        viewer.pointer.get() == Some(((50, 50), (1, 1), GREEN))
+        viewer.seen().pointer == Some(((50, 50), (1, 1), GREEN))
     });
 
     // Away from the screen shared, it is not to be seen, and back over it
@@ -783,15 +793,15 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
         session.draw();
         viewer.turn(node);
         viewer
+            .seen()
             .pointer
-            .get()
             .is_some_and(|(_, _, colour)| colour == 0)
     });
     session.compositor_mut().input(over(320.0, 240.0), 0);
     session.eventually(|session| {
         session.draw();
         viewer.turn(node);
-        viewer.pointer.get() == Some(((320, 240), (1, 1), BLUE))
+        viewer.seen().pointer == Some(((320, 240), (1, 1), BLUE))
     });
 
     // What reads it anew is told at once, though the pointer does not move.
@@ -800,7 +810,7 @@ fn a_call_that_asks_is_told_where_the_pointer_is_and_what_it_looks_like_beside_t
     session.eventually(|session| {
         session.draw();
         viewer.turn(node);
-        viewer.pointer.get() == Some(((320, 240), (1, 1), BLUE))
+        viewer.seen().pointer == Some(((320, 240), (1, 1), BLUE))
     });
 }
 
@@ -848,7 +858,7 @@ fn shared_from_card(card: u64) -> Viewer {
         session.eventually(|session| {
             session.step();
             viewer.turn(node);
-            viewer.pointer.get().is_some_and(|(at, ..)| at == (x, y))
+            viewer.seen().pointer.is_some_and(|(at, ..)| at == (x, y))
         });
     }
     assert_eq!(
@@ -856,7 +866,7 @@ fn shared_from_card(card: u64) -> Viewer {
         Some(RED),
         "the picture is as it was"
     );
-    assert!(!viewer.unreadable.get(), "a buffer no reader could read");
+    assert!(!viewer.seen().unreadable, "a buffer no reader could read");
     viewer
 }
 
@@ -864,7 +874,7 @@ fn shared_from_card(card: u64) -> Viewer {
 fn a_call_that_would_take_memory_of_the_card_is_given_shared_memory_where_it_cannot_be_had() {
     // No card has this number.
     let viewer = shared_from_card(0);
-    assert!(!viewer.card.get(), "shared memory");
+    assert!(!viewer.seen().card, "shared memory");
 }
 
 #[test]
@@ -875,7 +885,7 @@ fn a_screen_is_shared_in_the_memory_of_the_card_where_there_is_one() {
         return;
     };
     let viewer = shared_from_card(card);
-    assert!(viewer.card.get(), "memory of the card");
+    assert!(viewer.seen().card, "memory of the card");
 }
 
 /// The device number of the graphics card to try with, if this machine has
@@ -1348,6 +1358,6 @@ fn a_screen_shared_in_the_memory_of_the_card_goes_on_at_its_new_size() {
         viewer.pixels() == 320 * 240 && viewer.at(320, (10, 10)) == Some(RED)
     });
     assert_eq!(viewer.at(320, (300, 200)), Some(BACKGROUND));
-    assert!(viewer.card.get(), "memory of the card still");
-    assert!(!viewer.unreadable.get(), "a buffer no reader could read");
+    assert!(viewer.seen().card, "memory of the card still");
+    assert!(!viewer.seen().unreadable, "a buffer no reader could read");
 }
