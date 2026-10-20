@@ -80,12 +80,15 @@ pub(crate) fn click(from: (i32, i32), to: (i32, i32)) -> bool {
 
 /// The window `at` is on, of `windows`, those on a screen shown `shown`
 /// units large from a picture `pixels` large, the one on top first: which
-/// it is, and where it is drawn in units.
+/// it is, and where it is drawn in units. `behind` goes that many further
+/// down through those it is on, and round again from the top, so that a
+/// window covered by another can be had.
 pub(crate) fn under(
     at: (i32, i32),
     windows: &[Area],
     shown: (u32, u32),
     pixels: (u32, u32),
+    behind: usize,
 ) -> Option<(usize, Rect)> {
     let units = |along: u32, room: u32, pixels: u32| {
         let along = u64::from(along) * u64::from(room) / u64::from(pixels.max(1));
@@ -100,10 +103,12 @@ pub(crate) fn under(
         let bottom = units(area.y.saturating_add(area.height), shown.1, pixels.1);
         (left, top, right, bottom)
     });
-    let mut drawn = drawn.enumerate();
-    let found = drawn.find(|(_, (left, top, right, bottom))| {
+    let on = |(_, (left, top, right, bottom)): &(usize, (i32, i32, i32, i32))| {
         (*left..*right).contains(&at.0) && (*top..*bottom).contains(&at.1)
-    });
+    };
+    let drawn = drawn.enumerate();
+    let there = drawn.clone().filter(on).count();
+    let found = drawn.filter(on).nth(behind % there.max(1));
     found.map(|(window, (left, top, right, bottom))| {
         let size = (right - left).unsigned_abs();
         (window, (left, top, size, (bottom - top).unsigned_abs()))
@@ -113,17 +118,18 @@ pub(crate) fn under(
 /// What a drag from `from` to `to` over screen `screen` comes to, the
 /// screen shown `shown` units large from a picture `pixels` large with
 /// `windows` on it: the window or else the screen it began on, for one
-/// that hardly moved, as a click; otherwise the region between the two,
-/// in the picture's pixels, a pixel at least each way.
+/// that hardly moved, as a click, `behind` as many as `under` says;
+/// otherwise the region between the two, in the picture's pixels, a pixel
+/// at least each way.
 pub(crate) fn picked(
     screen: usize,
     (from, to): ((i32, i32), (i32, i32)),
-    windows: &[Area],
+    (windows, behind): (&[Area], usize),
     shown: (u32, u32),
     pixels: (u32, u32),
 ) -> Picked {
     if click(from, to) {
-        let window = under(from, windows, shown, pixels);
+        let window = under(from, windows, shown, pixels, behind);
         let window = window.map(|(window, _)| Picked::Window { screen, window });
         return window.unwrap_or(Picked::Screen(screen));
     }
@@ -210,7 +216,7 @@ mod tests {
     fn a_drag_that_hardly_moves_is_a_click_on_the_screen() {
         let pixels = (1280, 960);
         assert_eq!(
-            picked(1, ((10, 10), (12, 13)), &[], SHOWN, pixels),
+            picked(1, ((10, 10), (12, 13)), (&[], 0), SHOWN, pixels),
             Picked::Screen(1)
         );
         let area = Area {
@@ -220,7 +226,10 @@ mod tests {
             height: 100,
         };
         let region = Picked::Region { screen: 1, area };
-        assert_eq!(picked(1, ((10, 20), (110, 70)), &[], SHOWN, pixels), region);
+        assert_eq!(
+            picked(1, ((10, 20), (110, 70)), (&[], 0), SHOWN, pixels),
+            region
+        );
         // Moved only one way, it is a region still, a pixel at least the
         // other way.
         let thin = Area {
@@ -229,7 +238,7 @@ mod tests {
             width: 1,
             height: 100,
         };
-        let picked = picked(0, ((10, 20), (10, 120)), &[], SHOWN, SHOWN);
+        let picked = picked(0, ((10, 20), (10, 120)), (&[], 0), SHOWN, SHOWN);
         assert_eq!(
             picked,
             Picked::Region {
@@ -259,7 +268,8 @@ mod tests {
     #[test]
     fn a_click_on_a_window_picks_the_one_on_top_and_elsewhere_the_screen() {
         let pixels = (1280, 960);
-        let click = |at: (i32, i32)| picked(1, (at, (at.0 + 1, at.1 + 1)), &WINDOWS, SHOWN, pixels);
+        let click =
+            |at: (i32, i32)| picked(1, (at, (at.0 + 1, at.1 + 1)), (&WINDOWS, 0), SHOWN, pixels);
         assert_eq!(
             click((120, 120)),
             Picked::Window {
@@ -276,7 +286,7 @@ mod tests {
         );
         assert_eq!(click((400, 400)), Picked::Screen(1));
         // A drag that began on a window draws a region all the same.
-        let drag = picked(1, ((120, 120), (220, 220)), &WINDOWS, SHOWN, pixels);
+        let drag = picked(1, ((120, 120), (220, 220)), (&WINDOWS, 0), SHOWN, pixels);
         let area = Area {
             x: 240,
             y: 240,
@@ -290,16 +300,35 @@ mod tests {
     fn the_window_under_the_pointer_is_drawn_where_it_is_shown() {
         let pixels = (1280, 960);
         assert_eq!(
-            under((120, 120), &WINDOWS, SHOWN, pixels),
+            under((120, 120), &WINDOWS, SHOWN, pixels, 0),
             Some((0, (100, 100, 200, 100)))
         );
         // Its right and bottom edges are the next window's, or none's.
-        assert_eq!(under((300, 150), &WINDOWS, SHOWN, pixels), None);
+        assert_eq!(under((300, 150), &WINDOWS, SHOWN, pixels, 0), None);
         assert_eq!(
-            under((149, 99), &WINDOWS, SHOWN, pixels).map(|(window, _)| window),
+            under((149, 99), &WINDOWS, SHOWN, pixels, 0).map(|(window, _)| window),
             Some(1)
         );
-        assert_eq!(under((0, 0), &[], SHOWN, pixels), None);
+        assert_eq!(under((0, 0), &[], SHOWN, pixels, 0), None);
+    }
+
+    #[test]
+    fn a_window_covered_by_another_is_had_by_going_behind_and_round_again() {
+        let pixels = (1280, 960);
+        let behind = |behind| under((120, 120), &WINDOWS, SHOWN, pixels, behind);
+        assert_eq!(behind(1), Some((1, (0, 0, 150, 150))));
+        assert_eq!(behind(2), behind(0));
+        // Where only one is, going behind it is that one still.
+        let alone = under((20, 20), &WINDOWS, SHOWN, pixels, 3);
+        assert_eq!(alone.map(|(window, _)| window), Some(1));
+        let click = picked(1, ((120, 120), (121, 121)), (&WINDOWS, 1), SHOWN, pixels);
+        assert_eq!(
+            click,
+            Picked::Window {
+                screen: 1,
+                window: 1
+            }
+        );
     }
 
     #[test]

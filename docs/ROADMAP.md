@@ -311,13 +311,14 @@ calls for them.
       a picture of the old size given as one of the new, and memory of
       the old size used for the new, each when the size changed just as
       a picture was asked for.
-- [ ] A window covered by others can be picked to share. The picker shows
-      the screens as they were when the user said yes, so a window behind
-      another cannot be clicked, and the user has to cancel, move it, and
-      ask again. Ways to be weighed: Tab to go through the windows under
-      the pointer, or all of them, the one chosen drawn over the rest; or
-      a row of the windows there are, each with its title and a picture of
-      it alone, beside the screens.
+- [x] A window covered by others reached in the picker, to share or take
+      a picture of: Tab outlines the next window down under the pointer,
+      and round again, where before the user had to cancel, move it and
+      ask again.
+- [ ] The window Tab reaches drawn over the rest from a picture of it
+      alone, as now only its outline shows where it is, and its title
+      said beside it; or a row of the windows there are, each with its
+      title and picture, beside the screens.
 - [ ] Known gaps in sharing the screen: a region cannot be shared yet;
       over a window the pointer is neither drawn nor sent beside, and no
       line is drawn round it while it is shared, as there is round a

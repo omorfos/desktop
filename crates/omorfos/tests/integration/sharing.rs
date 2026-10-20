@@ -1508,3 +1508,50 @@ fn where_a_window_may_be_shared_the_screen_is_shared_from_beside_the_windows() {
     assert_eq!(response, 0);
     assert_eq!(stream(&results).1, (WIDTH, HEIGHT), "the screen");
 }
+
+#[test]
+fn a_window_behind_another_is_reached_by_tab_and_shared() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "behind", (200, 100), RED);
+    // Over it, wherever it is, as large as the screen.
+    let mut cover = session.connect();
+    session.open(&mut cover, "cover", (WIDTH, HEIGHT), GREEN);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let peer = daemon.peer();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/behind";
+    make_of(&peer, call_session, HIDDEN, SCREENS_AND_WINDOWS);
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    // Once the picture to pick from is up, which outlines the window on
+    // top, Tab goes to the one behind it, and a click picks that.
+    // The outline goes round the edge of the screen, which the window on
+    // top fills, and changes what is there.
+    let on = Input::Motion { x: 50.0, y: 50.0 };
+    let edge = (0, HEIGHT / 2);
+    let before = session.draw().at(edge.0, edge.1);
+    session.eventually(|session| {
+        session.compositor_mut().input(on, 0);
+        session.step();
+        app.receive();
+        cover.receive();
+        session.draw().at(edge.0, edge.1) != before
+    });
+    press(&mut session, key::TAB);
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+    let (response, results) = answered(&mut session, starting);
+    assert_eq!(response, 0);
+    let (_, size) = stream_of_window(&results);
+    assert_eq!(size, (200, 100), "the window behind");
+}
