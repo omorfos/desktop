@@ -613,6 +613,13 @@
   "additionalProperties": false,
   "description": "The contents of `config.yaml`.",
   "properties": {
+    "arrangements": {
+      "description": "Screens as `outputs` lists them, for when just those are plugged\nin: the first that names exactly the screens there are is used in\nplace of `outputs`.",
+      "items": {
+        "$ref": "#/$defs/Outputs"
+      },
+      "type": "array"
+    },
     "autostart": {
       "description": "Programs to start with the session, each as a program and its\narguments, or as that and what it may do. They are started once, in\norder, and not again when the configuration is reloaded.",
       "items": {

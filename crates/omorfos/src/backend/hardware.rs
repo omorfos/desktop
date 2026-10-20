@@ -517,11 +517,13 @@ impl Hardware {
             compositor.screen_wrong(&screen.name, None);
             compositor.remove_output(&screen.output);
         }
+        // As the screens are to be once those found are taken on.
+        let plugged: Vec<String> = found.iter().map(|(_, name, ..)| name.clone()).collect();
         for (connector, name, modes, millimetres) in found {
             if self.screens.iter().any(|s| s.connector == connector) {
                 continue;
             }
-            let outputs = compositor.config().general.outputs.clone();
+            let outputs = compositor.arrangement_for(&plugged.iter().map(String::as_str));
             let wanted = outputs.named(&name).and_then(|listed| listed.mode);
             let Some(mode) = chosen(compositor, &name, (&modes, wanted.as_ref())) else {
                 continue;
@@ -680,7 +682,8 @@ impl Hardware {
     fn follow_modes(&mut self, compositor: &mut Compositor) {
         // Nothing is made while nothing has changed, which is every turn
         // but the one after the configuration says otherwise.
-        let outputs = &compositor.config().general.outputs;
+        let names = self.screens.iter().map(|screen| screen.name.as_str());
+        let outputs = compositor.arrangement_for(&names);
         let changed: Vec<(usize, Option<ScreenMode>)> = self
             .screens
             .iter()

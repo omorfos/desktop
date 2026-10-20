@@ -47,6 +47,13 @@ as pictures of a window by itself are, rather than read back from what
 the screen shows, which is turned; the protocol's transform on a picture
 would have every program reading them turn them itself.
 
+*Amended:* each way the screens may stand can be listed under
+`arrangements`, and the first naming just the screens plugged in is used
+in place of `outputs`, chosen again as one comes or goes. They are
+written in the configuration, as kanshi has them, rather than remembered
+from what the user last did, so that nothing changes behind the user's
+back and an arrangement can be read and shared.
+
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing
 take it. What the compositor needs to draw comes from the output itself,

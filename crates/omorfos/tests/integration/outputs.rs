@@ -923,3 +923,31 @@ fn the_windows_of_a_screen_unplugged_go_to_the_one_that_comes_first() {
         "{problems:?}"
     );
 }
+
+#[test]
+fn the_arrangement_for_the_screens_plugged_in_is_followed_as_they_come_and_go() {
+    let arranged = "arrangements:\n  - [{ name: test-1 }, { name: test-0, place: below, scale: 2 }]\n  - [{ name: test-1, place: right }]\n";
+    let mut session = Session::with_config(&[("config.yaml", arranged)]);
+    let at = |session: &Session, output: &Output| {
+        let area = session.compositor().area_of(output);
+        (area.loc.x, area.loc.y, area.size.w, area.size.h)
+    };
+    let first = session.output();
+    // Alone, no arrangement is for it: as `outputs` says, which is nothing.
+    assert_eq!(at(&session, &first), (0, 0, WIDTH, HEIGHT));
+    // With the second, both are as the arrangement for the two says.
+    let second = session.add_output((800, 600));
+    assert_eq!(at(&session, &second), (0, 0, 800, 600));
+    assert_eq!(at(&session, &first), (240, 600, WIDTH / 2, HEIGHT / 2));
+    // And as they were once it goes.
+    session.compositor_mut().remove_output(&second);
+    assert_eq!(at(&session, &first), (0, 0, WIDTH, HEIGHT));
+    // The first of an arrangement given a place is said to have none.
+    let problems = session.compositor().problems();
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("`test-1` is the first screen listed")),
+        "{problems:?}"
+    );
+}

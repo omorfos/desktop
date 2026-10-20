@@ -409,8 +409,9 @@ calls for them.
       on the compositor at the time: tried, it froze the tests as the
       server started and as it was started again. It needs a request
       that does not wait.
-- [ ] Screens arranged by the user: mirroring, and arrangements remembered
-      for the screens that are plugged in.
+- [x] An arrangement of the screens for each set that may be plugged in
+      (`arrangements`), followed as screens come and go.
+- [ ] Screens arranged by the user: mirroring.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
