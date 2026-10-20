@@ -216,10 +216,11 @@ fn recorded(socket: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<(
                             readying.set(true);
                         }
                     })
-                    .process(|stream, ()| {
-                        // What comes is let go, and what goes is nothing.
-                        let _ = stream.dequeue_buffer();
-                    })
+                    // Nothing is done with what comes: only what the streams
+                    // are called, and whether they run, matters. A `process`
+                    // would be called on PipeWire's own thread while this one
+                    // is between turns, as PipeWire before 1.4 does, at once
+                    // with what this thread does to the same stream.
                     .register()
                     .unwrap();
                 let wants = pictures();
