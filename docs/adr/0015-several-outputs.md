@@ -28,6 +28,14 @@ corner at that output's scale; nothing else about drawing changed.
 with their tops aligned. The hardware backend takes a laptop's own panel
 first. There is no setting for the arrangement yet.
 
+*Amended:* the screens listed under `outputs` stand in that order, each
+next to the one listed before it, as its `place` says: to the right, the
+default, or left, with the tops in line; or above or below, the middles
+in line. Those not listed stand to the right of all the rest. A place
+next to the one before was chosen over coordinates, which leave gaps and
+overlaps to be made by mistake and have to be worked out again when a
+screen's size changes.
+
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing
 take it. What the compositor needs to draw comes from the output itself,

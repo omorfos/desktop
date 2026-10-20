@@ -794,3 +794,36 @@ fn what_is_wrong_with_how_a_screen_is_driven_is_said_until_it_is_put_right() {
     session.compositor_mut().screen_wrong("eDP-1", None);
     assert_eq!(session.compositor().problems(), [] as [String; 0]);
 }
+
+#[test]
+fn a_screen_stands_where_the_configuration_says_next_to_the_one_listed_before() {
+    let listed = "outputs:\n  - { name: test-1 }\n  - { name: test-0, place: below }\n  - { name: test-2, place: left }\n";
+    let mut session = Session::with_config(&[("config.yaml", listed)]);
+    let second = session.add_output((800, 600));
+    let third = session.add_output((320, 240));
+    let at = |session: &Session, output: &Output| {
+        let at = session.compositor().area_of(output).loc;
+        (at.x, at.y)
+    };
+    let first = session.output();
+    // Below the second, the middles in line, and the third to its left,
+    // the tops in line: all from the top left corner of what they cover.
+    assert_eq!(at(&session, &second), (240, 0));
+    assert_eq!(at(&session, &first), (320, 600));
+    assert_eq!(at(&session, &third), (0, 600));
+
+    let above = "outputs:\n  - { name: test-0 }\n  - { name: test-1, place: above }\n  - { name: test-2, place: right }\n";
+    session.write_config("config.yaml", above);
+    session.compositor_mut().reload_config();
+    assert_eq!(at(&session, &second), (0, 0));
+    assert_eq!(at(&session, &first), (80, 600));
+    assert_eq!(at(&session, &third), (800, 0));
+
+    // One not listed is to the right of all the rest, at the top.
+    let partly = "outputs:\n  - { name: test-0 }\n  - { name: test-1, place: below }\n";
+    session.write_config("config.yaml", partly);
+    session.compositor_mut().reload_config();
+    assert_eq!(at(&session, &first), (80, 0));
+    assert_eq!(at(&session, &second), (0, 480));
+    assert_eq!(at(&session, &third), (800, 0));
+}

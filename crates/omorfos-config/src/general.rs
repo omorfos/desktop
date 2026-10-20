@@ -525,6 +525,26 @@ pub struct NamedOutput {
     /// what the screen says suits it best.
     #[serde(default)]
     pub mode: Option<ScreenMode>,
+    /// Where it stands next to the screen listed before it: to its right,
+    /// unless this says otherwise.
+    #[serde(default)]
+    pub place: Place,
+}
+
+/// Where a screen stands next to the one listed before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Place {
+    /// To its right, the tops in line.
+    #[default]
+    Right,
+    /// To its left, the tops in line.
+    Left,
+    /// Above it, the middles in line.
+    Above,
+    /// Below it, the middles in line.
+    Below,
 }
 
 /// The size a screen is driven at, in pixels, and how many times a second
