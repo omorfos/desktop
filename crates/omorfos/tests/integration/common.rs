@@ -95,6 +95,7 @@ pub(crate) mod key {
     pub(crate) const ESCAPE: Keycode = Keycode::new(9);
     pub(crate) const ONE: Keycode = Keycode::new(10);
     pub(crate) const TWO: Keycode = Keycode::new(11);
+    pub(crate) const TAB: Keycode = Keycode::new(23);
     pub(crate) const Q: Keycode = Keycode::new(24);
     pub(crate) const T: Keycode = Keycode::new(28);
     pub(crate) const RETURN: Keycode = Keycode::new(36);

@@ -24,8 +24,8 @@ use omorfos_config::{Kept, Store};
 pub use save::{crop, encode, pictures, save, together};
 
 /// What the picker says to do at the top of each screen.
-const HINT: &str =
-    "Drag over an area, or click a window or a screen. Enter takes every screen, Esc cancels.";
+const HINT: &str = "Drag over an area, or click a window or a screen. Tab reaches a window behind, \
+                    Enter takes every screen, Esc cancels.";
 
 /// How the program is used, said when it is used otherwise.
 const USAGE: &str = "usage: omorfos-screenshot [--window | --pick] [--to file|clipboard|both]";

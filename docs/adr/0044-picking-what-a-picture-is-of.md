@@ -84,6 +84,11 @@ whatever has moved since, and the picker is in no picture.
    source, so that it is shared whatever covers it and at its size as
    that changes; a region would have to be cut from every picture, and
    is left for later.
+5. A window behind another, by Tab: the outline goes to the next window
+   down under the pointer, and round again. The still screens show only
+   what was on top, so this is the one way to reach a covered window
+   without the user cancelling and moving it; what it looks like is not
+   shown yet, only where it is.
 
 ## Alternatives
 

@@ -241,6 +241,9 @@ struct State {
     over: Option<(usize, (i32, i32))>,
     /// Where a drag began, on which screen, and where it has got to.
     drag: Option<Drag>,
+    /// How far behind the window on top under the pointer the one picked
+    /// is, as Tab has gone; nothing more once the pointer moves.
+    behind: usize,
     shape: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
     layouts: xkb::Context,
     typing: Option<xkb::State>,
@@ -277,6 +280,7 @@ impl State {
             look,
             over: None,
             drag: None,
+            behind: 0,
             shape: None,
             layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
             typing: None,
@@ -387,7 +391,9 @@ impl State {
             let drawn = drag.map(|(_, from, to)| area::between(from, to, shown));
             let still = &self.stills[screen.still];
             let over = self.over.filter(|(on, _)| *on == index);
-            let under = over.and_then(|(_, at)| area::under(at, &still.windows, shown, still.size));
+            let under = over.and_then(|(_, at)| {
+                area::under(at, &still.windows, shown, still.size, self.behind)
+            });
             let drawn = match self.pickable {
                 Pickable::Anything => drawn.or(under.map(|(_, rect)| rect)),
                 // Where only a screen will do, it is the one the pointer is on.
@@ -426,7 +432,9 @@ impl State {
     }
 
     /// Has a drag reach `at`, if the pointer is on the screen it began on.
+    /// The window on top under it is the one picked again.
     fn dragged(&mut self, at: (i32, i32)) {
+        self.behind = 0;
         let on = self.over.map(|(on, _)| on);
         let dragging = self.drag.filter(|(from, ..)| Some(*from) == on);
         self.drag = dragging.map(|(on, from, _)| (on, from, at)).or(self.drag);
@@ -449,6 +457,7 @@ impl State {
                     let windows = &still.windows;
                     match self.pickable {
                         Pickable::Anything => {
+                            let windows = (windows.as_slice(), self.behind);
                             area::picked(screen.still, (from, to), windows, shown, still.size)
                         }
                         Pickable::Screen => Picked::Screen(screen.still),
@@ -469,7 +478,7 @@ impl State {
         let screen = &self.screens[on];
         let shown = screen.shown.unwrap_or_default();
         let still = &self.stills[screen.still];
-        let under = area::under(at, &still.windows, shown, still.size);
+        let under = area::under(at, &still.windows, shown, still.size, self.behind);
         under.map_or(Picked::Screen(screen.still), |(window, _)| Picked::Window {
             screen: screen.still,
             window,
@@ -498,8 +507,9 @@ impl State {
     }
 
     /// Takes in a key going down: Enter picks every screen, or what is
-    /// under the pointer where only a screen or a window will do, and
-    /// Escape nothing.
+    /// under the pointer where only a screen or a window will do, Escape
+    /// nothing, and Tab, with Shift or not, the window behind the one that
+    /// would be picked.
     fn pressed(&mut self, code: u32) {
         // The numbers the layout knows keys by are eight higher.
         let code = xkb::Keycode::new(code.saturating_add(8));
@@ -512,11 +522,19 @@ impl State {
             Pickable::Screen => screen.map(Picked::Screen),
             Pickable::ScreenOrWindow => self.over.map(|(on, at)| self.whole(on, at)),
         };
-        let outcome = typing.and_then(|typing| match typing.key_get_one_sym(code) {
-            xkb::Keysym::Return | xkb::Keysym::KP_Enter => enter.map(Outcome::Picked),
-            xkb::Keysym::Escape => Some(Outcome::Nothing),
+        let key = typing.map(|typing| typing.key_get_one_sym(code));
+        let outcome = match key {
+            Some(xkb::Keysym::Return | xkb::Keysym::KP_Enter) => enter.map(Outcome::Picked),
+            Some(xkb::Keysym::Escape) => Some(Outcome::Nothing),
+            // The window behind the one picked, and so on round, as a
+            // window covered by another cannot be pointed at.
+            Some(xkb::Keysym::Tab | xkb::Keysym::ISO_Left_Tab) => {
+                self.behind += 1;
+                self.moved = true;
+                None
+            }
             _ => None,
-        });
+        };
         self.ended(outcome);
     }
 

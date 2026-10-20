@@ -169,7 +169,7 @@ const SHARE_HINT: &str = "Click the screen you want to share, or press Esc to ca
 
 /// What it says when a window may be picked to share as well.
 const SHARE_WINDOW_HINT: &str =
-    "Click the window or screen you want to share, or press Esc to cancel.";
+    "Click the window or screen you want to share. Tab reaches a window behind, Esc cancels.";
 
 /// How often what is being picked is looked at, while it is.
 const PICKING: Duration = Duration::from_millis(50);
