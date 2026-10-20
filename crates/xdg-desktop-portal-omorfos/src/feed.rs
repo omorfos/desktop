@@ -78,6 +78,8 @@ struct Watching {
     followed: Followed,
     /// How large the pictures are, once said.
     size: Option<(u32, u32)>,
+    /// How large they are now, if the screen has changed size since.
+    resized: Option<(u32, u32)>,
     /// Whether no more will be given.
     stopped: bool,
     /// Whether the picture asked for has been taken, or could not be, as
@@ -298,6 +300,20 @@ impl Feed {
         self.size
     }
 
+    /// How large the pictures are now, if the screen has changed size
+    /// since this was last asked. The memory named before is let go of:
+    /// what is put in from now on is made to the new size.
+    pub fn resized(&mut self) -> Option<(u32, u32)> {
+        let resized = self.watching.resized.take();
+        let _ = resized.inspect(|size| {
+            self.size = *size;
+            for named in self.buffers.drain(..) {
+                named.buffer.destroy();
+            }
+        });
+        resized
+    }
+
     /// Asks for the next picture, to be put in `memory`. The compositor
     /// takes it once something on the screen has changed, and says it
     /// cannot if the memory is too small, which ends the feed.
@@ -381,13 +397,13 @@ impl Feed {
     /// # Errors
     ///
     /// Returns an error once no more pictures will be given: the screen
-    /// has gone or changed, or the connection has.
+    /// has gone, or the connection has.
     pub fn turn(&mut self) -> Result<Option<bool>, Failure> {
         let handled = self.queue.dispatch_pending(&mut self.watching);
         let handled = handled.map_err(Failure::from);
         let over = self.watching.stopped;
         let going = handled.and_then(|_| {
-            let said = "the screen being shared has gone or changed";
+            let said = "the screen being shared has gone";
             (!over).then_some(()).ok_or_else(|| Failure::from(said))
         });
         going.map(|()| {
@@ -515,10 +531,11 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, Of> for Watching {
             }
             (session::Event::BufferSize { width, height }, Of::Screen(_)) => {
                 // A size said again, and not as it was, is a screen that has
-                // changed: what reads the stream was told the size it is.
-                let said = Some((width, height));
-                watching.stopped |= watching.size.is_some_and(|size| Some(size) != said);
-                watching.size = watching.size.or(said);
+                // changed size, which the pictures follow.
+                let said = (width, height);
+                let changed = watching.size.is_some_and(|size| size != said);
+                watching.resized = changed.then_some(said).or(watching.resized);
+                watching.size = Some(said);
             }
             (session::Event::DmabufDevice { device }, Of::Screen(_)) => {
                 let number = device.try_into().ok().map(u64::from_ne_bytes);

@@ -101,6 +101,10 @@ impl Pipes {
             let layout = Rc::new(Cell::new(None));
             let (named, read, removed) = (Rc::clone(&node), Rc::clone(&reading), removals.clone());
             let (chosen, agreeing) = (Rc::clone(&layout), Rc::clone(&layout));
+            // How large the pictures are now, which changes as the screen
+            // does, and the memory made for them with it.
+            let sized = Rc::new(Cell::new(size));
+            let (roomy, making) = (Rc::clone(&sized), Rc::clone(&sized));
             let listener = stream
                 .add_local_listener::<()>()
                 .state_changed(move |stream, (), was, now| {
@@ -137,7 +141,7 @@ impl Pipes {
                              in {memory}",
                             at.width, at.height
                         ));
-                        let room = [Some(buffers(size, card)), pointer.map(beside)];
+                        let room = [Some(buffers(roomy.get(), card)), pointer.map(beside)];
                         let room = room.iter().flatten();
                         let room = room.filter_map(|room| Pod::from_bytes(room));
                         let _ = stream.update_params(&mut room.collect::<Vec<_>>());
@@ -146,7 +150,10 @@ impl Pipes {
             // The memory of each buffer is made here, so that the
             // compositor can be given it: on the card, in the layout agreed,
             // or shared.
-            let make = move || card.make(size, chosen.get(), || shared(size));
+            let make = move || {
+                let size = making.get();
+                card.make(size, chosen.get(), || shared(size))
+            };
             let listener = removed
                 .furnish(listener, make)
                 .register()
@@ -165,7 +172,8 @@ impl Pipes {
                     reading,
                     removals,
                     layout,
-                    size,
+                    size: sized,
+                    layouts,
                     taken: Cell::new(0),
                     sent: Cell::new(0),
                     alone: Cell::new(0),
@@ -200,7 +208,10 @@ pub struct Share {
     /// The layout of memory of the graphics card agreed with what reads
     /// the stream, or nothing, for shared memory.
     layout: Rc<Cell<Option<u64>>>,
-    size: (u32, u32),
+    /// How large the pictures are, and the layouts of memory of the card
+    /// they are offered in.
+    size: Rc<Cell<(u32, u32)>>,
+    layouts: Vec<u64>,
     /// How many buffers have been taken, and how many have gone to what
     /// reads the stream with a picture in them, and with only where the
     /// pointer is.
@@ -237,6 +248,17 @@ impl Share {
         self.layout.get()
     }
 
+    /// Has the pictures be `size` pixels large from now on, a size they
+    /// were not, as a screen that changes size has them: what reads the stream is offered that
+    /// size, agrees on it again, and is given memory made to it.
+    pub fn resize(&self, size: (u32, u32)) {
+        self.size.set(size);
+        note(&format!("the pictures are now {} by {}", size.0, size.1));
+        let offers = offers(size, &self.layouts);
+        let offer = offers.iter().filter_map(|offer| Pod::from_bytes(offer));
+        let _ = self.stream.update_params(&mut offer.collect::<Vec<_>>());
+    }
+
     /// A buffer to put the next picture in, if one is free: one that what
     /// reads the stream has finished with.
     #[must_use]
@@ -251,7 +273,7 @@ impl Share {
     /// pointer is, if it is sent beside the pictures. Without either, it
     /// is nothing new.
     pub fn give(&self, mut held: Held, filled: bool, pointer: Option<&Pointer<'_>>) {
-        let (_, height) = self.size;
+        let (_, height) = self.size.get();
         let stride = held.stride();
         let size = stride * height;
         let filled = filled && held.filled(size, i32::try_from(stride).unwrap_or(i32::MAX));

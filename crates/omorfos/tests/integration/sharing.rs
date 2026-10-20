@@ -506,6 +506,11 @@ impl Viewer {
 
     /// The colour at a place in the last picture seen, as `0xAARRGGBB`,
     /// for a picture `width` pixels across.
+    /// How many pixels the last picture seen had.
+    fn pixels(&self) -> usize {
+        self.seen.borrow().as_ref().map_or(0, |seen| seen.len() / 4)
+    }
+
     fn at(&self, width: i32, (x, y): (i32, i32)) -> Option<u32> {
         let seen = self.seen.borrow();
         let at = usize::try_from((y * width + x) * 4).unwrap();
@@ -1059,7 +1064,7 @@ fn without_pipewire_or_leave_to_take_pictures_the_call_is_told_it_failed() {
 }
 
 #[test]
-fn a_screen_that_changes_ends_its_sharing_and_the_session_is_closed() {
+fn a_screen_that_goes_ends_its_sharing_and_the_session_is_closed() {
     let daemon = Daemon::start();
     let pipewire = Pipewire::start();
     let mut session = Session::new();
@@ -1088,7 +1093,8 @@ fn a_screen_that_changes_ends_its_sharing_and_the_session_is_closed() {
     press(&mut session, key::RETURN);
     // With two screens, the one to share is picked.
     assert_eq!(picked_screen(&mut session, starting, (10, 10)).0, 0);
-    session.resize_output((320, 240));
+    let output = session.output();
+    session.compositor_mut().remove_output(&output);
     session.eventually(|session| {
         session.draw();
         session.step();
@@ -1275,4 +1281,73 @@ fn without_leave_to_take_pictures_two_screens_cannot_be_picked_from() {
         call_session,
     );
     assert_eq!(answered(&mut session, starting).0, 2);
+}
+
+#[test]
+fn a_screen_that_changes_size_goes_on_being_shared_at_its_new_size() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/resized";
+    let (_peer, node) = sharing(&mut session, &daemon, call_session);
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.at(WIDTH, (10, 10)) == Some(RED)
+    });
+    assert_eq!(viewer.pixels(), 640 * 480);
+
+    session.resize_output((320, 240));
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pixels() == 320 * 240 && viewer.at(320, (10, 10)) == Some(RED)
+    });
+    assert_eq!(viewer.at(320, (300, 200)), Some(BACKGROUND));
+    assert!(
+        session.compositor().captured(&session.output()),
+        "and it is still shared"
+    );
+}
+
+#[test]
+fn a_screen_shared_in_the_memory_of_the_card_goes_on_at_its_new_size() {
+    let Some(card) = render_node() else {
+        let said = "not tried: there is no graphics card this user may use";
+        let _ = writeln!(std::io::stderr(), "{said}");
+        return;
+    };
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .offer_gpu_buffers(card, drawable())
+        .unwrap();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let called = "/org/freedesktop/portal/desktop/session/1_1/card_resized";
+    let (_peer, node) = sharing(&mut session, &daemon, called);
+    let mut viewer = Viewer::reading(&remote, true);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.at(WIDTH, (10, 10)) == Some(RED)
+    });
+    session.resize_output((320, 240));
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pixels() == 320 * 240 && viewer.at(320, (10, 10)) == Some(RED)
+    });
+    assert_eq!(viewer.at(320, (300, 200)), Some(BACKGROUND));
+    assert!(viewer.card.get(), "memory of the card still");
+    assert!(!viewer.unreadable.get(), "a buffer no reader could read");
 }

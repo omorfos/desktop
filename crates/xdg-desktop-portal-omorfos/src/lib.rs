@@ -690,6 +690,11 @@ impl Backend<'_> {
                 sharing.call = None;
             }
             let turned = sharing.feed.turn();
+            // A screen that changes size goes on being shared at the new
+            // size. A picture asked for at the old the compositor cannot
+            // take, and its buffer goes back empty, as any such does.
+            let resized = sharing.feed.resized();
+            let _ = resized.inspect(|size| sharing.out.resize(*size));
             if let Err(failure) = &turned {
                 note(&format!("the screen is no longer shared: {failure}"));
                 portal.close(&sharing.session);
