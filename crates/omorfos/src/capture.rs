@@ -11,7 +11,7 @@ use std::any::Any;
 use std::time::{Duration, Instant};
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
-use smithay::backend::allocator::{Format as DrmFormat, Fourcc};
+use smithay::backend::allocator::{Buffer as _, Format as DrmFormat, Fourcc};
 use smithay::backend::renderer::Offscreen;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Element;
@@ -657,13 +657,22 @@ impl Capture {
 
     /// The pictures due that are to be drawn into memory of the graphics
     /// card, with what each is drawn into, and those to be written into
-    /// shared memory.
+    /// shared memory. Memory of the card not of the size the pictures are
+    /// now, as memory asked to hold one before they changed size is, goes
+    /// with the rest, where it cannot be written and the picture fails: it
+    /// could hold a smaller picture, which the program would take for one
+    /// of the size it made it to, and which the compositor would take for
+    /// the first of the new size, after which it waits for a change.
     pub(crate) fn split(&self, due: Vec<Due>) -> (Vec<(Due, Dmabuf)>, Vec<Due>) {
         let mut on_card = Vec::new();
         let mut in_memory = Vec::new();
         for due in due {
             let buffer = self.shots[due.shot].buffer.as_ref();
             let card = buffer.and_then(|buffer| get_dmabuf(buffer).ok()).cloned();
+            let card = card.filter(|card| {
+                let made = card.size();
+                (made.w, made.h) == (due.size.w, due.size.h)
+            });
             match card {
                 Some(card) => on_card.push((due, card)),
                 None => in_memory.push(due),
