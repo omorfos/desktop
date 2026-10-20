@@ -1,0 +1,56 @@
+name: Something does not work
+description: A bug in omorfos or one of its programs.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thank you for taking the time. A security vulnerability goes
+        through private reporting instead, as SECURITY.md says.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to bring it about
+      description: Step by step, from logging in. Say if it happens every time or only sometimes.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What `omorfosctl version` prints, or the commit it was built from.
+    validations:
+      required: true
+  - type: textarea
+    id: machine
+    attributes:
+      label: The machine
+      description: >-
+        The distribution, the graphics card and its driver, the screens and
+        their scales, and how the session is started (which display manager,
+        or from a terminal).
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: What you changed in `~/.config/omorfos/`, if anything.
+      render: yaml
+  - type: textarea
+    id: log
+    attributes:
+      label: What omorfos wrote
+      description: >-
+        What the compositor wrote to its standard error around the time it
+        happened. With a display manager this is usually in
+        `journalctl --user -b` or the display manager's session log. Look it
+        over before pasting: it can name your windows and files.
+      render: text
