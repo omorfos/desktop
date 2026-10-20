@@ -228,7 +228,7 @@ pub fn pick(
     placed: &[omorfos_ipc::Placed],
     theme: &omorfos_config::Theme,
 ) -> Result<Option<Vec<Shot>>, Failure> {
-    let stills = stills(&shots, placed);
+    let stills = stills(connection, &shots, placed);
     let picked = omorfos_picker::pick(
         connection,
         stills,
@@ -265,7 +265,8 @@ pub fn pick_shared(
     } else {
         omorfos_picker::Pickable::Screen
     };
-    let picked = omorfos_picker::pick(connection, stills(shots, placed), (pickable, hint), theme);
+    let stills = stills(connection, shots, placed);
+    let picked = omorfos_picker::pick(connection, stills, (pickable, hint), theme);
     picked.map(|picked| picked.and_then(|picked| shared(shots, placed, picked)))
 }
 
@@ -317,22 +318,56 @@ fn on<'a>(
 }
 
 /// The pictures of `shots` to pick from, one for each screen, with the
-/// windows of `placed` that are on it.
-fn stills(shots: &[Shot], placed: &[omorfos_ipc::Placed]) -> Vec<omorfos_picker::Still> {
-    let stills = shots.iter().map(|shot| omorfos_picker::Still {
-        screen: shot.screen.clone(),
-        size: (shot.width, shot.height),
-        pixels: shot.pixels.clone(),
-        windows: on(placed, shot)
-            .map(|place| omorfos_picker::Area {
-                x: place.x,
-                y: place.y,
-                width: place.width,
-                height: place.height,
-            })
-            .collect(),
+/// windows of `placed` that are on it, and a picture taken now, over the
+/// compositor `connection` is to, of each that another covers.
+fn stills(
+    connection: &wayland_client::Connection,
+    shots: &[Shot],
+    placed: &[omorfos_ipc::Placed],
+) -> Vec<omorfos_picker::Still> {
+    let stills = shots.iter().map(|shot| {
+        let windows: Vec<_> = on(placed, shot).collect();
+        let alone = windows.iter().enumerate().map(|(at, window)| {
+            let covered = windows[..at].iter().any(|above| overlap(above, window));
+            covered.then(|| alone(connection, &window.handle)).flatten()
+        });
+        omorfos_picker::Still {
+            screen: shot.screen.clone(),
+            size: (shot.width, shot.height),
+            pixels: shot.pixels.clone(),
+            alone: alone.collect(),
+            windows: windows
+                .iter()
+                .map(|place| omorfos_picker::Area {
+                    x: place.x,
+                    y: place.y,
+                    width: place.width,
+                    height: place.height,
+                })
+                .collect(),
+        }
     });
     stills.collect()
+}
+
+/// Whether two windows on a screen cover any of each other.
+fn overlap(one: &omorfos_ipc::Placed, other: &omorfos_ipc::Placed) -> bool {
+    let apart = |(at, wide): (u32, u32), (other, other_wide): (u32, u32)| {
+        at.saturating_add(wide) <= other || other.saturating_add(other_wide) <= at
+    };
+    !apart((one.x, one.width), (other.x, other.width))
+        && !apart((one.y, one.height), (other.y, other.height))
+}
+
+/// A picture of the window called `handle` by itself, taken now, if it can
+/// be.
+fn alone(connection: &wayland_client::Connection, handle: &str) -> Option<omorfos_picker::Alone> {
+    let shot = shoot(connection, Some(handle.to_owned())).ok();
+    let shot = shot.and_then(|(shots, _)| shots.into_iter().next());
+    shot.map(|shot| omorfos_picker::Alone {
+        size: (shot.width, shot.height),
+        pixels: shot.pixels,
+    })
 }
 
 /// What is kept of `shots`, the pictures of every screen with the windows

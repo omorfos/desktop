@@ -990,8 +990,9 @@ to take every screen, side by side, or Escape or another button to take
 nothing. A region or a screen is cut from the screens as they were when
 you pressed the key; a window is taken as it is when you click, the parts
 of it others covered too. A window behind another is reached with Tab:
-each press outlines the next window down under the pointer, and round
-again to the top, and moving the pointer starts from the top. The dim is the theme's `picker` part, and a
+each press outlines the next window down under the pointer, shown as it
+is over what covers it, and round again to the top, and moving the
+pointer starts from the top. The dim is the theme's `picker` part, and a
 line at the bottom of each screen, drawn as `tooltip`, says what to do. To have `Print` put its picture on the clipboard, or both, say so
 in `config.yaml`:
 

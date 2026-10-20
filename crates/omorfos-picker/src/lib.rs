@@ -73,21 +73,40 @@ pub struct Still {
     pub pixels: Vec<u8>,
     /// Where each window on it is in the picture, the one on top first.
     pub windows: Vec<Area>,
+    /// A picture of each of `windows` by itself, in the same order, for
+    /// those others cover: shown where the window is once it is outlined,
+    /// so that what it is can be seen.
+    pub alone: Vec<Option<Alone>>,
 }
 
 impl Still {
     /// The picture, to be shown pixel for pixel.
     fn canvas(&self) -> Canvas {
-        let (width, height) = self.size;
-        let mut canvas = Canvas::new(width, height);
-        let pixels = self.pixels.as_chunks::<3>().0.iter().zip(0..);
-        for (&[red, green, blue], at) in pixels {
-            let (x, y) = (at % width.max(1), at / width.max(1));
-            let colour = Color::rgb(red, green, blue);
-            canvas.blend(x.cast_signed(), y.cast_signed(), colour, u8::MAX);
-        }
-        canvas
+        canvas(self.size, &self.pixels)
     }
+}
+
+/// A picture of a window by itself: how many pixels across and down it
+/// is, and its pixels from the top left, three bytes to each, red, green
+/// and blue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alone {
+    /// Its size in pixels.
+    pub size: (u32, u32),
+    /// Its pixels.
+    pub pixels: Vec<u8>,
+}
+
+/// A picture `size` pixels large of `pixels`, three bytes to each.
+fn canvas((width, height): (u32, u32), pixels: &[u8]) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    let pixels = pixels.as_chunks::<3>().0.iter().zip(0..);
+    for (&[red, green, blue], at) in pixels {
+        let (x, y) = (at % width.max(1), at / width.max(1));
+        let colour = Color::rgb(red, green, blue);
+        canvas.blend(x.cast_signed(), y.cast_signed(), colour, u8::MAX);
+    }
+    canvas
 }
 
 /// What may be picked.
@@ -192,6 +211,9 @@ struct Screen {
     shown: Option<(u32, u32)>,
     /// The picture, once it is painted.
     painted: Option<wl_buffer::WlBuffer>,
+    /// The picture of the window outlined by itself, under the dim and
+    /// the border, where it has one.
+    lifted: Lifted,
     /// The four bands of the dim, then the four sides of the border.
     bands: Vec<Band>,
     /// The line that says what to do, once it is painted.
@@ -381,7 +403,8 @@ impl State {
         if !mem::take(&mut self.moved) {
             return;
         }
-        for (index, screen) in self.screens.iter().enumerate() {
+        let shm = self.shm.clone();
+        for (index, screen) in self.screens.iter_mut().enumerate() {
             let shown = screen.shown.unwrap_or_default();
             // What a drag that has gone far enough draws, or else the window
             // under the pointer, which a click would pick.
@@ -404,6 +427,15 @@ impl State {
                     under.map(|(_, rect)| rect).or(screen)
                 }
             };
+            // The window outlined, as it is by itself, where there is a
+            // picture of it: not while a region is drawn, nor where only a
+            // screen will do.
+            let window = under.filter(|_| drag.is_none() && self.pickable != Pickable::Screen);
+            let lifted = window.and_then(|(window, rect)| {
+                let alone = still.alone.get(window).and_then(Option::as_ref);
+                alone.map(|alone| (window, rect, alone))
+            });
+            screen.lifted.show(lifted.zip(shm.as_ref()), handle);
             let rects = dimmed(drawn, shown).into_iter();
             let rects = rects.chain(bordered(drawn, self.look.thick));
             for (band, rect) in screen.bands.iter().zip(rects) {
@@ -420,21 +452,29 @@ impl State {
             .screens
             .iter()
             .position(|screen| screen.surface == *surface);
-        self.over = on.map(|on| (on, at));
+        self.went(on.map(|on| (on, at)));
         self.dragged(at);
     }
 
     /// Takes in the pointer moving on the screen it is over.
     fn moved_to(&mut self, (x, y): (f64, f64)) {
         let at = (whole(x), whole(y));
-        self.over = self.over.map(|(on, _)| (on, at));
+        self.went(self.over.map(|(on, _)| (on, at)));
         self.dragged(at);
     }
 
+    /// Notes where the pointer is now. Moved, the window on top under it is
+    /// the one picked again; told again where it is, as it is when what is
+    /// under it changes, it is not.
+    fn went(&mut self, over: Option<(usize, (i32, i32))>) {
+        if over != self.over {
+            self.behind = 0;
+        }
+        self.over = over;
+    }
+
     /// Has a drag reach `at`, if the pointer is on the screen it began on.
-    /// The window on top under it is the one picked again.
     fn dragged(&mut self, at: (i32, i32)) {
-        self.behind = 0;
         let on = self.over.map(|(on, _)| on);
         let dragging = self.drag.filter(|(from, ..)| Some(*from) == on);
         self.drag = dragging.map(|(on, from, _)| (on, from, at)).or(self.drag);
@@ -573,6 +613,8 @@ impl Screen {
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
         let viewport = globals.viewporter.get_viewport(&surface, handle, ());
+        // Made first, so that the dim and the border are over it.
+        let lifted = Lifted::new(globals, (&surface, empty), handle);
         let colours = [look.dim; 4].into_iter().chain([look.border; 4]);
         let bands = colours
             .filter_map(|colour| Band::new(globals, &surface, (colour, empty), handle))
@@ -585,6 +627,7 @@ impl Screen {
             viewport,
             shown: None,
             painted: None,
+            lifted,
             bands,
             hint: None,
         }
@@ -592,6 +635,7 @@ impl Screen {
 
     fn close(self) {
         self.hint.into_iter().for_each(Hint::close);
+        self.lifted.close();
         self.bands.into_iter().for_each(Band::close);
         self.viewport.destroy();
         self.layer.destroy();
@@ -667,6 +711,78 @@ impl Hint {
         self.over.destroy();
         self.surface.destroy();
         self.painted.destroy();
+    }
+}
+
+/// A picture of a window by itself over a screen's, where the window is,
+/// which takes nothing from the pointer.
+struct Lifted {
+    surface: wl_surface::WlSurface,
+    over: wl_subsurface::WlSubsurface,
+    viewport: wp_viewport::WpViewport,
+    /// The pictures painted so far, each with the window it is of, by its
+    /// place among the screen's: one for each window another covers, at
+    /// most, kept until the picker goes.
+    painted: Vec<(usize, wl_buffer::WlBuffer)>,
+}
+
+impl Lifted {
+    /// Nothing yet, over `parent`; `empty` is where it takes the pointer.
+    fn new(
+        globals: &Globals,
+        (parent, empty): (&wl_surface::WlSurface, &wl_region::WlRegion),
+        handle: &QueueHandle<State>,
+    ) -> Self {
+        let surface = globals.compositor.create_surface(handle, ());
+        surface.set_input_region(Some(empty));
+        let over = globals
+            .subsurfaces
+            .get_subsurface(&surface, parent, handle, ());
+        let viewport = globals.viewporter.get_viewport(&surface, handle, ());
+        Self {
+            surface,
+            over,
+            viewport,
+            painted: Vec::new(),
+        }
+    }
+
+    /// Shows `alone`, the picture of window `window`, over `rect` of the
+    /// screen, painting it the first time; or nothing.
+    fn show(
+        &mut self,
+        wanted: Option<((usize, Rect, &Alone), &wl_shm::WlShm)>,
+        handle: &QueueHandle<State>,
+    ) {
+        let fresh = wanted
+            .filter(|((window, ..), _)| !self.painted.iter().any(|(painted, _)| painted == window));
+        if let Some(((window, _, alone), shm)) = fresh {
+            let painted = picture(shm, &canvas(alone.size, &alone.pixels), handle).ok();
+            self.painted
+                .extend(painted.map(|painted| (window, painted)));
+        }
+        let shown = wanted.and_then(|((window, rect, _), _)| {
+            let mut painted = self.painted.iter();
+            let painted = painted.find(|(painted, _)| *painted == window);
+            painted.map(|(_, painted)| (rect, painted))
+        });
+        if let Some(((x, y, width, height), _)) = shown {
+            self.over.set_position(x, y);
+            let size = (width.max(1).cast_signed(), height.max(1).cast_signed());
+            self.viewport.set_destination(size.0, size.1);
+        }
+        self.surface.attach(shown.map(|(_, painted)| painted), 0, 0);
+        self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+        self.surface.commit();
+    }
+
+    fn close(self) {
+        self.viewport.destroy();
+        self.over.destroy();
+        self.surface.destroy();
+        self.painted
+            .iter()
+            .for_each(|(_, painted)| painted.destroy());
     }
 }
 

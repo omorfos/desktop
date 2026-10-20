@@ -1542,7 +1542,22 @@ fn a_window_behind_another_is_reached_by_tab_and_shared() {
         cover.receive();
         session.draw().at(edge.0, edge.1) != before
     });
-    press(&mut session, key::TAB);
+    // The window reached is shown as it is, where it is, over the one
+    // that covers it, red over green; and Tab again goes round to the one
+    // on top, which shows as it was.
+    let inside = |session: &mut Session| session.draw().at(50, 50);
+    let red = |colour: u32| (colour >> 16) & 0xff > (colour >> 8) & 0xff;
+    let top = inside(&mut session);
+    assert!(!red(top), "the window on top, {top:#x}");
+    for (step, behind) in [(1, true), (2, false), (3, true)] {
+        press(&mut session, key::TAB);
+        let shows = |colour: u32| red(colour) == behind;
+        session.eventually(|session| {
+            session.step();
+            shows(inside(session))
+        });
+        assert!(shows(inside(&mut session)), "after Tab {step} times");
+    }
     for pressed in [true, false] {
         let button = Input::Button {
             button: 0x110,
