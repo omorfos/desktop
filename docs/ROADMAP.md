@@ -328,11 +328,17 @@ calls for them.
       a program may follow it over a window as over a screen.
 - [x] A line round a window while it is shared, as there is round a screen:
       over its frame and under the windows over it, and in no picture.
-- [ ] Known gaps in sharing the screen: a region cannot be shared yet; the size the application is told is in pixels,
-      not in units of layout; a choice cannot be remembered for next time;
-      and the user cannot stop sharing from the desktop, only from the
-      application. A reader that cannot take buffers of the GPU is still
-      given pictures read back and turned on the CPU.
+- [x] A region of a screen shared, drawn by a drag in the picker, cut from
+      pictures of all of the screen in memory of the portal's own.
+- [ ] Known gaps in sharing a region: not in memory of the card, which
+      would need the GPU to cut it; a screen that changes size ends it;
+      and with one screen, an application that can take only a screen is
+      given it at once, with no picker to draw a region in.
+- [ ] Known gaps in sharing the screen: the size the application is told
+      is in pixels, not in units of layout; a choice cannot be remembered
+      for next time; and the user cannot stop sharing from the desktop,
+      only from the application. A reader that cannot take buffers of the
+      GPU is still given pictures read back and turned on the CPU.
 - [x] The pointer sent beside the pictures when a call asks, as
       PipeWire's cursor metadata, so that moving it makes no new picture of
       the screen: where it is with every buffer, its picture with it, and a

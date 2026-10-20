@@ -874,6 +874,9 @@ application can take a window as well, you then pick what: the screens
 go still and dim but for what is under the pointer, a window or, beside
 every window, the screen, and a click or Enter shares that, Escape
 nothing; Tab reaches a window behind another, as it does for a picture.
+Drag to share a region of a screen instead: the application is told it
+is a screen as large as the region, and if the screen changes size the
+sharing ends.
 A window is shared by itself, whatever covers it, at its size
 as that changes, with the pointer drawn in or sent beside where it is
 over the window, as the application asks. While anything is
