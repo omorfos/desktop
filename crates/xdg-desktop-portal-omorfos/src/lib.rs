@@ -732,8 +732,9 @@ impl Backend<'_> {
                 portal.close(&sharing.session);
             }
             // A picture being put in memory PipeWire has since taken away
-            // is not waited for.
-            drop(sharing.held.take_if(|(held, _)| held.gone()));
+            // is not waited for, and the compositor is told so.
+            let gone = sharing.held.take_if(|(held, _)| held.gone());
+            drop(gone.inspect(|_| sharing.feed.abandon()));
             // A picture that could not be taken, as while the session is
             // locked, gives its buffer back to be filled again later.
             let over = turned.as_ref().ok().copied().flatten();

@@ -122,8 +122,10 @@ pub struct Feed {
     /// The compositor's names for the memory pictures have been put in, kept
     /// so as not to be made for each picture.
     buffers: Vec<Named>,
-    /// Which memory the picture asked for is being put in.
+    /// Which memory the picture asked for is being put in, and what it was
+    /// asked for by, until it has been put there or could not be.
     asked: Option<(u64, usize)>,
+    frame: Option<ExtImageCopyCaptureFrameV1>,
     size: (u32, u32),
     /// The pointer, if it is followed beside the pictures.
     following: Option<Following>,
@@ -354,6 +356,7 @@ impl Feed {
                 session,
                 buffers: Vec::new(),
                 asked: None,
+                frame: None,
                 size,
                 following,
                 window,
@@ -448,6 +451,9 @@ impl Feed {
     pub fn resized(&mut self) -> Option<(u32, u32)> {
         let resized = self.watching.resized.take();
         let _ = resized.inspect(|size| {
+            // A picture asked for at the old size is not waited for, and
+            // the memory named to the compositor is let go of.
+            self.abandon();
             self.size = *size;
             for named in self.buffers.drain(..) {
                 named.buffer.destroy();
@@ -481,6 +487,7 @@ impl Feed {
             region.into = into.map(|into| (into, memory.offset, memory.stride));
             self.watching.changed.clear();
             self.asked = Some(memory.place);
+            self.frame = Some(frame);
             return;
         }
         // Memory handed out before buffers were last taken away is gone,
@@ -522,6 +529,19 @@ impl Feed {
         frame.capture();
         self.watching.changed.clear();
         self.asked = Some(memory.place);
+        self.frame = Some(frame);
+    }
+
+    /// Lets go of the picture asked for, if one is, which is not to be
+    /// waited for: the memory it was to go in is gone, as when PipeWire
+    /// takes buffers away. Until it has been let go of, the compositor is
+    /// not to be asked for another.
+    pub fn abandon(&mut self) {
+        self.asked = None;
+        self.frame
+            .take()
+            .iter()
+            .for_each(ExtImageCopyCaptureFrameV1::destroy);
     }
 
     /// Has the compositor know memory by a name, to put pictures in: memory
@@ -597,6 +617,8 @@ impl Feed {
             // A picture put in memory leaves nothing in it out of date, and
             // what changed for it is out of date in all the rest.
             let asked = self.asked.take_if(|_| over.is_some());
+            // The compositor has let go of what it was asked by.
+            drop(self.frame.take_if(|_| over.is_some()));
             let filled = asked.filter(|_| over == Some(true));
             let changed = &self.watching.changed;
             if let Some(filled) = filled {
