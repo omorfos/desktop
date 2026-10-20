@@ -541,10 +541,13 @@ fn a_program_written_for_x11_can_ask_for_its_window_to_be_moved_or_resized() {
     let level = atom(&mut session, &program, "_NET_WM_STATE_MAXIMIZED_HORZ");
     let maximize = [1, upright, level, 1, 0];
     ask(&mut session, &program, window, "_NET_WM_STATE", maximize);
-    for _ in 0..50 {
-        session.step();
-    }
     assert_eq!(windows(&session), []);
+    // What a program asks reaches the compositor in the order it was
+    // asked: once the window is back, what was asked before has been
+    // heard, and it was not done.
+    show(&mut session, &program, window, true);
+    session.eventually(|session| windows(session).len() == 1);
+    assert!(!frame(&session).1, "not maximized");
 }
 
 #[test]
