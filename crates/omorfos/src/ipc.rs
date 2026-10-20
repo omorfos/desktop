@@ -70,6 +70,11 @@ struct Peer {
     /// Subscribed, but not yet sent the state for the first time.
     waiting: bool,
     alive: bool,
+    /// Whether it still takes what is sent it. A write to it that fails
+    /// does not end it at once: it may have said something, and gone,
+    /// before that was read. It is read once more, as each turn reads
+    /// before it writes, and let go of at the next write.
+    listening: bool,
     /// What wakes the event loop when the peer writes, to be removed with
     /// the peer.
     wake: Option<RegistrationToken>,
@@ -107,14 +112,9 @@ impl Server {
             );
             let room = self.peers.len() < MAX_PEERS;
             let ready = stream.set_nonblocking(true).is_ok();
-            self.peers.extend((trusted && room && ready).then(|| Peer {
-                wake: wake(&stream),
-                stream,
-                inbox: Vec::new(),
-                outbox: Vec::new(),
-                follows: None,
-                waiting: false,
-                alive: true,
+            self.peers.extend((trusted && room && ready).then(|| {
+                let woken = wake(&stream);
+                Peer::new(stream, woken)
             }));
         }
     }
@@ -133,6 +133,21 @@ fn same_user(peer: Option<u32>, owner: u32) -> bool {
 }
 
 impl Peer {
+    /// A peer just taken on, over `stream`, which `wake` wakes the event
+    /// loop for when it writes.
+    const fn new(stream: UnixStream, wake: Option<RegistrationToken>) -> Self {
+        Self {
+            stream,
+            inbox: Vec::new(),
+            outbox: Vec::new(),
+            follows: None,
+            waiting: false,
+            alive: true,
+            listening: true,
+            wake,
+        }
+    }
+
     /// Reads whatever has arrived and returns the complete lines.
     ///
     /// Lines are taken out as they arrive, so that no more than one message
@@ -172,12 +187,18 @@ impl Peer {
         self.outbox.extend_from_slice(encode(reply).as_bytes());
     }
 
-    /// Sends as much queued output as the socket will take right now.
+    /// Sends as much queued output as the socket will take right now. Once
+    /// a write fails, nothing more is kept for the peer, and at the next
+    /// it is let go of, having been read once more in between.
     fn flush(&mut self) {
+        self.alive &= self.listening;
         match self.stream.write(&self.outbox) {
             Ok(sent) => drop(self.outbox.drain(..sent)),
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => self.alive = false,
+            Err(_) => {
+                self.listening = false;
+                self.outbox.clear();
+            }
         }
         self.alive &= self.outbox.len() <= MAX_BACKLOG;
     }
@@ -470,5 +491,30 @@ mod tests {
             "not even root is assumed to be welcome"
         );
         assert!(!same_user(None, 1000), "an unidentified peer");
+    }
+
+    #[test]
+    fn what_a_peer_said_before_it_went_is_heard_though_nothing_more_can_be_sent_it() {
+        // A program that asks for something and ends at once, as the
+        // launcher does once a program is picked, may be gone before what
+        // it said is read, and then a write to it fails.
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        ours.set_nonblocking(true).unwrap();
+        let mut peer = Peer::new(ours, None);
+        (&theirs).write_all(b"asked\n").unwrap();
+        drop(theirs);
+
+        // Every peer is written to at the end of each turn, whether or not
+        // there is anything to send it.
+        peer.flush();
+        assert!(peer.alive, "still to be read");
+
+        // The next turn reads it, and answers what it asked, which is not
+        // kept for it; at the end of the turn it is let go of.
+        assert_eq!(peer.read_lines(), [b"asked\n".to_vec()]);
+        peer.queue(&Reply::Done);
+        peer.flush();
+        assert!(peer.outbox.is_empty(), "nothing is kept for it");
+        assert!(!peer.alive, "let go of once what it said was read");
     }
 }

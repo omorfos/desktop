@@ -683,11 +683,11 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
     }
     hold(&mut session, DOWN, false);
     press(&mut session, key::RETURN);
-    // This has failed now and then, under stress, with the launcher done
-    // and nothing wrong said: so the wait is for long enough by the clock
-    // on the wall, not a count of turns, for a busy machine to start a
-    // program. If it fails again, what the launcher and the compositor
-    // made of it is said, which a bare wait would not.
+    // The launcher asks and ends at once, so its socket may close before
+    // what it asked is read; the compositor reads it all the same. The wait
+    // is long enough by the clock on the wall, not a count of turns, for a
+    // busy machine to start a program, and if it fails, what the launcher
+    // and the compositor made of it is said, which a bare wait would not.
     let started = Instant::now();
     while !marker.exists() {
         let waited = started.elapsed();
