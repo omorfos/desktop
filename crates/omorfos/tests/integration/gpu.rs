@@ -2,12 +2,12 @@
 //! draws with the card hands its pictures over as they are, once the
 //! backend says which card and what it can draw.
 //!
-//! What needs a graphics card is tested where there is one, and passes
-//! without being tried where there is none, as in CI. To try it, run the
-//! tests on a machine whose user may use `/dev/dri/renderD128`.
+//! What needs a graphics card is ignored unless asked for, as CI, which
+//! has none, does not ask. To try it, run the tests with
+//! `--include-ignored` on a machine whose user may use
+//! `/dev/dri/renderD128`.
 
 use std::fs::File;
-use std::io::Write;
 use std::os::fd::AsFd;
 
 use smithay::backend::allocator::{Format, Fourcc, Modifier};
@@ -29,9 +29,8 @@ fn drawable() -> [Format; 1] {
     }]
 }
 
-/// The graphics card to try with, and its device number, if this machine
-/// has one this user may use.
-fn card() -> Option<(File, u64)> {
+/// The graphics card to try with, and its device number.
+fn card() -> (File, u64) {
     crate::common::graphics_card()
 }
 
@@ -58,12 +57,9 @@ fn a_program_may_hand_over_buffers_of_the_graphics_card_once_the_backend_offers_
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_window_drawn_in_the_memory_of_the_graphics_card_is_shown_as_drawn() {
-    let Some((card, number)) = card() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let (card, number) = card();
     let mut session = Session::new();
     session
         .compositor_mut()
@@ -157,13 +153,10 @@ fn a_program_taking_pictures_is_told_it_may_take_them_in_the_memory_of_the_card(
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_picture_asked_for_in_the_cards_memory_before_the_screen_shrinks_fails_and_the_next_is_at_once()
 {
-    let Some((card, number)) = card() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let (card, number) = card();
     let mut session = Session::new();
     session
         .compositor_mut()
@@ -227,12 +220,9 @@ fn a_picture_asked_for_in_the_cards_memory_before_the_screen_shrinks_fails_and_t
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_picture_of_the_screen_is_drawn_straight_into_the_memory_of_the_card() {
-    let Some((card, number)) = card() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let (card, number) = card();
     let mut session = Session::new();
     session
         .compositor_mut()
@@ -269,12 +259,9 @@ fn a_picture_of_the_screen_is_drawn_straight_into_the_memory_of_the_card() {
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn pictures_in_the_memory_of_the_card_go_on_while_a_private_window_is_open() {
-    let Some((card, number)) = card() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let (card, number) = card();
     let rules = "rules:\n  - match: { app_id: wallet }\n    private: true\n";
     let mut session = Session::with_config(&[("rules.yaml", rules)]);
     session

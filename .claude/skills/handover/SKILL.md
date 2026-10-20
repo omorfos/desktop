@@ -50,14 +50,16 @@ is the order things are done in, and what the maintainer expects to be told.
 In tiers, as `docs/TESTING.md` says under "Tiers". Before handing over,
 the `handover` tier, on the tree as it will be committed: `typos`,
 `cargo fmt`, clippy with all features, every test once under the
-coverage gate, and the nightly build.
+coverage gate, with the tests that need a graphics card where this user
+may use one, and the nightly build.
 
 ```sh
 .claude/skills/handover/gates.sh handover
 ```
 
-The `rest` tier, clippy without features, the coverage gate without a
-graphics card, the doctests, `cargo deny` and `cargo doc`, is started in
+The `rest` tier, clippy without features, the coverage gate without the
+tests that need a graphics card, the doctests, `cargo deny` and `cargo
+doc`, is started in
 the background as the build is handed over (step 5), and has to have
 passed before anything is committed. Never two runs of the gates at
 once: they share the machine, and the X11 tests time out.

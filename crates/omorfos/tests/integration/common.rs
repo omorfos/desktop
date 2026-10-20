@@ -2197,14 +2197,24 @@ pub(crate) fn between(color: u32, one: u32, other: u32) -> bool {
 }
 
 /// The graphics card to try the tests that need one with, and its device
-/// number, if this machine has one this user may use; none if
-/// `OMORFOS_TESTS_WITHOUT_CARD` is set, so that coverage can be measured
-/// as CI, which has no card, measures it.
-pub(crate) fn graphics_card() -> Option<(std::fs::File, u64)> {
+/// number. Those tests are ignored unless asked for, as CI, which has no
+/// card, does not ask; one asked for where this user may use no card
+/// fails, rather than passing without having tried anything.
+pub(crate) fn graphics_card() -> (std::fs::File, u64) {
     use std::os::unix::fs::MetadataExt;
-    let wanted = std::env::var_os("OMORFOS_TESTS_WITHOUT_CARD").is_none();
     let path = Path::new("/dev/dri/renderD128");
-    let file = std::fs::File::options().read(true).write(true).open(path);
-    let number = std::fs::metadata(path).ok().map(|told| told.rdev());
-    file.ok().zip(number).filter(|_| wanted)
+    let refused = |error: std::io::Error| {
+        format!(
+            "no graphics card this user may use at {}: {error}",
+            path.display()
+        )
+    };
+    let file = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(refused)
+        .unwrap();
+    let number = std::fs::metadata(path).map_err(refused).unwrap().rdev();
+    (file, number)
 }
