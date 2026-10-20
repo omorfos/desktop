@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A release is offered a week after it is out, by when one that was
+    # published by someone who should not have is usually found and
+    # withdrawn.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: build
       include: scope
@@ -23,6 +28,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci
       include: scope

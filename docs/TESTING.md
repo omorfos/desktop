@@ -34,7 +34,7 @@ slowest are run while the maintainer tries a change rather than before.
 |---|---|---|---|
 | `area <filter>...` | While writing a change, after each step | The tests of what is being changed: a crate (`-p omorfos-core`) or tests of the integration binary by name (`tiles::`) | 1–2 s, and the build |
 | `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, with those that need a graphics card where there is one, the nightly build | 2 min |
-| `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it, without the tests that need a graphics card, the doctests, `cargo deny`, `cargo doc` | 2 min |
+| `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it, without the tests that need a graphics card, the doctests, `cargo deny`, `zizmor`, `cargo doc` | 2 min |
 | `commits [base]` | Before merging more than one commit | Each commit after `base` (`main`) alone, in a worktree of its own: formatting, clippy, the coverage gate | 2 min a commit, more for the first |
 | `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
 
