@@ -91,6 +91,71 @@ fn the_pointer_enters_moves_within_and_leaves_a_window() {
     assert_eq!(events.last(), Some(&Event::PointerLeave));
 }
 
+/// Moves the pointer back and forth over a window `times` times, a step
+/// of the compositor after each, so that each move is sent by itself.
+fn wiggle(session: &mut Session, times: u32) {
+    for time in 0..times {
+        let x = if time % 2 == 0 { 10.0 } else { 11.0 };
+        let at = Input::Motion { x, y: 20.0 };
+        session.compositor_mut().input(at, time);
+        session.step();
+    }
+}
+
+#[test]
+fn a_program_that_reads_nothing_for_a_while_keeps_its_window_and_hears_it_all() {
+    // A program busy for a while, as one loading a large file is, with the
+    // pointer moved over its window all the while.
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    client.take_events();
+
+    wiggle(&mut session, 5000);
+    session.roundtrip(&mut client);
+
+    // A window that goes fades out, which takes less than a second.
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(50, 50), RED, "the window is still there");
+    // Every move, in order: the first as the pointer coming in, if it was
+    // not over the window already.
+    let heard: Vec<f64> = client
+        .take_events()
+        .iter()
+        .filter_map(|event| match event {
+            Event::PointerEnter { x, .. } | Event::PointerMotion { x, .. } => Some(*x),
+            _ => None,
+        })
+        .collect();
+    let sent: Vec<f64> = (0..5000)
+        .map(|time| if time % 2 == 0 { 10.0 } else { 11.0 })
+        .collect();
+    assert_eq!(heard, sent);
+}
+
+#[test]
+fn a_program_that_never_reads_is_let_go_of_in_the_end() {
+    // What the compositor keeps for a program that reads nothing has a
+    // limit, so that one cannot make it keep ever more.
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    // A program dropped is let go of once the compositor next hears from
+    // any, as it does all the time in a session.
+    let mut other = session.connect();
+
+    // A window that goes fades out, which takes less than a second.
+    let mut moved = 0;
+    while session.draw().at(50, 50) == RED {
+        wiggle(&mut session, 1000);
+        session.roundtrip(&mut other);
+        session.advance(Duration::from_secs(1));
+        moved += 1000;
+        assert!(moved < 200_000, "still connected after {moved} moves");
+    }
+    assert_eq!(session.draw().at(50, 50), BACKGROUND, "its window is gone");
+}
+
 #[test]
 fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
     let mut session = Session::new();

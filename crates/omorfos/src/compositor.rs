@@ -211,7 +211,7 @@ pub struct ClientState {
     pub(crate) sandboxed: bool,
 }
 
-impl smithay::reexports::wayland_server::backend::ClientData for ClientState {}
+impl wayland_server::backend::ClientData for ClientState {}
 
 /// A window that is part of the desktop.
 #[derive(Debug)]

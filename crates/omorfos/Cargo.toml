@@ -72,6 +72,11 @@ xcursor = "0.3.11"
 x11rb = "0.13.2"
 # Writes a picture of the screen into memory a program shares.
 omorfos-shm = { path = "../omorfos-shm" }
+# Already in the tree through Smithay; named here for `libwayland_1_23`,
+# which lets the compositor say how much it keeps for a program that is
+# not reading. The backend stays the one written in Rust: the feature
+# links nothing.
+wayland-server = { version = "0.31.14", default-features = false, features = ["libwayland_1_23"] }
 smithay = { version = "0.7.0", default-features = false, features = [
     "wayland_frontend",
     "desktop",
