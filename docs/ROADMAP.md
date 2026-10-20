@@ -412,6 +412,9 @@ calls for them.
 - [x] An arrangement of the screens for each set that may be plugged in
       (`arrangements`), followed as screens come and go.
 - [ ] Screens arranged by the user: mirroring.
+- [ ] A change to the screens made from Settings (stage 7) kept only if
+      the user says so in time, and put back by the compositor itself
+      otherwise, so that a screen left dark comes back on its own.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
@@ -678,6 +681,22 @@ Hardware and performance:
 - [ ] Touch screens and drawing tablets.
 - [ ] Wide colour and HDR, when Smithay can.
 - [ ] Measured: what an idle session costs, and how long a frame takes.
+- [ ] The third priority as a gate: a test that a session with nothing
+      changing draws nothing and allocates nothing, turn after turn.
+- [ ] What is claimed of speed made by a script, and each number kept
+      with the commit, the card, its driver and how many runs it is of.
+
+Reports and recovery:
+
+- [ ] `omorfosctl report`: the versions, the configuration, what the
+      compositor and its programs wrote, and the state the IPC socket
+      gives, gathered into one file for the user to look over before
+      handing it on. Titles and paths are left out unless asked for, and
+      nothing is sent anywhere. Every report from real hardware so far
+      has needed a log found and sent by hand.
+- [ ] A compositor that crashes started again with the session kept: a
+      small program holding the Wayland socket, so that programs can
+      connect again, and a session that was locked comes back locked.
 
 Programs written for X11:
 
@@ -722,6 +741,17 @@ A way in:
       runs as root (ADR 35). It runs on the compositor itself, wears the
       design language, and shares what asks for a secret with the lock
       screen, and the on-screen keyboard (stage 7) with it.
+
+How the project is run, as learnt in part from Vela's:
+
+- [x] Tests that need a graphics card reported as ignored, with that as
+      the reason, where none is asked for, as in CI, and not as passed.
+- [x] The workflows checked by `zizmor` in CI, for what lets a pull
+      request or a release run what it should not.
+- [x] `SECURITY.md`, a private way to report a vulnerability, and a
+      form for reporting a bug that asks for what one needs.
+- [ ] The links between the documents checked in CI, without the
+      network.
 
 Reaching people:
 
