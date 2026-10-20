@@ -33,8 +33,8 @@ slowest are run while the maintainer tries a change rather than before.
 | Tier | When | What | About |
 |---|---|---|---|
 | `area <filter>...` | While writing a change, after each step | The tests of what is being changed: a crate (`-p omorfos-core`) or tests of the integration binary by name (`tiles::`) | 1–2 s, and the build |
-| `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, the nightly build | 2 min |
-| `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it without a graphics card, the doctests, `cargo deny`, `cargo doc` | 2 min |
+| `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, with those that need a graphics card where there is one, the nightly build | 2 min |
+| `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it, without the tests that need a graphics card, the doctests, `cargo deny`, `cargo doc` | 2 min |
 | `commits [base]` | Before merging more than one commit | Each commit after `base` (`main`) alone, in a worktree of its own: formatting, clippy, the coverage gate | 2 min a commit, more for the first |
 | `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
 
@@ -146,29 +146,28 @@ instant.
 What depends on the memory of a graphics card is tested where there is
 one, in the same files as everything else, through the `gbm` crate Smithay
 re-exports: `gpu.rs` makes a buffer on the card and hands it over, and the
-software renderer draws it. A test that needs a card opens
-`/dev/dri/renderD128` first and, if it cannot, says so and passes without
-trying anything: CI runners have none. The coverage gate is measured in
-CI, so what only a card reaches is kept out of decisions, as the hardware
-backend is.
+software renderer draws it. A test that needs a card is
+`#[ignore]`d, with that as the reason, so that where it is not asked for,
+as in CI, whose runners have none, it is reported as ignored and not as
+passed. Asked for where `/dev/dri/renderD128` cannot be opened, it fails.
+The coverage gate is measured in CI, so what only a card reaches is kept
+out of decisions, as the hardware backend is.
 
 Run them on a machine with a card, as the user logged in to it, whenever
 a change touches buffers of the card, pictures of the screen, or sharing
 it:
 
 ```sh
-cargo test -p omorfos --all-features --locked --test integration gpu -- --nocapture
+cargo test -p omorfos --all-features --locked --test integration -- --include-ignored gpu:: sharing::
 ```
 
-A test that printed `not tried` did not run.
-
-What a card reaches is measured by the coverage gate here, and not in
-CI, so 100% here can hide what CI finds wanting. Measure it as CI does,
-with the tests that need a card passing without trying, before taking
-the gate's word:
+The `handover` tier asks for them where this user may use a card, and
+says so where they may not. What a card reaches is then measured by the
+coverage gate here, and not in CI, so 100% here can hide what CI finds
+wanting. The `rest` tier measures it as CI does, without them:
 
 ```sh
-OMORFOS_TESTS_WITHOUT_CARD=1 cargo coverage --locked
+cargo coverage --locked
 ```
 
 ## Stress

@@ -29,8 +29,6 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
-use std::io::Write;
-
 use smithay::backend::allocator::{Format, Fourcc, Modifier};
 
 use crate::common::{Event, HEIGHT, LayerShape, Session, WIDTH, key};
@@ -914,20 +912,16 @@ fn a_call_that_would_take_memory_of_the_card_is_given_shared_memory_where_it_can
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_screen_is_shared_in_the_memory_of_the_card_where_there_is_one() {
-    let Some(card) = render_node() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let card = render_node();
     let viewer = shared_from_card(card);
     assert!(viewer.seen().card, "memory of the card");
 }
 
-/// The device number of the graphics card to try with, if this machine has
-/// one this user may use.
-fn render_node() -> Option<u64> {
-    crate::common::graphics_card().map(|(_, number)| number)
+/// The device number of the graphics card to try with.
+fn render_node() -> u64 {
+    crate::common::graphics_card().1
 }
 
 #[test]
@@ -1383,12 +1377,9 @@ fn a_screen_that_changes_size_goes_on_being_shared_at_its_new_size() {
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_screen_shared_in_the_memory_of_the_card_goes_on_at_its_new_size() {
-    let Some(card) = render_node() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let card = render_node();
     let daemon = Daemon::start();
     let pipewire = Pipewire::start();
     let mut session = Session::new();
@@ -1820,11 +1811,8 @@ fn a_shared_window_goes_on_being_shared_as_it_grows_and_shrinks_back() {
 }
 
 #[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
 fn a_shared_window_in_the_memory_of_the_card_goes_on_as_it_grows_and_shrinks_back() {
-    let Some(card) = render_node() else {
-        let said = "not tried: there is no graphics card this user may use";
-        let _ = writeln!(std::io::stderr(), "{said}");
-        return;
-    };
+    let card = render_node();
     a_shared_window_grows_and_shrinks(Some(card));
 }
