@@ -82,3 +82,14 @@ does (ADR 40), and only for this. Everything else still forbids it.
   buffer made there can as well be a GPU buffer as a file.
 - The crate is small, and is the first place to look if a stream ever
   shows something it should not, or the backend ever crashes.
+- A buffer is never said to hold more than its memory does: `Held::filled`
+  refuses a size larger than the buffer, and it goes back empty. What
+  reads the stream may read as much as it is told.
+- When the pictures change size, as a screen or a window does, the memory
+  PipeWire hands out is made to the old size until what reads the stream
+  has agreed on the new one. No buffer is taken in between, and a
+  picture taken before the change is given at the size it was asked for.
+  Both were found when the pictures grew just as one was asked for:
+  memory made to the old size was asked to hold the new, which ended the
+  portal's connection to the compositor, and a picture of the old size
+  was said to be of the new.

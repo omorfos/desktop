@@ -1332,6 +1332,22 @@ fn a_screen_that_changes_size_goes_on_being_shared_at_its_new_size() {
         viewer.pixels() == 320 * 240 && viewer.at(320, (10, 10)) == Some(RED)
     });
     assert_eq!(viewer.at(320, (300, 200)), Some(BACKGROUND));
+
+    // And larger again. The next picture is asked for a sixtieth of a
+    // second later, and waits, in memory made to the smaller size, for the
+    // screen to be drawn again: by then it has grown, and the picture is
+    // not taken. No more is asked for in memory too small to hold one.
+    for _ in 0..20 {
+        session.step();
+        viewer.turn(node);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    session.resize_output((WIDTH, HEIGHT));
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.pixels() == 640 * 480 && viewer.at(WIDTH, (300, 200)) == Some(BACKGROUND)
+    });
     assert!(
         session.compositor().captured(&session.output()),
         "and it is still shared"

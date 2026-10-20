@@ -236,8 +236,9 @@ struct Sharing {
     /// The call to start sharing, until the application can be told what
     /// to read, which is once PipeWire has said.
     call: Option<Message>,
-    /// The buffer the compositor is putting a picture in, if it is.
-    held: Option<Held>,
+    /// The buffer the compositor is putting a picture in, if it is, and
+    /// how large the pictures were when it was asked for.
+    held: Option<(Held, (u32, u32))>,
     /// When the next picture may be asked for.
     next: Instant,
     /// What what reads the stream was last told of the pointer, if it is
@@ -293,7 +294,7 @@ impl Sharing {
         let free = moved.filter(|_| self.next <= now);
         let free = free.and_then(|pointer| self.out.take().map(|held| (held, pointer)));
         if let Some((held, (pointer, told))) = free {
-            self.out.give(held, false, Some(&pointer));
+            self.out.give(held, None, Some(&pointer));
             (self.told, self.pointing) = (Some(told), false);
             self.next = now + BETWEEN;
         }
@@ -701,16 +702,17 @@ impl Backend<'_> {
             }
             // A picture being put in memory PipeWire has since taken away
             // is not waited for.
-            drop(sharing.held.take_if(|held| held.gone()));
+            drop(sharing.held.take_if(|(held, _)| held.gone()));
             // A picture that could not be taken, as while the session is
             // locked, gives its buffer back to be filled again later.
             let over = turned.as_ref().ok().copied().flatten();
             let given = over.and_then(|filled| sharing.held.take().map(|held| (held, filled)));
-            if let Some((held, filled)) = given {
+            if let Some(((held, asked), filled)) = given {
                 let pointer = sharing.feed.pointer().map(telling);
+                let picture = filled.then_some(asked);
                 sharing
                     .out
-                    .give(held, filled, pointer.as_ref().map(|(pointer, _)| pointer));
+                    .give(held, picture, pointer.as_ref().map(|(pointer, _)| pointer));
                 sharing.told = pointer.map(|(_, told)| told);
                 sharing.next = now + BETWEEN;
             }
@@ -724,7 +726,7 @@ impl Backend<'_> {
             let free = free.and_then(|held| held.memory().map(|memory| (held, memory)));
             if let Some((held, memory)) = free {
                 sharing.feed.ask(&memory, sharing.out.layout());
-                sharing.held = Some(held);
+                sharing.held = Some((held, sharing.feed.size()));
             }
             turned.is_ok()
         });

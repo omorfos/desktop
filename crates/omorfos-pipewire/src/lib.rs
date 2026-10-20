@@ -268,16 +268,18 @@ impl Held {
 
     /// Says how much of it the picture put in it fills: `size` bytes, rows
     /// of `stride` bytes. Returns whether it could be said: not once
-    /// PipeWire has taken it away, when nothing put in it is read.
+    /// PipeWire has taken it away, when nothing put in it is read, nor if
+    /// that is more than it holds, which what reads it would read past.
     pub fn filled(&mut self, size: u32, stride: i32) -> bool {
         self.chunk(size, stride, SPA_CHUNK_FLAG_NONE)
     }
 
     /// Says what is in it: `size` bytes, rows of `stride`, and what is
     /// wrong with them, if anything. Returns whether it could be said: not
-    /// once PipeWire has taken it away.
+    /// once PipeWire has taken it away, nor if it holds less than `size`.
     fn chunk(&mut self, size: u32, stride: i32, flags: u32) -> bool {
-        let chunk = self.first().map(|data| data.chunk);
+        let part = self.first().filter(|data| size <= data.maxsize);
+        let chunk = part.map(|data| data.chunk);
         let chunk = chunk.and_then(NonNull::new);
         let said = chunk.map(|mut chunk| {
             // TODO: as above. See docs/adr/0041-pipewire-buffers.md.
