@@ -495,25 +495,42 @@ fn draw_all(session: &mut Session, screens: usize) -> crate::common::Picture {
     session.draw()
 }
 
+/// Whether each of `screens` is dimmed, as it is while it is picked from:
+/// the first at its bottom right corner, the others at their top left,
+/// where no test puts a window.
+fn dimmed(session: &mut Session, screens: usize) -> Vec<bool> {
+    let others = (1..screens).map(|screen| session.draw_on(screen).at(5, 5));
+    let others: Vec<_> = others.collect();
+    let first = session.draw().at(WIDTH - 5, HEIGHT - 5);
+    let shown = std::iter::once(first).chain(others);
+    shown
+        .map(|shown| shown != crate::windows::BACKGROUND)
+        .collect()
+}
+
 /// Starts the tool to pick, over `screens`, and draws until what it is
-/// picked from is up: the first screen is dimmed.
+/// picked from is up: every screen is dimmed, so that what is done on any
+/// of them reaches it.
 fn picking(session: &mut Session, screens: usize) -> JoinHandle<Said> {
     let tool = start_with(session, PICKING, &[], &["--pick"]);
     session.eventually(|session| {
-        let shown = draw_all(session, screens).at(WIDTH - 5, HEIGHT - 5);
-        shown != crate::windows::BACKGROUND || tool.is_finished()
+        dimmed(session, screens).iter().all(|dim| *dim) || tool.is_finished()
     });
     assert!(!tool.is_finished(), "it stopped before it was up");
     tool
 }
 
 /// Draws every one of `screens` until the tool has finished, and returns
-/// what it said.
+/// what it said, once what it picked over has gone from them all. That is
+/// once the compositor sees the tool's connection close, which another
+/// test starting a program may hold open for a moment: until then the
+/// screens stay dimmed, and the next tool to pick would seem up already.
 fn picked(session: &mut Session, tool: JoinHandle<Said>, screens: usize) -> Said {
     session.eventually(|session| {
         draw_all(session, screens);
         tool.is_finished()
     });
+    session.eventually(|session| !dimmed(session, screens).iter().any(|dim| *dim));
     tool.join().unwrap()
 }
 
