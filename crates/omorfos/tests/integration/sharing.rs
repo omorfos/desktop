@@ -1570,3 +1570,60 @@ fn a_window_behind_another_is_reached_by_tab_and_shared() {
     let (_, size) = stream_of_window(&results);
     assert_eq!(size, (200, 100), "the window behind");
 }
+
+#[test]
+fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, BLUE)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let peer = daemon.peer();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/pointed";
+    make_of(&peer, call_session, BESIDE, SCREENS_AND_WINDOWS);
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    let on = Input::Motion { x: 50.0, y: 40.0 };
+    session.eventually(|session| {
+        session.compositor_mut().input(on, 0);
+        session.step();
+        for pressed in [true, false] {
+            let button = Input::Button {
+                button: 0x110,
+                pressed,
+            };
+            session.compositor_mut().input(button, 0);
+        }
+        session.draw();
+        app.receive();
+        starting.is_finished()
+    });
+    let (response, results) = starting.join().unwrap();
+    assert_eq!(response, 0);
+    let (node, _) = stream_of_window(&results);
+
+    // Where it is in the window, from the window's corner, as it moves.
+    let mut viewer = Viewer::new(&remote);
+    session.compositor_mut().input(on, 0);
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.seen().pointer.is_some_and(|(at, ..)| at == (50, 40))
+    });
+    let moved = Input::Motion { x: 60.0, y: 45.0 };
+    session.compositor_mut().input(moved, 0);
+    session.eventually(|session| {
+        session.step();
+        app.receive();
+        viewer.turn(node);
+        viewer.seen().pointer.is_some_and(|(at, ..)| at == (60, 45))
+    });
+}

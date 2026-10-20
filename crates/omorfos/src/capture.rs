@@ -90,8 +90,13 @@ pub(crate) enum Pass {
         /// Whether the pointer is drawn.
         pointer: bool,
     },
-    /// A window by itself.
-    Window(WindowId),
+    /// A window by itself, with the pointer over it or without.
+    Window {
+        /// Which window.
+        window: WindowId,
+        /// Whether the pointer is drawn.
+        pointer: bool,
+    },
 }
 
 /// The graphics card pictures can be taken in the memory of: its device
@@ -131,7 +136,8 @@ pub(crate) const POINTER: u32 = 256;
 #[derive(Debug)]
 struct Following {
     cursor: ExtImageCopyCaptureCursorSessionV1,
-    output: Output,
+    /// The screen, or the window, it is followed over.
+    over: Subject,
     /// What pictures of the pointer are asked for through, once they are.
     session: Option<ExtImageCopyCaptureSessionV1>,
     /// Where it was last told the pointer is on the screen, in its pixels,
@@ -315,7 +321,10 @@ impl Taking {
             Subject::Screen(_) => Pass::Screen {
                 pointer: self.pointer,
             },
-            Subject::Window(window) => Pass::Window(window),
+            Subject::Window(window) => Pass::Window {
+                window,
+                pointer: self.pointer,
+            },
         }
     }
 }
@@ -740,13 +749,33 @@ impl Compositor {
     }
 
     /// Where the pointer's position is on a screen, in its pixels from its
-    /// top left corner, if it is over it.
-    fn pointed(&self, output: &Output) -> Option<Point<i32, Physical>> {
-        let head = self.head(output);
-        let over = head.filter(|head| head.area().to_f64().contains(self.pointer_location));
-        over.map(|head| {
-            let from = self.pointer_location - head.area().loc.to_f64();
-            from.to_physical(head.scale.factor()).to_i32_round()
+    /// top left corner, or in a picture of a window, if it is over it.
+    fn pointed(&self, over: &Subject) -> Option<Point<i32, Physical>> {
+        let placed = match over {
+            Subject::Screen(output) => {
+                let head = self.head(output);
+                head.map(|head| (head.area(), head.scale.factor()))
+            }
+            Subject::Window(window) => self.pictured(*window),
+        };
+        let over = placed.filter(|(area, _)| area.to_f64().contains(self.pointer_location));
+        over.map(|(area, scale)| {
+            let from = self.pointer_location - area.loc.to_f64();
+            from.to_physical(scale).to_i32_round()
+        })
+    }
+
+    /// Where on the desktop a picture of a window by itself is of, and at
+    /// what scale it is drawn: that of the screen that shows it, or of the
+    /// first. Nothing, if it is not shown.
+    pub(crate) fn pictured(&self, window: WindowId) -> Option<(Rectangle<i32, Logical>, f64)> {
+        let shown = self.scene.iter().find(|shown| shown.id == window);
+        shown.map(|shown| {
+            let head = self.head_at(shown.origin.to_f64()).or(self.heads.first());
+            let scale = head.map_or(1.0, |head| head.scale.factor());
+            let all = shown.window.bbox();
+            let corner = shown.origin - shown.window.geometry().loc + all.loc;
+            (Rectangle::new(corner, all.size), scale)
         })
     }
 
@@ -895,10 +924,10 @@ impl Compositor {
     pub(crate) fn settle_following(&mut self) {
         let following = self.capture.following.iter();
         let there: Vec<_> = following
-            .map(|following| self.head(&following.output).is_some())
+            .map(|following| self.stands(&following.over).is_some())
             .collect();
-        // One following the pointer over a screen that has gone is told
-        // there will be no more pictures of it.
+        // One following the pointer over a screen or a window that has
+        // gone is told there will be no more pictures of it.
         let mut there = there.into_iter();
         let gone = self
             .capture
@@ -915,7 +944,7 @@ impl Compositor {
         }
         let following = self.capture.following.iter();
         let pointed: Vec<_> = following
-            .map(|following| self.pointed(&following.output))
+            .map(|following| self.pointed(&following.over))
             .collect();
         let locked = self.is_locked();
         // A program following the pointer is told where it is, and given
@@ -982,9 +1011,9 @@ impl Compositor {
         self.capture.takings.push(taking);
     }
 
-    /// Starts a program following the pointer over the screen `source`
-    /// stands for, if it may. Over a window, or over a screen that has
-    /// gone, it is not followed.
+    /// Starts a program following the pointer over the screen or the
+    /// window `source` stands for, if it may. Over what has gone, it is not
+    /// followed.
     fn follow(
         &mut self,
         client: &Client,
@@ -996,20 +1025,16 @@ impl Compositor {
             self.refuse(Some(client), "follow the pointer", "capture");
         }
         let subject = source.data::<Option<Subject>>().cloned().flatten();
-        let output = match subject.filter(|_| may) {
-            Some(Subject::Screen(output)) => self.head(&output).map(|_| output),
-            _ => None,
-        };
-        self.capture
-            .following
-            .extend(output.map(|output| Following {
-                cursor,
-                output,
-                session: None,
-                at: None,
-                tip: None,
-                given: None,
-            }));
+        let subject = subject.filter(|_| may);
+        let over = subject.filter(|subject| self.stands(subject).is_some());
+        self.capture.following.extend(over.map(|over| Following {
+            cursor,
+            over,
+            session: None,
+            at: None,
+            tip: None,
+            given: None,
+        }));
     }
 }
 

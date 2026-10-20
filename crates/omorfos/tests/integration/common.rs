@@ -810,12 +810,26 @@ impl Client {
         &self,
         app_id: &str,
     ) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        self.capture_window_with(app_id, false)
+    }
+
+    /// The same, with the pointer drawn in where it is over the window if
+    /// `pointer`.
+    pub(crate) fn capture_window_with(
+        &self,
+        app_id: &str,
+        pointer: bool,
+    ) -> capture_session::ExtImageCopyCaptureSessionV1 {
         let listed = self.state.taskbar.iter();
         let task = listed.rev().find(|task| task.app_id == app_id).unwrap();
         let sources = self.state.window_sources.as_ref().unwrap();
         let source = sources.create_source(&task.handle, &self.handle(), ());
         let capturers = self.state.capturers.as_ref().unwrap();
-        let options = capture_manager::Options::empty();
+        let options = if pointer {
+            capture_manager::Options::PaintCursors
+        } else {
+            capture_manager::Options::empty()
+        };
         let session = capturers.create_session(&source, options, &self.handle(), ());
         source.destroy();
         session

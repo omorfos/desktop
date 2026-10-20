@@ -573,7 +573,7 @@ fn a_picture_of_the_pointer_is_taken_only_in_a_buffer_it_fits_and_not_while_lock
 }
 
 #[test]
-fn the_pointer_is_followed_only_over_a_screen_by_a_program_that_may() {
+fn the_pointer_is_followed_over_a_screen_or_a_window_by_a_program_that_may() {
     let mut session = pointing();
     // Not by one that may not, and the user is told.
     let mut plain = session.connect_plain();
@@ -586,7 +586,8 @@ fn the_pointer_is_followed_only_over_a_screen_by_a_program_that_may() {
     assert!(said[0].contains("asked to follow the pointer"), "{said:?}");
     let mut app = session.connect();
 
-    // Nor over a window.
+    // Over a window, where it is in a picture of the window, from its
+    // corner, while it is over it.
     let mut camera = session.connect_as(Roles::CAPTURE.with(Roles::PANEL));
     session.open(&mut app, "app", (200, 100), RED);
     session.roundtrip(&mut camera);
@@ -594,7 +595,23 @@ fn the_pointer_is_followed_only_over_a_screen_by_a_program_that_may() {
     session.roundtrip(&mut camera);
     session.step();
     session.roundtrip(&mut camera);
-    assert!(camera.take_events().contains(&Event::CaptureStopped));
+    let events = camera.take_events();
+    assert!(!events.contains(&Event::CaptureStopped), "{events:?}");
+    assert!(!events.contains(&Event::PointerEntered), "{events:?}");
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 40.0 }, 0);
+    session.step();
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    assert!(events.contains(&Event::PointerEntered), "{events:?}");
+    assert!(events.contains(&Event::PointerAt(50, 40)), "{events:?}");
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 300.0, y: 200.0 }, 0);
+    session.step();
+    session.roundtrip(&mut camera);
+    assert!(camera.take_events().contains(&Event::PointerLeft));
 
     // Over a screen that goes, the pointer is no longer followed, and
     // the program is told it has left if it was over it.
@@ -847,6 +864,28 @@ fn snap_as(
     let events = develop(session, client);
     frame.destroy();
     (Picture::read(&file, size.0), events)
+}
+
+#[test]
+fn the_pointer_is_in_a_picture_of_a_window_where_it_is_over_it_if_the_program_asks() {
+    let mut session = pointing();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 40.0 }, 0);
+    let mut camera = window_camera(&mut session);
+    session.roundtrip(&mut camera);
+    let without = camera.capture_window_with("app", false);
+    let with = camera.capture_window_with("app", true);
+    session.roundtrip(&mut camera);
+    let (plain, _) = snap_sized(&mut session, &mut camera, &without, (200, 100));
+    let (pointed, _) = snap_sized(&mut session, &mut camera, &with, (200, 100));
+    // The pointer's square begins a pixel up and to the left of where it
+    // points.
+    assert_eq!(plain.at(52, 42), RED);
+    assert_eq!(pointed.at(52, 42), BLUE);
+    assert_eq!(pointed.at(150, 80), RED, "the window, elsewhere");
 }
 
 #[test]

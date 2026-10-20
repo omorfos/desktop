@@ -875,7 +875,8 @@ go still and dim but for what is under the pointer, a window or, beside
 every window, the screen, and a click or Enter shares that, Escape
 nothing; Tab reaches a window behind another, as it does for a picture.
 A window is shared by itself, whatever covers it, at its size
-as that changes; the pointer is not shown in it yet. While anything is
+as that changes, with the pointer drawn in or sent beside where it is
+over the window, as the application asks. While anything is
 shared the red mark stays on its screen. To stop sharing, stop it in the
 application.
 
