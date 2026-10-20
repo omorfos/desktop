@@ -62,9 +62,12 @@ fn a_connection_it_is_handed_is_the_one_it_uses() {
 
     ours.set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
-    let mut said = [0_u8; 8];
-    let heard = ours.read(&mut said);
-    assert!(matches!(heard, Ok(bytes) if bytes > 0), "{heard:?}");
+    // A read with a time limit is interrupted, not resumed, when the test
+    // is stopped and continued, as a busy machine can do to it, and
+    // `read_exact` reads again.
+    let mut said = [0_u8; 1];
+    let heard = ours.read_exact(&mut said);
+    assert!(heard.is_ok(), "{heard:?}");
 
     // With the connection gone it has nothing to go on for, and stops of
     // its own accord.
