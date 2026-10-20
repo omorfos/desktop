@@ -1640,9 +1640,9 @@ impl Compositor {
         // omorfos do, among what other programs have to say, where neither
         // covers the other.
         let wanted = !said.is_empty() && *said != *self.dismissed && !shown_elsewhere;
-        // The notice is on the first output, which is where a session
-        // with one screen has it.
-        let first = self.heads.first();
+        // The notice is on the output that comes first, which is where a
+        // session with one screen has it.
+        let first = self.primary_head();
         let within = first.map(Head::area).unwrap_or_default();
         let scale = first.map_or(Scale::ONE, |head| head.scale);
         // One that is no longer wanted fades out as it was.

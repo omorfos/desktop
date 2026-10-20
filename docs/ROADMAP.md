@@ -400,8 +400,17 @@ calls for them.
 - [x] A screen turned on its stand (`rotate`), drawn turned and given in
       pictures the right way up; in a window inside another desktop it is
       not used, and pictures there are the right way up too.
-- [ ] Screens arranged by the user: mirroring, one made primary, and
-      arrangements remembered for the screens that are plugged in.
+- [x] One screen made primary (`primary: true`): the notice is shown on
+      it, the windows of a screen unplugged go to it, and it stands in for
+      the first wherever there is no better screen to choose.
+- [ ] Programs written for X11 told which screen is primary, as RandR
+      has it, for games that go fullscreen there. Smithay asks it only by
+      waiting for the X server's answer, and the X server can be waiting
+      on the compositor at the time: tried, it froze the tests as the
+      server started and as it was started again. It needs a request
+      that does not wait.
+- [ ] Screens arranged by the user: mirroring, and arrangements remembered
+      for the screens that are plugged in.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its

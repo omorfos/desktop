@@ -204,3 +204,21 @@ fn the_notice_comes_and_goes_over_the_time_the_theme_gives() {
     session.advance(Duration::from_millis(50));
     assert_eq!(notice(&mut session), BACKGROUND, "gone");
 }
+
+#[test]
+fn the_notice_is_on_the_screen_that_comes_first() {
+    let primary = "outputs:\n  - { name: test-0 }\n  - { name: test-1, primary: true }\n";
+    let mut session = Session::with_config(&[("config.yaml", primary), ("theme.css", BROKEN)]);
+    session.add_output((WIDTH, HEIGHT));
+    session.settle();
+    assert_eq!(
+        session.draw_on(1).at(INSIDE.0, INSIDE.1),
+        PANEL,
+        "on the second"
+    );
+    assert_eq!(
+        session.draw_on(0).at(INSIDE.0, INSIDE.1),
+        BACKGROUND,
+        "not the first"
+    );
+}

@@ -779,7 +779,7 @@ impl Compositor {
     pub(crate) fn pictured(&self, window: WindowId) -> Option<(Rectangle<i32, Logical>, f64)> {
         let shown = self.scene.iter().find(|shown| shown.id == window);
         shown.map(|shown| {
-            let head = self.head_at(shown.origin.to_f64()).or(self.heads.first());
+            let head = self.head_at(shown.origin.to_f64()).or(self.primary_head());
             let scale = head.map_or(1.0, |head| head.scale.factor());
             let all = shown.window.bbox();
             let corner = shown.origin - shown.window.geometry().loc + all.loc;
@@ -788,7 +788,8 @@ impl Compositor {
     }
 
     /// Where what pictures are taken of stands: a screen where it is, and
-    /// a window on the screen that shows it, or on the first if none
+    /// a window on the screen that shows it, or on the one that comes first
+    /// if none
     /// does, as large as it is, however large that screen, up to `LARGEST`.
     /// Nothing, if it has gone.
     fn stands(&self, subject: &Subject) -> Option<Standing> {
@@ -801,7 +802,7 @@ impl Compositor {
                 let mapped = self.windows.iter().find(|mapped| mapped.id == *window);
                 let shown = self.scene.iter().find(|shown| shown.id == *window);
                 let on = shown.and_then(|shown| self.head_at(shown.origin.to_f64()));
-                let head = on.or(self.heads.first());
+                let head = on.or(self.primary_head());
                 mapped.zip(head).map(|(mapped, head)| {
                     let scale = head.scale.factor();
                     // All it draws, its shadow included.

@@ -265,6 +265,11 @@
           ],
           "description": "Where it stands next to the screen listed before it: to its right,\nunless this says otherwise."
         },
+        "primary": {
+          "default": false,
+          "description": "Whether it is the one that comes first: the one the notice of what\nis wrong is shown on, and that windows go to from a screen that is\nunplugged. Without one, the first screen plugged in. One screen at\nmost.",
+          "type": "boolean"
+        },
         "rotate": {
           "$ref": "#/$defs/Rotation",
           "description": "Which way the screen is turned, as `xrandr --rotate` says it: what\nis drawn is turned to match, so that it stands the right way up."
