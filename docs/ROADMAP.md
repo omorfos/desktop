@@ -374,13 +374,6 @@ calls for them.
 - [ ] The portal's settings read from `appearance` once there is one
       (stage 4), with reduced motion and high contrast; today light or
       dark is worked out from the theme's colours.
-- [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
-      another's: started by a key, by being away, by the lid and by
-      logind. It is the most security-critical program here after the
-      compositor and is written and reviewed as such. The on-screen
-      keyboard (stage 7) is to be usable on it.
-- [ ] Sleep, restart and shut down, by logind, and what the lid and the
-      power button do.
 - [x] A screen's resolution and refresh rate, as `mode` under `outputs`:
       that size at that rate, or at the fastest, and what the screen says
       suits it best if it cannot be had, which the user is told. A change
@@ -411,14 +404,12 @@ calls for them.
       that does not wait.
 - [x] An arrangement of the screens for each set that may be plugged in
       (`arrangements`), followed as screens come and go.
-- [ ] Screens arranged by the user: mirroring.
-- [ ] A change to the screens made from Settings (stage 7) kept only if
-      the user says so in time, and put back by the compositor itself
-      otherwise, so that a screen left dark comes back on its own.
-- [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
-      fitted, stretched, centred or tiled; a directory or several shown
-      in turn, in order or shuffled, at an interval. A program of its
-      own, which the theme's `desktop` gives way to.
+
+What is left of this stage that is new, in the order it is to be done,
+as decided on 2026-10-21: what is felt every day first, the lock screen
+late so that it is written and reviewed with the care it needs, and
+what only games and touchpads need last.
+
 - [ ] Keys for volume, brightness and media, with a small display of the
       level over the screen that goes by itself.
 - [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
@@ -434,24 +425,47 @@ calls for them.
       let go, the window chosen goes to the front of the order and the
       rest keep their places, so that one Alt+Tab goes back to the
       window before and another goes back again.
+      Each window with the icon its program gives it
+      (`xdg-toplevel-icon`), or its application's otherwise.
+- [ ] Sleep, restart and shut down, by logind, and what the lid and the
+      power button do. Sleep, by the lid or asked for, locks the screen
+      first, with the locker in use until `omorfos-lock` takes its place,
+      and waits for it to be locked, so that the machine never wakes
+      unlocked.
 - [ ] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`), and switching keyboard
-      layout by a key.
-- [ ] What games and remote desktops need of the pointer: locked,
-      confined, and moved without a position (`pointer-constraints`,
-      `relative-pointer`).
-- [ ] Gestures on the touchpad: workspaces by a swipe of three fingers.
+      layout by a key, which can be turned off for those who type with
+      one layout and want the key for something else.
+- [ ] Programs listed in `~/.config/autostart` started with the session,
+      and the session's environment told to D-Bus and systemd, without
+      which portals and much else do not find it.
 - [ ] A polkit agent, so that a program can ask for the administrator's
       password, and `omorfos-pinentry` for keys and passphrases
       (wish 9): the screen dimmed and blurred behind one prompt, what is
       typed hidden unless asked to be shown. Both take the keyboard
-      exclusively, as the lock screen does.
-- [ ] Programs listed in `~/.config/autostart` started with the session,
-      and the session's environment told to D-Bus and systemd, without
-      which portals and much else do not find it.
+      exclusively, as the lock screen does. Early, because without an
+      agent a program that asks for the administrator fails without
+      saying why.
+- [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
+      fitted, stretched, centred or tiled; a directory or several shown
+      in turn, in order or shuffled, at an interval. A program of its
+      own, which the theme's `desktop` gives way to.
+- [ ] Screens arranged by the user: mirroring.
+- [ ] A change to the screens made from Settings (stage 7) kept only if
+      the user says so in time, and put back by the compositor itself
+      otherwise, so that a screen left dark comes back on its own.
+- [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
+      another's: started by a key, by being away, by the lid and by
+      logind. It is the most security-critical program here after the
+      compositor and is written and reviewed as such. The on-screen
+      keyboard (stage 7) is to be usable on it.
 - [ ] Smaller protocols that programs complain of lacking:
-      `xdg-toplevel-icon`, `xdg-foreign`, `presentation-time`,
+      `xdg-foreign`, `presentation-time`,
       `keyboard-shortcuts-inhibit`, content type and tearing control.
+- [ ] What games and remote desktops need of the pointer: locked,
+      confined, and moved without a position (`pointer-constraints`,
+      `relative-pointer`).
+- [ ] Gestures on the touchpad: workspaces by a swipe of three fingers.
 
 ## 4. The look
 
