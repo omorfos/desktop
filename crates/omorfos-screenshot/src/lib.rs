@@ -245,8 +245,8 @@ pub fn pick(
 
 /// What the user picks to share of `shots`, the pictures of every screen
 /// just taken, over the compositor `connection` is to: a screen, by what
-/// it is called; or, if `windows`, a window, by what it is called in the
-/// list of windows, with `placed` saying where they are. `hint` says how
+/// it is called, or a region of one; or, if `windows`, a window, by what it
+/// is called in the list of windows, with `placed` saying where they are. `hint` says how
 /// at the top of each screen. Nothing, if they picked nothing.
 ///
 /// # Errors
@@ -270,12 +270,14 @@ pub fn pick_shared(
     picked.map(|picked| picked.and_then(|picked| shared(shots, placed, picked)))
 }
 
-/// What is to be shared, once picked: a screen, by what it is called, or
-/// a window, by what it is called in the list of windows.
+/// What is to be shared, once picked: a screen, by what it is called, a
+/// region of one, or a window, by what it is called in the list of windows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Shared {
     /// A screen.
     Screen(String),
+    /// A region of a screen, in its pixels.
+    Region(String, omorfos_picker::Area),
     /// A window.
     Window(String),
 }
@@ -294,6 +296,9 @@ fn shared(
             windows
                 .nth(window)
                 .map(|place| Shared::Window(place.handle.clone()))
+        }
+        omorfos_picker::Picked::Region { area, .. } => {
+            shot.map(|shot| Shared::Region(shot.screen.clone(), area))
         }
         _ => shot.map(|shot| Shared::Screen(shot.screen.clone())),
     }

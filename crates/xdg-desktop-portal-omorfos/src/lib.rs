@@ -165,11 +165,12 @@ struct Picking {
 
 /// What the picker says to do, at the top of each screen, when the screen
 /// to share is picked.
-const SHARE_HINT: &str = "Click the screen you want to share, or press Esc to cancel.";
+const SHARE_HINT: &str =
+    "Click the screen you want to share, or drag over the part of it to share. Esc cancels.";
 
 /// What it says when a window may be picked to share as well.
-const SHARE_WINDOW_HINT: &str =
-    "Click the window or screen you want to share. Tab reaches a window behind, Esc cancels.";
+const SHARE_WINDOW_HINT: &str = "Click the window or screen you want to share, or drag over a part \
+                                 of a screen. Tab reaches a window behind, Esc cancels.";
 
 /// How often what is being picked is looked at, while it is.
 const PICKING: Duration = Duration::from_millis(50);
@@ -717,8 +718,7 @@ impl Backend<'_> {
                 let (width, height) = sharing.feed.size();
                 let size = (width.cast_signed(), height.cast_signed());
                 // A window has no place on the desktop to be told.
-                let at = (!sharing.feed.window()).then_some((0, 0));
-                portal.respond_shared(call, node, at, size);
+                portal.respond_shared(call, node, sharing.feed.at(), size);
                 sharing.call = None;
             }
             let turned = sharing.feed.turn();

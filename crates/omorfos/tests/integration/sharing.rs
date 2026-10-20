@@ -1627,3 +1627,97 @@ fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
         viewer.seen().pointer.is_some_and(|(at, ..)| at == (60, 45))
     });
 }
+
+#[test]
+fn a_region_dragged_over_a_screen_is_shared_by_itself() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, BLUE)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let peer = daemon.peer();
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/region";
+    make_of(&peer, call_session, BESIDE, SCREENS_AND_WINDOWS);
+    let starting = begin(&daemon, call_session);
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    // Once the picture to pick from is up, a drag from half way along the
+    // window to beyond it draws a region of the screen.
+    let to = |x: f64, y: f64| Input::Motion { x, y };
+    let edge = (0, HEIGHT / 2);
+    let before = session.draw().at(edge.0, edge.1);
+    session.eventually(|session| {
+        session.compositor_mut().input(to(150.0, 50.0), 0);
+        session.step();
+        app.receive();
+        session.draw().at(edge.0, edge.1) != before
+    });
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(to(250.0, 150.0), 0);
+    session.compositor_mut().input(button(false), 0);
+    let (response, results) = answered(&mut session, starting);
+    assert_eq!(response, 0);
+    let (node, size, kind, placed) = told(&results);
+    assert_eq!(
+        (kind, placed, size),
+        (1, true, (100, 100)),
+        "a part of a screen"
+    );
+    let streams = results["streams"].try_clone().unwrap();
+    let streams: Vec<(u32, HashMap<String, OwnedValue>)> = streams.try_into().unwrap();
+    let at: (i32, i32) = streams[0].1["position"]
+        .try_clone()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    assert_eq!(at, (150, 50), "where it is on the screen");
+
+    // It shows the part of the screen it is of: the window, and beside it
+    // what is behind.
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.pixels() == 100 * 100 && viewer.at(100, (10, 10)) == Some(RED)
+    });
+    assert_eq!(viewer.at(100, (90, 90)), Some(BACKGROUND));
+    // What changes in it is seen.
+    app.fill(&window.surface, (200, 100), GREEN);
+    session.roundtrip(&mut app);
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        viewer.at(100, (10, 10)) == Some(GREEN)
+    });
+    // The pointer is told of from the region's corner.
+    session.compositor_mut().input(to(170.0, 80.0), 0);
+    session.eventually(|session| {
+        session.step();
+        app.receive();
+        viewer.turn(node);
+        viewer.seen().pointer.is_some_and(|(at, ..)| at == (20, 30))
+    });
+
+    // The screen changing size ends it: the region was of the screen as
+    // it was.
+    session.resize_output((320, 240));
+    let output = session.output();
+    session.eventually(|session| {
+        session.draw();
+        app.receive();
+        viewer.turn(node);
+        !session.compositor().captured(&output)
+    });
+}

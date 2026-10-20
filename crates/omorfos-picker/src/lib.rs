@@ -114,9 +114,9 @@ fn canvas((width, height): (u32, u32), pixels: &[u8]) -> Canvas {
 pub enum Pickable {
     /// Every screen, one, a window or a region of a screen.
     Anything,
-    /// One screen, as a whole.
+    /// One screen, as a whole, or a region of one.
     Screen,
-    /// One screen or one window, each as a whole.
+    /// One screen or one window, each as a whole, or a region of a screen.
     ScreenOrWindow,
 }
 
@@ -417,15 +417,13 @@ impl State {
             let under = over.and_then(|(_, at)| {
                 area::under(at, &still.windows, shown, still.size, self.behind)
             });
+            let whole = over.map(|_| (0, 0, shown.0, shown.1));
             let drawn = match self.pickable {
                 Pickable::Anything => drawn.or(under.map(|(_, rect)| rect)),
-                // Where only a screen will do, it is the one the pointer is on.
-                Pickable::Screen => over.map(|_| (0, 0, shown.0, shown.1)),
+                // Where a window will not do, the screen the pointer is on.
+                Pickable::Screen => drawn.or(whole),
                 // The window under the pointer, or the screen if none is.
-                Pickable::ScreenOrWindow => {
-                    let screen = over.map(|_| (0, 0, shown.0, shown.1));
-                    under.map(|(_, rect)| rect).or(screen)
-                }
+                Pickable::ScreenOrWindow => drawn.or(under.map(|(_, rect)| rect)).or(whole),
             };
             // The window outlined, as it is by itself, where there is a
             // picture of it: not while a region is drawn, nor where only a
@@ -494,15 +492,13 @@ impl State {
                     let screen = &self.screens[on];
                     let shown = screen.shown.unwrap_or_default();
                     let still = &self.stills[screen.still];
-                    let windows = &still.windows;
-                    match self.pickable {
-                        Pickable::Anything => {
-                            let windows = (windows.as_slice(), self.behind);
-                            area::picked(screen.still, (from, to), windows, shown, still.size)
-                        }
-                        Pickable::Screen => Picked::Screen(screen.still),
-                        Pickable::ScreenOrWindow => self.whole(on, to),
-                    }
+                    // Where a window will not do, a click is on none.
+                    let windows = match self.pickable {
+                        Pickable::Screen => &[],
+                        Pickable::Anything | Pickable::ScreenOrWindow => still.windows.as_slice(),
+                    };
+                    let windows = (windows, self.behind);
+                    area::picked(screen.still, (from, to), windows, shown, still.size)
                 });
                 self.ended(picked.map(Outcome::Picked));
             }

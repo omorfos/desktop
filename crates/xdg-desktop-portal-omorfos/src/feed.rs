@@ -9,6 +9,7 @@
 
 use std::fs::File;
 use std::io;
+use std::mem;
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 
@@ -128,6 +129,83 @@ pub struct Feed {
     following: Option<Following>,
     /// Whether the pictures are of a window, and not of a screen.
     window: bool,
+    /// The region of the screen shared, if only a region of it is.
+    region: Option<Region>,
+}
+
+/// A region of a screen shared, which is cut from pictures of all of it:
+/// where it is, in the screen's pixels; the memory of this program's own
+/// the compositor puts each picture of the screen in, and its name; whether
+/// none has been put in it yet; and the memory the region is to be copied
+/// into next, with where the buffer begins in it and how far apart its
+/// rows are.
+#[derive(Debug)]
+struct Region {
+    area: omorfos_picker::Area,
+    memory: File,
+    buffer: wl_buffer::WlBuffer,
+    fresh: bool,
+    into: Option<(File, u32, u32)>,
+    /// A row of the region, on its way.
+    row: Vec<u8>,
+}
+
+impl Region {
+    /// Memory for pictures of a screen `size` pixels large, named to the
+    /// compositor, to cut `area` from: as much of it as is on the screen.
+    fn new(
+        area: omorfos_picker::Area,
+        size: (u32, u32),
+        (shm, handle): (&wl_shm::WlShm, &QueueHandle<Watching>),
+    ) -> Result<Self, Failure> {
+        let (width, height) = size;
+        let x = area.x.min(width.saturating_sub(1));
+        let y = area.y.min(height.saturating_sub(1));
+        let area = omorfos_picker::Area {
+            x,
+            y,
+            width: area.width.min(width - x).max(1),
+            height: area.height.min(height - y).max(1),
+        };
+        let length = u64::from(width) * u64::from(height) * 4;
+        let made = memfd_create("omorfos-region", MemfdFlags::CLOEXEC);
+        let made = made.map(File::from).map_err(io::Error::from);
+        let memory = made.and_then(|file| file.set_len(length).map(|()| file));
+        memory.map_err(Failure::from).map(|memory| {
+            let bytes = i32::try_from(length).unwrap_or(i32::MAX);
+            let pool = shm.create_pool(memory.as_fd(), bytes, handle, ());
+            let (across, down) = (width.cast_signed(), height.cast_signed());
+            let format = wl_shm::Format::Xrgb8888;
+            let buffer = pool.create_buffer(0, across, down, across * 4, format, handle, ());
+            pool.destroy();
+            Self {
+                area,
+                memory,
+                buffer,
+                fresh: true,
+                into: None,
+                row: vec![0; usize::try_from(area.width).unwrap_or_default() * 4],
+            }
+        })
+    }
+
+    /// Copies the region from the picture of a screen `width` pixels
+    /// across into the memory it was asked for in. Returns whether all of
+    /// it could be.
+    fn cut(&mut self, width: u32) -> bool {
+        let omorfos_picker::Area { x, y, height, .. } = self.area;
+        let into = self.into.take();
+        let row = &mut self.row;
+        let memory = &self.memory;
+        into.is_some_and(|(into, offset, stride)| {
+            (0..height).all(|line| {
+                let from = (u64::from(y + line) * u64::from(width) + u64::from(x)) * 4;
+                let to = u64::from(offset) + u64::from(line) * u64::from(stride);
+                let read = memory.read_exact_at(row, from);
+                read.and_then(|()| into.write_all_at(row, to)).is_ok()
+            })
+        })
+    }
 }
 
 /// A part of a picture: where its top left corner is, and how wide and high
@@ -259,7 +337,16 @@ impl Feed {
         });
         let ready = ready.and_then(|(((session, taking, followed), size), shm)| {
             let following = followed.map(|followed| follow(&queue, &watching, &shm, followed));
-            following.transpose().map(|following| Self {
+            let area = match shared {
+                Some(Shared::Region(_, area)) => Some(*area),
+                _ => None,
+            };
+            let handle = queue.handle();
+            let region = area.map(|area| Region::new(area, size, (&shm, &handle)));
+            let followed = following
+                .transpose()
+                .and_then(|following| region.transpose().map(|region| (following, region)));
+            followed.map(|(following, region)| Self {
                 queue,
                 watching,
                 shm,
@@ -270,9 +357,21 @@ impl Feed {
                 size,
                 following,
                 window,
+                region,
             })
         });
         ready.inspect(Self::point)
+    }
+
+    /// Where on the desktop what is shared is, in pixels from the corner of
+    /// its screen: the screen's corner, or the region's. Nothing, for a
+    /// window, which has no place to be told.
+    #[must_use]
+    pub fn at(&self) -> Option<(i32, i32)> {
+        let corner = self.region.as_ref().map_or((0, 0), |region| {
+            (region.area.x.cast_signed(), region.area.y.cast_signed())
+        });
+        (!self.window).then_some(corner)
     }
 
     /// Whether the pictures are of a window, and not of a screen.
@@ -285,18 +384,36 @@ impl Feed {
     /// if it has said and they can be named to it, and the layouts it can
     /// draw into.
     #[must_use]
+    /// A region is cut from pictures in this program's own memory, and is
+    /// not put in that of the card.
     pub fn card(&self) -> (Option<u64>, Vec<u64>) {
         let watching = &self.watching;
-        let card = watching.card.filter(|_| watching.cards.is_some());
-        (card, watching.layouts.clone())
+        let whole = self.region.is_none();
+        let card = watching.card.filter(|_| watching.cards.is_some() && whole);
+        let layouts = watching.layouts.iter().filter(|_| whole);
+        (card, layouts.copied().collect())
     }
 
-    /// The pointer as last seen, if it is followed.
+    /// The pointer as last seen, if it is followed: over a region, where
+    /// it is from its corner, while it is in it.
     #[must_use]
     pub fn pointer(&self) -> Option<Seen<'_>> {
         let followed = &self.watching.followed;
+        let area = self.region.as_ref().map(|region| region.area);
+        let at = followed.at.and_then(|(x, y)| {
+            let Some(area) = area else {
+                return Some((x, y));
+            };
+            let (left, top) = (area.x.cast_signed(), area.y.cast_signed());
+            let (right, bottom) = (
+                left + area.width.cast_signed(),
+                top + area.height.cast_signed(),
+            );
+            let inside = (left..right).contains(&x) && (top..bottom).contains(&y);
+            inside.then_some((x - left, y - top))
+        });
         self.following.as_ref().map(|following| Seen {
-            at: followed.at,
+            at,
             tip: followed.tip,
             size: following.size,
             picture: &following.picture,
@@ -317,10 +434,12 @@ impl Feed {
         }
     }
 
-    /// How large the pictures are, in pixels.
+    /// How large the pictures are, in pixels: those of the region, if
+    /// only a region is shared.
     #[must_use]
-    pub const fn size(&self) -> (u32, u32) {
-        self.size
+    pub fn size(&self) -> (u32, u32) {
+        let region = self.region.as_ref();
+        region.map_or(self.size, |region| (region.area.width, region.area.height))
     }
 
     /// How large the pictures are now, if the screen has changed size
@@ -344,6 +463,26 @@ impl Feed {
     /// Only one is asked for at a time: the one before has been put where
     /// it was to go.
     pub fn ask(&mut self, memory: &Memory, layout: Option<u64>) {
+        if let Some(region) = self.region.as_mut() {
+            // A region is cut from a picture of all the screen, put in
+            // memory of this program's own, which nothing else is put in:
+            // only what changes is written once it has all been.
+            let handle = self.queue.handle();
+            let frame = self
+                .session
+                .create_frame(&handle, Of::Screen(self.watching.begun));
+            frame.attach_buffer(&region.buffer);
+            if mem::take(&mut region.fresh) {
+                let (width, height) = self.size;
+                frame.damage_buffer(0, 0, width.cast_signed(), height.cast_signed());
+            }
+            frame.capture();
+            let into = memory.file.try_clone().ok().map(File::from);
+            region.into = into.map(|into| (into, memory.offset, memory.stride));
+            self.watching.changed.clear();
+            self.asked = Some(memory.place);
+            return;
+        }
         // Memory handed out before buffers were last taken away is gone,
         // and nothing is being put in it. What reads the stream may well
         // have changed, and is shown the screen at once, though nothing on
@@ -424,14 +563,21 @@ impl Feed {
     pub fn turn(&mut self) -> Result<Option<bool>, Failure> {
         let handled = self.queue.dispatch_pending(&mut self.watching);
         let handled = handled.map_err(Failure::from);
-        let over = self.watching.stopped;
+        // A region is of a screen as large as it was: one that changes size
+        // ends it.
+        let moved = self.region.is_some() && self.watching.resized.is_some();
+        let over = self.watching.stopped || moved;
         let going = handled.and_then(|_| {
-            let said = "the screen being shared has gone";
+            let said = if moved {
+                "the screen the region shared is of has changed size"
+            } else {
+                "the screen being shared has gone"
+            };
             (!over).then_some(()).ok_or_else(|| Failure::from(said))
         });
         going.map(|()| {
             // A new picture of the pointer is read, and the next asked for.
-            let followed = std::mem::take(&mut self.watching.followed.ready);
+            let followed = mem::take(&mut self.watching.followed.ready);
             let following = self.following.as_mut().filter(|_| followed);
             if let Some(following) = following {
                 // What cannot be read is shown as it was.
@@ -442,8 +588,12 @@ impl Feed {
                 self.point();
             }
             let (ready, lost) = (&mut self.watching.ready, &mut self.watching.lost);
-            let put = std::mem::take(ready).then_some(true);
-            let over = put.or_else(|| std::mem::take(lost).then_some(false));
+            let put = mem::take(ready).then_some(true);
+            let over = put.or_else(|| mem::take(lost).then_some(false));
+            // A region taken is copied where it was asked for.
+            let width = self.size.0;
+            let cut = self.region.as_mut().filter(|_| over == Some(true));
+            let over = over.map(|put| put && cut.is_none_or(|region| region.cut(width)));
             // A picture put in memory leaves nothing in it out of date, and
             // what changed for it is out of date in all the rest.
             let asked = self.asked.take_if(|_| over.is_some());
@@ -563,7 +713,9 @@ impl Watching {
             }
             screen => {
                 let screen = match screen {
-                    Some(Shared::Screen(screen)) => Some(screen.as_str()),
+                    Some(Shared::Screen(screen) | Shared::Region(screen, _)) => {
+                        Some(screen.as_str())
+                    }
                     _ => None,
                 };
                 let mut outputs = self.outputs.iter();

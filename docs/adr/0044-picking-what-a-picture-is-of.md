@@ -93,6 +93,13 @@ whatever has moved since, and the picker is in no picture.
    about to take. Taking them all first costs a picture each before the
    picker shows, which is little next to taking one at each Tab, which
    would make the picker wait on the compositor while it is up.
+6. Sharing a region, drawn by a drag in the picker as for a picture. No
+   capture source is of part of a screen, so the portal has pictures of
+   all of the screen put in memory of its own and copies the region into
+   each buffer of the stream: a copy of the region a picture, which the
+   compositor otherwise spares. It is not offered in memory of the card,
+   which would need the GPU to cut it; and a screen that changes size
+   ends it, as the region may no longer be on it.
 
 ## Alternatives
 
