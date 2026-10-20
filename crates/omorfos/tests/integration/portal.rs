@@ -173,15 +173,31 @@ fn acted_until_answered(
 /// Moves the pointer to `at`, on the desktop, and draws until the picture
 /// a colour is picked from is up: the loupe beside the pointer, below and
 /// to the right, with its ring at its edge.
-fn picture_up(session: &mut Session, (x, y): (i32, i32)) {
+fn picture_up(session: &mut Session, at: (i32, i32)) {
+    point_at(session, at);
+    loupe_up(session, at, GREEN, |_| ());
+}
+
+/// Moves the pointer to `at`, once. A surface that comes up under it is
+/// told the pointer is there without its moving again, and a pointer moved
+/// over and over sends each move to a window under it: one whose program
+/// reads nothing for a while is disconnected once its socket is full.
+fn point_at(session: &mut Session, (x, y): (i32, i32)) {
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    session.step();
+}
+
+/// Draws, after `drawn` is, until the loupe is up beside the pointer at
+/// `at` on the first screen: below and to the right of it, where `under`
+/// was before.
+fn loupe_up(session: &mut Session, (x, y): (i32, i32), under: u32, drawn: impl Fn(&mut Session)) {
     session.eventually(|session| {
-        let at = Input::Motion {
-            x: f64::from(x),
-            y: f64::from(y),
-        };
-        session.compositor_mut().input(at, 0);
-        session.step();
-        session.draw().at(x + 24 + 1, y + 24 + 60) != GREEN
+        drawn(session);
+        session.draw().at(x + 24 + 1, y + 24 + 60) != under
     });
 }
 
@@ -408,17 +424,12 @@ fn a_colour_is_picked_from_whichever_screen_the_pointer_is_on() {
     // The second screen's picture is taken once it has been drawn.
     let drawn = |session: &mut Session| drop(session.draw_on(1));
 
-    // From the second, after the pointer was over the first.
+    // From the second, after the pointer was over the first. The loupe
+    // is beside the pointer, below and to the right, and its ring at its
+    // edge: then the picture is up.
     let asking = ask_by(&daemon, "second", "PickColor");
-    // The loupe is beside the pointer, below and to the right, and its
-    // ring at its edge: then the picture is up.
-    session.eventually(|session| {
-        drawn(session);
-        let at = Input::Motion { x: 100.0, y: 60.0 };
-        session.compositor_mut().input(at, 0);
-        session.step();
-        session.draw().at(100 + 24 + 1, 60 + 24 + 60) != RED
-    });
+    point_at(&mut session, (100, 60));
+    loupe_up(&mut session, (100, 60), RED, drawn);
     let act = |session: &mut Session| {
         drawn(session);
         button_at(session, (WIDTH + 100, 100), LEFT);
@@ -426,13 +437,13 @@ fn a_colour_is_picked_from_whichever_screen_the_pointer_is_on() {
     let (response, results) = acted_until_answered(&mut session, asking, act);
     assert_eq!((response, picked(&results)), (0, GREEN));
 
-    // And from the first, where the window is.
+    // And from the first, where the window is: clicked once the picture
+    // is up, as a click before would reach the window.
     let asking = ask_by(&daemon, "first", "PickColor");
-    let act = |session: &mut Session| {
-        drawn(session);
-        button_at(session, (100, 60), LEFT);
-    };
-    let (response, results) = acted_until_answered(&mut session, asking, act);
+    point_at(&mut session, (100, 60));
+    loupe_up(&mut session, (100, 60), RED, drawn);
+    button_at(&mut session, (100, 60), LEFT);
+    let (response, results) = answered(&mut session, asking);
     assert_eq!((response, picked(&results)), (0, RED));
 }
 
@@ -510,12 +521,8 @@ fn picking_a_colour_the_pointer_is_a_crosshair_beside_a_loupe() {
     // The pointer is a crosshair once the picture is up, and the loupe is
     // below and to the right of it.
     let asking = ask_by(&daemon, "loupe", "PickColor");
-    session.eventually(|session| {
-        let at = Input::Motion { x: 200.0, y: 200.0 };
-        session.compositor_mut().input(at, 0);
-        session.step();
-        session.draw().at(203, 203) == RED
-    });
+    point_at(&mut session, (200, 200));
+    session.eventually(|session| session.draw().at(203, 203) == RED);
     let looks = Theme::default().style(Part::Question, States::NONE);
     let ring = looks.border.top.color;
     let ring = u32::from_be_bytes([ring.alpha, ring.red, ring.green, ring.blue]);

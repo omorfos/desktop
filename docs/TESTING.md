@@ -113,6 +113,12 @@ instant.
 - Where the clock must not move while waiting (how often something may be
   restarted goes by it), wait with real time only, as `wait` in `x11.rs`
   does.
+- Give input once, before waiting, not on every turn of the wait. A
+  surface that comes up under the pointer is told it is there without the
+  pointer moving again. Every move, click or key is sent to the window it
+  lands on, and a test's own client reads nothing while it waits: a few
+  hundred turns fill its socket on a slow machine, and the compositor
+  disconnects it, taking its windows with it.
 - Before making a test more patient, ask whether the compositor could
   lose the same race in a real session. If it could, that is a bug in the
   compositor, and the test should force the race, not wait it out.
