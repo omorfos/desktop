@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
-    OutputScale, Outputs, Role, Rules, ScreenMode, Speed, Started, Workspaces,
+    Offset, OutputScale, Outputs, Role, Rules, ScreenMode, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -108,6 +108,25 @@ impl JsonSchema for KeyChain {
             "description": "Chords such as `Super+Return`, separated by spaces when chained.",
             "type": "string",
             "pattern": "\\S",
+        })
+    }
+}
+
+impl JsonSchema for Offset {
+    fn schema_name() -> Cow<'static, str> {
+        "Offset".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "oneOf": [
+                { "description": "Units of layout, less than nothing for left or up.", "type": "integer" },
+                {
+                    "description": "A share of the screen's own length, such as `-30%`.",
+                    "type": "string",
+                    "pattern": "^-?(100|[1-9]?[0-9])%$",
+                },
+            ],
         })
     }
 }

@@ -389,11 +389,12 @@ calls for them.
       no test runs: tried by hand only.
 - [x] Screens above and below one another as well as side by side, as a
       listed screen's `place` says, next to the one listed before it.
-- [ ] A screen's place nudged along the edge it shares with the one
-      before it: lined up at the start, the middle or the end of it, and
-      moved along by an offset in units or as a share of its length, as
-      a laptop below a monitor and a little to its left is; and the user
-      told when the first listed is given a `place`, which says nothing.
+- [x] A screen's place nudged along the edge it shares with the one
+      before it: lined up at the start, the middle or the end of it
+      (`align`), and moved along by an offset in units or as a share of
+      its length (`offset`), as a laptop below a monitor and a little to
+      its left is; and the user told when the first listed is given a
+      place, which says nothing.
 - [ ] Screens arranged by the user: rotation, mirroring, one made primary, arrangements remembered
       for the screens that are plugged in, and the modes a screen offers
       listed, by `omorfosctl` say.

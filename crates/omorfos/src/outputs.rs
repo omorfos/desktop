@@ -12,7 +12,7 @@
 
 use std::cell::Cell;
 
-use omorfos_config::Place;
+use omorfos_config::{Align, Offset, Place};
 use omorfos_core::Screen;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use smithay::desktop::layer_map_for_output;
@@ -277,7 +277,9 @@ impl Compositor {
             .map(|index| {
                 let head = &self.heads[*index];
                 let named = listed.named(&head.output.name());
-                (head.area().size, named.map(|named| named.place))
+                let placing =
+                    named.map(|named| (named.place.unwrap_or_default(), named.align, named.offset));
+                (head.area().size, placing)
             })
             .collect();
         for (index, at) in order.into_iter().zip(arrangement(&placed)) {
@@ -310,23 +312,24 @@ impl Compositor {
     }
 }
 
+/// How a listed screen stands next to the one before it: on which side,
+/// where along the edge they share it is lined up, if that is said, and how
+/// far along it it is moved from there.
+type Placing = (Place, Option<Align>, Option<Offset>);
+
 /// Where screens stand, `screens` large, in the order given: each next to
-/// the one before it as its place says, or, for one that is not listed, to
-/// the right of all those before it, its top in line with theirs. Each
+/// the one before it as its placing says, or, for one that is not listed,
+/// to the right of all those before it, its top in line with theirs. Each
 /// corner, from the top left corner of all they cover.
-fn arrangement(screens: &[(Size<i32, Logical>, Option<Place>)]) -> Vec<Point<i32, Logical>> {
+fn arrangement(screens: &[(Size<i32, Logical>, Option<Placing>)]) -> Vec<Point<i32, Logical>> {
     let mut stood: Vec<Rectangle<i32, Logical>> = Vec::new();
-    for &(size, place) in screens {
+    for &(size, placing) in screens {
         let before = stood.last().copied();
         let all = stood.iter().copied().reduce(Rectangle::merge);
-        let middle = |before: Rectangle<i32, Logical>| before.loc.x + (before.size.w - size.w) / 2;
-        let corner = match (before, place) {
+        let corner = match (before, placing) {
             (None, _) => (0, 0),
-            (Some(before), Some(Place::Right)) => (before.loc.x + before.size.w, before.loc.y),
-            (Some(before), Some(Place::Left)) => (before.loc.x - size.w, before.loc.y),
-            (Some(before), Some(Place::Below)) => (middle(before), before.loc.y + before.size.h),
-            (Some(before), Some(Place::Above)) => (middle(before), before.loc.y - size.h),
             (Some(_), None) => all.map_or((0, 0), |all| (all.loc.x + all.size.w, all.loc.y)),
+            (Some(before), Some(placing)) => beside(before, size, placing),
         };
         stood.push(Rectangle::new(corner.into(), size));
     }
@@ -344,4 +347,60 @@ fn arrangement(screens: &[(Size<i32, Logical>, Option<Place>)]) -> Vec<Point<i32
         .into_iter()
         .map(|stood| stood.loc - Point::from((left, top)))
         .collect()
+}
+
+/// Where the corner of a screen `size` large goes next to one standing at
+/// `before`, as `placing` says: side by side lined up at the start, its top
+/// with the other's, unless said otherwise, and above or below at the
+/// middle; and then moved along the edge they share by the offset.
+fn beside(
+    before: Rectangle<i32, Logical>,
+    size: Size<i32, Logical>,
+    (place, align, offset): Placing,
+) -> (i32, i32) {
+    let beside = matches!(place, Place::Right | Place::Left);
+    let align = align.unwrap_or(if beside { Align::Start } else { Align::Middle });
+    // Along the edge they share: where the other begins, how long it is
+    // there, and how long this one is.
+    let lined = |from: i32, other: i32, length: i32| {
+        let along = match align {
+            Align::Start => from,
+            Align::Middle => from + (other - length) / 2,
+            Align::End => from + other - length,
+        };
+        along + offset.map_or(0, |offset| offset.along(length))
+    };
+    match place {
+        Place::Right => (
+            before.loc.x + before.size.w,
+            lined(before.loc.y, before.size.h, size.h),
+        ),
+        Place::Left => (
+            before.loc.x - size.w,
+            lined(before.loc.y, before.size.h, size.h),
+        ),
+        Place::Below => (
+            lined(before.loc.x, before.size.w, size.w),
+            before.loc.y + before.size.h,
+        ),
+        Place::Above => (
+            lined(before.loc.x, before.size.w, size.w),
+            before.loc.y - size.h,
+        ),
+    }
+}
+
+/// What is wrong with where the screens are said to stand: the first one
+/// listed placed next to the one before it, which there is not.
+pub(crate) fn misplaced(outputs: &omorfos_config::Outputs) -> Option<String> {
+    let first = outputs.listed().first();
+    let placed = first
+        .filter(|first| first.place.is_some() || first.align.is_some() || first.offset.is_some());
+    placed.map(|first| {
+        format!(
+            "config.yaml: `{}` is the first screen listed under `outputs`, with none before it \
+             to stand next to, so its `place`, `align` and `offset` are not used",
+            first.name
+        )
+    })
 }

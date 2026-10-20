@@ -113,14 +113,19 @@ otherwise, list them under `outputs`:
 ```yaml
 outputs:
   - { name: HDMI-A-1, scale: 1.25, mode: 2560x1440@144 }
-  - { name: eDP-1, place: below }
+  - { name: eDP-1, place: below, offset: -30% }
 ```
 
 The screens listed stand in that order, each to the right of the one
 listed before it unless its `place` says `left`, `above` or `below`: side
 by side their tops are in line, and one above or below another is in the
-middle of it. The first listed has none before it, and its `place` says
-nothing. Those that are connected but not listed stand to the right of
+middle of it. `align` says otherwise: `start` lines up the tops, or the
+left sides, `middle` the middles and `end` the bottoms, or the right
+sides. `offset` then moves it along the edge the two share, in units of
+layout, such as `-300`, or as a share of its own length along that edge,
+such as `-30%`: less than nothing to the left, or up. The first listed
+has none before it, and you are told if it is given a `place`, an
+`align` or an `offset`. Those that are connected but not listed stand to the right of
 all the rest, and each listed may have a `scale` of its own in
 place of `output.scale`, and a `mode`: the size it is driven at in
 pixels, and how many times a second it is drawn if that matters. Without
