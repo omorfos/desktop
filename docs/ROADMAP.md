@@ -315,10 +315,14 @@ calls for them.
       a picture of: Tab outlines the next window down under the pointer,
       and round again, where before the user had to cancel, move it and
       ask again.
-- [ ] The window Tab reaches drawn over the rest from a picture of it
-      alone, as now only its outline shows where it is, and its title
-      said beside it; or a row of the windows there are, each with its
-      title and picture, beside the screens.
+- [x] The window Tab reaches drawn over the rest from a picture of it
+      alone, taken as the picker goes up of each window another covers,
+      so that what is to be shared or taken can be seen first.
+- [ ] Known gaps in reaching a covered window: its title is not said
+      beside it; a window partly off its screen is shown squeezed into
+      the part on it, and one whose picture holds a shadow of its own a
+      little smaller; and there is no row of the windows there are, each
+      with its title and picture, for one under nothing the pointer is on.
 - [ ] Known gaps in sharing the screen: a region cannot be shared yet;
       over a window the pointer is neither drawn nor sent beside, and no
       line is drawn round it while it is shared, as there is round a

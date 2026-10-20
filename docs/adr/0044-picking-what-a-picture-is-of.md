@@ -87,8 +87,12 @@ whatever has moved since, and the picker is in no picture.
 5. A window behind another, by Tab: the outline goes to the next window
    down under the pointer, and round again. The still screens show only
    what was on top, so this is the one way to reach a covered window
-   without the user cancelling and moving it; what it looks like is not
-   shown yet, only where it is.
+   without the user cancelling and moving it. A picture of each window
+   another covers is taken by itself as the picker goes up, and the one
+   outlined is drawn over the still, so that the user sees what they are
+   about to take. Taking them all first costs a picture each before the
+   picker shows, which is little next to taking one at each Tab, which
+   would make the picker wait on the compositor while it is up.
 
 ## Alternatives
 
