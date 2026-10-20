@@ -125,7 +125,14 @@ sides. `offset` then moves it along the edge the two share, in units of
 layout, such as `-300`, or as a share of its own length along that edge,
 such as `-30%`: less than nothing to the left, or up. The first listed
 has none before it, and you are told if it is given a `place`, an
-`align` or an `offset`. Those that are connected but not listed stand to the right of
+`align` or an `offset`.
+
+A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
+says it: `left`, with the top of the picture on the left as the screen
+was made, `right`, or `inverted`; `normal` is as it was made. It then
+stands as tall as it was wide, and what it shows, and pictures of it,
+are the right way up. Inside another desktop, in a window, `rotate` is
+not used. Those that are connected but not listed stand to the right of
 all the rest, and each listed may have a `scale` of its own in
 place of `output.scale`, and a `mode`: the size it is driven at in
 pixels, and how many times a second it is drawn if that matters. Without

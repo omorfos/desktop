@@ -39,6 +39,14 @@ middle or the end of the edge it shares with the one before it (`align`),
 and moved along it (`offset`), in units or as a share of its own length,
 which stays right when a screen's mode changes.
 
+*Amended:* a listed screen may be turned (`rotate`, as `xrandr` says it).
+It is drawn turned, by the output's transform, into what is drawn as the
+screen is made, and stands in the space as large as it is the right way
+up. Pictures of it are drawn the right way up into memory of their own,
+as pictures of a window by itself are, rather than read back from what
+the screen shows, which is turned; the protocol's transform on a picture
+would have every program reading them turn them itself.
+
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing
 take it. What the compositor needs to draw comes from the output itself,

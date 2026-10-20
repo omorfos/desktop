@@ -43,8 +43,8 @@ pub use diagnostic::{Diagnostic, Position};
 pub use general::{
     Acceleration, Align, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept, Keyboard,
     Launcher, Mouse, NamedOutput, Notifications, OfferedMode, Offset, Output, OutputScale, Outputs,
-    Panel, Place, Placement, Portals, ScreenMode, Screenshots, Speed, Touchpad, Workspaces,
-    X11Scaling, Xwayland,
+    Panel, Place, Placement, Portals, Rotation, ScreenMode, Screenshots, Speed, Touchpad,
+    Workspaces, X11Scaling, Xwayland,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};

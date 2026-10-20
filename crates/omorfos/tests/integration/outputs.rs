@@ -871,3 +871,22 @@ fn a_screen_is_lined_up_and_moved_along_the_edge_it_shares_with_the_one_before()
         "{problems:?}"
     );
 }
+
+#[test]
+fn a_screen_drawn_into_a_window_is_not_turned_whatever_the_configuration_says() {
+    // As one inside another desktop is drawn: into a window whose picture
+    // is upside down already.
+    let turned = "outputs: [{ name: nested, rotate: left }]\n";
+    let mut session = Session::with_config(&[("config.yaml", turned)]);
+    let nested = session.compositor_mut().add_output(
+        "nested",
+        (WIDTH, HEIGHT),
+        smithay::utils::Transform::Flipped180,
+    );
+    let area = session.compositor().area_of(&nested);
+    assert_eq!((area.size.w, area.size.h), (WIDTH, HEIGHT));
+    assert_eq!(
+        nested.current_transform(),
+        smithay::utils::Transform::Flipped180
+    );
+}

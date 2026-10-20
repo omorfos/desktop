@@ -12,7 +12,7 @@
 
 use std::cell::Cell;
 
-use omorfos_config::{Align, Offset, Place};
+use omorfos_config::{Align, Offset, Place, Rotation};
 use omorfos_core::Screen;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use smithay::desktop::layer_map_for_output;
@@ -31,6 +31,8 @@ pub(crate) struct Head {
     global: GlobalId,
     /// How the backend's picture of it is oriented.
     transform: Transform,
+    /// Which way the configuration says the screen is turned.
+    rotation: Transform,
     /// The scale the backend says suits it.
     suggested: Scale,
     /// How many pixels it draws to a unit of layout.
@@ -42,15 +44,31 @@ pub(crate) struct Head {
 }
 
 impl Head {
-    /// The size of the output in pixels.
+    /// The size of the output in pixels, as the screen is made.
     pub(crate) fn pixels(&self) -> Size<i32, Physical> {
         let mode = self.output.current_mode();
         mode.map(|mode| mode.size).unwrap_or_default()
     }
 
+    /// How what is drawn on it is turned: as the configuration says the
+    /// screen is, unless the backend's picture is turned already, as that
+    /// of one drawing into a window is, which a turn would only spoil.
+    pub(crate) fn turned(&self) -> Transform {
+        if self.transform == Transform::Normal {
+            self.rotation
+        } else {
+            self.transform
+        }
+    }
+
+    /// The size of the output in pixels as it stands, the right way up.
+    pub(crate) fn upright(&self) -> Size<i32, Physical> {
+        self.turned().transform_size(self.pixels())
+    }
+
     /// The part of the space the output shows, in units of layout.
     pub(crate) fn area(&self) -> Rectangle<i32, Logical> {
-        let pixels = self.pixels();
+        let pixels = self.upright();
         let size = (self.scale.units(pixels.w), self.scale.units(pixels.h));
         Rectangle::new(self.output.current_location(), size.into())
     }
@@ -68,7 +86,7 @@ impl Head {
         };
         let scale = OutputScale::Fractional(self.scale.factor());
         self.output
-            .change_current_state(Some(mode), Some(self.transform), Some(scale), None);
+            .change_current_state(Some(mode), Some(self.turned()), Some(scale), None);
         self.output.set_preferred(mode);
     }
 }
@@ -107,6 +125,7 @@ impl Compositor {
             global: output.create_global::<Self>(&self.display),
             output: output.clone(),
             transform,
+            rotation: self.rotation_for(name),
             suggested,
             scale: self.scale_for(name, suggested),
             blanked: Cell::new(false),
@@ -236,17 +255,36 @@ impl Compositor {
     /// the backend's suggestions, and lays the outputs out again.
     pub(crate) fn apply_scale(&mut self) {
         let scales = self.heads.iter();
-        let scales: Vec<Scale> = scales
-            .map(|head| self.scale_for(&head.output.name(), head.suggested))
+        let scales: Vec<(Scale, Transform)> = scales
+            .map(|head| {
+                let name = head.output.name();
+                (
+                    self.scale_for(&name, head.suggested),
+                    self.rotation_for(&name),
+                )
+            })
             .collect();
-        for (head, scale) in self.heads.iter_mut().zip(scales) {
-            if scale != head.scale {
-                head.scale = scale;
+        for (head, (scale, rotation)) in self.heads.iter_mut().zip(scales) {
+            if (scale, rotation) != (head.scale, head.rotation) {
+                (head.scale, head.rotation) = (scale, rotation);
                 let pixels = head.pixels();
                 head.set_pixels((pixels.w, pixels.h));
             }
         }
         self.lay_out();
+    }
+
+    /// Which way the configuration says the output called `name` is
+    /// turned, as the protocol says it: a turn to the left is a quarter
+    /// turn against the clock.
+    fn rotation_for(&self, name: &str) -> Transform {
+        let listed = self.config().general.outputs.named(name);
+        match listed.map(|listed| listed.rotate).unwrap_or_default() {
+            Rotation::Normal => Transform::Normal,
+            Rotation::Left => Transform::_90,
+            Rotation::Inverted => Transform::_180,
+            Rotation::Right => Transform::_270,
+        }
     }
 
     /// The outputs in the order they stand, from the left: those the

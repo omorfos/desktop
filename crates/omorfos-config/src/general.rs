@@ -538,6 +538,27 @@ pub struct NamedOutput {
     /// left or up if less than nothing.
     #[serde(default)]
     pub offset: Option<Offset>,
+    /// Which way the screen is turned, as `xrandr --rotate` says it: what
+    /// is drawn is turned to match, so that it stands the right way up.
+    #[serde(default)]
+    pub rotate: Rotation,
+}
+
+/// Which way a screen is turned, with the top of what it shows: where it
+/// is as made, on the left, on the right, or at the bottom.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Rotation {
+    /// As it was made.
+    #[default]
+    Normal,
+    /// A quarter turn to the left: the top of the picture on the left.
+    Left,
+    /// A quarter turn to the right: the top of the picture on the right.
+    Right,
+    /// Upside down.
+    Inverted,
 }
 
 /// Where along the edge two screens share one is lined up with the other.
