@@ -78,6 +78,12 @@ whatever has moved since, and the picker is in no picture.
 2. The portal picks the same way after the user has said yes.
 3. Windows: the compositor says where each is, the one under the pointer
    is outlined, and a click takes it whole, as `--window` does.
+4. Sharing a window, when the application can take one: the same picker,
+   offering screens and windows but no region, the window under the
+   pointer or else its screen. It is shared by the window's own capture
+   source, so that it is shared whatever covers it and at its size as
+   that changes; a region would have to be cut from every picture, and
+   is left for later.
 
 ## Alternatives
 

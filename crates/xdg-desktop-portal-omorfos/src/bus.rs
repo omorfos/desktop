@@ -48,13 +48,13 @@ pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
 pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
 
 /// What can be read of each interface: which version of it is spoken,
-/// and, of sharing the screen, that screens can be shared, with the
-/// pointer not shown, drawn in, or sent beside the pictures.
+/// and, of sharing the screen, that screens and windows can be shared,
+/// with the pointer not shown, drawn in, or sent beside the pictures.
 const PROPERTIES: [(&str, &str, u32); 6] = [
     (SETTINGS, "version", 1),
     (SCREENSHOT, "version", 2),
     (SCREENCAST, "version", 5),
-    (SCREENCAST, "AvailableSourceTypes", 1),
+    (SCREENCAST, "AvailableSourceTypes", 1 | 2),
     (SCREENCAST, "AvailableCursorModes", 1 | 2 | 4),
     (SESSION, "version", 1),
 ];
@@ -109,6 +109,8 @@ pub enum Asked {
         app: String,
         /// How the pointer is to be shown in what is shared.
         pointer: Pointer,
+        /// Whether a window may be shared, and not only a screen.
+        windows: bool,
     },
     /// The session known by this object has ended, and whatever it shares
     /// is to stop.
@@ -307,8 +309,15 @@ impl Portal {
     }
 
     /// Answers a call to start sharing that waited on the user, with the
-    /// stream that shares the screen at `at`, `size` large.
-    pub fn respond_shared(&self, call: &Message, node: u32, at: (i32, i32), size: (i32, i32)) {
+    /// stream that shares the screen at `at`, or a window if there is no
+    /// place, `size` large.
+    pub fn respond_shared(
+        &self,
+        call: &Message,
+        node: u32,
+        at: Option<(i32, i32)>,
+        size: (i32, i32),
+    ) {
         let results = screencast::streams(node, at, size);
         let _ = self
             .connection
@@ -966,7 +975,7 @@ pub(crate) mod tests {
             asked.request().as_str(),
             "/org/freedesktop/portal/desktop/request/1/s"
         );
-        portal.respond_shared(asked.call().unwrap(), 7, (0, 0), (640, 480));
+        portal.respond_shared(asked.call().unwrap(), 7, Some((0, 0)), (640, 480));
         asking.join().unwrap();
 
         peer.call_method(Some(NAME), session.as_str(), Some(SESSION), "Close", &())

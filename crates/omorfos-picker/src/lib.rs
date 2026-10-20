@@ -97,6 +97,8 @@ pub enum Pickable {
     Anything,
     /// One screen, as a whole.
     Screen,
+    /// One screen or one window, each as a whole.
+    ScreenOrWindow,
 }
 
 /// Lets the user pick, over `stills`, pictures of the screens of the
@@ -390,6 +392,11 @@ impl State {
                 Pickable::Anything => drawn.or(under.map(|(_, rect)| rect)),
                 // Where only a screen will do, it is the one the pointer is on.
                 Pickable::Screen => over.map(|_| (0, 0, shown.0, shown.1)),
+                // The window under the pointer, or the screen if none is.
+                Pickable::ScreenOrWindow => {
+                    let screen = over.map(|_| (0, 0, shown.0, shown.1));
+                    under.map(|(_, rect)| rect).or(screen)
+                }
             };
             let rects = dimmed(drawn, shown).into_iter();
             let rects = rects.chain(bordered(drawn, self.look.thick));
@@ -445,6 +452,7 @@ impl State {
                             area::picked(screen.still, (from, to), windows, shown, still.size)
                         }
                         Pickable::Screen => Picked::Screen(screen.still),
+                        Pickable::ScreenOrWindow => self.whole(on, to),
                     }
                 });
                 self.ended(picked.map(Outcome::Picked));
@@ -453,6 +461,19 @@ impl State {
             (_, false) => {}
         }
         self.moved = true;
+    }
+
+    /// The window at `at` on the screen shown `on`, or that screen if no
+    /// window is there.
+    fn whole(&self, on: usize, at: (i32, i32)) -> Picked {
+        let screen = &self.screens[on];
+        let shown = screen.shown.unwrap_or_default();
+        let still = &self.stills[screen.still];
+        let under = area::under(at, &still.windows, shown, still.size);
+        under.map_or(Picked::Screen(screen.still), |(window, _)| Picked::Window {
+            screen: screen.still,
+            window,
+        })
     }
 
     /// Notes how picking ended, if it has not already.
@@ -476,8 +497,9 @@ impl State {
         self.typing = keymap.as_ref().map(xkb::State::new);
     }
 
-    /// Takes in a key going down: Enter picks every screen, or the one
-    /// under the pointer where only a screen will do, and Escape nothing.
+    /// Takes in a key going down: Enter picks every screen, or what is
+    /// under the pointer where only a screen or a window will do, and
+    /// Escape nothing.
     fn pressed(&mut self, code: u32) {
         // The numbers the layout knows keys by are eight higher.
         let code = xkb::Keycode::new(code.saturating_add(8));
@@ -488,6 +510,7 @@ impl State {
         let enter = match self.pickable {
             Pickable::Anything => Some(Picked::Everything),
             Pickable::Screen => screen.map(Picked::Screen),
+            Pickable::ScreenOrWindow => self.over.map(|(on, at)| self.whole(on, at)),
         };
         let outcome = typing.and_then(|typing| match typing.key_get_one_sym(code) {
             xkb::Keysym::Return | xkb::Keysym::KP_Enter => enter.map(Outcome::Picked),
