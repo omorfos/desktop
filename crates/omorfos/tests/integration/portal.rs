@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos::{Input, Roles};
 use omorfos_config::{Part, States, Theme};
@@ -705,8 +705,8 @@ fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
     // The portal hears what was picked a moment after the picker has gone,
     // on its own time: until then, what is asked is taken for asked while
     // it is still picked, as a person could not ask so soon.
-    let until = std::time::Instant::now() + Duration::from_millis(300);
-    while std::time::Instant::now() < until {
+    let until = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < until {
         session.step();
         std::thread::sleep(Duration::from_millis(2));
     }
@@ -915,6 +915,51 @@ fn after_a_picture_is_taken_the_next_is_asked_about_too() {
         assert_eq!(picked.0, 0, "{request}");
         session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
     }
+}
+
+#[test]
+fn a_key_pressed_before_a_question_is_up_does_not_answer_it() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let first = ask(&daemon, "p");
+    asked(&mut session);
+    // The first is answered, and from here the compositor does nothing
+    // until the key is pressed: so the box answered is still where the
+    // keyboard is, though the portal has taken it down.
+    press(&mut session, key::ESCAPE);
+    session.step();
+    assert_eq!(waited(first).0, 1);
+    // Of two asked at once, one is asked about and the other refused at
+    // once, which says that the one is.
+    let (one, other) = (ask(&daemon, "q"), ask(&daemon, "r"));
+    let until = Instant::now() + Duration::from_secs(10);
+    while !one.is_finished() && !other.is_finished() {
+        assert!(Instant::now() < until, "neither was answered");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let asking = if one.is_finished() { other } else { one };
+    // A key meant for the box that went is no answer to the one that
+    // comes: that one goes up, and waits for the user. The two look alike,
+    // and nothing is up between them, as the one that comes is drawn only
+    // once the compositor has made room for it.
+    press(&mut session, key::RETURN);
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
+    asked(&mut session);
+    assert!(!asking.is_finished(), "it waits for the user");
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, asking).0, 1);
+}
+
+/// What an application asking was answered with, waited for without the
+/// compositor doing anything meanwhile.
+fn waited(asking: JoinHandle<Answered>) -> Answered {
+    let until = Instant::now() + Duration::from_secs(10);
+    while !asking.is_finished() {
+        assert!(Instant::now() < until, "it was not answered");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    asking.join().unwrap()
 }
 
 #[test]
