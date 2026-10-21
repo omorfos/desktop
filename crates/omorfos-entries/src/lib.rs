@@ -48,19 +48,27 @@ pub fn list(value: &str) -> impl Iterator<Item = &str> {
 /// Splits the `Exec` line of a desktop entry into a program and its
 /// arguments, as the specification has it: words apart from one another by
 /// spaces, a word in double quotes kept whole with `\` before a character
-/// that is meant as itself. The places where files to open would go (`%f`,
-/// `%U` and the like) are left out, since there are none.
+/// that is meant as itself. A word in single quotes is kept whole too, with
+/// nothing special inside them, as `GLib`, and with it the desktops, take
+/// what entries in the wild are written with. The places where files to
+/// open would go (`%f`, `%U` and the like) are left out, since there are
+/// none.
 #[must_use]
 pub fn arguments(exec: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word: Option<String> = None;
-    let mut quoted = false;
+    let (mut quoted, mut single) = (false, false);
     let mut characters = exec.chars();
     while let Some(character) = characters.next() {
         match character {
+            '\'' if !quoted => {
+                single = !single;
+                // Even nothing between quotes is a word.
+                word.get_or_insert_default();
+            }
+            other if single => word.get_or_insert_default().push(other),
             '"' => {
                 quoted = !quoted;
-                // Even nothing between quotes is a word.
                 word.get_or_insert_default();
             }
             '\\' if quoted => word.get_or_insert_default().extend(characters.next()),
@@ -145,6 +153,22 @@ mod tests {
         // nothing.
         assert_eq!(arguments(r#"tool "the rest"#), ["tool", "the rest"]);
         assert_eq!(arguments("tool \"x\\"), ["tool", "x"]);
+    }
+
+    #[test]
+    fn a_word_in_single_quotes_is_kept_whole_as_glib_keeps_it() {
+        // As the system's `im-launch.desktop` says it: the specification has
+        // double quotes only, and GLib, and with it the desktops, take
+        // single quotes too.
+        assert_eq!(
+            arguments("sh -c 'IM_CONFIG_CHECK_ENV=1 im-launch true'"),
+            ["sh", "-c", "IM_CONFIG_CHECK_ENV=1 im-launch true"]
+        );
+        // Nothing is special inside them, a backslash or a double quote.
+        assert_eq!(arguments(r#"say 'a "b" \c'"#), ["say", r#"a "b" \c"#]);
+        // A single quote inside double quotes is itself.
+        assert_eq!(arguments(r#"say "it's""#), ["say", "it's"]);
+        assert_eq!(arguments("say ''"), ["say"]);
     }
 
     #[test]
