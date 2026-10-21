@@ -481,9 +481,12 @@ what only games and touchpads need last.
       a key for `next_layout` decided with the other default keys.
 - [ ] A second input method refused, not the first: Smithay tells the one
       there already that it may no longer be one.
-- [ ] Programs listed in `~/.config/autostart` started with the session,
+- [x] Programs listed in `~/.config/autostart` started with the session,
       and the session's environment told to D-Bus and systemd, without
-      which portals and much else do not find it.
+      which portals and much else do not find it. The environment was
+      told already; the entries are started once at login by
+      `omorfos-session autostart`, the system's too, as the specification
+      has it.
 - [ ] A polkit agent, so that a program can ask for the administrator's
       password, and `omorfos-pinentry` for keys and passphrases
       (wish 9): the screen dimmed and blurred behind one prompt, what is
