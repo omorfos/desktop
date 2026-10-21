@@ -429,7 +429,7 @@ what only games and touchpads need last.
       does by default, a browser perhaps, is for the review of the
       defaults. Search and the calculator (`XF86Search`,
       `XF86Calculator`) open the launcher, the second once it does sums.
-- [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
+- [x] A switcher for `Alt+Tab` (wish 5): the windows in the order they
       were last used, each with its picture and title, walked through
       while Alt is held and chosen when it is let go. Flat first. The
       windows standing one behind another on a diagonal, turned through
@@ -442,8 +442,14 @@ what only games and touchpads need last.
       let go, the window chosen goes to the front of the order and the
       rest keep their places, so that one Alt+Tab goes back to the
       window before and another goes back again.
-      Each window with the icon its program gives it
-      (`xdg-toplevel-icon`), or its application's otherwise.
+      Drawn by the compositor, each window small in its place over its
+      title, as ADR 38 has it.
+- [ ] The switcher's icons: each window with the icon its program gives
+      it (`xdg-toplevel-icon`), or its application's otherwise, and a
+      private window shown by its icon as well as its title.
+- [ ] Known gaps in the switcher: windows are made small in one step,
+      not by halves, so text in them is rough; and the pointer moving
+      over a window does not pick it.
 - [ ] Sleep, restart and shut down, by logind, and what the lid and the
       power button do. Sleep, by the lid or asked for, locks the screen
       first, with the locker in use until `omorfos-lock` takes its place,
