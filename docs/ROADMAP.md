@@ -450,12 +450,17 @@ what only games and touchpads need last.
 - [ ] Known gaps in the switcher: windows are made small in one step,
       not by halves, so text in them is rough; and the pointer moving
       over a window does not pick it.
-- [ ] Sleep, restart and shut down, by logind, and what the lid and the
+- [x] Sleep, restart and shut down, by logind, and what the lid and the
       power button do. Sleep, by the lid or asked for, locks the screen
       first, with the locker in use until `omorfos-lock` takes its place,
       and waits for it to be locked, so that the machine never wakes
-      unlocked. The keys for sleep and for turning off (`XF86Sleep`,
-      `XF86PowerOff`) ask the same.
+      unlocked. `omorfos-session` runs all session to do it, and
+      `loginctl lock-session` locks too. The lid and the keys for sleep
+      and for turning off are logind's, which already acts on them, so
+      they are not bound (ADR 35).
+- [ ] Sleeping when the user is away, after a time the configuration
+      gives, as ADR 35 has it: today only the screens go off, and an idle
+      daemon is needed to lock.
 - [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another
