@@ -444,9 +444,13 @@ what only games and touchpads need last.
       window before and another goes back again.
       Drawn by the compositor, each window small in its place over its
       title, as ADR 38 has it.
-- [ ] The switcher's icons: each window with the icon its program gives
+- [x] The switcher's icons: each window with the icon its program gives
       it (`xdg-toplevel-icon`), or its application's otherwise, and a
       private window shown by its icon as well as its title.
+- [ ] The icons of windows elsewhere: the panel's list of windows, and a
+      program written for X11, which gives its icon as `_NET_WM_ICON`.
+      The icon theme is `hicolor` and then Adwaita, as for the shell's
+      components; the user's own theme comes with the look.
 - [ ] Known gaps in the switcher: windows are made small in one step,
       not by halves, so text in them is rough; and the pointer moving
       over a window does not pick it.
