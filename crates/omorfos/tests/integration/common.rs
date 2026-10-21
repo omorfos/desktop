@@ -79,6 +79,9 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
+use wayland_protocols::xdg::toplevel_icon::v1::client::{
+    xdg_toplevel_icon_manager_v1 as icon_manager, xdg_toplevel_icon_v1 as toplevel_icon,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 /// A `config.yaml` for a session with four workspaces that are always
@@ -658,6 +661,10 @@ pub(crate) enum Event {
 #[derive(Default)]
 pub(crate) struct ClientState {
     synced: bool,
+    /// The protocol by which a program gives its windows icons.
+    icons: Option<icon_manager::XdgToplevelIconManagerV1>,
+    /// The sizes the compositor asked icons to be given in.
+    pub(crate) icon_sizes: Vec<i32>,
     compositor: Option<wl_compositor::WlCompositor>,
     subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     shm: Option<wl_shm::WlShm>,
@@ -1192,6 +1199,27 @@ impl Client {
         surface.commit();
     }
 
+    /// Gives `window` an icon called `name`, or of `pixels` (a side and a
+    /// colour), or both; or, with neither, takes back the one it had.
+    pub(crate) fn set_icon(
+        &self,
+        window: &Toplevel,
+        name: Option<&str>,
+        pixels: Option<(i32, u32)>,
+    ) {
+        let icons = self.state.icons.as_ref().unwrap();
+        let icon = icons.create_icon(&self.handle(), ());
+        if let Some(name) = name {
+            icon.set_name(name.to_owned());
+        }
+        if let Some((side, color)) = pixels {
+            icon.add_buffer(&self.buffer((side, side), color), 1);
+        }
+        icons.set_icon(&window.role, Some(&icon));
+        icon.destroy();
+        window.surface.commit();
+    }
+
     fn buffer(&self, (width, height): (i32, i32), color: u32) -> wl_buffer::WlBuffer {
         let pixels = usize::try_from(width * height).unwrap();
         let mut file = tempfile::tempfile().unwrap();
@@ -1501,6 +1529,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.shapes = Some(registry.bind(name, version, handle, ()));
             }
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
+            "xdg_toplevel_icon_manager_v1" => {
+                state.icons = Some(registry.bind(name, version, handle, ()));
+            }
             "wl_output" => {
                 state.screens.push(registry.bind(name, version, handle, ()));
                 state.outputs += 1;
@@ -2012,6 +2043,21 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
 }
 
 delegate_noop!(ClientState: wl_compositor::WlCompositor);
+delegate_noop!(ClientState: toplevel_icon::XdgToplevelIconV1);
+impl Dispatch<icon_manager::XdgToplevelIconManagerV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &icon_manager::XdgToplevelIconManagerV1,
+        event: icon_manager::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let icon_manager::Event::IconSize { size } = event {
+            state.icon_sizes.push(size);
+        }
+    }
+}
 delegate_noop!(ClientState: capture_sources::ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(ClientState: capture_source::ExtImageCaptureSourceV1);
 delegate_noop!(ClientState: window_sources::ExtForeignToplevelImageCaptureSourceManagerV1);

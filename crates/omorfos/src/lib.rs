@@ -22,6 +22,7 @@ mod cursor;
 mod ghost;
 mod gpu;
 mod handlers;
+mod icons;
 mod input;
 mod ipc;
 mod lock;

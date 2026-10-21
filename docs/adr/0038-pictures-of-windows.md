@@ -188,3 +188,29 @@ focus saw Alt go down, and would otherwise see it come up with nothing
 between, which a browser takes as Alt pressed alone and shows its menu
 bar for. The window chosen, or the one left as it was, has it back
 when the switcher closes.
+
+**Icons came after.** Each window's icon is beside its title, and a
+private window has it large where its picture would be. It is the one
+its program gives (`xdg-toplevel-icon`): by name, looked up in the icon
+themes as the shell's components look theirs up, or else as pixels;
+failing that, the one its desktop entry names, or the one named as its
+`app_id` is.
+
+- **A name is a name.** The protocol lets a program name an icon, and
+  the name could be the path of a file, which the compositor would then
+  open: one of the program's choosing, that a program in a sandbox could
+  not read itself. A name with a `/` in it is passed over for the
+  pixels. A desktop entry's `Icon` may still be a path, since the entry
+  is installed, not sent.
+- **Pixels are drawn by the renderer, not read.** They are in memory the
+  program shares, which only `unsafe` code of ours could read (ADR 40);
+  the renderer reads it as it reads a window's own. So an icon given as
+  pixels is drawn over the switcher, and one found by name is painted
+  into it. It is never drawn larger than it was given, which would only
+  make it blocky.
+- **The compositor reads icon files** now, with the same library the
+  shell's components use, which makes it 1.3 MB larger. A drawing is
+  made at the size it is wanted at, about two milliseconds each the
+  first time; what was found, and what was not, is kept, so the first
+  opening of the switcher after a program starts is the only one that
+  pays.

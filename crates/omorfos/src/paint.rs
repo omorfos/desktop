@@ -7,7 +7,7 @@
 
 use omorfos_config::{Color, Edges, Line, Part, State, States, Style, Theme};
 use omorfos_core::{Button, Decoration, Item, Menu, Panel, SwitcherLayout};
-use omorfos_ui::{Area, inset};
+use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
 use crate::Scale;
@@ -371,14 +371,79 @@ pub(crate) const fn line_height(points: u32) -> u32 {
     points.saturating_mul(5) / 3
 }
 
+/// The room between an icon and the title beside it.
+const BESIDE: u32 = 6;
+
+/// The largest an icon is drawn where a window's picture would be.
+pub(crate) const LARGE_ICON: u32 = 64;
+
+/// What the switcher shows of one window, but for its picture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Shown<I> {
+    pub(crate) title: String,
+    /// Its icon, if it has one: a picture, or what the renderer draws one
+    /// from.
+    pub(crate) icon: Option<I>,
+    /// Whether its picture is shown; if not, its icon is shown large in
+    /// its place.
+    pub(crate) pictured: bool,
+}
+
+/// Where the switcher shows what it shows of one window in its `place`,
+/// `picture` tall: its icon beside its title, the title, and the icon
+/// large where the picture would be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Places {
+    pub(crate) icon: Area,
+    pub(crate) title: Area,
+    pub(crate) large: Area,
+}
+
+impl Places {
+    /// Where things go in `place`, as the theme has it in `states`, for a
+    /// window with an icon if `iconic`.
+    pub(crate) fn of(
+        place: Area,
+        theme: &Theme,
+        states: States,
+        picture: u32,
+        iconic: bool,
+    ) -> Self {
+        let style = theme.style(Part::SwitcherItem, states);
+        let (left, top, room, down) = inset(place, style.inset());
+        let font = theme.font(Part::SwitcherTitle, states);
+        let tall = line_height(font.size.get()).min(down);
+        let bottom = top.saturating_add_unsigned(down - tall);
+        let icon = (left, bottom, tall.min(room), tall);
+        let aside = if iconic { (tall + BESIDE).min(room) } else { 0 };
+        let title = (
+            left.saturating_add_unsigned(aside),
+            bottom,
+            room - aside,
+            tall,
+        );
+        let picture = picture.min(down);
+        let side = LARGE_ICON.min(room).min(picture);
+        let large = (
+            left.saturating_add_unsigned((room - side) / 2),
+            top.saturating_add_unsigned((picture - side) / 2),
+            side,
+            side,
+        );
+        Self { icon, title, large }
+    }
+}
+
 /// Paints the switcher as `layout` has it: its box, each window's place in
-/// it, the one picked set apart, and each title under where its picture is
-/// to go, in the order of `titles`.
+/// it, the one picked set apart, and under where each picture is to go its
+/// title and the icon it has as a picture, in the order of `shown`. Where
+/// a window's picture is not shown, its icon is, large.
 pub(crate) fn switcher(
     text: &mut Text,
     theme: &Theme,
     layout: &SwitcherLayout,
-    titles: &[String],
+    shown: &[Shown<Option<Image>>],
+    picture: u32,
     scale: Scale,
 ) -> Canvas {
     let area = layout.area;
@@ -388,19 +453,23 @@ pub(crate) fn switcher(
         (0, 0, width, height),
         &theme.style(Part::Switcher, States::NONE),
     );
-    for ((_, at, picked), title) in layout.items.iter().zip(titles) {
+    for ((_, at, picked), shown) in layout.items.iter().zip(shown) {
         let states = States::NONE.when(State::Active, *picked);
         let style = theme.style(Part::SwitcherItem, states);
         let left = at.origin.x - area.origin.x;
         let top = at.origin.y - area.origin.y;
         let place = (left, top, at.size.width, at.size.height);
         canvas.draw_box(place, &style);
-        let (left, top, room, down) = inset(place, style.inset());
+        let places = Places::of(place, theme, states, picture, shown.icon.is_some());
         let font = theme.font(Part::SwitcherTitle, states);
-        let tall = line_height(font.size.get()).min(down);
         let ink = theme.style(Part::SwitcherTitle, states).color;
-        let bottom = top.saturating_add_unsigned(down - tall);
-        text.draw(&mut canvas, title, (left, bottom, room, tall), ink, font);
+        text.draw(&mut canvas, &shown.title, places.title, ink, font);
+        if let Some(Some(image)) = &shown.icon {
+            canvas.draw_image(places.icon, image);
+            if !shown.pictured {
+                canvas.draw_image(places.large, image);
+            }
+        }
     }
     canvas
 }

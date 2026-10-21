@@ -1804,6 +1804,7 @@ dependencies = [
  "omorfos-clipboard",
  "omorfos-config",
  "omorfos-core",
+ "omorfos-icons",
  "omorfos-ipc",
  "omorfos-launcher",
  "omorfos-notifications",
