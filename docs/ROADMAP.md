@@ -450,12 +450,17 @@ what only games and touchpads need last.
       and waits for it to be locked, so that the machine never wakes
       unlocked. The keys for sleep and for turning off (`XF86Sleep`,
       `XF86PowerOff`) ask the same.
-- [ ] What the keys for wireless, aeroplane mode and Bluetooth did,
-      shown as the volume is: "Bluetooth off". They are not bound: on
-      many laptops the kernel turns the radios off and on itself when
-      they are pressed (on a ThinkPad, `thinkpad_acpi`), and a binding
-      as well would undo it. What changed is read from `/dev/rfkill`, by
-      the part of `omorfos-session` that runs all session.
+- [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
+      whatever turned them off or on: a key the kernel handles itself (on
+      a ThinkPad, `thinkpad_acpi`), a switch on the side, or another
+      program. Each change is shown as the volume is, "Bluetooth off",
+      with an icon for it; and the panel shows which are off, aeroplane
+      mode when all are, from the compositor's IPC state, which gains the
+      radios and says when they change. The keys are not bound: the
+      kernel has already acted on them, and a binding as well would undo
+      it. The radios are read from `/dev/rfkill`, which tells of each
+      change as it happens, by the part of `omorfos-session` that runs
+      all session, which tells the compositor.
 - [ ] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`), and switching keyboard
       layout by a key, which can be turned off for those who type with
