@@ -410,8 +410,16 @@ as decided on 2026-10-21: what is felt every day first, the lock screen
 late so that it is written and reviewed with the care it needs, and
 what only games and touchpads need last.
 
-- [ ] Keys for volume, brightness and media, with a small display of the
-      level over the screen that goes by itself.
+- [x] Keys for volume, brightness and media, with a small display of the
+      level over the screen that goes by itself: `omorfos-session`, run
+      once a key, sets the volume by `wpctl`, the brightness by logind,
+      and tells players over D-Bus, and the level shows as a
+      notification with a bar that the next press changes (ADR 46).
+- [ ] Known gaps in those keys: a key held down changes the level once,
+      as bindings do not repeat; none of them works while the screen is
+      locked, which only our own lock screen should change; the
+      keyboard's backlight has no keys; and the brightness of a screen
+      outside the laptop, which only speaks DDC, is not set.
 - [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
       were last used, each with its picture and title, walked through
       while Alt is held and chosen when it is let go. Flat first. The
@@ -766,6 +774,14 @@ How the project is run, as learnt in part from Vela's:
       form for reporting a bug that asks for what one needs.
 - [ ] The links between the documents checked in CI, without the
       network.
+- [ ] What a version promises written down: what counts as breaking,
+      which, as nothing here is a library others build on, is what users
+      and other programs depend on: the configuration's keys, the
+      theme's parts and states, the IPC protocol, `omorfosctl`'s
+      commands and what it prints, and the names of the programs.
+- [ ] CI that finds a breaking change not marked as one: a schema of
+      the configuration that loses or renames something in a commit
+      without `!`.
 
 Reaching people:
 
@@ -774,7 +790,19 @@ Reaching people:
 - [ ] Pictures of it in the README, once it wears the design language.
 - [ ] A first release, which is also the first real test of the release
       pipeline (see [RELEASING.md](RELEASING.md)).
-- [ ] The shell in the user's language.
+- [ ] The shell in the user's language, Polish first. The mechanism and
+      the English are part of this repository, so that CI can test every
+      program in every language; each language's words are files of
+      their own (`i18n/<language>/`), with an owner each in `CODEOWNERS`,
+      so that translating needs no review of code. English is always
+      loaded, and a message missing from a language, or written with the
+      wrong placeholders, is shown in English, a message at a time. CI
+      checks every language against the English: no message unknown to
+      it, the same placeholders, and every plural form the language has.
+      A translation made by a machine is marked as such until someone
+      who speaks the language has read it. To be decided as an ADR: the
+      format (Fluent, which has per-message fallback and Polish's plurals
+      built in, or gettext, which translators' tools know best).
 - [ ] A guide for someone who has just logged in for the first time, and
       a first run that is not an empty screen.
 - [ ] Packages beyond `.deb` and the AUR.
