@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for a wpctl that says something else than a volume.
+echo "Volume: loud"

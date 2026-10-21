@@ -19,7 +19,8 @@ optdepends=('foot: the terminal started by the default key bindings'
             'xdg-desktop-portal-gtk: to choose files, which omorfos leaves to it'
             'glib2: to wait at login for the portal backend of omorfos (gdbus)'
             'dbus: to tell D-Bus of the session (dbus-update-activation-environment)'
-            'pipewire: to share the screen in a browser or a call')
+            'pipewire: to share the screen in a browser or a call'
+            'wireplumber: for the volume keys (wpctl)')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -33,12 +34,12 @@ build() {
   cd "desktop-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p xdg-desktop-portal-omorfos
+  cargo build --frozen --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p xdg-desktop-portal-omorfos
 }
 
 package() {
   cd "desktop-$pkgver"
-  install -Dm755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"

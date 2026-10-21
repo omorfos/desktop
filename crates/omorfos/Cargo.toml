@@ -29,8 +29,9 @@ depends = "$auto, libegl1, libgles2"
 # the portal service and the GTK backend it leaves files to; `gdbus`, which
 # waits at login for omorfos's portal backend; and
 # `dbus-update-activation-environment`, which tells D-Bus of the session;
-# and PipeWire, which a shared screen is streamed through.
-recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire"
+# PipeWire, which a shared screen is streamed through; and WirePlumber,
+# whose `wpctl` the volume keys set the volume with.
+recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire, wireplumber"
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],
@@ -40,6 +41,7 @@ assets = [
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
     ["target/release/omorfos-clipboard", "usr/bin/", "755"],
     ["target/release/omorfos-recording", "usr/bin/", "755"],
+    ["target/release/omorfos-session", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],

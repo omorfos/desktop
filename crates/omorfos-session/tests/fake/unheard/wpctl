@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for wpctl where a volume is set but cannot be read back.
+[ "$1" = get-volume ] && exit 1
+exit 0

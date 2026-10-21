@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for wpctl where the sound is quiet.
+echo "Volume: 0.10"

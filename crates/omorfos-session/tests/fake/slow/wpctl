@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for wpctl where PipeWire does not answer.
+exec /bin/sleep 60
