@@ -114,6 +114,12 @@ that needs a terminal, and one whose `TryExec` program is not installed.
 These are ordinary programs; one that needs a role goes in `autostart`
 here instead. One that cannot be started is said in the session's log.
 
+Where systemd runs for you, as it does on most systems, each of these and
+each of `autostart` is started in a scope of its own, part of the
+graphical session, so that it is stopped when you log out, as a program
+that does not show windows is otherwise not: one left over would still be
+running at your next login, and some refuse to start twice.
+
 `cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
 `~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
 Shapes the theme lacks come from the themes it inherits from and then from

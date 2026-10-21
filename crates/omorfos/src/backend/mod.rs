@@ -94,6 +94,13 @@ pub fn asker_program(own: Option<&Path>) -> PathBuf {
     beside(own, ASKER)
 }
 
+/// Whether systemd's user manager runs for the session whose runtime
+/// directory is `runtime`, as its socket there says.
+#[must_use]
+pub fn user_manager(runtime: Option<&OsStr>) -> bool {
+    runtime.is_some_and(|runtime| Path::new(runtime).join("systemd/private").exists())
+}
+
 /// The program called `name` beside the executable `own`, if there is one
 /// there, and otherwise just its name, to be looked up in `PATH`.
 fn beside(own: Option<&Path>, name: &str) -> PathBuf {
@@ -164,6 +171,16 @@ mod tests {
         assert_eq!(session_program(None), Path::new(SESSION));
         assert_eq!(asker_program(None), Path::new(ASKER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
+    }
+
+    #[test]
+    fn the_user_manager_is_known_by_its_socket() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        assert!(!user_manager(Some(runtime.path().as_os_str())));
+        assert!(!user_manager(None));
+        std::fs::create_dir(runtime.path().join("systemd")).unwrap();
+        std::fs::write(runtime.path().join("systemd/private"), "").unwrap();
+        assert!(user_manager(Some(runtime.path().as_os_str())));
     }
 
     #[test]

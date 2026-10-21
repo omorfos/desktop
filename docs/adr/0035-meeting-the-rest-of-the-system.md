@@ -299,3 +299,13 @@ the two share now in `omorfos-entries`, starts each as an ordinary
 program and ends; the programs it started go on without it. The session's
 environment was already told to D-Bus and systemd at login, before any
 of them starts.
+
+Programs started so outlived the session at first: one that never
+speaks to the compositor is told of nothing that ends, and GeoClue's
+agent, still running from one login, would not start at the next. Where
+systemd's user manager runs, each program the configuration or the
+autostart entries list is started by `systemd-run --user --scope`, in a
+scope of `app-graphical.slice` that is part of `graphical-session.target`,
+and so stops when the session's target does. It is the same process, which
+`systemd-run` becomes, so a role handed to it over its standard input
+reaches it. Without the user manager each is started as before.

@@ -200,6 +200,34 @@ fn what_asks_for_secrets_is_started_with_the_session() {
 }
 
 #[test]
+fn what_is_to_start_with_the_session_is_started_in_a_scope_of_its_own() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let mark = directory.path().join("started");
+    let config = format!("autostart:\n  - [touch, '{}']\n", mark.display());
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    session.listen();
+    // Stands in for systemd-run: writes down what it was asked, and starts
+    // the program.
+    let scoper = directory.path().join("systemd-run");
+    let script = "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/scoped\"\n\
+                  while [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n";
+    std::fs::write(&scoper, script).unwrap();
+    let runnable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+    std::fs::set_permissions(&scoper, runnable).unwrap();
+    session.compositor_mut().set_scoper(&scoper);
+    session.compositor_mut().autostart();
+    session.eventually(|_| mark.exists());
+    let asked = std::fs::read_to_string(directory.path().join("scoped")).unwrap();
+    assert!(asked.starts_with("--user --scope "), "{asked}");
+    assert!(asked.contains("--slice=app-graphical.slice"), "{asked}");
+    assert!(
+        asked.contains("--property=PartOf=graphical-session.target "),
+        "{asked}"
+    );
+    assert!(asked.contains(" -- touch "), "{asked}");
+}
+
+#[test]
 fn the_panel_is_not_started_when_the_configuration_turns_it_off() {
     let directory = tempfile::TempDir::new().unwrap();
     let after = directory.path().join("after");
