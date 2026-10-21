@@ -420,6 +420,15 @@ what only games and touchpads need last.
       locked, which only our own lock screen should change; the
       keyboard's backlight has no keys; and the brightness of a screen
       outside the laptop, which only speaks DDC, is not set.
+- [ ] More of a keyboard's own keys. Before any is bound, what each
+      sends is checked on a real keyboard (`wev`), since makers differ.
+      The touchpad switched off and on by its key (`XF86TouchpadToggle`),
+      as an action of the compositor's, which has the touchpad already.
+      The key marked with a star (`XF86Favorites`), which is made to be
+      the user's, left unbound and written down as one to bind; what it
+      does by default, a browser perhaps, is for the review of the
+      defaults. Search and the calculator (`XF86Search`,
+      `XF86Calculator`) open the launcher, the second once it does sums.
 - [ ] A switcher for `Alt+Tab` (wish 5): the windows in the order they
       were last used, each with its picture and title, walked through
       while Alt is held and chosen when it is let go. Flat first. The
@@ -439,7 +448,14 @@ what only games and touchpads need last.
       power button do. Sleep, by the lid or asked for, locks the screen
       first, with the locker in use until `omorfos-lock` takes its place,
       and waits for it to be locked, so that the machine never wakes
-      unlocked.
+      unlocked. The keys for sleep and for turning off (`XF86Sleep`,
+      `XF86PowerOff`) ask the same.
+- [ ] What the keys for wireless, aeroplane mode and Bluetooth did,
+      shown as the volume is: "Bluetooth off". They are not bound: on
+      many laptops the kernel turns the radios off and on itself when
+      they are pressed (on a ThinkPad, `thinkpad_acpi`), and a binding
+      as well would undo it. What changed is read from `/dev/rfkill`, by
+      the part of `omorfos-session` that runs all session.
 - [ ] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`), and switching keyboard
       layout by a key, which can be turned off for those who type with
@@ -458,7 +474,11 @@ what only games and touchpads need last.
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
       own, which the theme's `desktop` gives way to.
-- [ ] Screens arranged by the user: mirroring.
+- [ ] Screens arranged by the user: mirroring. The display key
+      (`XF86Display`) goes through the screens side by side, the same on
+      both, and only one of them, each kept only if the user says so in
+      time, as the next item has it, since it is the key pressed when a
+      screen has gone dark.
 - [ ] A change to the screens made from Settings (stage 7) kept only if
       the user says so in time, and put back by the compositor itself
       otherwise, so that a screen left dark comes back on its own.
@@ -632,7 +652,7 @@ decision of stage 2.
       once, since the files are already watched. It writes what a person
       could have written, keeps what it does not understand, and offers
       presets. Few options, well chosen; everything else stays in the
-      files.
+      files. The keyboard's settings key (`XF86Tools`) opens it.
 - [ ] **Files** (wish 9): places and starred places at the side; volumes
       mounted when plugged in, and unmounted; list, details and
       thumbnails; make, rename, move, delete to the trash; archives
@@ -655,7 +675,8 @@ decision of stage 2.
       What is being recorded, and which sounds, is shown the whole time.
 - [ ] About: what the system is, shown from the bar's menu.
 - [ ] **On-screen keyboard**, for accessibility, and for a touch screen
-      with no keyboard. Above every window and panel by default, and
+      with no keyboard, shown and hidden by the keyboard's own key for
+      it where there is one. Above every window and panel by default, and
       never taking the keyboard's focus, so that what it types goes to
       the application that has it, whatever that is, a program written
       for X11 included. It types through the compositor
