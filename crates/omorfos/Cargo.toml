@@ -42,6 +42,7 @@ assets = [
     ["target/release/omorfos-clipboard", "usr/bin/", "755"],
     ["target/release/omorfos-recording", "usr/bin/", "755"],
     ["target/release/omorfos-session", "usr/bin/", "755"],
+    ["target/release/omorfos-ask", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
@@ -106,6 +107,7 @@ omorfos-screenshot = { path = "../omorfos-screenshot" }
 omorfos-clipboard = { path = "../omorfos-clipboard" }
 xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 omorfos-session = { path = "../omorfos-session" }
+omorfos-ask = { path = "../omorfos-ask" }
 # Reads back the pictures the screenshot tool saves.
 png = "0.18.1"
 # Sends notifications in the tests, as a program would.

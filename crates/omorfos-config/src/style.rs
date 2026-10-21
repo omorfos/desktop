@@ -108,6 +108,9 @@ pub enum Part {
     QuestionDetail,
     /// A button of the question. The one that gives is [`State::Active`].
     QuestionButton,
+    /// Where a question asks for a secret to be typed, such as a password:
+    /// [`State::Focused`] while it is typed into.
+    QuestionInput,
     /// The switcher on `Alt+Tab`: the box the windows are shown in, in the
     /// middle of the screen.
     Switcher,
@@ -121,11 +124,14 @@ pub enum Part {
     /// background dims what is not picked, and its border is round what
     /// is drawn.
     Picker,
+    /// What the compositor dims the session with while a prompt asks for a
+    /// secret, such as the administrator's password: its background.
+    Sealed,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 39] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -159,10 +165,12 @@ impl Part {
         Self::Question,
         Self::QuestionDetail,
         Self::QuestionButton,
+        Self::QuestionInput,
         Self::Switcher,
         Self::SwitcherItem,
         Self::SwitcherTitle,
         Self::Picker,
+        Self::Sealed,
     ];
 
     /// What the part is called in a stylesheet.
@@ -202,10 +210,12 @@ impl Part {
             Self::Question => "question",
             Self::QuestionDetail => "question-detail",
             Self::QuestionButton => "question-button",
+            Self::QuestionInput => "question-input",
             Self::Switcher => "switcher",
             Self::SwitcherItem => "switcher-item",
             Self::SwitcherTitle => "switcher-title",
             Self::Picker => "picker",
+            Self::Sealed => "sealed",
         }
     }
 }
@@ -575,10 +585,12 @@ mod tests {
                 "question",
                 "question-detail",
                 "question-button",
+                "question-input",
                 "switcher",
                 "switcher-item",
                 "switcher-title",
-                "picker"
+                "picker",
+                "sealed"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();

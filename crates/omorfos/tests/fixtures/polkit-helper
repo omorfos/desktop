@@ -1,0 +1,25 @@
+#!/bin/sh
+# Stands in for polkit's helper, which checks a user's secret: it is told
+# the user, reads the request's cookie, asks for the password as PAM would,
+# and says whether it was `atx`. The tests make the cookie the path of a
+# file, in which it writes down whom and what it was asked, a line each.
+# A cookie ending `-open` is asked for with what may be shown as it is
+# typed, and one ending `-slow` is a second slow to be asked for.
+read -r cookie
+printf 'user %s\n' "$1" >> "$cookie"
+printf 'PAM_TEXT_INFO Touch nothing\n'
+case "$cookie" in
+    *-slow) sleep 1 ;;
+esac
+case "$cookie" in
+    *-open) printf 'PAM_PROMPT_ECHO_ON Code: \n' ;;
+    *) printf 'PAM_PROMPT_ECHO_OFF Password: \n' ;;
+esac
+read -r typed
+printf 'typed %s\n' "$typed" >> "$cookie"
+if [ "$typed" = atx ]; then
+    printf 'SUCCESS\n'
+else
+    printf 'PAM_ERROR_MSG Wrong\n'
+    printf 'FAILURE\n'
+fi

@@ -33,6 +33,7 @@ mod recording;
 mod restarts;
 mod reveal;
 mod roles;
+mod sealed;
 mod session;
 mod switcher;
 mod tiles;

@@ -167,18 +167,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_data_directories(data_directories());
     compositor.show_pointer();
     announce_session(compositor);
-    compositor.set_panel(panel());
-    compositor.set_launcher(launcher());
-    compositor.set_notifier(notifier());
-    compositor.set_keeper(keeper());
-    compositor.set_recorder(recorder());
-    // Only here, where omorfos is the whole session: nested, the desktop
-    // it runs inside answers the portals.
-    let own = env::current_exe().ok();
-    compositor.set_portal(super::portal_program(own.as_deref()));
-    // And only here does it lock before the machine sleeps: nested, the
-    // machine's sleep is the outer desktop's to lock before.
-    compositor.set_session(super::session_program(own.as_deref()));
+    set_components(compositor);
     compositor.start_xwayland(None);
     compositor.autostart();
 
@@ -310,6 +299,25 @@ fn offer_gpu_buffers(hardware: &mut Hardware, compositor: &mut Compositor) {
             "omorfos: programs cannot hand over buffers of the graphics card: {error}"
         );
     }
+}
+
+/// Says where the programs are that run with the session, and how what
+/// is to start with it is started.
+fn set_components(compositor: &mut Compositor) {
+    compositor.set_panel(panel());
+    compositor.set_launcher(launcher());
+    compositor.set_notifier(notifier());
+    compositor.set_keeper(keeper());
+    compositor.set_recorder(recorder());
+    // Only here, where omorfos is the whole session: nested, the desktop
+    // it runs inside answers the portals.
+    let own = env::current_exe().ok();
+    compositor.set_portal(super::portal_program(own.as_deref()));
+    // And only here does it lock before the machine sleeps: nested, the
+    // machine's sleep is the outer desktop's to lock before.
+    compositor.set_session(super::session_program(own.as_deref()));
+    // So is polkit's agent: nested, the outer desktop's asks.
+    compositor.set_asker(super::asker_program(own.as_deref()));
 }
 
 /// Tells whatever else starts programs for the user about this session,

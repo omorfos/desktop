@@ -40,11 +40,20 @@ impl Roles {
     /// See what is typed into fields and type as the user, as an input
     /// method does.
     pub const INPUT: Self = Self(1 << 5);
+    /// Show the sealed prompt, which asks for a secret: the session is
+    /// dimmed behind it and the keyboard is its alone.
+    pub const ASK: Self = Self(1 << 6);
 
     /// These roles and those as well.
     #[must_use]
     pub const fn with(self, other: Self) -> Self {
         Self(self.0 | other.0)
+    }
+
+    /// These roles but not those.
+    #[must_use]
+    pub const fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
     }
 
     /// Whether any of `wanted` is among these.
@@ -64,7 +73,8 @@ impl Roles {
             Role::Capture => Self::CAPTURE,
             Role::Clipboard => Self::CLIPBOARD,
             Role::Input => Self::INPUT,
-            Role::Ask | Role::Screens => Self::NONE,
+            Role::Ask => Self::ASK,
+            Role::Screens => Self::NONE,
         };
         roles.iter().map(one).fold(Self::NONE, Self::with)
     }
@@ -188,10 +198,13 @@ mod tests {
         assert_eq!(Roles::named(&[Role::Capture]), Roles::CAPTURE);
         assert_eq!(Roles::named(&[Role::Clipboard]), Roles::CLIPBOARD);
         assert_eq!(Roles::named(&[Role::Input]), Roles::INPUT);
-        let later = [Role::Ask, Role::Screens];
+        assert_eq!(Roles::named(&[Role::Ask]), Roles::ASK);
+        let later = [Role::Screens];
         assert_eq!(Roles::named(&later), Roles::NONE, "nothing to give yet");
         assert_eq!(Roles::named(&[]), Roles::NONE);
         assert!(Roles::ALL.has(Roles::PANEL.with(Roles::OVERLAY)));
+        let most = Roles::ALL.without(Roles::ASK);
+        assert!(most.has(Roles::LOCK) && !most.has(Roles::ASK));
         assert!(!Roles::NONE.has(Roles::ALL));
     }
 

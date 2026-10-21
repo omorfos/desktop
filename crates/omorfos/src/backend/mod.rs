@@ -84,6 +84,16 @@ pub fn session_program(own: Option<&Path>) -> PathBuf {
     beside(own, SESSION)
 }
 
+/// What the executable that asks for secrets is called.
+const ASKER: &str = "omorfos-ask";
+
+/// Where the program that asks for secrets is, polkit's agent, found as
+/// [`panel_program`] finds the panel.
+#[must_use]
+pub fn asker_program(own: Option<&Path>) -> PathBuf {
+    beside(own, ASKER)
+}
+
 /// The program called `name` beside the executable `own`, if there is one
 /// there, and otherwise just its name, to be looked up in `PATH`.
 fn beside(own: Option<&Path>, name: &str) -> PathBuf {
@@ -152,6 +162,7 @@ mod tests {
         assert_eq!(keeper_program(None), Path::new(KEEPER));
         assert_eq!(recorder_program(None), Path::new(RECORDER));
         assert_eq!(session_program(None), Path::new(SESSION));
+        assert_eq!(asker_program(None), Path::new(ASKER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

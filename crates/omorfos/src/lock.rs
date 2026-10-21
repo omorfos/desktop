@@ -11,7 +11,7 @@
 //! - drawing: [`Compositor::render`] draws the lock surface on black and
 //!   returns before it looks at anything else;
 //! - input: [`Compositor::input`] hands every event to
-//!   [`Compositor::locked_input`] and returns, so key bindings, the menu,
+//!   [`Compositor::guarded_input`] and returns, so key bindings, the menu,
 //!   drags and every window are never consulted;
 //! - the keyboard: it is given to the lock surface, or to nothing.
 //!
@@ -146,17 +146,22 @@ impl Compositor {
         }
     }
 
-    /// Handles input while the session is locked. Everything goes to the
-    /// lock surface or nowhere.
+    /// Handles input while the session is locked, or while a prompt asks
+    /// for a secret over it. Everything goes to the lock surface or the
+    /// prompt, or nowhere.
     ///
     /// The one thing still acted on is switching virtual terminal, which
     /// leads to a login prompt and not into the session.
-    pub(crate) fn locked_input(&mut self, event: Placed, time: u32) {
+    pub(crate) fn guarded_input(&mut self, event: Placed, time: u32) {
         match event {
-            Placed::Key { code, pressed } => self.locked_key(code, pressed, time),
+            Placed::Key { code, pressed } => self.guarded_key(code, pressed, time),
             Placed::Motion { x, y } => {
                 self.pointer_location = (x, y).into();
-                self.point_at_lock(time);
+                if self.is_locked() {
+                    self.point_at_lock(time);
+                } else {
+                    self.point_at_sealed(time);
+                }
             }
             Placed::Button { button, pressed } => {
                 let state = if pressed {
@@ -188,7 +193,7 @@ impl Compositor {
         }
     }
 
-    fn locked_key(&mut self, code: Keycode, pressed: bool, time: u32) {
+    fn guarded_key(&mut self, code: Keycode, pressed: bool, time: u32) {
         let keyboard = self.keyboard.clone();
         // What is typed now is the user's secret. The only grab of the
         // keyboard there is, is an input method's, and it is let go of

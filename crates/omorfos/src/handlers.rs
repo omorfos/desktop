@@ -420,7 +420,7 @@ impl WlrLayerShellHandler for Compositor {
         // put one there.
         let client = surface.wl_surface().client();
         let roles = Self::roles(client.as_ref());
-        if !roles.has(Roles::PANEL.with(Roles::OVERLAY)) {
+        if !roles.has(Roles::PANEL.with(Roles::OVERLAY).with(Roles::ASK)) {
             self.refuse(client.as_ref(), "put a panel on the screen", "panel");
             surface.send_close();
             return;

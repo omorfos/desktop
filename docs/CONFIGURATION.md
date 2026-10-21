@@ -628,6 +628,14 @@ question-button:active {
   background: var(--accent);
   color: var(--background);
 }
+question-input {
+  padding: 6px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+question-input:focus { border-color: var(--accent); }
 
 /* The switcher on Alt+Tab: the box in the middle of the screen, each
  * window's place in it, its picture over its title, and the title. The
@@ -656,6 +664,10 @@ picker {
   background: #00000066;
   border: 2px solid var(--accent);
 }
+
+/* What dims the session while a prompt asks for a secret, such as the
+ * administrator's password: nothing a program draws can dim it so. */
+sealed { background: #000000aa; }
 ```
 
 The quickest change is to give the built-in theme's variables other
@@ -691,7 +703,8 @@ workspace:active, task:active { border-bottom: none; }
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
-`question-button`, `switcher`, `switcher-item`, `switcher-title` and `picker`. `*` is every part. Several can share a rule:
+`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`, `picker`
+and `sealed`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
@@ -1031,9 +1044,10 @@ are only for a program omorfos started itself and was told may do them:
 | `capture` | Take pictures of the screen |
 | `clipboard` | Read what is copied and set it at any time, not only while one of its windows has the keyboard, as a clipboard manager does |
 | `input` | Be the input method: be shown what is typed into whatever has the keyboard, take the keys, and type as a keyboard would |
+| `ask` | Ask for a secret in the sealed prompt: the session dimmed behind it, and the keyboard and pointer its alone, as `omorfos-ask` does |
 
-`ask` and `screens` are names for what is to come, and are accepted so
-that a configuration can say them already.
+`screens` is a name for what is to come, and is accepted so that a
+configuration can say it already.
 
 A role is given where the program is started: in `autostart`, or in a
 `spawn` bound to a key or put in the menu.
@@ -1231,6 +1245,28 @@ The idle daemon asks omorfos to lock and does not start the locker
 itself: a locker it started would be an ordinary program, and refused.
 While the screen is locked nothing else is shown and no key binding
 works, except Ctrl+Alt+F1 to F12.
+
+## Asking for the administrator's password
+
+When a program wants to do what needs the administrator, installing
+software or changing the date, polkit asks the desktop to ask you, and
+`omorfos-ask` does, which omorfos starts with the session. A box in the
+middle of the screen says what is asked for and whose password it wants:
+yours, if you are allowed to say yes, as an administrator is, and
+otherwise the first of those who are. Type it and press Enter; Escape or
+Cancel gives up, and Show shows what you typed. A wrong password is
+asked for again.
+
+While it asks, everything else is dimmed, and the keyboard and the
+pointer reach the box alone: no key binding works, no other program and
+no input method sees a key. Only a program omorfos started with the `ask`
+role can do that, which is how you know the box is omorfos's own and not
+a window imitating it. The dim is the theme's `sealed` part, and the box
+is drawn as the `question` parts, its field as `question-input`.
+
+What you type goes only to polkit's own helper, which checks it, and is
+not kept once it has been handed over. Programs written for X11, and one in a
+sandbox, ask through polkit like any other.
 
 ## Typing in other languages
 
