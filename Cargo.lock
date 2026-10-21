@@ -1810,6 +1810,7 @@ dependencies = [
  "omorfos-notifications",
  "omorfos-panel",
  "omorfos-screenshot",
+ "omorfos-session",
  "omorfos-shm",
  "omorfos-ui",
  "pipewire",
@@ -1975,6 +1976,8 @@ dependencies = [
 name = "omorfos-session"
 version = "0.1.0"
 dependencies = [
+ "omorfos-ipc",
+ "serde_json",
  "tempfile",
  "zbus",
 ]

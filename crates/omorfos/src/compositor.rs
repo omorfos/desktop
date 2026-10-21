@@ -1336,6 +1336,15 @@ impl Compositor {
         self.set_component(Program::Portal, program.into());
     }
 
+    /// Says where the program that watches over the session is, which
+    /// locks it when logind asks and before the machine sleeps: a name to
+    /// look up in `PATH`, or a path. It is then started with the session,
+    /// and nothing turns it off. Until this is called there is none to
+    /// start.
+    pub fn set_session(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Session, program.into());
+    }
+
     /// Says where one of the programs that run for the whole session is,
     /// in place of wherever it was said to be before.
     fn set_component(&mut self, kind: Program, program: PathBuf) {
@@ -2868,6 +2877,7 @@ enum Program {
     Portal,
     Keeper,
     Recorder,
+    Session,
 }
 
 impl Program {
@@ -2878,8 +2888,9 @@ impl Program {
             Self::Notifier => general.notifications.enabled,
             Self::Portal => general.portals.enabled,
             Self::Keeper => general.clipboard.enabled,
-            // The mark is not to be turned off, nor what it shows.
-            Self::Recorder => true,
+            // The mark is not to be turned off, nor what it shows; nor is
+            // locking before sleep, and without logind it ends at once.
+            Self::Recorder | Self::Session => true,
         }
     }
 
@@ -2891,9 +2902,11 @@ impl Program {
             Self::Panel | Self::Notifier => Roles::PANEL,
             Self::Portal => Roles::PANEL.with(Roles::OVERLAY).with(Roles::CAPTURE),
             Self::Keeper => Roles::CLIPBOARD,
-            // It speaks to PipeWire, and to the compositor only over the
-            // pipe it says what it finds through.
-            Self::Recorder => Roles::NONE,
+            // One speaks to PipeWire, and to the compositor only over the
+            // pipe it says what it finds through; the other asks to lock
+            // as anyone may, over the socket for scripts, and the locker
+            // that is started has the role.
+            Self::Recorder | Self::Session => Roles::NONE,
         }
     }
 }

@@ -168,6 +168,17 @@ fn what_answers_the_portals_is_started_with_the_session_unless_turned_off() {
 }
 
 #[test]
+fn what_watches_over_the_session_is_started_with_it() {
+    let mut session = Session::new();
+    session.listen();
+    let directory = session.config.path().to_owned();
+    let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
+    session.compositor_mut().set_session(stand_in_panel());
+    session.compositor_mut().autostart();
+    session.eventually(|_| started() == "x");
+}
+
+#[test]
 fn the_panel_is_not_started_when_the_configuration_turns_it_off() {
     let directory = tempfile::TempDir::new().unwrap();
     let after = directory.path().join("after");

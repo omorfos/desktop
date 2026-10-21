@@ -2,14 +2,18 @@
 //! and on it logind, players and the notifications, each written down
 //! what it was asked.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use omorfos_ipc::{Reply, Request, State, encode};
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
-use zbus::zvariant::OwnedValue;
+use zbus::zvariant::{OwnedFd, OwnedObjectPath, OwnedValue};
 
 /// A bus of the test's own, gone when the test is.
 pub(crate) struct Daemon {
@@ -80,14 +84,149 @@ impl Session {
     }
 }
 
-/// logind, which writes down each brightness it is asked to set.
-pub(crate) fn logind(daemon: &Daemon) -> (Connection, Asked<(String, String, u32)>) {
-    let asked = Asked::default();
+struct Manager {
+    asked: Asked<String>,
+    held: Asked<UnixStream>,
+    /// How long it waits for sleep to be let go, in microseconds.
+    delay: u64,
+}
+
+#[zbus::interface(name = "org.freedesktop.login1.Manager")]
+impl Manager {
+    #[zbus(name = "Inhibit")]
+    fn inhibit(&self, what: &str, who: &str, why: &str, mode: &str) -> OwnedFd {
+        assert_eq!((what, mode), ("sleep", "delay"));
+        // What `systemd-inhibit --list` shows the user.
+        assert_eq!(who, "omorfos");
+        assert_ne!(why, "");
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        self.held.lock().unwrap().push(ours);
+        OwnedFd::from(std::os::fd::OwnedFd::from(theirs))
+    }
+
+    #[zbus(name = "GetSession")]
+    #[expect(clippy::unused_self, reason = "as the interface macro needs it")]
+    fn get_session(&self, which: &str) -> OwnedObjectPath {
+        assert_eq!(which, "auto");
+        OwnedObjectPath::try_from(SESSION).unwrap()
+    }
+
+    #[zbus(name = "Suspend")]
+    fn suspend(&self, interactive: bool) {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("Suspend {interactive}"));
+    }
+
+    #[zbus(name = "Reboot")]
+    fn reboot(&self, interactive: bool) {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("Reboot {interactive}"));
+    }
+
+    #[zbus(name = "PowerOff")]
+    fn power_off(&self, interactive: bool) {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("PowerOff {interactive}"));
+    }
+
+    #[zbus(property, name = "InhibitDelayMaxUSec")]
+    const fn inhibit_delay_max(&self) -> u64 {
+        self.delay
+    }
+}
+
+/// Where the stand-in's session is.
+pub(crate) const SESSION: &str = "/org/freedesktop/login1/session/_1";
+
+/// logind, standing in for the real one.
+pub(crate) struct Logind {
+    pub(crate) connection: Connection,
+    /// Each brightness it was asked to set.
+    pub(crate) brightness: Asked<(String, String, u32)>,
+    /// What else it was asked to do, written as the method and its
+    /// argument.
+    pub(crate) asked: Asked<String>,
+    /// The other end of each hold it gave on sleep, which reads as ended
+    /// once that hold is let go of.
+    pub(crate) held: Asked<UnixStream>,
+}
+
+impl Logind {
+    /// Says that the machine is about to sleep, or has woken.
+    pub(crate) fn sleeping(&self, sleeping: bool) {
+        let manager = "org.freedesktop.login1.Manager";
+        let nobody: Option<&str> = None;
+        let path = "/org/freedesktop/login1";
+        let said = (sleeping,);
+        let connection = &self.connection;
+        let emitted = connection.emit_signal(nobody, path, manager, "PrepareForSleep", &said);
+        emitted.unwrap();
+    }
+
+    /// Says `member` of the session at `path`, as `Lock`.
+    pub(crate) fn tell(&self, path: &str, member: &str) {
+        let session = "org.freedesktop.login1.Session";
+        let nobody: Option<&str> = None;
+        let connection = &self.connection;
+        connection
+            .emit_signal(nobody, path, session, member, &())
+            .unwrap();
+    }
+
+    /// How many holds on sleep it has given, and whether each is still held.
+    pub(crate) fn holds(&self) -> Vec<bool> {
+        let held = self.held.lock().unwrap();
+        held.iter().map(still_held).collect()
+    }
+}
+
+/// Whether the other end of `ours` is still open.
+fn still_held(ours: &UnixStream) -> bool {
+    ours.set_nonblocking(true).unwrap();
+    let read = (&*ours).read(&mut [0]);
+    !matches!(read, Ok(0))
+}
+
+/// logind, which writes down what it is asked, and waits a fifth of a
+/// second for sleep to be let go, so that a test need not wait its five.
+pub(crate) fn logind(daemon: &Daemon) -> Logind {
+    logind_waiting(daemon, Duration::from_millis(200))
+}
+
+/// logind, which waits `delay` for sleep to be let go.
+pub(crate) fn logind_waiting(daemon: &Daemon, delay: Duration) -> Logind {
+    let brightness = Asked::default();
     let session = Session {
-        asked: asked.clone(),
+        asked: brightness.clone(),
     };
-    let path = "/org/freedesktop/login1/session/auto";
-    (daemon.serve("org.freedesktop.login1", path, session), asked)
+    let (asked, held) = (Asked::default(), Asked::default());
+    let manager = Manager {
+        asked: Arc::clone(&asked),
+        held: Arc::clone(&held),
+        delay: u64::try_from(delay.as_micros()).unwrap(),
+    };
+    let connection = Builder::address(daemon.address.as_str())
+        .unwrap()
+        .name("org.freedesktop.login1")
+        .unwrap()
+        .serve_at("/org/freedesktop/login1/session/auto", session)
+        .unwrap()
+        .serve_at("/org/freedesktop/login1", manager)
+        .unwrap()
+        .build()
+        .unwrap();
+    Logind {
+        connection,
+        brightness,
+        asked,
+        held,
+    }
 }
 
 struct Player {
@@ -150,7 +289,8 @@ pub(crate) fn mute(daemon: &Daemon, name: &str) -> Connection {
 }
 
 /// A notification as the stand-in heard it: its icon, its title, and its
-/// level and tag.
+/// level and tag; or, for one that says something went wrong, no level and
+/// its words.
 pub(crate) type Heard = (String, String, i32, String);
 
 struct Notifications {
@@ -177,15 +317,11 @@ impl Notifications {
         stays: i32,
     ) -> u32 {
         // What is the same in every one the session sends: a new one each
-        // time, with no words or actions, that goes by itself soon.
-        let sent = (
-            program.as_str(),
-            replaces,
-            body.as_str(),
-            actions.len(),
-            stays,
+        // time, with no actions.
+        assert_eq!(
+            (program.as_str(), replaces, actions.len()),
+            ("omorfos", 0, 0)
         );
-        assert_eq!(sent, ("omorfos", 0, "", 0, 1500));
         let mut hints = hints;
         let value = hints
             .remove("value")
@@ -193,10 +329,29 @@ impl Notifications {
         let tag = hints
             .remove("synchronous")
             .and_then(|tag| String::try_from(tag).ok());
-        let heard = (icon, title, value.unwrap(), tag.unwrap());
+        // A level has no words and goes by itself soon; a warning has its
+        // words, here in place of the tag, and stays.
+        let heard = if let Some(value) = value {
+            assert_eq!((body.as_str(), stays), ("", 1500));
+            (icon, title, value, tag.unwrap())
+        } else {
+            assert_eq!(stays, 0);
+            (icon, title, -1, body)
+        };
         self.asked.lock().unwrap().push(heard);
         1
     }
+}
+
+/// logind's name taken by something that answers nothing, as a logind
+/// too busy to does.
+pub(crate) fn mute_logind(daemon: &Daemon) -> Connection {
+    let builder = Builder::address(daemon.address.as_str()).unwrap();
+    builder
+        .name("org.freedesktop.login1")
+        .unwrap()
+        .build()
+        .unwrap()
 }
 
 /// The notifications, which write down each they are sent.
@@ -237,4 +392,79 @@ pub(crate) fn backlights(each: &[(&str, &str, &str, &str)]) -> tempfile::TempDir
         }
     }
     directory
+}
+
+/// The compositor, standing in for the real one: it tells those who
+/// subscribe whether the session is locked when a test says, and writes
+/// down every other request.
+pub(crate) struct Compositor {
+    pub(crate) path: PathBuf,
+    /// Whether it refuses to lock, as one with no locker does.
+    refusing: Arc<AtomicBool>,
+    subscribers: Asked<UnixStream>,
+    pub(crate) asked: Asked<String>,
+    _directory: tempfile::TempDir,
+}
+
+impl Compositor {
+    pub(crate) fn start() -> Self {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("ipc.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let (subscribers, asked) = (Asked::default(), Asked::default());
+        let (kept, heard) = (Arc::clone(&subscribers), Arc::clone(&asked));
+        let refusing = Arc::new(AtomicBool::new(false));
+        let refuses = Arc::clone(&refusing);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line).unwrap();
+                let request: Request = omorfos_ipc::decode(&line).unwrap();
+                if request == Request::Subscribe {
+                    kept.lock().unwrap().push(stream);
+                } else {
+                    heard.lock().unwrap().push(line.trim().to_owned());
+                    let message = "nothing is set to lock the session with".to_owned();
+                    let answer = [Reply::Done, Reply::Error { message }];
+                    let answer = &answer[usize::from(refuses.load(Ordering::Relaxed))];
+                    stream.write_all(encode(answer).as_bytes()).unwrap();
+                }
+            }
+        });
+        Self {
+            path,
+            refusing,
+            subscribers,
+            asked,
+            _directory: directory,
+        }
+    }
+
+    /// Refuses to lock from now on.
+    pub(crate) fn refuse(&self) {
+        self.refusing.store(true, Ordering::Relaxed);
+    }
+
+    /// How many are following the state.
+    pub(crate) fn subscribers(&self) -> usize {
+        self.subscribers.lock().unwrap().len()
+    }
+
+    /// Tells each that follows the state whether the session is locked.
+    pub(crate) fn locked(&self, locked: bool) {
+        let state = State {
+            locked,
+            ..State::default()
+        };
+        let said = encode(&Reply::State(state));
+        for mut subscriber in self.subscribers.lock().unwrap().iter() {
+            subscriber.write_all(said.as_bytes()).unwrap();
+        }
+    }
+
+    /// Ends, as far as those following the state can tell.
+    pub(crate) fn end(&self) {
+        self.subscribers.lock().unwrap().clear();
+    }
 }

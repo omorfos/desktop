@@ -74,6 +74,16 @@ pub fn portal_program(own: Option<&Path>) -> PathBuf {
     beside(own, PORTAL)
 }
 
+/// What the executable that watches over the session is called.
+const SESSION: &str = "omorfos-session";
+
+/// Where the program that watches over the session, and locks it before
+/// sleep, is, found as [`panel_program`] finds the panel.
+#[must_use]
+pub fn session_program(own: Option<&Path>) -> PathBuf {
+    beside(own, SESSION)
+}
+
 /// The program called `name` beside the executable `own`, if there is one
 /// there, and otherwise just its name, to be looked up in `PATH`.
 fn beside(own: Option<&Path>, name: &str) -> PathBuf {
@@ -141,6 +151,7 @@ mod tests {
         assert_eq!(portal_program(None), Path::new(PORTAL));
         assert_eq!(keeper_program(None), Path::new(KEEPER));
         assert_eq!(recorder_program(None), Path::new(RECORDER));
+        assert_eq!(session_program(None), Path::new(SESSION));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
     }
 

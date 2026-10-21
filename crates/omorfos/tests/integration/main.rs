@@ -39,6 +39,7 @@ mod scaling;
 mod screenshot;
 mod session;
 mod sharing;
+mod sleep;
 mod switcher;
 mod taskbar;
 mod tiles;

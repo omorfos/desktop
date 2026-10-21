@@ -176,6 +176,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // it runs inside answers the portals.
     let own = env::current_exe().ok();
     compositor.set_portal(super::portal_program(own.as_deref()));
+    // And only here does it lock before the machine sleeps: nested, the
+    // machine's sleep is the outer desktop's to lock before.
+    compositor.set_session(super::session_program(own.as_deref()));
     compositor.start_xwayland(None);
     compositor.autostart();
 
