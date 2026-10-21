@@ -263,6 +263,16 @@ impl Command {
         }
     }
 
+    /// `omorfos-session`, asked for what the words of `asked` say, such as
+    /// `volume up`.
+    #[must_use]
+    pub fn session(asked: &str) -> Self {
+        Self {
+            program: "omorfos-session".to_owned(),
+            arguments: asked.split(' ').map(str::to_owned).collect(),
+        }
+    }
+
     /// The program to run: a name looked up in `PATH`, or a path.
     #[must_use]
     pub fn program(&self) -> &str {

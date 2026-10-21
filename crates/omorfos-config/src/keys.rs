@@ -91,6 +91,24 @@ impl Default for Keys {
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
         ];
+        // The keys a keyboard has for the volume, the brightness and what
+        // is playing, which mean nothing else.
+        let session = [
+            ("XF86AudioRaiseVolume", "volume up"),
+            ("XF86AudioLowerVolume", "volume down"),
+            ("XF86AudioMute", "volume mute"),
+            ("XF86AudioMicMute", "microphone mute"),
+            ("XF86MonBrightnessUp", "brightness up"),
+            ("XF86MonBrightnessDown", "brightness down"),
+            ("XF86AudioPlay", "media play-pause"),
+            ("XF86AudioPause", "media play-pause"),
+            ("XF86AudioNext", "media next"),
+            ("XF86AudioPrev", "media previous"),
+            ("XF86AudioStop", "media stop"),
+        ];
+        for (key, asked) in session {
+            bindings.push(bind(key, Action::Spawn(Command::session(asked).into())));
+        }
         // Among windows that share a workspace: to the one beside, and
         // changing places with it.
         let beside = [
@@ -575,6 +593,25 @@ bindings:
         assert_eq!(
             action_for("Super+Shift+n"),
             Some(Action::MoveToNewWorkspace)
+        );
+        // The keys for the volume, the brightness and what is playing ask
+        // the session's own program, as an ordinary one.
+        let session = |asked: &str| Some(Action::Spawn(Command::session(asked).into()));
+        assert_eq!(action_for("XF86AudioRaiseVolume"), session("volume up"));
+        assert_eq!(action_for("XF86AudioMicMute"), session("microphone mute"));
+        assert_eq!(
+            action_for("XF86MonBrightnessDown"),
+            session("brightness down")
+        );
+        assert_eq!(action_for("XF86AudioPause"), session("media play-pause"));
+        assert_eq!(action_for("XF86AudioPrev"), session("media previous"));
+        let volume = Command::session("volume up");
+        assert_eq!(
+            (volume.program(), volume.arguments()),
+            (
+                "omorfos-session",
+                &["volume".to_owned(), "up".to_owned()][..]
+            )
         );
         assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
     }
