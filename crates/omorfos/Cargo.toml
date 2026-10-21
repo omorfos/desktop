@@ -1,6 +1,6 @@
 [package]
 name = "omorfos"
-description = "A lightweight Wayland compositor inspired by Fluxbox"
+description = "A lightweight Wayland compositor"
 keywords = ["wayland", "compositor", "window-manager"]
 categories = ["gui"]
 readme = "../../README.md"
@@ -16,8 +16,8 @@ maintainer = "Rafal Proszowski <foss@paroxp.org>"
 copyright = "2026, Rafal Proszowski and the omorfos contributors"
 license-file = ["../../LICENSE", "0"]
 extended-description = """\
-omorfos is a Wayland compositor in the spirit of Fluxbox: tabbed window \
-groups, chained key bindings, per-application rules and a small footprint. \
+omorfos is a Wayland compositor with tabbed window groups, chained key \
+bindings, per-application rules and a small footprint. \
 It is configured with YAML files that are reloaded as you save them."""
 section = "x11"
 priority = "optional"

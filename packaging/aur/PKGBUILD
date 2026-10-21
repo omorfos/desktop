@@ -6,7 +6,7 @@
 pkgname=omorfos
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='A lightweight Wayland compositor inspired by Fluxbox'
+pkgdesc='A lightweight Wayland compositor'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
 license=('MIT')
