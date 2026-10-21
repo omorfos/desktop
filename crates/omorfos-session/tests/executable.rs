@@ -44,7 +44,7 @@ fn what_is_not_understood_is_answered_with_how_to_ask() {
     assert_eq!(done.status.code(), Some(2));
     let said = String::from_utf8_lossy(&done.stderr);
     assert!(
-        said.starts_with("omorfos-session: usage: omorfos-session volume up"),
+        said.starts_with("omorfos-session: usage: omorfos-session [volume up"),
         "{said}"
     );
 }

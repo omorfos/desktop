@@ -1,6 +1,6 @@
 [package]
 name = "omorfos-session"
-description = "What an omorfos session does besides draw: the volume, the brightness and what is playing"
+description = "What an omorfos session does besides draw: locking before sleep, the volume, the brightness and what is playing"
 keywords = ["wayland", "desktop", "session"]
 categories = ["gui"]
 readme = "../../README.md"
@@ -12,6 +12,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Hears from the compositor when the session is locked, and asks it to lock.
+omorfos-ipc = { path = "../omorfos-ipc" }
+# What an action is written as, to the compositor.
+serde_json = "1.0"
 # Already in the tree through the notifications. Speaks to logind, to what
 # is playing and to the notifications over D-Bus, in safe Rust.
 zbus = "5.19.0"

@@ -238,3 +238,52 @@ calls alone: PipeWire makes the memory, which is why it is copied into
 rather than given. Copying is the first way, and buffers of the GPU, which
 copy nothing, are to come. The tests run a PipeWire of their own, and read
 the stream as an application would.
+
+**`omorfos-session` came next, to lock before sleep.** Run with no
+command, as the compositor runs it where it is the whole session, it
+holds logind's leave to delay sleep, and when told the machine is about
+to sleep asks the compositor to lock, as anyone may over the socket for
+scripts. The compositor's state says `locked` once a locker holds the
+session and a frame with only the locker on it has been shown on every
+screen, which is what is waited for; then sleep is let go, and on waking
+the leave is taken again.
+
+- **The locker is the one `config.yaml` names**, started by the
+  compositor with the role to lock, until `omorfos-lock` takes its
+  place. With none named, the compositor refuses the request, and the
+  machine sleeps at once: nobody asked for it to be locked, and holding
+  it awake for nothing helps nobody.
+- **A screen that is off shows the lock.** Once the user has been away
+  long enough for the screens to be turned off, nothing is drawn, so a
+  lock asked for then would never be shown, and the machine would be
+  kept awake to the end of logind's patience and said to have slept
+  unlocked. A screen that is off shows nothing of the session, and the
+  backend says when every screen is; the locker is then told the
+  session is locked at once, and its picture is the first drawn when the
+  screens come back on.
+- **logind is waited on as long as it waits**, which it says
+  (`InhibitDelayMaxUSec`), five seconds unless set otherwise. A locker
+  that has not locked by then leaves the machine to sleep unlocked, and
+  a warning says so, to be read on waking.
+- **Only logind is heard.** The bus delivers what is said in its name
+  only from whoever has the name, so another program cannot make the
+  session lock, or think the machine has woken. `Lock` is heeded for
+  this session alone; `Unlock` never is.
+- **The lid and the keys for sleep and for turning off are not bound.**
+  logind acts on them itself (`HandleLidSwitch`, `HandleSuspendKey`,
+  `HandlePowerKey`), so a binding as well would sleep twice, or ask to
+  turn off while the machine was already turning off. What they do is
+  set where an administrator expects, in `logind.conf`, and whatever
+  does it, the session is locked first. `omorfos-session sleep`,
+  `restart` and `shut-down` ask logind, interactively, so that polkit
+  can ask where it must, and are what the menu's entries are to run.
+- **It ends with the compositor**: when the state it follows stops, the
+  session is over. Without logind, no system bus or nobody with
+  logind's name on it, it ends at once, there being nothing to lock
+  before. Anything else is a failure, and it is started again: a logind
+  that does not answer in time, as on a machine busy starting up, which
+  would otherwise leave the whole session without locking before sleep,
+  or a bus that goes away while it runs. It listens to logind before it
+  holds sleep back, so that nothing said in between goes unheard.
+- **Nested, it is not started**: the machine's sleep is the outer
+  desktop's to lock before.

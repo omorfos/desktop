@@ -1,12 +1,16 @@
-//! What an omorfos session does besides draw, as ADR 35 has it: for now,
-//! what the keys for the volume, the brightness and what is playing ask
-//! for. Each is asked for as a command, which the keys are bound to:
+//! What an omorfos session does besides draw, as ADR 35 has it. Run with
+//! no command, as the compositor runs it, it runs all session and locks
+//! the screen when logind asks and before the machine sleeps (see
+//! [`watch`]). What the keys for the volume, the brightness and what is
+//! playing ask for, and what the menu's sleep, restart and shut down
+//! do, are each asked for as a command:
 //!
 //! ```text
 //! omorfos-session volume up|down|mute
 //! omorfos-session microphone mute
 //! omorfos-session brightness up|down
 //! omorfos-session media play-pause|next|previous|stop
+//! omorfos-session sleep|restart|shut-down
 //! ```
 //!
 //! The volume is set by WirePlumber's `wpctl`, which sets a sound card's
@@ -14,14 +18,16 @@
 //! lets the user who is logged in set it; and what is playing is told over
 //! D-Bus, as players listen for (MPRIS). How loud or how bright it is
 //! then is shown as a notification, which takes the place of the one
-//! before.
+//! before. Sleep and the rest are asked of logind.
 
 mod brightness;
 mod media;
+mod power;
 mod shown;
 #[cfg(test)]
 mod stand_in;
 mod volume;
+mod watch;
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -33,6 +39,8 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 
 pub use brightness::Backlight;
+pub use power::Power;
+pub use watch::watch;
 
 /// Why what was asked could not be done.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -48,9 +56,12 @@ const PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 /// Where the system bus is when the environment does not say.
 const SYSTEM_BUS: &str = "unix:path=/var/run/dbus/system_bus_socket";
 
-/// What a key asks for.
+/// What is asked for: by a key, by the menu, or by the compositor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Request {
+    /// The session watched over for as long as it lasts, which is what
+    /// the compositor asks of it.
+    Watch,
     /// The sound that plays: louder, quieter, or muted and back.
     Volume(Volume),
     /// The microphone muted, or heard again.
@@ -59,6 +70,8 @@ pub enum Request {
     Brightness(Step),
     /// What is playing told to play or pause, go on or back, or stop.
     Media(Media),
+    /// The machine to sleep, start again or turn off.
+    Power(Power),
 }
 
 /// What is asked of the volume.
@@ -101,8 +114,9 @@ pub struct Unknown;
 impl fmt::Display for Unknown {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(
-            "usage: omorfos-session volume up|down|mute | microphone mute | \
-             brightness up|down | media play-pause|next|previous|stop",
+            "usage: omorfos-session [volume up|down|mute | microphone mute | \
+             brightness up|down | media play-pause|next|previous|stop | \
+             sleep | restart | shut-down]",
         )
     }
 }
@@ -118,6 +132,7 @@ impl Request {
     pub fn parse<S: AsRef<str>>(arguments: &[S]) -> Result<Self, Unknown> {
         let words: Vec<&str> = arguments.iter().map(AsRef::as_ref).collect();
         match words.as_slice() {
+            [] => Ok(Self::Watch),
             ["volume", "up"] => Ok(Self::Volume(Volume::Up)),
             ["volume", "down"] => Ok(Self::Volume(Volume::Down)),
             ["volume", "mute"] => Ok(Self::Volume(Volume::Mute)),
@@ -128,6 +143,9 @@ impl Request {
             ["media", "next"] => Ok(Self::Media(Media::Next)),
             ["media", "previous"] => Ok(Self::Media(Media::Previous)),
             ["media", "stop"] => Ok(Self::Media(Media::Stop)),
+            ["sleep"] => Ok(Self::Power(Power::Sleep)),
+            ["restart"] => Ok(Self::Power(Power::Restart)),
+            ["shut-down"] => Ok(Self::Power(Power::ShutDown)),
             _ => Err(Unknown),
         }
     }
@@ -144,6 +162,8 @@ pub struct Places {
     pub session: Option<String>,
     /// The system's bus, which logind is on.
     pub system: String,
+    /// The compositor's socket.
+    pub compositor: Option<PathBuf>,
 }
 
 impl Places {
@@ -158,17 +178,23 @@ impl Places {
             path: variable("PATH").unwrap_or_else(|| OsString::from(PATH)),
             session: address("DBUS_SESSION_BUS_ADDRESS"),
             system: address("DBUS_SYSTEM_BUS_ADDRESS").unwrap_or_else(|| SYSTEM_BUS.to_owned()),
+            compositor: omorfos_ipc::socket_path(
+                variable("OMORFOS_SOCKET").as_deref(),
+                variable("XDG_RUNTIME_DIR").as_deref(),
+                variable("WAYLAND_DISPLAY").as_deref(),
+            ),
         }
     }
 }
 
-/// Does what was asked, and shows how loud or bright it is then.
+/// Does what was asked, and shows how loud or bright it is then; or
+/// watches over the session until it ends.
 ///
 /// # Errors
 ///
 /// If what it is asked of is not there or does not answer in time: no
-/// `wpctl`, no screen whose brightness can be set, no player, or a bus
-/// that cannot be reached.
+/// `wpctl`, no screen whose brightness can be set, no player, a bus that
+/// cannot be reached, or logind refusing.
 pub fn run(request: Request, places: &Places) -> Result<(), Failure> {
     let session = || connect(places.session.as_deref().ok_or("there is no session bus")?);
     let level = match request {
@@ -181,6 +207,8 @@ pub fn run(request: Request, places: &Places) -> Result<(), Failure> {
             changed.shown()
         }
         Request::Media(media) => return media::tell(&session()?, media),
+        Request::Power(power) => return power::ask(&connect(&places.system)?, power),
+        Request::Watch => return watch(places),
     };
     // That it changed is what matters; showing it is a courtesy, and is
     // done without where there is nothing to show it.
@@ -222,6 +250,7 @@ mod tests {
             path: stand_in::wpctl(wpctl).into_os_string(),
             session: session.map(|daemon| daemon.address.clone()),
             system: system.address.clone(),
+            compositor: None,
         }
     }
 
@@ -353,7 +382,7 @@ mod tests {
     #[test]
     fn the_brightness_is_set_by_logind_and_shown() {
         let daemon = Daemon::start();
-        let (_logind, asked) = stand_in::logind(&daemon);
+        let logind = stand_in::logind(&daemon);
         let (_service, shown) = stand_in::notifications(&daemon);
         let backlights = stand_in::backlights(&[("intel_backlight", "raw", "480", "960")]);
         let places = Places {
@@ -363,7 +392,7 @@ mod tests {
         run(Request::Brightness(Step::Up), &places).unwrap();
         run(Request::Brightness(Step::Down), &places).unwrap();
         let set = |value| ("backlight".to_owned(), "intel_backlight".to_owned(), value);
-        assert_eq!(*asked.lock().unwrap(), [set(528), set(432)]);
+        assert_eq!(*logind.brightness.lock().unwrap(), [set(528), set(432)]);
         let expected =
             [55, 45].map(|value| heard("display-brightness", "Brightness", value, "brightness"));
         assert_eq!(*shown.lock().unwrap(), expected);
@@ -436,6 +465,36 @@ mod tests {
     }
 
     #[test]
+    fn sleep_restart_and_shut_down_are_asked_of_logind_which_may_ask_first() {
+        let daemon = Daemon::start();
+        let logind = stand_in::logind(&daemon);
+        let places = places(None, &daemon, "wpctl");
+        for power in [Power::Sleep, Power::Restart, Power::ShutDown] {
+            run(Request::Power(power), &places).unwrap();
+        }
+        let asked = ["Suspend true", "Reboot true", "PowerOff true"];
+        assert_eq!(*logind.asked.lock().unwrap(), asked);
+        // Gone, or going: either way it is not asked.
+        drop(logind);
+        assert!(run(Request::Power(Power::Sleep), &places).is_err());
+        let unreachable = Places {
+            system: "unix:path=/nowhere/bus".to_owned(),
+            ..places
+        };
+        assert!(run(Request::Power(Power::Sleep), &unreachable).is_err());
+    }
+
+    #[test]
+    fn the_session_is_watched_over_when_nothing_else_is_asked() {
+        let daemon = Daemon::start();
+        let failure = run(Request::Watch, &places(None, &daemon, "wpctl")).unwrap_err();
+        assert_eq!(
+            failure.to_string(),
+            "there is no compositor to lock the session of"
+        );
+    }
+
+    #[test]
     fn what_is_asked_is_read_from_the_words_after_the_name() {
         let read = |words: &[&str]| Request::parse(words);
         assert_eq!(read(&["volume", "up"]), Ok(Request::Volume(Volume::Up)));
@@ -459,12 +518,21 @@ mod tests {
         for (word, media) in media {
             assert_eq!(read(&["media", word]), Ok(Request::Media(media)));
         }
+        let power = [
+            ("sleep", Power::Sleep),
+            ("restart", Power::Restart),
+            ("shut-down", Power::ShutDown),
+        ];
+        for (word, power) in power {
+            assert_eq!(read(&[word]), Ok(Request::Power(power)));
+        }
+        assert_eq!(read(&[]), Ok(Request::Watch), "as the compositor runs it");
     }
 
     #[test]
     fn anything_else_is_not_understood_and_says_what_would_be() {
         for words in [
-            &[][..],
+            &["sleep", "now"][..],
             &["volume"],
             &["volume", "loud"],
             &["volume", "up", "now"],
@@ -474,7 +542,7 @@ mod tests {
         assert!(
             Unknown
                 .to_string()
-                .starts_with("usage: omorfos-session volume up")
+                .starts_with("usage: omorfos-session [volume up")
         );
     }
 
@@ -484,9 +552,18 @@ mod tests {
         assert_eq!(none.backlights, PathBuf::from("/sys/class/backlight"));
         assert_eq!((none.path.to_str(), none.session), (Some(PATH), None));
         assert_eq!(none.system, SYSTEM_BUS);
+        assert_eq!(none.compositor, None);
         let all = Places::from(&|name| Some(OsString::from(format!("<{name}>"))));
         assert_eq!(all.path, OsString::from("<PATH>"));
         assert_eq!(all.session.as_deref(), Some("<DBUS_SESSION_BUS_ADDRESS>"));
         assert_eq!(all.system, "<DBUS_SYSTEM_BUS_ADDRESS>");
+        assert_eq!(all.compositor, Some(PathBuf::from("<OMORFOS_SOCKET>")));
+        // Found by the display, as every program of the session finds it.
+        let found = Places::from(&|name| {
+            let known = ["XDG_RUNTIME_DIR", "WAYLAND_DISPLAY"].contains(&name);
+            known.then(|| OsString::from(name))
+        });
+        let socket = PathBuf::from("XDG_RUNTIME_DIR/omorfos-WAYLAND_DISPLAY.sock");
+        assert_eq!(found.compositor, Some(socket));
     }
 }

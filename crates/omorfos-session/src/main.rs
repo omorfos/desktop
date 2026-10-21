@@ -1,5 +1,5 @@
-//! The `omorfos-session` executable: does what a key for the volume, the
-//! brightness or what is playing asks.
+//! The `omorfos-session` executable: watches over the session, or does
+//! what a key or the menu asks.
 
 use std::io::Write;
 use std::process::ExitCode;

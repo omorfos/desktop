@@ -105,6 +105,7 @@ omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
 omorfos-clipboard = { path = "../omorfos-clipboard" }
 xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
+omorfos-session = { path = "../omorfos-session" }
 # Reads back the pictures the screenshot tool saves.
 png = "0.18.1"
 # Sends notifications in the tests, as a program would.
