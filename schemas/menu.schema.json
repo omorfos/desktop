@@ -206,6 +206,11 @@
           "type": "string"
         },
         {
+          "const": "next_layout",
+          "description": "Type with the next of the keyboard's layouts, and after the last\nwith the first again.",
+          "type": "string"
+        },
+        {
           "const": "reload_config",
           "description": "Re-read the configuration now.",
           "type": "string"

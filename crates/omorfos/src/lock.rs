@@ -190,6 +190,13 @@ impl Compositor {
 
     fn locked_key(&mut self, code: Keycode, pressed: bool, time: u32) {
         let keyboard = self.keyboard.clone();
+        // What is typed now is the user's secret. The only grab of the
+        // keyboard there is, is an input method's, and it is let go of
+        // rather than shown the secret; it grabs again when next it is
+        // asked to type, once the session is open.
+        if keyboard.is_grabbed() {
+            keyboard.unset_grab(self);
+        }
         let state = if pressed {
             KeyState::Pressed
         } else {

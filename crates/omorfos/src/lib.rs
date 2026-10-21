@@ -36,6 +36,7 @@ mod roles;
 mod session;
 mod switcher;
 mod tiles;
+mod typing;
 mod x11;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME, Drawn};

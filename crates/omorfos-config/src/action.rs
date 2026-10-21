@@ -110,6 +110,9 @@ pub enum Action {
     ShowLauncher,
     /// Lock the session, with the program `locker` in config.yaml names.
     Lock,
+    /// Type with the next of the keyboard's layouts, and after the last
+    /// with the first again.
+    NextLayout,
     /// Re-read the configuration now.
     ReloadConfig,
     /// End the session.
@@ -327,6 +330,7 @@ mod tests {
         assert_eq!(parse("stick"), Ok(Action::Stick));
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
         assert_eq!(parse("lock"), Ok(Action::Lock));
+        assert_eq!(parse("next_layout"), Ok(Action::NextLayout));
         assert_eq!(
             parse("move_to_new_workspace"),
             Ok(Action::MoveToNewWorkspace)
