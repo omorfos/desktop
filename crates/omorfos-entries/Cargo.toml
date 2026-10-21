@@ -1,0 +1,18 @@
+[package]
+name = "omorfos-entries"
+description = "Reads the desktop entries programs install, for the omorfos shell components"
+keywords = ["desktop", "freedesktop", "xdg"]
+categories = ["parsing"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

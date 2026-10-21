@@ -1856,6 +1856,13 @@ name = "omorfos-core"
 version = "0.1.0"
 
 [[package]]
+name = "omorfos-entries"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "omorfos-icons"
 version = "0.1.0"
 dependencies = [
@@ -1880,6 +1887,7 @@ name = "omorfos-launcher"
 version = "0.1.0"
 dependencies = [
  "omorfos-config",
+ "omorfos-entries",
  "omorfos-icons",
  "omorfos-ipc",
  "omorfos-shell",
