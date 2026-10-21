@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 omorfos-config = { path = "../omorfos-config" }
+omorfos-entries = { path = "../omorfos-entries" }
 omorfos-icons = { path = "../omorfos-icons" }
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-shell = { path = "../omorfos-shell" }

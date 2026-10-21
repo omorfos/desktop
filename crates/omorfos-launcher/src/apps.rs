@@ -2,18 +2,14 @@
 //! the system say.
 //!
 //! A desktop entry is a small file an application installs to say what it
-//! is called and how it is started. They are other people's files and are
-//! read as such: only so much of each, only so many of them, and whatever
-//! does not make sense is passed over.
+//! is called and how it is started (see [`omorfos_entries`]). Only so many
+//! of them are read.
 
 use std::ffi::OsStr;
-use std::fs::{self, File};
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
-/// The most of a desktop entry that is read, in bytes. Real ones are a few
-/// kilobytes, most of it translations.
-const LONGEST: u64 = 256 * 1024;
+use omorfos_entries::{arguments, fields, read};
 
 /// The most desktop entries that are read from one directory.
 const MOST: usize = 4096;
@@ -40,19 +36,11 @@ impl App {
     /// or a command.
     #[must_use]
     pub fn parse(entry: &str) -> Option<Self> {
-        let mut inside = false;
         let (mut name, mut exec) = (None, None);
         let (mut description, mut icon) = ("", "");
         let (mut application, mut shown, mut terminal) = (false, true, false);
-        for line in entry.lines().map(str::trim) {
-            if line.starts_with('[') {
-                inside = line == "[Desktop Entry]";
-            }
-            let Some((key, value)) = line.split_once('=').filter(|_| inside) else {
-                continue;
-            };
-            let value = value.trim();
-            match key.trim() {
+        for (key, value) in fields(entry) {
+            match key {
                 "Type" => application = value == "Application",
                 "Name" => name = Some(value),
                 "Exec" => exec = Some(value),
@@ -74,39 +62,6 @@ impl App {
             icon: icon.to_owned(),
         })
     }
-}
-
-/// Splits the `Exec` line of a desktop entry into a program and its
-/// arguments, as the specification has it: words apart from one another by
-/// spaces, a word in double quotes kept whole with `\` before a character
-/// that is meant as itself. The places where files to open would go (`%f`,
-/// `%U` and the like) are left out, since there are none.
-fn arguments(exec: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut word: Option<String> = None;
-    let mut quoted = false;
-    let mut characters = exec.chars();
-    while let Some(character) = characters.next() {
-        match character {
-            '"' => {
-                quoted = !quoted;
-                // Even nothing between quotes is a word.
-                word.get_or_insert_default();
-            }
-            '\\' if quoted => word.get_or_insert_default().extend(characters.next()),
-            ' ' if !quoted => words.extend(word.take()),
-            '%' => {
-                let code = characters.next();
-                let literal = code.filter(|code| *code == '%');
-                word.get_or_insert_default().extend(literal);
-            }
-            other => word.get_or_insert_default().push(other),
-        }
-    }
-    words.extend(word);
-    // A place for a file that stood alone leaves an empty word behind.
-    words.retain(|word| !word.is_empty());
-    words
 }
 
 /// Where desktop entries are installed, the user's own first: the
@@ -151,16 +106,12 @@ pub fn installed(directories: &[PathBuf]) -> Vec<App> {
     apps
 }
 
-/// Reads the beginning of a file, if it can be read and is text.
-fn read(path: &Path) -> Option<String> {
-    let mut text = String::new();
-    let file = File::open(path).ok();
-    let read = file.map(|file| file.take(LONGEST).read_to_string(&mut text));
-    read.and_then(Result::ok).map(|_| text)
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use omorfos_entries::LONGEST;
+
     use super::*;
 
     fn entry(lines: &[&str]) -> String {
@@ -249,39 +200,6 @@ mod tests {
         assert!(App::parse(&text).unwrap().terminal);
         let text = entry(&["Type=Application", "Name=Top", "Exec=top", "Terminal=false"]);
         assert!(!App::parse(&text).unwrap().terminal);
-    }
-
-    #[test]
-    fn a_command_is_split_into_words_with_quoted_ones_kept_whole() {
-        assert_eq!(arguments("tool"), ["tool"]);
-        assert_eq!(
-            arguments("  tool   --flag  value "),
-            ["tool", "--flag", "value"]
-        );
-        assert_eq!(
-            arguments(r#"sh -c "printf x > '/tmp/a file'""#),
-            ["sh", "-c", "printf x > '/tmp/a file'"]
-        );
-        assert_eq!(
-            arguments(r#"say "a \"quoted\" word" \n"#),
-            ["say", "a \"quoted\" word", "\\n"]
-        );
-        assert_eq!(arguments(r#"tool "" end"#), ["tool", "end"]);
-        assert_eq!(arguments(r#"pre"fix ed"post"#), ["prefix edpost"]);
-        assert_eq!(arguments(""), [""; 0]);
-        // A quote left open takes the rest, and a `\` at the very end is
-        // nothing.
-        assert_eq!(arguments(r#"tool "the rest"#), ["tool", "the rest"]);
-        assert_eq!(arguments("tool \"x\\"), ["tool", "x"]);
-    }
-
-    #[test]
-    fn places_for_files_to_open_are_left_out_of_a_command() {
-        assert_eq!(arguments("view %f"), ["view"]);
-        assert_eq!(arguments("view %U --all"), ["view", "--all"]);
-        assert_eq!(arguments("view --file=%f"), ["view", "--file="]);
-        assert_eq!(arguments("discount 50%% off"), ["discount", "50%", "off"]);
-        assert_eq!(arguments("odd %"), ["odd"]);
     }
 
     #[test]
