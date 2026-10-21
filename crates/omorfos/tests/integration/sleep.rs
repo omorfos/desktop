@@ -141,6 +141,8 @@ fn watching(session: &mut Session, daemon: &Daemon, logind: &Logind) -> JoinHand
         session: None,
         system: daemon.address.clone(),
         compositor: Some(session.listen()),
+        autostart: Vec::new(),
+        desktops: Vec::new(),
     };
     let running = std::thread::spawn(move || match omorfos_session::watch(&places) {
         Ok(()) => "ended".to_owned(),

@@ -11,6 +11,7 @@
 //! omorfos-session brightness up|down
 //! omorfos-session media play-pause|next|previous|stop
 //! omorfos-session sleep|restart|shut-down
+//! omorfos-session autostart
 //! ```
 //!
 //! The volume is set by WirePlumber's `wpctl`, which sets a sound card's
@@ -18,8 +19,11 @@
 //! lets the user who is logged in set it; and what is playing is told over
 //! D-Bus, as players listen for (MPRIS). How loud or how bright it is
 //! then is shown as a notification, which takes the place of the one
-//! before. Sleep and the rest are asked of logind.
+//! before. Sleep and the rest are asked of logind. `autostart` starts what
+//! the desktop entries in `~/.config/autostart` and the system's say is to
+//! start with the session, which the compositor runs once, at login.
 
+mod autostart;
 mod brightness;
 mod media;
 mod power;
@@ -38,6 +42,7 @@ use std::time::Duration;
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 
+pub use autostart::directories;
 pub use brightness::Backlight;
 pub use power::Power;
 pub use watch::watch;
@@ -72,6 +77,8 @@ pub enum Request {
     Media(Media),
     /// The machine to sleep, start again or turn off.
     Power(Power),
+    /// What is to start with the session started.
+    Autostart,
 }
 
 /// What is asked of the volume.
@@ -116,7 +123,7 @@ impl fmt::Display for Unknown {
         formatter.write_str(
             "usage: omorfos-session [volume up|down|mute | microphone mute | \
              brightness up|down | media play-pause|next|previous|stop | \
-             sleep | restart | shut-down]",
+             sleep | restart | shut-down | autostart]",
         )
     }
 }
@@ -146,6 +153,7 @@ impl Request {
             ["sleep"] => Ok(Self::Power(Power::Sleep)),
             ["restart"] => Ok(Self::Power(Power::Restart)),
             ["shut-down"] => Ok(Self::Power(Power::ShutDown)),
+            ["autostart"] => Ok(Self::Autostart),
             _ => Err(Unknown),
         }
     }
@@ -164,6 +172,12 @@ pub struct Places {
     pub system: String,
     /// The compositor's socket.
     pub compositor: Option<PathBuf>,
+    /// Where the desktop entries of what is to start with the session are,
+    /// the user's own first.
+    pub autostart: Vec<PathBuf>,
+    /// What the session's desktop is called, as an entry may name it to
+    /// be started only in it, or never: `omorfos`, unless told otherwise.
+    pub desktops: Vec<String>,
 }
 
 impl Places {
@@ -183,6 +197,16 @@ impl Places {
                 variable("XDG_RUNTIME_DIR").as_deref(),
                 variable("WAYLAND_DISPLAY").as_deref(),
             ),
+            autostart: directories(
+                variable("XDG_CONFIG_HOME").as_deref(),
+                variable("HOME").as_deref(),
+                variable("XDG_CONFIG_DIRS").as_deref(),
+            ),
+            desktops: address("XDG_CURRENT_DESKTOP")
+                .unwrap_or_else(|| "omorfos".to_owned())
+                .split(':')
+                .map(str::to_owned)
+                .collect(),
         }
     }
 }
@@ -209,6 +233,7 @@ pub fn run(request: Request, places: &Places) -> Result<(), Failure> {
         Request::Media(media) => return media::tell(&session()?, media),
         Request::Power(power) => return power::ask(&connect(&places.system)?, power),
         Request::Watch => return watch(places),
+        Request::Autostart => return autostart::start(places),
     };
     // That it changed is what matters; showing it is a courtesy, and is
     // done without where there is nothing to show it.
@@ -251,6 +276,8 @@ mod tests {
             session: session.map(|daemon| daemon.address.clone()),
             system: system.address.clone(),
             compositor: None,
+            autostart: Vec::new(),
+            desktops: Vec::new(),
         }
     }
 
@@ -485,6 +512,16 @@ mod tests {
     }
 
     #[test]
+    fn what_is_to_start_with_the_session_is_started_when_asked() {
+        let daemon = Daemon::start();
+        let places = places(None, &daemon, "wpctl");
+        assert!(
+            run(Request::Autostart, &places).is_ok(),
+            "with nothing to start"
+        );
+    }
+
+    #[test]
     fn the_session_is_watched_over_when_nothing_else_is_asked() {
         let daemon = Daemon::start();
         let failure = run(Request::Watch, &places(None, &daemon, "wpctl")).unwrap_err();
@@ -527,6 +564,7 @@ mod tests {
             assert_eq!(read(&[word]), Ok(Request::Power(power)));
         }
         assert_eq!(read(&[]), Ok(Request::Watch), "as the compositor runs it");
+        assert_eq!(read(&["autostart"]), Ok(Request::Autostart));
     }
 
     #[test]
@@ -553,11 +591,14 @@ mod tests {
         assert_eq!((none.path.to_str(), none.session), (Some(PATH), None));
         assert_eq!(none.system, SYSTEM_BUS);
         assert_eq!(none.compositor, None);
+        assert_eq!(none.desktops, ["omorfos"]);
+        assert_eq!(none.autostart, [PathBuf::from("/etc/xdg/autostart")]);
         let all = Places::from(&|name| Some(OsString::from(format!("<{name}>"))));
         assert_eq!(all.path, OsString::from("<PATH>"));
         assert_eq!(all.session.as_deref(), Some("<DBUS_SESSION_BUS_ADDRESS>"));
         assert_eq!(all.system, "<DBUS_SYSTEM_BUS_ADDRESS>");
         assert_eq!(all.compositor, Some(PathBuf::from("<OMORFOS_SOCKET>")));
+        assert_eq!(all.desktops, ["<XDG_CURRENT_DESKTOP>"]);
         // Found by the display, as every program of the session finds it.
         let found = Places::from(&|name| {
             let known = ["XDG_RUNTIME_DIR", "WAYLAND_DISPLAY"].contains(&name);

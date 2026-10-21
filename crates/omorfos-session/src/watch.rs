@@ -442,6 +442,8 @@ mod tests {
             session: Some(daemon.address.clone()),
             system: daemon.address.clone(),
             compositor: Some(compositor.path.clone()),
+            autostart: Vec::new(),
+            desktops: Vec::new(),
         }
     }
 

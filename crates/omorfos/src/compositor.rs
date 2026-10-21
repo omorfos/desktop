@@ -1368,8 +1368,9 @@ impl Compositor {
     }
 
     /// Starts the panel and the notifications, each if there is one and it
-    /// is wanted, and then the programs the configuration lists to be
-    /// started with the session. A
+    /// is wanted, then the programs the configuration lists to be started
+    /// with the session, and then those the autostart entries of the user
+    /// and the system list, where omorfos is the whole session. A
     /// backend calls this once it is ready for them: when the sockets are
     /// open and there is a screen to show them on.
     ///
@@ -1393,6 +1394,21 @@ impl Compositor {
         self.components = components;
         for command in &config.general.autostart {
             self.spawn(command);
+        }
+        // Then what the desktop entries in `~/.config/autostart` and the
+        // system's say is to start, which the program that watches over the
+        // session reads and starts as ordinary programs, once.
+        let session = self
+            .components
+            .iter()
+            .find(|component| component.kind == Program::Session);
+        let session = session.map(|component| component.program.clone());
+        if let Some(session) = session {
+            self.launch(
+                session.as_os_str(),
+                &["autostart".to_owned()],
+                (Roles::NONE, false),
+            );
         }
     }
 

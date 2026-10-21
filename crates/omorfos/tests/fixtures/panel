@@ -1,7 +1,8 @@
 #!/bin/sh
 # Stands in for the panel where a test wants to see the compositor start
 # it: it leaves a mark beside the session's socket, and one of what it was
-# told about the session.
+# told about the session, and of what it was asked, one line each time.
 directory="$(dirname "$OMORFOS_SOCKET")"
 printf x >> "$directory/panel-started"
+printf '%s\n' "$*" >> "$directory/panel-asked"
 printf '%s' "$WAYLAND_DISPLAY" > "$directory/panel-display"

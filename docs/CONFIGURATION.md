@@ -101,6 +101,19 @@ They are started once, in order. Changing the list takes effect the next
 time you log in; reloading the configuration does not start them again. A
 program that cannot be started is reported like any other problem.
 
+Then, where omorfos is your whole session and not a window inside
+another desktop, the programs that other desktops start too: those whose
+desktop entries are in `~/.config/autostart`, as programs put themselves
+when you ask them to start at login, and in `/etc/xdg/autostart`, as the
+system's are installed. One of yours takes the place of the system's of
+the same file name, so a copy with `Hidden=true` in it turns the
+system's off. An entry that says it is only for other desktops
+(`OnlyShowIn`), or not for this one (`NotShowIn=omorfos`), is passed
+over, as is one turned off with `X-GNOME-Autostart-enabled=false`, one
+that needs a terminal, and one whose `TryExec` program is not installed.
+These are ordinary programs; one that needs a role goes in `autostart`
+here instead. One that cannot be started is said in the session's log.
+
 `cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
 `~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
 Shapes the theme lacks come from the themes it inherits from and then from

@@ -175,7 +175,17 @@ fn what_watches_over_the_session_is_started_with_it() {
     let started = || std::fs::read_to_string(directory.join("panel-started")).unwrap_or_default();
     session.compositor_mut().set_session(stand_in_panel());
     session.compositor_mut().autostart();
-    session.eventually(|_| started() == "x");
+    // Once to watch over the session, and once to start what the autostart
+    // entries say, which it does and ends.
+    session.eventually(|_| started() == "xx");
+    session.advance(std::time::Duration::from_millis(100));
+    assert_eq!(started(), "xx", "and only once");
+    let asked = || std::fs::read_to_string(directory.join("panel-asked")).unwrap_or_default();
+    session.eventually(|_| asked().lines().count() == 2);
+    let asked = asked();
+    let mut asked: Vec<&str> = asked.lines().collect();
+    asked.sort_unstable();
+    assert_eq!(asked, ["", "autostart"]);
 }
 
 #[test]
