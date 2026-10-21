@@ -1971,6 +1971,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-session"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zbus",
+]
+
+[[package]]
 name = "omorfos-shell"
 version = "0.1.0"
 dependencies = [

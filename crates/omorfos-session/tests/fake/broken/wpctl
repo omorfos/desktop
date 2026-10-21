@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for wpctl where there is no PipeWire to speak to.
+echo "Could not connect to PipeWire" >&2
+exit 1

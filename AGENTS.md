@@ -66,7 +66,7 @@ after a change takes seconds where `--release` takes many minutes:
 
 ```sh
 cargo build --profile nightly -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p xdg-desktop-portal-omorfos
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p xdg-desktop-portal-omorfos
 ```
 
 Packages are built with `--release`.
