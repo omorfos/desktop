@@ -7,6 +7,7 @@
     reason = "test support code fails the test on any error"
 )]
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
@@ -161,6 +162,35 @@ fn pictures() -> Vec<u8> {
         .into_inner()
 }
 
+/// The nodes whose ports `core` has been told of, as it is told, for as
+/// long as what is returned with them is kept.
+///
+/// A stream is ready on its own connection before PipeWire has told another
+/// connection of its ports, and a link asked for on that other one before
+/// then is refused for want of a port. Asked for once `core` knows them, it
+/// reaches PipeWire after they are there.
+fn ports(
+    core: &pw::core::CoreRc,
+) -> (
+    std::rc::Rc<std::cell::RefCell<BTreeSet<u32>>>,
+    (pw::registry::RegistryRc, pw::registry::Listener),
+) {
+    let ported = std::rc::Rc::new(std::cell::RefCell::new(BTreeSet::new()));
+    let porting = std::rc::Rc::clone(&ported);
+    let registry = core.get_registry_rc().unwrap();
+    let listener = registry
+        .add_listener_local()
+        .global(move |global| {
+            let node = global.props.and_then(|props| props.get(*pw::keys::NODE_ID));
+            let node = node.and_then(|node| node.parse::<u32>().ok());
+            if global.type_ == pw::types::ObjectType::Port {
+                porting.borrow_mut().extend(node);
+            }
+        })
+        .register();
+    (ported, (registry, listener))
+}
+
 /// Streams that stand for what is recorded from, each linked into one of
 /// this process that records it, on a thread of their own until told to
 /// stop.
@@ -182,6 +212,7 @@ fn recorded(socket: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<(
             *pw::keys::APP_PROCESS_ID => "1",
         };
         let claimed = context.connect_rc(Some(claiming)).unwrap();
+        let (ported, _ports) = ports(&core);
         // The portal's screen is a source of pictures, as a camera is, that
         // says it is a screen.
         let pairs = [
@@ -246,7 +277,8 @@ fn recorded(socket: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<(
                 .iter()
                 .map(|(stream, ..)| stream.node_id())
                 .collect();
-            let known = streams.iter().all(|(.., ready)| ready.get());
+            let ready = streams.iter().all(|(.., ready)| ready.get());
+            let known = ready && named.iter().all(|node| ported.borrow().contains(node));
             if links.is_empty() && known {
                 for pair in named.chunks(2) {
                     let ends = properties! {
