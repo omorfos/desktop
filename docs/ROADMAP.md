@@ -472,10 +472,15 @@ what only games and touchpads need last.
       it. The radios are read from `/dev/rfkill`, which tells of each
       change as it happens, by the part of `omorfos-session` that runs
       all session, which tells the compositor.
-- [ ] Writing in languages that need an input method
-      (`text-input-v3`, `input-method-v2`), and switching keyboard
-      layout by a key, which can be turned off for those who type with
-      one layout and want the key for something else.
+- [x] Writing in languages that need an input method
+      (`text-input-v3`, `input-method-v2`, `virtual-keyboard-v1`), for a
+      program given the `input` role, its popup under the text and no key
+      shown it while locked (ADR 47); and switching keyboard layout by
+      the `next_layout` action, which no key is bound to.
+- [ ] The layout shown: which one is being typed with, on the panel, and
+      a key for `next_layout` decided with the other default keys.
+- [ ] A second input method refused, not the first: Smithay tells the one
+      there already that it may no longer be one.
 - [ ] Programs listed in `~/.config/autostart` started with the session,
       and the session's environment told to D-Bus and systemd, without
       which portals and much else do not find it.
