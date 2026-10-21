@@ -75,11 +75,7 @@ impl Icons {
         home: Option<&OsStr>,
         data_dirs: Option<&OsStr>,
     ) -> Vec<PathBuf> {
-        let data = data_directories(data_home, home, data_dirs).into_iter();
-        let themed = data.map(|directory| directory.join("icons"));
-        themed
-            .chain([PathBuf::from("/usr/share/pixmaps")])
-            .collect()
+        icon_directories(&data_directories(data_home, home, data_dirs))
     }
 
     /// The icon called `name`, to be drawn `pixels` pixels across beside
@@ -132,6 +128,17 @@ pub fn data_directories(
     own.into_iter().chain(shared).collect()
 }
 
+/// Where icons are installed, given where programs install what they
+/// share (see [`data_directories`]): the `icons` directory of each, and
+/// then `/usr/share/pixmaps`, where programs without a theme put theirs.
+#[must_use]
+pub fn icon_directories(data: &[PathBuf]) -> Vec<PathBuf> {
+    let themed = data.iter().map(|directory| directory.join("icons"));
+    themed
+        .chain([PathBuf::from("/usr/share/pixmaps")])
+        .collect()
+}
+
 /// The most of a desktop entry that is read for an application's name, in
 /// bytes. Real ones are a few kilobytes, most of it translations.
 const LONGEST_ENTRY: u64 = 256 * 1024;
@@ -147,6 +154,20 @@ const LONGEST_ID: usize = 255;
 /// outside the directory, or where no entry gives a name.
 #[must_use]
 pub fn named(app_id: &str, directories: &[PathBuf]) -> Option<String> {
+    entry_says(app_id, directories, "Name")
+}
+
+/// The icon an application's desktop entry names for it (`Icon`), found
+/// as [`named`] finds its name: a name to look up, or the whole path of a
+/// picture.
+#[must_use]
+pub fn icon_of(app_id: &str, directories: &[PathBuf]) -> Option<String> {
+    entry_says(app_id, directories, "Icon")
+}
+
+/// What the desktop entry of `app_id` gives for `key`, from the first of
+/// `directories` whose entry gives it.
+fn entry_says(app_id: &str, directories: &[PathBuf], key: &str) -> Option<String> {
     let allowed = |byte: u8| byte.is_ascii_alphanumeric() || b"._-".contains(&byte);
     let valid = (1..=LONGEST_ID).contains(&app_id.len()) && app_id.bytes().all(allowed);
     let file = format!("{app_id}.desktop");
@@ -158,19 +179,19 @@ pub fn named(app_id: &str, directories: &[PathBuf]) -> Option<String> {
         let read = file.and_then(|file| file.take(LONGEST_ENTRY).read_to_string(&mut entry).ok());
         read.map(|_| entry)
     });
-    read.find_map(|entry| name(&entry))
+    read.find_map(|entry| value(&entry, key))
 }
 
-/// The name a desktop entry gives, untranslated: `Name` in its
+/// What a desktop entry gives for `key`, untranslated, in its
 /// `[Desktop Entry]`, if it is not empty.
-fn name(entry: &str) -> Option<String> {
+fn value(entry: &str, key: &str) -> Option<String> {
     let mut inside = false;
     entry.lines().map(str::trim).find_map(|line| {
         if line.starts_with('[') {
             inside = line == "[Desktop Entry]";
         }
         let named = line.split_once('=').filter(|_| inside);
-        let named = named.filter(|(key, _)| key.trim() == "Name");
+        let named = named.filter(|(given, _)| given.trim() == key);
         let named = named.map(|(_, value)| value.trim());
         named.filter(|value| !value.is_empty()).map(str::to_owned)
     })
@@ -332,7 +353,7 @@ mod tests {
 
     #[test]
     fn an_application_is_named_by_its_desktop_entry() {
-        let named = |entry: &str| name(entry);
+        let named = |entry: &str| value(entry, "Name");
         let entry = "[Desktop Entry]\nType=Application\nName[pl]=Przykład\nName = Example \n";
         assert_eq!(named(entry).as_deref(), Some("Example"), "not translated");
         let elsewhere = "[Desktop Action new]\nName=New Window\n[Desktop Entry]\nName=Main\n";
@@ -362,6 +383,17 @@ mod tests {
             "in the first that has it"
         );
         assert_eq!(named("org.example.Other", &directories), None);
+        assert_eq!(
+            icon_of("org.example.App", &directories),
+            None,
+            "it gives none"
+        );
+        let iconic = "[Desktop Entry]\nName=Iconic\nIcon=org.example.Iconic\n";
+        fs::write(applications.join("org.example.Iconic.desktop"), iconic).unwrap();
+        assert_eq!(
+            icon_of("org.example.Iconic", &directories).as_deref(),
+            Some("org.example.Iconic")
+        );
         // An identifier is another program's word: one that is not a name,
         // or that would reach outside, is looked for nowhere.
         let long = "a".repeat(256);
