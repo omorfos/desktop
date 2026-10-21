@@ -210,6 +210,14 @@ notification-title {
   font-weight: bold;
 }
 notification-body { color: var(--text-dim); }
+/* How full something a notification tells of is, such as the volume: the
+ * background is the whole, the colour how much of it is full. */
+notification-level {
+  margin-top: 8px;
+  background: var(--border);
+  color: var(--accent);
+  border-radius: 3px;
+}
 
 /* What the portals ask: whether an application may see the screen. The
  * button that gives is :active. The border is also the ring of the loupe

@@ -39,6 +39,9 @@ const PICTURE: u32 = 40;
 /// The room between a notification's picture and its words.
 const GAP: u32 = 12;
 
+/// How thick the bar is that shows how full something is.
+const LEVEL: u32 = 6;
+
 /// The narrowest a notification is made, whatever the theme says.
 const NARROWEST: u32 = 120;
 
@@ -75,6 +78,14 @@ pub struct Note {
     /// Whether its sender wants to hear of it being clicked, so as to do
     /// something then, such as showing the window it is about.
     pub acts: bool,
+    /// How full something is, out of 100, such as the volume, shown as a
+    /// bar under what it says.
+    pub level: Option<u8>,
+    /// What it is one of, such as the volume: one with the tag of a
+    /// notification that is showing takes its place, whatever its number,
+    /// so that a program that does not remember the number of the one it
+    /// sent before still shows one at a time.
+    pub tag: Option<String>,
 }
 
 /// Why a notification is no longer showing, as the numbers programs are
@@ -110,6 +121,8 @@ struct Shown {
     picture: Picture,
     urgent: bool,
     acts: bool,
+    level: Option<u8>,
+    tag: Option<String>,
     /// When it goes, if it does of its own accord.
     until: Option<Duration>,
 }
@@ -190,9 +203,15 @@ impl Stack {
             picture: note.picture,
             urgent: note.urgent,
             acts: note.acts,
+            level: note.level.map(|level| level.min(100)),
+            tag: note.tag,
             until: lasts.map(|lasts| now.saturating_add(lasts)),
         };
-        let place = self.shown.iter().position(|other| other.key == shown.key);
+        let tagged = |other: &Shown| shown.tag.is_some() && other.tag == shown.tag;
+        let place = self
+            .shown
+            .iter()
+            .position(|other| other.key == shown.key || tagged(other));
         match place.and_then(|place| self.shown.get_mut(place)) {
             Some(other) => *other = shown,
             None => self.shown.insert(0, shown),
@@ -264,6 +283,8 @@ impl Stack {
             said,
             picture: Picture::None,
             acts: false,
+            level: None,
+            tag: None,
             until,
         };
         self.shown.insert(0, shown);
@@ -421,6 +442,23 @@ impl Stack {
                 );
                 top = top.saturating_add_unsigned(tall);
             }
+            if let Some(level) = shown.level {
+                let style = motion.style(theme, Part::NotificationLevel, key, states);
+                let track = (
+                    room.0,
+                    top.saturating_add_unsigned(style.margin.top),
+                    room.2,
+                    LEVEL,
+                );
+                canvas.draw_box(track, &style);
+                // How full it is, in the part's colour over its background.
+                let full = room.2.saturating_mul(u32::from(level)) / 100;
+                let filled = Style {
+                    background: style.color,
+                    ..style
+                };
+                canvas.draw_box((track.0, track.1, full, track.3), &filled);
+            }
         }
         canvas
     }
@@ -441,6 +479,9 @@ impl Stack {
             let body = line(theme.font(Part::NotificationBody, states).size.get());
             let lines = u32::try_from(shown.lines.len()).unwrap_or(0);
             let words = title.saturating_add(body.saturating_mul(lines));
+            let level = theme.style(Part::NotificationLevel, states);
+            let level = LEVEL.saturating_add(level.margin.down());
+            let words = words.saturating_add(if shown.level.is_some() { level } else { 0 });
             let pictured = shown.picture != Picture::None;
             let content = words.max(if pictured { PICTURE } else { 0 });
             let height = content.saturating_add(style.inset().down());
@@ -774,6 +815,60 @@ mod tests {
         let once = stack.clone();
         stack.fit(&theme, &mut text);
         assert_eq!(stack, once);
+    }
+
+    fn level(id: u32, tag: Option<&str>, level: u8) -> Note {
+        Note {
+            level: Some(level),
+            tag: tag.map(str::to_owned),
+            ..note(id, "Volume", "")
+        }
+    }
+
+    #[test]
+    fn a_notification_with_the_tag_of_one_showing_takes_its_place_whatever_its_number() {
+        let mut stack = Stack::new(5);
+        stack.show(level(1, Some("volume"), 40), START);
+        stack.show(note(2, "Mail", ""), START);
+        stack.show(level(3, Some("volume"), 45), seconds(3));
+        assert_eq!(showing(&stack), [2, 3], "where the old one was");
+        assert_eq!(stack.shown[1].level, Some(45));
+        // Another tag, or none, is one more.
+        stack.show(level(4, Some("brightness"), 10), START);
+        stack.show(level(5, None, 10), START);
+        stack.show(level(6, None, 20), START);
+        assert_eq!(showing(&stack), [6, 5, 4, 2, 3]);
+    }
+
+    #[test]
+    fn a_level_is_drawn_as_a_bar_under_the_words_full_as_far_as_it_goes() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        stack.show(level(1, Some("volume"), 50), START);
+        // A line of title, and the bar under it with its room above.
+        let height = 8 + 1 + 10 + 18 + 8 + 6 + 10 + 1 + 8;
+        assert_eq!(stack.size(&theme).1, height);
+        let style = theme.style(Part::NotificationLevel, States::NONE);
+        let canvas = painted(&stack, &theme);
+        let (left, width, middle) = (8 + 1 + 12, 340 - 2 - 24, 8 + 1 + 10 + 18 + 8 + 3);
+        assert_eq!(
+            canvas.at(left + width / 4, middle),
+            argb(style.color),
+            "full"
+        );
+        assert_eq!(
+            canvas.at(left + width * 3 / 4, middle),
+            argb(style.background)
+        );
+
+        // More than full is full.
+        stack.show(level(1, Some("volume"), 150), START);
+        let canvas = painted(&stack, &theme);
+        assert_eq!(canvas.at(left + width * 3 / 4, middle), argb(style.color));
+        // And nothing is nothing.
+        stack.show(level(1, Some("volume"), 0), START);
+        let canvas = painted(&stack, &theme);
+        assert_eq!(canvas.at(left + width / 4, middle), argb(style.background));
     }
 
     #[test]

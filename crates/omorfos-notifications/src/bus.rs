@@ -270,6 +270,8 @@ fn answer(connection: &Connection, message: &Message, last: &mut u32) -> Option<
                     stays,
                     // Actions come as a name and then what to call it.
                     acts: actions.iter().step_by(2).any(|name| name == DEFAULT_ACTION),
+                    level: level(&hints),
+                    tag: tag(&hints),
                 }));
                 connection.reply(&header, &id)
             }
@@ -306,6 +308,33 @@ fn answer(connection: &Connection, message: &Message, last: &mut u32) -> Option<
 fn urgency(hints: &HashMap<String, OwnedValue>) -> Option<u8> {
     let hint = hints.get("urgency");
     hint.and_then(|value| value.downcast_ref::<u8>().ok())
+}
+
+/// The most of a tag that is kept, in characters.
+const LONGEST_TAG: usize = 64;
+
+/// How full what a notification tells of is, out of 100, by the hint
+/// programs send it as. One below nothing is nothing, and one above 100 is
+/// full.
+fn level(hints: &HashMap<String, OwnedValue>) -> Option<u8> {
+    let hint = hints.get("value");
+    let value = hint.and_then(|value| value.downcast_ref::<i32>().ok());
+    value.and_then(|value| u8::try_from(value.clamp(0, 100)).ok())
+}
+
+/// What a notification is one of, by any of the hints programs send it
+/// as, so that it takes the place of the one showing with the same.
+fn tag(hints: &HashMap<String, OwnedValue>) -> Option<String> {
+    let names = [
+        "synchronous",
+        "x-canonical-private-synchronous",
+        "x-dunst-stack-tag",
+    ];
+    let hint = names.into_iter().find_map(|name| hints.get(name));
+    let tag = hint.and_then(|value| value.downcast_ref::<&str>().ok());
+    let tag = tag.filter(|tag| !tag.is_empty());
+    // A program may send any length; this many tells tags apart.
+    tag.map(|tag| tag.chars().take(LONGEST_TAG).collect())
 }
 
 /// The picture a notification came with: the pixels themselves if it sent
@@ -449,7 +478,12 @@ pub(crate) mod tests {
 
     /// What is heard of a notification sent by [`notify`].
     fn sent(id: u32, title: &str, urgent: bool, picture: Picture) -> Event {
-        Event::Show(Note {
+        Event::Show(sent_note(id, title, urgent, picture))
+    }
+
+    /// The notification that is heard of one sent by [`notify`].
+    fn sent_note(id: u32, title: &str, urgent: bool, picture: Picture) -> Note {
+        Note {
             id,
             title: title.to_owned(),
             body: "the <b>body</b>".to_owned(),
@@ -457,7 +491,9 @@ pub(crate) mod tests {
             urgent,
             stays: 1500,
             acts: false,
-        })
+            level: None,
+            tag: None,
+        }
     }
 
     fn icon() -> Picture {
@@ -493,6 +529,51 @@ pub(crate) mod tests {
         }
         let expected = [(1, "one"), (2, "two"), (1, "one again"), (3, "three")];
         let expected = expected.map(|(id, title)| sent(id, title, false, icon()));
+        assert_eq!(events, expected);
+    }
+
+    #[test]
+    fn a_notification_may_say_how_full_something_is_and_what_it_is_one_of() {
+        let daemon = Daemon::start();
+        let bus = Bus::open(Some(&daemon.address)).unwrap();
+        let peer = daemon.peer();
+        let long = "t".repeat(500);
+        let sends: [(Hints<'_>, Option<u8>, Option<String>); 7] = [
+            (
+                Hints::from([
+                    ("value", Value::I32(40)),
+                    ("synchronous", Value::from("volume")),
+                ]),
+                Some(40),
+                Some("volume".to_owned()),
+            ),
+            (
+                Hints::from([("x-canonical-private-synchronous", Value::from("light"))]),
+                None,
+                Some("light".to_owned()),
+            ),
+            (
+                Hints::from([("x-dunst-stack-tag", Value::from(long.as_str()))]),
+                None,
+                Some("t".repeat(LONGEST_TAG)),
+            ),
+            // Out of bounds, it is held to them.
+            (Hints::from([("value", Value::I32(250))]), Some(100), None),
+            (Hints::from([("value", Value::I32(-5))]), Some(0), None),
+            // Of the wrong kind, or empty, it is not heard.
+            (Hints::from([("value", Value::from("40"))]), None, None),
+            (Hints::from([("synchronous", Value::from(""))]), None, None),
+        ];
+        let mut expected = Vec::new();
+        for (hints, level, tag) in sends {
+            let id = notify(&peer, 0, "Level", hints);
+            let note = sent_note(id, "Level", false, icon());
+            expected.push(Event::Show(Note { level, tag, ..note }));
+        }
+        let mut events = Vec::new();
+        while events.len() < expected.len() {
+            events.extend(heard(&bus));
+        }
         assert_eq!(events, expected);
     }
 
