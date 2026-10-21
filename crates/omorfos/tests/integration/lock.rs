@@ -39,7 +39,7 @@ fn show_frame(session: &mut Session) {
 
 /// Locks the session with a locker that shows a green surface, and waits
 /// until it has been told the session is locked.
-fn lock(session: &mut Session) -> (Client, ExtSessionLockV1, WlSurface) {
+pub(crate) fn lock(session: &mut Session) -> (Client, ExtSessionLockV1, WlSurface) {
     let mut locker = session.connect();
     let lock = locker.lock();
     let surface = locker.lock_surface(&lock);

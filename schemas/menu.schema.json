@@ -62,6 +62,16 @@
           "type": "string"
         },
         {
+          "const": "switch_windows",
+          "description": "Open the switcher at the window used before the one in use, or,\nwhile it is open, go on to the next. Letting go of the keys held\nwith it chooses the window it is at.",
+          "type": "string"
+        },
+        {
+          "const": "switch_windows_back",
+          "description": "The same, going back: the switcher opens at the window used longest\nago.",
+          "type": "string"
+        },
+        {
           "const": "next_tab",
           "description": "Switch to the tab after the active one in the focused window's group.",
           "type": "string"

@@ -96,7 +96,7 @@ impl Head {
 }
 
 /// A rectangle of the space, as the window-management model has it.
-fn domain(rectangle: Rectangle<i32, Logical>) -> Rect {
+pub(crate) fn domain(rectangle: Rectangle<i32, Logical>) -> Rect {
     Rect::new(
         DomainPoint::new(rectangle.loc.x, rectangle.loc.y),
         DomainSize::new(

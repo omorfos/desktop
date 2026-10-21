@@ -105,6 +105,7 @@ use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
+use crate::switcher::Switch;
 use crate::tiles::Lines;
 use crate::x11::{Focus, Placed, Role, X11};
 
@@ -313,6 +314,8 @@ pub struct Compositor {
     pub(crate) terminal_wanted: Option<i32>,
     /// What the pointer is over, and what it is doing with titlebars.
     pub(crate) hover: Hover,
+    /// The switcher on `Alt+Tab`, and the order of use it goes by.
+    pub(crate) switch: Switch,
     /// The lock on the session, while it is locked.
     pub(crate) lock: Option<Lock>,
     pub(crate) lock_manager: SessionLockManagerState,
@@ -430,6 +433,7 @@ impl Compositor {
                     drag: None,
                     menu: None,
                     menu_chrome: None,
+                    switch: Switch::default(),
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
                     notice: None,
@@ -909,6 +913,7 @@ impl Compositor {
         self.reveal(now);
         self.offer_arrangements(now);
         self.sync();
+        self.note_use();
         self.rest_or_wake(now);
         self.space.refresh();
         self.popups.cleanup();
@@ -993,6 +998,8 @@ impl Compositor {
             Action::Shade => self.on_focused(Desktop::toggle_shaded),
             Action::KeepAbove => self.on_focused(Desktop::toggle_above),
             Action::Stick => self.on_focused(Desktop::toggle_sticky),
+            Action::SwitchWindows => self.switch_windows(false),
+            Action::SwitchWindowsBack => self.switch_windows(true),
             Action::FocusNext => self.desktop.focus_next(),
             Action::FocusPrevious => self.desktop.focus_previous(),
             Action::NextTab => self.on_focused(Desktop::next_tab),
@@ -1692,6 +1699,7 @@ impl Compositor {
         };
         let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
         self.animation.menu_opacity = share.unwrap_or(1.0);
+        self.repaint_switcher();
         let locked = self.is_locked();
         self.animation.fade_out(theme, &self.scene, locked);
         // Everything that changes colour, comes in or goes has been asked
@@ -1708,6 +1716,17 @@ impl Compositor {
             let keyboard = self.keyboard.clone();
             if keyboard.current_focus() != focus {
                 keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
+            }
+            return;
+        }
+        if self.switcher_open() {
+            // The switcher has the keyboard while it is open, so that the
+            // window with focus does not see Alt go down and come up with
+            // nothing between, which a browser takes as Alt pressed alone
+            // and shows its menu bar for.
+            let keyboard = self.keyboard.clone();
+            if keyboard.current_focus().is_some() {
+                keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
             }
             return;
         }
@@ -2175,6 +2194,7 @@ impl Compositor {
                 self.animation.notice_opacity,
             ));
         }
+        elements.extend(self.switcher_elements(renderer, output, view));
         for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
             elements.extend(panel.element(
                 renderer,
@@ -2577,6 +2597,7 @@ impl Compositor {
             }
         }
         self.send_offered_frames(output, elapsed);
+        self.send_switched_frames(output, elapsed);
         for layer in layer_map_for_output(output).layers() {
             layer.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
                 Some(output.clone())

@@ -314,6 +314,9 @@ impl Compositor {
         let serial = SERIAL_COUNTER.next_serial();
         let action = keyboard.input(self, code, state, serial, time, |compositor, held, key| {
             if !pressed {
+                // Letting go of the keys held with the one that opened the
+                // switcher chooses where it is.
+                compositor.switcher_let_go(held);
                 // Swallow the release of a key whose press was swallowed.
                 let before = compositor.suppressed_keys.len();
                 compositor
@@ -339,6 +342,11 @@ impl Compositor {
             // window, and is the window's all the same.
             compositor.hover.reveal.dismiss();
             compositor.hover.palette.dismiss();
+            // An open switcher is steered by Escape, Enter and the arrows.
+            if compositor.switcher_key(keysym) {
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
+            }
             if compositor.menu.is_some() && keysym == Keysym::Escape {
                 compositor.menu = None;
                 compositor.suppressed_keys.push(code);
@@ -373,11 +381,14 @@ impl Compositor {
                 KeyOutcome::Triggered(action) => Some(action.clone()),
             };
             compositor.suppressed_keys.push(code);
+            // The switcher a binding opens stays open while they are held.
+            compositor.switch.held = crate::switcher::held_with(held);
             FilterResult::Intercept(action)
         });
         if let Some(action) = action.flatten() {
             self.perform(&action);
         }
+        self.switch.held = Modifiers::NONE;
     }
 
     fn motion(&mut self, x: f64, y: f64, time: u32) {
@@ -788,6 +799,13 @@ impl Compositor {
             return;
         }
         let position = self.pointer_position();
+        if self.switcher_open() {
+            // The switcher has the pointer while it is open.
+            if pressed {
+                self.switcher_press(position);
+            }
+            return;
+        }
         if self.over_notice() {
             // A click on the notice dismisses it, until what it says changes.
             if pressed {

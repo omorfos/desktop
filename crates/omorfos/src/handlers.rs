@@ -220,6 +220,7 @@ impl Compositor {
     /// Takes a window that has gone out of the desktop.
     pub(crate) fn remove_window(&mut self, id: WindowId) {
         self.desktop.remove_window(id);
+        self.forget_use(id);
         self.windows.retain(|mapped| {
             let keep = mapped.id != id;
             if !keep {

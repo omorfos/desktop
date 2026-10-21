@@ -33,6 +33,7 @@ mod restarts;
 mod reveal;
 mod roles;
 mod session;
+mod switcher;
 mod tiles;
 mod x11;
 

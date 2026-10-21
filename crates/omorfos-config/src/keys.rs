@@ -77,8 +77,8 @@ impl Default for Keys {
             bind("Super+m", Action::Maximize),
             bind("Super+f", Action::Fullscreen),
             bind("Super+h", Action::Minimize),
-            bind("Alt+Tab", Action::FocusNext),
-            bind("Alt+Shift+Tab", Action::FocusPrevious),
+            bind("Alt+Tab", Action::SwitchWindows),
+            bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
             bind("Super+Tab", Action::NextTab),
             bind("Super+Shift+Tab", Action::PreviousTab),
             bind("Super+Right", Action::NextWorkspace),
@@ -569,7 +569,8 @@ bindings:
         assert_eq!(action_for("Alt+Print"), Some(Action::Spawn(window.clone())));
         assert_eq!(window.run.arguments(), ["--window"]);
         assert!(window.may.contains(&crate::Role::Panel));
-        assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::FocusPrevious));
+        assert_eq!(action_for("Alt+Tab"), Some(Action::SwitchWindows));
+        assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::SwitchWindowsBack));
         assert_eq!(
             action_for("Super+3"),
             Some(Action::Workspace(WorkspaceNumber::clamped(3)))
