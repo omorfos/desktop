@@ -11,6 +11,8 @@
 //! - [`Menu`] lays out pop-up menus and reacts to the pointer and to keys.
 //! - [`Rule`] and [`Pattern`] describe per-application rules.
 //! - [`place`] decides where a new window goes.
+//! - [`Switcher`] and [`Used`] are the switcher on `Alt+Tab` and the order
+//!   of use it goes by.
 
 mod decoration;
 mod desktop;
@@ -19,6 +21,7 @@ mod keys;
 mod menu;
 mod placement;
 mod rules;
+mod switcher;
 
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{
@@ -29,3 +32,4 @@ pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Rule, resolve};
+pub use switcher::{Switcher, SwitcherLayout, SwitcherMetrics, Used};
