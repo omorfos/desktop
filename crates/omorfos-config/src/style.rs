@@ -96,6 +96,10 @@ pub enum Part {
     NotificationTitle,
     /// The rest of what a notification says.
     NotificationBody,
+    /// How full something is that a notification tells of, such as the
+    /// volume: a thin bar under what it says, whose background is the
+    /// whole and whose colour is how much of it is full.
+    NotificationLevel,
     /// The question the portals put to the user, over everything: whether
     /// an application may have what it asks for. Its border is also the
     /// ring of the loupe a colour is picked with.
@@ -112,7 +116,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 34] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -142,6 +146,7 @@ impl Part {
         Self::Notification,
         Self::NotificationTitle,
         Self::NotificationBody,
+        Self::NotificationLevel,
         Self::Question,
         Self::QuestionDetail,
         Self::QuestionButton,
@@ -181,6 +186,7 @@ impl Part {
             Self::Notification => "notification",
             Self::NotificationTitle => "notification-title",
             Self::NotificationBody => "notification-body",
+            Self::NotificationLevel => "notification-level",
             Self::Question => "question",
             Self::QuestionDetail => "question-detail",
             Self::QuestionButton => "question-button",
@@ -550,6 +556,7 @@ mod tests {
                 "notification",
                 "notification-title",
                 "notification-body",
+                "notification-level",
                 "question",
                 "question-detail",
                 "question-button",

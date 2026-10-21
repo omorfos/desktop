@@ -585,6 +585,14 @@ notification-title {
   font-weight: bold;
 }
 notification-body { color: var(--text-dim); }
+/* How full something a notification tells of is, such as the volume: the
+ * background is the whole, the colour how much of it is full. */
+notification-level {
+  margin-top: 8px;
+  background: var(--border);
+  color: var(--accent);
+  border-radius: 3px;
+}
 
 /* What the portals ask: whether an application may see the screen. The
  * button that gives is :active. The border is also the ring of the loupe
@@ -646,7 +654,7 @@ workspace:active, task:active { border-bottom: none; }
 `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
-`notification-title`, `notification-body`, `question`, `question-detail`,
+`notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
 `question-button` and `picker`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
@@ -857,9 +865,21 @@ applications work with it as they are. It needs the session's D-Bus, which
 a session started from a login manager has.
 
 How notifications look is in `theme.css`, under `notification`,
-`notification-title` and `notification-body`; a critical one is
-`notification:urgent`. Their width is `min-width`, and `margin` is the
-room between them and around them.
+`notification-title`, `notification-body` and `notification-level`; a
+critical one is `notification:urgent`. Their width is `min-width`, and
+`margin` is the room between them and around them.
+
+A notification can say how full something is, out of 100, by the usual
+`value` hint, as the volume and brightness keys do: it is drawn as a bar
+of `notification-level` under what it says. One sent with the hint
+`synchronous` (or `x-canonical-private-synchronous`, or
+`x-dunst-stack-tag`) takes the place of the one showing with the same
+tag, so that holding a key down shows one notification that changes
+rather than a pile of them:
+
+```sh
+notify-send -h int:value:40 -h string:synchronous:volume Volume
+```
 
 Only one program can show notifications. To use another, or none, turn this
 one off in `config.yaml`:
