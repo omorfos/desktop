@@ -69,6 +69,15 @@ jobs:
           echo "$failures of $RUNS runs failed"
           echo "tests=$failures of $RUNS runs failed" >> "$GITHUB_STEP_SUMMARY"
           test "$failures" -eq 0
+      # The coverage gate builds everything again, instrumented, beside the
+      # build the tests above ran from, and the two together are more than
+      # an amd64 runner has room for: every coverage run failed for want of
+      # disk. The tests have finished with theirs.
+      - name: Make room for the coverage build
+        if: ${{ !cancelled() }}
+        run: |
+          cargo clean --profile dev
+          df -h /
       # `cargo coverage` is an alias defined in .cargo/config.toml.
       - name: The coverage gate, a few times over
         if: ${{ !cancelled() }}
