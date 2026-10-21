@@ -343,8 +343,6 @@ pub struct Compositor {
     /// What is changing colour or coming in, and the time it goes by.
     animation: Animation,
     pub(crate) ipc: Option<Server>,
-    /// When IPC peers that could not be sent everything are tried again.
-    pub(crate) ipc_retry: Option<Instant>,
     /// The event loop, to be woken by what the compositor waits for.
     pub(crate) event_loop: LoopHandle<'static, Self>,
     socket_name: Option<OsString>,
@@ -465,7 +463,6 @@ impl Compositor {
                     refused: Refused::default(),
                     animation: Animation::new(),
                     ipc: None,
-                    ipc_retry: None,
                     event_loop,
                     socket_name: None,
                     running: true,
@@ -853,7 +850,7 @@ impl Compositor {
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         [
             self.debouncer.deadline(),
-            self.ipc_retry,
+            self.ipc.as_ref().and_then(|server| server.retry),
             self.x11.deadline(),
             self.hover.reveal.deadline(),
             self.hover.palette.deadline(),

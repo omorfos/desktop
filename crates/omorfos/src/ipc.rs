@@ -47,6 +47,8 @@ pub(crate) struct Server {
     peers: Vec<Peer>,
     /// The state last sent to subscribers.
     published: Option<State>,
+    /// When peers that could not be sent everything are tried again.
+    pub(crate) retry: Option<Instant>,
 }
 
 /// What a peer that is sent the state whenever it changes wants it for.
@@ -98,6 +100,7 @@ impl Server {
                 owner,
                 peers: Vec::new(),
                 published: None,
+                retry: None,
             })
     }
 
@@ -294,7 +297,7 @@ impl Compositor {
             .for_each(|wake| self.event_loop.remove(wake));
         server.peers.retain(|peer| peer.alive);
         let behind = server.peers.iter().any(|peer| !peer.outbox.is_empty());
-        self.ipc_retry = behind.then(|| now + RETRY);
+        server.retry = behind.then(|| now + RETRY);
         self.ipc = Some(server);
     }
 
