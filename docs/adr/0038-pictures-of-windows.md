@@ -166,3 +166,25 @@ program with the `panel` role is given. So taking a picture of a window
 needs `panel` as well as `capture`. The socket for scripts says what each
 window is called in that list (`handle`), which is how the screenshot
 tool finds the one with focus.
+
+**The switcher came next**, drawn by the compositor as this record has
+it, and made small in one step as the offered windows are, not yet by
+halves: a window's place is about a sixth of a screen across, and its
+title is under it, so that rough text in the picture is not all there is
+to know it by. Each window is fitted to its place with its shape kept,
+and told to keep drawing while it is shown. The switcher is on the screen
+the pointer was on when it opened, and stays there. It closes, without
+choosing, when the session is locked.
+
+It is opened by a binding and stays open while the modifiers held with
+that binding are, but for Shift, which goes back: letting go of any of
+them chooses. Opened by something with no keys held, a menu or a script,
+it stays open until Enter, Escape or a click. While it is open the
+compositor takes Escape, Enter and the arrows, and the pointer, whose
+press chooses the window under it or closes the switcher; every other
+key is left to the bindings, which is how Tab goes on to the next
+window. No window has the keyboard while it is open: the window with
+focus saw Alt go down, and would otherwise see it come up with nothing
+between, which a browser takes as Alt pressed alone and shows its menu
+bar for. The window chosen, or the one left as it was, has it back
+when the switcher closes.

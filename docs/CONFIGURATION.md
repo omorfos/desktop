@@ -310,7 +310,8 @@ that are already bound on their own.
 | `shade` | Roll the focused window up into its titlebar, or let it down. |
 | `keep_above` | Keep the focused window above the others, or stop. |
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
-| `focus_next`, `focus_previous` | Cycle windows. |
+| `switch_windows`, `switch_windows_back` | Open the switcher, or go on to the next window in it or back. See "Switching windows". |
+| `focus_next`, `focus_previous` | Cycle windows, without the switcher. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
 | `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. One past the last is made first; further than that does nothing. |
 | `new_workspace` | Make a workspace after the last on the screen the pointer is on, and switch to it. |
@@ -614,6 +615,27 @@ question-button:active {
   color: var(--background);
 }
 
+/* The switcher on Alt+Tab: the box in the middle of the screen, each
+ * window's place in it, its picture over its title, and the title. The
+ * window picked is :active. Each place is as wide as its min-width. */
+switcher {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+switcher-item {
+  min-width: 200px;
+  padding: 8px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+switcher-item:active {
+  background: var(--surface-dim);
+  border-color: var(--accent);
+}
+switcher-title { color: var(--text); }
+
 /* The screens shown still, to pick what a picture is to be of: what is not
  * picked is dimmed by the background, and what is drawn has the border. */
 picker {
@@ -655,7 +677,7 @@ workspace:active, task:active { border-bottom: none; }
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
-`question-button` and `picker`. `*` is every part. Several can share a rule:
+`question-button`, `switcher`, `switcher-item`, `switcher-title` and `picker`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
@@ -1266,3 +1288,26 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 | Group windows as tabs | Drag a titlebar with the middle button onto another titlebar |
 | Switch tab | Click the tab |
 | Ungroup a tab | Drag it with the middle button and drop it off any titlebar |
+
+### Switching windows
+
+`Alt+Tab` opens the switcher in the middle of the screen the pointer is
+on: every window, on every workspace and minimized or not, each as a
+small picture of itself over its title, in the order they were last
+used. It opens at the window used before the one you are in, so one
+`Alt+Tab` goes back to it and another comes back again.
+
+While Alt is held, Tab goes on to the next window and `Shift+Tab` back,
+as do the arrows; letting go of Alt goes to the window picked, bringing
+it back if it was minimized and showing its workspace. Enter does the
+same, Escape closes the switcher where you were, and a click on a window
+goes to it. `Alt+Shift+Tab` opens it at the window used longest ago.
+
+The order stands still while the switcher is open: a window passed over
+on the way has not been used. A window a rule says is `private` is shown
+by its title alone. How the switcher looks is `switcher`,
+`switcher-item` (the one picked is `:active`, and `min-width` is how wide
+each is) and `switcher-title` in `theme.css`. The actions are
+`switch_windows` and `switch_windows_back`; `focus_next` and
+`focus_previous` still go from window to window on a workspace without
+it.

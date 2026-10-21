@@ -108,6 +108,15 @@ pub enum Part {
     QuestionDetail,
     /// A button of the question. The one that gives is [`State::Active`].
     QuestionButton,
+    /// The switcher on `Alt+Tab`: the box the windows are shown in, in the
+    /// middle of the screen.
+    Switcher,
+    /// A window's place in the switcher, its picture over its title. The
+    /// one picked is [`State::Active`]. Its `min-width` is how wide each
+    /// is.
+    SwitcherItem,
+    /// The title of a window in the switcher.
+    SwitcherTitle,
     /// The screens shown still to pick what a picture is to be of: its
     /// background dims what is not picked, and its border is round what
     /// is drawn.
@@ -116,7 +125,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 37] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -150,6 +159,9 @@ impl Part {
         Self::Question,
         Self::QuestionDetail,
         Self::QuestionButton,
+        Self::Switcher,
+        Self::SwitcherItem,
+        Self::SwitcherTitle,
         Self::Picker,
     ];
 
@@ -190,6 +202,9 @@ impl Part {
             Self::Question => "question",
             Self::QuestionDetail => "question-detail",
             Self::QuestionButton => "question-button",
+            Self::Switcher => "switcher",
+            Self::SwitcherItem => "switcher-item",
+            Self::SwitcherTitle => "switcher-title",
             Self::Picker => "picker",
         }
     }
@@ -560,6 +575,9 @@ mod tests {
                 "question",
                 "question-detail",
                 "question-button",
+                "switcher",
+                "switcher-item",
+                "switcher-title",
                 "picker"
             ]
         );

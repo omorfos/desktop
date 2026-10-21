@@ -239,6 +239,27 @@ question-button:active {
   color: var(--background);
 }
 
+/* The switcher on Alt+Tab: the box in the middle of the screen, each
+ * window's place in it, its picture over its title, and the title. The
+ * window picked is :active. Each place is as wide as its min-width. */
+switcher {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+switcher-item {
+  min-width: 200px;
+  padding: 8px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+switcher-item:active {
+  background: var(--surface-dim);
+  border-color: var(--accent);
+}
+switcher-title { color: var(--text); }
+
 /* The screens shown still, to pick what a picture is to be of: what is not
  * picked is dimmed by the background, and what is drawn has the border. */
 picker {

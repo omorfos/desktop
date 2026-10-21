@@ -61,6 +61,13 @@ pub enum Action {
     FocusNext,
     /// Focus the previous window on the workspace.
     FocusPrevious,
+    /// Open the switcher at the window used before the one in use, or,
+    /// while it is open, go on to the next. Letting go of the keys held
+    /// with it chooses the window it is at.
+    SwitchWindows,
+    /// The same, going back: the switcher opens at the window used longest
+    /// ago.
+    SwitchWindowsBack,
     /// Switch to the tab after the active one in the focused window's group.
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
@@ -312,6 +319,8 @@ mod tests {
     fn actions_without_a_parameter_are_plain_strings() {
         assert_eq!(parse("close"), Ok(Action::Close));
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
+        assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
+        assert_eq!(parse("switch_windows_back"), Ok(Action::SwitchWindowsBack));
         assert_eq!(parse("reload_config"), Ok(Action::ReloadConfig));
         assert_eq!(parse("shade"), Ok(Action::Shade));
         assert_eq!(parse("keep_above"), Ok(Action::KeepAbove));

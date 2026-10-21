@@ -6,7 +6,7 @@
 //! changes, not every frame.
 
 use omorfos_config::{Color, Edges, Line, Part, State, States, Style, Theme};
-use omorfos_core::{Button, Decoration, Item, Menu, Panel};
+use omorfos_core::{Button, Decoration, Item, Menu, Panel, SwitcherLayout};
 use omorfos_ui::{Area, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
@@ -363,6 +363,45 @@ pub(crate) fn offer_title(
     let width = text.measure(title, font).clamp(1, room.max(1));
     let mut canvas = Canvas::scaled(width, height, scale);
     text.draw(&mut canvas, title, (0, 0, width, height), style.color, font);
+    canvas
+}
+
+/// How tall a line of text of a size in points is, in units of layout.
+pub(crate) const fn line_height(points: u32) -> u32 {
+    points.saturating_mul(5) / 3
+}
+
+/// Paints the switcher as `layout` has it: its box, each window's place in
+/// it, the one picked set apart, and each title under where its picture is
+/// to go, in the order of `titles`.
+pub(crate) fn switcher(
+    text: &mut Text,
+    theme: &Theme,
+    layout: &SwitcherLayout,
+    titles: &[String],
+    scale: Scale,
+) -> Canvas {
+    let area = layout.area;
+    let (width, height) = (area.size.width, area.size.height);
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box(
+        (0, 0, width, height),
+        &theme.style(Part::Switcher, States::NONE),
+    );
+    for ((_, at, picked), title) in layout.items.iter().zip(titles) {
+        let states = States::NONE.when(State::Active, *picked);
+        let style = theme.style(Part::SwitcherItem, states);
+        let left = at.origin.x - area.origin.x;
+        let top = at.origin.y - area.origin.y;
+        let place = (left, top, at.size.width, at.size.height);
+        canvas.draw_box(place, &style);
+        let (left, top, room, down) = inset(place, style.inset());
+        let font = theme.font(Part::SwitcherTitle, states);
+        let tall = line_height(font.size.get()).min(down);
+        let ink = theme.style(Part::SwitcherTitle, states).color;
+        let bottom = top.saturating_add_unsigned(down - tall);
+        text.draw(&mut canvas, title, (left, bottom, room, tall), ink, font);
+    }
     canvas
 }
 
