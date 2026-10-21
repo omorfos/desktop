@@ -1,6 +1,6 @@
 [package]
 name = "omorfos-session"
-description = "What an omorfos session does besides draw: locking before sleep, the volume, the brightness and what is playing"
+description = "What an omorfos session does besides draw: locking before sleep, starting programs at login, the volume, the brightness and what is playing"
 keywords = ["wayland", "desktop", "session"]
 categories = ["gui"]
 readme = "../../README.md"
@@ -12,6 +12,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Reads the desktop entries of what is to start with the session.
+omorfos-entries = { path = "../omorfos-entries" }
 # Hears from the compositor when the session is locked, and asks it to lock.
 omorfos-ipc = { path = "../omorfos-ipc" }
 # What an action is written as, to the compositor.

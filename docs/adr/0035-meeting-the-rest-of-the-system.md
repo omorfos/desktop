@@ -287,3 +287,15 @@ the leave is taken again.
   holds sleep back, so that nothing said in between goes unheard.
 - **Nested, it is not started**: the machine's sleep is the outer
   desktop's to lock before.
+
+**What starts with the session is started by a command of
+`omorfos-session`**, `autostart`, which the compositor runs once at
+login, after the programs `autostart` in the configuration lists, and
+only where it is the whole session. A command run once, and not the part
+that runs all session, because that part is started again when it fails,
+and would start everything again with it. It reads the desktop entries
+of the user and of the system as the launcher reads its own, with what
+the two share now in `omorfos-entries`, starts each as an ordinary
+program and ends; the programs it started go on without it. The session's
+environment was already told to D-Bus and systemd at login, before any
+of them starts.

@@ -1985,6 +1985,7 @@ dependencies = [
 name = "omorfos-session"
 version = "0.1.0"
 dependencies = [
+ "omorfos-entries",
  "omorfos-ipc",
  "serde_json",
  "tempfile",
