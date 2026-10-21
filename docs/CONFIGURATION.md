@@ -1135,6 +1135,41 @@ on another workspace, can have its picture taken all the same.
 Nothing is given while the session is locked. The pointer is in a picture
 only if the program asks for it, and `omorfos-screenshot` does not.
 
+## The volume, the brightness and what is playing
+
+The keys a keyboard has for these work as they are: louder, quieter and
+mute (`XF86AudioRaiseVolume`, `XF86AudioLowerVolume`, `XF86AudioMute`),
+the microphone muted (`XF86AudioMicMute`), the screen brighter and darker
+(`XF86MonBrightnessUp`, `XF86MonBrightnessDown`), and play or pause,
+next, previous and stop. How loud or bright it is then shows as a
+notification with a bar, which the next press changes in place.
+
+They run `omorfos-session`, which can be bound to other keys or run from
+a script as it is:
+
+```yaml
+# keys.yaml
+bindings:
+  - keys: Super+Up
+    action: { spawn: [omorfos-session, volume, up] }
+```
+
+| Command | Does |
+|---|---|
+| `omorfos-session volume up`, `down`, `mute` | The sound that plays five hundredths louder, up to full, or quieter, or muted and back |
+| `omorfos-session microphone mute` | The microphone muted, or heard again |
+| `omorfos-session brightness up`, `down` | The screen a twentieth brighter or darker, never quite dark |
+| `omorfos-session media play-pause`, `next`, `previous`, `stop` | Told to the player that is playing, or else to one that is paused |
+
+The volume is set by WirePlumber's `wpctl`, as other mixers set it, so it
+is the same wherever it is looked at; without WirePlumber the volume keys
+do nothing. The brightness is set through logind, which lets whoever is
+logged in at the machine set it. Players are told over D-Bus, as players
+listen for (MPRIS); browsers and most music players do.
+
+The keys do nothing while the screen is locked, and a key held down
+changes the level once.
+
 ## Locking the screen
 
 omorfos does not lock by itself; it starts a screen locker to, and tells
