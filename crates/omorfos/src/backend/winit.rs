@@ -79,6 +79,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     backend.window().set_cursor_visible(false);
     let compositor = session.compositor_mut();
     compositor.set_cursor_themes(cursor_themes());
+    compositor.set_data_directories(data_directories());
     compositor.show_pointer();
     compositor.set_panel(panel());
     compositor.set_launcher(launcher());
@@ -146,6 +147,15 @@ pub(super) fn cursor_themes() -> Themes {
     Themes::conventional(
         env::var_os("XCURSOR_PATH").as_deref(),
         env::var_os("HOME").as_deref(),
+    )
+}
+
+/// Where programs install what they share, as the environment says.
+pub(super) fn data_directories() -> Vec<PathBuf> {
+    omorfos_icons::data_directories(
+        env::var_os("XDG_DATA_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+        env::var_os("XDG_DATA_DIRS").as_deref(),
     )
 }
 

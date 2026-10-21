@@ -415,3 +415,144 @@ fn while_it_is_open_no_window_has_the_keyboard_so_none_sees_alt_let_go() {
     assert!(events.contains(&Event::KeyboardEnter), "{events:?}");
     assert_eq!(focused(&session).as_deref(), Some("two"));
 }
+
+const YELLOW: u32 = 0xffff_ff00;
+const CYAN: u32 = 0xff00_ffff;
+const MAGENTA: u32 = 0xffff_00ff;
+
+/// Where programs install what they share, with an icon of each of
+/// `icons`, by name and colour, and a desktop entry for each of `entries`,
+/// by identifier and the icon it names.
+#[expect(
+    clippy::unwrap_used,
+    reason = "test support code fails the test on any error"
+)]
+fn installed(icons: &[(&str, u32)], entries: &[(&str, &str)]) -> tempfile::TempDir {
+    let data = tempfile::tempdir().unwrap();
+    let apps = data.path().join("icons/hicolor/scalable/apps");
+    std::fs::create_dir_all(&apps).unwrap();
+    for (name, colour) in icons {
+        let fill = format!("#{:06x}", colour & 0x00ff_ffff);
+        let drawing = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\">\
+             <rect width=\"16\" height=\"16\" fill=\"{fill}\"/></svg>"
+        );
+        std::fs::write(apps.join(format!("{name}.svg")), drawing).unwrap();
+    }
+    let applications = data.path().join("applications");
+    std::fs::create_dir_all(&applications).unwrap();
+    for (app_id, icon) in entries {
+        let entry = format!("[Desktop Entry]\nName={app_id}\nIcon={icon}\n");
+        std::fs::write(applications.join(format!("{app_id}.desktop")), entry).unwrap();
+    }
+    data
+}
+
+/// The middle of where a window's icon goes beside its title.
+fn beside_title(place: Rect, theme: &Theme) -> (i32, i32) {
+    let style = theme.style(Part::SwitcherItem, States::NONE);
+    let inset = style.inset();
+    let tall = theme.font(Part::SwitcherTitle, States::NONE).size.get() * 5 / 3;
+    let x = place.origin.x + (inset.left + tall / 2).cast_signed();
+    let bottom = place.origin.y + (place.size.height - inset.bottom).cast_signed();
+    (x, bottom - (tall / 2).cast_signed())
+}
+
+/// The colours where each window's icon goes beside its title, and where
+/// its picture goes, in the order the switcher shows them.
+#[expect(
+    clippy::unwrap_used,
+    reason = "test support code fails the test on any error"
+)]
+fn icons_shown(session: &mut Session) -> Vec<(u32, u32)> {
+    let layout = session.compositor().switcher_layout().unwrap();
+    let frame = session.draw();
+    let theme = Theme::default();
+    let at = |(x, y)| frame.at(x, y);
+    let places = layout.items.iter().map(|(_, place, _)| *place);
+    places
+        .map(|place| (at(beside_title(place, &theme)), at(picture(place, &theme))))
+        .collect()
+}
+
+#[test]
+fn a_window_has_its_applications_icon_from_its_desktop_entry_or_by_its_name() {
+    let data = installed(
+        &[("org.example.One", YELLOW), ("two", CYAN)],
+        &[("one", "org.example.One")],
+    );
+    let (mut session, _client) = three();
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    alt_tab(&mut session, 1, false);
+    // In the order of use: three, two, one. Three has none.
+    let shown = icons_shown(&mut session);
+    assert_eq!(shown[1], (CYAN, BLUE), "by its own name");
+    assert_eq!(shown[2], (YELLOW, RED), "named by its desktop entry");
+    assert_ne!(shown[0].0, YELLOW);
+    assert_ne!(shown[0].0, CYAN);
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
+    let data = installed(&[("org.example.Given", YELLOW), ("one", CYAN)], &[]);
+    let path = data
+        .path()
+        .join("icons/hicolor/scalable/apps/org.example.Given.svg");
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    let mut client = session.connect();
+    session.roundtrip(&mut client);
+    assert_eq!(
+        client.state.icon_sizes,
+        [64],
+        "the size it is drawn largest"
+    );
+    let one = session.open(&mut client, "one", (200, 100), RED);
+    let two = session.open(&mut client, "two", (200, 100), BLUE);
+    let three = session.open(&mut client, "three", (200, 100), GREEN);
+    // A name a theme has is used before the pixels; a name it has not, or
+    // a path, is passed over for them.
+    client.set_icon(&one, Some("org.example.Given"), Some((32, MAGENTA)));
+    client.set_icon(&two, Some("org.example.Missing"), Some((32, MAGENTA)));
+    client.set_icon(&three, path.to_str(), Some((48, CYAN)));
+    session.roundtrip(&mut client);
+    alt_tab(&mut session, 1, false);
+    let shown = icons_shown(&mut session);
+    assert_eq!(
+        shown[0],
+        (CYAN, GREEN),
+        "three, its pixels and not the file"
+    );
+    assert_eq!(shown[1], (MAGENTA, BLUE), "two");
+    assert_eq!(shown[2], (YELLOW, RED), "one, by name");
+    // An icon taken back leaves the application's.
+    client.set_icon(&one, None, None);
+    session.roundtrip(&mut client);
+    session.step();
+    assert_eq!(icons_shown(&mut session)[2], (CYAN, RED));
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
+    let data = installed(&[("one", YELLOW)], &[]);
+    let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    let two = session.open(&mut client, "two", (200, 100), BLUE);
+    client.set_icon(&two, None, Some((32, MAGENTA)));
+    session.roundtrip(&mut client);
+    alt_tab(&mut session, 1, false);
+    let shown = icons_shown(&mut session);
+    assert_eq!(shown, [(MAGENTA, MAGENTA), (YELLOW, YELLOW)]);
+    press(&mut session, key::ALT, false);
+}

@@ -1304,8 +1304,11 @@ same, Escape closes the switcher where you were, and a click on a window
 goes to it. `Alt+Shift+Tab` opens it at the window used longest ago.
 
 The order stands still while the switcher is open: a window passed over
-on the way has not been used. A window a rule says is `private` is shown
-by its title alone. How the switcher looks is `switcher`,
+on the way has not been used. Each window's icon is beside its title:
+the one its program gives it, or else the one its application is
+installed with (the `Icon` of its desktop entry, or the icon named as
+its `app_id` is). A window a rule says is `private` is shown by its
+title and its icon, large where its picture would be. How the switcher looks is `switcher`,
 `switcher-item` (the one picked is `:active`, and `min-width` is how wide
 each is) and `switcher-title` in `theme.css`. The actions are
 `switch_windows` and `switch_windows_back`; `focus_next` and

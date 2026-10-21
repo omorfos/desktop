@@ -37,12 +37,13 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
+use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{
-    Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, Texture,
+    Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, RendererSuper, Texture,
 };
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{LayerSurface, PopupManager, Space, Window, layer_map_for_output};
@@ -94,6 +95,7 @@ use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
+use crate::icons::WindowIcons;
 use crate::input::Drag;
 use crate::input::Focused;
 use crate::ipc::Server;
@@ -404,6 +406,7 @@ impl Compositor {
                     _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
                     capture: Capture::offer(&display),
                     asked: Asked::new(&display),
+                    switch: Switch::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
@@ -433,7 +436,6 @@ impl Compositor {
                     drag: None,
                     menu: None,
                     menu_chrome: None,
-                    switch: Switch::default(),
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
                     notice: None,
@@ -603,6 +605,14 @@ impl Compositor {
     pub fn set_cursor_themes(&mut self, themes: Themes) {
         self.themes = themes;
         self.pointer_images = PointerImages::default();
+    }
+
+    /// Says where programs install what they share, desktop entries and
+    /// icons among it, the user's own first (see
+    /// [`omorfos_icons::data_directories`]). Until this is called windows
+    /// have only the icons their programs give as pixels.
+    pub fn set_data_directories(&mut self, data: Vec<PathBuf>) {
+        self.switch.icons = WindowIcons::new(data);
     }
 
     /// Works out what the pointer looks like now and readies its picture.
@@ -2772,6 +2782,7 @@ render_elements! {
     Memory=MemoryRenderBufferRenderElement<R>,
     Solid=SolidColorRenderElement,
     Cropped=CropRenderElement<WaylandSurfaceRenderElement<R>>,
+    Texture=TextureRenderElement<<R as RendererSuper>::TextureId>,
 }
 
 /// The widest the problem notice gets, and its distance from the edges of

@@ -58,6 +58,8 @@ assets = [
 cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash", "fontconfig"] }
 omorfos-config = { path = "../omorfos-config" }
 omorfos-core = { path = "../omorfos-core" }
+# Finds and reads the icons of windows' programs, for the switcher.
+omorfos-icons = { path = "../omorfos-icons" }
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay; named here for the `process` feature,

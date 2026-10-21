@@ -7,22 +7,29 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use omorfos_config::{Config, Modifiers, Part, State, States, Theme};
+use omorfos_config::{Color, Config, Modifiers, Part, State, States, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Switcher, SwitcherLayout, SwitcherMetrics, Used, WindowId};
+use omorfos_ui::{Area, Image};
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
+use smithay::backend::renderer::element::{Id, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::output::Output;
-use smithay::utils::{Logical, Point, Rectangle};
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
+use smithay::utils::{Logical, Point, Rectangle, Transform};
+use smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager;
 
 use crate::Scale;
 use crate::bridge;
 use crate::compositor::{Compositor, Element, Painted, View};
+use crate::icons::{Icon, WindowIcons};
 use crate::outputs::domain;
-use crate::paint;
+use crate::paint::{self, Places, Shown};
 
 /// The room between one window's place and the next, in units of layout.
 const GAP: u32 = 8;
@@ -36,7 +43,7 @@ const SHAPE: (u32, u32) = (10, 16);
 const NARROWEST: u32 = 80;
 
 /// The switcher, open or not, and what it goes by.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Switch {
     /// The switcher, while it is open.
     open: Option<Switching>,
@@ -45,6 +52,27 @@ pub(crate) struct Switch {
     /// The keys held with the binding being carried out, but for Shift;
     /// none for what was not asked by a key.
     pub(crate) held: Modifiers,
+    /// The icons of windows.
+    pub(crate) icons: WindowIcons,
+    /// The protocol by which programs give their windows icons.
+    _given: XdgToplevelIconManager,
+}
+
+impl Switch {
+    /// The switcher, closed, and the protocol for icons offered on
+    /// `display`, asking for icons of the size the switcher draws them
+    /// largest.
+    pub(crate) fn offer(display: &DisplayHandle) -> Self {
+        let mut given = XdgToplevelIconManager::new::<Compositor>(display);
+        given.add_icon_size(paint::LARGE_ICON.cast_signed());
+        Self {
+            open: None,
+            used: Used::default(),
+            held: Modifiers::NONE,
+            icons: WindowIcons::default(),
+            _given: given,
+        }
+    }
 }
 
 /// The switcher while it is open.
@@ -65,10 +93,83 @@ pub(crate) struct Switching {
 #[derive(Debug)]
 struct Drawn {
     layout: SwitcherLayout,
-    titles: Vec<String>,
+    shown: Vec<Shown<Icon>>,
+    /// What the renderer knows each icon given as pixels by, beside the
+    /// title and large, so that it is drawn again only when it changes.
+    ids: Vec<[Id; 2]>,
     config: Arc<Config>,
     scale: Scale,
     pixels: Painted,
+}
+
+/// An icon a program gave as pixels, drawn by the renderer in the middle
+/// of `area`, as large as fits but no larger than its pixels, which would
+/// only make it blocky. Icons are square, as the protocol has them. Nothing
+/// if the renderer cannot read it.
+fn given_icon<R>(
+    renderer: &mut R,
+    buffer: &WlBuffer,
+    area: Area,
+    id: &Id,
+    view: View,
+) -> Option<Element<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Texture + Send + 'static,
+{
+    let texture = renderer
+        .import_buffer(buffer, None, &[])
+        .and_then(Result::ok);
+    let context = renderer.context_id();
+    texture.map(|texture| {
+        let pixels = texture.size().w.max(1);
+        // As many units of layout as it has pixels at this scale, which
+        // is no more than it has pixels, an `i32`.
+        #[expect(clippy::cast_possible_truncation, reason = "see above")]
+        let most = (f64::from(pixels) / view.scale.factor()).floor() as i32;
+        let room = area.2.min(area.3).cast_signed();
+        let side = room.min(most.max(1));
+        let left = area.0 + (area.2.cast_signed() - side) / 2;
+        let top = area.1 + (area.3.cast_signed() - side) / 2;
+        let at = view.pixel(Point::<f64, Logical>::from((
+            f64::from(left),
+            f64::from(top),
+        )));
+        Element::Texture(TextureRenderElement::from_static_texture(
+            id.clone(),
+            context,
+            at.to_f64(),
+            texture,
+            1,
+            Transform::Normal,
+            None,
+            None,
+            Some((side, side).into()),
+            None,
+            Kind::Unspecified,
+        ))
+    })
+}
+
+/// How many pixels across an icon is looked up at, to be drawn sharp at
+/// `scale` where it is drawn largest.
+fn icon_pixels(scale: Scale) -> u32 {
+    let side = f64::from(paint::LARGE_ICON) * scale.factor();
+    // At most a few hundred, so neither negative nor too large.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "see above"
+    )]
+    let pixels = side.ceil() as u32;
+    pixels
+}
+
+/// The colour of a window's title in the switcher, which an icon that is
+/// only a shape is drawn in.
+fn ink(theme: &Theme, picked: bool) -> Color {
+    let states = States::NONE.when(State::Active, picked);
+    theme.style(Part::SwitcherTitle, states).color
 }
 
 /// The modifiers held, but for Shift.
@@ -221,35 +322,72 @@ impl Compositor {
     pub(crate) fn repaint_switcher(&mut self) {
         let config = Arc::clone(self.store.current());
         let scale = self.pointer_scale();
-        let Some(switching) = &mut self.switch.open else {
+        // Taken out while it is painted, and put back.
+        let Some(mut switching) = self.switch.open.take() else {
             return;
         };
-        let (metrics, _) = metrics(&config.theme);
+        let (metrics, picture) = metrics(&config.theme);
         let layout = switching.switcher.layout(switching.screen, metrics);
-        let desktop = &self.desktop;
-        let title = |window: WindowId| desktop.window(window).map(|window| window.title.clone());
-        let titles: Vec<String> = layout
+        let pixels = icon_pixels(scale);
+        let mut icons = std::mem::take(&mut self.switch.icons);
+        let shown: Vec<Shown<Icon>> = layout
             .items
             .iter()
-            .map(|(window, _, _)| title(*window).unwrap_or_default())
+            .map(|(window, _, picked)| {
+                let ink = ink(&config.theme, *picked);
+                let listed = self.desktop.window(*window);
+                let mapped = self.mapped(*window);
+                let app_id = listed
+                    .map(|listed| listed.app_id.as_str())
+                    .unwrap_or_default();
+                let icon = mapped.and_then(|mapped| icons.of(&mapped.surface, app_id, pixels, ink));
+                Shown {
+                    title: listed
+                        .map(|listed| listed.title.clone())
+                        .unwrap_or_default(),
+                    icon,
+                    pictured: mapped.is_some() && !self.desktop.private(*window),
+                }
+            })
             .collect();
         let same = |drawn: &Drawn| {
             drawn.layout == layout
-                && drawn.titles == titles
+                && drawn.shown == shown
                 && Arc::ptr_eq(&drawn.config, &config)
                 && drawn.scale == scale
         };
-        if switching.painted.as_ref().is_some_and(same) {
-            return;
+        if !switching.painted.as_ref().is_some_and(same) {
+            let painted: Vec<Shown<Option<Image>>> = layout
+                .items
+                .iter()
+                .zip(&shown)
+                .map(|((_, _, picked), shown)| {
+                    let ink = ink(&config.theme, *picked);
+                    let icon = shown.icon.as_ref().map(|icon| match icon {
+                        Icon::Named(name) => icons.picture(name, pixels, ink).cloned(),
+                        Icon::Given(_) => None,
+                    });
+                    Shown {
+                        title: shown.title.clone(),
+                        icon,
+                        pictured: shown.pictured,
+                    }
+                })
+                .collect();
+            let theme = &config.theme;
+            let canvas = paint::switcher(&mut self.text, theme, &layout, &painted, picture, scale);
+            let pixels = Painted::new(&canvas);
+            switching.painted = Some(Drawn {
+                ids: shown.iter().map(|_| [Id::new(), Id::new()]).collect(),
+                layout,
+                shown,
+                config,
+                scale,
+                pixels,
+            });
         }
-        let canvas = paint::switcher(&mut self.text, &config.theme, &layout, &titles, scale);
-        switching.painted = Some(Drawn {
-            layout,
-            titles,
-            config,
-            scale,
-            pixels: Painted::new(&canvas),
-        });
+        self.switch.icons = icons;
+        self.switch.open = Some(switching);
     }
 
     /// The switcher, on the screen it is on: each window's picture, made
@@ -272,8 +410,28 @@ impl Compositor {
         let Some(drawn) = switching.and_then(|switching| switching.painted.as_ref()) else {
             return Vec::new();
         };
-        let (_, tall) = metrics(&drawn.config.theme);
+        let theme = &drawn.config.theme;
+        let (_, tall) = metrics(theme);
         let mut elements = Vec::new();
+        let given = drawn.layout.items.iter().zip(&drawn.shown).zip(&drawn.ids);
+        for (((_, place, picked), shown), ids) in given {
+            let Some(Icon::Given(buffer)) = &shown.icon else {
+                continue;
+            };
+            let states = States::NONE.when(State::Active, *picked);
+            let place = (
+                place.origin.x,
+                place.origin.y,
+                place.size.width,
+                place.size.height,
+            );
+            let places = Places::of(place, theme, states, tall, true);
+            let large = (!shown.pictured).then_some(places.large);
+            let areas = [Some(places.icon), large].into_iter().zip(ids);
+            for (area, id) in areas.filter_map(|(area, id)| Some((area?, id))) {
+                elements.extend(given_icon(renderer, buffer, area, id, view));
+            }
+        }
         for (window, place, picked) in &drawn.layout.items {
             let states = States::NONE.when(State::Active, *picked);
             let style = drawn.config.theme.style(Part::SwitcherItem, states);

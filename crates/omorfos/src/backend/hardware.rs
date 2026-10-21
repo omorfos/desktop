@@ -45,7 +45,9 @@ use smithay::reexports::input::{AccelProfile, Device, DeviceCapability, Libinput
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Transform};
 
-use super::winit::{cursor_themes, keeper, launcher, listen, notifier, on_input, panel, recorder};
+use super::winit::{
+    cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
+};
 use crate::{Compositor, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -162,6 +164,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     hardware.borrow_mut().scan(compositor);
     offer_gpu_buffers(&mut hardware.borrow_mut(), compositor);
     compositor.set_cursor_themes(cursor_themes());
+    compositor.set_data_directories(data_directories());
     compositor.show_pointer();
     announce_session(compositor);
     compositor.set_panel(panel());
