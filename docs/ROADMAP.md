@@ -487,13 +487,14 @@ what only games and touchpads need last.
       told already; the entries are started once at login by
       `omorfos-session autostart`, the system's too, as the specification
       has it.
-- [ ] A polkit agent, so that a program can ask for the administrator's
-      password, and `omorfos-pinentry` for keys and passphrases
-      (wish 9): the screen dimmed and blurred behind one prompt, what is
-      typed hidden unless asked to be shown. Both take the keyboard
-      exclusively, as the lock screen does. Early, because without an
-      agent a program that asks for the administrator fails without
-      saying why.
+- [x] A polkit agent, so that a program can ask for the administrator's
+      password (wish 9): `omorfos-ask`, in the sealed prompt, the session
+      dimmed behind it and the keyboard and pointer its alone, what is
+      typed hidden unless asked to be shown (ADR 48).
+- [ ] `omorfos-pinentry` for keys and passphrases, GnuPG's and SSH's, in
+      the same sealed prompt.
+- [ ] The session blurred as well as dimmed behind the sealed prompt,
+      once Glass has brought the blur.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
