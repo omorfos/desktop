@@ -178,6 +178,10 @@ pub struct Places {
     /// What the session's desktop is called, as an entry may name it to
     /// be started only in it, or never: `omorfos`, unless told otherwise.
     pub desktops: Vec<String>,
+    /// What starts what is to start with the session in a scope of its
+    /// own that ends with the session: `systemd-run`, where systemd's user
+    /// manager runs, and nothing otherwise.
+    pub scoper: Option<PathBuf>,
 }
 
 impl Places {
@@ -202,6 +206,8 @@ impl Places {
                 variable("HOME").as_deref(),
                 variable("XDG_CONFIG_DIRS").as_deref(),
             ),
+            scoper: user_manager(variable("XDG_RUNTIME_DIR").as_deref())
+                .then(|| PathBuf::from("systemd-run")),
             desktops: address("XDG_CURRENT_DESKTOP")
                 .unwrap_or_else(|| "omorfos".to_owned())
                 .split(':')
@@ -209,6 +215,16 @@ impl Places {
                 .collect(),
         }
     }
+}
+
+/// Whether systemd's user manager runs for the session whose runtime
+/// directory is `runtime`, as its socket there says.
+fn user_manager(runtime: Option<&std::ffi::OsStr>) -> bool {
+    runtime.is_some_and(|runtime| {
+        std::path::Path::new(runtime)
+            .join("systemd/private")
+            .exists()
+    })
 }
 
 /// Does what was asked, and shows how loud or bright it is then; or
@@ -278,6 +294,7 @@ mod tests {
             compositor: None,
             autostart: Vec::new(),
             desktops: Vec::new(),
+            scoper: None,
         }
     }
 
@@ -593,6 +610,7 @@ mod tests {
         assert_eq!(none.compositor, None);
         assert_eq!(none.desktops, ["omorfos"]);
         assert_eq!(none.autostart, [PathBuf::from("/etc/xdg/autostart")]);
+        assert_eq!(none.scoper, None);
         let all = Places::from(&|name| Some(OsString::from(format!("<{name}>"))));
         assert_eq!(all.path, OsString::from("<PATH>"));
         assert_eq!(all.session.as_deref(), Some("<DBUS_SESSION_BUS_ADDRESS>"));
@@ -606,5 +624,14 @@ mod tests {
         });
         let socket = PathBuf::from("XDG_RUNTIME_DIR/omorfos-WAYLAND_DISPLAY.sock");
         assert_eq!(found.compositor, Some(socket));
+        assert_eq!(found.scoper, None, "no user manager there");
+        // Where systemd's user manager runs, what is started is scoped.
+        let runtime = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(runtime.path().join("systemd")).unwrap();
+        std::fs::write(runtime.path().join("systemd/private"), "").unwrap();
+        let managed = Places::from(&|name| {
+            (name == "XDG_RUNTIME_DIR").then(|| runtime.path().as_os_str().to_owned())
+        });
+        assert_eq!(managed.scoper, Some(PathBuf::from("systemd-run")));
     }
 }

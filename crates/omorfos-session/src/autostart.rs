@@ -127,6 +127,31 @@ pub(crate) fn entries(directories: &[PathBuf], desktops: &[String], path: &OsStr
     started
 }
 
+/// The program and arguments that start `start`: by `scoper`,
+/// `systemd-run`, in a scope that is part of the graphical session and
+/// stops with it, where there is one, since a program that is not the
+/// compositor's client is told of nothing else that ends; and as it is
+/// otherwise.
+fn scoped(scoper: Option<&Path>, start: &Start) -> (std::ffi::OsString, Vec<String>) {
+    let Some(scoper) = scoper else {
+        return (start.program.clone().into(), start.arguments.clone());
+    };
+    let through = [
+        "--user",
+        "--scope",
+        "--quiet",
+        "--collect",
+        "--slice=app-graphical.slice",
+        "--property=PartOf=graphical-session.target",
+        "--property=After=graphical-session.target",
+        "--",
+        start.program.as_str(),
+    ];
+    let mut all: Vec<String> = through.into_iter().map(str::to_owned).collect();
+    all.extend_from_slice(&start.arguments);
+    (scoper.as_os_str().to_owned(), all)
+}
+
 /// Starts what the session's autostart entries ask, each once, and leaves
 /// each running.
 ///
@@ -137,8 +162,9 @@ pub(crate) fn entries(directories: &[PathBuf], desktops: &[String], path: &OsStr
 pub(crate) fn start(places: &Places) -> Result<(), Failure> {
     let mut failed = Vec::new();
     for start in entries(&places.autostart, &places.desktops, &places.path) {
-        let mut command = Command::new(&start.program);
-        command.args(&start.arguments).stdin(Stdio::null());
+        let (program, arguments) = scoped(places.scoper.as_deref(), &start);
+        let mut command = Command::new(program);
+        command.args(arguments).stdin(Stdio::null());
         if let Some(directory) = &start.directory {
             command.current_dir(directory);
         }
@@ -156,7 +182,7 @@ pub(crate) fn start(places: &Places) -> Result<(), Failure> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use super::*;
 
@@ -307,18 +333,33 @@ mod tests {
         assert_eq!(programs, ["own-agent", "a", "b"]);
     }
 
+    /// Makes a pipe at `mark`, for a program started to write into.
+    fn pipe(mark: &Path) {
+        let made = Command::new("mkfifo").arg(mark).status();
+        assert!(made.unwrap().success());
+    }
+
+    /// What the program started writes into the pipe at `mark`: read once
+    /// it has written, without waiting by the clock. One that never starts
+    /// is said to, after a while.
+    fn told(mark: &Path) -> String {
+        let late = mark.to_owned();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(10));
+            let _ = fs::write(late, "never started");
+        });
+        fs::read_to_string(mark).unwrap().trim().to_owned()
+    }
+
     #[test]
     fn what_is_found_is_started_and_left_running_and_what_cannot_be_is_said() {
         let root = tempfile::TempDir::new().unwrap();
         let directory = root.path().join("autostart");
         let mark = root.path().join("started");
-        // Written whole, so that once it is there it says all it will.
-        let exec = format!(
-            "Exec=sh -c \"pwd > '{0}.part' && mv '{0}.part' '{0}'\"",
-            mark.display()
-        );
+        let exec = format!("Exec=sh -c \"pwd > '{}'\"", mark.display());
         let path = format!("Path={}", root.path().display());
         write(&directory, "marks.desktop", &[&exec, &path]);
+        pipe(&mark);
         let places = Places {
             autostart: vec![directory.clone()],
             desktops: ours(),
@@ -326,23 +367,38 @@ mod tests {
             ..Places::from(&|_| None)
         };
         start(&places).unwrap();
-        let begun = Instant::now();
-        while !mark.exists() {
-            assert!(begun.elapsed() < Duration::from_secs(10), "never started");
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        let wrote = fs::read_to_string(&mark).unwrap();
         assert_eq!(
-            wrote.trim(),
+            told(&mark),
             root.path().display().to_string(),
             "where it says"
         );
 
-        write(
-            &directory,
-            "missing.desktop",
-            &["Exec=no-such-program --now"],
-        );
+        // Started in a scope of its own where there is what makes one,
+        // which here writes down what it was asked, and starts it.
+        let scoper = root.path().join("systemd-run");
+        let script = "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/scoped\"\n\
+                      while [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n";
+        fs::write(&scoper, script).unwrap();
+        fs::set_permissions(&scoper, fs::Permissions::from_mode(0o755)).unwrap();
+        let scoping = Places {
+            scoper: Some(scoper),
+            ..places.clone()
+        };
+        start(&scoping).unwrap();
+        assert_eq!(told(&mark), root.path().display().to_string());
+        let asked = fs::read_to_string(root.path().join("scoped")).unwrap();
+        assert!(asked.starts_with("--user --scope "), "{asked}");
+        let rest = "--property=PartOf=graphical-session.target";
+        assert!(asked.contains(rest), "{asked}");
+        assert!(asked.contains(" -- sh -c "), "{asked}");
+
+        // One that cannot be started, by itself.
+        let lacking = root.path().join("lacking");
+        write(&lacking, "missing.desktop", &["Exec=no-such-program --now"]);
+        let places = Places {
+            autostart: vec![lacking],
+            ..places
+        };
         let failure = start(&places).unwrap_err().to_string();
         assert!(
             failure.starts_with("cannot start `no-such-program`: "),

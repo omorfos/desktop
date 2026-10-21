@@ -444,6 +444,7 @@ mod tests {
             compositor: Some(compositor.path.clone()),
             autostart: Vec::new(),
             desktops: Vec::new(),
+            scoper: None,
         }
     }
 

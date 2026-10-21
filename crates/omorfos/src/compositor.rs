@@ -339,8 +339,9 @@ pub struct Compositor {
     pub(crate) children: Vec<Child>,
     /// What says windows that are to open were asked for.
     pub(crate) asked: Asked,
-    /// Whether the programs to start with the session have been.
-    started: bool,
+    /// Whether the programs to start with the session have been, and
+    /// what starts them in a scope of their own.
+    autostarted: Autostarted,
     /// The programs that come with omorfos and run for the whole session,
     /// once a backend has said where each is: the panel first.
     components: Vec<Component>,
@@ -468,7 +469,7 @@ impl Compositor {
                     inhibitors: Vec::new(),
                     presence: Presence::default(),
                     children: Vec::new(),
-                    started: false,
+                    autostarted: Autostarted::default(),
                     components: Vec::new(),
                     launcher: (None, None),
                     refused: Refused::default(),
@@ -1355,6 +1356,14 @@ impl Compositor {
         self.set_component(Program::Session, program.into());
     }
 
+    /// Has the programs the configuration lists to start with the session
+    /// started through `program`, `systemd-run`, each in a scope that is
+    /// part of the graphical session, so that it is stopped when the
+    /// session ends. Until this is called each is started as it is.
+    pub fn set_scoper(&mut self, program: impl Into<PathBuf>) {
+        self.autostarted.scoper = Some(program.into());
+    }
+
     /// Says where the program that asks for secrets is, polkit's agent for
     /// the session: a name to look up in `PATH`, or a path. It is then
     /// started with the session, with the role to ask in the sealed
@@ -1390,7 +1399,7 @@ impl Compositor {
     /// reloading, starts nothing: what is already running would be started
     /// twice.
     pub fn autostart(&mut self) {
-        if std::mem::replace(&mut self.started, true) {
+        if std::mem::replace(&mut self.autostarted.done, true) {
             return;
         }
         let config = Arc::clone(self.store.current());
@@ -1404,8 +1413,14 @@ impl Compositor {
             }
         }
         self.components = components;
+        // Each in a scope of its own, where there is what makes one, so
+        // that it ends with the session: a program that is not the
+        // compositor's client is told of nothing else that does.
+        let scoper = self.autostarted.scoper.clone();
         for command in &config.general.autostart {
-            self.spawn(command);
+            let run = &command.run;
+            let (program, arguments) = scoped(scoper.as_deref(), run.program(), run.arguments());
+            self.start(program.as_ref(), &arguments, Roles::named(&command.may));
         }
         // Then what the desktop entries in `~/.config/autostart` and the
         // system's say is to start, which the program that watches over the
@@ -2902,6 +2917,42 @@ fn program(pid: Option<u32>) -> String {
         || "A program".to_owned(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+/// Whether the programs to start with the session have been, and what
+/// starts them in a scope of their own.
+#[derive(Debug, Default)]
+struct Autostarted {
+    done: bool,
+    scoper: Option<PathBuf>,
+}
+
+/// The program and arguments that start `program` with `arguments`: by
+/// `scoper`, `systemd-run`, in a scope that is part of the graphical
+/// session and stops with it, where there is one; and as it is otherwise.
+/// It is the same process either way, which `systemd-run` becomes.
+pub(crate) fn scoped(
+    scoper: Option<&Path>,
+    program: &str,
+    arguments: &[String],
+) -> (String, Vec<String>) {
+    let Some(scoper) = scoper else {
+        return (program.to_owned(), arguments.to_vec());
+    };
+    let through = [
+        "--user",
+        "--scope",
+        "--quiet",
+        "--collect",
+        "--slice=app-graphical.slice",
+        "--property=PartOf=graphical-session.target",
+        "--property=After=graphical-session.target",
+        "--",
+        program,
+    ];
+    let mut all: Vec<String> = through.into_iter().map(str::to_owned).collect();
+    all.extend_from_slice(arguments);
+    (scoper.to_string_lossy().into_owned(), all)
 }
 
 /// What is said when the session is to be locked and nothing is set to

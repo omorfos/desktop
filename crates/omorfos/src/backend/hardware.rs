@@ -318,6 +318,11 @@ fn set_components(compositor: &mut Compositor) {
     compositor.set_session(super::session_program(own.as_deref()));
     // So is polkit's agent: nested, the outer desktop's asks.
     compositor.set_asker(super::asker_program(own.as_deref()));
+    // What is to start with the session ends with it, in a scope of its
+    // own, where systemd's user manager runs to make one.
+    if super::user_manager(env::var_os("XDG_RUNTIME_DIR").as_deref()) {
+        compositor.set_scoper("systemd-run");
+    }
 }
 
 /// Tells whatever else starts programs for the user about this session,
