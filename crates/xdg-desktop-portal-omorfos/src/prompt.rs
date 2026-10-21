@@ -382,6 +382,8 @@ struct Shell {
     answer: Option<Answer>,
     /// Which of the faces the pointer is over, and where on it.
     over: Option<(usize, (i32, i32))>,
+    /// The surface of this program's that the keyboard is on, if any.
+    keyboard: Option<wl_surface::WlSurface>,
     store: Store,
     text: Text,
     layouts: xkb::Context,
@@ -439,10 +441,17 @@ impl Shell {
 
     /// Takes in a key going down: Enter gives, or picks the colour under
     /// the pointer, and Escape does neither.
+    ///
+    /// Only a key pressed on what is up now counts. One pressed on a box
+    /// already taken down, which the compositor has not yet let go of, may
+    /// come after the next question is put up, and the user never saw that
+    /// one: it would answer yes to an application they did not know asked.
     fn pressed(&mut self, code: u32) {
+        let on = self.keyboard.as_ref();
+        let up = on.is_some_and(|on| self.faces.iter().any(|face| face.surface == *on));
         // The numbers the layout knows keys by are eight higher.
         let code = xkb::Keycode::new(code.saturating_add(8));
-        let typing = self.typing.as_ref();
+        let typing = self.typing.as_ref().filter(|_| up);
         let answer = typing.and_then(|typing| match typing.key_get_one_sym(code) {
             xkb::Keysym::Return | xkb::Keysym::KP_Enter => self.giving(),
             xkb::Keysym::Escape => Some(Answer::Keep),
@@ -705,6 +714,7 @@ impl Desk {
                 asked: None,
                 answer: None,
                 over: None,
+                keyboard: None,
                 store,
                 text: Text::new(),
                 layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
@@ -965,6 +975,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
     ) {
         match event {
             wl_keyboard::Event::Keymap { fd, size, .. } => shell.learn_layout(fd, size),
+            wl_keyboard::Event::Enter { surface, .. } => shell.keyboard = Some(surface),
+            wl_keyboard::Event::Leave { .. } => shell.keyboard = None,
             wl_keyboard::Event::Key {
                 key,
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
