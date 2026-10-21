@@ -391,6 +391,7 @@ fn turn(
         }
     }
     if !now.lit {
+        compositor.screens_turned_off();
         return Ok(());
     }
     let Hardware {

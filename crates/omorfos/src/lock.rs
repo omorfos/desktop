@@ -72,8 +72,19 @@ pub(crate) struct Presence {
     pub(crate) stirred: bool,
     /// When the user was last known to be there.
     last_active: Option<Instant>,
-    /// Whether the screens are to be on.
-    screens_on: bool,
+    /// Whether the screens are to be on, and if not whether they are off.
+    screens: Screens,
+}
+
+/// Whether the screens are on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Screens {
+    /// They are to be on.
+    On,
+    /// They are to be off.
+    ToBeOff,
+    /// They are off: the backend has said it turned them off.
+    Off,
 }
 
 impl Default for Presence {
@@ -82,7 +93,7 @@ impl Default for Presence {
             kept_awake: false,
             stirred: false,
             last_active: None,
-            screens_on: true,
+            screens: Screens::On,
         }
     }
 }
@@ -92,6 +103,15 @@ impl Compositor {
     #[must_use]
     pub const fn is_locked(&self) -> bool {
         self.lock.is_some()
+    }
+
+    /// Whether the session is locked and the locker has been told so: a
+    /// frame with nothing of the session in it has been shown on every
+    /// output. Until then what was on the screen may still be.
+    pub(crate) fn is_locked_for_certain(&self) -> bool {
+        self.lock
+            .as_ref()
+            .is_some_and(|lock| lock.unconfirmed.is_none())
     }
 
     /// The surfaces the locker is showing, and the output each is on.
@@ -221,9 +241,10 @@ impl Compositor {
 
     /// Tells the locker that the session is locked, if it has not been told
     /// and a frame showing nothing of the session has been drawn on every
-    /// output since it asked.
+    /// output since it asked, or every screen is off.
     pub(crate) fn confirm_lock(&mut self) {
-        if !self.heads.iter().all(|head| head.blanked.get()) {
+        let blanked = self.heads.iter().all(|head| head.blanked.get());
+        if !blanked && self.presence.screens != Screens::Off {
             return;
         }
         let lock = self.lock.as_mut();
@@ -251,12 +272,24 @@ impl Compositor {
         self.idle.set_is_inhibited(inhibited);
     }
 
+    /// Says that the screens are off, as [`Compositor::screens_on`] asked,
+    /// which a backend that drives screens says once it has turned them
+    /// off. A screen that is off shows nothing of the session, so a lock
+    /// asked for meanwhile is as good as shown, and the locker is told so
+    /// without waiting for a frame that will not be drawn until the user
+    /// is back.
+    pub fn screens_turned_off(&mut self) {
+        if self.presence.screens == Screens::ToBeOff {
+            self.presence.screens = Screens::Off;
+        }
+    }
+
     /// Whether the screens are to be on. They are turned off once there has
     /// been no input for as long as the configuration says, and on again at
     /// the next. A backend that drives screens acts on this each turn.
     #[must_use]
-    pub const fn screens_on(&self) -> bool {
-        self.presence.screens_on
+    pub fn screens_on(&self) -> bool {
+        self.presence.screens == Screens::On
     }
 
     /// When the screens are due to go off: the configured time after the
@@ -276,7 +309,12 @@ impl Compositor {
         if here || presence.last_active.is_none() {
             presence.last_active = Some(now);
         }
-        self.presence.screens_on = self.screens_off_at().is_none_or(|at| now < at);
+        let on = self.screens_off_at().is_none_or(|at| now < at);
+        self.presence.screens = match (on, self.presence.screens) {
+            (true, _) => Screens::On,
+            (false, Screens::Off) => Screens::Off,
+            (false, _) => Screens::ToBeOff,
+        };
     }
 }
 

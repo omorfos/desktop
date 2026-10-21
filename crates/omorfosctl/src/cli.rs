@@ -357,6 +357,7 @@ mod tests {
             problems: problems.iter().map(ToString::to_string).collect(),
             events: Vec::new(),
             screens: Vec::new(),
+            locked: false,
         }
     }
 

@@ -52,6 +52,87 @@ pub(crate) fn lock(session: &mut Session) -> (Client, ExtSessionLockV1, WlSurfac
     (locker, lock, surface)
 }
 
+/// Whether the compositor says, to those that ask it, that the session is
+/// locked.
+fn said_locked(session: &mut Session, peer: &mut omorfos_ipc::Client) -> bool {
+    match session.ask(peer, &omorfos_ipc::Request::State) {
+        omorfos_ipc::Reply::State(state) => state.locked,
+        other => unreachable!("expected the state, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_session_is_said_to_be_locked_once_the_locker_is_told_it_is() {
+    let (mut session, _app) = busy();
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    assert!(!said_locked(&mut session, &mut peer));
+
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    assert!(session.compositor().is_locked());
+    assert!(
+        !said_locked(&mut session, &mut peer),
+        "what was on the screen still is"
+    );
+
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+    show_frame(&mut session);
+    session.roundtrip(&mut locker);
+    assert!(locker.take_events().contains(&Event::Locked));
+    assert!(said_locked(&mut session, &mut peer));
+
+    lock.unlock_and_destroy();
+    session.roundtrip(&mut locker);
+    assert!(!said_locked(&mut session, &mut peer));
+}
+
+#[test]
+fn with_every_screen_off_the_session_is_locked_without_a_frame_being_drawn() {
+    let config = "idle: { screen_off: 60 }\n";
+    // Off only once they are to be, and the backend says it has turned
+    // them off.
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let mut locker = session.connect();
+    session.compositor_mut().screens_turned_off();
+    let _lock = locker.lock();
+    session.roundtrip(&mut locker);
+    session.roundtrip(&mut locker);
+    assert_eq!(locker.take_events(), [], "on, and not shown");
+
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    let mut locker = session.connect();
+    session.advance(Duration::from_secs(61));
+    assert!(!session.compositor().screens_on());
+    session.compositor_mut().screens_turned_off();
+    let lock = locker.lock();
+    session.roundtrip(&mut locker);
+    session.roundtrip(&mut locker);
+    assert_eq!(locker.take_events(), [Event::Locked]);
+    assert!(said_locked(&mut session, &mut peer));
+    // And they stay off while nobody is there.
+    session.advance(Duration::from_secs(1));
+    assert!(said_locked(&mut session, &mut peer));
+    lock.unlock_and_destroy();
+    session.roundtrip(&mut locker);
+
+    // Back on, a frame has to be shown first.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 1.0, y: 1.0 }, 0);
+    session.step();
+    assert!(session.compositor().screens_on());
+    let lock = locker.lock();
+    session.roundtrip(&mut locker);
+    session.roundtrip(&mut locker);
+    assert_eq!(locker.take_events(), [], "not until it is shown");
+    assert!(!said_locked(&mut session, &mut peer));
+    drop(lock);
+}
+
 /// A session with a focused application window and the pointer over it.
 fn busy() -> (Session, Client) {
     let mut session = Session::new();

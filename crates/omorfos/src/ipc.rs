@@ -24,6 +24,7 @@ use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
 use smithay::utils::Rectangle;
 
+use crate::compositor::NO_LOCKER;
 use crate::{Compositor, bridge};
 
 /// The most peers served at once. Further connections are refused.
@@ -358,6 +359,14 @@ impl Compositor {
                 let roomy = places.any(|place| place.id.get() == *id && place.room);
                 (!roomy).then(|| format!("no workspace {id} has room for a window"))
             }
+            // What locks before sleep has to know at once that nothing
+            // will, rather than hold the machine awake waiting.
+            Action::Lock => self
+                .config()
+                .general
+                .locker
+                .is_none()
+                .then(|| NO_LOCKER.to_owned()),
             _ => None,
         }
     }
@@ -477,6 +486,7 @@ impl Compositor {
             problems: self.problems().to_vec(),
             events: self.events().map(str::to_owned).collect(),
             screens: self.ipc_screens(),
+            locked: self.is_locked_for_certain(),
         }
     }
 }
