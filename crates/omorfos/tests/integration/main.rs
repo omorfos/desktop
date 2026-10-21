@@ -6,6 +6,7 @@
 
 mod actions;
 mod activation;
+mod ask;
 mod capture;
 mod clipboard;
 mod common;
@@ -37,6 +38,7 @@ mod reveal;
 mod roles;
 mod scaling;
 mod screenshot;
+mod sealed;
 mod session;
 mod sharing;
 mod sleep;

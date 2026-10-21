@@ -110,6 +110,7 @@ pub(crate) mod key {
     pub(crate) const ESCAPE: Keycode = Keycode::new(9);
     pub(crate) const ONE: Keycode = Keycode::new(10);
     pub(crate) const TWO: Keycode = Keycode::new(11);
+    pub(crate) const BACKSPACE: Keycode = Keycode::new(22);
     pub(crate) const TAB: Keycode = Keycode::new(23);
     pub(crate) const Q: Keycode = Keycode::new(24);
     pub(crate) const T: Keycode = Keycode::new(28);
@@ -435,7 +436,8 @@ impl Session {
     /// put up panels, cover the screen, lock. Most tests are of what such a
     /// program does, not of who may.
     pub(crate) fn connect(&mut self) -> Client {
-        self.connect_as(omorfos::Roles::ALL)
+        // Asking seals the session, which only the tests of that ask for.
+        self.connect_as(omorfos::Roles::ALL.without(omorfos::Roles::ASK))
     }
 
     /// Connects a new client that is an ordinary program, with no role,

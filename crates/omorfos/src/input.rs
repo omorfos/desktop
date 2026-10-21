@@ -281,9 +281,10 @@ impl Compositor {
                 vertical,
             },
         };
-        if self.is_locked() {
-            // A locked session sees none of what follows.
-            self.locked_input(event, time);
+        if self.is_locked() || self.sealed().is_some() {
+            // A locked session sees none of what follows, nor one a prompt
+            // asks a secret over.
+            self.guarded_input(event, time);
             return;
         }
         match event {
@@ -556,6 +557,12 @@ impl Compositor {
     /// pointer, and what is behind it is not there to be pointed at.
     pub(crate) fn repoint(&mut self) {
         if self.is_locked() {
+            return;
+        }
+        // While a prompt asks for a secret, it is all there is to point at.
+        if self.sealed().is_some() {
+            let time = self.hover.pointed.1;
+            self.point_at_sealed(time);
             return;
         }
         let ours = self.drag.is_some()

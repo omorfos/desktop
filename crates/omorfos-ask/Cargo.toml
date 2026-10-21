@@ -1,0 +1,37 @@
+[package]
+name = "omorfos-ask"
+description = "What asks the user of an omorfos session for a secret: polkit's agent, in the sealed prompt"
+keywords = ["wayland", "polkit", "desktop"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+omorfos-config = { path = "../omorfos-config" }
+omorfos-shell = { path = "../omorfos-shell" }
+omorfos-ui = { path = "../omorfos-ui" }
+# Already in the tree through Smithay. Waits on the compositor, polkit and
+# the helper at once (`event`), wakes for what was heard (`pipe`), and says
+# who the user is (`process`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "pipe", "process"] }
+# The prompt is a Wayland client. All three are already in the tree.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# Turns the keys the compositor reports into what they type. Without its
+# default features it does not map the layout into memory, which would
+# need `unsafe`.
+xkbcommon = { version = "0.8.0", default-features = false }
+# Speaks to polkit on the system's bus, as the other components speak D-Bus.
+zbus = "5.19.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

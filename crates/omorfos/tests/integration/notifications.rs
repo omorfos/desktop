@@ -96,7 +96,7 @@ fn notifier(session: &mut Session, daemon: &Daemon) -> Notifier {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
-        .insert_client(ours, omorfos::Roles::ALL)
+        .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
     Notifier::new(theirs, bus, None, &config, Icons::default()).unwrap()
@@ -454,7 +454,10 @@ fn the_notifications_run_by_themselves_in_the_session_they_are_started_in() {
     let mut session = Session::new();
     let runtime = session.config.path().to_owned();
     let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
-    session.inner().serve(socket, omorfos::Roles::ALL).unwrap();
+    session
+        .inner()
+        .serve(socket, omorfos::Roles::PANEL)
+        .unwrap();
     // The compositor's own socket is where a session has it.
     let own = runtime.join("omorfos-wayland-test.sock");
     session.compositor_mut().listen_ipc(own).unwrap();
@@ -557,7 +560,7 @@ fn informed(session: &mut Session, daemon: &Daemon) -> Notifier {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
-        .insert_client(ours, omorfos::Roles::ALL)
+        .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
     let news = Ipc::connect(&socket).unwrap();
@@ -619,7 +622,7 @@ fn the_notifications_take_only_the_state_of_the_session_from_what_they_are_told(
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
-        .insert_client(ours, omorfos::Roles::ALL)
+        .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
     let (news, mut compositor) = UnixStream::pair().unwrap();
@@ -657,7 +660,7 @@ fn notifications_that_cannot_ask_what_is_wrong_leave_it_to_the_compositor() {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
-        .insert_client(ours, omorfos::Roles::ALL)
+        .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
     // The other end of what it was to ask on has gone.
@@ -684,7 +687,7 @@ fn what_has_happened_in_the_session_is_shown_for_a_while_among_the_notifications
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
-        .insert_client(ours, omorfos::Roles::ALL)
+        .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
     let (news, mut compositor) = UnixStream::pair().unwrap();

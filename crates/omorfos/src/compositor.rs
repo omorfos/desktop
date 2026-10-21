@@ -327,6 +327,8 @@ pub struct Compositor {
     _idle_inhibit: IdleInhibitManagerState,
     /// The input method, and what is known of it.
     pub(crate) typing: Typing,
+    /// What dims each screen while a prompt asks for a secret.
+    pub(crate) seal: Vec<(Output, SolidColorBuffer)>,
     /// Surfaces that ask for the session not to go idle while they are
     /// shown, such as a film being played.
     pub(crate) inhibitors: Vec<WlSurface>,
@@ -384,7 +386,6 @@ impl Compositor {
 
         // Version 6 lets a surface be told the scale to draw at.
         let surfaces = CompositorState::new_v6::<Self>(&display);
-        let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, Self::outside);
         let idle = IdleNotifierState::new(&display, event_loop.clone());
         let xdg_shell = XdgShellState::new::<Self>(&display);
@@ -410,6 +411,8 @@ impl Compositor {
                     asked: Asked::new(&display),
                     switch: Switch::offer(&display),
                     typing: Typing::offer(&display),
+                    seal: Vec::new(),
+                    _fractional_scale: FractionalScaleManagerState::new::<Self>(&display),
                     _idle_inhibit: IdleInhibitManagerState::new::<Self>(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
@@ -427,7 +430,6 @@ impl Compositor {
                     space: Space::default(),
                     popups: PopupManager::default(),
                     heads: Vec::new(),
-                    _fractional_scale: fractional_scale,
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -931,6 +933,7 @@ impl Compositor {
         // With the screens off a lock is shown without drawing, and is
         // said to be before the state is.
         self.confirm_lock();
+        self.update_seal();
         self.space.refresh();
         self.popups.cleanup();
         self.publish_ipc(now);
@@ -1352,6 +1355,15 @@ impl Compositor {
         self.set_component(Program::Session, program.into());
     }
 
+    /// Says where the program that asks for secrets is, polkit's agent for
+    /// the session: a name to look up in `PATH`, or a path. It is then
+    /// started with the session, with the role to ask in the sealed
+    /// prompt, and nothing turns it off. Until this is called there is
+    /// none to start.
+    pub fn set_asker(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Asker, program.into());
+    }
+
     /// Says where one of the programs that run for the whole session is,
     /// in place of wherever it was said to be before.
     fn set_component(&mut self, kind: Program, program: PathBuf) {
@@ -1751,10 +1763,16 @@ impl Compositor {
 
     /// Gives the keyboard to whoever should have it now.
     fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
-        if self.is_locked() {
-            // The lock surface has the keyboard, or nothing does. Nothing
-            // below is consulted.
-            let focus = self.lock_focus().cloned().map(Focus::Surface);
+        let sealed = self.sealed().map(|(_, surface, _)| surface);
+        if self.is_locked() || sealed.is_some() {
+            // The lock surface has the keyboard, or the prompt that asks for
+            // a secret, or nothing does. Nothing below is consulted.
+            let guarded = if self.is_locked() {
+                self.lock_focus().cloned()
+            } else {
+                sealed
+            };
+            let focus = guarded.map(Focus::Surface);
             let keyboard = self.keyboard.clone();
             if keyboard.current_focus() != focus {
                 keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
@@ -2227,6 +2245,9 @@ impl Compositor {
         if shown.pointer {
             self.pointer_elements(renderer, view, &mut elements);
         }
+        // A prompt that asks for a secret is over all but the pointer and the
+        // mark, and dims the rest; no input method types into it.
+        self.sealed_elements(renderer, output, view, &mut elements);
         self.popup_elements(renderer, view, &mut elements);
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
@@ -2582,12 +2603,15 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
+        // Asked before the panels are, which holds them until it is done.
+        let sealed = self.sealed().map(|(_, surface, _)| surface);
         let layers = layer_map_for_output(output);
         let index = self.heads.iter().position(|head| head.output == *output);
         let index = index.unwrap_or_default();
         let wanted = |surface: &&LayerSurface| {
             let area = layers.layer_geometry(surface).unwrap_or_default();
-            self.standing(index, layer, area) == standing
+            let sealed = sealed.as_ref() == Some(surface.wl_surface());
+            self.standing(index, layer, area) == standing && !sealed
         };
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             // A panel is placed within its own output.
@@ -2902,6 +2926,7 @@ enum Program {
     Keeper,
     Recorder,
     Session,
+    Asker,
 }
 
 impl Program {
@@ -2914,7 +2939,7 @@ impl Program {
             Self::Keeper => general.clipboard.enabled,
             // The mark is not to be turned off, nor what it shows; nor is
             // locking before sleep, and without logind it ends at once.
-            Self::Recorder | Self::Session => true,
+            Self::Recorder | Self::Session | Self::Asker => true,
         }
     }
 
@@ -2931,6 +2956,8 @@ impl Program {
             // as anyone may, over the socket for scripts, and the locker
             // that is started has the role.
             Self::Recorder | Self::Session => Roles::NONE,
+            // It asks for secrets, over a dimmed session, with the keyboard.
+            Self::Asker => Roles::ASK,
         }
     }
 }

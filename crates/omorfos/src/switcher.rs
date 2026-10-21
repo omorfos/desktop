@@ -297,9 +297,10 @@ impl Compositor {
     }
 
     /// Notes the window in use, unless the switcher is open, whose order
-    /// stands still; and closes the switcher while the session is locked.
+    /// stands still; and closes the switcher while the session is locked,
+    /// or a prompt asks for a secret over it.
     pub(crate) fn note_use(&mut self) {
-        if self.is_locked() {
+        if self.is_locked() || self.sealed().is_some() {
             self.switch.open = None;
         }
         if self.switch.open.is_none() {

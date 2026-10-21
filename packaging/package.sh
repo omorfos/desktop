@@ -5,7 +5,7 @@
 #
 # Usage: VERSION=1.2.3 TARGET=x86_64-unknown-linux-gnu packaging/package.sh OUT
 #
-# Expects `cargo build --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p xdg-desktop-portal-omorfos` to have run, and cargo-deb to be
+# Expects `cargo build --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p xdg-desktop-portal-omorfos` to have run, and cargo-deb to be
 # installed. OUT must not exist yet.
 set -euo pipefail
 
@@ -21,7 +21,7 @@ cargo deb -p omorfos --no-build --output "${out}/"
 name="omorfos-${VERSION}-${TARGET}"
 stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
-cp target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/xdg-desktop-portal-omorfos LICENSE README.md docs/CONFIGURATION.md \
+cp target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/xdg-desktop-portal-omorfos LICENSE README.md docs/CONFIGURATION.md \
   packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf packaging/omorfos-session.target \
   "${stage}/${name}/"
 cp -r schemas "${stage}/${name}/"

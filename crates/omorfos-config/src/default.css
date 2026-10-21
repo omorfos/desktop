@@ -238,6 +238,14 @@ question-button:active {
   background: var(--accent);
   color: var(--background);
 }
+question-input {
+  padding: 6px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+question-input:focus { border-color: var(--accent); }
 
 /* The switcher on Alt+Tab: the box in the middle of the screen, each
  * window's place in it, its picture over its title, and the title. The
@@ -266,3 +274,7 @@ picker {
   background: #00000066;
   border: 2px solid var(--accent);
 }
+
+/* What dims the session while a prompt asks for a secret, such as the
+ * administrator's password: nothing a program draws can dim it so. */
+sealed { background: #000000aa; }

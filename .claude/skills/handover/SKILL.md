@@ -99,7 +99,7 @@ tell the maintainer:
   so that a stale install shows:
 
   ```sh
-  sudo install -m755 target/nightly/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,xdg-desktop-portal-omorfos} /usr/local/bin/
+  sudo install -m755 target/nightly/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,xdg-desktop-portal-omorfos} /usr/local/bin/
   ```
 
 - what is next in the order;
