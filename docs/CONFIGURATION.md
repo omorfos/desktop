@@ -322,6 +322,7 @@ that are already bound on their own.
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
 | `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
+| `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
 | `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
 | `quit` | End the session. |
@@ -1016,9 +1017,10 @@ are only for a program omorfos started itself and was told may do them:
 | `lock` | Lock the session |
 | `capture` | Take pictures of the screen |
 | `clipboard` | Read what is copied and set it at any time, not only while one of its windows has the keyboard, as a clipboard manager does |
+| `input` | Be the input method: be shown what is typed into whatever has the keyboard, take the keys, and type as a keyboard would |
 
-`ask`, `input` and `screens` are names for what is
-to come, and are accepted so that a configuration can say them already.
+`ask` and `screens` are names for what is to come, and are accepted so
+that a configuration can say them already.
 
 A role is given where the program is started: in `autostart`, or in a
 `spawn` bound to a key or put in the menu.
@@ -1045,7 +1047,7 @@ have what they need; started by hand, they are ordinary programs too.
 
 A program in a sandbox, such as one installed with Flatpak, is held to
 less again. It is not shown that panels, locking, pictures of the screen,
-the clipboard at any time or the list of windows exist, so it cannot ask, and no setting gives it a role. Nothing needs
+the clipboard at any time, input methods or the list of windows exist, so it cannot ask, and no setting gives it a role. Nothing needs
 to be set up for this: the sandbox tells omorfos which programs are
 inside it.
 
@@ -1216,6 +1218,45 @@ The idle daemon asks omorfos to lock and does not start the locker
 itself: a locker it started would be an ordinary program, and refused.
 While the screen is locked nothing else is shown and no key binding
 works, except Ctrl+Alt+F1 to F12.
+
+## Typing in other languages
+
+Two things help with typing what a keyboard has no keys for.
+
+**Several layouts**, for languages written with their own letters: list
+them in `keyboard.layout`, as `layout: 'us,ru'`, and bind `next_layout`
+to a key to go from one to the next. No key is bound to it by default.
+XKB's own options work too, as `options: 'grp:alt_shift_toggle'`.
+
+```yaml
+# keys.yaml
+bindings:
+  - keys: Super+space
+    action: next_layout
+```
+
+Key bindings go by the first layout that writes in Latin letters, so
+`Super+t` is the same key whichever layout is being typed with.
+
+**An input method**, for languages with more characters than a keyboard
+has keys, such as Chinese, Japanese or Korean: a program such as
+`fcitx5` turns what is typed into the characters meant, and shows those
+it could mean beside the text. Start it with the `input` role:
+
+```yaml
+# config.yaml
+autostart:
+  - { run: [fcitx5, --replace], may: [input] }
+```
+
+Not with `-d`: a program that puts itself in the background as it starts
+lets go of the connection it was given the role on. It then works in any
+program that says where text is typed (GTK, Qt and the browsers do), in
+windows and on panels, and its popup is shown under the text, or above
+it where there is no room. While the session is locked it is not shown a key:
+what is typed then is your password. One input method at a time: should
+a second be started, the first is told it may no longer be one, so
+start only one.
 
 ## Sleep, restart and shut down
 

@@ -43,5 +43,6 @@ mod sleep;
 mod switcher;
 mod taskbar;
 mod tiles;
+mod typing;
 mod windows;
 mod x11;

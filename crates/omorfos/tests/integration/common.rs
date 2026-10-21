@@ -71,6 +71,9 @@ use wayland_protocols::wp::security_context::v1::client::{
     wp_security_context_manager_v1, wp_security_context_v1,
 };
 use wayland_protocols::wp::single_pixel_buffer::v1::client::wp_single_pixel_buffer_manager_v1;
+use wayland_protocols::wp::text_input::zv3::client::{
+    zwp_text_input_manager_v3 as text_input_manager, zwp_text_input_v3 as text_input,
+};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -81,6 +84,15 @@ use wayland_protocols::xdg::shell::client::{
 };
 use wayland_protocols::xdg::toplevel_icon::v1::client::{
     xdg_toplevel_icon_manager_v1 as icon_manager, xdg_toplevel_icon_v1 as toplevel_icon,
+};
+use wayland_protocols_misc::zwp_input_method_v2::client::{
+    zwp_input_method_keyboard_grab_v2 as keyboard_grab,
+    zwp_input_method_manager_v2 as input_method_manager, zwp_input_method_v2 as input_method,
+    zwp_input_popup_surface_v2 as input_popup,
+};
+use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
+    zwp_virtual_keyboard_manager_v1 as virtual_keyboard_manager,
+    zwp_virtual_keyboard_v1 as virtual_keyboard,
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
@@ -655,6 +667,30 @@ pub(crate) enum Event {
     Idle,
     /// The user is back.
     Back,
+    /// A text field of this client is told it may be typed into by an
+    /// input method, or no longer.
+    TextEnter,
+    TextLeave,
+    /// What the input method put in a text field.
+    TextCommitted(String),
+    /// What the input method shows in a text field as it is being typed.
+    TextPreedit(String),
+    /// That is all the input method put there for now.
+    TextDone,
+    /// This input method is told to type into a field, or no longer.
+    TypingOn,
+    TypingOff,
+    /// The field it types into says how much has been typed into it.
+    TypingDone,
+    /// There is already an input method, so this one is none.
+    TypingRefused,
+    /// Where the text an input method's popup is for is, on the field.
+    PopupText(i32, i32, i32, i32),
+    /// A key an input method took while it had the keyboard.
+    GrabbedKey {
+        code: u32,
+        pressed: bool,
+    },
 }
 
 /// The client's globals and everything it has been told.
@@ -684,6 +720,13 @@ pub(crate) struct ClientState {
     gpu_buffers: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
     shapes: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     lockers: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
+    text_inputs: Option<text_input_manager::ZwpTextInputManagerV3>,
+    input_methods: Option<input_method_manager::ZwpInputMethodManagerV2>,
+    virtual_keyboards: Option<virtual_keyboard_manager::ZwpVirtualKeyboardManagerV1>,
+    /// How many times this input method has been told all there is.
+    typing_done: u32,
+    /// Which of the keyboard's layouts it was last told is typed with.
+    pub(crate) layout: u32,
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
     capture_sources: Option<capture_sources::ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<capture_manager::ExtImageCopyCaptureManagerV1>,
@@ -1433,6 +1476,71 @@ impl Client {
     pub(crate) fn seat(&self) -> &wl_seat::WlSeat {
         self.state.seat.as_ref().unwrap()
     }
+
+    /// A text field, as a program has one for each place text is typed.
+    pub(crate) fn text_input(&self) -> text_input::ZwpTextInputV3 {
+        let manager = self.state.text_inputs.as_ref().unwrap();
+        manager.get_text_input(self.seat(), &self.handle(), ())
+    }
+
+    /// Asks to be the input method.
+    pub(crate) fn input_method(&self) -> input_method::ZwpInputMethodV2 {
+        let manager = self.state.input_methods.as_ref().unwrap();
+        manager.get_input_method(self.seat(), &self.handle(), ())
+    }
+
+    /// Puts `text` in the field being typed into, as an input method does
+    /// once the user has chosen what they meant.
+    pub(crate) fn type_text(&self, typing: &input_method::ZwpInputMethodV2, text: &str) {
+        typing.commit_string(text.to_owned());
+        typing.commit(self.state.typing_done);
+    }
+
+    /// Shows `text` in the field as it is being typed, not yet chosen.
+    pub(crate) fn type_preedit(&self, typing: &input_method::ZwpInputMethodV2, text: &str) {
+        let end = i32::try_from(text.len()).unwrap();
+        typing.set_preedit_string(text.to_owned(), end, end);
+        typing.commit(self.state.typing_done);
+    }
+
+    /// Takes every key while a field is being typed into.
+    pub(crate) fn grab_keyboard(
+        &self,
+        typing: &input_method::ZwpInputMethodV2,
+    ) -> keyboard_grab::ZwpInputMethodKeyboardGrabV2 {
+        typing.grab_keyboard(&self.handle(), ())
+    }
+
+    /// A surface shown beside the text being typed, as the characters an
+    /// input method could mean are.
+    pub(crate) fn input_popup(
+        &self,
+        typing: &input_method::ZwpInputMethodV2,
+    ) -> wl_surface::WlSurface {
+        let surface = self.surface();
+        let _: input_popup::ZwpInputPopupSurfaceV2 =
+            typing.get_input_popup_surface(&surface, &self.handle(), ());
+        surface
+    }
+
+    /// A keyboard of this client's own, with the keymap a US keyboard has,
+    /// as an input method passes on keys through.
+    pub(crate) fn virtual_keyboard(&self) -> virtual_keyboard::ZwpVirtualKeyboardV1 {
+        use smithay::input::keyboard::xkb;
+        let manager = self.state.virtual_keyboards.as_ref().unwrap();
+        let keyboard = manager.create_virtual_keyboard(self.seat(), &self.handle(), ());
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let keymap = xkb::Keymap::new_from_names(&context, "", "", "us", "", None, 0).unwrap();
+        let mut text = keymap
+            .get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1)
+            .into_bytes();
+        text.push(0);
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(&text).unwrap();
+        let size = u32::try_from(text.len()).unwrap();
+        keyboard.keymap(1, file.as_fd(), size);
+        keyboard
+    }
 }
 
 /// A window as a taskbar sees it.
@@ -1538,6 +1646,15 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "ext_session_lock_manager_v1" => {
                 state.lockers = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_text_input_manager_v3" => {
+                state.text_inputs = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_input_method_manager_v2" => {
+                state.input_methods = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_virtual_keyboard_manager_v1" => {
+                state.virtual_keyboards = Some(registry.bind(name, version, handle, ()));
             }
             "ext_idle_notifier_v1" => {
                 state.idlers = Some(registry.bind(name, version, handle, ()));
@@ -2037,6 +2154,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
                 let pressed = key_state == WEnum::Value(wl_keyboard::KeyState::Pressed);
                 state.events.push(Event::Key { code: key, pressed });
             }
+            wl_keyboard::Event::Modifiers { group, .. } => state.layout = group,
             _ => {}
         }
     }
@@ -2263,4 +2381,99 @@ pub(crate) fn graphics_card() -> (std::fs::File, u64) {
         .unwrap();
     let number = std::fs::metadata(path).map_err(refused).unwrap().rdev();
     (file, number)
+}
+
+delegate_noop!(ClientState: text_input_manager::ZwpTextInputManagerV3);
+delegate_noop!(ClientState: input_method_manager::ZwpInputMethodManagerV2);
+delegate_noop!(ClientState: virtual_keyboard_manager::ZwpVirtualKeyboardManagerV1);
+delegate_noop!(ClientState: virtual_keyboard::ZwpVirtualKeyboardV1);
+
+impl Dispatch<text_input::ZwpTextInputV3, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &text_input::ZwpTextInputV3,
+        event: text_input::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let heard = match event {
+            text_input::Event::Enter { .. } => Event::TextEnter,
+            text_input::Event::Leave { .. } => Event::TextLeave,
+            text_input::Event::CommitString { text } => {
+                Event::TextCommitted(text.unwrap_or_default())
+            }
+            text_input::Event::PreeditString { text, .. } => {
+                Event::TextPreedit(text.unwrap_or_default())
+            }
+            text_input::Event::Done { .. } => Event::TextDone,
+            _ => return,
+        };
+        state.events.push(heard);
+    }
+}
+
+impl Dispatch<input_method::ZwpInputMethodV2, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &input_method::ZwpInputMethodV2,
+        event: input_method::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let heard = match event {
+            input_method::Event::Activate => Event::TypingOn,
+            input_method::Event::Deactivate => Event::TypingOff,
+            input_method::Event::Done => {
+                state.typing_done += 1;
+                Event::TypingDone
+            }
+            input_method::Event::Unavailable => Event::TypingRefused,
+            _ => return,
+        };
+        state.events.push(heard);
+    }
+}
+
+impl Dispatch<input_popup::ZwpInputPopupSurfaceV2, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &input_popup::ZwpInputPopupSurfaceV2,
+        event: input_popup::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let input_popup::Event::TextInputRectangle {
+            x,
+            y,
+            width,
+            height,
+        } = event
+        {
+            state.events.push(Event::PopupText(x, y, width, height));
+        }
+    }
+}
+
+impl Dispatch<keyboard_grab::ZwpInputMethodKeyboardGrabV2, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &keyboard_grab::ZwpInputMethodKeyboardGrabV2,
+        event: keyboard_grab::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let keyboard_grab::Event::Key {
+            key,
+            state: key_state,
+            ..
+        } = event
+        {
+            let pressed = key_state == WEnum::Value(wl_keyboard::KeyState::Pressed);
+            state.events.push(Event::GrabbedKey { code: key, pressed });
+        }
+    }
 }

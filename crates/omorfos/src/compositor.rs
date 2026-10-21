@@ -109,6 +109,7 @@ use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
 use crate::switcher::Switch;
 use crate::tiles::Lines;
+use crate::typing::Typing;
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -324,6 +325,8 @@ pub struct Compositor {
     /// Tells those who asked when the user has been away for a while.
     pub(crate) idle: IdleNotifierState<Self>,
     _idle_inhibit: IdleInhibitManagerState,
+    /// The input method, and what is known of it.
+    pub(crate) typing: Typing,
     /// Surfaces that ask for the session not to go idle while they are
     /// shown, such as a film being played.
     pub(crate) inhibitors: Vec<WlSurface>,
@@ -384,7 +387,6 @@ impl Compositor {
         let fractional_scale = FractionalScaleManagerState::new::<Self>(&display);
         let lock_manager = SessionLockManagerState::new::<Self, _>(&display, Self::outside);
         let idle = IdleNotifierState::new(&display, event_loop.clone());
-        let idle_inhibit = IdleInhibitManagerState::new::<Self>(&display);
         let xdg_shell = XdgShellState::new::<Self>(&display);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
         let layer_shell = WlrLayerShellState::new_with_filter::<Self, _>(&display, Self::outside);
@@ -407,6 +409,8 @@ impl Compositor {
                     capture: Capture::offer(&display),
                     asked: Asked::new(&display),
                     switch: Switch::offer(&display),
+                    typing: Typing::offer(&display),
+                    _idle_inhibit: IdleInhibitManagerState::new::<Self>(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
@@ -459,7 +463,6 @@ impl Compositor {
                     lock: None,
                     lock_manager,
                     idle,
-                    _idle_inhibit: idle_inhibit,
                     inhibitors: Vec::new(),
                     presence: Presence::default(),
                     children: Vec::new(),
@@ -1048,6 +1051,10 @@ impl Compositor {
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
             Action::Lock => self.start_locker(),
+            Action::NextLayout => {
+                let keyboard = self.keyboard.clone();
+                keyboard.with_xkb_state(self, |mut xkb| xkb.cycle_next_layout());
+            }
             Action::ReloadConfig => self.reload_config(),
             Action::Quit => self.running = false,
         }
@@ -2204,6 +2211,7 @@ impl Compositor {
         if shown.pointer {
             self.pointer_elements(renderer, view, &mut elements);
         }
+        self.popup_elements(renderer, view, &mut elements);
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
             elements.extend(notice.pixels.element(
@@ -3277,7 +3285,7 @@ pub(crate) struct Shown {
     pub(crate) over: bool,
     pub(crate) window: Window,
     /// The window's own surface.
-    surface: WlSurface,
+    pub(crate) surface: WlSurface,
     /// The whole frame, decoration included.
     pub(crate) outer: Rect,
     /// Where the window's visible geometry starts.

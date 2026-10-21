@@ -37,6 +37,9 @@ impl Roles {
     /// Read the clipboard and set it at any time, not only while one of
     /// its windows has the keyboard.
     pub const CLIPBOARD: Self = Self(1 << 4);
+    /// See what is typed into fields and type as the user, as an input
+    /// method does.
+    pub const INPUT: Self = Self(1 << 5);
 
     /// These roles and those as well.
     #[must_use]
@@ -60,7 +63,8 @@ impl Roles {
             Role::Lock => Self::LOCK,
             Role::Capture => Self::CAPTURE,
             Role::Clipboard => Self::CLIPBOARD,
-            Role::Ask | Role::Input | Role::Screens => Self::NONE,
+            Role::Input => Self::INPUT,
+            Role::Ask | Role::Screens => Self::NONE,
         };
         roles.iter().map(one).fold(Self::NONE, Self::with)
     }
@@ -112,6 +116,14 @@ impl Compositor {
     /// to a program that has not the role: offering it is giving it.
     pub(crate) fn copies(client: &Client) -> bool {
         Self::roles(Some(client)).has(Roles::CLIPBOARD)
+    }
+
+    /// Whether a client may be an input method, or type as a keyboard
+    /// would. An input method is shown what is typed into whatever has the
+    /// keyboard, passwords among it, and either can type into it: so
+    /// neither is offered to a program that has not the role.
+    pub(crate) fn types(client: &Client) -> bool {
+        Self::roles(Some(client)).has(Roles::INPUT)
     }
 
     /// Whether a client is outside any sandbox. One inside is not shown
@@ -175,7 +187,8 @@ mod tests {
         assert_eq!(Roles::named(&[Role::Overlay]), Roles::OVERLAY);
         assert_eq!(Roles::named(&[Role::Capture]), Roles::CAPTURE);
         assert_eq!(Roles::named(&[Role::Clipboard]), Roles::CLIPBOARD);
-        let later = [Role::Ask, Role::Input, Role::Screens];
+        assert_eq!(Roles::named(&[Role::Input]), Roles::INPUT);
+        let later = [Role::Ask, Role::Screens];
         assert_eq!(Roles::named(&later), Roles::NONE, "nothing to give yet");
         assert_eq!(Roles::named(&[]), Roles::NONE);
         assert!(Roles::ALL.has(Roles::PANEL.with(Roles::OVERLAY)));

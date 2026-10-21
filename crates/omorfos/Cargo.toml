@@ -119,6 +119,9 @@ smithay = { version = "0.7.0", default-features = false, features = ["renderer_p
 tempfile = "3.27.0"
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+# The input method's protocols, as an input method speaks them; the
+# compositor's side of them comes with Smithay.
+wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 
 [[test]]
