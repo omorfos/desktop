@@ -6,7 +6,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 const USAGE: &str = "\
-A lightweight Wayland compositor inspired by Fluxbox.
+A lightweight Wayland compositor.
 
 Usage: omorfos [OPTIONS]
 

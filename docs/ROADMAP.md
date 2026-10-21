@@ -12,10 +12,9 @@ number, as (wish 3), so that nothing asked for is lost track of.
 
 ## Where this is going
 
-omorfos began as a Fluxbox for Wayland: small, fast, driven by text files.
-It still is small and fast and driven by text files, but what is being
-asked of it now is a whole desktop: a bar, a dock, a way to switch
-windows, settings, and programs to start with. It should look modern, in
+omorfos is small, fast and driven by text files, but what is being asked
+of it now is a whole desktop: a bar, a dock, a way to switch windows,
+settings, and programs to start with. It should look modern, in
 the frosted-glass manner, and stay simple, clean, accessible and above all
 secure (wish 10).
 
@@ -30,9 +29,6 @@ performance, then everything else. Three things follow from them.
   another file manager, panel or notification program can have it.
 - **Looks are built once.** The design language and how effects are drawn
   are decided before the bar and the dock are written, not after.
-
-The description of the project as "inspired by Fluxbox" is to be
-revisited when stage 5 is done and it is no longer the whole truth.
 
 ## How the stages were ordered
 
@@ -860,7 +856,7 @@ detail of each step is in the history of this file.
   client with a software renderer.
 - **Releases.** From commit messages, for amd64 and arm64, as a `.deb`
   and for the AUR. Not yet exercised by a real release.
-- **Fluxbox's features.** Frames with tabs drawn by the compositor, moving
+- **Frames.** Frames with tabs drawn by the compositor, moving
   and resizing, the root menu.
 - **IPC and protocols.** The socket and `omorfosctl`; layer-shell; the
   clipboard and the primary selection; popup grabs; activation; the list

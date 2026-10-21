@@ -6,11 +6,10 @@ work on omorfos. Deeper detail lives in `docs/`.
 ## What this is
 
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
-Rust and inspired by Fluxbox. It needs `pkg-config`, `clang` and the
-development files for libxkbcommon, pixman, udev, libinput, libseat, GBM and
-PipeWire to build, and `dbus-daemon`, `pipewire` and `Xwayland` to run the
-tests. `Xwayland` needs `libEGL` to start at all, which its package only
-recommends.
+Rust. It needs `pkg-config`, `clang` and the development files for
+libxkbcommon, pixman, udev, libinput, libseat, GBM and PipeWire to build, and
+`dbus-daemon`, `pipewire` and `Xwayland` to run the tests. `Xwayland` needs
+`libEGL` to start at all, which its package only recommends.
 It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 

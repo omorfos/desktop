@@ -25,5 +25,4 @@ by `cargo deny list`, and are checked against the licences allowed in
 
 ## Thanks
 
-omorfos began as a Fluxbox for Wayland and owes Fluxbox its manners. It
-stands on [Smithay](https://github.com/Smithay/smithay).
+omorfos stands on [Smithay](https://github.com/Smithay/smithay).
