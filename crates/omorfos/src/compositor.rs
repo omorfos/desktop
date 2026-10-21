@@ -925,6 +925,9 @@ impl Compositor {
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
+        // With the screens off a lock is shown without drawing, and is
+        // said to be before the state is.
+        self.confirm_lock();
         self.space.refresh();
         self.popups.cleanup();
         self.publish_ipc(now);
@@ -1205,10 +1208,7 @@ impl Compositor {
             Some(locker) => {
                 self.start(locker.program().as_ref(), locker.arguments(), Roles::LOCK);
             }
-            None => self.refused.say(
-                "nothing is set to lock the session with: name a screen locker as `locker` \
-                 in config.yaml, such as `locker: [swaylock, -f]`",
-            ),
+            None => self.refused.say(NO_LOCKER),
         }
     }
 
@@ -2846,6 +2846,11 @@ fn program(pid: Option<u32>) -> String {
         |name| name.to_string_lossy().into_owned(),
     )
 }
+
+/// What is said when the session is to be locked and nothing is set to
+/// lock it with.
+pub(crate) const NO_LOCKER: &str = "nothing is set to lock the session with: name a screen \
+     locker as `locker` in config.yaml, such as `locker: [swaylock, -f]`";
 
 /// The width of a menu panel, in pixels.
 const MENU_WIDTH: u32 = 220;

@@ -191,6 +191,30 @@ fn something_that_is_not_an_action_is_refused_with_the_reason() {
 }
 
 #[test]
+fn locking_with_nothing_set_to_lock_with_is_refused_and_with_a_locker_starts_it() {
+    let lock = Request::Perform {
+        action: json!("lock"),
+    };
+    let mut session = Session::new();
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let Reply::Error { message } = session.ask(&mut peer, &lock) else {
+        unreachable!("expected an error")
+    };
+    assert!(
+        message.starts_with("nothing is set to lock the session with"),
+        "{message}"
+    );
+
+    let directory = tempfile::TempDir::new().unwrap();
+    let started = directory.path().join("started");
+    let config = format!("locker: [touch, '{}']\n", started.display());
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    assert_eq!(session.ask(&mut peer, &lock), Reply::Done);
+    session.eventually(|_| started.exists());
+}
+
+#[test]
 fn a_window_can_be_activated_by_its_identifier() {
     let mut session = Session::new();
     let mut client = session.connect();

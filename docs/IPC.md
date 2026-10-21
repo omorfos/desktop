@@ -114,7 +114,8 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "preferred": "3840x2160@60",
       "modes": ["3840x2160@60", "3840x2160@48"]
     }
-  ]
+  ],
+  "locked": false
 }
 ```
 
@@ -125,6 +126,14 @@ written as a `mode` is in `config.yaml`: the one it is driven in, the one
 it says suits it best, and every one it offers, each once, the largest
 and fastest first. The modes are empty where the backend does not say,
 as inside another desktop.
+
+`locked` is true while the session is locked and nothing of it is on any
+screen: a screen locker holds it, and a frame with only the locker on it
+has been shown everywhere. It is false while a lock is still being put
+up, so a program that has to wait for the screen to be locked, as
+`omorfos-session` does before the machine sleeps, waits for it to be
+true. Asking for the `lock` action is refused with an error when nothing
+is set to lock the session with, so that such a program knows at once.
 
 `shaded`, `above` and `sticky` say how a window's frame stands apart, as
 the titlebar's menu, the actions of those names and rules set it: rolled

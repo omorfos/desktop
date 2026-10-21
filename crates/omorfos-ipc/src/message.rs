@@ -115,6 +115,11 @@ pub struct State {
     /// them, and then the rest. Empty from a compositor too old to say.
     #[serde(default)]
     pub screens: Vec<Screen>,
+    /// Whether the session is locked: a screen locker holds it and a
+    /// frame with nothing of the session in it has been shown on every
+    /// screen. Until then a session that is being locked is not.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 /// A screen, and the ways it can be driven.
@@ -369,6 +374,7 @@ mod tests {
                 preferred: "3840x2160@60".to_owned(),
                 modes: vec!["3840x2160@60".to_owned(), "3840x2160@48".to_owned()],
             }],
+            locked: true,
         };
         for reply in [
             Reply::Version {
@@ -416,6 +422,13 @@ mod tests {
         let workspace: Workspace = serde_json::from_str(old).unwrap();
         assert!(workspace.kept);
         assert_eq!(workspace.id, 0);
+    }
+
+    #[test]
+    fn a_state_from_before_it_said_whether_the_session_is_locked_says_it_is_not() {
+        let old = r#"{"workspaces":[],"windows":[],"problems":[]}"#;
+        let state: State = serde_json::from_str(old).unwrap();
+        assert!(!state.locked);
     }
 
     #[test]
