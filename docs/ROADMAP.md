@@ -495,6 +495,12 @@ what only games and touchpads need last.
       the same sealed prompt.
 - [ ] The session blurred as well as dimmed behind the sealed prompt,
       once Glass has brought the blur.
+- [ ] Screen readers: what the shell's components draw, the sealed prompt
+      first, told to them over AT-SPI, as GTK and Qt programs are. Our
+      components draw themselves, so each has to say what is on it and
+      what it does; AccessKit, which speaks AT-SPI over D-Bus with zbus,
+      is the likely way. Until then the eye's tooltip says what it does to
+      those who can see it, and nothing tells one who cannot.
 - [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
       fitted, stretched, centred or tiled; a directory or several shown
       in turn, in order or shuffled, at an interval. A program of its
