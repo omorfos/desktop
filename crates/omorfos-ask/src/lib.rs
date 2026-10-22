@@ -29,7 +29,8 @@ pub use helper::{Helper, Said, heard};
 use omorfos_config::Store;
 pub use people::{Identity, Person, chosen, named, users};
 pub use prompt::{
-    Answer, Asking, Button, CANCEL, Desk, FIELD, GO, SHOW, SIZE, button_at, label, paint, shown,
+    Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SHAKE, SHAKING, SIZE, SURFACE, button_at,
+    eye_says, label, paint, shaken, shown,
 };
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -324,7 +325,9 @@ fn told(
             return None;
         }
         Said::Wrong => {
-            // Another try, afresh, until the user gives up.
+            // Another try, afresh, until the user gives up; and the box
+            // shakes, as a head does.
+            desk.shake();
             WRONG.clone_into(&mut request.asking.said);
             request.asking.checking = true;
             if !check(places, &mut request, wake) {

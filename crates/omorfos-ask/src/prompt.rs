@@ -15,14 +15,14 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 
-use omorfos_config::{Part, State, States, Store, Theme};
+use omorfos_config::{Color, Part, State, States, Store, Theme};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Area, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -43,8 +43,25 @@ const MARGIN: i32 = 20;
 /// Where the field is that the secret is typed into.
 pub const FIELD: Area = (MARGIN, 100, 400, 32);
 
-/// Where the button is that shows what is typed, or hides it again.
-pub const SHOW: Area = (MARGIN, 164, 96, 32);
+/// Where the eye is, at the end of the field, that shows what is typed or
+/// hides it again.
+pub const EYE: Area = (MARGIN + 400 - 30, 104, 24, 24);
+
+/// How far the box goes each way as it shakes, and the room it has to on
+/// each side of it: the surface is so much wider than the box.
+pub const SHAKE: i32 = 8;
+
+/// How long the box shakes for, in milliseconds: no longer than anything
+/// moves (ADR 32).
+pub const SHAKING: u32 = 300;
+
+/// How long a frame is taken to be, in milliseconds, for the first of a
+/// shake: how far into it the box is when it is first shown moved.
+const FRAME: u32 = 16;
+
+/// How large the surface is, in units of layout: the box, and the room it
+/// shakes in.
+pub const SURFACE: (u32, u32) = (SIZE.0 + 2 * SHAKE.unsigned_abs(), SIZE.1);
 /// Where the button is that gives up.
 pub const CANCEL: Area = (168, 164, 120, 32);
 /// Where the button is that goes on.
@@ -105,7 +122,7 @@ pub fn button_at((x, y): (i32, i32)) -> Option<Button> {
         (left..right).contains(&x) && (top..bottom).contains(&y)
     };
     [
-        (SHOW, Button::Show),
+        (EYE, Button::Show),
         (CANCEL, Button::Cancel),
         (GO, Button::Go),
     ]
@@ -136,44 +153,101 @@ pub fn shown(typed: &str, open: bool) -> String {
     }
 }
 
-/// Paints the box: what is asked for, the field with what is typed shown
-/// or hidden, what was said, and the buttons, the one that goes on picked
-/// out.
+/// How far the box is from where it rests, `elapsed` milliseconds into
+/// shaking: three times each way, less each time, and still again once it
+/// has shaken for as long as it does.
+#[must_use]
+pub fn shaken(elapsed: u32) -> i32 {
+    let through = f64::from(elapsed.min(SHAKING)) / f64::from(SHAKING);
+    let swing = (through * 3.0 * std::f64::consts::TAU).sin() * (1.0 - through);
+    whole(swing * f64::from(SHAKE) + 0.5)
+}
+
+/// What the tooltip over the eye says: what pressing it does.
+#[must_use]
+pub const fn eye_says(open: bool) -> &'static str {
+    if open {
+        "Hide the password"
+    } else {
+        "Show the password"
+    }
+}
+
+/// Paints an eye in `area`, in `ink`: open, as what is typed is shown; or
+/// struck through, as it is hidden. Each pixel is looked at in four places,
+/// so that the curves are smooth.
+fn paint_eye(canvas: &mut Canvas, (area, scale): (Area, Scale), ink: Color, open: bool) {
+    let (left, top, across, down) = area;
+    let (left, top) = (scale.pixels(left), scale.pixels(top));
+    let (across, down) = (
+        scale.pixels(across.cast_signed()),
+        scale.pixels(down.cast_signed()),
+    );
+    let (wide, high) = (f64::from(across), f64::from(down));
+    let thick = f64::from(scale.pixels(2).max(1));
+    let inside = |x: f64, y: f64| {
+        // From the middle, the eye half as wide as the area and its lids
+        // meeting at its corners.
+        let (u, v) = ((x - wide / 2.0) / (wide * 0.45), y - high / 2.0);
+        let lid = wide * 0.45 * 0.55 * (1.0 - u * u);
+        let outline = u.abs() <= 1.0 && (v.abs() - lid).abs() <= thick / 2.0;
+        let pupil = (x - wide / 2.0).hypot(v) <= wide * 0.16;
+        // Hidden, a stroke from one corner to the other.
+        let stroke = (x * high - y * wide).abs() / wide.hypot(high) <= thick / 2.0;
+        outline || pupil || (!open && stroke)
+    };
+    for row in 0..down {
+        for column in 0..across {
+            let (x, y) = (f64::from(column), f64::from(row));
+            let quarters = [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)];
+            let hit = quarters
+                .iter()
+                .filter(|(dx, dy)| inside(x + dx, y + dy))
+                .count();
+            let coverage = u8::try_from(hit * 255 / 4).unwrap_or(u8::MAX);
+            if hit > 0 {
+                canvas.blend(left + column, top + row, ink, coverage);
+            }
+        }
+    }
+}
+
+/// Moves `area` along by `by` units.
+const fn along((left, top, across, down): Area, by: i32) -> Area {
+    (left + by, top, across, down)
+}
+
+/// Paints the box, `shift` units from where it rests: what is asked for,
+/// the field with what is typed shown or hidden and the eye that shows or
+/// hides it, what was said, the buttons with the one that goes on picked
+/// out; and, while the pointer is on the eye, what the eye is for.
 #[must_use]
 pub fn paint(
     theme: &Theme,
     text: &mut Text,
     scale: Scale,
     (asking, typed, open): (&Asking, &str, bool),
+    (shift, on_eye): (i32, bool),
 ) -> Canvas {
-    let (width, height) = SIZE;
+    let (width, height) = SURFACE;
     let mut canvas = Canvas::scaled(width, height, scale);
+    let by = SHAKE + shift;
     let whole_box = theme.style(Part::Question, States::NONE);
-    canvas.draw_box((0, 0, width, height), &whole_box);
-    let room = width - MARGIN.unsigned_abs() * 2;
+    canvas.draw_box((by, 0, SIZE.0, SIZE.1), &whole_box);
+    let room = SIZE.0 - MARGIN.unsigned_abs() * 2;
     let font = theme.font(Part::Question, States::NONE);
     let title = "Authentication is required";
-    text.draw(
-        &mut canvas,
-        title,
-        (MARGIN, MARGIN, room, 24),
-        whole_box.color,
-        font,
-    );
+    let line = along((MARGIN, MARGIN, room, 24), by);
+    text.draw(&mut canvas, title, line, whole_box.color, font);
     let detail = theme.style(Part::QuestionDetail, States::NONE);
     let font = theme.font(Part::QuestionDetail, States::NONE);
-    text.draw(
-        &mut canvas,
-        &asking.message,
-        (MARGIN, MARGIN + 28, room, 20),
-        detail.color,
-        font,
-    );
+    let line = along((MARGIN, MARGIN + 28, room, 20), by);
+    text.draw(&mut canvas, &asking.message, line, detail.color, font);
     let called = label(&asking.question, &asking.user);
     text.draw(
         &mut canvas,
         &called,
-        (MARGIN, 76, room, 20),
+        along((MARGIN, 76, room, 20), by),
         detail.color,
         font,
     );
@@ -183,39 +257,75 @@ pub fn paint(
         States::NONE.with(State::Focused)
     };
     let field = theme.style(Part::QuestionInput, typing);
-    canvas.draw_box(FIELD, &field);
+    canvas.draw_box(along(FIELD, by), &field);
     let font = theme.font(Part::QuestionInput, typing);
     let (left, top, across, down) = FIELD;
-    let within = (left + 8, top + 6, across - 16, down - 12);
-    text.draw(
-        &mut canvas,
-        &shown(typed, open || asking.open),
-        within,
-        field.color,
-        font,
-    );
-    text.draw(
-        &mut canvas,
-        &asking.said,
-        (MARGIN, 140, room, 20),
-        detail.color,
-        font,
-    );
-    let showing = if open { "Hide" } else { "Show" };
+    // The text stops short of the eye.
+    let within = along((left + 8, top + 6, across - 48, down - 12), by);
+    let showing = shown(typed, open || asking.open);
+    text.draw(&mut canvas, &showing, within, field.color, font);
+    // A line where the next character will go, while it may be typed, which
+    // stays in the field however much has been typed.
+    if !asking.checking {
+        let (left, top, room, tall) = within;
+        let at = text.measure(&showing, font).min(room.saturating_sub(1));
+        let margin = tall / 5;
+        let caret = (
+            left.saturating_add_unsigned(at),
+            top.saturating_add_unsigned(margin),
+            1,
+            tall.saturating_sub(margin * 2),
+        );
+        canvas.fill(caret, field.color);
+    }
+    // A question whose answer may be seen has nothing to hide.
+    if !asking.open {
+        paint_eye(&mut canvas, (along(EYE, by), scale), field.color, open);
+    }
+    let line = along((MARGIN, 140, room, 20), by);
+    text.draw(&mut canvas, &asking.said, line, detail.color, font);
     let picked = States::NONE.with(State::Active);
     let buttons = [
-        (SHOW, showing, States::NONE),
         (CANCEL, "Cancel", States::NONE),
         (GO, "Authenticate", picked),
     ];
-    for ((left, top, across, down), label, states) in buttons {
+    for (area, label, states) in buttons {
         let style = theme.style(Part::QuestionButton, states);
-        canvas.draw_box((left, top, across, down), &style);
+        canvas.draw_box(along(area, by), &style);
         let font = theme.font(Part::QuestionButton, states);
+        let (left, top, across, down) = along(area, by);
         let within = (left + 10, top + 6, across - 20, down - 12);
         text.draw(&mut canvas, label, within, style.color, font);
     }
+    if on_eye && !asking.open {
+        paint_tooltip(&mut canvas, theme, text, (eye_says(open), by));
+    }
     canvas
+}
+
+/// Paints what the eye is for, under it, ending where the field does.
+fn paint_tooltip(canvas: &mut Canvas, theme: &Theme, text: &mut Text, (says, by): (&str, i32)) {
+    let style = theme.style(Part::Tooltip, States::NONE);
+    let font = theme.font(Part::Tooltip, States::NONE);
+    let across = text.measure(says, font) + 16;
+    let (field_left, field_top, field_across, field_down) = FIELD;
+    let right = field_left + field_across.cast_signed();
+    let area = (
+        right - across.cast_signed(),
+        field_top + field_down.cast_signed() + 4,
+        across,
+        24,
+    );
+    let area = along(area, by);
+    canvas.draw_box(area, &style);
+    let (left, top, across, down) = area;
+    text.draw(
+        canvas,
+        says,
+        (left + 8, top + 4, across - 16, down - 8),
+        style.color,
+        font,
+    );
 }
 
 /// The box on the screen.
@@ -266,6 +376,10 @@ struct Shell {
     answer: Option<Answer>,
     /// Where the pointer is on the box, while it is over it.
     over: Option<(i32, i32)>,
+    /// While the box shakes: when the first frame of it was shown, once one
+    /// has been, and how long it has shaken for since, in milliseconds, as
+    /// the compositor tells the time of each frame.
+    shaking: Option<(Option<u32>, u32)>,
     store: Store,
     text: Text,
     layouts: xkb::Context,
@@ -362,12 +476,23 @@ impl Shell {
         }
     }
 
+    /// The button the pointer is on, if any: where it is on the surface,
+    /// less the room the box shakes in.
+    fn pointed(&self) -> Option<Button> {
+        self.over.and_then(|(x, y)| button_at((x - SHAKE, y)))
+    }
+
+    /// Takes the pointer in at `at` on the surface, or gone from it, and
+    /// draws the box again if it has come onto the eye or left it.
+    fn point(&mut self, at: Option<(i32, i32)>) {
+        let was = self.pointed() == Some(Button::Show);
+        self.over = at;
+        self.stale |= was != (self.pointed() == Some(Button::Show));
+    }
+
     /// Takes in a button going down on the box.
     fn clicked(&mut self, button: u32) {
-        let on = self
-            .over
-            .and_then(button_at)
-            .filter(|_| button == LEFT_BUTTON);
+        let on = self.pointed().filter(|_| button == LEFT_BUTTON);
         match on {
             Some(Button::Show) => {
                 self.open = !self.open;
@@ -390,20 +515,30 @@ impl Shell {
             self.over = None;
             return Ok(());
         };
+        let on_eye = self.pointed() == Some(Button::Show);
         let face = self.face.get_or_insert_with(|| Face::new(globals, handle));
         if !face.ready {
             return Ok(());
         }
         let theme = &self.store.current().theme;
+        // Shaking, it is drawn again as each frame is shown, until it has
+        // shaken for as long as it does.
+        let elapsed = self.shaking.map(|(_, elapsed)| elapsed);
+        self.shaking = self.shaking.filter(|(_, elapsed)| *elapsed < SHAKING);
+        // Told when each drawing is shown: shaking, that is when the next
+        // is due; otherwise it says nothing to do.
+        face.surface.frame(handle, ());
+        let shift = elapsed.map_or(0, shaken);
         let canvas = paint(
             theme,
             &mut self.text,
             face.scale,
             (asking, &self.typed, self.open),
+            (shift, on_eye),
         );
         picture(&globals.shm, &canvas, handle).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
-            let (width, height) = (SIZE.0.cast_signed(), SIZE.1.cast_signed());
+            let (width, height) = (SURFACE.0.cast_signed(), SURFACE.1.cast_signed());
             face.viewport.set_destination(width, height);
             face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
             face.surface.commit();
@@ -423,7 +558,7 @@ impl Face {
             handle,
             (),
         );
-        layer.set_size(SIZE.0, SIZE.1);
+        layer.set_size(SURFACE.0, SURFACE.1);
         let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
         layer.set_keyboard_interactivity(exclusive);
         let viewport = globals.viewporter.get_viewport(&surface, handle, ());
@@ -472,6 +607,7 @@ impl Desk {
                 open: false,
                 answer: None,
                 over: None,
+                shaking: None,
                 store,
                 text: Text::new(),
                 layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
@@ -502,6 +638,22 @@ impl Desk {
         self.shell.asked = globals.map(|globals| (asking, globals));
         self.shell.stale = true;
         asked
+    }
+
+    /// Shakes the box, as when what was typed was not right; unless the
+    /// theme has the question change at once, which is how a theme turns
+    /// movement off.
+    pub fn shake(&mut self) {
+        let moves = self
+            .shell
+            .store
+            .current()
+            .theme
+            .style(Part::Question, States::NONE);
+        if moves.transition.duration > 0 {
+            self.shell.shaking = Some((None, 0));
+            self.shell.stale = true;
+        }
     }
 
     /// Takes the box down, and forgets what was typed.
@@ -692,14 +844,37 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_x,
                 surface_y,
                 ..
-            } => shell.over = Some((whole(surface_x), whole(surface_y))),
-            wl_pointer::Event::Leave { .. } => shell.over = None,
+            } => shell.point(Some((whole(surface_x), whole(surface_y)))),
+            wl_pointer::Event::Leave { .. } => shell.point(None),
             wl_pointer::Event::Button {
                 button,
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
             } => shell.clicked(button),
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A drawing was shown, at the time it says; shaking, the next of the
+        // shake is due.
+        if let wl_callback::Event::Done { callback_data: now } = event
+            && let Some((began, elapsed)) = shell.shaking.as_mut()
+        {
+            // The box was last shown at rest a frame before the first of
+            // the shake, which is so far into it; time does not go back.
+            let began = *began.get_or_insert(now.saturating_sub(FRAME));
+            *elapsed = now.saturating_sub(began);
+            shell.stale = true;
         }
     }
 }
@@ -729,17 +904,43 @@ delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1
 
 #[cfg(test)]
 mod tests {
-    use omorfos_config::Color;
-
     use super::*;
+
+    fn asking() -> Asking {
+        Asking {
+            message: "Authentication is needed to install software".to_owned(),
+            user: "rafal".to_owned(),
+            question: "Password: ".to_owned(),
+            open: false,
+            said: String::new(),
+            checking: false,
+        }
+    }
+
+    fn argb(color: Color) -> u32 {
+        u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
+    }
+
+    /// A place on the box, on the surface it is drawn on at rest.
+    fn on((x, y): (i32, i32)) -> (u32, u32) {
+        ((x + SHAKE).unsigned_abs(), y.unsigned_abs())
+    }
+
+    /// The pixels of `area` on `canvas`, at rest.
+    fn pixels(canvas: &Canvas, (left, top, across, down): Area) -> Vec<u32> {
+        let (left, top) = on((left, top));
+        let rows = top..top + down;
+        rows.flat_map(|y| (left..left + across).map(move |x| canvas.at(x, y)))
+            .collect()
+    }
 
     #[test]
     fn each_button_is_where_it_is_drawn_and_nowhere_else() {
-        assert_eq!(button_at((MARGIN, 164)), Some(Button::Show));
+        assert_eq!(button_at((EYE.0 + 2, EYE.1 + 2)), Some(Button::Show));
         assert_eq!(button_at((168, 170)), Some(Button::Cancel));
         assert_eq!(button_at((419, 195)), Some(Button::Go));
         assert_eq!(button_at((420, 195)), None);
-        assert_eq!(button_at((130, 170)), None, "between them");
+        assert_eq!(button_at((MARGIN, 170)), None, "where Show was");
         assert_eq!(button_at((200, 110)), None, "on the field");
     }
 
@@ -760,44 +961,208 @@ mod tests {
     #[test]
     fn the_button_that_goes_on_is_in_the_colour_of_what_is_picked_out() {
         let theme = Theme::default();
-        let asking = Asking {
-            message: "Authentication is needed to install software".to_owned(),
-            user: "rafal".to_owned(),
-            question: "Password: ".to_owned(),
-            open: false,
-            said: String::new(),
-            checking: false,
-        };
         let mut text = Text::new();
-        let canvas = paint(&theme, &mut text, Scale::ONE, (&asking, "secret", false));
-        let argb =
-            |color: Color| u32::from_be_bytes([color.alpha, color.red, color.green, color.blue]);
+        let canvas = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "secret", false),
+            (0, false),
+        );
         let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
         let unpicked = theme.style(Part::QuestionButton, States::NONE);
-        assert_eq!(
-            canvas.at(GO.0.unsigned_abs() + 4, GO.1.unsigned_abs() + 2),
-            argb(picked.background)
-        );
-        assert_eq!(
-            canvas.at(CANCEL.0.unsigned_abs() + 4, CANCEL.1.unsigned_abs() + 2),
-            argb(unpicked.background)
-        );
-        assert_eq!(canvas.units(), SIZE);
+        let (x, y) = on((GO.0 + 4, GO.1 + 2));
+        assert_eq!(canvas.at(x, y), argb(picked.background));
+        let (x, y) = on((CANCEL.0 + 4, CANCEL.1 + 2));
+        assert_eq!(canvas.at(x, y), argb(unpicked.background));
+        assert_eq!(canvas.units(), SURFACE);
         // Being checked, the field is not being typed into.
         let checking = Asking {
             checking: true,
-            ..asking
+            ..asking()
         };
-        let other = paint(&theme, &mut text, Scale::ONE, (&checking, "secret", true));
+        let other = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&checking, "secret", true),
+            (0, false),
+        );
         let field = |states| theme.style(Part::QuestionInput, states).border.top.color;
         assert_ne!(
             field(States::NONE),
             field(States::NONE.with(State::Focused))
         );
-        assert_ne!(
-            canvas.at(FIELD.0.unsigned_abs(), FIELD.1.unsigned_abs() + 16),
-            other.at(FIELD.0.unsigned_abs(), FIELD.1.unsigned_abs() + 16)
+        let (x, y) = on((FIELD.0, FIELD.1 + 16));
+        assert_ne!(canvas.at(x, y), other.at(x, y));
+    }
+
+    #[test]
+    fn a_line_shows_where_the_next_character_goes_while_one_may_be_typed() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let field = |states| theme.style(Part::QuestionInput, states);
+        let ink = argb(field(States::NONE.with(State::Focused)).color);
+        // The first column of the field's text, half way down.
+        let (left, top, _, down) = FIELD;
+        let start = (left + 8, top + 6, 1, down - 12);
+        let middle = (left + 8, top + down.cast_signed() / 2, 1, 1);
+        let mut drawn = |asked: &Asking, typed: &str| {
+            paint(
+                &theme,
+                &mut text,
+                Scale::ONE,
+                (asked, typed, false),
+                (0, false),
+            )
+        };
+        let empty = drawn(&asking(), "");
+        assert_eq!(pixels(&empty, middle), [ink], "at the start, nothing typed");
+        assert_ne!(pixels(&empty, start)[0], ink, "short of the field's top");
+        // Once something is typed, it is after it.
+        let typed = drawn(&asking(), "secret");
+        let after = (left + 8 + 40, top + 6, 120, down - 12);
+        let between = |canvas: &Canvas| pixels(canvas, after).iter().filter(|&&p| p == ink).count();
+        assert!(between(&typed) > 0);
+        // However much is typed, it stays in the field, short of the eye.
+        let long = drawn(&asking(), &"x".repeat(200));
+        let last = (left + 8 + 352 - 1, top + down.cast_signed() / 2, 1, 1);
+        assert_eq!(pixels(&long, last), [ink]);
+        // While what was typed is being checked, there is none.
+        let checking = Asking {
+            checking: true,
+            ..asking()
+        };
+        let checked = drawn(&checking, "");
+        assert_eq!(
+            pixels(&checked, middle),
+            [argb(field(States::NONE).background)]
         );
+    }
+
+    #[test]
+    fn the_eye_is_open_or_struck_through_and_not_there_when_nothing_is_hidden() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let ink = argb(
+            theme
+                .style(Part::QuestionInput, States::NONE.with(State::Focused))
+                .color,
+        );
+        let at = |open: bool, asked: &Asking| {
+            let canvas = paint(
+                &theme,
+                &mut Text::new(),
+                Scale::ONE,
+                (asked, "", open),
+                (0, false),
+            );
+            pixels(&canvas, EYE)
+        };
+        let hidden = at(false, &asking());
+        let showing = at(true, &asking());
+        assert!(
+            hidden.contains(&ink) && showing.contains(&ink),
+            "an eye is drawn"
+        );
+        assert_ne!(hidden, showing, "struck through, or not");
+        // Its corner is where the stroke is, and only that.
+        let corner = |eye: &[u32]| eye[EYE.2 as usize + 1];
+        assert_ne!(corner(&hidden), corner(&showing));
+        let open = Asking {
+            open: true,
+            ..asking()
+        };
+        let none = at(false, &open);
+        assert!(!none.contains(&ink), "nothing to hide, no eye");
+        // At a scale of two it is as sharp.
+        let large = paint(
+            &theme,
+            &mut text,
+            Scale::new(2.0),
+            (&asking(), "", false),
+            (0, false),
+        );
+        assert_eq!(large.units(), SURFACE);
+    }
+
+    #[test]
+    fn the_eye_says_what_it_does_while_the_pointer_is_on_it() {
+        assert_eq!(eye_says(false), "Show the password");
+        assert_eq!(eye_says(true), "Hide the password");
+        let theme = Theme::default();
+        let mut text = Text::new();
+        // Under the end of the field, where what was said is not.
+        let below = (
+            FIELD.0 + FIELD.2.cast_signed() - 60,
+            FIELD.1 + FIELD.3.cast_signed() + 4,
+            60,
+            24,
+        );
+        let away = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (0, false),
+        );
+        let over = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (0, true),
+        );
+        assert_ne!(pixels(&away, below), pixels(&over, below));
+        // Nothing to hide, nothing to say.
+        let open = Asking {
+            open: true,
+            ..asking()
+        };
+        let still = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&open, "", false),
+            (0, false),
+        );
+        let quiet = paint(&theme, &mut text, Scale::ONE, (&open, "", false), (0, true));
+        assert_eq!(pixels(&still, below), pixels(&quiet, below));
+    }
+
+    #[test]
+    fn the_box_shakes_three_times_less_each_time_and_comes_to_rest() {
+        assert_eq!(shaken(0), 0);
+        assert_eq!(shaken(SHAKING), 0, "at rest once it has shaken");
+        assert_eq!(shaken(u32::MAX), 0);
+        let swings: Vec<i32> = (0..SHAKING).step_by(10).map(shaken).collect();
+        let most = swings.iter().map(|swing| swing.abs()).max().unwrap();
+        assert!(most > SHAKE / 2 && most <= SHAKE, "{swings:?}");
+        assert!(swings.iter().any(|swing| *swing < 0), "both ways");
+        // The first swing is wider than the last.
+        let early = swings[..10].iter().map(|swing| swing.abs()).max().unwrap();
+        let late = swings[20..].iter().map(|swing| swing.abs()).max().unwrap();
+        assert!(early > late, "{swings:?}");
+        // Drawn moved, the box is where it was moved to.
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let background = argb(theme.style(Part::Question, States::NONE).background);
+        let left = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (-SHAKE, false),
+        );
+        let right = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (SHAKE, false),
+        );
+        assert_eq!(left.at(12, 12), background);
+        assert_ne!(right.at(12, 12), background, "not yet there");
     }
 
     #[test]

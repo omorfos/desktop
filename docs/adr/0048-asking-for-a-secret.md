@@ -45,6 +45,14 @@ password is asked for again, afresh, until the user gives up. Each try
 has a channel of its own, so that what a helper given up on says last is
 heard by nobody.
 
+**The box says what went wrong as a head does.** A password that was
+not right shakes it, three times and less each time, for no longer than
+anything moves (ADR 32); a theme turns movement off as it turns colours'
+changes off, by `transition: none` on the `question` part. The eye at the
+end of the field shows what is typed or hides it, and says which when the
+pointer rests on it. It is drawn, not taken from an icon theme, so that it
+is the same everywhere.
+
 **What is typed is not kept.** It is handed to the helper as it is
 written and the bytes wiped, and the field is wiped when the prompt goes.
 Copies the allocator left behind as the field grew cannot be promised
