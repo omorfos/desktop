@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use omorfos::{Input, Roles};
-use omorfos_ask::{AGENT, CANCEL, FIELD, GO, PATH, Places, SHOW, SIZE, WRONG};
+use omorfos_ask::{AGENT, CANCEL, EYE, FIELD, GO, PATH, Places, SIZE, WRONG};
 use omorfos_config::{Part, States, Theme};
 use smithay::input::keyboard::Keycode;
 use zbus::blocking::connection::Builder;
@@ -330,8 +330,8 @@ fn the_password_typed_in_the_sealed_prompt_is_checked_by_polkits_helper() {
         tap(&mut session, code);
     }
     // Shown and hidden again by the button, which types nothing.
-    click(&mut session, on_prompt(SHOW));
-    click(&mut session, on_prompt(SHOW));
+    click(&mut session, on_prompt(EYE));
+    click(&mut session, on_prompt(EYE));
     click(&mut session, on_prompt(GO));
     session.eventually(|_| answer.is_finished());
     assert_eq!(answer.join().unwrap(), Ok(()));
@@ -744,4 +744,110 @@ fn the_agent_cannot_start_without_its_session_or_polkit() {
     session.eventually(|_| running.is_finished());
     let failure = running.join().unwrap();
     assert!(failure.contains("PolicyKit1"), "{failure}");
+}
+
+/// Whether the box is where it rests: its left edge where it is in the
+/// middle of the screen.
+fn at_rest(session: &mut Session) -> bool {
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2;
+    let top = (HEIGHT - SIZE.1.cast_signed()) / 2;
+    let picture = session.draw();
+    picture.at(left + 3, top + 40) == question() && picture.at(left - 3, top + 40) != question()
+}
+
+/// Asks, types what is not right, and returns the session and the box up
+/// again, with the configuration `files`.
+fn wrong(files: &[(&str, &str)]) -> (Session, Asker, JoinHandle<Result<(), String>>) {
+    let mut session = Session::with_config(files);
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    assert!(at_rest(&mut session));
+    // Shown, and told so, the box keeps still until there is cause.
+    session.send_frames(std::time::Duration::from_millis(1));
+    session.step();
+    assert!(at_rest(&mut session));
+    tap(&mut session, key::A);
+    tap(&mut session, key::RETURN);
+    session.eventually(|_| helped(&cookie).matches("user me").count() == 2);
+    (session, asker, answer)
+}
+
+#[test]
+fn the_box_shakes_when_what_was_typed_was_not_right_and_comes_to_rest() {
+    // The tests' sessions keep still unless a part says otherwise.
+    let theme = "question { transition: 120ms; }\n";
+    let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
+    // Frames are shown a sixtieth of a second apart, by the time the
+    // compositor tells them at.
+    let mut shown = 0;
+    let mut frame = |session: &mut Session| {
+        shown += 16;
+        session.send_frames(std::time::Duration::from_millis(shown));
+    };
+    let mut moved = false;
+    session.eventually(|session| {
+        frame(session);
+        moved |= !at_rest(session);
+        moved
+    });
+    session.eventually(|session| {
+        frame(session);
+        at_rest(session)
+    });
+}
+
+#[test]
+fn a_theme_that_moves_nothing_has_the_box_keep_still() {
+    let theme = "question { transition: none; }\n";
+    let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
+    for _ in 0..30 {
+        session.send_frames(std::time::Duration::from_millis(16));
+        assert!(at_rest(&mut session));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn the_eye_says_what_it_does_when_the_pointer_rests_on_it() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let _answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    // Under the end of the field, where the tooltip is.
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + FIELD.0 + FIELD.2.cast_signed();
+    let top = (HEIGHT - SIZE.1.cast_signed()) / 2 + FIELD.1 + FIELD.3.cast_signed();
+    let under = (left - 30, top + 12);
+    // A stretch across it, which its words cross.
+    let row = |session: &mut Session| {
+        let picture = session.draw();
+        (under.0 - 100..under.0)
+            .map(|x| picture.at(x, under.1))
+            .collect::<Vec<_>>()
+    };
+    let before = row(&mut session);
+    let eye = on_prompt(EYE);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: eye.0, y: eye.1 }, 0);
+    session.eventually(|session| row(session) != before);
+    // And not once it has gone.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 2.0, y: 2.0 }, 0);
+    session.eventually(|session| row(session) == before);
 }

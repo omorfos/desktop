@@ -1260,8 +1260,11 @@ software or changing the date, polkit asks the desktop to ask you, and
 middle of the screen says what is asked for and whose password it wants:
 yours, if you are allowed to say yes, as an administrator is, and
 otherwise the first of those who are. Type it and press Enter; Escape or
-Cancel gives up, and Show shows what you typed. A wrong password is
-asked for again.
+Cancel gives up. The eye at the end of the field shows what you typed, or
+hides it again, and says so when the pointer rests on it. A wrong
+password is asked for again, and the box shakes; a theme that has the
+`question` part change at once, `question { transition: none; }`, keeps it
+still.
 
 While it asks, everything else is dimmed, and the keyboard and the
 pointer reach the box alone: no key binding works, no other program and
