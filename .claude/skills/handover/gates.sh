@@ -137,10 +137,7 @@ handover() {
     # `cargo coverage` is an alias defined in .cargo/config.toml. This is
     # every test, once, with the coverage gate.
     explain=uncovered step cargo coverage --locked -- $(card)
-    step cargo build --profile nightly --locked -p omorfos -p omorfosctl -p omorfos-panel \
-        -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard \
-        -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock \
-        -p xdg-desktop-portal-omorfos
+    step make nightly
     ls -l target/nightly/omorfos
 }
 

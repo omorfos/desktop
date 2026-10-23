@@ -65,11 +65,12 @@ link-time optimisation and keeps what did not change, so building again
 after a change takes seconds where `--release` takes many minutes:
 
 ```sh
-cargo build --profile nightly -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos
+make nightly
+sudo make install PROFILE=nightly
 ```
 
-Packages are built with `--release`.
+Packages are built with `--release`, as plain `make` does. The `Makefile`
+lists the programs; a new one is added there, and to the packaging.
 
 ## Rules
 

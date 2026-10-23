@@ -55,18 +55,20 @@ Start a program inside it with, for example, `WAYLAND_DISPLAY=wayland-1
 foot`. Key bindings that use Super may be taken by the host desktop
 before they reach the window.
 
-To use it as your session, install the binaries and the entry a login
-screen reads, then pick omorfos when you log in:
+To use it as your session, build it, install the programs, the entry a
+login screen reads and the lock screen's PAM services, then pick omorfos
+when you log in:
 
 ```sh
-cargo build --release -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos
-sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,omorfos-wallpaper,omorfos-lock,xdg-desktop-portal-omorfos} /usr/local/bin/
-sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
-sudo install -Dm644 packaging/omorfos.portal /usr/share/xdg-desktop-portal/portals/omorfos.portal
-sudo install -Dm644 packaging/omorfos-portals.conf /usr/share/xdg-desktop-portal/omorfos-portals.conf
-sudo install -Dm644 packaging/omorfos-session.target /usr/lib/systemd/user/omorfos-session.target
+make
+sudo make install
 ```
+
+The programs go in `/usr/local/bin`, or wherever `PREFIX` says; what
+login screens, the portal and systemd read goes where they look for it.
+`install` builds nothing, so build first as yourself, and it keeps the PAM
+services in `/etc/pam.d` if they are there already. `sudo make uninstall`
+takes it all away but those.
 
 It can also be started from a text console by running `omorfos`.
 `Ctrl+Alt+F1` to `F12` switch virtual terminal.
