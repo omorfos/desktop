@@ -35,13 +35,32 @@ pub fn picture<S>(
 where
     S: Dispatch<wl_shm_pool::WlShmPool, ()> + Dispatch<wl_buffer::WlBuffer, ()> + 'static,
 {
-    let bytes = canvas.bytes();
+    let size = (canvas.width(), canvas.height());
+    pixels(shm, size, canvas.bytes(), handle)
+}
+
+/// Hands pixels to the compositor as a buffer it can read, as
+/// [`picture`] does those of a canvas: `size` of them, four bytes each, as
+/// [`Canvas::bytes`] has them.
+///
+/// # Errors
+///
+/// Returns an error if the memory cannot be had or written to.
+pub fn pixels<S>(
+    shm: &wl_shm::WlShm,
+    (width, height): (u32, u32),
+    bytes: &[u8],
+    handle: &QueueHandle<S>,
+) -> io::Result<wl_buffer::WlBuffer>
+where
+    S: Dispatch<wl_shm_pool::WlShmPool, ()> + Dispatch<wl_buffer::WlBuffer, ()> + 'static,
+{
     let memory = memfd_create("omorfos-picture", MemfdFlags::CLOEXEC);
     let memory = memory.map(File::from).map_err(io::Error::from);
     let written = memory.and_then(|mut memory| memory.write_all(bytes).map(|()| memory));
     written.map(|memory| {
         let length = i32::try_from(bytes.len()).unwrap_or(i32::MAX);
-        let (width, height) = (canvas.width().cast_signed(), canvas.height().cast_signed());
+        let (width, height) = (width.cast_signed(), height.cast_signed());
         let pool = shm.create_pool(memory.as_fd(), length, handle, ());
         let format = wl_shm::Format::Argb8888;
         let buffer = pool.create_buffer(0, width, height, width * 4, format, handle, ());
