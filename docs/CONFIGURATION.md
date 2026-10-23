@@ -169,6 +169,24 @@ One listed screen may be `primary: true`: the notice of what is wrong is
 shown on it, and the windows of a screen that is unplugged go to it.
 Without one, the first screen plugged in is.
 
+A screen may instead show what another shows, as a projector does a
+laptop's, with `mirror` and the other's name:
+
+```yaml
+arrangements:
+  - [{ name: eDP-1 }, { name: HDMI-A-1, mirror: eDP-1 }]
+```
+
+It shows the other's picture as large as fits on it, in the middle, with
+black either side where the two are not of a shape. It stands nowhere of
+its own: the pointer and windows do not go onto it, and programs are not
+told of it, so it has no panel or wallpaper of its own; what was on it
+goes to the other. It may have a `mode` and a `rotate`, but not a
+`place`, `align`, `offset`, `scale` or `primary`, and a screen it mirrors
+cannot mirror another. While the one it mirrors is not plugged in, it
+stands as any screen does. `omorfosctl screens` lists it last, where the
+one it mirrors stands.
+
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen
 was made, `right`, or `inverted`; `normal` is as it was made. It then

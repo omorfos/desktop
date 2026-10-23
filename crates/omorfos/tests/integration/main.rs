@@ -26,6 +26,7 @@ mod layers;
 mod lock;
 mod login;
 mod menu;
+mod mirroring;
 mod notice;
 mod notifications;
 mod outputs;

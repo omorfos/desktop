@@ -22,9 +22,10 @@ use omorfos_ipc::{
 use serde::Deserialize;
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
-use smithay::utils::Rectangle;
+use smithay::utils::{Logical, Rectangle};
 
 use crate::compositor::NO_LOCKER;
+use crate::outputs::Head;
 use crate::{Compositor, bridge};
 
 /// The most peers served at once. Further connections are refused.
@@ -403,13 +404,12 @@ impl Compositor {
     }
 
     /// The screens, in the order they stand, and the ways each can be
-    /// driven, written as the configuration writes a mode.
+    /// driven, written as the configuration writes a mode; and then those
+    /// that mirror another, where that one stands.
     fn ipc_screens(&self) -> Vec<omorfos_ipc::Screen> {
         let written =
             |mode: Option<&OfferedMode>| mode.map(ToString::to_string).unwrap_or_default();
-        let screens = self.arranged().into_iter().map(|index| {
-            let head = &self.heads[index];
-            let area = head.area();
+        let screen = |head: &Head, area: Rectangle<i32, Logical>, mirrors: String| {
             let mut modes = head.modes.clone();
             let largest = |mode: &OfferedMode| {
                 let pixels = u32::from(mode.width) * u32::from(mode.height);
@@ -426,9 +426,18 @@ impl Compositor {
                 mode: written(head.mode.as_ref()),
                 preferred: written(head.modes.iter().find(|mode| mode.preferred)),
                 modes: modes.iter().map(ToString::to_string).collect(),
+                mirrors,
             }
+        };
+        let standing = self.arranged().into_iter().map(|index| {
+            let head = &self.heads[index];
+            screen(head, head.area(), String::new())
         });
-        screens.collect()
+        let mirrors = self.mirrors.iter().map(|mirror| {
+            let area = self.area_of(&mirror.source);
+            screen(&mirror.head, area, mirror.source.name())
+        });
+        standing.chain(mirrors).collect()
     }
 
     fn ipc_state(&self) -> State {
