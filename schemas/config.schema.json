@@ -263,6 +263,11 @@
           ],
           "description": "Where along the edge it shares with the one before it it is lined\nup: at the start, the top or the left; the middle; or the end.\nWithout this, the start beside it, and the middle above or below."
         },
+        "enabled": {
+          "default": true,
+          "description": "Whether it is on. One that is not shows nothing and stands nowhere,\nunless every screen plugged in would be off, when it is left on.",
+          "type": "boolean"
+        },
         "mirror": {
           "default": null,
           "description": "Another screen, by name, whose picture this one shows, as large as\nfits on it: it stands nowhere of its own, and has nothing of its\nown on it. Without that one plugged in, it is a screen like any.",

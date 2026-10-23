@@ -514,10 +514,11 @@ impl TryFrom<Vec<NamedOutput>> for Outputs {
             earlier.iter().any(|other| other.name == output.name)
         });
         let primaries = outputs.iter().filter(|output| output.primary).count();
+        let off = outputs.iter().find_map(NamedOutput::off_wrongly);
         let mirroring = outputs
             .iter()
             .find_map(|output| output.mirrors_wrongly(&outputs));
-        if let Some(wrong) = mirroring {
+        if let Some(wrong) = off.or(mirroring) {
             Err(wrong)
         } else if outputs.iter().any(|output| output.name.is_empty()) {
             Err("an output's name must not be empty".to_owned())
@@ -575,9 +576,41 @@ pub struct NamedOutput {
     /// own on it. Without that one plugged in, it is a screen like any.
     #[serde(default)]
     pub mirror: Option<String>,
+    /// Whether it is on. One that is not shows nothing and stands nowhere,
+    /// unless every screen plugged in would be off, when it is left on.
+    #[serde(default = "on")]
+    pub enabled: bool,
+}
+
+/// That a listed screen is on unless it is said not to be.
+const fn on() -> bool {
+    true
 }
 
 impl NamedOutput {
+    /// Whether anything is said of where it stands, or how large things
+    /// are on it, or that it comes first.
+    fn standing(&self) -> bool {
+        self.place.is_some()
+            || self.align.is_some()
+            || self.offset.is_some()
+            || self.scale.is_some()
+            || self.primary
+    }
+
+    /// What is wrong with it being off, if it is and anything is.
+    fn off_wrongly(&self) -> Option<String> {
+        let name = &self.name;
+        let off = !self.enabled;
+        let mirrors = self.mirror.is_some();
+        (off && (self.standing() || mirrors)).then(|| {
+            format!(
+                "output `{name}` is off, so it stands nowhere and shows nothing: it takes no \
+                 `place`, `align`, `offset`, `scale`, `primary` or `mirror`"
+            )
+        })
+    }
+
     /// What is wrong with it mirroring another, among `all` those listed
     /// with it, if anything is.
     fn mirrors_wrongly(&self, all: &[Self]) -> Option<String> {
@@ -585,12 +618,11 @@ impl NamedOutput {
         let name = &self.name;
         let theirs = all.iter().find(|other| other.name == source);
         let chained = theirs.and_then(|theirs| theirs.mirror.as_deref());
-        let own = self.place.is_some()
-            || self.align.is_some()
-            || self.offset.is_some()
-            || self.scale.is_some()
-            || self.primary;
-        if source == name {
+        let dark = theirs.is_some_and(|theirs| !theirs.enabled);
+        let own = self.standing();
+        if dark {
+            Some(format!("output `{name}` mirrors `{source}`, which is off"))
+        } else if source == name {
             Some(format!("output `{name}` cannot mirror itself"))
         } else if let Some(chained) = chained {
             Some(format!(
@@ -1295,6 +1327,37 @@ autostart:
             (
                 "[{ name: DP-1, mirror: eDP-1, primary: true }]",
                 "stands nowhere",
+            ),
+        ];
+        for (outputs, said) in wrong {
+            let error = parse(&format!("outputs: {outputs}")).unwrap_err();
+            assert!(error.contains(said), "{outputs}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_listed_screen_may_be_off_and_then_is_nothing_else() {
+        let general =
+            parse("outputs:\n  - { name: eDP-1, enabled: false, mode: 1920x1080 }\n").unwrap();
+        assert!(!general.outputs.named("eDP-1").unwrap().enabled);
+        let on = parse("outputs: [{ name: eDP-1 }]").unwrap();
+        assert!(on.outputs.named("eDP-1").unwrap().enabled, "unless said");
+        let wrong = [
+            (
+                "[{ name: DP-1, enabled: false, place: left }]",
+                "is off, so",
+            ),
+            (
+                "[{ name: DP-1, enabled: false, primary: true }]",
+                "is off, so",
+            ),
+            (
+                "[{ name: DP-1, enabled: false, mirror: eDP-1 }]",
+                "is off, so",
+            ),
+            (
+                "[{ name: DP-1, enabled: false }, { name: DP-2, mirror: DP-1 }]",
+                "mirrors `DP-1`, which is off",
             ),
         ];
         for (outputs, said) in wrong {
