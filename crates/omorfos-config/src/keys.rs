@@ -7,7 +7,8 @@ use serde::Deserialize;
 
 use crate::{Action, Command, Half, Position, Started, WorkspaceNumber};
 
-/// The contents of `keys.yaml`.
+/// The contents of `keys.yaml`: the bindings written there, and the
+/// built-in ones on keys they leave alone.
 ///
 /// No two bindings conflict: none repeats another's keys, and none starts
 /// with the complete keys of another (which would make it unreachable).
@@ -18,7 +19,8 @@ pub struct Keys {
 }
 
 impl Keys {
-    /// The bindings, in the order they were written.
+    /// The bindings, in the order they were written, and then the built-in
+    /// ones that are kept.
     #[must_use]
     pub fn bindings(&self) -> &[Binding] {
         &self.bindings
@@ -31,15 +33,60 @@ impl Keys {
 #[cfg_attr(feature = "schema", schemars(rename = "Keys"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawKeys {
-    /// The key bindings. Giving this list replaces all built-in bindings.
+    /// Whether the built-in bindings are kept, on the keys these bindings
+    /// leave alone. They are unless this is `false`.
+    #[serde(default = "kept")]
+    defaults: bool,
+    /// Built-in bindings to do without, by their keys, such as `Super+h`.
+    #[serde(default)]
+    unbind: Vec<KeyChain>,
+    /// The key bindings, beside the built-in ones. One on keys a built-in
+    /// binding uses, or that begin with them, takes its place.
+    #[serde(default)]
     bindings: Vec<RawBinding>,
+}
+
+/// That the built-in bindings are kept unless `keys.yaml` says otherwise.
+const fn kept() -> bool {
+    true
 }
 
 impl TryFrom<RawKeys> for Keys {
     type Error = String;
 
     fn try_from(raw: RawKeys) -> Result<Self, Self::Error> {
-        Self::checked(raw.bindings.into_iter().map(Binding::from).collect())
+        let own = Self::checked(raw.bindings.into_iter().map(Binding::from).collect())?;
+        let built_in = if raw.defaults {
+            Self::default().bindings
+        } else {
+            Vec::new()
+        };
+        let unknown = raw.unbind.iter().find(|keys| {
+            let mut built_in = built_in.iter();
+            !built_in.any(|binding| binding.keys == **keys)
+        });
+        if let Some(unknown) = unknown {
+            let why = if raw.defaults {
+                "there is no built-in binding on it"
+            } else {
+                "with `defaults: false` there are no built-in bindings"
+            };
+            return Err(format!("`{unknown}` cannot be unbound: {why}"));
+        }
+        // A built-in binding gives way to one written on its keys, or on a
+        // chain that begins with them, which it would otherwise make
+        // unreachable.
+        let clashes = |keys: &KeyChain| {
+            let mut own = own.bindings.iter();
+            own.any(|binding| binding.keys.0.starts_with(&keys.0))
+        };
+        let kept: Vec<Binding> = built_in
+            .into_iter()
+            .filter(|binding| !raw.unbind.contains(&binding.keys) && !clashes(&binding.keys))
+            .collect();
+        let mut bindings = own.bindings;
+        bindings.extend(kept);
+        Ok(Self { bindings })
     }
 }
 
@@ -454,6 +501,7 @@ mod tests {
     #[test]
     fn bindings_pair_keys_with_actions() {
         let yaml = "
+defaults: false
 bindings:
   - keys: Super+Return
     action: { spawn: [foot] }
@@ -464,6 +512,69 @@ bindings:
         assert_eq!(keys.bindings().len(), 2);
         assert_eq!(keys.bindings()[0].keys, chain("Super+Return"));
         assert_eq!(keys.bindings()[1].action, Action::Close);
+    }
+
+    /// What `keys` do, among `bindings`.
+    fn action_for(keys: &Keys, text: &str) -> Option<Action> {
+        let wanted = chain(text);
+        let mut bindings = keys.bindings().iter();
+        let found = bindings.find(|binding| binding.keys == wanted);
+        found.map(|binding| binding.action.clone())
+    }
+
+    #[test]
+    fn a_binding_is_made_beside_the_built_in_ones() {
+        let keys = parse("bindings:\n  - { keys: Super+l, action: lock }\n").unwrap();
+        assert_eq!(action_for(&keys, "Super+l"), Some(Action::Lock));
+        assert_eq!(action_for(&keys, "Super+q"), Some(Action::Close));
+        let built_in = Keys::default().bindings().len();
+        assert_eq!(keys.bindings().len(), built_in + 1);
+        // Written first, and the built-in ones after, as they come.
+        assert_eq!(keys.bindings()[0].keys, chain("Super+l"));
+        assert_eq!(keys.bindings()[1..], *Keys::default().bindings());
+        // A file with nothing in it changes nothing.
+        assert_eq!(parse("{}").unwrap(), Keys::default());
+    }
+
+    #[test]
+    fn a_binding_on_the_keys_of_a_built_in_one_takes_its_place() {
+        let yaml = "
+bindings:
+  - { keys: Super+q, action: quit }
+  - { keys: Mod4+Return t, action: close }
+";
+        let keys = parse(yaml).unwrap();
+        assert_eq!(action_for(&keys, "Super+q"), Some(Action::Quit));
+        // A chain that begins with built-in keys takes them, or it could
+        // never be reached.
+        assert_eq!(action_for(&keys, "Super+Return"), None);
+        assert_eq!(action_for(&keys, "Super+Return t"), Some(Action::Close));
+        assert_eq!(keys.bindings().len(), Keys::default().bindings().len());
+        assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
+    }
+
+    #[test]
+    fn a_built_in_binding_can_be_done_without_and_so_can_all_of_them() {
+        let keys = parse("unbind: [Super+h, Mod4+m]").unwrap();
+        assert_eq!(action_for(&keys, "Super+h"), None);
+        assert_eq!(action_for(&keys, "Super+m"), None);
+        assert_eq!(action_for(&keys, "Super+q"), Some(Action::Close));
+        assert_eq!(keys.bindings().len(), Keys::default().bindings().len() - 2);
+        let error = parse("unbind: [Super+F12]").unwrap_err();
+        assert!(
+            error.contains("`Super+F12` cannot be unbound: there is no"),
+            "{error}"
+        );
+
+        let none = parse("defaults: false\nbindings: [{ keys: Super+l, action: lock }]").unwrap();
+        assert_eq!(none.bindings().len(), 1);
+        assert_eq!(parse("defaults: false").unwrap().bindings(), []);
+        let error = parse("defaults: false\nunbind: [Super+h]").unwrap_err();
+        assert!(
+            error.contains("with `defaults: false` there are no"),
+            "{error}"
+        );
+        assert!(parse("unbind: [Super+]").is_err(), "not keys at all");
     }
 
     #[test]
@@ -479,8 +590,8 @@ bindings:
     }
 
     #[test]
-    fn an_empty_list_removes_every_binding() {
-        assert_eq!(parse("bindings: []").unwrap().bindings(), []);
+    fn an_empty_list_of_bindings_leaves_the_built_in_ones() {
+        assert_eq!(parse("bindings: []").unwrap(), Keys::default());
     }
 
     #[test]
@@ -519,6 +630,7 @@ bindings:
     #[test]
     fn chains_sharing_only_a_prefix_do_not_conflict() {
         let yaml = "
+defaults: false
 bindings:
   - { keys: Super+x t, action: close }
   - { keys: Super+x q, action: quit }
@@ -530,13 +642,7 @@ bindings:
     #[test]
     fn the_built_in_bindings_cover_the_essentials_and_do_not_conflict() {
         let keys = Keys::default();
-        let action_for = |text: &str| {
-            let wanted = chain(text);
-            keys.bindings()
-                .iter()
-                .find(|binding| binding.keys == wanted)
-                .map(|b| b.action.clone())
-        };
+        let action_for = |text: &str| action_for(&keys, text);
         assert_eq!(
             action_for("Super+Return"),
             Some(Action::Spawn(Command::terminal().into()))
