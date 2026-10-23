@@ -11,7 +11,8 @@ use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{
@@ -209,7 +210,7 @@ struct Extras {
 const BLACK: Color32F = Color32F::BLACK;
 
 /// Per-client data the compositor attaches to every connection.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ClientState {
     pub(crate) compositor: CompositorClientState,
     /// What the client may do that an ordinary program may not.
@@ -217,9 +218,31 @@ pub struct ClientState {
     /// Whether the client came in through a sandbox, which told the
     /// compositor so itself.
     pub(crate) sandboxed: bool,
+    /// Which program it is, as the log names it, once it is known; and
+    /// where it is said that it was disconnected for breaking the protocol.
+    named: OnceLock<String>,
+    told: Sender<String>,
 }
 
-impl wayland_server::backend::ClientData for ClientState {}
+impl wayland_server::backend::ClientData for ClientState {
+    fn disconnected(
+        &self,
+        _: wayland_server::backend::ClientId,
+        reason: wayland_server::backend::DisconnectReason,
+    ) {
+        // A program that left, or ended, is nothing to say. One sent away
+        // for asking what the protocol does not allow is, as it may then
+        // look to the user as though it crashed by itself.
+        if let wayland_server::backend::DisconnectReason::ProtocolError(error) = reason {
+            let named = self.named.get().map_or("A program", String::as_str);
+            let _ = self.told.send(format!(
+                "{named} was disconnected for asking what the Wayland protocol does not allow: \
+                 {}@{}: {}",
+                error.object_interface, error.object_id, error.message
+            ));
+        }
+    }
+}
 
 /// A window that is part of the desktop.
 #[derive(Debug)]
@@ -526,21 +549,33 @@ impl Compositor {
     ///
     /// Returns an error if the connection cannot be registered.
     pub fn insert_client(&mut self, stream: UnixStream, roles: Roles) -> io::Result<Client> {
-        let state = ClientState {
-            roles,
-            ..ClientState::default()
-        };
-        self.display.insert_client(stream, Arc::new(state))
+        self.insert(stream, roles, false)
     }
 
     /// Accepts a client that connected through a sandbox. It has no role
     /// and is not shown what only a role allows.
     pub(crate) fn insert_sandboxed(&mut self, stream: UnixStream) -> io::Result<Client> {
-        let state = ClientState {
-            sandboxed: true,
-            ..ClientState::default()
-        };
-        self.display.insert_client(stream, Arc::new(state))
+        self.insert(stream, Roles::default(), true)
+    }
+
+    /// Accepts a client with `roles`, through a sandbox or not, and notes
+    /// which program it is, for the log to name it by.
+    fn insert(&mut self, stream: UnixStream, roles: Roles, sandboxed: bool) -> io::Result<Client> {
+        let state = Arc::new(ClientState {
+            compositor: CompositorClientState::default(),
+            roles,
+            sandboxed,
+            named: OnceLock::new(),
+            told: self.refused.disconnected.0.clone(),
+        });
+        let given: Arc<dyn wayland_server::backend::ClientData> = Arc::<ClientState>::clone(&state);
+        let inserted = self.display.insert_client(stream, given);
+        inserted.inspect(|client| {
+            let pid = client.get_credentials(&self.display).ok();
+            let pid = pid.and_then(|known| u32::try_from(known.pid).ok());
+            let named = format!("{}, process {}", program(pid), pid.unwrap_or_default());
+            let _ = state.named.set(named);
+        })
     }
 
     /// Sets the name of the Wayland socket, which programs started by the
@@ -822,6 +857,12 @@ impl Compositor {
     #[must_use]
     pub fn problems(&self) -> &[String] {
         &self.problems
+    }
+
+    /// What the log is to be told that it has not been yet, once each: the
+    /// programs that were disconnected for breaking the protocol, and why.
+    pub fn take_logged(&mut self) -> Vec<String> {
+        self.refused.disconnected.1.try_iter().collect()
     }
 
     /// Says what is wrong with how the screen called `name` is driven, or

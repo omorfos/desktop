@@ -1138,6 +1138,18 @@ impl Client {
         manager.get_toplevel_decoration(&window.role, &self.handle(), ())
     }
 
+    /// Asks what the protocol does not allow: a popup of a surface that is
+    /// a toplevel already, for which the compositor sends the client away.
+    pub(crate) fn break_the_protocol(&self) {
+        let window = self.toplevel_uncommitted("rude", "Rude");
+        let wm_base = self.state.wm_base.as_ref().unwrap();
+        let positioner = wm_base.create_positioner(&self.handle(), ());
+        window
+            .xdg_surface
+            .get_popup(None, &positioner, &self.handle(), ());
+        self.connection.flush().unwrap();
+    }
+
     /// Creates a toplevel without committing it yet.
     pub(crate) fn toplevel_uncommitted(&self, app_id: &str, title: &str) -> Toplevel {
         let surface = self.surface();

@@ -273,13 +273,17 @@ impl Screen {
         Ok(())
     }
 
-    /// Tells the user about problems, once each time they change.
-    fn report_problems(&mut self, compositor: &Compositor) {
+    /// Tells the user about problems, once each time they change, and
+    /// what the log is to be told, once.
+    fn report_problems(&mut self, compositor: &mut Compositor) {
         if compositor.problems() != self.reported {
             self.reported = compositor.problems().to_vec();
             for problem in &self.reported {
                 let _ = writeln!(stderr(), "omorfos: {problem}");
             }
+        }
+        for logged in compositor.take_logged() {
+            let _ = writeln!(stderr(), "omorfos: {logged}");
         }
     }
 }
