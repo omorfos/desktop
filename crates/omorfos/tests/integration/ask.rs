@@ -579,6 +579,17 @@ fn keys_pressed_while_it_is_not_yet_asked_are_not_taken() {
     wait_up(&mut session);
     assert!(!typing(&mut session), "up, and not yet asking");
     tap(&mut session, key::X);
+    // The prompt is given time to have heard the key, and the helper only
+    // then asks: a helper that asked sooner, as one busy machine had it,
+    // would have the key typed into the field.
+    let heard = std::time::Instant::now() + std::time::Duration::from_millis(300);
+    while std::time::Instant::now() < heard {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let mut go = cookie.clone().into_os_string();
+    go.push(".go");
+    std::fs::write(go, "").unwrap();
     session.eventually(typing);
     for code in [key::A, key::T, key::X] {
         tap(&mut session, code);
