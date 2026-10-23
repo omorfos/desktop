@@ -4,12 +4,13 @@
 # and says whether it was `atx`. The tests make the cookie the path of a
 # file, in which it writes down whom and what it was asked, a line each.
 # A cookie ending `-open` is asked for with what may be shown as it is
-# typed, and one ending `-slow` is a second slow to be asked for.
+# typed, and one ending `-slow` is not asked for until the test makes a
+# file of its name and `.go`.
 read -r cookie
 printf 'user %s\n' "$1" >> "$cookie"
 printf 'PAM_TEXT_INFO Touch nothing\n'
 case "$cookie" in
-    *-slow) sleep 1 ;;
+    *-slow) while [ ! -e "$cookie.go" ]; do sleep 0.01; done ;;
 esac
 case "$cookie" in
     *-open) printf 'PAM_PROMPT_ECHO_ON Code: \n' ;;
