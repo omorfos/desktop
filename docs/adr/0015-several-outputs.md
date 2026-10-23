@@ -71,6 +71,16 @@ whole made to fit. A mirror counts
 among the screens a locked session must have been hidden on before the
 locker is told it is locked.
 
+*Amended:* a listed screen may be off (`enabled: false`). It is taken out
+of the space and out of what programs are told of, as a mirror is, and
+the backend turns it off and draws nothing on it until it is on again;
+a backend that cannot turn a screen off, as one inside another desktop,
+shows it black. Not every screen plugged in is turned off: if every one
+would be, the first is left on and the user told, since a configuration
+that left the user with no screen could not be put right from the
+desktop. A screen that is off counts among those a lock must be shown
+on as already hidden.
+
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing
 take it. What the compositor needs to draw comes from the output itself,

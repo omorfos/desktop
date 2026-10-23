@@ -522,9 +522,11 @@ what only games and touchpads need last.
 - [x] Key bindings made beside the built-in ones (ADR 50): one written
       on keys a built-in binding uses takes its place, `unbind` does
       without one, and `defaults: false` has only what is written.
-- [ ] Screens arranged by the user: a screen turned off, and the display
-      key. The display key
-      (`XF86Display`) goes through the screens side by side, the same on
+- [x] A screen turned off (ADR 15): `enabled: false` in `outputs` and
+      `arrangements`, out of the space and unknown to programs, turned off
+      by the backend; never every screen plugged in.
+- [ ] Screens arranged by the user: the display key (`XF86Display`)
+      goes through the screens side by side, the same on
       both, and only one of them, each kept only if the user says so in
       time, as the next item has it, since it is the key pressed when a
       screen has gone dark.

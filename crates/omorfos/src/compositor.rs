@@ -256,6 +256,8 @@ pub struct Compositor {
     /// The outputs that show what another shows, and stand nowhere of
     /// their own.
     pub(crate) mirrors: Vec<Mirror>,
+    /// The outputs that are off, and stand nowhere.
+    pub(crate) dark: Vec<Head>,
     /// Pictures of the screen being taken by programs that may.
     pub(crate) capture: Capture,
     _surfaces: Offered,
@@ -458,6 +460,7 @@ impl Compositor {
                     popups: PopupManager::default(),
                     heads: Vec::new(),
                     mirrors: Vec::new(),
+                    dark: Vec::new(),
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -1903,6 +1906,13 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
         P: std::fmt::Debug + 'static,
     {
+        if self.is_dark(output) {
+            // Nothing is drawn on a screen that is off, by a backend that can
+            // turn it off; one that cannot is shown black.
+            let none: &[Element<R>] = &[];
+            let drawn = tracker.render_output(renderer, framebuffer, age, none, BLACK);
+            return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
+        }
         let mirror = self
             .mirrors
             .iter()

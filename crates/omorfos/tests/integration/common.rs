@@ -741,6 +741,9 @@ pub(crate) struct ClientState {
     pub(crate) screens: Vec<wl_output::WlOutput>,
     /// What the client's surfaces were last told about how they are shown.
     pub(crate) told: Told,
+    /// In the order told: each time a surface was told it is no longer on
+    /// an output, and each time an output went.
+    pub(crate) outputs_left: Vec<Left>,
     primary_device: Option<primary_device::ZwpPrimarySelectionDeviceV1>,
     /// What this client hands over when asked for the text it has selected.
     selected: String,
@@ -800,6 +803,15 @@ pub(crate) struct Told {
     pub(crate) scale: Option<u32>,
     /// How many times a surface was told it is on an output.
     pub(crate) entered: u32,
+}
+
+/// What a client was told of an output going.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Left {
+    /// A surface is no longer on it.
+    Surface,
+    /// It is no longer there to be on.
+    Gone,
 }
 
 pub(crate) struct Toplevel {
@@ -1584,6 +1596,8 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             version,
         } = event
         else {
+            // Only outputs are taken away.
+            state.outputs_left.push(Left::Gone);
             return;
         };
         state.offered.push(interface.clone());
@@ -2310,6 +2324,7 @@ impl Dispatch<wl_surface::WlSurface, ()> for ClientState {
     ) {
         match event {
             wl_surface::Event::Enter { .. } => state.told.entered += 1,
+            wl_surface::Event::Leave { .. } => state.outputs_left.push(Left::Surface),
             wl_surface::Event::PreferredBufferScale { factor } => {
                 state.told.buffer_scale = Some(factor);
             }

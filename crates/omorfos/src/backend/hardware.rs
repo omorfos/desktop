@@ -106,6 +106,8 @@ struct Screen {
     ticking: bool,
     /// Whether the last attempt to draw on it failed, and that was said.
     failing: bool,
+    /// Whether it is off because the configuration says so.
+    dark: bool,
 }
 
 /// What a screen is showing.
@@ -420,7 +422,19 @@ fn turn(
         ..
     } = &mut *now;
     for screen in screens {
-        if screen.picture == Picture::Queued {
+        // One the configuration has off is turned off, and nothing is drawn
+        // on it until it is on again.
+        let dark = compositor.is_dark(&screen.output);
+        if dark != screen.dark {
+            screen.dark = dark;
+            if dark {
+                let _ = screen.surface.surface().clear();
+            } else {
+                screen.surface.reset_buffers();
+            }
+            screen.picture = Picture::Stale;
+        }
+        if dark || screen.picture == Picture::Queued {
             continue;
         }
         // A screen that cannot be drawn on just now is no reason to end
@@ -645,6 +659,7 @@ impl Hardware {
             picture: Picture::Stale,
             ticking: false,
             failing: false,
+            dark: false,
         })
     }
 

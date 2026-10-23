@@ -224,11 +224,15 @@ fn screens(state: &State, out: &mut dyn Write) {
         } else {
             format!(", mirroring {}", screen.mirrors)
         };
-        let _ = writeln!(
-            out,
-            "{}: {} by {} units at {},{}{mirrors}{driven}",
-            screen.name, screen.width, screen.height, screen.x, screen.y
-        );
+        if screen.off {
+            let _ = writeln!(out, "{}: off", screen.name);
+        } else {
+            let _ = writeln!(
+                out,
+                "{}: {} by {} units at {},{}{mirrors}{driven}",
+                screen.name, screen.width, screen.height, screen.x, screen.y
+            );
+        }
         for mode in &screen.modes {
             let best = if *mode == screen.preferred {
                 ", which suits it best"
@@ -503,6 +507,7 @@ mod tests {
                 preferred: "2560x1440@60".to_owned(),
                 modes: vec!["2560x1440@144".to_owned(), "2560x1440@60".to_owned()],
                 mirrors: String::new(),
+                off: false,
             },
             omorfos_ipc::Screen {
                 name: "nested".to_owned(),
@@ -520,6 +525,12 @@ mod tests {
                 mirrors: "DP-1".to_owned(),
                 ..omorfos_ipc::Screen::default()
             },
+            omorfos_ipc::Screen {
+                name: "DP-2".to_owned(),
+                off: true,
+                modes: vec!["1920x1080@60".to_owned()],
+                ..omorfos_ipc::Screen::default()
+            },
         ];
         let outcome = invoke(&["screens"], vec![Reply::State(shown)]);
         assert_eq!(outcome.code, ExitCode::SUCCESS);
@@ -527,7 +538,8 @@ mod tests {
             outcome.out,
             "DP-1: 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  2560x1440@144\n  \
              2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\nHDMI-A-1: 2560 \
-             by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\n"
+             by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\nDP-2: off\n  \
+             1920x1080@60\n"
         );
     }
 

@@ -152,6 +152,10 @@ pub struct Screen {
     /// does. Empty for a screen that stands on its own.
     #[serde(default)]
     pub mirrors: String,
+    /// Whether it is off, as the configuration says: it stands nowhere and
+    /// shows nothing, and is said to stand at the corner of the space.
+    #[serde(default)]
+    pub off: bool,
 }
 
 /// A workspace.
@@ -379,6 +383,7 @@ mod tests {
                 preferred: "3840x2160@60".to_owned(),
                 modes: vec!["3840x2160@60".to_owned(), "3840x2160@48".to_owned()],
                 mirrors: "DP-1".to_owned(),
+                off: false,
             }],
             locked: true,
         };
