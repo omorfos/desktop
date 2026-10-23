@@ -47,6 +47,11 @@
       },
       "type": "object"
     },
+    "Color": {
+      "description": "A colour as `#rrggbb`, or `#rrggbbaa` with its opacity.",
+      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "type": "string"
+    },
     "Command": {
       "description": "A program followed by its arguments, run without a shell.",
       "items": {
@@ -72,6 +77,36 @@
         }
       },
       "type": "object"
+    },
+    "Fit": {
+      "description": "How a picture is laid on a screen.",
+      "oneOf": [
+        {
+          "const": "fill",
+          "description": "As large as it must be to cover the screen, its shape kept, and\nwhat does not fit cut off on two sides.",
+          "type": "string"
+        },
+        {
+          "const": "fit",
+          "description": "As large as fits on the screen, its shape kept, with the colour\nround it.",
+          "type": "string"
+        },
+        {
+          "const": "stretch",
+          "description": "Made the screen's size and shape.",
+          "type": "string"
+        },
+        {
+          "const": "center",
+          "description": "As it is, a pixel of it to a pixel of the screen, in the middle.",
+          "type": "string"
+        },
+        {
+          "const": "tile",
+          "description": "As it is, again and again from the top left corner.",
+          "type": "string"
+        }
+      ]
     },
     "Focus": {
       "additionalProperties": false,
@@ -322,6 +357,21 @@
         }
       ]
     },
+    "Order": {
+      "description": "The order the pictures of a directory are shown in.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "By their names.",
+          "type": "string"
+        },
+        {
+          "const": "shuffled",
+          "description": "Any order, a different one each time through.",
+          "type": "string"
+        }
+      ]
+    },
     "Output": {
       "additionalProperties": false,
       "description": "How the screen is driven.",
@@ -366,6 +416,11 @@
         }
       },
       "type": "object"
+    },
+    "Picture": {
+      "description": "A path from the root, or from the home directory as `~/`.",
+      "pattern": "^(/|~/)",
+      "type": "string"
     },
     "Place": {
       "description": "Where a screen stands next to the one listed before it.",
@@ -499,6 +554,53 @@
       "pattern": "^[1-9][0-9]*x[1-9][0-9]*(@[1-9][0-9]*)?$",
       "type": "string"
     },
+    "ScreenWallpaper": {
+      "additionalProperties": false,
+      "description": "What one screen shows, by the name of the socket it is plugged into.",
+      "properties": {
+        "color": {
+          "$ref": "#/$defs/Color",
+          "description": "Its own colour."
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its own way of laying the picture on it."
+        },
+        "name": {
+          "description": "The screen's name, such as `eDP-1` or `HDMI-A-1`, as `omorfosctl\nstate` shows it.",
+          "type": "string"
+        },
+        "picture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Picture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its own picture, or directory of them. With this or `color`, it\nshows nothing of what every screen does."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Screens": {
+      "description": "Screens by name, each named once.",
+      "items": {
+        "$ref": "#/$defs/ScreenWallpaper"
+      },
+      "type": "array"
+    },
     "Screenshots": {
       "additionalProperties": false,
       "description": "Pictures of the screen, as `omorfos-screenshot` takes them.",
@@ -564,6 +666,51 @@
           "default": true,
           "description": "Whether tapping the touchpad clicks.",
           "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Wallpaper": {
+      "additionalProperties": false,
+      "description": "The wallpaper that comes with omorfos: a picture or a colour on each\nscreen, behind everything else.\n\nWithout a picture or a colour the theme's `desktop` part is all there\nis behind the windows.",
+      "properties": {
+        "color": {
+          "$ref": "#/$defs/Color",
+          "description": "The colour of the screen where the picture does not cover it, or of\nthe whole screen without one. Without this, the background of the\ntheme's `desktop` part."
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether it is started with the session. Turn it off to use another\nprogram for it.",
+          "type": "boolean"
+        },
+        "every": {
+          "description": "How many seconds each picture of a directory is shown for.",
+          "maximum": 604800,
+          "minimum": 5,
+          "type": "integer"
+        },
+        "fit": {
+          "$ref": "#/$defs/Fit",
+          "description": "How the picture is laid on the screen."
+        },
+        "order": {
+          "$ref": "#/$defs/Order",
+          "description": "The order the pictures of a directory are shown in."
+        },
+        "picture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Picture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A picture, PNG or JPEG, or a directory of them to be shown in turn:\na path from the root, or from the home directory as `~/`."
+        },
+        "screens": {
+          "$ref": "#/$defs/Screens",
+          "description": "Particular screens, by name, that show something else."
         }
       },
       "type": "object"
@@ -697,6 +844,10 @@
     "touchpad": {
       "$ref": "#/$defs/Touchpad",
       "description": "Touchpad behaviour."
+    },
+    "wallpaper": {
+      "$ref": "#/$defs/Wallpaper",
+      "description": "What is shown behind the windows."
     },
     "workspaces": {
       "$ref": "#/$defs/Workspaces",
