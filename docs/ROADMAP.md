@@ -548,6 +548,21 @@ what only games and touchpads need last.
       where logind lets it be done without a password; all but sleep
       asked about first; who keeps the machine on said; `lock.power` to
       have none of them.
+- [x] A quieter log, begun (as found in the log of a session on
+      2026-10-23): a program disconnected for breaking the protocol is
+      said, by name and process, and why; the components end quietly when
+      the session does, telling that from being sent away; what the
+      Wayland library would print of it, unsigned, it no longer does; and a
+      setting named as the guide names it, `lock.power`, is said how to
+      write.
+- [ ] The rest of that log made quiet: Visual Studio Code, which is
+      disconnected seconds after it starts, made to work, once the log
+      says why; what the programs the session starts print kept in the
+      journal under their own names, not in omorfos's log; those the
+      compositor started asked to close before it does, at the end of a
+      session; buffers released as soon as they are drawn, which foot
+      asks for; and window icons (`xdg-toplevel-icon`), which foot asks
+      for too.
 - [ ] Known gaps in the lock screen's buttons: they are reached only with
       the pointer, not with Tab and Enter; and what logind's inhibitors
       say is shown whole, which ADR 53 weighs.

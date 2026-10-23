@@ -118,6 +118,8 @@ omorfos-clipboard = { path = "../omorfos-clipboard" }
 xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 omorfos-session = { path = "../omorfos-session" }
 omorfos-ask = { path = "../omorfos-ask" }
+# Tells, as the components' programs do, the session ending from a failure.
+omorfos-shell = { path = "../omorfos-shell" }
 # Reads back the pictures the screenshot tool saves.
 png = "0.18.1"
 # Sends notifications in the tests, as a program would.

@@ -200,8 +200,10 @@ fn serve(
         }
         // What changed is shown, and what the user did taken in; and what
         // that changes is shown in turn, before anything is waited for.
-        let Ok(answer) = desk.turn() else {
-            return "the session has ended".into();
+        let answer = match desk.turn() {
+            Ok(answer) => answer,
+            // As it is, so that the session ending is known for what it is.
+            Err(failure) => return failure,
         };
         if let Some(answer) = answer {
             asked = asked.and_then(|request| answered(&mut desk, agent, request, answer));

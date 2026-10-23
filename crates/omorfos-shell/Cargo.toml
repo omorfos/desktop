@@ -21,6 +21,11 @@ omorfos-ui = { path = "../omorfos-ui" }
 rustix = { version = "1.1.5", default-features = false, features = ["fs"] }
 # Already in the tree through Smithay's nested backend.
 wayland-client = "0.31.15"
+# Already in the tree under wayland-client. Its `log` feature has what it
+# would otherwise print itself, unsigned, go through `log`, which the
+# components install nothing for: what went wrong comes back to them as an
+# error all the same, and they say it, with their names, when it matters.
+wayland-backend = { version = "0.3.17", features = ["log"] }
 # Turns the keys the compositor reports into what they type. Without its
 # default features it does not map the layout into memory, which would
 # need `unsafe`.
