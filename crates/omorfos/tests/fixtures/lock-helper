@@ -3,8 +3,10 @@
 # as `lock-helper check SERVICE USER`. The tests make USER a directory of
 # their own, and steer the ways by what is in it: the password is `atx`; a
 # finger is shown once there is a file `finger`; a key asks for its PIN if
-# there is a file `pin`, and is not set up otherwise. With a file `locked`,
-# a wrong password is told about, as pam_faillock does.
+# there is a file `pin`, is plugged in if there is a file `key` and touched
+# once there is a file `touched`, and else is not there; there is no
+# reader for a finger if there is a file `no-reader`. With a file
+# `locked`, a wrong password is told about, as pam_faillock does.
 service=$2
 there=$3
 case "$service" in
@@ -23,6 +25,11 @@ case "$service" in
         fi
         ;;
     omorfos-lock-fingerprint)
+        if [ -e "$there/no-reader" ]; then
+            # As pam_fprintd says with no reader to read a finger on.
+            printf 'UNAVAILABLE\n'
+            exit
+        fi
         # As pam_fprintd says of a finger that does not match, before it
         # asks again.
         printf 'PAM_ERROR_MSG Failed to match fingerprint\n'
@@ -34,7 +41,15 @@ case "$service" in
         if [ -e "$there/pin" ]; then
             printf 'PAM_PROMPT_ECHO_OFF PIN: \n'
             read -r typed
+            printf 'UNAVAILABLE\n'
+        elif [ -e "$there/key" ]; then
+            # As pam_u2f says with `cue`, once it has found a key.
+            printf 'PAM_TEXT_INFO Please touch the device.\n'
+            while [ ! -e "$there/touched" ]; do sleep 0.01; done
+            printf 'SUCCESS\n'
+        else
+            # As pam_u2f fails, saying nothing, with no key plugged in.
+            printf 'FAILURE\n'
         fi
-        printf 'UNAVAILABLE\n'
         ;;
 esac

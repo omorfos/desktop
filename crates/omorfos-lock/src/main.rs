@@ -27,16 +27,19 @@ fn main() -> ExitCode {
     let helper = PathBuf::from("/proc/self/exe");
     let passwd = fs::read_to_string("/etc/passwd").unwrap_or_default();
     let uid = rustix::process::getuid().as_raw();
-    let user = who(&passwd, uid, env::var_os("USER").as_deref());
+    let home = env::var_os("HOME");
+    let user = who(
+        &passwd,
+        uid,
+        env::var_os("USER").as_deref(),
+        home.as_deref(),
+    );
     let started = omorfos_lock::start(
         (
             env::var_os("XDG_RUNTIME_DIR").as_deref(),
             env::var_os("WAYLAND_DISPLAY").as_deref(),
         ),
-        (
-            env::var_os("XDG_CONFIG_HOME").as_deref(),
-            env::var_os("HOME").as_deref(),
-        ),
+        (env::var_os("XDG_CONFIG_HOME").as_deref(), home.as_deref()),
         (helper, user),
     );
     ended(started, &mut io::stderr())

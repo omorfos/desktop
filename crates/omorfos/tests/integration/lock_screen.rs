@@ -8,19 +8,37 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use omorfos::Input;
-use omorfos_lock::{Lock, Way};
+use omorfos_lock::{Lock, User, Way};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
 use crate::common::{HEIGHT, Session, WIDTH, key};
-use crate::windows::BACKGROUND;
+use crate::windows::{BACKGROUND, RED};
 
 /// The stand-in for the helpers.
 fn helper() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/lock-helper")
+}
+
+/// Where on the first screen, once someone is to unlock, the lock screen
+/// shows their face and what they are called, and the middle of the field
+/// and of the line under the password's: rows, from the top.
+const FACE_ROW: i32 = 270;
+const NAME_ROW: i32 = 340;
+const FIELD_ROW: i32 = 384;
+const SECOND_LINE_ROW: i32 = 452;
+
+/// Who the lock screen in a test is for: named `there`, called "Some One",
+/// with a face if there is a picture `face.png` in `there`.
+fn someone(there: &Path) -> User {
+    User {
+        name: there.to_string_lossy().into_owned(),
+        called: "Some One".to_owned(),
+        faces: vec![there.join("nowhere.png"), there.join("face.png")],
+    }
 }
 
 /// A lock screen in the session, with the role to lock, asking `ways`; the
@@ -32,8 +50,31 @@ fn joined(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
         .insert_client(ours, omorfos::Roles::LOCK)
         .unwrap();
     let config = session.config.path().to_owned();
-    let user = there.to_string_lossy().into_owned();
-    Lock::new(theirs, &config, (helper(), user), ways).unwrap()
+    Lock::new(theirs, &config, (helper(), someone(there)), ways).unwrap()
+}
+
+/// A row of the first screen.
+fn row(session: &mut Session, y: i32) -> Vec<u32> {
+    let picture = session.draw();
+    (0..WIDTH).map(|x| picture.at(x, y)).collect()
+}
+
+/// Whether a row of the first screen has anything on it.
+fn inked(session: &mut Session, y: i32) -> bool {
+    row(session, y).iter().any(|pixel| *pixel != BACKGROUND)
+}
+
+/// A locked session, its lock screen showing who is to unlock: woken by a
+/// key, which types nothing.
+fn awake(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
+    let mut lock = joined(session, there, ways);
+    until(session, &mut lock, |session| {
+        session.compositor().is_locked()
+    });
+    settle(session, &mut lock);
+    tap(session, key::SHIFT);
+    settle(session, &mut lock);
+    lock
 }
 
 /// Lets the lock screen and the compositor talk until `done` holds, and
@@ -46,7 +87,7 @@ fn until(session: &mut Session, lock: &mut Lock, mut done: impl FnMut(&Session) 
         if unlocked || done(session) {
             return unlocked;
         }
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        std::thread::sleep(Duration::from_millis(1));
     }
     unreachable!("the lock screen never got there");
 }
@@ -243,7 +284,7 @@ fn the_lock_screen_runs_by_itself_in_the_session_it_is_started_in() {
     let config = "lock: { fingerprint: false, key: false }\n";
     std::fs::write(runtime.join("omorfos/config.yaml"), config).unwrap();
     let there = tempfile::TempDir::new().unwrap();
-    let user = there.path().to_string_lossy().into_owned();
+    let user = omorfos_lock::who("", 0, Some(there.path().as_os_str()), None);
     let running = std::thread::spawn(move || {
         let runtime = Some(runtime.as_os_str());
         let display = Some(std::ffi::OsStr::new("wayland-lock"));
@@ -275,7 +316,10 @@ fn a_helper_that_cannot_be_started_leaves_the_session_locked() {
         .insert_client(ours, omorfos::Roles::LOCK)
         .unwrap();
     let config = session.config.path().to_owned();
-    let nowhere = (PathBuf::from("/nowhere/lock-helper"), "someone".to_owned());
+    let nowhere = (
+        PathBuf::from("/nowhere/lock-helper"),
+        someone(Path::new("/nowhere")),
+    );
     let mut lock = Lock::new(theirs, &config, nowhere, &[Way::Password]).unwrap();
     until(&mut session, &mut lock, |session| {
         session.compositor().is_locked()
@@ -288,8 +332,7 @@ fn a_helper_that_cannot_be_started_leaves_the_session_locked() {
 
 /// A row of the first screen through the field.
 fn field(session: &mut Session) -> Vec<u32> {
-    let picture = session.draw();
-    (0..WIDTH).map(|x| picture.at(x, HEIGHT / 2 + 10)).collect()
+    row(session, FIELD_ROW)
 }
 
 /// A locked session whose theme is `stylesheet`, with a wrong password typed
@@ -297,11 +340,12 @@ fn field(session: &mut Session) -> Vec<u32> {
 fn wrong(stylesheet: &str) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
     let there = tempfile::TempDir::new().unwrap();
     let mut session = Session::with_config(&[("theme.css", stylesheet)]);
-    let mut lock = joined(&mut session, there.path(), &[Way::Password]);
-    until(&mut session, &mut lock, |session| {
-        session.compositor().is_locked()
-    });
-    settle(&mut session, &mut lock);
+    let mut lock = awake(&mut session, there.path(), &[Way::Password]);
+    // As long as it takes to come into view.
+    for shown in 1..30 {
+        session.send_frames(Duration::from_millis(shown * 16));
+        settle(&mut session, &mut lock);
+    }
     let rest = field(&mut session);
     let wrong = there.path().join("wrong");
     for _ in 0..500 {
@@ -325,7 +369,7 @@ fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
     let mut moved = false;
     for _ in 0..200 {
         shown += 16;
-        session.send_frames(std::time::Duration::from_millis(shown));
+        session.send_frames(Duration::from_millis(shown));
         settle(&mut session, &mut lock);
         moved |= field(&mut session) != rest;
         if moved && field(&mut session) == rest {
@@ -339,8 +383,149 @@ fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
 fn a_theme_that_moves_nothing_has_the_field_keep_still() {
     let (mut session, mut lock, _there, rest) = wrong("question { transition: none; }\n");
     for shown in 1..30 {
-        session.send_frames(std::time::Duration::from_millis(shown * 16));
+        session.send_frames(Duration::from_millis(shown * 16));
         settle(&mut session, &mut lock);
         assert_eq!(field(&mut session), rest);
     }
+}
+
+#[test]
+fn only_the_time_is_shown_until_a_key_or_a_button_is_pressed_and_again_after_a_while() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = joined(&mut session, there.path(), &[Way::Password]);
+    until(&mut session, &mut lock, |session| {
+        session.compositor().is_locked()
+    });
+    settle(&mut session, &mut lock);
+    assert!(drawn(&mut session) > 0, "the time");
+    for y in [FACE_ROW, NAME_ROW, FIELD_ROW] {
+        assert!(!inked(&mut session, y), "nothing else, at {y}");
+    }
+    // The key that shows the rest types nothing.
+    tap(&mut session, key::A);
+    settle(&mut session, &mut lock);
+    assert!(inked(&mut session, NAME_ROW), "who is to unlock");
+    let empty = field(&mut session);
+    assert_ne!(empty, row(&mut session, 0), "the field");
+    tap(&mut session, key::ESCAPE);
+    settle(&mut session, &mut lock);
+    assert_eq!(field(&mut session), empty, "nothing was typed");
+    tap(&mut session, key::A);
+    settle(&mut session, &mut lock);
+    assert_ne!(field(&mut session), empty, "what is typed now is");
+    // Left alone for a while, it shows only the time again, and what was
+    // typed has gone.
+    let later = Instant::now() + Duration::from_secs(31);
+    assert!(lock.deadline().is_some_and(|due| due < later));
+    lock.turn(later).unwrap();
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, FIELD_ROW));
+    // A button shows it again, empty.
+    let input = |session: &mut Session, input| session.compositor_mut().input(input, 0);
+    input(&mut session, Input::Motion { x: 20.0, y: 20.0 });
+    for pressed in [true, false] {
+        input(
+            &mut session,
+            Input::Button {
+                button: 0x110,
+                pressed,
+            },
+        );
+    }
+    settle(&mut session, &mut lock);
+    assert_eq!(field(&mut session), empty);
+}
+
+#[test]
+fn who_is_to_unlock_is_shown_by_their_face_and_what_they_are_called() {
+    let there = tempfile::TempDir::new().unwrap();
+    crate::wallpaper::png(&there.path().join("face.png"), (8, 8), |_, _| RED);
+    let mut session = Session::new();
+    let _lock = awake(&mut session, there.path(), &[Way::Password]);
+    let face = row(&mut session, FACE_ROW);
+    let middle = usize::try_from(WIDTH / 2).unwrap();
+    assert_eq!(face[middle], RED, "the face, in the middle");
+    assert_eq!(face[middle - 60], BACKGROUND, "as large as a face is");
+    assert!(inked(&mut session, NAME_ROW), "and what they are called");
+}
+
+#[test]
+fn who_has_no_face_of_their_own_is_shown_a_circle_with_their_initials() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let _lock = awake(&mut session, there.path(), &[Way::Password]);
+    let middle = usize::try_from(WIDTH / 2).unwrap();
+    let edge = row(&mut session, FACE_ROW - 40);
+    assert_ne!(edge[middle], BACKGROUND, "a circle");
+    assert_eq!(edge[middle - 40], BACKGROUND, "and not a square");
+    // The initials are drawn in it, unlike the circle's own colour.
+    let across = row(&mut session, FACE_ROW);
+    let circle = across[middle - 40];
+    assert_ne!(circle, BACKGROUND);
+    assert!(
+        across[middle - 30..middle + 30]
+            .iter()
+            .any(|pixel| *pixel != circle)
+    );
+}
+
+#[test]
+fn who_is_to_unlock_comes_into_view_as_the_theme_has_things_move() {
+    let there = tempfile::TempDir::new().unwrap();
+    crate::wallpaper::png(&there.path().join("face.png"), (8, 8), |_, _| RED);
+    let mut session = Session::with_config(&[("theme.css", "question { transition: 120ms; }\n")]);
+    let mut lock = awake(&mut session, there.path(), &[Way::Password]);
+    assert!(!inked(&mut session, NAME_ROW), "not yet");
+    let middle = usize::try_from(WIDTH / 2).unwrap();
+    let mut seen = Vec::new();
+    for shown in 1..30 {
+        session.send_frames(Duration::from_millis(shown * 16));
+        settle(&mut session, &mut lock);
+        seen.push((field(&mut session), row(&mut session, FACE_ROW)[middle]));
+    }
+    let (all, face) = seen.last().unwrap().clone();
+    assert_ne!(all, row(&mut session, 0), "in view at last");
+    assert_eq!(face, RED, "the face too");
+    // On its way, the field and the face are partly there.
+    let on_its_way = seen.iter().any(|(field, face)| {
+        *field != all
+            && field.iter().any(|pixel| *pixel != BACKGROUND)
+            && ![RED, BACKGROUND].contains(face)
+    });
+    assert!(on_its_way, "on its way");
+}
+
+#[test]
+fn a_security_key_is_shown_only_once_one_is_plugged_in() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = awake(&mut session, there.path(), &[Way::Password, Way::Key]);
+    // Tried, and failing, for a while.
+    for _ in 0..3 {
+        settle(&mut session, &mut lock);
+        assert!(!inked(&mut session, SECOND_LINE_ROW));
+    }
+    std::fs::write(there.path().join("key"), "").unwrap();
+    let shown = (0..5000).any(|_| {
+        lock.turn(Instant::now()).unwrap();
+        session.step();
+        std::thread::sleep(Duration::from_millis(1));
+        inked(&mut session, SECOND_LINE_ROW)
+    });
+    assert!(shown, "the key says to touch it");
+    std::fs::write(there.path().join("touched"), "").unwrap();
+    assert!(until(&mut session, &mut lock, |_| false));
+}
+
+#[test]
+fn a_reader_that_is_not_there_is_not_offered() {
+    let there = tempfile::TempDir::new().unwrap();
+    std::fs::write(there.path().join("no-reader"), "").unwrap();
+    let mut session = Session::new();
+    let ways = [Way::Password, Way::Fingerprint];
+    let mut lock = awake(&mut session, there.path(), &ways);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, SECOND_LINE_ROW));
+    unlock(&mut session, &mut lock);
 }

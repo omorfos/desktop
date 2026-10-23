@@ -1424,10 +1424,22 @@ lock:
   key: true
 ```
 
-It shows the time and a field for your password on every screen, and
-asks PAM, so whatever your system's login accepts unlocks it. A wrong
+It shows the time on every screen until you press a key or a mouse
+button. Then the rest comes into view: your face, your name, a field for
+your password and what each way of unlocking says. The key that wakes it
+types nothing, so start typing your password after it. Left alone for 30
+seconds, it shows only the time again and empties the field. Your name is
+your full name where your system has one (the first part of the comment
+in `/etc/passwd`, which `chfn` sets), and your face is the picture your
+login screen shows (`/var/lib/AccountsService/icons/` and your name),
+or else `~/.face` or `~/.face.icon`, a PNG or a JPEG. Without one, your
+initials are shown in a circle instead. However long your name, it is
+shown whole, and cut short only where it would be wider than the screen.
+
+It asks PAM, so whatever your system's login accepts unlocks it. A wrong
 password shakes the field, as the administrator's prompt does, unless the
-theme has nothing move (`question { transition: none; }`). A finger on
+theme has nothing move (`question { transition: none; }`), and then
+nothing comes into view gradually either. A finger on
 the reader and a security key, such as a YubiKey, are asked for at the
 same time, each through a PAM service of its own, and whichever you use
 first unlocks: you never wait for a finger to time out before typing.
@@ -1436,7 +1448,10 @@ something enrolled: `pam_fprintd` with a finger enrolled by `fprintd-enroll`,
 and `pam_u2f` with a key registered by `pamu2fcfg`. Turn either off with
 `lock.fingerprint: false` or `lock.key: false`. The password is always
 offered, so that a reader that breaks or a key that is lost never keeps
-you out.
+you out. The screen says nothing of the other ways until they speak: a
+reader once it asks for a finger, and a key once it is plugged in and asks
+to be touched, so that it does not tell whoever is at your desk what else
+would unlock it.
 
 The services are files the package installs in `/etc/pam.d`, yours to
 change: `omorfos-lock` for the password (as your system's login asks),

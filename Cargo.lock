@@ -1969,11 +1969,11 @@ dependencies = [
  "omorfos-config",
  "omorfos-shell",
  "omorfos-ui",
+ "omorfos-wallpaper",
  "rustix 1.1.5",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
- "xkbcommon",
 ]
 
 [[package]]

@@ -93,6 +93,42 @@ is written back a line for each question. It asks `pam_authenticate`
 only, as `swaylock` does: `pam_acct_mgmt` would keep a user whose
 password has just expired out of the session they are already in.
 
+### What is shown, and when
+
+Until a key or a mouse button is pressed, only the time is shown, in the
+middle. Then it moves up, and under it come, rising into place and out of
+nothing as the theme's `question` transition has things move, the user's
+face and name, the field, and what each way says. Left alone for 30
+seconds, the screen shows only the time again and the field is emptied, so
+that half a password is not left waiting. The ways are asked all along: a
+finger unlocks without a key pressed first, and a finger that does not
+match shows the rest, to say so.
+
+- **The key that wakes the screen types nothing.** One pressed to see the
+  screen, or to wake it from dark, would otherwise start the password with
+  a stray character, which shows only as one dot too many. Whoever starts
+  typing at once loses the first character, and finds out from a wrong
+  password; the stray key is the commoner case.
+- **The name** is the user's full name, the first part of the GECOS field
+  of `/etc/passwd` before any comma, as other login screens show it, or
+  else the name they log in with. **The face** is the first of
+  AccountsService's icon for the user, `~/.face` and `~/.face.icon` that
+  reads as a PNG or a JPEG, read by the wallpaper's reader, which treats a
+  file as untrusted, and cut to a circle. Without one, the user's
+  initials are drawn in a disc as the prompt for a secret looks, so that
+  the screen is not bare where a face would be. The name is not limited to
+  a number of characters, which says nothing of how wide it is drawn: it
+  is shown whole, measured at the scale it is drawn at, and cut short only
+  where it is wider than the screen less its margins.
+- **A way other than the password is shown only once it has said
+  something,** and no longer than the try it said it in. `pam_u2f` fails
+  at once and says nothing when no key is plugged in, and says its `cue`
+  only once it has found one, so a key is shown only while it is plugged
+  in. `pam_fprintd` asks for a finger once it has a reader. So a screen
+  left locked does not tell whoever is at it what else would unlock it.
+  No device is looked for by the lock screen itself: what the module says
+  is what is shown.
+
 ### When something goes wrong
 
 - **The lock screen ends without unlocking:** the session stays locked
@@ -145,6 +181,15 @@ Kept here so that they are looked at again when any of this is reviewed.
   own, with `pam_matrix` holding made-up users and `pam_chatty` saying
   what PAM would; the real modules, `pam_unix`, `pam_fprintd` and
   `pam_u2f`, are only tried on real hardware.
+- **The lock screen says who it is for.** The full name and the face are
+  shown to whoever is at the screen, as the login screen shows them. A user
+  who would rather not has them kept from it: an empty GECOS field shows
+  the login name, and no face file shows initials.
+- **The face is a file the user, or anyone who can write their home, puts
+  there.** It is read with the limits the wallpaper's pictures are: no
+  larger than 256 MiB, no more than 16384 pixels along a side, and the
+  decoders of `png` and `zune-jpeg`, which are safe Rust. One that cannot
+  be read is passed over.
 - **The service files are the system's once installed.** A distribution or
   an administrator may change them, for better or worse, and should; the
   packages ship them as configuration files.

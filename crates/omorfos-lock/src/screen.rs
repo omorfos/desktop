@@ -1,6 +1,7 @@
 //! The lock screen as a Wayland client: the session locked, a surface on
-//! every screen with the time, a field for the password and what each way
-//! of unlocking says, and the session unlocked once one says yes.
+//! every screen with the time, and once a key or a button is pressed who
+//! is to unlock it, a field for the password and what each way of
+//! unlocking says; and the session unlocked once one says yes.
 
 use std::error::Error;
 use std::io;
@@ -10,20 +11,20 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use omorfos_config::{Part, States, Store, Theme};
+use omorfos_config::{Color, Fit, Part, States, Store, Style, Theme};
 use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
 use omorfos_shell::typing::{Key, Typing};
-use omorfos_ui::{Canvas, Scale, Text};
+use omorfos_ui::{Canvas, Image, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry,
+    wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::ext::session_lock::v1::client::{
@@ -34,6 +35,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
+use crate::User;
 use crate::ways::{Came, Way, Ways};
 
 /// Why the lock screen could not go on.
@@ -49,6 +51,28 @@ const CLOCK: u32 = 64;
 /// units of layout.
 const FIELD: (u32, u32) = (320, 36);
 const LINE: u32 = 28;
+
+/// How large the face is, in units of layout, and in pixels as it is read:
+/// enough for a screen of three pixels to a unit.
+const FACE: u32 = 96;
+const FACE_READ: u32 = FACE * 3;
+
+/// How large the name is drawn, in points, and the initials in a face of
+/// none's own.
+const NAME: u32 = 20;
+const INITIALS: u32 = 32;
+
+/// The room kept clear at each side of the screen, in units of layout:
+/// "far", as the design has it.
+const MARGIN: u32 = 24;
+
+/// How far below its place what comes into view starts, in units of
+/// layout.
+const RISE: f32 = 16.0;
+
+/// How long the lock screen waits for a key before it shows only the time
+/// again, emptying the field.
+const REST: Duration = Duration::from_secs(30);
 
 /// The lock screen: a connection to the compositor as a Wayland client,
 /// and the helpers asking PAM.
@@ -76,7 +100,8 @@ impl Waker {
 impl Lock {
     /// A lock screen on the Wayland connection `wayland`, looking as the
     /// configuration in `config` has it, for the user called `user`, asking
-    /// each of `ways` by a helper that is `helper`.
+    /// each of `ways` by a helper that is `helper`. Their face is the
+    /// first of theirs that reads as a picture; with none, there is none.
     ///
     /// # Errors
     ///
@@ -84,9 +109,14 @@ impl Lock {
     pub fn new(
         wayland: UnixStream,
         config: &Path,
-        (helper, user): (PathBuf, String),
+        (helper, user): (PathBuf, User),
         ways: &[Way],
     ) -> Result<Self, Failure> {
+        let room = (FACE_READ, FACE_READ);
+        let face = user.faces.iter().find_map(|path| {
+            let read = omorfos_wallpaper::picture::read(path, Fit::Fill, room);
+            read.ok().map(|face| face.circled())
+        });
         let connection = Connection::from_socket(wayland).map_err(Failure::from);
         let piped = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
         connection.and_then(|connection| {
@@ -97,7 +127,11 @@ impl Lock {
                 Self {
                     connection,
                     queue,
-                    shell: Shell::new(Store::open(config), Ways::new(ways, helper, user)),
+                    shell: Shell::new(
+                        Store::open(config),
+                        (user.called, face),
+                        Ways::new(ways, helper, user.name),
+                    ),
                     heard,
                     heard_by: (sender, Waker(Arc::new(waking))),
                     woken,
@@ -133,6 +167,10 @@ impl Lock {
         while rustix::io::read(&self.woken, &mut drained).is_ok_and(|read| read > 0) {}
         let heard: Vec<(Way, Said)> = self.heard.try_iter().collect();
         for said in heard {
+            // A finger that did not match is shown, if only the time was.
+            if matches!(said.1, Said::Error(_)) {
+                self.shell.wake();
+            }
             match self.shell.ways.heard(said, now) {
                 Came::Right => self.shell.held = Held::Unlocking,
                 Came::Wrong => self.shell.shake(),
@@ -160,11 +198,16 @@ impl Lock {
     }
 
     /// When there will next be something to do without anything having
-    /// happened: the time changing, or a helper due to be asked again.
+    /// happened: the time changing, a helper due to be asked again, or the
+    /// lock screen due to show only the time again.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
         let clock = self.shell.clock.as_ref().map(|(_, changes)| *changes);
-        clock.into_iter().chain(self.shell.again).min()
+        let rest = match self.shell.view {
+            View::Awake { until } => until,
+            View::Resting => None,
+        };
+        clock.into_iter().chain(self.shell.again).chain(rest).min()
     }
 
     /// Runs the lock screen, asleep until there is something to do, until
@@ -217,6 +260,15 @@ struct Shell {
     typing: Typing,
     typed: String,
     ways: Ways,
+    /// What the user is called, and their face, cut to a circle.
+    called: String,
+    face: Option<Image>,
+    /// Whether only the time is shown.
+    view: View,
+    /// While who is to unlock comes into view: when the first frame of it
+    /// was shown, once one has been, and how long it has come for since,
+    /// in milliseconds, as the compositor tells the time of each.
+    waking: Option<(Option<u32>, u32)>,
     /// What the clock reads, and when it reads differently.
     clock: Option<(String, Instant)>,
     /// When a helper is next due to be asked again.
@@ -227,6 +279,17 @@ struct Shell {
     shaking: Option<(Option<u32>, u32)>,
     /// Whether what is on the screens may not be what should be.
     stale: bool,
+}
+
+/// What the lock screen shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum View {
+    /// Only the time, until a key or a button is pressed.
+    Resting,
+    /// Who is to unlock, the field and what each way says as well, until
+    /// it has been left alone for a while: when that is, once a turn has
+    /// said, after the last key.
+    Awake { until: Option<Instant> },
 }
 
 /// How far the session lock has got.
@@ -263,7 +326,7 @@ struct Face {
 }
 
 impl Shell {
-    fn new(store: Store, ways: Ways) -> Self {
+    fn new(store: Store, (called, face): (String, Option<Image>), ways: Ways) -> Self {
         Self {
             compositor: None,
             shm: None,
@@ -278,6 +341,10 @@ impl Shell {
             typing: Typing::default(),
             typed: String::new(),
             ways,
+            called,
+            face,
+            view: View::Resting,
+            waking: None,
             clock: None,
             again: None,
             shaking: None,
@@ -307,6 +374,19 @@ impl Shell {
                 .manager
                 .as_ref()
                 .map(|manager| manager.lock(handle, ()));
+        }
+        match self.view {
+            View::Awake { until: None } => {
+                self.view = View::Awake {
+                    until: Some(now + REST),
+                }
+            }
+            View::Awake { until: Some(until) } if until <= now => {
+                self.view = View::Resting;
+                wipe(&mut self.typed);
+                self.stale = true;
+            }
+            View::Awake { .. } | View::Resting => {}
         }
         if self.held == Held::Locked {
             let wake = heard_by.1.clone();
@@ -362,14 +442,34 @@ impl Shell {
         let elapsed = self.shaking.map(|(_, elapsed)| elapsed);
         self.shaking = self.shaking.filter(|(_, elapsed)| *elapsed < SHAKING);
         let shift = elapsed.map_or(0, shaken);
+        // Coming into view, likewise, for as long as the theme says.
+        let coming = theme.style(Part::Question, States::NONE).transition;
+        let woken = self.waking.map(|(_, elapsed)| elapsed);
+        let lasts = coming.lasts();
+        let done = |elapsed: &u32| Duration::from_millis(u64::from(*elapsed)) >= lasts;
+        self.waking = self.waking.filter(|(_, elapsed)| !done(elapsed));
+        let share = match self.view {
+            View::Resting => 0.0,
+            View::Awake { .. } => woken.map_or(1.0, |elapsed| {
+                coming.progress(Duration::from_millis(u64::from(elapsed)))
+            }),
+        };
+        let who = (self.called.as_str(), self.face.as_ref());
         let faces = self
             .screens
             .iter_mut()
             .filter_map(|screen| screen.face.as_mut());
         let mut sized = faces.filter(|face| face.size.0 > 0 && face.size.1 > 0);
         sized.try_for_each(|face| {
-            let shown = (time, self.typed.chars().count(), ways, shift);
-            let canvas = paint(&theme, &mut self.text, shown, face.size, face.scale);
+            let shown = Shown {
+                time,
+                who,
+                typed: self.typed.chars().count(),
+                ways,
+                shift,
+                share,
+            };
+            let canvas = paint(&theme, &mut self.text, &shown, face.size, face.scale);
             picture(shm, &canvas, handle).map(|buffer| {
                 face.surface.attach(Some(&buffer), 0, 0);
                 // Told when each drawing is shown: shaking, that is when the
@@ -419,6 +519,21 @@ impl Shell {
         news
     }
 
+    /// Shows who is to unlock, if only the time was shown, coming into view
+    /// as the theme has things move; and puts off showing only the time
+    /// again. Returns whether only the time was shown.
+    fn wake(&mut self) -> bool {
+        let resting = self.view == View::Resting;
+        let theme = &self.store.current().theme;
+        let moves = theme.style(Part::Question, States::NONE).transition;
+        if resting && moves.duration > 0 {
+            self.waking = Some((None, 0));
+        }
+        self.view = View::Awake { until: None };
+        self.stale = true;
+        resting
+    }
+
     /// Shakes the field, as a wrong password does, unless the theme has
     /// nothing move.
     fn shake(&mut self) {
@@ -431,8 +546,13 @@ impl Shell {
 
     /// Takes in a key going down: what it types goes in the field, `⌫`
     /// takes the last character out, Escape empties it, and Enter hands it
-    /// to the password's helper if it is asking.
+    /// to the password's helper if it is asking. While only the time is
+    /// shown, a key shows the rest and does nothing else, so that a key
+    /// pressed to wake the screen is not taken for part of the password.
     fn pressed(&mut self, code: u32) {
+        if self.wake() {
+            return;
+        }
         match self.typing.pressed(code) {
             Key::Enter => {
                 if self.ways.answer(&self.typed) {
@@ -460,37 +580,83 @@ fn wipe(typed: &mut String) {
     bytes.fill(0);
 }
 
-/// Paints a screen `size` units large at `scale`: the time, the field with
-/// a dot for each of `typed` characters, moved `shift` across as it shakes,
-/// what the password's helper said under it, and what each other way says
-/// or offers beneath.
-fn paint(
-    theme: &Theme,
-    text: &mut Text,
-    (time, typed, ways, shift): (&str, usize, &Ways, i32),
-    size: (u32, u32),
-    scale: Scale,
-) -> Canvas {
+/// What a screen shows.
+struct Shown<'a> {
+    /// The time.
+    time: &'a str,
+    /// What the user is called, and their face.
+    who: (&'a str, Option<&'a Image>),
+    /// How many characters are typed in the field.
+    typed: usize,
+    ways: &'a Ways,
+    /// How far the field is moved across as it shakes, in units of layout.
+    shift: i32,
+    /// How much of who is to unlock, the field and what the ways say is in
+    /// view: from 0, only the time, to 1, all of it.
+    share: f32,
+}
+
+/// Paints a screen `size` units large at `scale`: the time, in the middle
+/// while it is all there is; and as the rest comes into view, rising into
+/// place and out of nothing, who is to unlock, the field with a dot for
+/// each character typed, what the password's helper said under it, and
+/// what each other way says beneath.
+fn paint(theme: &Theme, text: &mut Text, shown: &Shown, size: (u32, u32), scale: Scale) -> Canvas {
     let (width, height) = size;
+    let share = shown.share;
     let mut canvas = Canvas::scaled(width, height, scale);
     let behind = theme.style(Part::Desktop, States::NONE).background;
     canvas.fill((0, 0, width, height), behind);
     let middle = |length: u32| (width.saturating_sub(length) / 2).cast_signed();
-    let mut top = (height / 2).saturating_sub(CLOCK * 2).cast_signed();
+    // Who is to unlock is under the time, and the field under them: all of
+    // it in the middle, and the time alone in the middle before it.
+    let all = CLOCK * 2 + 16 + FACE + 8 + LINE + 12 + FIELD.1;
+    let alone = f32::from(u16::try_from((height / 2).saturating_sub(CLOCK)).unwrap_or(0));
+    let together = f32::from(u16::try_from((height / 2).saturating_sub(all / 2)).unwrap_or(0));
+    let mut top = whole((together - alone).mul_add(share, alone));
+    // Text is drawn in the middle of the screen, whole if it fits between
+    // its margins, and cut short only if it does not.
+    let (left, across) = (MARGIN.cast_signed(), width.saturating_sub(MARGIN * 2));
     // The time, large.
     let mut font = theme.font(Part::Clock, States::NONE).clone();
     font.size = omorfos_config::Bounded::clamped(CLOCK);
     let ink = theme.style(Part::Clock, States::NONE).color;
-    let wide = text.measure(time, &font);
-    text.draw(
-        &mut canvas,
-        time,
-        (middle(wide), top, wide, CLOCK * 2),
-        ink,
-        &font,
-    );
-    top += (CLOCK * 2).cast_signed();
+    let area = (left, top, across, CLOCK * 2);
+    text.draw_centered(&mut canvas, shown.time, area, ink, &font);
+    if share <= 0.0 {
+        return canvas;
+    }
+    top += (CLOCK * 2 + 16).cast_signed() + whole(RISE * (1.0 - share));
+    let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
+    // Who is to unlock: their face, and what they are called.
+    let (called, face) = shown.who;
+    let area = (middle(FACE), top, FACE, FACE);
+    match face {
+        Some(face) if share < 1.0 => canvas.draw_image(area, &face.faded(share)),
+        Some(face) => canvas.draw_image(area, face),
+        // Without a face of their own, a disc as the prompt for a secret
+        // looks, with their initials in it.
+        None => {
+            let look = theme.style(Part::Question, States::NONE);
+            let circle = Style {
+                radius: FACE / 2,
+                ..look
+            };
+            let circle = circle.blended(&Style::NONE, share);
+            canvas.draw_box(area, &circle);
+            let mut font = theme.font(Part::Question, States::NONE).clone();
+            font.size = omorfos_config::Bounded::clamped(INITIALS);
+            text.draw_centered(&mut canvas, &initials(called), area, circle.color, &font);
+        }
+    }
+    top += (FACE + 8).cast_signed();
+    let said = faint(theme.style(Part::Question, States::NONE).color);
+    let mut font = theme.font(Part::Question, States::NONE).clone();
+    font.size = omorfos_config::Bounded::clamped(NAME);
+    text.draw_centered(&mut canvas, called, (left, top, across, LINE), said, &font);
+    top += (LINE + 12).cast_signed();
     // The field, with a dot for each character typed.
+    let ways = shown.ways;
     let password = ways
         .asking
         .iter()
@@ -501,34 +667,46 @@ fn paint(
     } else {
         States::NONE
     };
-    let field = theme.style(Part::QuestionInput, states);
-    let area = (middle(FIELD.0) + shift, top, FIELD.0, FIELD.1);
+    let field = theme
+        .style(Part::QuestionInput, states)
+        .blended(&Style::NONE, share);
+    let area = (middle(FIELD.0) + shown.shift, top, FIELD.0, FIELD.1);
     canvas.draw_box(area, &field);
-    let dots = "\u{2022}".repeat(typed);
+    let dots = "\u{2022}".repeat(shown.typed);
     let font = theme.font(Part::QuestionInput, states);
     let inside = omorfos_ui::inset(area, field.inset());
     text.draw(&mut canvas, &dots, inside, field.color, font);
     top += FIELD.1.cast_signed() + 8;
-    // What each way says: the password's first, under the field.
-    let said = theme.style(Part::Question, States::NONE).color;
+    // What each way says: the password's first, under the field. Another
+    // is shown only once it has said something, as a key does once it is
+    // plugged in, so that the screen does not tell anyone what else would
+    // unlock it.
     let font = theme.font(Part::Question, States::NONE);
-    for asking in ways.asking.iter().filter(|asking| !asking.gone) {
-        let line = match (asking.way, asking.said.as_str()) {
-            (Way::Fingerprint, "") => "Or a finger on the reader".to_owned(),
-            (Way::Key, "") => "Or a security key".to_owned(),
-            (_, said) => said.to_owned(),
-        };
-        let wide = text.measure(&line, font).min(width);
-        text.draw(
-            &mut canvas,
-            &line,
-            (middle(wide), top, wide, LINE),
-            said,
-            font,
-        );
+    let lines = ways
+        .asking
+        .iter()
+        .filter(|asking| !asking.gone && (asking.way == Way::Password || !asking.said.is_empty()));
+    for asking in lines {
+        let area = (left, top, across, LINE);
+        text.draw_centered(&mut canvas, &asking.said, area, said, font);
         top += LINE.cast_signed();
     }
     canvas
+}
+
+/// The initials of what someone is called: the first letters of their
+/// first and last names, or of their one name.
+fn initials(called: &str) -> String {
+    let mut names = called.split_whitespace();
+    let first = names.next();
+    let names = first.into_iter().chain(names.last());
+    let letters = names.filter_map(|name| name.chars().next());
+    letters.flat_map(char::to_uppercase).collect()
+}
+
+/// The nearest whole number of units to `units`.
+fn whole(units: f32) -> i32 {
+    omorfos_shell::whole(f64::from(units) + 0.5)
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
@@ -592,6 +770,8 @@ impl Dispatch<wl_seat::WlSeat, ()> for Shell {
         {
             let typing = capabilities.contains(wl_seat::Capability::Keyboard);
             let _ = typing.then(|| seat.get_keyboard(handle, ()));
+            let pointing = capabilities.contains(wl_seat::Capability::Pointer);
+            let _ = pointing.then(|| seat.get_pointer(handle, ()));
         }
     }
 }
@@ -623,6 +803,26 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 ..
             } => shell.pressed(key),
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A button pressed shows who is to unlock, as a key does.
+        if let wl_pointer::Event::Button {
+            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+            ..
+        } = event
+        {
+            shell.wake();
         }
     }
 }
@@ -699,16 +899,21 @@ impl Dispatch<wl_callback::WlCallback, ()> for Shell {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // A drawing was shown, at the time it says; shaking, the next of the
-        // shake is due.
+        // A drawing was shown, at the time it says; shaking, or coming into
+        // view, the next of it is due.
         if let wl_callback::Event::Done { callback_data: now } = event
-            && let Some((began, elapsed)) = shell.shaking.as_mut()
+            && (shell.shaking.is_some() || shell.waking.is_some())
         {
-            // The field was last shown at rest a frame before the first of
-            // the shake, which is so far into it; time does not go back.
-            let began = *began.get_or_insert(now.saturating_sub(FRAME));
-            *elapsed = now.saturating_sub(began);
-            shell.stale = true;
+            for moving in [&mut shell.shaking, &mut shell.waking] {
+                if let Some((began, elapsed)) = moving.as_mut() {
+                    // It was last shown as it was a frame before the first
+                    // of the move, which is so far into it; time does not
+                    // go back.
+                    let began = *began.get_or_insert(now.saturating_sub(FRAME));
+                    *elapsed = now.saturating_sub(began);
+                    shell.stale = true;
+                }
+            }
         }
     }
 }
@@ -736,3 +941,16 @@ delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
 delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(Shell: ext_session_lock_manager_v1::ExtSessionLockManagerV1);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_initials_are_of_the_first_and_last_names_or_of_the_one() {
+        assert_eq!(initials("Some Middle One"), "SO");
+        assert_eq!(initials("  someone  "), "S");
+        assert_eq!(initials("łukasz żak"), "ŁŻ");
+        assert_eq!(initials(""), "");
+    }
+}

@@ -50,17 +50,48 @@ pub fn ended(
     )
 }
 
-/// The name of the user `uid` is, as `passwd` lists users, or else as the
-/// environment says, `user`.
+/// Who the lock screen is for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct User {
+    /// The name they log in with, which the helpers ask PAM about.
+    pub name: String,
+    /// What the lock screen calls them: their full name where the system
+    /// has one, and else their name.
+    pub called: String,
+    /// The files their face may be in, as the login screens keep it: the
+    /// first that can be read is shown.
+    pub faces: Vec<PathBuf>,
+}
+
+/// The user `uid` is, as `passwd` lists users, or else as the environment
+/// says, named `user` and at home in `home`.
 #[must_use]
-pub fn who(passwd: &str, uid: u32, user: Option<&OsStr>) -> String {
+pub fn who(passwd: &str, uid: u32, user: Option<&OsStr>, home: Option<&OsStr>) -> User {
+    // A name, the password's place, the number, the group's, and then
+    // what is known of them: their full name first, before any comma.
     let listed = passwd.lines().find_map(|line| {
         let (name, rest) = line.split_once(':')?;
-        let number: u32 = rest.split(':').nth(1)?.parse().ok()?;
-        (number == uid).then(|| name.to_owned())
+        let mut fields = rest.split(':');
+        let number: u32 = fields.nth(1)?.parse().ok()?;
+        let full = fields.nth(1).and_then(|about| about.split(',').next());
+        (number == uid).then(|| (name.to_owned(), full.unwrap_or_default().trim().to_owned()))
     });
     let named = user.map(|user| user.to_string_lossy().into_owned());
-    listed.or(named).unwrap_or_default()
+    let (name, full) = listed.unwrap_or_else(|| (named.unwrap_or_default(), String::new()));
+    // AccountsService keeps the face a login screen shows, by the name,
+    // which is never a path; older ones are kept at home.
+    let kept = (!name.is_empty() && !name.contains('/'))
+        .then(|| Path::new("/var/lib/AccountsService/icons").join(&name));
+    let home = home.map(Path::new);
+    let at_home = [".face", ".face.icon"].map(|face| home.map(|home| home.join(face)));
+    User {
+        called: if full.is_empty() { name.clone() } else { full },
+        name,
+        faces: kept
+            .into_iter()
+            .chain(at_home.into_iter().flatten())
+            .collect(),
+    }
 }
 
 /// Locks the session the environment describes, until it is unlocked or
@@ -77,7 +108,7 @@ pub fn who(passwd: &str, uid: u32, user: Option<&OsStr>) -> String {
 pub fn start(
     (runtime_dir, wayland_display): (Option<&OsStr>, Option<&OsStr>),
     (config_home, home): (Option<&OsStr>, Option<&OsStr>),
-    (helper, user): (PathBuf, String),
+    (helper, user): (PathBuf, User),
 ) -> Result<(), Failure> {
     let wayland = runtime_dir.zip(wayland_display);
     let wayland = wayland.map(|(directory, display)| Path::new(directory).join(display));
@@ -97,10 +128,43 @@ mod tests {
 
     #[test]
     fn the_user_is_who_the_system_says_or_else_who_the_environment_does() {
-        let passwd = "root:x:0:0::/root:/bin/sh\nsomeone:x:1000:1000::/home/someone:/bin/sh\n";
-        assert_eq!(who(passwd, 1000, Some(OsStr::new("other"))), "someone");
-        assert_eq!(who(passwd, 1001, Some(OsStr::new("other"))), "other");
-        assert_eq!(who("broken\nno:x:many\nshort:x\n", 1000, None), "");
+        let passwd = "root:x:0:0::/root:/bin/sh\n\
+                      someone:x:1000:1000: Some One ,Room 1,,:/home/someone:/bin/sh\n\
+                      plain:x:1001:1001::/home/plain:/bin/sh\n";
+        let home = Some(OsStr::new("/home/someone"));
+        let someone = who(passwd, 1000, Some(OsStr::new("other")), home);
+        assert_eq!(someone.name, "someone");
+        assert_eq!(someone.called, "Some One", "by their full name");
+        assert_eq!(
+            someone.faces,
+            [
+                "/var/lib/AccountsService/icons/someone",
+                "/home/someone/.face",
+                "/home/someone/.face.icon"
+            ]
+            .map(PathBuf::from)
+        );
+        let plain = who(passwd, 1001, None, None);
+        assert_eq!(
+            (plain.name.as_str(), plain.called.as_str()),
+            ("plain", "plain")
+        );
+        assert_eq!(
+            plain.faces.len(),
+            1,
+            "with no home, only what is kept for them"
+        );
+        let other = who(passwd, 1002, Some(OsStr::new("other")), None);
+        assert_eq!(
+            (other.name.as_str(), other.called.as_str()),
+            ("other", "other")
+        );
+        // A name that is a path is not looked for a face by.
+        let odd = who("", 1000, Some(OsStr::new("../x")), None);
+        assert_eq!(odd.faces, Vec::<PathBuf>::new());
+        let nobody = who("broken\nno:x:many\nshort:x\n", 1000, None, None);
+        assert_eq!(nobody.name, "");
+        assert_eq!(nobody.faces, Vec::<PathBuf>::new());
     }
 
     #[test]
@@ -127,7 +191,8 @@ mod tests {
 
     #[test]
     fn outside_a_session_the_lock_screen_says_so() {
-        let helper = (PathBuf::from("omorfos-lock"), "someone".to_owned());
+        let someone = who("", 0, Some(OsStr::new("someone")), None);
+        let helper = (PathBuf::from("omorfos-lock"), someone);
         let home = Some(OsStr::new("/nowhere/home"));
         let failure = start((None, None), (None, home), helper.clone()).unwrap_err();
         assert!(failure.to_string().contains("not an omorfos session"));

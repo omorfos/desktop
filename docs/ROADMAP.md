@@ -537,6 +537,21 @@ what only games and touchpads need last.
       for each way, the password, a finger and a security key at once,
       whichever is first unlocking; the locker started again if it ends
       with the session locked. Chosen with `locker: [omorfos-lock]`.
+- [x] Only the time on the lock screen until a key or a button is
+      pressed, and then the user's face, or their initials, and full name,
+      the field and the ways rising into view; the time alone again after
+      30 seconds left alone; a way other than the password shown only once
+      it speaks, so that a key is shown only while it is plugged in
+      (ADR 52).
+- [ ] Sleep, Restart, Shut Down and Log Out from the lock screen, without
+      unlocking. Through logind, sharing `omorfos-session`'s calls (Log Out
+      ending the session as `omorfosctl action quit` does); each offered
+      only where logind's `CanSuspend`, `CanReboot` and `CanPowerOff`
+      answer "yes", so that none waits on a polkit prompt the locked
+      screen cannot show; asked to be confirmed, with what logind's
+      inhibitors say ("Firefox is keeping the machine on"), since whoever
+      is at the screen loses the user's unsaved work by it; and a setting,
+      such as `lock.power`, for a shared machine to have none of them.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and
