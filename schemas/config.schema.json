@@ -228,6 +228,23 @@
       },
       "type": "object"
     },
+    "Lock": {
+      "additionalProperties": false,
+      "description": "How the lock screen that comes with omorfos may be unlocked. The\npassword always may, so that a reader that fails never keeps the user\nout; each other way is offered beside it where PAM is set up for it,\nand whichever is shown first unlocks.",
+      "properties": {
+        "fingerprint": {
+          "default": true,
+          "description": "A finger on the reader, through the `omorfos-lock-fingerprint` PAM\nservice.",
+          "type": "boolean"
+        },
+        "key": {
+          "default": true,
+          "description": "A security key touched, such as a `YubiKey`, through the\n`omorfos-lock-key` PAM service.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Mouse": {
       "additionalProperties": false,
       "description": "Mouse behaviour. A mouse and a touchpad are set apart because people\nexpect opposite things of them.",
@@ -816,6 +833,10 @@
     "launcher": {
       "$ref": "#/$defs/Launcher",
       "description": "The launcher that comes with omorfos."
+    },
+    "lock": {
+      "$ref": "#/$defs/Lock",
+      "description": "How `omorfos-lock` may be unlocked, besides the password."
     },
     "locker": {
       "anyOf": [
