@@ -316,6 +316,51 @@ pub(crate) fn notice(
     canvas
 }
 
+/// Paints the question whether to keep the screens as they stand now,
+/// saying what that is, and how many seconds are `left` before they go
+/// back as they were.
+pub(crate) fn keep_screens(
+    text: &mut Text,
+    theme: &Theme,
+    (what, left): (&str, u64),
+    scale: Scale,
+) -> Canvas {
+    let seconds = if left == 1 { "second" } else { "seconds" };
+    let lines = [
+        what.to_owned(),
+        "Keep the screens like this?".to_owned(),
+        format!("Enter keeps them. Escape, or {left} {seconds}, puts them back."),
+    ];
+    let style = theme.style(Part::Notice, States::NONE);
+    let edges = style.inset();
+    // The first line is the heading.
+    let parts = [Part::NoticeHeading, Part::Notice, Part::Notice];
+    let fonts = parts.map(|part| (part, theme.font(part, States::NONE)));
+    let widest = lines
+        .iter()
+        .zip(fonts)
+        .map(|(line, (_, font))| text.measure(line, font));
+    let width = widest.max().unwrap_or(0).saturating_add(edges.across());
+    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    let height = NOTICE_ROW.saturating_mul(rows).saturating_add(edges.down());
+    let whole = (0, 0, width, height);
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box(whole, &style);
+    let (left_edge, mut top, room, _) = inset(whole, edges);
+    for (line, (part, font)) in lines.iter().zip(fonts) {
+        let ink = theme.style(part, States::NONE).color;
+        text.draw(
+            &mut canvas,
+            line,
+            (left_edge, top, room, NOTICE_ROW),
+            ink,
+            font,
+        );
+        top += NOTICE_ROW.cast_signed();
+    }
+    canvas
+}
+
 /// Paints what the compositor says of what the pointer rests on: a line of
 /// text for each of `lines`, in a box as wide as the widest.
 pub(crate) fn tooltip(text: &mut Text, theme: &Theme, lines: &[String], scale: Scale) -> Canvas {

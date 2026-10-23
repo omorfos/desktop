@@ -14,6 +14,7 @@ mod config;
 mod corners;
 mod cursors;
 mod decorations;
+mod display_key;
 mod dragging;
 mod executable;
 mod gpu;

@@ -126,6 +126,8 @@ pub(crate) mod key {
     pub(crate) const RIGHT: Keycode = Keycode::new(114);
     pub(crate) const DOWN: Keycode = Keycode::new(116);
     pub(crate) const SUPER: Keycode = Keycode::new(133);
+    /// The key a laptop has for its screens, `XF86Display`.
+    pub(crate) const DISPLAY: Keycode = Keycode::new(235);
 }
 
 /// A compositor with a software-rendered output and its own configuration

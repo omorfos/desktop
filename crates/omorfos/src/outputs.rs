@@ -101,6 +101,14 @@ impl Head {
     }
 }
 
+/// The outputs that stand nowhere of their own: those that show what
+/// another shows, and those that are off.
+#[derive(Debug, Default)]
+pub(crate) struct Aside {
+    pub(crate) mirrors: Vec<Mirror>,
+    pub(crate) dark: Vec<Head>,
+}
+
 /// An output that shows what another shows.
 #[derive(Debug)]
 pub(crate) struct Mirror {
@@ -176,8 +184,10 @@ impl Compositor {
     /// Takes an output away. Windows left stranded move to the first of
     /// those that remain, and panels that were on it are closed.
     pub fn remove_output(&mut self, output: &Output) {
-        self.mirrors.retain(|mirror| mirror.head.output != *output);
-        self.dark.retain(|head| head.output != *output);
+        self.aside
+            .mirrors
+            .retain(|mirror| mirror.head.output != *output);
+        self.aside.dark.retain(|head| head.output != *output);
         let index = self.heads.iter().position(|head| head.output == *output);
         if let Some(index) = index {
             self.withdraw(index);
@@ -211,20 +221,23 @@ impl Compositor {
     /// Every output: those that stand in the space, those that mirror one
     /// of them, and those that are off.
     pub(crate) fn every_head(&self) -> impl Iterator<Item = &Head> {
-        let mirrors = self.mirrors.iter().map(|mirror| &mirror.head);
-        self.heads.iter().chain(mirrors).chain(&self.dark)
+        let mirrors = self.aside.mirrors.iter().map(|mirror| &mirror.head);
+        self.heads.iter().chain(mirrors).chain(&self.aside.dark)
     }
 
     fn every_head_mut(&mut self) -> impl Iterator<Item = &mut Head> {
-        let mirrors = self.mirrors.iter_mut().map(|mirror| &mut mirror.head);
-        self.heads.iter_mut().chain(mirrors).chain(&mut self.dark)
+        let mirrors = self.aside.mirrors.iter_mut().map(|mirror| &mut mirror.head);
+        self.heads
+            .iter_mut()
+            .chain(mirrors)
+            .chain(&mut self.aside.dark)
     }
 
     /// Whether `output` is off, as the configuration says: a backend that
     /// drives screens turns it off, and draws nothing on it.
     #[must_use]
     pub fn is_dark(&self, output: &Output) -> bool {
-        self.dark.iter().any(|head| head.output == *output)
+        self.aside.dark.iter().any(|head| head.output == *output)
     }
 
     /// Has each output be off, or mirror the one the configuration says if
@@ -235,6 +248,7 @@ impl Compositor {
     /// would have them all off, the first is left on, and the user told.
     fn settle_screens(&mut self) {
         let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
+        self.forget_tried(&names);
         let arrangement = self.arrangement_for(&names.iter().map(String::as_str));
         let off = |name: &&String| arrangement.named(name).is_some_and(|named| !named.enabled);
         let mut dark: Vec<String> = names.iter().filter(off).cloned().collect();
@@ -254,13 +268,14 @@ impl Compositor {
         let mirroring = |name: &str| wanted.iter().find(|(mirror, _)| mirror == name);
         // Those that are to be otherwise stand again first, and are taken
         // from there for what they are to be.
-        let back = self.mirrors.extract_if(.., |mirror| {
+        let back = self.aside.mirrors.extract_if(.., |mirror| {
             let wanted = mirror_wanted(mirroring(&mirror.head.output.name()));
             wanted != Some(&mirror.source)
         });
         let back: Vec<Head> = back.map(|mirror| mirror.head).collect();
         self.heads.extend(back);
         let lit = self
+            .aside
             .dark
             .extract_if(.., |head| !dark.contains(&head.output.name()));
         let lit: Vec<Head> = lit.collect();
@@ -278,9 +293,9 @@ impl Compositor {
                 Some(source) => {
                     let bars =
                         std::array::from_fn(|_| SolidColorBuffer::new((0, 0), Color32F::BLACK));
-                    self.mirrors.push(Mirror { head, source, bars });
+                    self.aside.mirrors.push(Mirror { head, source, bars });
                 }
-                None => self.dark.push(head),
+                None => self.aside.dark.push(head),
             }
         }
         for head in &mut self.heads {
@@ -338,13 +353,22 @@ impl Compositor {
         self.heads.iter().find(|head| head.contains(point))
     }
 
-    /// The screens as the configuration has them for those called `names`:
-    /// the first arrangement that names just those, or else `outputs`.
+    /// The screens as they are to stand for those called `names`: as the
+    /// display key has them for now, or else as the configuration does.
     pub(crate) fn arrangement_for<'a>(
         &self,
         names: &(impl Iterator<Item = &'a str> + Clone),
     ) -> &omorfos_config::Outputs {
+        let owned: Vec<String> = names.clone().map(str::to_owned).collect();
+        let stood = self.stood_for(&owned);
+        stood.unwrap_or_else(|| self.configured_for(&owned))
+    }
+
+    /// The screens as the configuration has them for those called `names`:
+    /// the first arrangement that names just those, or else `outputs`.
+    pub(crate) fn configured_for(&self, names: &[String]) -> &omorfos_config::Outputs {
         let general = &self.config().general;
+        let names = names.iter().map(String::as_str);
         let mut arrangements = general.arrangements.iter();
         let found = arrangements.find(|arrangement| arrangement.are(names.clone()));
         found.unwrap_or(&general.outputs)
@@ -446,14 +470,14 @@ impl Compositor {
         // A mirror is drawn at the scale of the one it mirrors, which is
         // what everything it shows is made the size of, before the whole
         // is made to fit on it.
-        let mirrors = self.mirrors.iter().map(|mirror| {
+        let mirrors = self.aside.mirrors.iter().map(|mirror| {
             let source = standing
                 .iter()
                 .find(|(output, ..)| *output == mirror.source);
             let scale = source.map_or(Scale::ONE, |(_, scale, _)| *scale);
             (scale, self.rotation_for(&mirror.head.output.name()))
         });
-        let dark = self.dark.iter().map(|head| {
+        let dark = self.aside.dark.iter().map(|head| {
             let name = head.output.name();
             (
                 self.scale_for(&name, head.suggested),

@@ -103,13 +103,14 @@ use crate::input::Drag;
 use crate::input::Focused;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
-use crate::outputs::{Head, Mirror};
+use crate::outputs::{Aside, Head};
 use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
 use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
+use crate::standing::Interim;
 use crate::switcher::Switch;
 use crate::tiles::Lines;
 use crate::typing::Typing;
@@ -253,11 +254,8 @@ pub struct Compositor {
     pub(crate) popups: PopupManager,
     /// The outputs, left to right.
     pub(crate) heads: Vec<Head>,
-    /// The outputs that show what another shows, and stand nowhere of
-    /// their own.
-    pub(crate) mirrors: Vec<Mirror>,
-    /// The outputs that are off, and stand nowhere.
-    pub(crate) dark: Vec<Head>,
+    /// The outputs that stand nowhere of their own.
+    pub(crate) aside: Aside,
     /// Pictures of the screen being taken by programs that may.
     pub(crate) capture: Capture,
     _surfaces: Offered,
@@ -292,6 +290,8 @@ pub struct Compositor {
     pub(crate) grabbed_popups: Vec<PopupSurface>,
     /// The on-screen notice of what is wrong, while there is something.
     pub(crate) notice: Option<Notice>,
+    /// How the screens stand for now, as the display key has them.
+    pub(crate) interim: Interim,
     /// The problems the user has clicked away, hidden until they change.
     pub(crate) dismissed: Vec<String>,
     pub(crate) text: Text,
@@ -459,8 +459,7 @@ impl Compositor {
                     space: Space::default(),
                     popups: PopupManager::default(),
                     heads: Vec::new(),
-                    mirrors: Vec::new(),
-                    dark: Vec::new(),
+                    aside: Aside::default(),
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -476,6 +475,7 @@ impl Compositor {
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
                     notice: None,
+                    interim: Interim::default(),
                     dismissed: Vec::new(),
                     text: Text::new(),
                     store,
@@ -906,6 +906,7 @@ impl Compositor {
             self.hover.palette.deadline(),
             self.capture.deadline(),
             self.capture.recording.deadline(),
+            self.interim.deadline(),
             screens_off,
             moving,
             said,
@@ -961,6 +962,7 @@ impl Compositor {
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
+        self.time_screens(now);
         // With the screens off a lock is shown without drawing, and is
         // said to be before the state is.
         self.confirm_lock();
@@ -1089,6 +1091,7 @@ impl Compositor {
                 let keyboard = self.keyboard.clone();
                 keyboard.with_xkb_state(self, |mut xkb| xkb.cycle_next_layout());
             }
+            Action::NextScreens => self.next_screens(),
             Action::ReloadConfig => self.reload_config(),
             Action::Quit => self.running = false,
         }
@@ -1914,6 +1917,7 @@ impl Compositor {
             return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
         }
         let mirror = self
+            .aside
             .mirrors
             .iter()
             .position(|mirror| mirror.head.output == *output);
@@ -2257,8 +2261,8 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let source = self.mirrors[at].source.clone();
-        let room = self.mirrors[at].head.upright();
+        let source = self.aside.mirrors[at].source.clone();
+        let room = self.aside.mirrors[at].head.upright();
         let head = self.head(&source);
         let view = View {
             origin: head.map(|head| head.area().loc).unwrap_or_default(),
@@ -2266,7 +2270,7 @@ impl Compositor {
         };
         let picture = head.map(Head::upright).unwrap_or_default();
         let (zoom, shown) = fitted(picture, room);
-        let mirror = &mut self.mirrors[at];
+        let mirror = &mut self.aside.mirrors[at];
         let mut elements: Vec<Mirrored<R>> = Vec::new();
         for (buffer, bar) in mirror.bars.iter_mut().zip(bars(shown, room)) {
             buffer.resize((bar.size.w, bar.size.h));
@@ -2276,7 +2280,7 @@ impl Compositor {
         }
         let locked = self.is_locked();
         let (drawn, behind) = if locked {
-            self.mirrors[at].head.blanked.set(true);
+            self.aside.mirrors[at].head.blanked.set(true);
             (self.locked_elements(renderer, &source, view), BLACK)
         } else {
             let shown = Extras {
@@ -2375,6 +2379,14 @@ impl Compositor {
         // mark, and dims the rest; no input method types into it.
         self.sealed_elements(renderer, output, view, &mut elements);
         self.popup_elements(renderer, view, &mut elements);
+        // Whether to keep the screens as they are is asked over everything
+        // but the pointer.
+        let asking = self.interim.prompts.iter();
+        let asking = asking.filter(|prompt| prompt.output == *output);
+        for prompt in asking {
+            let at = prompt.at.to_f64();
+            elements.extend(prompt.pixels.element(renderer, at, view, 1.0));
+        }
         if let Some(notice) = &self.notice {
             let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
             elements.extend(notice.pixels.element(

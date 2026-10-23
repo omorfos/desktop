@@ -343,6 +343,20 @@ impl Compositor {
             // window, and is the window's all the same.
             compositor.hover.reveal.dismiss();
             compositor.hover.palette.dismiss();
+            // The screens tried another way are kept by Enter and put back
+            // by Escape, which nothing else then sees.
+            if compositor.interim.trying() {
+                let screens = match keysym {
+                    Keysym::Return | Keysym::KP_Enter => Some(true),
+                    Keysym::Escape => Some(false),
+                    _ => None,
+                };
+                if let Some(keep) = screens {
+                    compositor.answer_screens(keep);
+                    compositor.suppressed_keys.push(code);
+                    return FilterResult::Intercept(None);
+                }
+            }
             // An open switcher is steered by Escape, Enter and the arrows.
             if compositor.switcher_key(keysym) {
                 compositor.suppressed_keys.push(code);
