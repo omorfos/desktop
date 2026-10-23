@@ -501,10 +501,20 @@ what only games and touchpads need last.
       what it does; AccessKit, which speaks AT-SPI over D-Bus with zbus,
       is the likely way. Until then the eye's tooltip says what it does to
       those who can see it, and nothing tells one who cannot.
-- [ ] Wallpaper (wish 6): a colour or a picture per screen, filled,
-      fitted, stretched, centred or tiled; a directory or several shown
-      in turn, in order or shuffled, at an interval. A program of its
-      own, which the theme's `desktop` gives way to.
+- [x] Wallpaper (wish 6, ADR 49): `omorfos-wallpaper`, a colour or a
+      picture per screen, filled, fitted, stretched, centred or tiled; a
+      directory shown in turn, by name or shuffled, at an interval. PNG
+      and JPEG, a photograph turned as the camera was held, a large PNG
+      read a row at a time and no larger than the screen needs. What each
+      screen was given is kept, and shown at once at the next login; a
+      directory starts where it was kept, and its next picture is read
+      before it is due. With nothing named it puts nothing up, and the
+      theme's `desktop` shows.
+- [ ] Wallpaper, what is left: a fade from one picture to the next, with
+      the look; a directory watched, so that a picture put there or
+      changed shows at once and not at the next turn; and other formats
+      (WebP, AVIF, SVG) as they are asked for, each another decoder of
+      untrusted input.
 - [ ] Screens arranged by the user: mirroring. The display key
       (`XF86Display`) goes through the screens side by side, the same on
       both, and only one of them, each kept only if the user says so in

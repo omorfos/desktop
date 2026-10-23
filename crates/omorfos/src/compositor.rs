@@ -1314,6 +1314,14 @@ impl Compositor {
         self.set_component(Program::Panel, program.into());
     }
 
+    /// Says where the wallpaper that comes with omorfos is: a name to look
+    /// up in `PATH`, or a path. It is then started with the session, unless
+    /// the configuration turns it off. Until this is called there is none
+    /// to start.
+    pub fn set_wallpaper(&mut self, program: impl Into<PathBuf>) {
+        self.set_component(Program::Wallpaper, program.into());
+    }
+
     /// Says where the program that shows notifications is: a name to look
     /// up in `PATH`, or a path. It is then started with the session,
     /// unless the configuration turns it off. Until this is called there
@@ -2972,6 +2980,7 @@ const MENU_PADDING: u32 = 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Program {
     Panel,
+    Wallpaper,
     Notifier,
     Portal,
     Keeper,
@@ -2985,6 +2994,7 @@ impl Program {
     const fn wanted(self, general: &omorfos_config::General) -> bool {
         match self {
             Self::Panel => general.panel.enabled,
+            Self::Wallpaper => general.wallpaper.enabled,
             Self::Notifier => general.notifications.enabled,
             Self::Portal => general.portals.enabled,
             Self::Keeper => general.clipboard.enabled,
@@ -2999,7 +3009,7 @@ impl Program {
     /// given.
     const fn roles(self) -> Roles {
         match self {
-            Self::Panel | Self::Notifier => Roles::PANEL,
+            Self::Panel | Self::Wallpaper | Self::Notifier => Roles::PANEL,
             Self::Portal => Roles::PANEL.with(Roles::OVERLAY).with(Roles::CAPTURE),
             Self::Keeper => Roles::CLIPBOARD,
             // One speaks to PipeWire, and to the compositor only over the

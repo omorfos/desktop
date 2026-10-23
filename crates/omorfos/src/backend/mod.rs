@@ -25,6 +25,15 @@ pub fn panel_program(own: Option<&Path>) -> PathBuf {
     beside(own, PANEL)
 }
 
+/// What the wallpaper's executable is called.
+const WALLPAPER: &str = "omorfos-wallpaper";
+
+/// Where the wallpaper is, found as [`panel_program`] finds the panel.
+#[must_use]
+pub fn wallpaper_program(own: Option<&Path>) -> PathBuf {
+    beside(own, WALLPAPER)
+}
+
 /// What the launcher's executable is called.
 const LAUNCHER: &str = "omorfos-launcher";
 
@@ -163,6 +172,7 @@ mod tests {
     #[test]
     fn without_one_beside_it_the_panel_is_looked_up_by_name() {
         assert_eq!(panel_program(None), Path::new(PANEL));
+        assert_eq!(wallpaper_program(None), Path::new(WALLPAPER));
         assert_eq!(launcher_program(None), Path::new(LAUNCHER));
         assert_eq!(notifier_program(None), Path::new(NOTIFIER));
         assert_eq!(portal_program(None), Path::new(PORTAL));

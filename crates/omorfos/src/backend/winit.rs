@@ -82,6 +82,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     compositor.set_data_directories(data_directories());
     compositor.show_pointer();
     compositor.set_panel(panel());
+    compositor.set_wallpaper(wallpaper());
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
@@ -141,6 +142,11 @@ pub(super) fn launcher() -> PathBuf {
 /// Where the panel that goes with this compositor is.
 pub(super) fn panel() -> PathBuf {
     super::panel_program(env::current_exe().ok().as_deref())
+}
+
+/// Where the wallpaper, for this compositor, is.
+pub(super) fn wallpaper() -> PathBuf {
+    super::wallpaper_program(env::current_exe().ok().as_deref())
 }
 
 pub(super) fn cursor_themes() -> Themes {
