@@ -1,5 +1,7 @@
 //! Each action a binding or menu entry can perform.
 
+use std::time::Duration;
+
 use omorfos_config::{Action, Command, WorkspaceNumber};
 
 use crate::common::{Event, Session};
@@ -141,6 +143,59 @@ fn reload_config_applies_changes_immediately() {
 #[test]
 fn quit_ends_the_session() {
     let mut session = Session::new();
+    assert!(session.compositor().is_running());
+    session.compositor_mut().perform(&Action::Quit);
+    assert!(!session.compositor().is_running());
+}
+
+/// Has the compositor start a shell that first runs `script`, given where
+/// the session's directory is, and waits until it is running.
+#[expect(
+    clippy::unwrap_used,
+    reason = "test support code fails the test on any error"
+)]
+fn started(session: &mut Session, script: impl Fn(&str) -> String) {
+    let there = session.config.path().display().to_string();
+    let ready = session.config.path().join("ready");
+    let script = format!("{} touch '{there}/ready'; sleep 10 & wait", script(&there));
+    let command = Command::new("sh", ["-c".to_owned(), script]).unwrap();
+    session
+        .compositor_mut()
+        .perform(&Action::Spawn(command.into()));
+    session.eventually(|_| ready.exists());
+}
+
+#[test]
+fn the_programs_started_in_the_session_are_asked_to_end_before_it_does() {
+    let mut session = Session::new();
+    started(&mut session, |there| {
+        format!("trap 'touch \"{there}/asked\"; exit 0' TERM;")
+    });
+    session.compositor_mut().perform(&Action::Quit);
+    assert!(session.compositor().is_running(), "waiting for it");
+    let asked = session.config.path().join("asked");
+    session.eventually(|session| !session.compositor().is_running());
+    assert!(asked.exists(), "it was asked");
+}
+
+#[test]
+fn a_program_that_will_not_end_is_waited_for_a_while_or_until_asked_again() {
+    let mut session = Session::new();
+    started(&mut session, |_| "trap '' TERM;".to_owned());
+    session.compositor_mut().perform(&Action::Quit);
+    session.step();
+    // Woken when the while is up, should nothing else wake it.
+    let by = session.compositor().deadline();
+    session.advance(Duration::from_millis(1900));
+    assert!(session.compositor().is_running(), "a while");
+    assert!(by.is_some_and(|by| session.compositor().deadline() <= Some(by)));
+    session.advance(Duration::from_millis(200));
+    assert!(!session.compositor().is_running(), "and no longer");
+    // Asked again, it ends at once.
+    let mut session = Session::new();
+    started(&mut session, |_| "trap '' TERM;".to_owned());
+    session.compositor_mut().perform(&Action::Quit);
+    session.step();
     assert!(session.compositor().is_running());
     session.compositor_mut().perform(&Action::Quit);
     assert!(!session.compositor().is_running());

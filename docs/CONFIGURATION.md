@@ -408,7 +408,7 @@ not begin with keys you have bound on their own.
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
-| `quit` | End the session. |
+| `quit` | End the session. The programs started in it are asked to close first, as any desktop asks them, and given two seconds to; asked again meanwhile, it ends at once. |
 
 To run a shell command, spawn the shell: `spawn: [sh, -c, "grim - | wl-copy"]`.
 

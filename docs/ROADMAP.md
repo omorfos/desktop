@@ -559,12 +559,16 @@ what only games and touchpads need last.
       started for destroying its icon's buffer before the icon, made to
       work: window icons served by omorfos, an icon's lost pixels let go
       (ADR 54).
-- [ ] The rest of that log made quiet: what the programs the session starts print kept in the
-      journal under their own names, not in omorfos's log; those the
-      compositor started asked to close before it does, at the end of a
-      session; buffers released as soon as they are drawn, which foot
-      asks for; and window icons (`xdg-toplevel-icon`), which foot asks
-      for too.
+- [x] The programs the session started asked to close before it ends, and
+      given two seconds, so that they end as on any desktop and not with
+      the compositor gone from under them; asked again, it ends at once.
+- [ ] The rest of that log made quiet: what the programs the session
+      starts print kept in the journal under their own names, not in
+      omorfos's log; and buffers in shared memory released as soon as they
+      are drawn, which foot asks for, weighed against the software
+      renderer and drawing with several cards, which read them where they
+      are. foot 1.21.0 also says window icons are not offered, which they
+      are: it looks for the wrong name, fixed in foot since.
 - [ ] Known gaps in the lock screen's buttons: they are reached only with
       the pointer, not with Tab and Enter; and what logind's inhibitors
       say is shown whole, which ADR 53 weighs.
