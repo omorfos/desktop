@@ -15,7 +15,11 @@ fn main() -> ExitCode {
         omorfos_session::run(request, &places).map_err(|failure| (failure, ExitCode::FAILURE))
     });
     match done {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(said) => {
+            // What is offered goes to whoever asked, if they still listen.
+            let _ = io::stdout().write_all(said.as_bytes());
+            ExitCode::SUCCESS
+        }
         Err((failure, code)) => {
             // If even that cannot be said, there is nobody to say it to.
             let _ = writeln!(io::stderr(), "omorfos-session: {failure}");

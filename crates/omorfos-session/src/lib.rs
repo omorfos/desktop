@@ -10,7 +10,9 @@
 //! omorfos-session microphone mute
 //! omorfos-session brightness up|down
 //! omorfos-session media play-pause|next|previous|stop
-//! omorfos-session sleep|restart|shut-down
+//! omorfos-session sleep|restart|shut-down [--locked]
+//! omorfos-session log-out
+//! omorfos-session offered
 //! omorfos-session autostart
 //! ```
 //!
@@ -19,7 +21,11 @@
 //! lets the user who is logged in set it; and what is playing is told over
 //! D-Bus, as players listen for (MPRIS). How loud or how bright it is
 //! then is shown as a notification, which takes the place of the one
-//! before. Sleep and the rest are asked of logind. `autostart` starts what
+//! before. Sleep and the rest are asked of logind: `--locked`, as the lock
+//! screen asks, without polkit asking anyone for a password, which could
+//! not be shown over it. `offered` says which of them logind lets be done
+//! so, and what keeps the machine from them, for the lock screen to offer;
+//! `log-out` asks the compositor to end the session. `autostart` starts what
 //! the desktop entries in `~/.config/autostart` and the system's say is to
 //! start with the session, which the compositor runs once, at login.
 
@@ -77,6 +83,13 @@ pub enum Request {
     Media(Media),
     /// The machine to sleep, start again or turn off.
     Power(Power),
+    /// The same, asked from a locked screen: done only where no password
+    /// is asked for.
+    Locked(Power),
+    /// The session ended, as the compositor ends it.
+    LogOut,
+    /// What a locked screen may offer of those, said.
+    Offered,
     /// What is to start with the session started.
     Autostart,
 }
@@ -123,7 +136,7 @@ impl fmt::Display for Unknown {
         formatter.write_str(
             "usage: omorfos-session [volume up|down|mute | microphone mute | \
              brightness up|down | media play-pause|next|previous|stop | \
-             sleep | restart | shut-down | autostart]",
+             sleep|restart|shut-down [--locked] | log-out | offered | autostart]",
         )
     }
 }
@@ -153,6 +166,11 @@ impl Request {
             ["sleep"] => Ok(Self::Power(Power::Sleep)),
             ["restart"] => Ok(Self::Power(Power::Restart)),
             ["shut-down"] => Ok(Self::Power(Power::ShutDown)),
+            ["sleep", "--locked"] => Ok(Self::Locked(Power::Sleep)),
+            ["restart", "--locked"] => Ok(Self::Locked(Power::Restart)),
+            ["shut-down", "--locked"] => Ok(Self::Locked(Power::ShutDown)),
+            ["log-out"] => Ok(Self::LogOut),
+            ["offered"] => Ok(Self::Offered),
             ["autostart"] => Ok(Self::Autostart),
             _ => Err(Unknown),
         }
@@ -228,14 +246,15 @@ fn user_manager(runtime: Option<&std::ffi::OsStr>) -> bool {
 }
 
 /// Does what was asked, and shows how loud or bright it is then; or
-/// watches over the session until it ends.
+/// watches over the session until it ends. Returns what is to be said, of
+/// what is offered.
 ///
 /// # Errors
 ///
 /// If what it is asked of is not there or does not answer in time: no
 /// `wpctl`, no screen whose brightness can be set, no player, a bus that
 /// cannot be reached, or logind refusing.
-pub fn run(request: Request, places: &Places) -> Result<(), Failure> {
+pub fn run(request: Request, places: &Places) -> Result<String, Failure> {
     let session = || connect(places.session.as_deref().ok_or("there is no session bus")?);
     let level = match request {
         Request::Volume(volume) => volume::change(volume, &places.path)?,
@@ -246,17 +265,40 @@ pub fn run(request: Request, places: &Places) -> Result<(), Failure> {
             brightness::set(&connect(&places.system)?, &backlight, changed)?;
             changed.shown()
         }
-        Request::Media(media) => return media::tell(&session()?, media),
-        Request::Power(power) => return power::ask(&connect(&places.system)?, power),
-        Request::Watch => return watch(places),
-        Request::Autostart => return autostart::start(places),
+        Request::Media(media) => return media::tell(&session()?, media).map(said_nothing),
+        Request::Power(power) => {
+            return power::ask(&connect(&places.system)?, power, true).map(said_nothing);
+        }
+        Request::Locked(power) => {
+            return power::ask(&connect(&places.system)?, power, false).map(said_nothing);
+        }
+        Request::LogOut => {
+            let compositor = places
+                .compositor
+                .as_deref()
+                .ok_or("there is no compositor")?;
+            return power::log_out(compositor).map(said_nothing);
+        }
+        Request::Offered => {
+            return Ok(power::offered(
+                &connect(&places.system)?,
+                places.compositor.is_some(),
+            ));
+        }
+        Request::Watch => return watch(places).map(said_nothing),
+        Request::Autostart => return autostart::start(places).map(said_nothing),
     };
     // That it changed is what matters; showing it is a courtesy, and is
     // done without where there is nothing to show it.
     if let Ok(bus) = session() {
         let _ = shown::show(&bus, &level);
     }
-    Ok(())
+    Ok(String::new())
+}
+
+/// What is said of what was done, which is nothing.
+fn said_nothing((): ()) -> String {
+    String::new()
 }
 
 /// A connection to the bus at `address`, which gives up on a call that is
@@ -529,6 +571,100 @@ mod tests {
     }
 
     #[test]
+    fn asked_from_a_locked_screen_logind_is_to_ask_nobody() {
+        let daemon = Daemon::start();
+        let logind = stand_in::logind(&daemon);
+        let places = places(None, &daemon, "wpctl");
+        for power in [Power::Sleep, Power::Restart, Power::ShutDown] {
+            assert_eq!(run(Request::Locked(power), &places).unwrap(), "");
+        }
+        let asked = ["Suspend false", "Reboot false", "PowerOff false"];
+        assert_eq!(*logind.asked.lock().unwrap(), asked);
+        let unreachable = Places {
+            system: "unix:path=/nowhere/bus".to_owned(),
+            ..places
+        };
+        assert!(run(Request::Locked(Power::Sleep), &unreachable).is_err());
+    }
+
+    #[test]
+    fn what_a_locked_screen_may_offer_is_what_logind_lets_be_done_unasked() {
+        let daemon = Daemon::start();
+        let logind = stand_in::logind(&daemon);
+        let mut places = places(None, &daemon, "wpctl");
+        let all = run(Request::Offered, &places).unwrap();
+        assert_eq!(all, "can sleep\ncan restart\ncan shut-down\n");
+        // What would ask for a password, or cannot be had, is not offered;
+        // logging out is, where there is a compositor.
+        *logind.can.lock().unwrap() = ["challenge", "no", "yes"];
+        let compositor = stand_in::Compositor::start();
+        places.compositor = Some(compositor.path.clone());
+        let inhibitor = |what: &str, who: &str, why: &str, how: &str| {
+            (
+                what.to_owned(),
+                who.to_owned(),
+                why.to_owned(),
+                how.to_owned(),
+                1000,
+                7,
+            )
+        };
+        let long = "x".repeat(200);
+        logind.inhibitors.lock().unwrap().extend([
+            inhibitor("shutdown:sleep", "Firefox", "Down\nloading", "block"),
+            inhibitor("sleep", "omorfos", "Locking first", "delay"),
+            inhibitor("idle:handle-lid-switch", "Player", "Playing", "block"),
+            inhibitor("shutdown", &long, "", "block"),
+        ]);
+        let said = run(Request::Offered, &places).unwrap();
+        let lines: Vec<&str> = said.lines().collect();
+        assert_eq!(
+            lines[..4],
+            [
+                "can shut-down",
+                "can log-out",
+                "held shut-down Firefox: Down loading",
+                "held sleep Firefox: Down loading",
+            ]
+        );
+        assert_eq!(
+            lines[4],
+            format!("held shut-down {}: ", "x".repeat(80)),
+            "cut short"
+        );
+        assert_eq!(lines.len(), 5);
+        // What logind does not answer is not offered.
+        drop(logind);
+        places.compositor = None;
+        assert_eq!(run(Request::Offered, &places).unwrap(), "");
+        let unreachable = Places {
+            system: "unix:path=/nowhere/bus".to_owned(),
+            ..places
+        };
+        assert!(run(Request::Offered, &unreachable).is_err());
+    }
+
+    #[test]
+    fn logging_out_asks_the_compositor_to_end_the_session() {
+        let daemon = Daemon::start();
+        let compositor = stand_in::Compositor::start();
+        let mut places = places(None, &daemon, "wpctl");
+        let failure = run(Request::LogOut, &places).unwrap_err();
+        assert_eq!(failure.to_string(), "there is no compositor");
+        places.compositor = Some(compositor.path.clone());
+        assert_eq!(run(Request::LogOut, &places).unwrap(), "");
+        assert_eq!(
+            *compositor.asked.lock().unwrap(),
+            [r#"{"perform":{"action":"quit"}}"#]
+        );
+        // One that refuses says why.
+        compositor.refuse();
+        assert!(run(Request::LogOut, &places).is_err());
+        places.compositor = Some(PathBuf::from("/nowhere/ipc.sock"));
+        assert!(run(Request::LogOut, &places).is_err());
+    }
+
+    #[test]
     fn what_is_to_start_with_the_session_is_started_when_asked() {
         let daemon = Daemon::start();
         let places = places(None, &daemon, "wpctl");
@@ -579,7 +715,10 @@ mod tests {
         ];
         for (word, power) in power {
             assert_eq!(read(&[word]), Ok(Request::Power(power)));
+            assert_eq!(read(&[word, "--locked"]), Ok(Request::Locked(power)));
         }
+        assert_eq!(read(&["log-out"]), Ok(Request::LogOut));
+        assert_eq!(read(&["offered"]), Ok(Request::Offered));
         assert_eq!(read(&[]), Ok(Request::Watch), "as the compositor runs it");
         assert_eq!(read(&["autostart"]), Ok(Request::Autostart));
     }

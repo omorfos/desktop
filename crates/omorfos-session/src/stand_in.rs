@@ -84,9 +84,17 @@ impl Session {
     }
 }
 
+/// A program keeping the machine from something, as logind lists it: what
+/// from, who, why, how, and its user's and its own numbers.
+pub(crate) type Inhibitor = (String, String, String, String, u32, u32);
+
 struct Manager {
     asked: Asked<String>,
     held: Asked<UnixStream>,
+    /// What it answers when asked whether sleep, restart and shut down may
+    /// be done, in that order.
+    can: Arc<Mutex<[&'static str; 3]>>,
+    inhibitors: Asked<Inhibitor>,
     /// How long it waits for sleep to be let go, in microseconds.
     delay: u64,
 }
@@ -135,6 +143,26 @@ impl Manager {
             .push(format!("PowerOff {interactive}"));
     }
 
+    #[zbus(name = "CanSuspend")]
+    fn can_suspend(&self) -> String {
+        self.can.lock().unwrap()[0].to_owned()
+    }
+
+    #[zbus(name = "CanReboot")]
+    fn can_reboot(&self) -> String {
+        self.can.lock().unwrap()[1].to_owned()
+    }
+
+    #[zbus(name = "CanPowerOff")]
+    fn can_power_off(&self) -> String {
+        self.can.lock().unwrap()[2].to_owned()
+    }
+
+    #[zbus(name = "ListInhibitors")]
+    fn list_inhibitors(&self) -> Vec<Inhibitor> {
+        self.inhibitors.lock().unwrap().clone()
+    }
+
     #[zbus(property, name = "InhibitDelayMaxUSec")]
     const fn inhibit_delay_max(&self) -> u64 {
         self.delay
@@ -155,6 +183,11 @@ pub(crate) struct Logind {
     /// The other end of each hold it gave on sleep, which reads as ended
     /// once that hold is let go of.
     pub(crate) held: Asked<UnixStream>,
+    /// What it answers when asked whether sleep, restart and shut down may
+    /// be done: `yes` to each, unless a test says otherwise.
+    pub(crate) can: Arc<Mutex<[&'static str; 3]>>,
+    /// The programs it says keep the machine from something.
+    pub(crate) inhibitors: Asked<Inhibitor>,
 }
 
 impl Logind {
@@ -206,9 +239,13 @@ pub(crate) fn logind_waiting(daemon: &Daemon, delay: Duration) -> Logind {
         asked: brightness.clone(),
     };
     let (asked, held) = (Asked::default(), Asked::default());
+    let can = Arc::new(Mutex::new(["yes"; 3]));
+    let inhibitors = Asked::default();
     let manager = Manager {
         asked: Arc::clone(&asked),
         held: Arc::clone(&held),
+        can: Arc::clone(&can),
+        inhibitors: Arc::clone(&inhibitors),
         delay: u64::try_from(delay.as_micros()).unwrap(),
     };
     let connection = Builder::address(daemon.address.as_str())
@@ -226,6 +263,8 @@ pub(crate) fn logind_waiting(daemon: &Daemon, delay: Duration) -> Logind {
         brightness,
         asked,
         held,
+        can,
+        inhibitors,
     }
 }
 
