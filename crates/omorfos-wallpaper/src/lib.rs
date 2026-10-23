@@ -14,7 +14,7 @@
 
 mod cache;
 mod lay;
-mod picture;
+pub mod picture;
 mod slides;
 mod wallpaper;
 

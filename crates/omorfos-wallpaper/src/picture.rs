@@ -3,7 +3,8 @@
 //!
 //! A file is the user's choice, but it may have come from anywhere, so it
 //! is read as untrusted: no more of it than a picture may be, and not
-//! decoded at all if it says it is larger than a picture may be.
+//! decoded at all if it says it is larger than a picture may be. The lock
+//! screen reads the user's face with it too.
 
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -39,7 +40,7 @@ const TORN: &str = "its pixels are not all there";
 ///
 /// Returns why if the file cannot be read, is too large, or is not a PNG
 /// or a JPEG picture that can be decoded.
-pub(crate) fn read(path: &Path, fit: Fit, room: (u32, u32)) -> Result<Image, String> {
+pub fn read(path: &Path, fit: Fit, room: (u32, u32)) -> Result<Image, String> {
     let mut bytes = Vec::new();
     let opened = File::open(path).and_then(|file| file.metadata().map(|about| (file, about)));
     let opened = opened.map_err(|error| error.to_string());
