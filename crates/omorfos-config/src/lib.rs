@@ -32,6 +32,7 @@ mod style;
 mod theme;
 mod transition;
 mod value;
+mod wallpaper;
 mod watcher;
 
 pub use action::{Action, Command, Half, MAX_WORKSPACES, Role, Started, WorkspaceNumber};
@@ -48,10 +49,11 @@ pub use general::{
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
-pub use paths::config_dir;
+pub use paths::{cache_dir, config_dir};
 pub use rules::{Match, Rule, Rules};
 pub use store::Store;
 pub use style::{Edges, Line, Part, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
 pub use transition::{Easing, Transition};
+pub use wallpaper::{Fit, Order, Picture, ScreenWallpaper, Screens, Shown, Wallpaper};
 pub use watcher::Watcher;

@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::{Bounded, Command, MAX_WORKSPACES, Started};
+use crate::{Bounded, Command, MAX_WORKSPACES, Started, Wallpaper};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -38,6 +38,8 @@ pub struct General {
     pub autostart: Vec<Started>,
     /// The panel that comes with omorfos.
     pub panel: Panel,
+    /// What is shown behind the windows.
+    pub wallpaper: Wallpaper,
     /// The pointer.
     pub cursor: Cursor,
     /// The launcher that comes with omorfos.
@@ -1394,7 +1396,7 @@ touchpad: { tap_to_click: false, natural_scroll: true, speed: -0.5, acceleration
 
     #[test]
     fn unknown_settings_are_rejected_rather_than_ignored() {
-        let error = parse("wallpaper: {}").unwrap_err();
-        assert!(error.contains("unknown field `wallpaper`"), "{error}");
+        let error = parse("screensaver: {}").unwrap_err();
+        assert!(error.contains("unknown field `screensaver`"), "{error}");
     }
 }

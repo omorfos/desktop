@@ -12,8 +12,9 @@ use crate::keys::RawKeys;
 use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
-    Bounded, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem, NamedOutput,
-    Offset, OutputScale, Outputs, Role, Rules, ScreenMode, Speed, Started, Workspaces,
+    Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem,
+    NamedOutput, Offset, OutputScale, Outputs, Picture, Role, Rules, ScreenMode, ScreenWallpaper,
+    Screens, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -193,6 +194,49 @@ impl JsonSchema for Outputs {
             "description": "Screens by name, in the order they stand from the left.",
             "type": "array",
             "items": output,
+        })
+    }
+}
+
+impl JsonSchema for Picture {
+    fn schema_name() -> Cow<'static, str> {
+        "Picture".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "A path from the root, or from the home directory as `~/`.",
+            "type": "string",
+            "pattern": "^(/|~/)",
+        })
+    }
+}
+
+impl JsonSchema for Color {
+    fn schema_name() -> Cow<'static, str> {
+        "Color".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "A colour as `#rrggbb`, or `#rrggbbaa` with its opacity.",
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+        })
+    }
+}
+
+impl JsonSchema for Screens {
+    fn schema_name() -> Cow<'static, str> {
+        "Screens".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let screen = generator.subschema_for::<ScreenWallpaper>();
+        json_schema!({
+            "description": "Screens by name, each named once.",
+            "type": "array",
+            "items": screen,
         })
     }
 }

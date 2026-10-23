@@ -1,4 +1,5 @@
-//! Locating the configuration directory.
+//! Locating the configuration directory, and the one for what is kept
+//! only to save work.
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
@@ -18,6 +19,20 @@ pub fn config_dir(xdg_config_home: Option<&OsStr>, home: Option<&OsStr>) -> Opti
         |value: Option<&OsStr>| value.map(PathBuf::from).filter(|path| path.is_absolute());
     absolute(xdg_config_home)
         .or_else(|| absolute(home).map(|home| home.join(".config")))
+        .map(|base| base.join("omorfos"))
+}
+
+/// Resolves the directory for what is kept only to save work, which may
+/// be deleted at any time, from the environment.
+///
+/// As [`config_dir`] does, following the XDG Base Directory specification:
+/// `$XDG_CACHE_HOME/omorfos`, falling back to `$HOME/.cache/omorfos`.
+#[must_use]
+pub fn cache_dir(xdg_cache_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    let absolute =
+        |value: Option<&OsStr>| value.map(PathBuf::from).filter(|path| path.is_absolute());
+    absolute(xdg_cache_home)
+        .or_else(|| absolute(home).map(|home| home.join(".cache")))
         .map(|base| base.join("omorfos"))
 }
 
@@ -53,5 +68,21 @@ mod tests {
     fn is_none_without_an_absolute_base() {
         assert_eq!(resolve(None, None), None);
         assert_eq!(resolve(Some("relative"), Some("also/relative")), None);
+    }
+
+    #[test]
+    fn what_saves_work_is_kept_in_the_cache_directory() {
+        let cache = |xdg: Option<&str>, home: Option<&str>| {
+            cache_dir(xdg.map(OsStr::new), home.map(OsStr::new))
+        };
+        assert_eq!(
+            cache(Some("/xdg"), Some("/home/me")),
+            Some(PathBuf::from("/xdg/omorfos"))
+        );
+        assert_eq!(
+            cache(Some("relative"), Some("/home/me")),
+            Some(PathBuf::from("/home/me/.cache/omorfos"))
+        );
+        assert_eq!(cache(None, Some("relative")), None);
     }
 }
