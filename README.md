@@ -60,8 +60,8 @@ screen reads, then pick omorfos when you log in:
 
 ```sh
 cargo build --release -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p xdg-desktop-portal-omorfos
-sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,xdg-desktop-portal-omorfos} /usr/local/bin/
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p xdg-desktop-portal-omorfos
+sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,omorfos-wallpaper,xdg-desktop-portal-omorfos} /usr/local/bin/
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
 sudo install -Dm644 packaging/omorfos.portal /usr/share/xdg-desktop-portal/portals/omorfos.portal
 sudo install -Dm644 packaging/omorfos-portals.conf /usr/share/xdg-desktop-portal/omorfos-portals.conf
