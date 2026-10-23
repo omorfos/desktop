@@ -36,6 +36,7 @@ assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],
     ["target/release/omorfos-panel", "usr/bin/", "755"],
+    ["target/release/omorfos-wallpaper", "usr/bin/", "755"],
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
@@ -101,6 +102,7 @@ smithay = { version = "0.7.0", default-features = false, features = [
 # The panel is tested where the compositor is, so that it is tested against
 # a real one. It does not depend on the compositor, so nothing goes round.
 omorfos-panel = { path = "../omorfos-panel" }
+omorfos-wallpaper = { path = "../omorfos-wallpaper" }
 omorfos-launcher = { path = "../omorfos-launcher" }
 omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }

@@ -47,6 +47,7 @@ use smithay::utils::{DeviceFd, Transform};
 
 use super::winit::{
     cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
+    wallpaper,
 };
 use crate::{Compositor, Scale, Session};
 
@@ -305,6 +306,7 @@ fn offer_gpu_buffers(hardware: &mut Hardware, compositor: &mut Compositor) {
 /// is to start with it is started.
 fn set_components(compositor: &mut Compositor) {
     compositor.set_panel(panel());
+    compositor.set_wallpaper(wallpaper());
     compositor.set_launcher(launcher());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
