@@ -76,7 +76,17 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     assert_eq!(workspaces.names(), ["web", "code", "chat", "media"]);
     assert_eq!(config.general, defaults.general);
 
-    assert_eq!(config.keys.bindings().len(), 3);
+    // Three made, one of them in place of a built-in binding, and one
+    // built-in binding done without.
+    let built_in = defaults.keys.bindings().len();
+    assert_eq!(config.keys.bindings().len(), built_in + 1);
+    let bound = |keys: &str| {
+        let mut bindings = config.keys.bindings().iter();
+        let found = bindings.find(|binding| binding.keys.to_string() == keys);
+        found.map(|binding| binding.action.clone())
+    };
+    assert_eq!(bound("Super+l"), Some(omorfos_config::Action::Lock));
+    assert_eq!(bound("Super+h"), None);
     assert_eq!(config.rules.rules.len(), 5);
     assert_eq!(config.menu.items.len(), 3);
 }

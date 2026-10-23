@@ -519,6 +519,9 @@ what only games and touchpads need last.
 - [x] A screen that mirrors another (ADR 15): `mirror` in `outputs` and
       `arrangements`, the other's picture as large as fits, out of the
       space and unknown to programs, and hidden when the session locks.
+- [x] Key bindings made beside the built-in ones (ADR 50): one written
+      on keys a built-in binding uses takes its place, `unbind` does
+      without one, and `defaults: false` has only what is written.
 - [ ] Screens arranged by the user: a screen turned off, and the display
       key. The display key
       (`XF86Display`) goes through the screens side by side, the same on
@@ -591,6 +594,15 @@ Stage 2 says what it is to be; this builds it.
 - [ ] The switcher as a queue on a diagonal (wish 5).
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [ ] Night light: the screen warmer after dark.
+- [ ] The defaults reviewed together, keys and settings, rather than one
+      at a time as each feature came. What has gathered for it: `Super+l`
+      to lock; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,
+      and with `Shift` too, which needs an action that gives the program
+      with focus its own keys for them; keys to tile; whether
+      `Shift+Print` keeps its picture as a file rather than on the
+      clipboard; the star key (`XF86Favorites`); a key for
+      `next_layout`; the keys for the volume, the brightness and what is
+      playing; and the theme's parts made along the way.
 
 ## 5. The shell: a bar and a dock
 

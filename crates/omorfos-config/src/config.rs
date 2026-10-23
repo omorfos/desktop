@@ -187,7 +187,7 @@ mod tests {
     fn each_file_configures_its_own_section() {
         let (config, diagnostics) = load(&[
             ("config.yaml", "focus: { model: sloppy }\n"),
-            ("keys.yaml", "bindings: []\n"),
+            ("keys.yaml", "defaults: false\n"),
             (
                 "rules.yaml",
                 "rules:\n  - match: { app_id: mpv }\n    fullscreen: true\n",

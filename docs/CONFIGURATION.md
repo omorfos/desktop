@@ -319,16 +319,22 @@ twice the size.
 
 ```yaml
 bindings:
-  - keys: Super+Return
+  - keys: Super+Return     # in place of the built-in terminal
     action: { spawn: [foot] }
-  - keys: Super+q
-    action: close
+  - keys: Super+l
+    action: lock
   - keys: Super+x t        # a chain: Super+x, then t
     action: { workspace: 2 }
+unbind: [Super+h]          # a built-in binding done without
 ```
 
-Giving `bindings` replaces all built-in bindings; `bindings: []` removes
-them.
+The bindings you write are made beside the built-in ones, which go on
+working on every key you leave alone. One you write on keys a built-in
+binding uses takes its place, and so does a chain that begins with them,
+as `Super+Return t` would. `unbind` lists built-in bindings to do without,
+by their keys; one that names no built-in binding is a mistake, and said
+to be. To have none of the built-in bindings and only your own, say
+`defaults: false`.
 
 A chord is zero or more modifiers and a key, joined by `+`. Modifiers are
 `Ctrl`, `Alt`, `Shift` and `Super` (case does not matter; `Control`, `Mod1`
@@ -337,8 +343,8 @@ or `XF86AudioMute`. A binding names the key, not the symbol it types: write
 `Super+Shift+r`, not `Super+R`. A binding whose key name does not exist is
 ignored and reported.
 
-Two bindings may not use the same keys, and a chain may not begin with keys
-that are already bound on their own.
+Two of your bindings may not use the same keys, and a chain of yours may
+not begin with keys you have bound on their own.
 
 ### Actions
 

@@ -357,16 +357,25 @@
   "description": "`keys.yaml` as written, before conflicts between bindings are checked.",
   "properties": {
     "bindings": {
-      "description": "The key bindings. Giving this list replaces all built-in bindings.",
+      "description": "The key bindings, beside the built-in ones. One on keys a built-in\nbinding uses, or that begin with them, takes its place.",
       "items": {
         "$ref": "#/$defs/Binding"
       },
       "type": "array"
+    },
+    "defaults": {
+      "default": true,
+      "description": "Whether the built-in bindings are kept, on the keys these bindings\nleave alone. They are unless this is `false`.",
+      "type": "boolean"
+    },
+    "unbind": {
+      "description": "Built-in bindings to do without, by their keys, such as `Super+h`.",
+      "items": {
+        "$ref": "#/$defs/KeyChain"
+      },
+      "type": "array"
     }
   },
-  "required": [
-    "bindings"
-  ],
   "title": "Keys",
   "type": "object"
 }
