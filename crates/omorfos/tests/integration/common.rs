@@ -1147,7 +1147,7 @@ impl Client {
         window
             .xdg_surface
             .get_popup(None, &positioner, &self.handle(), ());
-        self.connection.flush().unwrap();
+        self.flush();
     }
 
     /// Creates a toplevel without committing it yet.
@@ -1291,7 +1291,33 @@ impl Client {
         window.surface.commit();
     }
 
-    fn buffer(&self, (width, height): (i32, i32), color: u32) -> wl_buffer::WlBuffer {
+    /// The protocol by which a program gives its windows icons, and a new
+    /// icon of it, to be given what a test wants.
+    pub(crate) fn icon(
+        &self,
+    ) -> (
+        icon_manager::XdgToplevelIconManagerV1,
+        toplevel_icon::XdgToplevelIconV1,
+    ) {
+        let icons = self.state.icons.clone().unwrap();
+        let icon = icons.create_icon(&self.handle(), ());
+        (icons, icon)
+    }
+
+    /// A buffer of one pixel, not in shared memory.
+    pub(crate) fn single_pixel(&self) -> wl_buffer::WlBuffer {
+        let pixels = self.state.single_pixels.as_ref().unwrap();
+        pixels.create_u32_rgba_buffer(0, 0, 0, u32::MAX, &self.handle(), ())
+    }
+
+    /// Sends what has been asked, without waiting for an answer, which a
+    /// client the compositor sends away does not get.
+    pub(crate) fn flush(&self) {
+        self.connection.flush().unwrap();
+    }
+
+    /// A buffer of `width` by `height` pixels of `color`, in shared memory.
+    pub(crate) fn buffer(&self, (width, height): (i32, i32), color: u32) -> wl_buffer::WlBuffer {
         let pixels = usize::try_from(width * height).unwrap();
         let mut file = tempfile::tempfile().unwrap();
         file.write_all(&color.to_le_bytes().repeat(pixels)).unwrap();

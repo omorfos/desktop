@@ -539,6 +539,84 @@ fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
 }
 
 #[test]
+fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applications_icon() {
+    let data = installed(&[("one", CYAN)], &[]);
+    let mut session = Session::new();
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    let mut client = session.connect();
+    let one = session.open(&mut client, "one", (200, 100), RED);
+    let two = session.open(&mut client, "two", (200, 100), BLUE);
+    // As programs built on Chromium do: the buffer destroyed before the
+    // icon, which is kept. The second of a size takes the first's place.
+    let (manager, icon) = client.icon();
+    let (first, second) = (
+        client.buffer((32, 32), MAGENTA),
+        client.buffer((32, 32), YELLOW),
+    );
+    icon.add_buffer(&first, 1);
+    icon.add_buffer(&second, 1);
+    manager.set_icon(&one.role, Some(&icon));
+    one.surface.commit();
+    session.roundtrip(&mut client);
+    alt_tab(&mut session, 1, false);
+    assert_eq!(icons_shown(&mut session)[1], (YELLOW, RED), "the second");
+    press(&mut session, key::ALT, false);
+    first.destroy();
+    second.destroy();
+    session.roundtrip(&mut client);
+    alt_tab(&mut session, 1, false);
+    assert_eq!(
+        icons_shown(&mut session)[0],
+        (CYAN, RED),
+        "its application's"
+    );
+    press(&mut session, key::ALT, false);
+    // An icon taken back with none, and the protocol let go of.
+    manager.set_icon(&two.role, None);
+    two.surface.commit();
+    manager.destroy();
+    session.roundtrip(&mut client);
+    assert!(
+        session.compositor().desktop().frames().count() == 2,
+        "still there"
+    );
+}
+
+#[test]
+fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused() {
+    let mut session = Session::new();
+    let changed = session.connect();
+    let window = changed.toplevel("one", "One");
+    let (manager, icon) = changed.icon();
+    manager.set_icon(&window.role, Some(&icon));
+    icon.set_name("later".to_owned());
+    let skewed = session.connect();
+    let (_, icon) = skewed.icon();
+    icon.add_buffer(&skewed.buffer((32, 16), RED), 1);
+    let elsewhere = session.connect();
+    let (_, icon) = elsewhere.icon();
+    icon.add_buffer(&elsewhere.single_pixel(), 1);
+    let mut logged = Vec::new();
+    for client in [&changed, &skewed, &elsewhere] {
+        client.flush();
+    }
+    session.eventually(|session| {
+        logged.extend(session.compositor_mut().take_logged());
+        logged.len() == 3
+    });
+    assert!(
+        logged.iter().any(|said| said.contains("already been set")),
+        "{logged:?}"
+    );
+    assert!(
+        logged.iter().any(|said| said.contains("square")),
+        "{logged:?}"
+    );
+}
+
+#[test]
 fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
