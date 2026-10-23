@@ -264,6 +264,19 @@ mod tests {
     }
 
     #[test]
+    fn a_setting_named_as_the_guide_names_it_is_said_how_to_write() {
+        let (_, diagnostics) = load(&[("config.yaml", "lock.power: false\nplacement: no\n")]);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        let said = &diagnostics[0];
+        assert!(said.contains("unknown field `lock.power`"), "{said}");
+        let how = "under it: `lock:`, and below it, indented, `power: ...`";
+        assert!(said.contains(how), "{said}");
+        // Anything else is said as it was.
+        let (_, diagnostics) = load(&[("config.yaml", "placement: everywhere\n")]);
+        assert!(!diagnostics[0].contains("indented"), "{diagnostics:?}");
+    }
+
+    #[test]
     fn only_true_and_false_are_booleans() {
         let (_, diagnostics) = load(&[("config.yaml", "touchpad: { natural_scroll: yes }\n")]);
         assert_eq!(diagnostics.len(), 1);

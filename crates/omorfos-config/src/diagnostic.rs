@@ -60,8 +60,24 @@ impl Diagnostic {
         Self {
             file: file.to_owned(),
             position,
-            message,
+            message: nested(message),
         }
+    }
+}
+
+/// What is said of a field there is not, with how to write it if it is a
+/// setting under another named as the guide names one, `lock.power`: in
+/// YAML, it goes under the other, on a line of its own.
+fn nested(message: String) -> String {
+    let named = message.strip_prefix("unknown field `");
+    let named = named.and_then(|rest| rest.split_once('`'));
+    let parts = named.and_then(|(name, _)| name.split_once('.'));
+    match parts {
+        Some((outer, inner)) => format!(
+            "{message}; a setting under another goes on a line of its own under it: `{outer}:`, \
+             and below it, indented, `{inner}: ...`"
+        ),
+        None => message,
     }
 }
 
