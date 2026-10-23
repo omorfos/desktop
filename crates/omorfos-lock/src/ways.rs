@@ -188,6 +188,12 @@ impl Ways {
                 Said::Wrong | Said::Unavailable => {
                     asking.asks = false;
                     asking.helper.take().into_iter().for_each(Helper::stop);
+                    // What another way said is of the try that ended, and
+                    // is not shown until it says something again: a key
+                    // taken out says nothing, and is not to be shown.
+                    if !password {
+                        asking.said.clear();
+                    }
                     let unavailable = said == Said::Unavailable;
                     // The password is never left off, whatever its helper
                     // says, and is asked again at once after a wrong try;

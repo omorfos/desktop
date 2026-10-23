@@ -54,7 +54,7 @@ fn settle(session: &mut Session, wallpaper: &mut Wallpaper, now: Duration) {
 
 /// Writes a PNG at `path` of pixels `width` by `height`, each as `color`
 /// says from where it is.
-fn png(path: &Path, (width, height): (u32, u32), color: impl Fn(u32, u32) -> u32) {
+pub(crate) fn png(path: &Path, (width, height): (u32, u32), color: impl Fn(u32, u32) -> u32) {
     let pixels = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)));
     let bytes: Vec<u8> = pixels
         .flat_map(|(x, y)| {

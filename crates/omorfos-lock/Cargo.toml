@@ -18,6 +18,9 @@ nonstick = "=0.1.2"
 omorfos-config = { path = "../omorfos-config" }
 omorfos-shell = { path = "../omorfos-shell" }
 omorfos-ui = { path = "../omorfos-ui" }
+# Reads the user's face, a PNG or a JPEG, as the wallpaper reads pictures:
+# as untrusted, and no more of it than is needed.
+omorfos-wallpaper = { path = "../omorfos-wallpaper" }
 # Already in the tree through Smithay. Waits on the compositor and the
 # helpers at once (`event`), wakes for what was heard (`pipe`), and says
 # who the user is (`process`).
@@ -25,9 +28,6 @@ rustix = { version = "1.1.5", default-features = false, features = ["event", "pi
 # The lock screen is a Wayland client. All three are already in the tree.
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
-# Turns the keys the compositor reports into what they type, as the
-# prompt for a secret does.
-xkbcommon = { version = "0.8.0", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"
