@@ -255,7 +255,9 @@ impl Compositor {
     /// and a frame showing nothing of the session has been drawn on every
     /// output since it asked, or every screen is off.
     pub(crate) fn confirm_lock(&mut self) {
-        let blanked = self.heads.iter().all(|head| head.blanked.get());
+        // A screen that mirrors another shows the session as much as that
+        // one does.
+        let blanked = self.every_head().all(|head| head.blanked.get());
         if !blanked && self.presence.screens != Screens::Off {
             return;
         }
@@ -350,7 +352,7 @@ impl SessionLockHandler for Compositor {
         // Nothing half done survives into, or out of, a locked session.
         self.menu = None;
         self.drag = None;
-        for head in &self.heads {
+        for head in self.every_head() {
             head.blanked.set(false);
         }
         self.lock = Some(Lock {

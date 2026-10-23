@@ -8,6 +8,9 @@
 //! scale, so a rectangle of the same size in units can be a
 //! different number of pixels on each.
 //!
+//! An output may instead mirror another: it stands nowhere of its own,
+//! programs are not told of it, and it shows what the other shows.
+//!
 //! See `docs/adr/0015-several-outputs.md`.
 
 use std::cell::Cell;
@@ -15,6 +18,8 @@ use std::cell::Cell;
 use omorfos_config::{Align, OfferedMode, Offset, Place, Rotation};
 use omorfos_core::Screen;
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
+use smithay::backend::renderer::Color32F;
+use smithay::backend::renderer::element::solid::SolidColorBuffer;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::wayland_server::backend::GlobalId;
@@ -27,8 +32,9 @@ use crate::{Scale, bridge};
 #[derive(Debug)]
 pub(crate) struct Head {
     pub(crate) output: Output,
-    /// What clients see the output as, withdrawn when it goes.
-    global: GlobalId,
+    /// What clients see the output as, withdrawn when it goes or mirrors
+    /// another; none until it is first settled where it stands.
+    global: Option<GlobalId>,
     /// How the backend's picture of it is oriented.
     transform: Transform,
     /// Which way the configuration says the screen is turned.
@@ -95,6 +101,19 @@ impl Head {
     }
 }
 
+/// An output that shows what another shows.
+#[derive(Debug)]
+pub(crate) struct Mirror {
+    pub(crate) head: Head,
+    /// The output whose picture it shows.
+    pub(crate) source: Output,
+    /// What is drawn where the picture, as large as fits, does not cover
+    /// the screen: to its left, its right, above and below it. Kept from
+    /// one frame to the next, so that they are only drawn again when they
+    /// change.
+    pub(crate) bars: [SolidColorBuffer; 4],
+}
+
 /// A rectangle of the space, as the window-management model has it.
 pub(crate) fn domain(rectangle: Rectangle<i32, Logical>) -> Rect {
     Rect::new(
@@ -126,7 +145,8 @@ impl Compositor {
         );
         let suggested = Scale::ONE;
         let head = Head {
-            global: output.create_global::<Self>(&self.display),
+            // Told to programs once it is known not to mirror another.
+            global: None,
             output: output.clone(),
             transform,
             rotation: self.rotation_for(name),
@@ -146,7 +166,7 @@ impl Compositor {
     /// Says the ways `output` can be driven, as its backend has them, and
     /// the one it is driven in, which programs that ask are told.
     pub fn offer_modes(&mut self, output: &Output, modes: &[OfferedMode], driven: OfferedMode) {
-        let head = self.heads.iter_mut().find(|head| head.output == *output);
+        let head = self.every_head_mut().find(|head| head.output == *output);
         if let Some(head) = head {
             head.modes = modes.to_vec();
             head.mode = Some(driven);
@@ -156,28 +176,94 @@ impl Compositor {
     /// Takes an output away. Windows left stranded move to the first of
     /// those that remain, and panels that were on it are closed.
     pub fn remove_output(&mut self, output: &Output) {
-        let Some(index) = self.heads.iter().position(|head| head.output == *output) else {
-            return;
-        };
-        let head = self.heads.remove(index);
-        // Its windows go to the first output that is left.
+        self.mirrors.retain(|mirror| mirror.head.output != *output);
+        let index = self.heads.iter().position(|head| head.output == *output);
+        if let Some(index) = index {
+            self.withdraw(index);
+        }
+        self.apply_scale();
+    }
+
+    /// Takes the output at `index` out of the space, and out of what
+    /// programs are told of. Its windows go to the first output that is
+    /// left, and its panels are closed.
+    fn withdraw(&mut self, index: usize) -> Head {
+        let mut head = self.heads.remove(index);
         self.desktop.remove_output(index);
         for layer in layer_map_for_output(&head.output).layers() {
             layer.layer_surface().send_close();
         }
         self.space.unmap_output(&head.output);
-        self.display.remove_global::<Self>(head.global);
+        if let Some(global) = head.global.take() {
+            self.display.remove_global::<Self>(global);
+        }
         self.forget_lock_surface(&head.output);
-        self.apply_scale();
         // The pointer does not stay behind where there is no screen.
         let at = self.moved_by(0.0, 0.0);
         self.pointer_location = at;
+        head
+    }
+
+    /// Every output: those that stand in the space, and those that mirror
+    /// one of them.
+    pub(crate) fn every_head(&self) -> impl Iterator<Item = &Head> {
+        let mirrors = self.mirrors.iter().map(|mirror| &mirror.head);
+        self.heads.iter().chain(mirrors)
+    }
+
+    fn every_head_mut(&mut self) -> impl Iterator<Item = &mut Head> {
+        let mirrors = self.mirrors.iter_mut().map(|mirror| &mut mirror.head);
+        self.heads.iter_mut().chain(mirrors)
+    }
+
+    /// Has each output mirror the one the configuration says, if that one
+    /// is plugged in, or else stand in the space; and tells programs of
+    /// those that stand there and were not told of.
+    fn settle_mirrors(&mut self) {
+        let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
+        let arrangement = self.arrangement_for(&names.iter().map(String::as_str));
+        // What each is to mirror: one plugged in, which mirrors nothing
+        // itself, as the configuration makes sure of.
+        let wanted: Vec<(String, Output)> = names
+            .iter()
+            .filter_map(|name| {
+                let source = arrangement.named(name)?.mirror.as_deref()?;
+                let mut plugged = self.every_head();
+                let source = plugged.find(|head| head.output.name() == source)?;
+                Some((name.clone(), source.output.clone()))
+            })
+            .collect();
+        let mirroring = |name: &str| wanted.iter().find(|(mirror, _)| mirror == name);
+        // Those that are to mirror nothing now, or another, stand again,
+        // and are taken from there if they are to mirror another.
+        let back = self.mirrors.extract_if(.., |mirror| {
+            let wanted = mirroring(&mirror.head.output.name());
+            wanted.is_none_or(|(_, wanted)| *wanted != mirror.source)
+        });
+        let back: Vec<Head> = back.map(|mirror| mirror.head).collect();
+        self.heads.extend(back);
+        let going = self.heads.iter().enumerate().filter_map(|(at, head)| {
+            let (_, source) = mirroring(&head.output.name())?;
+            Some((at, source.clone()))
+        });
+        let going: Vec<(usize, Output)> = going.collect();
+        for (at, source) in going.into_iter().rev() {
+            let head = self.withdraw(at);
+            let bars = std::array::from_fn(|_| SolidColorBuffer::new((0, 0), Color32F::BLACK));
+            self.mirrors.push(Mirror { head, source, bars });
+        }
+        for head in &mut self.heads {
+            if head.global.is_none() {
+                head.global = Some(head.output.create_global::<Self>(&self.display));
+            }
+        }
     }
 
     /// Changes the size of an output, in pixels.
     pub fn resize_output(&mut self, output: &Output, size: (i32, i32)) {
-        if let Some(head) = self.head(output) {
-            head.set_pixels(size);
+        let known = self.every_head().find(|head| head.output == *output);
+        let resized = known.map(|head| head.set_pixels(size)).is_some();
+        if resized {
             self.lay_out();
         }
     }
@@ -185,7 +271,7 @@ impl Compositor {
     /// Says what scale suits an output, which a backend knows from how
     /// dense the screen is. It is used unless the configuration names one.
     pub fn suggest_scale(&mut self, output: &Output, scale: Scale) {
-        let known = self.heads.iter_mut().find(|head| head.output == *output);
+        let known = self.every_head_mut().find(|head| head.output == *output);
         if let Some(head) = known {
             head.suggested = scale;
             self.apply_scale();
@@ -230,7 +316,7 @@ impl Compositor {
 
     /// The screens as the configuration has them for those plugged in.
     pub(crate) fn arrangement(&self) -> &omorfos_config::Outputs {
-        let names: Vec<String> = self.heads.iter().map(|head| head.output.name()).collect();
+        let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
         self.arrangement_for(&names.iter().map(String::as_str))
     }
 
@@ -314,17 +400,28 @@ impl Compositor {
     /// Settles each output's scale and place, from the configuration and
     /// the backend's suggestions, and lays the outputs out again.
     pub(crate) fn apply_scale(&mut self) {
-        let scales = self.heads.iter();
-        let scales: Vec<(Scale, Transform)> = scales
-            .map(|head| {
-                let name = head.output.name();
-                (
-                    self.scale_for(&name, head.suggested),
-                    self.rotation_for(&name),
-                )
-            })
-            .collect();
-        for (head, (scale, rotation)) in self.heads.iter_mut().zip(scales) {
+        self.settle_mirrors();
+        let standing = self.heads.iter().map(|head| {
+            let name = head.output.name();
+            let scale = self.scale_for(&name, head.suggested);
+            (head.output.clone(), scale, self.rotation_for(&name))
+        });
+        let standing: Vec<(Output, Scale, Transform)> = standing.collect();
+        // A mirror is drawn at the scale of the one it mirrors, which is
+        // what everything it shows is made the size of, before the whole
+        // is made to fit on it.
+        let mirrors = self.mirrors.iter().map(|mirror| {
+            let source = standing
+                .iter()
+                .find(|(output, ..)| *output == mirror.source);
+            let scale = source.map_or(Scale::ONE, |(_, scale, _)| *scale);
+            (scale, self.rotation_for(&mirror.head.output.name()))
+        });
+        let scales = standing
+            .iter()
+            .map(|(_, scale, rotation)| (*scale, *rotation));
+        let scales: Vec<(Scale, Transform)> = scales.chain(mirrors).collect();
+        for (head, (scale, rotation)) in self.every_head_mut().zip(scales) {
             if (scale, rotation) != (head.scale, head.rotation) {
                 (head.scale, head.rotation) = (scale, rotation);
                 let pixels = head.pixels();

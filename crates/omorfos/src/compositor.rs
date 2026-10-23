@@ -38,7 +38,9 @@ use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
 use smithay::backend::renderer::element::texture::TextureRenderElement;
-use smithay::backend::renderer::element::utils::CropRenderElement;
+use smithay::backend::renderer::element::utils::{
+    CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement,
+};
 use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
@@ -101,7 +103,7 @@ use crate::input::Drag;
 use crate::input::Focused;
 use crate::ipc::Server;
 use crate::lock::{Lock, Presence};
-use crate::outputs::Head;
+use crate::outputs::{Head, Mirror};
 use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
 use crate::recording::Recorded;
@@ -251,6 +253,9 @@ pub struct Compositor {
     pub(crate) popups: PopupManager,
     /// The outputs, left to right.
     pub(crate) heads: Vec<Head>,
+    /// The outputs that show what another shows, and stand nowhere of
+    /// their own.
+    pub(crate) mirrors: Vec<Mirror>,
     /// Pictures of the screen being taken by programs that may.
     pub(crate) capture: Capture,
     _surfaces: Offered,
@@ -452,6 +457,7 @@ impl Compositor {
                     space: Space::default(),
                     popups: PopupManager::default(),
                     heads: Vec::new(),
+                    mirrors: Vec::new(),
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
@@ -1897,6 +1903,13 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
         P: std::fmt::Debug + 'static,
     {
+        let mirror = self
+            .mirrors
+            .iter()
+            .position(|mirror| mirror.head.output == *output);
+        if let Some(mirror) = mirror {
+            return self.render_mirror(mirror, renderer, framebuffer, tracker, age);
+        }
         let head = self.head(output);
         let view = View {
             origin: head.map(|head| head.area().loc).unwrap_or_default(),
@@ -2217,6 +2230,65 @@ impl Compositor {
         });
         elements.extend(surfaces.map(Element::Surface));
         elements
+    }
+
+    /// Draws on the output that is mirror `at` what the output it mirrors
+    /// shows: drawn as for that one, made as large as fits and put in the
+    /// middle, with black either side where the two are not of a shape.
+    fn render_mirror<R>(
+        &mut self,
+        at: usize,
+        renderer: &mut R,
+        framebuffer: &mut R::Framebuffer<'_>,
+        tracker: &mut OutputDamageTracker,
+        age: usize,
+    ) -> Result<Drawn, RenderError<R::Error>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let source = self.mirrors[at].source.clone();
+        let room = self.mirrors[at].head.upright();
+        let head = self.head(&source);
+        let view = View {
+            origin: head.map(|head| head.area().loc).unwrap_or_default(),
+            scale: head.map_or(Scale::ONE, |head| head.scale),
+        };
+        let picture = head.map(Head::upright).unwrap_or_default();
+        let (zoom, shown) = fitted(picture, room);
+        let mirror = &mut self.mirrors[at];
+        let mut elements: Vec<Mirrored<R>> = Vec::new();
+        for (buffer, bar) in mirror.bars.iter_mut().zip(bars(shown, room)) {
+            buffer.resize((bar.size.w, bar.size.h));
+            let bar =
+                SolidColorRenderElement::from_buffer(buffer, bar.loc, 1.0, 1.0, Kind::Unspecified);
+            elements.push(Mirrored::Bar(bar));
+        }
+        let locked = self.is_locked();
+        let (drawn, behind) = if locked {
+            self.mirrors[at].head.blanked.set(true);
+            (self.locked_elements(renderer, &source, view), BLACK)
+        } else {
+            let shown = Extras {
+                pointer: true,
+                mark: true,
+            };
+            let desktop = self.config().theme.style(Part::Desktop, States::NONE);
+            (
+                self.elements(renderer, &source, view, shown),
+                color(desktop.background),
+            )
+        };
+        elements.extend(drawn.into_iter().map(|element| {
+            let made = RescaleRenderElement::from_element(element, (0, 0).into(), zoom);
+            Mirrored::Shown(RelocateRenderElement::from_element(
+                made,
+                shown.loc,
+                Relocate::Relative,
+            ))
+        }));
+        let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
+        drawn.map(|drawn| Drawn::of(drawn, Vec::new()))
     }
 
     /// What a locked screen shows: the pointer, over what the locker put
@@ -2871,6 +2943,50 @@ fn cursor_hotspot(surface: &WlSurface) -> Point<i32, Logical> {
             .and_then(|attributes| attributes.lock().ok().map(|held| held.hotspot))
             .unwrap_or_default()
     })
+}
+
+render_elements! {
+    /// What a screen that mirrors another shows: what that one shows, made
+    /// another size and moved, and the bars beside it.
+    pub(crate) Mirrored<R> where R: ImportAll + ImportMem;
+    Shown=RelocateRenderElement<RescaleRenderElement<Element<R>>>,
+    Bar=SolidColorRenderElement,
+}
+
+/// How much larger a picture `picture` pixels large is made to fit on a
+/// screen of `room`, and where on it it then is.
+fn fitted(
+    picture: Size<i32, Physical>,
+    room: Size<i32, Physical>,
+) -> (f64, Rectangle<i32, Physical>) {
+    let along = |room: i32, picture: i32| f64::from(room) / f64::from(picture.max(1));
+    let zoom = along(room.w, picture.w).min(along(room.h, picture.h));
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "no larger than the screen it is made to fit"
+    )]
+    let made = |side: i32| (f64::from(side) * zoom).round() as i32;
+    let size = Size::from((made(picture.w), made(picture.h)));
+    let corner = Point::from(((room.w - size.w) / 2, (room.h - size.h) / 2));
+    (zoom, Rectangle::new(corner, size))
+}
+
+/// What is left of a screen of `room` either side of `shown`: to its left
+/// and right, the screen's height, and above and below it, its width.
+fn bars(
+    shown: Rectangle<i32, Physical>,
+    room: Size<i32, Physical>,
+) -> [Rectangle<i32, Physical>; 4] {
+    let (left, top) = (shown.loc.x, shown.loc.y);
+    let (right, bottom) = (left + shown.size.w, top + shown.size.h);
+    let bar =
+        |x: i32, y: i32, w: i32, h: i32| Rectangle::new((x, y).into(), (w.max(0), h.max(0)).into());
+    [
+        bar(0, 0, left, room.h),
+        bar(right, 0, room.w - right, room.h),
+        bar(left, 0, shown.size.w, top),
+        bar(left, bottom, shown.size.w, room.h - bottom),
+    ]
 }
 
 render_elements! {

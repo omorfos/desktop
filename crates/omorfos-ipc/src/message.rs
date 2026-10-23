@@ -147,6 +147,11 @@ pub struct Screen {
     /// and fastest first.
     #[serde(default)]
     pub modes: Vec<String>,
+    /// The screen whose picture it shows, if it mirrors one: it stands
+    /// nowhere of its own, and where it is said to stand is where that one
+    /// does. Empty for a screen that stands on its own.
+    #[serde(default)]
+    pub mirrors: String,
 }
 
 /// A workspace.
@@ -373,6 +378,7 @@ mod tests {
                 mode: "3840x2160@60".to_owned(),
                 preferred: "3840x2160@60".to_owned(),
                 modes: vec!["3840x2160@60".to_owned(), "3840x2160@48".to_owned()],
+                mirrors: "DP-1".to_owned(),
             }],
             locked: true,
         };

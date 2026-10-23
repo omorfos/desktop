@@ -219,9 +219,14 @@ fn screens(state: &State, out: &mut dyn Write) {
         } else {
             format!(", driven at {}", screen.mode)
         };
+        let mirrors = if screen.mirrors.is_empty() {
+            String::new()
+        } else {
+            format!(", mirroring {}", screen.mirrors)
+        };
         let _ = writeln!(
             out,
-            "{}: {} by {} units at {},{}{driven}",
+            "{}: {} by {} units at {},{}{mirrors}{driven}",
             screen.name, screen.width, screen.height, screen.x, screen.y
         );
         for mode in &screen.modes {
@@ -497,6 +502,7 @@ mod tests {
                 mode: "2560x1440@144".to_owned(),
                 preferred: "2560x1440@60".to_owned(),
                 modes: vec!["2560x1440@144".to_owned(), "2560x1440@60".to_owned()],
+                mirrors: String::new(),
             },
             omorfos_ipc::Screen {
                 name: "nested".to_owned(),
@@ -506,13 +512,22 @@ mod tests {
                 height: 480,
                 ..omorfos_ipc::Screen::default()
             },
+            omorfos_ipc::Screen {
+                name: "HDMI-A-1".to_owned(),
+                width: 2560,
+                height: 1440,
+                mode: "1920x1080@60".to_owned(),
+                mirrors: "DP-1".to_owned(),
+                ..omorfos_ipc::Screen::default()
+            },
         ];
         let outcome = invoke(&["screens"], vec![Reply::State(shown)]);
         assert_eq!(outcome.code, ExitCode::SUCCESS);
         assert_eq!(
             outcome.out,
             "DP-1: 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  2560x1440@144\n  \
-             2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\n"
+             2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\nHDMI-A-1: 2560 \
+             by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\n"
         );
     }
 

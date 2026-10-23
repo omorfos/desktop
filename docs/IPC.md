@@ -125,7 +125,10 @@ how large it is in units of layout, and the modes it can be driven in,
 written as a `mode` is in `config.yaml`: the one it is driven in, the one
 it says suits it best, and every one it offers, each once, the largest
 and fastest first. The modes are empty where the backend does not say,
-as inside another desktop.
+as inside another desktop. A screen that mirrors another comes after
+those that stand on their own, with `mirrors` naming the other, and is
+said to stand where that one does; `mirrors` is empty, or absent from an
+older compositor, for one that stands on its own.
 
 `locked` is true while the session is locked and nothing of it is on any
 screen: a screen locker holds it, and a frame with only the locker on it

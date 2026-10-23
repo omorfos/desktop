@@ -516,7 +516,11 @@ what only games and touchpads need last.
       changed shows at once and not at the next turn; and other formats
       (WebP, AVIF, SVG) as they are asked for, each another decoder of
       untrusted input.
-- [ ] Screens arranged by the user: mirroring. The display key
+- [x] A screen that mirrors another (ADR 15): `mirror` in `outputs` and
+      `arrangements`, the other's picture as large as fits, out of the
+      space and unknown to programs, and hidden when the session locks.
+- [ ] Screens arranged by the user: a screen turned off, and the display
+      key. The display key
       (`XF86Display`) goes through the screens side by side, the same on
       both, and only one of them, each kept only if the user says so in
       time, as the next item has it, since it is the key pressed when a

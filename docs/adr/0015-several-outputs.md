@@ -54,6 +54,23 @@ written in the configuration, as kanshi has them, rather than remembered
 from what the user last did, so that nothing changes behind the user's
 back and an arrangement can be read and shared.
 
+*Amended:* a listed screen may `mirror` another. It is then taken out of
+the space and out of what programs are told of, as an unplugged one is,
+so that nothing of the desktop's is put on it, and it is still driven:
+drawing it is drawing what the other shows, from the same elements, each
+made larger or smaller by Smithay's `RescaleRenderElement` to fit and
+moved to the middle, with black bars over whatever of the space lies
+beyond the other screen. A scale for the mirror was not the way: scales
+are quarters from one to four, which neither fits a picture closely nor
+makes one smaller. Drawing the other once more into a picture of its own
+and laying that on the mirror would fit exactly, but it draws twice and
+needs a renderer that can draw into what it can read. The mirror's own
+output is given the other's scale, since Smithay sizes much of what it
+draws by the scale of the output it is drawn on, and only then is the
+whole made to fit. A mirror counts
+among the screens a locked session must have been hidden on before the
+locker is told it is locked.
+
 **An output is named by Smithay's `Output` in every call about it.**
 `add_output` returns one, and resizing, scaling, drawing and frame timing
 take it. What the compositor needs to draw comes from the output itself,
