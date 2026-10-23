@@ -177,6 +177,7 @@ impl Compositor {
     /// those that remain, and panels that were on it are closed.
     pub fn remove_output(&mut self, output: &Output) {
         self.mirrors.retain(|mirror| mirror.head.output != *output);
+        self.dark.retain(|head| head.output != *output);
         let index = self.heads.iter().position(|head| head.output == *output);
         if let Some(index) = index {
             self.withdraw(index);
@@ -194,6 +195,9 @@ impl Compositor {
             layer.layer_surface().send_close();
         }
         self.space.unmap_output(&head.output);
+        // Its windows are told they are no longer on it while they still
+        // know of it, and only then is it gone.
+        self.space.refresh();
         if let Some(global) = head.global.take() {
             self.display.remove_global::<Self>(global);
         }
@@ -204,26 +208,40 @@ impl Compositor {
         head
     }
 
-    /// Every output: those that stand in the space, and those that mirror
-    /// one of them.
+    /// Every output: those that stand in the space, those that mirror one
+    /// of them, and those that are off.
     pub(crate) fn every_head(&self) -> impl Iterator<Item = &Head> {
         let mirrors = self.mirrors.iter().map(|mirror| &mirror.head);
-        self.heads.iter().chain(mirrors)
+        self.heads.iter().chain(mirrors).chain(&self.dark)
     }
 
     fn every_head_mut(&mut self) -> impl Iterator<Item = &mut Head> {
         let mirrors = self.mirrors.iter_mut().map(|mirror| &mut mirror.head);
-        self.heads.iter_mut().chain(mirrors)
+        self.heads.iter_mut().chain(mirrors).chain(&mut self.dark)
     }
 
-    /// Has each output mirror the one the configuration says, if that one
-    /// is plugged in, or else stand in the space; and tells programs of
-    /// those that stand there and were not told of.
-    fn settle_mirrors(&mut self) {
+    /// Whether `output` is off, as the configuration says: a backend that
+    /// drives screens turns it off, and draws nothing on it.
+    #[must_use]
+    pub fn is_dark(&self, output: &Output) -> bool {
+        self.dark.iter().any(|head| head.output == *output)
+    }
+
+    /// Has each output be off, or mirror the one the configuration says if
+    /// that one stands, or else stand in the space itself; and tells
+    /// programs of those that stand there and were not told of.
+    ///
+    /// Not every screen plugged in is turned off: if the configuration
+    /// would have them all off, the first is left on, and the user told.
+    fn settle_screens(&mut self) {
         let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
         let arrangement = self.arrangement_for(&names.iter().map(String::as_str));
-        // What each is to mirror: one plugged in, which mirrors nothing
-        // itself, as the configuration makes sure of.
+        let off = |name: &&String| arrangement.named(name).is_some_and(|named| !named.enabled);
+        let mut dark: Vec<String> = names.iter().filter(off).cloned().collect();
+        let all = !dark.is_empty() && dark.len() == names.len();
+        let left_on = all.then(|| dark.remove(0));
+        // What each is to mirror: one plugged in that is on, and mirrors
+        // nothing itself, as the configuration makes sure of.
         let wanted: Vec<(String, Output)> = names
             .iter()
             .filter_map(|name| {
@@ -234,28 +252,46 @@ impl Compositor {
             })
             .collect();
         let mirroring = |name: &str| wanted.iter().find(|(mirror, _)| mirror == name);
-        // Those that are to mirror nothing now, or another, stand again,
-        // and are taken from there if they are to mirror another.
+        // Those that are to be otherwise stand again first, and are taken
+        // from there for what they are to be.
         let back = self.mirrors.extract_if(.., |mirror| {
-            let wanted = mirroring(&mirror.head.output.name());
-            wanted.is_none_or(|(_, wanted)| *wanted != mirror.source)
+            let wanted = mirror_wanted(mirroring(&mirror.head.output.name()));
+            wanted != Some(&mirror.source)
         });
         let back: Vec<Head> = back.map(|mirror| mirror.head).collect();
         self.heads.extend(back);
+        let lit = self
+            .dark
+            .extract_if(.., |head| !dark.contains(&head.output.name()));
+        let lit: Vec<Head> = lit.collect();
+        self.heads.extend(lit);
         let going = self.heads.iter().enumerate().filter_map(|(at, head)| {
-            let (_, source) = mirroring(&head.output.name())?;
-            Some((at, source.clone()))
+            let name = head.output.name();
+            let off = dark.contains(&name);
+            let source = mirror_wanted(mirroring(&name)).cloned();
+            (off || source.is_some()).then_some((at, source))
         });
-        let going: Vec<(usize, Output)> = going.collect();
+        let going: Vec<(usize, Option<Output>)> = going.collect();
         for (at, source) in going.into_iter().rev() {
             let head = self.withdraw(at);
-            let bars = std::array::from_fn(|_| SolidColorBuffer::new((0, 0), Color32F::BLACK));
-            self.mirrors.push(Mirror { head, source, bars });
+            match source {
+                Some(source) => {
+                    let bars =
+                        std::array::from_fn(|_| SolidColorBuffer::new((0, 0), Color32F::BLACK));
+                    self.mirrors.push(Mirror { head, source, bars });
+                }
+                None => self.dark.push(head),
+            }
         }
         for head in &mut self.heads {
             if head.global.is_none() {
                 head.global = Some(head.output.create_global::<Self>(&self.display));
             }
+        }
+        if let Some(name) = left_on {
+            self.refused.say(&format!(
+                "config.yaml: every screen plugged in is to be off, so `{name}` is left on"
+            ));
         }
     }
 
@@ -400,7 +436,7 @@ impl Compositor {
     /// Settles each output's scale and place, from the configuration and
     /// the backend's suggestions, and lays the outputs out again.
     pub(crate) fn apply_scale(&mut self) {
-        self.settle_mirrors();
+        self.settle_screens();
         let standing = self.heads.iter().map(|head| {
             let name = head.output.name();
             let scale = self.scale_for(&name, head.suggested);
@@ -417,10 +453,17 @@ impl Compositor {
             let scale = source.map_or(Scale::ONE, |(_, scale, _)| *scale);
             (scale, self.rotation_for(&mirror.head.output.name()))
         });
+        let dark = self.dark.iter().map(|head| {
+            let name = head.output.name();
+            (
+                self.scale_for(&name, head.suggested),
+                self.rotation_for(&name),
+            )
+        });
         let scales = standing
             .iter()
             .map(|(_, scale, rotation)| (*scale, *rotation));
-        let scales: Vec<(Scale, Transform)> = scales.chain(mirrors).collect();
+        let scales: Vec<(Scale, Transform)> = scales.chain(mirrors).chain(dark).collect();
         for (head, (scale, rotation)) in self.every_head_mut().zip(scales) {
             if (scale, rotation) != (head.scale, head.rotation) {
                 (head.scale, head.rotation) = (scale, rotation);
@@ -606,4 +649,9 @@ fn misplaced_in(outputs: &omorfos_config::Outputs) -> Option<String> {
             first.name
         )
     })
+}
+
+/// The output one that mirrors is to mirror, if it is to.
+fn mirror_wanted(wanted: Option<&(String, Output)>) -> Option<&Output> {
+    wanted.map(|(_, source)| source)
 }

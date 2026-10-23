@@ -38,6 +38,7 @@ mod recording;
 mod reveal;
 mod roles;
 mod scaling;
+mod screens_off;
 mod screenshot;
 mod sealed;
 mod session;

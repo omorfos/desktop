@@ -256,8 +256,10 @@ impl Compositor {
     /// output since it asked, or every screen is off.
     pub(crate) fn confirm_lock(&mut self) {
         // A screen that mirrors another shows the session as much as that
-        // one does.
-        let blanked = self.every_head().all(|head| head.blanked.get());
+        // one does; one that is off shows nothing.
+        let mirrors = self.mirrors.iter().map(|mirror| &mirror.head);
+        let shown = self.heads.iter().chain(mirrors);
+        let blanked = shown.into_iter().all(|head| head.blanked.get());
         if !blanked && self.presence.screens != Screens::Off {
             return;
         }

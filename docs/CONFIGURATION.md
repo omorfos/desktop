@@ -184,8 +184,23 @@ told of it, so it has no panel or wallpaper of its own; what was on it
 goes to the other. It may have a `mode` and a `rotate`, but not a
 `place`, `align`, `offset`, `scale` or `primary`, and a screen it mirrors
 cannot mirror another. While the one it mirrors is not plugged in, it
-stands as any screen does. `omorfosctl screens` lists it last, where the
-one it mirrors stands.
+stands as any screen does. `omorfosctl screens` lists it after those that
+stand, where the one it mirrors stands.
+
+A screen is turned off with `enabled: false`, as a laptop's own is under
+its lid at a desk:
+
+```yaml
+arrangements:
+  - [{ name: eDP-1, enabled: false }, { name: HDMI-A-1 }]
+```
+
+It shows nothing and stands nowhere, and programs are not told of it, as
+one unplugged; what was on it goes to the others. It takes no `place`,
+`align`, `offset`, `scale`, `primary` or `mirror`, and no screen may
+mirror it. If every screen plugged in would be off, the first is left on
+and you are told, so that a mistake never leaves you with no screen at
+all. `omorfosctl screens` lists it last, as off.
 
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen

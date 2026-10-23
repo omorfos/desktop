@@ -405,11 +405,12 @@ impl Compositor {
 
     /// The screens, in the order they stand, and the ways each can be
     /// driven, written as the configuration writes a mode; and then those
-    /// that mirror another, where that one stands.
+    /// that mirror another, where that one stands, and those that are off,
+    /// standing nowhere.
     fn ipc_screens(&self) -> Vec<omorfos_ipc::Screen> {
         let written =
             |mode: Option<&OfferedMode>| mode.map(ToString::to_string).unwrap_or_default();
-        let screen = |head: &Head, area: Rectangle<i32, Logical>, mirrors: String| {
+        let screen = |head: &Head, area: Rectangle<i32, Logical>, mirrors: String, off: bool| {
             let mut modes = head.modes.clone();
             let largest = |mode: &OfferedMode| {
                 let pixels = u32::from(mode.width) * u32::from(mode.height);
@@ -427,17 +428,22 @@ impl Compositor {
                 preferred: written(head.modes.iter().find(|mode| mode.preferred)),
                 modes: modes.iter().map(ToString::to_string).collect(),
                 mirrors,
+                off,
             }
         };
         let standing = self.arranged().into_iter().map(|index| {
             let head = &self.heads[index];
-            screen(head, head.area(), String::new())
+            screen(head, head.area(), String::new(), false)
         });
         let mirrors = self.mirrors.iter().map(|mirror| {
             let area = self.area_of(&mirror.source);
-            screen(&mirror.head, area, mirror.source.name())
+            screen(&mirror.head, area, mirror.source.name(), false)
         });
-        standing.chain(mirrors).collect()
+        let dark = self.dark.iter().map(|head| {
+            let nowhere = Rectangle::default();
+            screen(head, nowhere, String::new(), true)
+        });
+        standing.chain(mirrors).chain(dark).collect()
     }
 
     fn ipc_state(&self) -> State {
