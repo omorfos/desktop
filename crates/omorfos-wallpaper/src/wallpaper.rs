@@ -8,15 +8,19 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Color, Fit, Part, States, Store, Watcher};
+use omorfos_config::{Color, Easing, Fit, Part, States, Store, Transition, Watcher};
 use omorfos_shell::{picture, pixels};
 use omorfos_ui::{Canvas, Image, Scale};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool,
+    wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
+use wayland_protocols::wp::alpha_modifier::v1::client::{
+    wp_alpha_modifier_surface_v1, wp_alpha_modifier_v1,
+};
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
 };
@@ -138,9 +142,19 @@ impl Wallpaper {
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let slides = self.shell.slides.iter();
-        slides
-            .filter_map(|slides| slides.choosing().or(slides.due()))
-            .min()
+        let slides = slides.filter_map(|slides| slides.choosing().or(slides.due()));
+        // A fade is carried along by the compositor saying it has shown
+        // each step, and finished by then even if it stops saying so, as
+        // it may with the screen off.
+        let lasts = self.shell.fade().lasts();
+        let faces = self
+            .shell
+            .screens
+            .iter()
+            .filter_map(|screen| screen.face.as_ref());
+        let fading = faces.filter_map(|face| face.fade.as_ref());
+        let ends = fading.map(|fade| fade.since + lasts);
+        slides.chain(ends).min()
     }
 
     /// Sleeps until the connection has something to read, the
@@ -222,6 +236,8 @@ struct Shell {
     viewporter: Option<wp_viewporter::WpViewporter>,
     scales: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     pixels: Option<wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1>,
+    subsurfaces: Option<wl_subcompositor::WlSubcompositor>,
+    alphas: Option<wp_alpha_modifier_v1::WpAlphaModifierV1>,
     screens: Vec<Screen>,
     store: Store,
     /// What each screen was last given.
@@ -280,6 +296,24 @@ struct Face {
     /// When what it was given was last kept, since the configuration last
     /// changed.
     kept: Option<Duration>,
+    /// What is fading in over what it showed, while it does.
+    fade: Option<Fade>,
+}
+
+/// What a screen is to show, fading in over what it showed on a surface of
+/// its own above it, fainter at first and then not at all. Once it has,
+/// it is shown on the screen's surface, and this one goes.
+struct Fade {
+    surface: wl_surface::WlSurface,
+    subsurface: wl_subsurface::WlSubsurface,
+    viewport: wp_viewport::WpViewport,
+    alpha: wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1,
+    /// What it shows, and the same again for the screen's own surface,
+    /// since a buffer is each surface's own to give back.
+    buffer: wl_buffer::WlBuffer,
+    after: wl_buffer::WlBuffer,
+    /// Since when.
+    since: Duration,
 }
 
 /// What a screen shows, at a size and a scale.
@@ -307,6 +341,8 @@ struct Tools<'a> {
     viewporter: &'a wp_viewporter::WpViewporter,
     scales: &'a wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
     pixels: &'a wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1,
+    subsurfaces: &'a wl_subcompositor::WlSubcompositor,
+    alphas: &'a wp_alpha_modifier_v1::WpAlphaModifierV1,
     handle: &'a QueueHandle<Shell>,
 }
 
@@ -319,6 +355,8 @@ impl Shell {
             viewporter: None,
             scales: None,
             pixels: None,
+            subsurfaces: None,
+            alphas: None,
             screens: Vec::new(),
             store,
             cache,
@@ -330,6 +368,15 @@ impl Shell {
             problems: Vec::new(),
             // Nothing is drawn yet.
             stale: true,
+        }
+    }
+
+    /// How what a screen shows fades into what it shows next.
+    fn fade(&self) -> Transition {
+        let fade = self.store.current().general.wallpaper.fade.get();
+        Transition {
+            duration: fade,
+            easing: Easing::EaseInOut,
         }
     }
 
@@ -438,6 +485,12 @@ impl Shell {
     fn show(&mut self, handle: &QueueHandle<Self>) -> io::Result<()> {
         let moved = self.turn_slides();
         let now = self.now;
+        let transition = self.fade();
+        let surfaces = self
+            .screens
+            .iter_mut()
+            .filter_map(|screen| screen.face.as_mut());
+        surfaces.for_each(|surface| surface.step(now, transition, handle));
         let mut chosen = false;
         for slides in &mut self.slides {
             chosen |= slides.choose(now);
@@ -449,9 +502,14 @@ impl Shell {
         let globals = globals.zip(self.layers.as_ref());
         let globals = globals.zip(self.viewporter.as_ref().zip(self.scales.as_ref()));
         let globals = globals.zip(self.pixels.as_ref());
+        let globals = globals.zip(self.subsurfaces.as_ref().zip(self.alphas.as_ref()));
         // Until the compositor has offered everything, there is nothing to
         // draw with. Each offer makes this worth trying again.
-        let Some(((((compositor, shm), layers), (viewporter, scales)), pixels)) = globals else {
+        let Some((
+            ((((compositor, shm), layers), (viewporter, scales)), pixels),
+            (subsurfaces, alphas),
+        )) = globals
+        else {
             return Ok(());
         };
         let tools = Tools {
@@ -461,6 +519,8 @@ impl Shell {
             viewporter,
             scales,
             pixels,
+            subsurfaces,
+            alphas,
             handle,
         };
         let wanted: Vec<Option<Wanted>> = self
@@ -491,24 +551,26 @@ impl Shell {
             };
             let drawing = made.or_else(|| recalled().map(Drawing::Kept));
             let drawing = drawing.unwrap_or_else(|| painter.paint(&view, &mut self.problems));
-            face.draw(&tools, &view, &drawing).map(|()| {
-                // Kept for the next session, but not so often that a
-                // directory shown in turn writes a screenful each time.
-                let due = face
-                    .kept
-                    .is_none_or(|kept| now.saturating_sub(kept) >= KEEP_EVERY);
-                if let (Drawing::Drawn(canvas), Some((picture, drawn)), true) =
-                    (&drawing, &about, due)
-                {
-                    face.kept = Some(now);
-                    let pixels = ((canvas.width(), canvas.height()), canvas.bytes());
-                    let kept = self.cache.keep(&screen.name, picture, drawn, pixels);
-                    if let Err(why) = kept {
-                        let problem = format!("cannot keep what `{}` shows: {why}", screen.name);
-                        self.problems.push(problem);
+            face.draw(&tools, &view, &drawing, (now, transition))
+                .map(|()| {
+                    // Kept for the next session, but not so often that a
+                    // directory shown in turn writes a screenful each time.
+                    let due = face
+                        .kept
+                        .is_none_or(|kept| now.saturating_sub(kept) >= KEEP_EVERY);
+                    if let (Drawing::Drawn(canvas), Some((picture, drawn)), true) =
+                        (&drawing, &about, due)
+                    {
+                        face.kept = Some(now);
+                        let pixels = ((canvas.width(), canvas.height()), canvas.bytes());
+                        let kept = self.cache.keep(&screen.name, picture, drawn, pixels);
+                        if let Err(why) = kept {
+                            let problem =
+                                format!("cannot keep what `{}` shows: {why}", screen.name);
+                            self.problems.push(problem);
+                        }
                     }
-                }
-            })
+                })
         });
         drawn.map(|()| {
             // What was made ready for the pictures before has been shown,
@@ -635,11 +697,13 @@ impl Face {
             shown: None,
             buffer: None,
             kept: None,
+            fade: None,
         }
     }
 
     /// Gives the surface back.
-    fn close(self) {
+    fn close(mut self) {
+        self.fade.take().into_iter().for_each(Fade::close);
         self.fraction.destroy();
         self.viewport.destroy();
         self.layer.destroy();
@@ -656,10 +720,18 @@ impl Face {
         (sized && self.shown.as_ref() != Some(&view)).then_some(view)
     }
 
-    /// Shows `drawing`, as what `view` is.
-    fn draw(&mut self, tools: &Tools<'_>, view: &View, drawing: &Drawing) -> io::Result<()> {
-        let (wanted, size, _) = view;
-        let buffer = match drawing {
+    /// Shows `drawing`, as what `view` is: faded in over what it showed
+    /// before, as `fade` says from `now`, if it showed something at the same
+    /// size and scale; at once otherwise.
+    fn draw(
+        &mut self,
+        tools: &Tools<'_>,
+        view: &View,
+        drawing: &Drawing,
+        (now, fade): (Duration, Transition),
+    ) -> io::Result<()> {
+        let (wanted, size, scale) = view;
+        let buffer = || match drawing {
             // A screen of one colour is a single pixel of it, made as large
             // as the screen: there is nothing to gain from drawing millions
             // of the same.
@@ -667,19 +739,126 @@ impl Face {
             Drawing::Drawn(canvas) => picture(tools.shm, canvas, tools.handle),
             Drawing::Kept(kept) => pixels(tools.shm, kept.size, &kept.pixels, tools.handle),
         };
-        let size = *size;
-        buffer.map(|buffer| {
-            self.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers the screen.
-            let (width, height) = (size.0.cast_signed(), size.1.cast_signed());
-            self.viewport.set_destination(width, height);
-            self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            self.surface.commit();
-            // The picture before this one is let go of when the compositor
-            // says it has finished with it.
-            self.buffer = Some(buffer);
+        let placed = self.shown.as_ref().map(|(_, size, scale)| (*size, *scale));
+        let fades = placed == Some((*size, *scale)) && fade.lasts() > Duration::ZERO;
+        // One fading in already is done with at once, for this to fade in
+        // over it.
+        self.step(Duration::MAX, fade, tools.handle);
+        let units = (size.0.cast_signed(), size.1.cast_signed());
+        // Fading in, it is given twice: once for the surface it fades in
+        // on and once for the screen's own, which shows it after.
+        let given = buffer().and_then(|first| {
+            let second = fades.then(buffer).transpose();
+            second.map(|second| (first, second))
+        });
+        given.map(|(buffer, after)| {
+            match after {
+                Some(after) => {
+                    self.fade = Some(Fade::open(tools, &self.surface, units, buffer, after, now));
+                }
+                None => self.put(buffer, units),
+            }
             self.shown = Some(view.clone());
         })
+    }
+
+    /// Shows `buffer` on the screen's own surface, `size` units of layout.
+    fn put(&mut self, buffer: wl_buffer::WlBuffer, (width, height): (i32, i32)) {
+        self.surface.attach(Some(&buffer), 0, 0);
+        // However many pixels the picture has, it covers the screen.
+        self.viewport.set_destination(width, height);
+        self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+        self.surface.commit();
+        // The picture before this one is let go of when the compositor
+        // says it has finished with it.
+        self.buffer = Some(buffer);
+    }
+
+    /// Takes what is fading in a step further, as far as `fade` says it is
+    /// by `now`, and asks to hear once the compositor has shown it; or, if
+    /// it has faded in all the way, shows it on the screen's own surface.
+    fn step(&mut self, now: Duration, fade: Transition, handle: &QueueHandle<Shell>) {
+        let Some(fading) = self.fade.take() else {
+            return;
+        };
+        let progress = fade.progress(now.saturating_sub(fading.since));
+        if progress < 1.0 {
+            fading.show(progress, handle);
+            self.fade = Some(fading);
+            return;
+        }
+        let (width, height) = self
+            .shown
+            .as_ref()
+            .map(|(_, size, _)| *size)
+            .unwrap_or_default();
+        self.put(
+            fading.after.clone(),
+            (width.cast_signed(), height.cast_signed()),
+        );
+        fading.close();
+    }
+}
+
+impl Fade {
+    /// Puts `buffer` on a surface of its own over `under`, as large as
+    /// `units`, not yet to be seen; and keeps `after` for `under`.
+    fn open(
+        tools: &Tools<'_>,
+        under: &wl_surface::WlSurface,
+        (width, height): (i32, i32),
+        buffer: wl_buffer::WlBuffer,
+        after: wl_buffer::WlBuffer,
+        since: Duration,
+    ) -> Self {
+        let handle = tools.handle;
+        let surface = tools.compositor.create_surface(handle, ());
+        let subsurface = tools
+            .subsurfaces
+            .get_subsurface(&surface, under, handle, ());
+        // It changes as it fades, without the screen's surface.
+        subsurface.set_desync();
+        let viewport = tools.viewporter.get_viewport(&surface, handle, ());
+        viewport.set_destination(width, height);
+        let alpha = tools.alphas.get_surface(&surface, handle, ());
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+        let fade = Self {
+            surface,
+            subsurface,
+            viewport,
+            alpha,
+            buffer,
+            after,
+            since,
+        };
+        fade.show(0.0, handle);
+        // Where it is on the screen's surface comes with that one's commit.
+        under.commit();
+        fade
+    }
+
+    /// Shows it `progress` of the way from not at all to wholly, and asks
+    /// to hear once the compositor has.
+    fn show(&self, progress: f32, handle: &QueueHandle<Shell>) {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a share, between none and all, of the largest there is"
+        )]
+        let multiplier = (f64::from(progress) * f64::from(u32::MAX)) as u32;
+        self.alpha.set_multiplier(multiplier);
+        self.surface.frame(handle, ());
+        self.surface.commit();
+    }
+
+    /// Gives its surface back, and what it showed.
+    fn close(self) {
+        self.alpha.destroy();
+        self.viewport.destroy();
+        self.subsurface.destroy();
+        self.surface.destroy();
+        self.buffer.destroy();
     }
 }
 
@@ -732,6 +911,8 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
                 "wp_single_pixel_buffer_manager_v1" => {
                     shell.pixels = Some(registry.bind(name, 1, handle, ()));
                 }
+                "wl_subcompositor" => shell.subsurfaces = Some(registry.bind(name, 1, handle, ())),
+                "wp_alpha_modifier_v1" => shell.alphas = Some(registry.bind(name, 1, handle, ())),
                 "wl_output" => shell.screens.push(Screen {
                     global: name,
                     name: String::new(),
@@ -835,3 +1016,10 @@ delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
 delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(Shell: wp_single_pixel_buffer_manager_v1::WpSinglePixelBufferManagerV1);
+delegate_noop!(Shell: wl_subcompositor::WlSubcompositor);
+delegate_noop!(Shell: wl_subsurface::WlSubsurface);
+delegate_noop!(Shell: wp_alpha_modifier_v1::WpAlphaModifierV1);
+delegate_noop!(Shell: wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1);
+// That a step of a fade has been shown only wakes the wallpaper, which
+// takes the next.
+delegate_noop!(Shell: ignore wl_callback::WlCallback);

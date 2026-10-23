@@ -31,6 +31,9 @@ pub struct Wallpaper {
     pub color: Option<Color>,
     /// How many seconds each picture of a directory is shown for.
     pub every: Bounded<5, 604_800>,
+    /// How many milliseconds what a screen shows takes to fade into what
+    /// it shows next. 0 is at once.
+    pub fade: Bounded<0, 10_000>,
     /// The order the pictures of a directory are shown in.
     pub order: Order,
     /// Particular screens, by name, that show something else.
@@ -45,6 +48,7 @@ impl Default for Wallpaper {
             fit: Fit::default(),
             color: None,
             every: Bounded::clamped(600),
+            fade: Bounded::clamped(1000),
             order: Order::default(),
             screens: Screens::default(),
         }
@@ -279,6 +283,14 @@ mod tests {
         let shuffled = parse("order: shuffled").unwrap();
         assert_eq!(shuffled.order, Order::Shuffled);
         assert!(parse("order: random").is_err());
+    }
+
+    #[test]
+    fn a_picture_fades_into_the_next_for_up_to_ten_seconds_or_at_once() {
+        assert_eq!(Wallpaper::default().fade.get(), 1000);
+        assert_eq!(parse("fade: 0").unwrap().fade.get(), 0);
+        assert_eq!(parse("fade: 10000").unwrap().fade.get(), 10_000);
+        assert!(parse("fade: 10001").is_err());
     }
 
     #[test]

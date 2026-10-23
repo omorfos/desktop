@@ -689,6 +689,12 @@
           "minimum": 5,
           "type": "integer"
         },
+        "fade": {
+          "description": "How many milliseconds what a screen shows takes to fade into what\nit shows next. 0 is at once.",
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
         "fit": {
           "$ref": "#/$defs/Fit",
           "description": "How the picture is laid on the screen."

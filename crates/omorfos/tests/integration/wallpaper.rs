@@ -196,7 +196,7 @@ fn the_pictures_of_a_directory_are_shown_in_turn() {
     let pictures = tempfile::TempDir::new().unwrap();
     png(&pictures.path().join("a.png"), (1, 1), |_, _| RED);
     png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
-    let config = picture_config(&pictures.path().to_string_lossy(), "every: 5");
+    let config = picture_config(&pictures.path().to_string_lossy(), "every: 5, fade: 0");
     let mut session = Session::with_config(&[("config.yaml", &config)]);
     let mut wallpaper = joined(&mut session, None);
     settle(&mut session, &mut wallpaper, Duration::ZERO);
@@ -242,7 +242,7 @@ fn a_picture_that_cannot_be_read_is_said_and_the_colour_shown() {
 
 #[test]
 fn the_wallpaper_follows_the_configuration_as_it_is_saved() {
-    let config = "wallpaper: { color: '#ff0000' }\n";
+    let config = "wallpaper: { color: '#ff0000', fade: 0 }\n";
     let mut session = Session::with_config(&[("config.yaml", config)]);
     let program = RefCell::new(joined(&mut session, None));
     settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
@@ -253,7 +253,7 @@ fn the_wallpaper_follows_the_configuration_as_it_is_saved() {
         session.step();
         session.draw().at(10, 10) == colour
     };
-    session.write_config("config.yaml", "wallpaper: { color: '#0000ff' }\n");
+    session.write_config("config.yaml", "wallpaper: { color: '#0000ff', fade: 0 }\n");
     session.eventually(|session| turned(session, BLUE));
     // With nothing to show, it takes itself off the screen.
     session.write_config("config.yaml", "");
@@ -394,7 +394,7 @@ fn a_directory_starts_from_the_picture_kept_from_the_session_before() {
     png(&pictures.path().join("a.png"), (1, 1), |_, _| RED);
     png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
     png(&pictures.path().join("c.png"), (1, 1), |_, _| BLUE);
-    let config = picture_config(&pictures.path().to_string_lossy(), "every: 5");
+    let config = picture_config(&pictures.path().to_string_lossy(), "every: 5, fade: 0");
     let next = |cache: &Path| {
         let mut session = Session::with_config(&[("config.yaml", &config)]);
         let mut wallpaper = keeping(&mut session, Some(cache), None);
@@ -425,7 +425,7 @@ fn the_next_picture_of_a_directory_is_ready_before_it_is_due() {
     png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
     // And another screen that only ever shows its colour, which is not
     // made ready for anything.
-    let rest = "every: 10, screens: [{ name: test-2, color: '#0000ff' }]";
+    let rest = "every: 10, fade: 0, screens: [{ name: test-2, color: '#0000ff' }]";
     let config = picture_config(&pictures.path().to_string_lossy(), rest);
     let mut session = Session::with_config(&[("config.yaml", &config)]);
     session.add_output((300, 200));
@@ -442,5 +442,45 @@ fn the_next_picture_of_a_directory_is_ready_before_it_is_due() {
     assert_eq!(session.draw().at(10, 10), GREEN);
     assert_eq!(session.draw_on(1).at(10, 10), GREEN);
     assert_eq!(session.draw_on(2).at(10, 10), BLUE);
+    assert_eq!(wallpaper.problems(), [] as [String; 0]);
+}
+
+#[test]
+fn one_picture_fades_into_the_next() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    png(&pictures.path().join("a.png"), (1, 1), |_, _| RED);
+    png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
+    let config = picture_config(&pictures.path().to_string_lossy(), "every: 5, fade: 1000");
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let mut wallpaper = joined(&mut session, None);
+    // The first is shown at once.
+    settle(&mut session, &mut wallpaper, Duration::ZERO);
+    assert_eq!(session.draw().at(10, 10), RED);
+    let at = |session: &mut Session, wallpaper: &mut Wallpaper, millis| {
+        settle(session, wallpaper, Duration::from_millis(millis));
+        let [_, red, green, _] = session.draw().at(10, 10).to_be_bytes();
+        (red, green)
+    };
+    assert_eq!(at(&mut session, &mut wallpaper, 5000), (255, 0), "not yet");
+    assert_eq!(wallpaper.deadline(), Some(Duration::from_secs(6)));
+    // Halfway, half of each.
+    let (red, green) = at(&mut session, &mut wallpaper, 5500);
+    assert!(
+        red.abs_diff(128) < 8 && green.abs_diff(128) < 8,
+        "{red} {green}"
+    );
+    let (red, green) = at(&mut session, &mut wallpaper, 5900);
+    assert!(red < 20 && green > 235, "nearly: {red} {green}");
+    assert_eq!(at(&mut session, &mut wallpaper, 6000), (0, 255));
+    assert_eq!(session.draw().at(10, 10), GREEN);
+    assert_eq!(wallpaper.deadline(), Some(Duration::from_millis(7500)));
+
+    // A change of scale halfway shows what it was fading to at once, and
+    // what follows at once too, at the new size.
+    at(&mut session, &mut wallpaper, 10_000);
+    let (red, _) = at(&mut session, &mut wallpaper, 10_500);
+    assert!(red > 100, "{red}");
+    session.suggest_scale(Scale::new(2.0));
+    assert_eq!(at(&mut session, &mut wallpaper, 10_500), (255, 0));
     assert_eq!(wallpaper.problems(), [] as [String; 0]);
 }

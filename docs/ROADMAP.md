@@ -510,8 +510,9 @@ what only games and touchpads need last.
       directory starts where it was kept, and its next picture is read
       before it is due. With nothing named it puts nothing up, and the
       theme's `desktop` shows.
-- [ ] Wallpaper, what is left: a fade from one picture to the next, with
-      the look; a directory watched, so that a picture put there or
+- [x] Wallpaper, a fade from one picture to the next, done by the
+      compositor's renderer through `wp_alpha_modifier_v1` (ADR 49).
+- [ ] Wallpaper, what is left: a directory watched, so that a picture put there or
       changed shows at once and not at the next turn; and other formats
       (WebP, AVIF, SVG) as they are asked for, each another decoder of
       untrusted input.

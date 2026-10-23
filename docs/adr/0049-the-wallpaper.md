@@ -105,6 +105,31 @@ else is, on the one thread: the wallpaper is busy for that time, but it
 has nothing else to do, and a thread would buy nothing a screen could show
 for what it costs to reason about.
 
+**One picture fades into the next, and the compositor does the fading.**
+What a screen is to show next is put on a surface of its own above what
+it shows, a subsurface, and made from wholly faint to not faint at all
+with `wp_alpha_modifier_v1`, which the compositor now offers and its
+renderer already heeds. Each step is a number, not a picture: the pixels
+go to the compositor once, and blending them is the renderer's work, on
+the graphics card where there is one. The steps are taken as the
+compositor says it has shown the last, so a fade is as smooth as the
+screen, and is finished by the time it should be if the compositor stops
+saying so, as it does for a screen that is off. Once it is done, the
+picture is shown on the screen's own surface and the one above goes; it
+was handed over twice, once for each surface, since each gives its buffer
+back on its own.
+
+Drawing each step of the blend in the wallpaper would have handed the
+compositor a screenful of pixels at every frame; a fade done by the
+compositor on its own, at any change of what a background surface shows,
+would fade a wallpaper that is a moving picture at every frame of it.
+Only the wallpaper knows that a change is a new picture.
+
+`wallpaper.fade` says how long it takes, a second unless told otherwise,
+eased in and out; 0 is at once. The first picture of a session is shown
+at once, and so is one drawn because the screen changed size or scale:
+that is the screen changing, not the picture.
+
 ## Consequences
 
 - A new crate, a new dependency (`zune-jpeg`) and a new program to
@@ -117,6 +142,5 @@ for what it costs to reason about.
   the picture, the configuration, the screen's size or its scale, and let
   go of once it is drawn: what is kept between is only the picture handed
   to the compositor.
-- A change between pictures is at once; fading from one to the next waits
-  for the look (stage 4), as does blurring what is behind a glass part,
-  which the wallpaper is most of.
+- Blurring what is behind a glass part, which the wallpaper is most of,
+  waits for the look (stage 4).

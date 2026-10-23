@@ -61,6 +61,7 @@ wallpaper:
   enabled: true           # start the wallpaper that comes with omorfos
   fit: fill               # fill | fit | stretch | center | tile
   every: 600              # seconds each picture of a directory is shown
+  fade: 1000              # milliseconds one picture fades into the next; 0 at once
   order: name             # name | shuffled
   screens: []             # particular screens, by name
 cursor:
@@ -923,6 +924,11 @@ seconds are not each written to the disk. The next picture of a directory
 is read half the time it is shown for, or ten seconds, before it is due,
 so that it changes the moment it is. Deleting the directory is safe: what
 is in it is made again.
+
+A change of picture, colour or fit fades from the old to the new over
+`fade` milliseconds, eased in and out: 1000 unless you say otherwise, up
+to 10000, and 0 for at once. The first picture of a session is shown at
+once, as is one drawn again because a screen changed size or scale.
 
 To use another program for it, such as `swaybg`, turn it off and start
 that, which needs to be let put a surface behind the windows as a panel
