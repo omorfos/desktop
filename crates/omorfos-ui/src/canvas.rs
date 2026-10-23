@@ -324,6 +324,44 @@ impl Image {
         }
     }
 
+    /// The square in the middle of the picture, cut to the circle inside
+    /// it, with the edge smoothed over a pixel: as a face is shown.
+    #[must_use]
+    pub fn circled(&self) -> Self {
+        let side = self.width.min(self.height);
+        let (left, top) = ((self.width - side) / 2, (self.height - side) / 2);
+        let radius = f64::from(side) / 2.0;
+        let places = (0..side).flat_map(|y| (0..side).map(move |x| (x, y)));
+        let pixels = places.flat_map(|(x, y)| {
+            let [red, green, blue, alpha] = self.pixel((left + x, top + y));
+            // How far the middle of the pixel is inside the edge.
+            let across = f64::from(x) + 0.5 - radius;
+            let down = f64::from(y) + 0.5 - radius;
+            let inside = radius - across.hypot(down) + 0.5;
+            [red, green, blue, opacity(alpha, inside)]
+        });
+        Self {
+            width: side,
+            height: side,
+            pixels: pixels.collect(),
+        }
+    }
+
+    /// The same picture, `share` as opaque as it is: from 0, not there at
+    /// all, to 1, as it is.
+    #[must_use]
+    pub fn faded(&self, share: f32) -> Self {
+        let pixels = self.pixels.as_chunks::<4>().0.iter().flat_map(|pixel| {
+            let [red, green, blue, alpha] = *pixel;
+            [red, green, blue, opacity(alpha, f64::from(share))]
+        });
+        Self {
+            width: self.width,
+            height: self.height,
+            pixels: pixels.collect(),
+        }
+    }
+
     /// The red, green, blue and opacity of the pixel at `(x, y)`, which is
     /// on the picture.
     fn pixel(&self, (x, y): (u32, u32)) -> [u8; 4] {
@@ -394,6 +432,18 @@ impl Image {
         let color = Color::rgb(channel(sums[0]), channel(sums[1]), channel(sums[2]));
         (color, byte(sums[3].checked_div(count).unwrap_or(0)))
     }
+}
+
+/// An opacity, `share` of it kept: from none, at 0 or less, to all of it,
+/// at 1 or more.
+fn opacity(alpha: u8, share: f64) -> u8 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the value is from 0 to 255"
+    )]
+    let kept = (f64::from(alpha) * share.clamp(0.0, 1.0)).round() as u8;
+    kept
 }
 
 /// Which of a picture's pixels along one side make one pixel of it drawn
@@ -614,8 +664,16 @@ impl Text {
     /// How wide one line of `text` is when set in `font`, in units of
     /// layout, rounded up. For laying out what is then drawn.
     pub fn measure(&mut self, text: &str, font: &Font) -> u32 {
+        self.measured(text, font, 1.0)
+    }
+
+    /// How many pixels wide one line of `text` is in `font`, drawn `scale`
+    /// pixels to a unit. Glyphs set larger are not always exactly as much
+    /// wider, so this is not the width in units multiplied.
+    fn measured(&mut self, text: &str, font: &Font, scale: f32) -> u32 {
         // Font sizes are in points, at the conventional 96 units per inch.
-        let size = f32::from(u16::try_from(font.size.get()).unwrap_or(u16::MAX)) * 96.0 / 72.0;
+        let points = f32::from(u16::try_from(font.size.get()).unwrap_or(u16::MAX));
+        let size = points * 96.0 / 72.0 * scale;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, size));
         buffer.set_wrap(Wrap::None);
         buffer.set_text(text, &attributes(font), Shaping::Advanced, None);
@@ -658,11 +716,40 @@ impl Text {
     pub fn draw(&mut self, canvas: &mut Canvas, text: &str, area: Area, color: Color, font: &Font) {
         let (left, width) = span(canvas.scale, area.0, area.2);
         let (top, height) = span(canvas.scale, area.1, area.3);
+        self.draw_pixels(canvas, text, (left, top, width, height), color, font);
+    }
+
+    /// Draws one line of `text` in the middle of `area`, across and down,
+    /// whole if it fits, measured at the scale it is drawn at; and cut short
+    /// with an ellipsis if it does not.
+    pub fn draw_centered(
+        &mut self,
+        canvas: &mut Canvas,
+        text: &str,
+        area: Area,
+        color: Color,
+        font: &Font,
+    ) {
+        let (left, width) = span(canvas.scale, area.0, area.2);
+        let (top, height) = span(canvas.scale, area.1, area.3);
+        let wide = self.measured(text, font, scale_of(canvas)).min(width);
+        let left = left.saturating_add_unsigned((width - wide) / 2);
+        self.draw_pixels(canvas, text, (left, top, wide, height), color, font);
+    }
+
+    /// Draws one line of `text` in an area counted in pixels, vertically
+    /// centred and cut short with an ellipsis if it does not fit.
+    fn draw_pixels(
+        &mut self,
+        canvas: &mut Canvas,
+        text: &str,
+        (left, top, width, height): Area,
+        color: Color,
+        font: &Font,
+    ) {
         let float = |length: u32| f32::from(u16::try_from(length).unwrap_or(u16::MAX));
         // Font sizes are in points, at the conventional 96 units per inch.
-        // A scale is a few quarters, which an `f32` holds exactly.
-        #[expect(clippy::cast_possible_truncation, reason = "a scale is at most four")]
-        let scale = canvas.scale.factor() as f32;
+        let scale = scale_of(canvas);
         let size = float(font.size.get()) * 96.0 / 72.0 * scale;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, float(height)));
         buffer.set_wrap(Wrap::None);
@@ -688,6 +775,14 @@ impl Text {
             },
         );
     }
+}
+
+/// How many pixels a canvas has to a unit, as text is set by. A scale is a
+/// few quarters, which an `f32` holds exactly.
+fn scale_of(canvas: &Canvas) -> f32 {
+    #[expect(clippy::cast_possible_truncation, reason = "a scale is at most four")]
+    let scale = canvas.scale.factor() as f32;
+    scale
 }
 
 /// How text in a font is to be set: its family, its weight and whether it
@@ -788,6 +883,47 @@ mod tests {
         let ink = |columns: std::ops::Range<u32>| inked(&canvas, columns, 0);
         assert!(ink(0..long) > 0);
         assert_eq!(ink(long..long + 10), 0, "and none of it lies beyond");
+    }
+
+    #[test]
+    fn text_drawn_in_the_middle_is_whole_and_in_the_middle_at_any_scale() {
+        let mut text = Text::new();
+        let font = Font {
+            size: omorfos_config::Bounded::clamped(20),
+            ..Font::default()
+        };
+        // The columns of a canvas with ink in them.
+        let columns = |canvas: &Canvas| -> Vec<u32> {
+            let mut inked =
+                (0..canvas.width).filter(|x| (0..canvas.height).any(|y| canvas.at(*x, y) != 0));
+            let first = inked.next().unwrap();
+            let last = inked.next_back().unwrap_or(first);
+            vec![first, last]
+        };
+        // Drawn at a scale, text is a little wider than measured in units
+        // and then multiplied, and would be cut short at some scales.
+        let name = "Rafal Proszowski";
+        for factor in [1.0, 1.25, 1.5, 2.0, 2.25] {
+            let scale = Scale::new(factor);
+            let mut roomy = Canvas::scaled(400, 40, scale);
+            text.draw(&mut roomy, name, (0, 0, 400, 40), RED, &font);
+            let mut middle = Canvas::scaled(400, 40, scale);
+            text.draw_centered(&mut middle, name, (0, 0, 400, 40), RED, &font);
+            let (whole, centred) = (columns(&roomy), columns(&middle));
+            let wide = |ends: &[u32]| ends[1] - ends[0];
+            assert_eq!(wide(&centred), wide(&whole), "all of it, at {factor}");
+            let before = centred[0];
+            let after = middle.width - 1 - centred[1];
+            assert!(
+                before.abs_diff(after) <= 2,
+                "{before} and {after}, at {factor}"
+            );
+        }
+        // Wider than its area, it is cut short within it.
+        let mut narrow = Canvas::new(400, 40);
+        text.draw_centered(&mut narrow, name, (100, 0, 60, 40), RED, &font);
+        let ends = columns(&narrow);
+        assert!(ends[0] >= 100 && ends[1] < 160, "{ends:?}");
     }
 
     #[test]
@@ -1091,6 +1227,35 @@ mod tests {
             [0, 0, 255, 128],
         ];
         assert_eq!(faint, Image::new(2, 2, expected.concat()).unwrap());
+    }
+
+    #[test]
+    fn a_picture_circled_is_its_middle_square_clear_outside_the_circle() {
+        let wide = plain(40, 20, RED);
+        let face = wide.circled();
+        assert_eq!(face.size(), (20, 20));
+        let opacity = |x, y| face.pixel((x, y))[3];
+        assert_eq!(opacity(10, 10), 255, "the middle");
+        assert_eq!(opacity(0, 0), 0, "a corner");
+        assert_eq!(opacity(19, 19), 0);
+        let edge = opacity(0, 10);
+        assert!(edge > 0 && edge < 255, "the edge smoothed: {edge}");
+        assert_eq!(face.pixel((10, 10))[..3], [255, 0, 0]);
+        // What was see-through stays so.
+        let clear = plain(4, 4, Color::rgba(0, 0, 255, 0)).circled();
+        assert_eq!(clear.pixel((2, 2))[3], 0);
+    }
+
+    #[test]
+    fn a_picture_faded_is_as_much_less_opaque_as_it_says() {
+        let pixels = [[1, 2, 3, 255], [4, 5, 6, 100]];
+        let picture = Image::new(2, 1, pixels.concat()).unwrap();
+        let half = [[1, 2, 3, 128], [4, 5, 6, 50]];
+        assert_eq!(picture.faded(0.5), Image::new(2, 1, half.concat()).unwrap());
+        assert_eq!(picture.faded(1.0), picture);
+        assert_eq!(picture.faded(7.0), picture, "no more than it was");
+        let gone = picture.faded(-1.0);
+        assert_eq!(gone.pixel((0, 0)), [1, 2, 3, 0]);
     }
 
     #[test]
