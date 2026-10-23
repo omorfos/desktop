@@ -137,6 +137,9 @@ impl Default for Keys {
             bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
             bind("Super+Shift+r", Action::ReloadConfig),
             bind("Super+Shift+e", Action::Quit),
+            // The key a laptop has for the screens, which means nothing
+            // else, and is pressed when one has gone dark.
+            bind("XF86Display", Action::NextScreens),
         ];
         // The keys a keyboard has for the volume, the brightness and what
         // is playing, which mean nothing else.
@@ -692,6 +695,7 @@ bindings:
             Some(Action::Workspace(WorkspaceNumber::clamped(9)))
         );
         assert_eq!(action_for("Super+n"), Some(Action::NewWorkspace));
+        assert_eq!(action_for("XF86Display"), Some(Action::NextScreens));
         assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Focus(Half::Top)));
         assert_eq!(
             action_for("Super+Ctrl+Shift+Left"),

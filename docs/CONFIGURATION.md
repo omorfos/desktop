@@ -202,6 +202,19 @@ mirror it. If every screen plugged in would be off, the first is left on
 and you are told, so that a mistake never leaves you with no screen at
 all. `omorfosctl screens` lists it last, as off.
 
+The display key (`XF86Display`, the `next_screens` action) has the
+screens stand another way for now, without changing this file: first as
+the configuration says, then all showing what the one that comes first
+shows, then that one alone, then each of the others alone, and round
+again. Each screen keeps its `mode` and `rotate`. In the middle of each
+screen that is on, a box says which way they are in, such as "Mirrored:
+every screen shows what eDP-1 shows", and asks whether to keep them so:
+Enter keeps them, Escape puts them back as they were, and so does
+waiting 15 seconds, since it is the key you press when a screen has gone
+dark. Pressing the key again goes on to the next way. What is kept is for
+the screens plugged in when it was; plugging one in or taking one out
+has them stand as this file says again, and so does logging in.
+
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen
 was made, `right`, or `inverted`; `normal` is as it was made. It then
@@ -388,6 +401,7 @@ not begin with keys you have bound on their own.
 | `show_menu` | Open the root menu. |
 | `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
+| `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
 | `quit` | End the session. |

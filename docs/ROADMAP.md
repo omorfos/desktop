@@ -525,11 +525,10 @@ what only games and touchpads need last.
 - [x] A screen turned off (ADR 15): `enabled: false` in `outputs` and
       `arrangements`, out of the space and unknown to programs, turned off
       by the backend; never every screen plugged in.
-- [ ] Screens arranged by the user: the display key (`XF86Display`)
-      goes through the screens side by side, the same on
-      both, and only one of them, each kept only if the user says so in
-      time, as the next item has it, since it is the key pressed when a
-      screen has gone dark.
+- [x] The display key (`XF86Display`, ADR 51) goes through the screens
+      as configured, mirrored, and each alone, each kept only if Enter is
+      pressed within 15 seconds and put back otherwise, since it is the
+      key pressed when a screen has gone dark.
 - [ ] A change to the screens made from Settings (stage 7) kept only if
       the user says so in time, and put back by the compositor itself
       otherwise, so that a screen left dark comes back on its own.
@@ -604,7 +603,8 @@ Stage 2 says what it is to be; this builds it.
       `Shift+Print` keeps its picture as a file rather than on the
       clipboard; the star key (`XF86Favorites`); a key for
       `next_layout`; the keys for the volume, the brightness and what is
-      playing; and the theme's parts made along the way.
+      playing; `XF86Display` for `next_screens`; and the theme's parts
+      made along the way.
 
 ## 5. The shell: a bar and a dock
 

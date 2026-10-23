@@ -113,6 +113,10 @@ pub enum Action {
     /// Type with the next of the keyboard's layouts, and after the last
     /// with the first again.
     NextLayout,
+    /// Have the screens stand the next way: as the configuration says, all
+    /// showing what the first shows, and each alone. Each is kept only if
+    /// the user says so in time.
+    NextScreens,
     /// Re-read the configuration now.
     ReloadConfig,
     /// End the session.
@@ -331,6 +335,7 @@ mod tests {
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
         assert_eq!(parse("lock"), Ok(Action::Lock));
         assert_eq!(parse("next_layout"), Ok(Action::NextLayout));
+        assert_eq!(parse("next_screens"), Ok(Action::NextScreens));
         assert_eq!(
             parse("move_to_new_workspace"),
             Ok(Action::MoveToNewWorkspace)

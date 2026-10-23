@@ -435,11 +435,11 @@ impl Compositor {
             let head = &self.heads[index];
             screen(head, head.area(), String::new(), false)
         });
-        let mirrors = self.mirrors.iter().map(|mirror| {
+        let mirrors = self.aside.mirrors.iter().map(|mirror| {
             let area = self.area_of(&mirror.source);
             screen(&mirror.head, area, mirror.source.name(), false)
         });
-        let dark = self.dark.iter().map(|head| {
+        let dark = self.aside.dark.iter().map(|head| {
             let nowhere = Rectangle::default();
             screen(head, nowhere, String::new(), true)
         });

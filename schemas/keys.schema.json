@@ -211,6 +211,11 @@
           "type": "string"
         },
         {
+          "const": "next_screens",
+          "description": "Have the screens stand the next way: as the configuration says, all\nshowing what the first shows, and each alone. Each is kept only if\nthe user says so in time.",
+          "type": "string"
+        },
+        {
           "const": "reload_config",
           "description": "Re-read the configuration now.",
           "type": "string"
