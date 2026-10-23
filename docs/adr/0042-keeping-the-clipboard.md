@@ -54,6 +54,15 @@ take the place of ours with one line of configuration.
   offering. Otherwise the clipboard would be set back to something older,
   or to a copy cut short.
 
+*Amended:* what the keeper offers of what a program written for X11
+still holds is not offered back to the X server. It was, and the window
+manager took the clipboard from that program to answer for the keeper;
+a program written for X11 that then asked was refused unless one of its
+windows had the keyboard, which `xsel`, copying and pasting for Neovim in
+a terminal, never has. So `yy` and `p` in Neovim pasted nothing. The
+keeper's copy is known by the form it adds (`application/x-omorfos-kept`),
+and is offered to the X server once the program lets go.
+
 ## Alternatives
 
 - **Keep it in the compositor.** It has every copy already, and could

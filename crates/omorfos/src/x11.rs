@@ -326,9 +326,34 @@ pub(crate) struct X11 {
     /// last to come last: those that manage themselves, which menus and
     /// tooltips are, and any that have yet to draw anything.
     apart: Vec<(X11Surface, WlSurface)>,
+    /// Whether a program written for X11 holds the clipboard, and the
+    /// selection, as the X server has them.
+    clipboard: Holding,
+    primary: Holding,
 }
 
+/// Whether a program written for X11 holds a selection, and what is
+/// offered in its place that was kept back from the X server meanwhile.
+#[derive(Debug, Default)]
+struct Holding {
+    held: bool,
+    back: Option<Vec<String>>,
+}
+
+/// The form `omorfos-clipboard` offers what it keeps in beside the others,
+/// by which what it keeps is known; its `MARK`.
+const KEPT: &str = "application/x-omorfos-kept";
+
 impl X11 {
+    /// Whether a program written for X11 holds the clipboard, or the
+    /// selection.
+    fn holding(&mut self, which: SelectionTarget) -> &mut Holding {
+        match which {
+            SelectionTarget::Clipboard => &mut self.clipboard,
+            SelectionTarget::Primary => &mut self.primary,
+        }
+    }
+
     pub(crate) fn new(display: &DisplayHandle) -> Self {
         Self {
             shell: XWaylandShellState::new::<Compositor>(display),
@@ -339,6 +364,8 @@ impl X11 {
             again: None,
             wm: None,
             apart: Vec::new(),
+            clipboard: Holding::default(),
+            primary: Holding::default(),
         }
     }
 
@@ -582,7 +609,22 @@ impl Compositor {
 
     /// Tells programs written for X11 what a program written for Wayland
     /// has copied or selected, in what forms, or that it no longer has.
+    ///
+    /// What the keeper keeps of what a program written for X11 still holds
+    /// is kept back: the X server goes on asking that program for it, as it
+    /// would anywhere, which a program need not have the keyboard to do, as
+    /// `xsel` does not for an editor in a terminal. It is offered once the
+    /// program lets go of it.
     pub(crate) fn offer_to_x11(&mut self, which: SelectionTarget, kinds: Option<Vec<String>>) {
+        let kept = kinds
+            .as_ref()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind == KEPT));
+        let holding = self.x11.holding(which);
+        if kept && holding.held {
+            holding.back = kinds;
+            return;
+        }
+        *holding = Holding::default();
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {
@@ -816,6 +858,10 @@ impl XwmHandler for Compositor {
     fn new_selection(&mut self, _: XwmId, which: SelectionTarget, kinds: Vec<String>) {
         // What a program written for X11 has copied or selected is offered
         // by the compositor on its behalf.
+        *self.x11.holding(which) = Holding {
+            held: true,
+            back: None,
+        };
         match which {
             SelectionTarget::Clipboard => {
                 set_data_device_selection(&self.display, &self.seat, kinds, ());
@@ -825,6 +871,12 @@ impl XwmHandler for Compositor {
     }
 
     fn cleared_selection(&mut self, _: XwmId, which: SelectionTarget) {
+        let held = std::mem::take(self.x11.holding(which));
+        // What was kept back meanwhile is offered now, in its place.
+        if let Some(back) = held.back {
+            self.offer_to_x11(which, Some(back));
+            return;
+        }
         // It is taken back only if it is still what is on offer: a
         // selection of ours is one made on behalf of the X server.
         match which {
