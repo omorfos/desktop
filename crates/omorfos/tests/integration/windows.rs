@@ -263,6 +263,36 @@ fn a_disconnected_client_takes_its_windows_with_it() {
 }
 
 #[test]
+fn a_program_sent_away_for_breaking_the_protocol_is_said_to_have_been() {
+    let mut session = Session::new();
+    // One that leaves is nothing to say.
+    let mut client = session.connect();
+    session.open(&mut client, "polite", (200, 100), RED);
+    drop(client);
+    session.eventually(|session| session.compositor().desktop().frames().count() == 0);
+    assert_eq!(session.compositor_mut().take_logged(), Vec::<String>::new());
+    let client = session.connect();
+    client.break_the_protocol();
+    let mut logged = Vec::new();
+    session.eventually(|session| {
+        logged.extend(session.compositor_mut().take_logged());
+        !logged.is_empty()
+    });
+    let said = &logged[0];
+    assert!(
+        said.starts_with("integration-"),
+        "named by its file: {said}"
+    );
+    assert!(
+        said.contains(&format!(", process {}", std::process::id())),
+        "{said}"
+    );
+    assert!(said.contains("was disconnected for asking"), "{said}");
+    assert!(said.contains(": xdg_wm_base@"), "{said}");
+    assert_eq!(logged.len(), 1, "once");
+}
+
+#[test]
 fn subsurfaces_are_drawn_with_their_window() {
     let mut session = Session::new();
     let mut client = session.connect();

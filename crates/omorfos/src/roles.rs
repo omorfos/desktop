@@ -6,6 +6,7 @@
 //! choose. See `docs/adr/0037-who-may-do-what.md`.
 
 use std::fs;
+use std::sync::mpsc::{self, Receiver, Sender};
 
 use omorfos_config::Role;
 use smithay::delegate_security_context;
@@ -81,7 +82,7 @@ impl Roles {
 }
 
 /// What has been refused, so that the user is told of each thing once.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Refused {
     /// What the user has been told already.
     told: Vec<String>,
@@ -91,6 +92,20 @@ pub(crate) struct Refused {
     /// screen's name, as a mode it does not offer: among the problems
     /// until it is put right, whatever else changes.
     pub(crate) screens: Vec<(String, String)>,
+    /// Where it is said, as it happens, which programs were disconnected
+    /// for breaking the protocol, for the log.
+    pub(crate) disconnected: (Sender<String>, Receiver<String>),
+}
+
+impl Default for Refused {
+    fn default() -> Self {
+        Self {
+            told: Vec::new(),
+            pending: Vec::new(),
+            screens: Vec::new(),
+            disconnected: mpsc::channel(),
+        }
+    }
 }
 
 impl Refused {
