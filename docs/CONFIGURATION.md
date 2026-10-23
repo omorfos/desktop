@@ -1169,6 +1169,15 @@ clipboard:
 
 Like `autostart`, this takes effect the next time you log in.
 
+A program written for X11 that copies, as `xsel` and `xclip` do for an
+editor in a terminal, goes on holding what it copied for the others
+written for X11, so that copying and pasting among them works as it does
+anywhere. A program written for X11 may read what a program written for
+Wayland copied only while one of its windows has the keyboard, so `xsel`
+pasting into an editor in a terminal, which has no window, gets nothing
+from them: give such an editor `wl-copy` and `wl-paste` (`wl-clipboard`)
+instead, as Neovim prefers them where they are installed.
+
 ## Who may do what
 
 A program sees and works its own windows. Some things reach further, and

@@ -1021,6 +1021,81 @@ fn what_a_program_written_for_x11_copies_or_selects_can_be_pasted_by_any_other()
 }
 
 #[test]
+fn what_the_keeper_keeps_of_a_copy_from_x11_leaves_x11_with_the_program_that_copied_it() {
+    let (mut session, program) = session();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let names = [selection(false), "TARGETS", "UTF8_STRING"];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    let stop = AtomicBool::new(false);
+    let owner = |session: &mut Session| {
+        meanwhile(session, || {
+            let owner = program.get_selection_owner(names[0]).unwrap();
+            owner.reply().unwrap().owner
+        })
+    };
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| hold(&program, window, names, "from x11", &stop));
+        let mut client = session.connect();
+        session.open(&mut client, "app", (50, 50), GREEN);
+        until(&mut session, &mut client, |_, client| {
+            offered(client, false)
+        });
+        // The keeper offers it in the copier's place, saying it is its own,
+        // as `omorfos-clipboard` does: programs written for X11 go on
+        // asking the program that copied it, which still has it, as `xsel`
+        // does, and need not have the keyboard to.
+        client.copy_as(
+            "from x11",
+            &["text/plain;charset=utf-8", "application/x-omorfos-kept"],
+        );
+        for _ in 0..5 {
+            session.roundtrip(&mut client);
+        }
+        let still = owner(&mut session);
+        // Once the program lets go, what is kept is offered to them. It is
+        // told to let go whatever was found, so that a test that fails
+        // ends.
+        stop.store(true, Ordering::Relaxed);
+        assert_eq!(still, window, "still the program that copied it");
+        until(&mut session, &mut client, |session, _| {
+            let now = owner(session);
+            now != x11rb::NONE && now != window
+        });
+    });
+
+    // A copy that is not the keeper's is offered at once, as before, and
+    // takes the clipboard from the program that held it.
+    let (mut session, program) = self::session();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let names = [selection(false), "TARGETS", "UTF8_STRING"];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    let stop = AtomicBool::new(false);
+    let owner = |session: &mut Session| {
+        meanwhile(session, || {
+            let owner = program.get_selection_owner(names[0]).unwrap();
+            owner.reply().unwrap().owner
+        })
+    };
+    std::thread::scope(|scope| {
+        scope.spawn(|| hold(&program, window, names, "from x11", &stop));
+        let mut client = session.connect();
+        session.open(&mut client, "app", (50, 50), GREEN);
+        until(&mut session, &mut client, |_, client| {
+            offered(client, false)
+        });
+        client.copy("from wayland");
+        let taken = (0..500).any(|_| {
+            session.roundtrip(&mut client);
+            let now = owner(&mut session);
+            now != x11rb::NONE && now != window
+        });
+        stop.store(true, Ordering::Relaxed);
+        assert!(taken, "the window manager holds it for the copy");
+    });
+}
+
+#[test]
 fn what_any_other_program_copies_or_selects_can_be_pasted_by_one_written_for_x11() {
     for primary in [false, true] {
         let (mut session, program) = session();
