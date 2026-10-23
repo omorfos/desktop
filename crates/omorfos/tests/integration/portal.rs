@@ -121,7 +121,7 @@ fn start_with_pipewire(
                 .map(|(_, value)| value.clone())
                 .filter(|value| !value.is_empty())
         };
-        xdg_desktop_portal_omorfos::start(&variable).to_string()
+        crate::keeper::said(xdg_desktop_portal_omorfos::start(&variable))
     });
     let peer = daemon.peer();
     let bus = "org.freedesktop.DBus";
@@ -843,7 +843,7 @@ fn the_question_takes_the_look_of_the_theme_and_ends_with_the_session() {
     .unwrap();
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);
     drop(session);
-    assert_eq!(running.join().unwrap(), "the session has ended");
+    assert_eq!(running.join().unwrap(), "the session ended");
     drop(asking);
 }
 

@@ -225,7 +225,8 @@ fn start_with(session: &mut Session, helper: PathBuf) -> Asker {
         .compositor_mut()
         .insert_client(ours, Roles::ASK)
         .unwrap();
-    let running = std::thread::spawn(move || omorfos_ask::run(&places, theirs).to_string());
+    let running =
+        std::thread::spawn(move || crate::keeper::said(omorfos_ask::run(&places, theirs)));
     session.eventually(|_| polkit.agent().is_some() || running.is_finished());
     let agent = polkit.agent().unwrap();
     Asker {
@@ -696,7 +697,7 @@ fn the_agent_ends_with_the_session() {
         );
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert_eq!(asker.running.join().unwrap(), "the session has ended");
+    assert_eq!(asker.running.join().unwrap(), "the session ended");
 }
 
 #[test]

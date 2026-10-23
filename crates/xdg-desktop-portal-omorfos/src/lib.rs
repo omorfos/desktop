@@ -796,8 +796,10 @@ fn serve(
         shares: Vec::new(),
     };
     loop {
-        let Ok(answer) = backend.desk.turn() else {
-            return "the session has ended".into();
+        let answer = match backend.desk.turn() {
+            Ok(answer) => answer,
+            // As it is, so that the session ending is known for what it is.
+            Err(failure) => return failure,
         };
         let answered = backend.pending.take_if(|_| answer.is_some());
         if let Some((answer, pending)) = answer.zip(answered) {

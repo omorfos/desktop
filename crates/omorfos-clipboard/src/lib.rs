@@ -132,7 +132,8 @@ pub fn keep(connection: &Connection, limits: Limits) -> Failure {
             .then(|| queue.blocking_dispatch(&mut state).err())
             .flatten()
         {
-            return format!("the session ended: {error}").into();
+            // As it is, so that the session ending is known for what it is.
+            return error.into();
         }
         let Some((offer, kinds)) = state.copied.take() else {
             continue;

@@ -32,8 +32,17 @@ pub(crate) fn keeper(session: &mut Session, roles: Roles, limits: Limits) -> Joi
             "WAYLAND_DISPLAY" => Some(OsString::from("wayland-keeper")),
             _ => None,
         };
-        omorfos_clipboard::start_with(&variable, limits).to_string()
+        said(omorfos_clipboard::start_with(&variable, limits))
     })
+}
+
+/// What a component that ended said: why it could not go on, or, as its
+/// program would say nothing then, that the session ended.
+pub(crate) fn said(failure: Box<dyn std::error::Error + Send + Sync>) -> String {
+    omorfos_shell::ended::quietly(failure).err().map_or_else(
+        || "the session ended".to_owned(),
+        |failure| failure.to_string(),
+    )
 }
 
 /// A session with the keeper, and a window that has the keyboard.

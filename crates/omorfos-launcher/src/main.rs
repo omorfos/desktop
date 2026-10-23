@@ -6,6 +6,8 @@ use std::{env, io};
 
 fn main() -> ExitCode {
     let outcome = omorfos_launcher::start(&|name| env::var_os(name));
+    // The session ending is how it is told to stop, and nothing to say.
+    let outcome = outcome.or_else(omorfos_shell::ended::quietly);
     let failure = outcome.as_ref().err();
     // If even that cannot be said, there is nobody to say it to.
     let _ = failure.map(|failure| writeln!(io::stderr(), "omorfos-launcher: {failure}"));

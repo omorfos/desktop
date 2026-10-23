@@ -14,7 +14,11 @@ fn main() -> ExitCode {
         env::var_os("XDG_CONFIG_HOME").as_deref(),
         env::var_os("HOME").as_deref(),
     );
+    // The session ending is how it is told to stop, and nothing to say.
+    let failure = omorfos_shell::ended::quietly(failure).err();
     // If even that cannot be said, there is nobody to say it to.
-    let _ = writeln!(io::stderr(), "omorfos-panel: {failure}");
-    ExitCode::FAILURE
+    let _ = failure
+        .as_ref()
+        .map(|failure| writeln!(io::stderr(), "omorfos-panel: {failure}"));
+    ExitCode::from(u8::from(failure.is_some()))
 }

@@ -41,6 +41,9 @@ pub fn ended(
     started: Result<(), Failure>,
     say: &mut impl std::io::Write,
 ) -> std::process::ExitCode {
+    // The session ending, as it does when the user logs out, is nothing to
+    // say.
+    let started = started.or_else(omorfos_shell::ended::quietly);
     started.map_or_else(
         |failure| {
             // If even that cannot be said, there is nobody to say it to.
@@ -195,6 +198,9 @@ mod tests {
         let mut said = Vec::new();
         assert_eq!(ended(Ok(()), &mut said), std::process::ExitCode::SUCCESS);
         assert_eq!(said, b"");
+        let gone: Failure = Box::new(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert_eq!(ended(Err(gone), &mut said), std::process::ExitCode::SUCCESS);
+        assert_eq!(said, b"", "the session ending is nothing to say");
         let failed = ended(Err("gone".into()), &mut said);
         assert_eq!(failed, std::process::ExitCode::FAILURE);
         assert_eq!(String::from_utf8(said).unwrap(), "omorfos-lock: gone\n");

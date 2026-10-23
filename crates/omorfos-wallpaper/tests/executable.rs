@@ -40,6 +40,7 @@ fn a_connection_it_is_handed_is_the_one_it_uses() {
         .env("WAYLAND_SOCKET", "0")
         .env("HOME", directory.path())
         .stdin(OwnedFd::from(theirs))
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
 
@@ -53,7 +54,7 @@ fn a_connection_it_is_handed_is_the_one_it_uses() {
     assert!(heard.is_ok(), "{heard:?}");
 
     // With the connection gone it has nothing to go on for, and stops of
-    // its own accord.
+    // its own accord, as at the end of a session: well, and saying nothing.
     drop(ours);
     let stopped = (0..3000).find_map(|_| {
         std::thread::sleep(Duration::from_millis(10));
@@ -62,5 +63,8 @@ fn a_connection_it_is_handed_is_the_one_it_uses() {
     if stopped.is_none() {
         started.kill().unwrap();
     }
-    assert_eq!(stopped.and_then(|status| status.code()), Some(1));
+    assert_eq!(stopped.and_then(|status| status.code()), Some(0));
+    let mut output = started.stderr.take().map(std::io::read_to_string);
+    let said = output.take().transpose().unwrap().unwrap_or_default();
+    assert_eq!(said, "");
 }
