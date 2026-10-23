@@ -514,7 +514,12 @@ impl TryFrom<Vec<NamedOutput>> for Outputs {
             earlier.iter().any(|other| other.name == output.name)
         });
         let primaries = outputs.iter().filter(|output| output.primary).count();
-        if outputs.iter().any(|output| output.name.is_empty()) {
+        let mirroring = outputs
+            .iter()
+            .find_map(|output| output.mirrors_wrongly(&outputs));
+        if let Some(wrong) = mirroring {
+            Err(wrong)
+        } else if outputs.iter().any(|output| output.name.is_empty()) {
             Err("an output's name must not be empty".to_owned())
         } else if primaries > 1 {
             Err("only one output may be `primary`".to_owned())
@@ -565,6 +570,43 @@ pub struct NamedOutput {
     /// most.
     #[serde(default)]
     pub primary: bool,
+    /// Another screen, by name, whose picture this one shows, as large as
+    /// fits on it: it stands nowhere of its own, and has nothing of its
+    /// own on it. Without that one plugged in, it is a screen like any.
+    #[serde(default)]
+    pub mirror: Option<String>,
+}
+
+impl NamedOutput {
+    /// What is wrong with it mirroring another, among `all` those listed
+    /// with it, if anything is.
+    fn mirrors_wrongly(&self, all: &[Self]) -> Option<String> {
+        let source = self.mirror.as_deref()?;
+        let name = &self.name;
+        let theirs = all.iter().find(|other| other.name == source);
+        let chained = theirs.and_then(|theirs| theirs.mirror.as_deref());
+        let own = self.place.is_some()
+            || self.align.is_some()
+            || self.offset.is_some()
+            || self.scale.is_some()
+            || self.primary;
+        if source == name {
+            Some(format!("output `{name}` cannot mirror itself"))
+        } else if let Some(chained) = chained {
+            Some(format!(
+                "output `{name}` mirrors `{source}`, which mirrors `{chained}`: say `mirror: \
+                 {chained}`"
+            ))
+        } else {
+            own.then(|| {
+                format!(
+                    "output `{name}` mirrors `{source}`, so it stands nowhere of its own and is \
+                     drawn as large as fits: it takes no `place`, `align`, `offset`, `scale` or \
+                     `primary`"
+                )
+            })
+        }
+    }
 }
 
 /// Which way a screen is turned, with the top of what it shows: where it
@@ -1215,6 +1257,50 @@ autostart:
         );
         let said = two.unwrap_err();
         assert!(said.contains("only one output may be `primary`"), "{said}");
+    }
+
+    #[test]
+    fn a_listed_screen_may_mirror_another_and_then_stands_nowhere_of_its_own() {
+        let general = parse(
+            "outputs:\n  - { name: eDP-1 }\n  - { name: HDMI-A-1, mirror: eDP-1, rotate: left }\n",
+        )
+        .unwrap();
+        let mirror = general.outputs.named("HDMI-A-1").unwrap();
+        assert_eq!(mirror.mirror.as_deref(), Some("eDP-1"));
+        assert_eq!(general.outputs.named("eDP-1").unwrap().mirror, None);
+        // One not listed may be mirrored too.
+        assert!(parse("outputs: [{ name: HDMI-A-1, mirror: eDP-1 }]").is_ok());
+        let wrong = [
+            ("[{ name: DP-1, mirror: DP-1 }]", "cannot mirror itself"),
+            (
+                "[{ name: DP-1, mirror: DP-2 }, { name: DP-2, mirror: eDP-1 }]",
+                "say `mirror: eDP-1`",
+            ),
+            (
+                "[{ name: DP-1, mirror: eDP-1, place: left }]",
+                "stands nowhere",
+            ),
+            (
+                "[{ name: DP-1, mirror: eDP-1, align: end }]",
+                "stands nowhere",
+            ),
+            (
+                "[{ name: DP-1, mirror: eDP-1, offset: 10 }]",
+                "stands nowhere",
+            ),
+            (
+                "[{ name: DP-1, mirror: eDP-1, scale: 2 }]",
+                "stands nowhere",
+            ),
+            (
+                "[{ name: DP-1, mirror: eDP-1, primary: true }]",
+                "stands nowhere",
+            ),
+        ];
+        for (outputs, said) in wrong {
+            let error = parse(&format!("outputs: {outputs}")).unwrap_err();
+            assert!(error.contains(said), "{outputs}: {error}");
+        }
     }
 
     #[test]
