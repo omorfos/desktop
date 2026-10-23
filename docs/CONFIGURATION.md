@@ -64,6 +64,9 @@ wallpaper:
   fade: 1000              # milliseconds one picture fades into the next; 0 at once
   order: name             # name | shuffled
   screens: []             # particular screens, by name
+lock:                     # how omorfos-lock may be unlocked besides the password
+  fingerprint: true       # a finger, through the omorfos-lock-fingerprint PAM service
+  key: true               # a security key, through omorfos-lock-key
 cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
@@ -1405,7 +1408,44 @@ bindings:
 The idle daemon asks omorfos to lock and does not start the locker
 itself: a locker it started would be an ordinary program, and refused.
 While the screen is locked nothing else is shown and no key binding
-works, except Ctrl+Alt+F1 to F12.
+works, except Ctrl+Alt+F1 to F12. If the locker ends with the screen still
+locked, as one that crashed does, omorfos starts it again, up to three
+times in a minute; after that the screen stays black and locked, and
+`omorfosctl action lock` from another virtual terminal starts it again.
+
+omorfos comes with a lock screen of its own, `omorfos-lock`. Name it as
+the locker to use it:
+
+```yaml
+# config.yaml
+locker: [omorfos-lock]
+lock:
+  fingerprint: true
+  key: true
+```
+
+It shows the time and a field for your password on every screen, and
+asks PAM, so whatever your system's login accepts unlocks it. A wrong
+password shakes the field, as the administrator's prompt does, unless the
+theme has nothing move (`question { transition: none; }`). A finger on
+the reader and a security key, such as a YubiKey, are asked for at the
+same time, each through a PAM service of its own, and whichever you use
+first unlocks: you never wait for a finger to time out before typing.
+Each is offered only where its module is installed and you have
+something enrolled: `pam_fprintd` with a finger enrolled by `fprintd-enroll`,
+and `pam_u2f` with a key registered by `pamu2fcfg`. Turn either off with
+`lock.fingerprint: false` or `lock.key: false`. The password is always
+offered, so that a reader that breaks or a key that is lost never keeps
+you out.
+
+The services are files the package installs in `/etc/pam.d`, yours to
+change: `omorfos-lock` for the password (as your system's login asks),
+`omorfos-lock-fingerprint` and `omorfos-lock-key`. Any one way unlocks, so
+the session is as hard to get into as the weakest of them. To need a key
+and the password both, put the key's module in `omorfos-lock`, before the
+password's, and turn `lock.key` off: they are then asked in turn. A key
+that asks for its PIN belongs there too, since only the password's field
+is typed into.
 
 ## Asking for the administrator's password
 

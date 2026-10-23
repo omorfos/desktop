@@ -58,6 +58,33 @@ pub struct General {
     /// `[swaylock, -f]`. The `lock` action starts it, and it alone is let
     /// lock. Without one there is nothing to lock with.
     pub locker: Option<Command>,
+    /// How `omorfos-lock` may be unlocked, besides the password.
+    pub lock: Lock,
+}
+
+/// How the lock screen that comes with omorfos may be unlocked. The
+/// password always may, so that a reader that fails never keeps the user
+/// out; each other way is offered beside it where PAM is set up for it,
+/// and whichever is shown first unlocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Lock {
+    /// A finger on the reader, through the `omorfos-lock-fingerprint` PAM
+    /// service.
+    pub fingerprint: bool,
+    /// A security key touched, such as a `YubiKey`, through the
+    /// `omorfos-lock-key` PAM service.
+    pub key: bool,
+}
+
+impl Default for Lock {
+    fn default() -> Self {
+        Self {
+            fingerprint: true,
+            key: true,
+        }
+    }
 }
 
 /// Programs written for X11, which run through `Xwayland`.
@@ -1276,6 +1303,18 @@ autostart:
             "nor with one of them gone"
         );
         assert_eq!(parse("{}").unwrap().arrangements, []);
+    }
+
+    #[test]
+    fn the_lock_screen_offers_every_way_unless_told_otherwise() {
+        let lock = parse("{}").unwrap().lock;
+        assert!(lock.fingerprint && lock.key);
+        let lock = parse("lock: { fingerprint: false }").unwrap().lock;
+        assert!(!lock.fingerprint && lock.key);
+        assert!(
+            parse("lock: { password: false }").is_err(),
+            "always offered"
+        );
     }
 
     #[test]
