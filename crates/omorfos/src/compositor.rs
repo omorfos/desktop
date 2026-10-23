@@ -63,6 +63,7 @@ use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{
     IsAlive, Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform,
 };
+use smithay::wayland::alpha_modifier::AlphaModifierState;
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
 };
@@ -252,9 +253,7 @@ pub struct Compositor {
     pub(crate) heads: Vec<Head>,
     /// Pictures of the screen being taken by programs that may.
     pub(crate) capture: Capture,
-    _fractional_scale: FractionalScaleManagerState,
-    _viewporter: ViewporterState,
-    _single_pixels: SinglePixelBufferState,
+    _surfaces: Offered,
     _sandboxes: SecurityContextState,
     /// The outputs as the desktop was last told about them.
     pub(crate) screens: Vec<Screen>,
@@ -360,6 +359,30 @@ pub struct Compositor {
     running: bool,
 }
 
+/// What a surface may be told or tell beyond the core protocol, which is
+/// offered and needs nothing more of the compositor: the renderer heeds it
+/// where surfaces are drawn.
+#[derive(Debug)]
+struct Offered {
+    _fractional_scale: FractionalScaleManagerState,
+    _viewporter: ViewporterState,
+    _single_pixels: SinglePixelBufferState,
+    /// Lets a program make a surface fainter as a whole, as the wallpaper
+    /// does to fade one picture into the next.
+    _alpha: AlphaModifierState,
+}
+
+impl Offered {
+    fn new(display: &DisplayHandle) -> Self {
+        Self {
+            _fractional_scale: FractionalScaleManagerState::new::<Compositor>(display),
+            _viewporter: ViewporterState::new::<Compositor>(display),
+            _single_pixels: SinglePixelBufferState::new::<Compositor>(display),
+            _alpha: AlphaModifierState::new::<Compositor>(display),
+        }
+    }
+}
+
 impl Compositor {
     /// Creates a compositor that reads its configuration from
     /// `config_directory`. It has no output until one is added with
@@ -404,16 +427,14 @@ impl Compositor {
             .map_err(Box::from)
             .map(|keyboard| {
                 let mut compositor = Self {
-                    _single_pixels: SinglePixelBufferState::new::<Self>(&display),
+                    _surfaces: Offered::new(&display),
                     _sandboxes: SecurityContextState::new::<Self, _>(&display, Self::outside),
-                    _viewporter: ViewporterState::new::<Self>(&display),
                     _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
                     capture: Capture::offer(&display),
                     asked: Asked::new(&display),
                     switch: Switch::offer(&display),
                     typing: Typing::offer(&display),
                     seal: Vec::new(),
-                    _fractional_scale: FractionalScaleManagerState::new::<Self>(&display),
                     _idle_inhibit: IdleInhibitManagerState::new::<Self>(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     _decorations: XdgDecorationState::new::<Self>(&display),
