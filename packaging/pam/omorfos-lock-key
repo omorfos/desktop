@@ -1,0 +1,5 @@
+# A security key for omorfos-lock, such as a YubiKey, touched, asked at the
+# same time as the password. Any one of the ways unlocks; turn this one off
+# with `lock.key: false` in config.yaml, or leave it without pam_u2f, and
+# it is not offered. A key that asks for its PIN goes in `omorfos-lock`.
+auth required pam_u2f.so cue

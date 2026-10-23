@@ -532,11 +532,16 @@ what only games and touchpads need last.
 - [ ] A change to the screens made from Settings (stage 7) kept only if
       the user says so in time, and put back by the compositor itself
       otherwise, so that a screen left dark comes back on its own.
-- [ ] A lock screen of our own, `omorfos-lock`, in place of relying on
-      another's: started by a key, by being away, by the lid and by
-      logind. It is the most security-critical program here after the
-      compositor and is written and reviewed as such. The on-screen
-      keyboard (stage 7) is to be usable on it.
+- [x] A lock screen of our own, `omorfos-lock` (ADR 52): the time and the
+      password on every screen, PAM asked through `nonstick` by a helper
+      for each way, the password, a finger and a security key at once,
+      whichever is first unlocking; the locker started again if it ends
+      with the session locked. Chosen with `locker: [omorfos-lock]`.
+- [ ] `omorfos-lock` the default locker, once it has been used for a
+      while; its own parts in the theme; a field that shows what it asks
+      as PAM says it; the on-screen keyboard (stage 7) usable on it; and
+      what is typed cleared from memory with `zeroize`, weighed as ADR 52
+      says.
 - [ ] Smaller protocols that programs complain of lacking:
       `xdg-foreign`, `presentation-time`,
       `keyboard-shortcuts-inhibit`, content type and tearing control.

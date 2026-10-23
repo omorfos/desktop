@@ -1,0 +1,40 @@
+#!/bin/sh
+# Stands in for the helper `omorfos-lock` starts for each way of unlocking,
+# as `lock-helper check SERVICE USER`. The tests make USER a directory of
+# their own, and steer the ways by what is in it: the password is `atx`; a
+# finger is shown once there is a file `finger`; a key asks for its PIN if
+# there is a file `pin`, and is not set up otherwise. With a file `locked`,
+# a wrong password is told about, as pam_faillock does.
+service=$2
+there=$3
+case "$service" in
+    omorfos-lock)
+        printf 'PAM_PROMPT_ECHO_OFF Password: \n'
+        read -r typed
+        if [ "$typed" = atx ]; then
+            printf 'SUCCESS\n'
+        else
+            # The test waits for this to know a wrong try was heard.
+            touch "$there/wrong"
+            if [ -e "$there/locked" ]; then
+                printf 'PAM_ERROR_MSG The account is locked\n'
+            fi
+            printf 'FAILURE\n'
+        fi
+        ;;
+    omorfos-lock-fingerprint)
+        # As pam_fprintd says of a finger that does not match, before it
+        # asks again.
+        printf 'PAM_ERROR_MSG Failed to match fingerprint\n'
+        printf 'PAM_TEXT_INFO Place a finger on the reader\n'
+        while [ ! -e "$there/finger" ]; do sleep 0.01; done
+        printf 'SUCCESS\n'
+        ;;
+    omorfos-lock-key)
+        if [ -e "$there/pin" ]; then
+            printf 'PAM_PROMPT_ECHO_OFF PIN: \n'
+            read -r typed
+        fi
+        printf 'UNAVAILABLE\n'
+        ;;
+esac

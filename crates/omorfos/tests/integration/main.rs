@@ -25,6 +25,7 @@ mod keeper;
 mod launcher;
 mod layers;
 mod lock;
+mod lock_screen;
 mod login;
 mod menu;
 mod mirroring;

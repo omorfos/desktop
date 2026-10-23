@@ -1,0 +1,4 @@
+# A finger for omorfos-lock, asked at the same time as the password. Any
+# one of the ways unlocks; turn this one off with `lock.fingerprint: false`
+# in config.yaml, or leave it without fprintd, and it is not offered.
+auth required pam_fprintd.so
