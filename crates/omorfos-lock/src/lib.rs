@@ -8,6 +8,7 @@
 //! `docs/adr/0052-the-lock-screen.md`.
 
 pub mod check;
+mod power;
 mod screen;
 mod ways;
 
@@ -100,7 +101,9 @@ pub fn who(passwd: &str, uid: u32, user: Option<&OsStr>, home: Option<&OsStr>) -
 /// The Wayland socket is `wayland_display` (`WAYLAND_DISPLAY`) in
 /// `runtime_dir` (`XDG_RUNTIME_DIR`), and the configuration directory is
 /// found from `config_home` (`XDG_CONFIG_HOME`) and `home` (`HOME`). The
-/// helpers are `helper`, this program, and ask about `user`.
+/// helpers are `helper`, this program, and ask about `user`. Unless the
+/// configuration says not to, it offers to sleep, restart, shut down and
+/// log out, by `omorfos-session`.
 ///
 /// # Errors
 ///
@@ -116,9 +119,16 @@ pub fn start(
     let (wayland, config) = wayland.zip(config).ok_or(
         "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is not set",
     )?;
-    let ways = offered(omorfos_config::Store::open(&config).current().general.lock);
+    let settings = omorfos_config::Store::open(&config).current().general.lock;
+    let ways = offered(settings);
+    // `omorfos-session`, as the compositor finds it, asked with nothing
+    // before what it is asked.
+    let power = settings
+        .power
+        .then(|| (PathBuf::from("omorfos-session"), Vec::new()));
     let connected = omorfos_shell::connect(&wayland).map_err(Failure::from);
-    let lock = connected.and_then(|connected| Lock::new(connected, &config, (helper, user), &ways));
+    let lock =
+        connected.and_then(|connected| Lock::new(connected, &config, (helper, user), &ways, power));
     lock.and_then(|mut lock| lock.serve())
 }
 
@@ -174,6 +184,7 @@ mod tests {
         let none = Offered {
             fingerprint: false,
             key: false,
+            power: false,
         };
         assert_eq!(offered(none), [Way::Password]);
         assert_eq!(Way::Key.service(), "omorfos-lock-key");

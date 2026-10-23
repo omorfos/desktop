@@ -230,7 +230,7 @@
     },
     "Lock": {
       "additionalProperties": false,
-      "description": "How the lock screen that comes with omorfos may be unlocked. The\npassword always may, so that a reader that fails never keeps the user\nout; each other way is offered beside it where PAM is set up for it,\nand whichever is shown first unlocks.",
+      "description": "How the lock screen that comes with omorfos may be unlocked, and what\nelse it offers. The password always may unlock, so that a reader that\nfails never keeps the user out; each other way is offered beside it\nwhere PAM is set up for it, and whichever is shown first unlocks.",
       "properties": {
         "fingerprint": {
           "default": true,
@@ -240,6 +240,11 @@
         "key": {
           "default": true,
           "description": "A security key touched, such as a `YubiKey`, through the\n`omorfos-lock-key` PAM service.",
+          "type": "boolean"
+        },
+        "power": {
+          "default": true,
+          "description": "Sleep, Restart, Shut Down and Log Out, without unlocking, each\nwhere it may be done without a password. Whoever is at the screen\ncan then end the session, and what is not saved in it; a machine\nthat others use may want them off.",
           "type": "boolean"
         }
       },
@@ -836,7 +841,7 @@
     },
     "lock": {
       "$ref": "#/$defs/Lock",
-      "description": "How `omorfos-lock` may be unlocked, besides the password."
+      "description": "How `omorfos-lock` may be unlocked, besides the password, and what\nelse it offers."
     },
     "locker": {
       "anyOf": [

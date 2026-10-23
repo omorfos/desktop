@@ -67,6 +67,7 @@ wallpaper:
 lock:                     # how omorfos-lock may be unlocked besides the password
   fingerprint: true       # a finger, through the omorfos-lock-fingerprint PAM service
   key: true               # a security key, through omorfos-lock-key
+  power: true             # Sleep, Restart, Shut Down and Log Out without unlocking
 cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
@@ -693,6 +694,7 @@ question-button {
   color: var(--text);
   border-radius: 6px;
 }
+question-button:hover { background: var(--surface); }
 question-button:active {
   background: var(--accent);
   color: var(--background);
@@ -1452,6 +1454,18 @@ you out. The screen says nothing of the other ways until they speak: a
 reader once it asks for a finger, and a key once it is plugged in and asks
 to be touched, so that it does not tell whoever is at your desk what else
 would unlock it.
+
+Along the bottom are Sleep, Restart, Shut Down and Log Out, so that the
+machine can be put to sleep or turned off, or the session ended, without
+unlocking. Each is there only where your system lets it be done without a
+password, as it does for whoever is at the machine when nobody else is
+logged in; a password could not be asked for over the lock screen.
+Restart, Shut Down and Log Out ask first, since the programs that are open
+close and what is not saved in them is lost; Cancel or Escape says no.
+Sleep is done at once, and you come back to the lock screen. When a
+program keeps the machine from turning off, such as a download, the
+screen says which, and that button is not there. On a machine others use,
+`lock.power: false` takes them all away.
 
 The services are files the package installs in `/etc/pam.d`, yours to
 change: `omorfos-lock` for the password (as your system's login asks),

@@ -234,6 +234,7 @@ question-button {
   color: var(--text);
   border-radius: 6px;
 }
+question-button:hover { background: var(--surface); }
 question-button:active {
   background: var(--accent);
   color: var(--background);
