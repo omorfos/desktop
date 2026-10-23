@@ -23,7 +23,7 @@ use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Standing,
     WindowId, WorkspaceId,
 };
-use rustix::process::{Pid, PidfdFlags, pidfd_open};
+use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
 use smithay::backend::allocator::Format;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -946,6 +946,10 @@ impl Compositor {
             self.capture.deadline(),
             self.capture.recording.deadline(),
             self.interim.deadline(),
+            match self.on_demand.ending {
+                Ending::By(by) => Some(by),
+                Ending::Not | Ending::Asked => None,
+            },
             screens_off,
             moving,
             said,
@@ -996,6 +1000,7 @@ impl Compositor {
             exited.is_none()
         });
         self.forget_ended();
+        self.end(now);
         self.revive(&failed, now);
         self.relock(&ended, now);
         self.serve_ipc();
@@ -1136,7 +1141,7 @@ impl Compositor {
             }
             Action::NextScreens => self.next_screens(),
             Action::ReloadConfig => self.reload_config(),
-            Action::Quit => self.running = false,
+            Action::Quit => self.quit(),
         }
     }
 
@@ -1323,6 +1328,51 @@ impl Compositor {
                     .to_owned(),
             );
         }
+    }
+
+    /// Ends the session: asks the programs started in it to end first, so
+    /// that they end as they would be asked to by any desktop, and not
+    /// with the compositor gone from under them, which they say. With
+    /// none, or asked again while they are waited for, at once.
+    fn quit(&mut self) {
+        let asked = self.on_demand.ending == Ending::Not;
+        for process in self.programs() {
+            let _ = kill_process(process, Signal::TERM);
+        }
+        let waiting = asked && self.programs().next().is_some();
+        if asked {
+            self.on_demand.ending = Ending::Asked;
+        }
+        self.running = waiting;
+    }
+
+    /// The programs started in the session that are asked to end before it
+    /// does: not those that come with omorfos, which end when the
+    /// compositor does, nor the locker, which would be taken for one that
+    /// crashed.
+    fn programs(&self) -> impl Iterator<Item = Pid> {
+        let ours = self
+            .components
+            .iter()
+            .filter_map(|component| component.process);
+        let ours: Vec<u32> = ours.chain(self.on_demand.locker.0).collect();
+        let theirs = self
+            .children
+            .iter()
+            .filter(move |child| !ours.contains(&child.id()));
+        theirs.map(Pid::from_child)
+    }
+
+    /// Ends the session once the programs asked to end have, or have been
+    /// given long enough to.
+    fn end(&mut self, now: Instant) {
+        let by = match self.on_demand.ending {
+            Ending::Not => return,
+            Ending::Asked => now + ENDING,
+            Ending::By(by) => by,
+        };
+        self.on_demand.ending = Ending::By(by);
+        self.running &= by > now && self.programs().next().is_some();
     }
 
     /// Says where the launcher that comes with omorfos is: a name to look
@@ -3165,7 +3215,27 @@ struct OnDemand {
     /// The locker last started, while it runs, and when it was started
     /// again after ending with the session still locked.
     locker: (Option<u32>, Restarts),
+    /// Whether the session is to end, and the programs started in it are
+    /// being waited for.
+    ending: Ending,
 }
+
+/// How far the session has got towards ending.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    /// It is not to end.
+    #[default]
+    Not,
+    /// It is to end: the programs started in it have been asked to end
+    /// first.
+    Asked,
+    /// It ends once they have, or by then without them.
+    By(Instant),
+}
+
+/// How long the programs started in the session are given to end, once
+/// asked to, before the session ends without them.
+const ENDING: Duration = Duration::from_secs(2);
 
 /// Whether the programs to start with the session have been, and what
 /// starts them in a scope of their own.
