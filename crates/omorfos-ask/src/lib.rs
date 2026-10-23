@@ -25,12 +25,14 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 pub use agent::{AGENT, Agent, Asked, Begin, PATH, POLKIT};
-pub use helper::{Helper, Said, heard};
+pub use helper::Helper;
 use omorfos_config::Store;
+pub use omorfos_shell::said::{Said, heard};
+pub use omorfos_shell::shake::{SHAKE, SHAKING, shaken};
 pub use people::{Identity, Person, chosen, named, users};
 pub use prompt::{
-    Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SHAKE, SHAKING, SIZE, SURFACE, button_at,
-    eye_says, label, paint, shaken, shown,
+    Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SIZE, SURFACE, button_at, eye_says,
+    label, paint, shown,
 };
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -324,7 +326,7 @@ fn told(
             desk.dismiss();
             return None;
         }
-        Said::Wrong => {
+        Said::Wrong | Said::Unavailable => {
             // Another try, afresh, until the user gives up; and the box
             // shakes, as a head does.
             desk.shake();

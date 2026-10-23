@@ -1845,7 +1845,6 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
- "xkbcommon",
  "zbus",
 ]
 
@@ -1940,7 +1939,6 @@ dependencies = [
 name = "omorfos-panel"
 version = "0.1.0"
 dependencies = [
- "jiff",
  "omorfos-config",
  "omorfos-ipc",
  "omorfos-shell",
@@ -2014,9 +2012,11 @@ dependencies = [
 name = "omorfos-shell"
 version = "0.1.0"
 dependencies = [
+ "jiff",
  "omorfos-ui",
  "rustix 1.1.5",
  "wayland-client",
+ "xkbcommon",
 ]
 
 [[package]]

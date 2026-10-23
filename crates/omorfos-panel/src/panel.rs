@@ -28,7 +28,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{Bar, clock};
+use crate::Bar;
 
 /// Why the panel could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -122,7 +122,7 @@ impl Panel {
     pub fn serve(&mut self) -> Failure {
         let started = Instant::now();
         loop {
-            let (time, changes) = clock::now();
+            let (time, changes) = omorfos_shell::clock::now();
             let now = started.elapsed();
             if let Err(failure) = self.turn(&time, now) {
                 return failure;
