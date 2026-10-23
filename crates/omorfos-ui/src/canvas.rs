@@ -189,6 +189,42 @@ impl Canvas {
         }
     }
 
+    /// Draws a picture made exactly `area` in size, counted in pixels and
+    /// not in units, so that it may be any shape and need not be on the
+    /// canvas; what is off it is not drawn. It is smoothed both when it is
+    /// drawn smaller than it is, each pixel the average of those of the
+    /// picture it covers, and when larger, each the blend of the two
+    /// nearest along each side.
+    pub fn draw_stretched(&mut self, (left, top, across, down): Area, image: &Image) {
+        let columns = visible(left, across, self.width);
+        let taps = |range: std::ops::Range<i32>, start: i32, own: u32, drawn: u32| {
+            let within = range.map(move |at| at.abs_diff(start));
+            within.map(move |at| Taps::new(own, drawn, at))
+        };
+        let across_taps: Vec<Taps> = taps(columns.clone(), left, image.width, across).collect();
+        let rows = visible(top, down, self.height);
+        for (row, down_taps) in rows.clone().zip(taps(rows, top, image.height, down)) {
+            for (column, across_taps) in columns.clone().zip(&across_taps) {
+                let (color, opacity) = image.mixed(across_taps, &down_taps);
+                self.blend(column, row, color, opacity);
+            }
+        }
+    }
+
+    /// Draws a picture as it is, one of its pixels to each of the canvas's,
+    /// with its top left corner at the pixel `(x, y)`, which may be off the
+    /// canvas.
+    pub fn draw_unscaled(&mut self, (x, y): (i32, i32), image: &Image) {
+        let columns = visible(x, image.width, self.width);
+        for row in visible(y, image.height, self.height) {
+            for column in columns.clone() {
+                let own = (column.abs_diff(x), row.abs_diff(y));
+                let [red, green, blue, alpha] = image.pixel(own);
+                self.blend(column, row, Color::rgb(red, green, blue), alpha);
+            }
+        }
+    }
+
     /// Cuts the top two corners to a quarter circle of `radius`, smoothly.
     pub fn round_top_corners(&mut self, radius: u32) {
         let (_, radius) = span(self.scale, 0, radius);
@@ -288,6 +324,41 @@ impl Image {
         }
     }
 
+    /// The red, green, blue and opacity of the pixel at `(x, y)`, which is
+    /// on the picture.
+    fn pixel(&self, (x, y): (u32, u32)) -> [u8; 4] {
+        let offset = (u64::from(y) * u64::from(self.width) + u64::from(x)) * 4;
+        let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+        let pixel = self.pixels.get(offset..offset.saturating_add(4));
+        pixel.map_or([0; 4], |pixel| {
+            <[u8; 4]>::try_from(pixel).unwrap_or_default()
+        })
+    }
+
+    /// The colour the pixels `across` and `down` say make, each counting
+    /// for as much as both say, and how opaque it is.
+    fn mixed(&self, across: &Taps, down: &Taps) -> (Color, u8) {
+        let mut sums = [0_u64; 4];
+        for (y, high) in down.each() {
+            for (x, wide) in across.each() {
+                let [red, green, blue, alpha] = self.pixel((x, y));
+                let weight = high * wide;
+                // Colours count for as much as they are opaque, so that a
+                // clear pixel's colour does not tint its neighbours.
+                let opaque = weight * u64::from(alpha);
+                sums[0] += u64::from(red) * opaque;
+                sums[1] += u64::from(green) * opaque;
+                sums[2] += u64::from(blue) * opaque;
+                sums[3] += opaque;
+            }
+        }
+        let byte = |value: u64| u8::try_from(value).unwrap_or(u8::MAX);
+        let channel = |sum: u64| byte(sum.checked_div(sums[3]).unwrap_or(0));
+        let color = Color::rgb(channel(sums[0]), channel(sums[1]), channel(sums[2]));
+        let whole = across.total * down.total;
+        (color, byte(sums[3].checked_div(whole).unwrap_or(0)))
+    }
+
     /// The colour of the picture at one pixel of it drawn `across` by
     /// `down` pixels, and how opaque it is there: the average of the
     /// picture's own pixels that fall on that one.
@@ -322,6 +393,64 @@ impl Image {
         let channel = |sum: u64| byte(sum.checked_div(sums[3]).unwrap_or(0));
         let color = Color::rgb(channel(sums[0]), channel(sums[1]), channel(sums[2]));
         (color, byte(sums[3].checked_div(count).unwrap_or(0)))
+    }
+}
+
+/// Which of a picture's pixels along one side make one pixel of it drawn
+/// another size, and how much each counts for: as much as `weights` says
+/// of `total`.
+struct Taps {
+    first: u32,
+    weights: Vec<u64>,
+    total: u64,
+}
+
+impl Taps {
+    /// The pixels of a side `own` pixels long that make its pixel `at`,
+    /// drawn `drawn` long.
+    ///
+    /// Everything is counted in parts of a pixel too small to need
+    /// rounding: smaller, a pixel drawn covers `own` parts of the picture,
+    /// each of whose pixels is `drawn` parts; larger, the two nearest are
+    /// blended by how near each is, in parts twice as fine, so that the
+    /// middle of a pixel falls on one.
+    fn new(own: u32, drawn: u32, at: u32) -> Self {
+        let (own, drawn, at) = (u64::from(own), u64::from(drawn), u64::from(at));
+        if own > drawn {
+            let (start, end) = (at * own, (at + 1) * own);
+            let (first, last) = (start / drawn, end.div_ceil(drawn).min(own));
+            let weights = (first..last).map(|pixel| {
+                let (from, to) = (pixel * drawn, (pixel + 1) * drawn);
+                to.min(end) - from.max(start)
+            });
+            Self::from(first, weights.collect(), own)
+        } else {
+            let part = 2 * drawn;
+            // Where the middle of the pixel drawn falls on the picture,
+            // from the middle of its first pixel, and no further than the
+            // middle of its last.
+            let middle = ((2 * at + 1) * own).saturating_sub(drawn);
+            let middle = middle.min((own.saturating_sub(1)) * part);
+            let (first, along) = (middle / part, middle % part);
+            Self::from(first, vec![part - along, along], part)
+        }
+    }
+
+    fn from(first: u64, weights: Vec<u64>, total: u64) -> Self {
+        Self {
+            first: u32::try_from(first).unwrap_or(u32::MAX),
+            weights,
+            total,
+        }
+    }
+
+    /// Each pixel that counts, with how much it does. One that counts for
+    /// nothing may be past the end, and is left out.
+    fn each(&self) -> impl Iterator<Item = (u32, u64)> {
+        let weights = self.weights.iter().copied().zip(self.first..);
+        weights
+            .filter(|(weight, _)| *weight > 0)
+            .map(|(weight, pixel)| (pixel, weight))
     }
 }
 
@@ -1038,6 +1167,110 @@ mod tests {
         assert_eq!(canvas.at(19, 19), argb(RED));
         canvas.draw_image((-50, -50, 10, 10), &plain(4, 4, BLUE));
         assert_eq!(canvas.at(0, 0), 0);
+    }
+
+    /// A picture of a row of pixels, each of a colour.
+    fn row(colors: &[Color]) -> Image {
+        let pixels = colors
+            .iter()
+            .flat_map(|c| [c.red, c.green, c.blue, c.alpha]);
+        let width = u32::try_from(colors.len()).unwrap();
+        Image::new(width, 1, pixels.collect()).unwrap()
+    }
+
+    /// The red and blue of the pixels along the top of a canvas.
+    fn reds_and_blues(canvas: &Canvas) -> Vec<(u32, u32)> {
+        let pixels = (0..canvas.width()).map(|x| canvas.at(x, 0));
+        pixels.map(|p| ((p >> 16) & 0xff, p & 0xff)).collect()
+    }
+
+    #[test]
+    fn a_picture_drawn_larger_is_blended_between_its_pixels() {
+        let mut canvas = Canvas::new(4, 1);
+        canvas.draw_stretched((0, 0, 4, 1), &row(&[RED, BLUE]));
+        // The middle of each pixel drawn is a quarter or three quarters of
+        // the way between the middles of the two; the outer two are each
+        // past the middle of one, and are that one alone.
+        assert_eq!(
+            reds_and_blues(&canvas),
+            [(255, 0), (191, 63), (63, 191), (0, 255)]
+        );
+        // Drawn its own size, it is as it is.
+        let mut same = Canvas::new(2, 1);
+        same.draw_stretched((0, 0, 2, 1), &row(&[RED, BLUE]));
+        assert_eq!(reds_and_blues(&same), [(255, 0), (0, 255)]);
+    }
+
+    #[test]
+    fn a_picture_drawn_smaller_is_the_average_of_what_each_pixel_covers() {
+        let mut canvas = Canvas::new(2, 1);
+        canvas.draw_stretched((0, 0, 2, 1), &row(&[RED, RED, BLUE, BLUE]));
+        assert_eq!(reds_and_blues(&canvas), [(255, 0), (0, 255)]);
+        // Three to two: the first covers one and a half of the picture's
+        // pixels, a whole red one and half a blue one.
+        let mut canvas = Canvas::new(2, 1);
+        canvas.draw_stretched((0, 0, 2, 1), &row(&[RED, BLUE, BLUE]));
+        assert_eq!(reds_and_blues(&canvas), [(170, 85), (0, 255)]);
+        // Down the other side as along this one.
+        let column = Image::new(1, 2, [[255, 0, 0, 255], [0, 0, 255, 255]].concat()).unwrap();
+        let mut canvas = Canvas::new(1, 1);
+        canvas.draw_stretched((0, 0, 1, 1), &column);
+        assert_eq!(canvas.at(0, 0), 0xff7f_007f);
+    }
+
+    #[test]
+    fn a_picture_stretched_beyond_the_canvas_is_drawn_where_it_is_on_it() {
+        let picture = row(&[RED, BLUE, RED, BLUE]);
+        let mut whole = Canvas::new(8, 1);
+        whole.draw_stretched((0, 0, 8, 1), &picture);
+        // The same picture as large, half of it off to the left.
+        let mut half = Canvas::new(4, 1);
+        half.draw_stretched((-4, 0, 8, 1), &picture);
+        assert_eq!(reds_and_blues(&half), reds_and_blues(&whole)[4..]);
+        // Nothing of it on the canvas, nothing drawn.
+        let mut none = Canvas::new(4, 4);
+        none.draw_stretched((4, 0, 8, 1), &picture);
+        none.draw_stretched((0, -2, 4, 2), &picture);
+        assert!(none.bytes().iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn a_clear_pixel_of_a_stretched_picture_does_not_tint_its_neighbours() {
+        let clear_green = Color::rgba(0, 255, 0, 0);
+        let mut canvas = Canvas::new(1, 1);
+        canvas.draw_stretched((0, 0, 1, 1), &row(&[RED, clear_green]));
+        // Half as opaque, and red.
+        assert_eq!(canvas.at(0, 0), 0x7f7f_0000);
+        let mut canvas = Canvas::new(3, 1);
+        canvas.draw_stretched((0, 0, 3, 1), &row(&[clear_green]));
+        assert_eq!(canvas.at(1, 0), 0);
+    }
+
+    #[test]
+    fn a_picture_drawn_as_it_is_has_a_pixel_to_each_and_goes_over_the_edge() {
+        let pixels = [
+            [255, 0, 0, 255],
+            [0, 0, 255, 255],
+            [0, 255, 0, 0],
+            [0, 0, 255, 128],
+        ];
+        let square = Image::new(2, 2, pixels.concat()).unwrap();
+        let mut canvas = Canvas::new(2, 2);
+        canvas.fill((0, 0, 2, 2), Color::rgb(0, 0, 0));
+        canvas.draw_unscaled((0, 0), &square);
+        assert_eq!(canvas.at(0, 0), argb(RED));
+        assert_eq!(canvas.at(1, 0), argb(BLUE));
+        assert_eq!(
+            canvas.at(0, 1),
+            0xff00_0000,
+            "a clear pixel leaves what was there"
+        );
+        assert_eq!(canvas.at(1, 1), 0xff00_0080, "half clear, half drawn");
+        // Its top left corner off the canvas: only its last pixel is on.
+        let mut canvas = Canvas::new(2, 2);
+        canvas.draw_unscaled((-1, -1), &square);
+        assert_eq!(canvas.at(0, 0), 0x8000_0080);
+        assert_eq!(canvas.at(1, 1), 0);
     }
 
     #[test]
