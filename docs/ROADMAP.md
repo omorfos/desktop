@@ -543,15 +543,14 @@ what only games and touchpads need last.
       30 seconds left alone; a way other than the password shown only once
       it speaks, so that a key is shown only while it is plugged in
       (ADR 52).
-- [ ] Sleep, Restart, Shut Down and Log Out from the lock screen, without
-      unlocking. Through logind, sharing `omorfos-session`'s calls (Log Out
-      ending the session as `omorfosctl action quit` does); each offered
-      only where logind's `CanSuspend`, `CanReboot` and `CanPowerOff`
-      answer "yes", so that none waits on a polkit prompt the locked
-      screen cannot show; asked to be confirmed, with what logind's
-      inhibitors say ("Firefox is keeping the machine on"), since whoever
-      is at the screen loses the user's unsaved work by it; and a setting,
-      such as `lock.power`, for a shared machine to have none of them.
+- [x] Sleep, Restart, Shut Down and Log Out from the lock screen, without
+      unlocking (ADR 53): asked of `omorfos-session`, each offered only
+      where logind lets it be done without a password; all but sleep
+      asked about first; who keeps the machine on said; `lock.power` to
+      have none of them.
+- [ ] Known gaps in the lock screen's buttons: they are reached only with
+      the pointer, not with Tab and Enter; and what logind's inhibitors
+      say is shown whole, which ADR 53 weighs.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and
@@ -864,6 +863,16 @@ A way in:
       runs as root (ADR 35). It runs on the compositor itself, wears the
       design language, and shares what asks for a secret with the lock
       screen, and the on-screen keyboard (stage 7) with it.
+- [ ] The lock screen and the login screen made from one template and
+      one theme, so that what is unlocked looks as what was logged into:
+      the same parts, the same layout of time, face, name and field, and
+      the same `theme.css` rules for both. Each with a wallpaper of its
+      own, set apart from the desktop's: the pictures, directories,
+      slides, fit and fade of `wallpaper`, under a setting of their own,
+      and the desktop's when that is not set. The lock screen's can come
+      first, as it reads the user's configuration; the login screen's is
+      the system's, in `/etc`, since the greeter runs as a user of its
+      own and may not read anyone's home.
 
 How the project is run, as learnt in part from Vela's:
 

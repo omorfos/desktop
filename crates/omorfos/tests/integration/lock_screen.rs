@@ -50,7 +50,7 @@ fn joined(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
         .insert_client(ours, omorfos::Roles::LOCK)
         .unwrap();
     let config = session.config.path().to_owned();
-    Lock::new(theirs, &config, (helper(), someone(there)), ways).unwrap()
+    Lock::new(theirs, &config, (helper(), someone(there)), ways, None).unwrap()
 }
 
 /// A row of the first screen.
@@ -320,10 +320,18 @@ fn a_helper_that_cannot_be_started_leaves_the_session_locked() {
         PathBuf::from("/nowhere/lock-helper"),
         someone(Path::new("/nowhere")),
     );
-    let mut lock = Lock::new(theirs, &config, nowhere, &[Way::Password]).unwrap();
+    // Nor can `omorfos-session`, which offers nothing then.
+    let session_nowhere = Some((PathBuf::from("/nowhere/omorfos-session"), Vec::new()));
+    let mut lock = Lock::new(theirs, &config, nowhere, &[Way::Password], session_nowhere).unwrap();
     until(&mut session, &mut lock, |session| {
         session.compositor().is_locked()
     });
+    // Woken, it asks `omorfos-session` what is offered, which cannot be
+    // started either.
+    settle(&mut session, &mut lock);
+    tap(&mut session, key::SHIFT);
+    settle(&mut session, &mut lock);
+    assert!(inked(&mut session, NAME_ROW));
     // It is tried again, a moment later.
     assert!(lock.deadline().is_some());
     assert!(!settle(&mut session, &mut lock));
@@ -528,4 +536,247 @@ fn a_reader_that_is_not_there_is_not_offered() {
     settle(&mut session, &mut lock);
     assert!(!inked(&mut session, SECOND_LINE_ROW));
     unlock(&mut session, &mut lock);
+}
+
+/// Where on the first screen the power buttons are, just inside their top
+/// edge, above what they say, and the line just above them: rows, from the
+/// top.
+const BUTTONS_ROW: i32 = 428;
+const ABOVE_BUTTONS_ROW: i32 = 402;
+
+/// The stand-in for `omorfos-session`.
+fn power_helper() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/power-helper")
+}
+
+/// A locked session whose lock screen offers what `offered` says, as
+/// `omorfos-session offered` would, steered by what is put in `there`.
+fn powered(session: &mut Session, there: &Path, offered: &str) -> Lock {
+    std::fs::write(there.join("offered"), offered).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session
+        .compositor_mut()
+        .insert_client(ours, omorfos::Roles::LOCK)
+        .unwrap();
+    let config = session.config.path().to_owned();
+    let power = Some((power_helper(), vec![there.as_os_str().to_owned()]));
+    let user = (helper(), someone(there));
+    let mut lock = Lock::new(theirs, &config, user, &[Way::Password], power).unwrap();
+    until(session, &mut lock, |session| {
+        session.compositor().is_locked()
+    });
+    settle(session, &mut lock);
+    lock
+}
+
+/// The middle of each power button on the first screen, from the left.
+fn buttons(session: &mut Session) -> Vec<f64> {
+    let row = row(session, BUTTONS_ROW);
+    let mut middles = Vec::new();
+    let mut start = None;
+    for (x, pixel) in row.iter().chain([&BACKGROUND]).enumerate() {
+        match (start, *pixel == BACKGROUND) {
+            (None, false) => start = Some(x),
+            (Some(from), true) => {
+                middles.push(f64::from(u32::try_from(from + x).unwrap()) / 2.0);
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    middles
+}
+
+/// Lets the lock screen and the compositor talk until `count` buttons are
+/// shown, and returns where. Every screen is drawn meanwhile, as the
+/// session is said to be locked only once each has been.
+fn shown(session: &mut Session, lock: &mut Lock, count: usize) -> Vec<f64> {
+    for _ in 0..5000 {
+        lock.turn(Instant::now()).unwrap();
+        session.step();
+        session.draw_all();
+        let middles = buttons(session);
+        if middles.len() == count {
+            return middles;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("never {count} buttons, but {:?}", buttons(session));
+}
+
+/// Moves the pointer to `x` across on the row of buttons.
+fn point(session: &mut Session, x: f64) {
+    let y = f64::from(BUTTONS_ROW);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+}
+
+/// Presses the left button where the pointer is, and lets it go.
+fn click(session: &mut Session) {
+    for pressed in [true, false] {
+        session.compositor_mut().input(
+            Input::Button {
+                button: 0x110,
+                pressed,
+            },
+            0,
+        );
+    }
+}
+
+/// What the stand-in for `omorfos-session` was asked to do, once it has
+/// been asked `count` things.
+fn asked(session: &mut Session, lock: &mut Lock, there: &Path, count: usize) -> Vec<String> {
+    let file = there.join("asked");
+    let read = |file: &Path| std::fs::read_to_string(file).unwrap_or_default();
+    for _ in 0..5000 {
+        lock.turn(Instant::now()).unwrap();
+        session.step();
+        if read(&file).lines().count() >= count {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    read(&file).lines().map(str::to_owned).collect()
+}
+
+#[test]
+fn the_power_buttons_offered_are_shown_once_awake_and_sleep_is_done_at_once() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let offered = "can sleep\ncan restart\ncan shut-down\ncan log-out\n";
+    let mut lock = powered(&mut session, there.path(), offered);
+    // Only the time, until woken; and a click that wakes it presses
+    // nothing.
+    assert_eq!(buttons(&mut session), Vec::<f64>::new());
+    point(&mut session, f64::from(WIDTH / 2));
+    click(&mut session);
+    let middles = shown(&mut session, &mut lock, 4);
+    assert!(!there.path().join("asked").exists());
+    point(&mut session, middles[0]);
+    click(&mut session);
+    assert_eq!(
+        asked(&mut session, &mut lock, there.path(), 1),
+        ["sleep --locked"]
+    );
+    // Done, and heard to have been.
+    settle(&mut session, &mut lock);
+    assert!(session.compositor().is_locked(), "and it stays locked");
+    assert!(
+        !inked(&mut session, ABOVE_BUTTONS_ROW),
+        "nothing went wrong"
+    );
+}
+
+#[test]
+fn what_loses_what_is_not_saved_is_asked_about_first_and_may_be_said_no_to() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = powered(&mut session, there.path(), "can shut-down\ncan log-out\n");
+    tap(&mut session, key::SHIFT);
+    let middles = shown(&mut session, &mut lock, 2);
+    assert!(!inked(&mut session, ABOVE_BUTTONS_ROW));
+    // Asked about: yes, or no.
+    point(&mut session, middles[1]);
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    assert!(inked(&mut session, ABOVE_BUTTONS_ROW), "what it loses");
+    let asking = shown(&mut session, &mut lock, 2);
+    point(&mut session, asking[1]);
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, ABOVE_BUTTONS_ROW), "no");
+    // Escape says no too, and a while left alone forgets it was asked.
+    point(&mut session, middles[1]);
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    tap(&mut session, key::ESCAPE);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, ABOVE_BUTTONS_ROW));
+    point(&mut session, middles[0]);
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    lock.turn(Instant::now() + Duration::from_secs(31)).unwrap();
+    tap(&mut session, key::SHIFT);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, ABOVE_BUTTONS_ROW));
+    assert!(!there.path().join("asked").exists(), "nothing was done");
+    // Yes.
+    let middles = shown(&mut session, &mut lock, 2);
+    point(&mut session, middles[1]);
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    let asking = shown(&mut session, &mut lock, 2);
+    point(&mut session, asking[0]);
+    click(&mut session);
+    assert_eq!(asked(&mut session, &mut lock, there.path(), 1), ["log-out"]);
+}
+
+#[test]
+fn what_could_not_be_done_says_why_and_a_press_meanwhile_does_nothing() {
+    let there = tempfile::TempDir::new().unwrap();
+    std::fs::write(there.path().join("refuse"), "").unwrap();
+    std::fs::write(there.path().join("hold"), "").unwrap();
+    let mut session = Session::new();
+    let mut lock = powered(&mut session, there.path(), "can sleep\n");
+    tap(&mut session, key::SHIFT);
+    let middles = shown(&mut session, &mut lock, 1);
+    point(&mut session, middles[0]);
+    click(&mut session);
+    assert_eq!(asked(&mut session, &mut lock, there.path(), 1).len(), 1);
+    // Still being done: pressed again, it is not asked again.
+    click(&mut session);
+    settle(&mut session, &mut lock);
+    std::fs::remove_file(there.path().join("hold")).unwrap();
+    let said = (0..5000).any(|_| {
+        lock.turn(Instant::now()).unwrap();
+        session.step();
+        std::thread::sleep(Duration::from_millis(1));
+        inked(&mut session, ABOVE_BUTTONS_ROW)
+    });
+    assert!(said, "why it did not happen");
+    assert_eq!(
+        asked(&mut session, &mut lock, there.path(), 2),
+        ["sleep --locked"]
+    );
+}
+
+#[test]
+fn who_keeps_the_machine_from_turning_off_is_said() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let offered = "can sleep\nheld shut-down Firefox: Downloading\n";
+    let mut lock = powered(&mut session, there.path(), offered);
+    tap(&mut session, key::SHIFT);
+    shown(&mut session, &mut lock, 1);
+    settle(&mut session, &mut lock);
+    assert!(inked(&mut session, ABOVE_BUTTONS_ROW));
+}
+
+#[test]
+fn a_button_under_the_pointer_looks_so_on_each_screen() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let _second = session.add_output((800, 600));
+    let mut lock = powered(&mut session, there.path(), "can sleep\ncan restart\n");
+    tap(&mut session, key::SHIFT);
+    let middles = shown(&mut session, &mut lock, 2);
+    point(&mut session, 4.0);
+    settle(&mut session, &mut lock);
+    let away = row(&mut session, BUTTONS_ROW);
+    point(&mut session, middles[0]);
+    settle(&mut session, &mut lock);
+    assert_ne!(row(&mut session, BUTTONS_ROW), away, "under the pointer");
+    point(&mut session, middles[0] + 4.0);
+    settle(&mut session, &mut lock);
+    // Onto the next screen, and off this one.
+    let x = f64::from(WIDTH) + 10.0;
+    session
+        .compositor_mut()
+        .input(Input::Motion { x, y: 10.0 }, 0);
+    settle(&mut session, &mut lock);
+    assert_eq!(
+        row(&mut session, BUTTONS_ROW),
+        away,
+        "and not once it has gone"
+    );
 }

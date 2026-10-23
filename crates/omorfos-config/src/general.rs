@@ -58,14 +58,15 @@ pub struct General {
     /// `[swaylock, -f]`. The `lock` action starts it, and it alone is let
     /// lock. Without one there is nothing to lock with.
     pub locker: Option<Command>,
-    /// How `omorfos-lock` may be unlocked, besides the password.
+    /// How `omorfos-lock` may be unlocked, besides the password, and what
+    /// else it offers.
     pub lock: Lock,
 }
 
-/// How the lock screen that comes with omorfos may be unlocked. The
-/// password always may, so that a reader that fails never keeps the user
-/// out; each other way is offered beside it where PAM is set up for it,
-/// and whichever is shown first unlocks.
+/// How the lock screen that comes with omorfos may be unlocked, and what
+/// else it offers. The password always may unlock, so that a reader that
+/// fails never keeps the user out; each other way is offered beside it
+/// where PAM is set up for it, and whichever is shown first unlocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
@@ -76,6 +77,11 @@ pub struct Lock {
     /// A security key touched, such as a `YubiKey`, through the
     /// `omorfos-lock-key` PAM service.
     pub key: bool,
+    /// Sleep, Restart, Shut Down and Log Out, without unlocking, each
+    /// where it may be done without a password. Whoever is at the screen
+    /// can then end the session, and what is not saved in it; a machine
+    /// that others use may want them off.
+    pub power: bool,
 }
 
 impl Default for Lock {
@@ -83,6 +89,7 @@ impl Default for Lock {
         Self {
             fingerprint: true,
             key: true,
+            power: true,
         }
     }
 }
@@ -1306,9 +1313,10 @@ autostart:
     }
 
     #[test]
-    fn the_lock_screen_offers_every_way_unless_told_otherwise() {
+    fn the_lock_screen_offers_every_way_and_the_power_unless_told_otherwise() {
         let lock = parse("{}").unwrap().lock;
-        assert!(lock.fingerprint && lock.key);
+        assert!(lock.fingerprint && lock.key && lock.power);
+        assert!(!parse("lock: { power: false }").unwrap().lock.power);
         let lock = parse("lock: { fingerprint: false }").unwrap().lock;
         assert!(!lock.fingerprint && lock.key);
         assert!(

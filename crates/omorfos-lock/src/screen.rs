@@ -4,6 +4,7 @@
 //! unlocking says; and the session unlocked once one says yes.
 
 use std::error::Error;
+use std::ffi::OsString;
 use std::io;
 use std::mem;
 use std::os::fd::OwnedFd;
@@ -36,6 +37,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 use crate::User;
+use crate::power::{Act, Button, Power, Told};
 use crate::ways::{Came, Way, Ways};
 
 /// Why the lock screen could not go on.
@@ -66,6 +68,13 @@ const INITIALS: u32 = 32;
 /// "far", as the design has it.
 const MARGIN: u32 = 24;
 
+/// How tall a power button is, the room inside it beside its label, the
+/// room between two, and below them, in units of layout.
+const BUTTON: u32 = 32;
+const PADDING: u32 = 16;
+const GAP: u32 = 12;
+const BOTTOM: u32 = 24;
+
 /// How far below its place what comes into view starts, in units of
 /// layout.
 const RISE: f32 = 16.0;
@@ -80,10 +89,20 @@ pub struct Lock {
     connection: Connection,
     queue: EventQueue<Shell>,
     shell: Shell,
-    /// What the helpers said, and what wakes the lock screen when they do.
+    /// What the helpers and `omorfos-session` said, and what wakes the
+    /// lock screen when they do.
     heard: Receiver<(Way, Said)>,
-    heard_by: (Sender<(Way, Said)>, Waker),
+    told: Receiver<Told>,
+    senders: Senders,
     woken: OwnedFd,
+}
+
+/// What the helpers and `omorfos-session` say through, and wake the lock
+/// screen by.
+struct Senders {
+    heard: Sender<(Way, Said)>,
+    told: Sender<Told>,
+    waker: Waker,
 }
 
 /// What wakes the lock screen from another thread.
@@ -102,6 +121,8 @@ impl Lock {
     /// configuration in `config` has it, for the user called `user`, asking
     /// each of `ways` by a helper that is `helper`. Their face is the
     /// first of theirs that reads as a picture; with none, there is none.
+    /// With `power`, `omorfos-session` and the words it is always asked
+    /// with first, it offers to sleep, restart, shut down and log out.
     ///
     /// # Errors
     ///
@@ -111,6 +132,7 @@ impl Lock {
         config: &Path,
         (helper, user): (PathBuf, User),
         ways: &[Way],
+        power: Option<(PathBuf, Vec<OsString>)>,
     ) -> Result<Self, Failure> {
         let room = (FACE_READ, FACE_READ);
         let face = user.faces.iter().find_map(|path| {
@@ -124,16 +146,24 @@ impl Lock {
                 let queue = connection.new_event_queue();
                 connection.display().get_registry(&queue.handle(), ());
                 let (sender, heard) = mpsc::channel();
+                let (teller, told) = mpsc::channel();
+                let mut shell = Shell::new(
+                    Store::open(config),
+                    (user.called, face),
+                    Ways::new(ways, helper, user.name),
+                );
+                shell.power = power.map(Power::new);
                 Self {
                     connection,
                     queue,
-                    shell: Shell::new(
-                        Store::open(config),
-                        (user.called, face),
-                        Ways::new(ways, helper, user.name),
-                    ),
+                    shell,
                     heard,
-                    heard_by: (sender, Waker(Arc::new(waking))),
+                    told,
+                    senders: Senders {
+                        heard: sender,
+                        told: teller,
+                        waker: Waker(Arc::new(waking)),
+                    },
                     woken,
                 }
             })
@@ -178,6 +208,12 @@ impl Lock {
             }
             self.shell.stale = true;
         }
+        if let Some(power) = self.shell.power.as_mut() {
+            for told in self.told.try_iter() {
+                power.told(told);
+                self.shell.stale = true;
+            }
+        }
         let refused = (self.shell.held == Held::Refused).then_some(());
         let lockable = refused.map_or(Ok(()), |()| {
             Err(Failure::from(
@@ -186,7 +222,7 @@ impl Lock {
         });
         let handle = self.queue.handle();
         let gone_on = lockable.and_then(|()| {
-            let gone_on = self.shell.go_on(now, &handle, &self.heard_by);
+            let gone_on = self.shell.go_on(now, &handle, &self.senders);
             gone_on.map_err(Failure::from)
         });
         gone_on.and_then(|done| {
@@ -260,6 +296,13 @@ struct Shell {
     typing: Typing,
     typed: String,
     ways: Ways,
+    /// The power buttons, if they are offered.
+    power: Option<Power>,
+    /// Where the pointer is: on which screen, and where on it, in units of
+    /// layout; the button it is over; and one pressed, to be done.
+    pointer: Option<(u32, (f64, f64))>,
+    hovered: Option<Button>,
+    chosen: Option<Button>,
     /// What the user is called, and their face, cut to a circle.
     called: String,
     face: Option<Image>,
@@ -323,7 +366,13 @@ struct Face {
     scale: Scale,
     /// The picture the compositor is reading from.
     buffer: Option<wl_buffer::WlBuffer>,
+    /// The buttons drawn on it, and where.
+    buttons: Vec<(Button, Area)>,
 }
+
+/// An area in units of layout: from the left, from the top, across and
+/// down.
+type Area = (i32, i32, u32, u32);
 
 impl Shell {
     fn new(store: Store, (called, face): (String, Option<Image>), ways: Ways) -> Self {
@@ -341,6 +390,10 @@ impl Shell {
             typing: Typing::default(),
             typed: String::new(),
             ways,
+            power: None,
+            pointer: None,
+            hovered: None,
+            chosen: None,
             called,
             face,
             view: View::Resting,
@@ -359,7 +412,7 @@ impl Shell {
         &mut self,
         now: Instant,
         handle: &QueueHandle<Self>,
-        heard_by: &(Sender<(Way, Said)>, Waker),
+        senders: &Senders,
     ) -> io::Result<bool> {
         if self.held == Held::Unlocking {
             let lock = self.lock.take();
@@ -384,14 +437,27 @@ impl Shell {
             View::Awake { until: Some(until) } if until <= now => {
                 self.view = View::Resting;
                 wipe(&mut self.typed);
+                self.power.iter_mut().for_each(Power::forget);
                 self.stale = true;
             }
             View::Awake { .. } | View::Resting => {}
         }
         if self.held == Held::Locked {
-            let wake = heard_by.1.clone();
-            let heard_by = (heard_by.0.clone(), move || wake.wake());
+            let wake = senders.waker.clone();
+            let heard_by = (senders.heard.clone(), move || wake.wake());
             self.again = self.ways.start(now, &heard_by);
+            let wake = senders.waker.clone();
+            let told_by = (senders.told.clone(), move || wake.wake());
+            let chosen = self.chosen.take();
+            if let Some(power) = self.power.as_mut() {
+                if let Some(button) = chosen {
+                    power.pressed(button, &told_by);
+                }
+                // What is offered is asked once the buttons are to be seen.
+                if self.view != View::Resting {
+                    power.ask(&told_by);
+                }
+            }
         }
         if self
             .clock
@@ -427,6 +493,7 @@ impl Shell {
                     size: (0, 0),
                     scale: Scale::ONE,
                     buffer: None,
+                    buttons: Vec::new(),
                 };
                 screen.face = Some(face);
             }
@@ -455,6 +522,7 @@ impl Shell {
             }),
         };
         let who = (self.called.as_str(), self.face.as_ref());
+        let power = (self.power.as_ref(), self.hovered);
         let faces = self
             .screens
             .iter_mut()
@@ -468,8 +536,10 @@ impl Shell {
                 ways,
                 shift,
                 share,
+                power,
             };
-            let canvas = paint(&theme, &mut self.text, &shown, face.size, face.scale);
+            let (canvas, buttons) = paint(&theme, &mut self.text, &shown, face.size, face.scale);
+            face.buttons = buttons;
             picture(shm, &canvas, handle).map(|buffer| {
                 face.surface.attach(Some(&buffer), 0, 0);
                 // Told when each drawing is shown: shaking, that is when the
@@ -529,9 +599,40 @@ impl Shell {
         if resting && moves.duration > 0 {
             self.waking = Some((None, 0));
         }
+        // What may be done may have changed while only the time showed.
+        if resting {
+            self.power.iter_mut().for_each(Power::refresh);
+        }
         self.view = View::Awake { until: None };
         self.stale = true;
         resting
+    }
+
+    /// The button the pointer is over, if any.
+    fn over(&self) -> Option<Button> {
+        self.pointer.and_then(|(on, (x, y))| {
+            let screens = self.screens.iter().filter(|screen| screen.global == on);
+            let mut buttons = screens
+                .filter_map(|screen| screen.face.as_ref())
+                .flat_map(|face| &face.buttons);
+            let inside = |(left, top, across, down): &Area| {
+                let (left, top) = (f64::from(*left), f64::from(*top));
+                (left..left + f64::from(*across)).contains(&x)
+                    && (top..top + f64::from(*down)).contains(&y)
+            };
+            buttons
+                .find(|(_, area)| inside(area))
+                .map(|(button, _)| *button)
+        })
+    }
+
+    /// Notes the button the pointer is over, drawn as hovered.
+    fn hover(&mut self) {
+        let over = self.over();
+        if over != self.hovered {
+            self.hovered = over;
+            self.stale = true;
+        }
     }
 
     /// Shakes the field, as a wrong password does, unless the theme has
@@ -559,7 +660,16 @@ impl Shell {
                     wipe(&mut self.typed);
                 }
             }
-            Key::Escape => wipe(&mut self.typed),
+            // Escape says no to what is being asked about, if anything is,
+            // and else empties the field.
+            Key::Escape => match self
+                .power
+                .as_mut()
+                .filter(|power| power.confirming.is_some())
+            {
+                Some(power) => power.confirming = None,
+                None => wipe(&mut self.typed),
+            },
             Key::Back => {
                 self.typed.pop();
             }
@@ -594,14 +704,23 @@ struct Shown<'a> {
     /// How much of who is to unlock, the field and what the ways say is in
     /// view: from 0, only the time, to 1, all of it.
     share: f32,
+    /// The power buttons, if offered, and the one the pointer is over.
+    power: (Option<&'a Power>, Option<Button>),
 }
 
 /// Paints a screen `size` units large at `scale`: the time, in the middle
 /// while it is all there is; and as the rest comes into view, rising into
 /// place and out of nothing, who is to unlock, the field with a dot for
 /// each character typed, what the password's helper said under it, and
-/// what each other way says beneath.
-fn paint(theme: &Theme, text: &mut Text, shown: &Shown, size: (u32, u32), scale: Scale) -> Canvas {
+/// what each other way says beneath; and at the bottom, the power buttons,
+/// which it returns with where each is.
+fn paint(
+    theme: &Theme,
+    text: &mut Text,
+    shown: &Shown,
+    size: (u32, u32),
+    scale: Scale,
+) -> (Canvas, Vec<(Button, Area)>) {
     let (width, height) = size;
     let share = shown.share;
     let mut canvas = Canvas::scaled(width, height, scale);
@@ -610,9 +729,16 @@ fn paint(theme: &Theme, text: &mut Text, shown: &Shown, size: (u32, u32), scale:
     let middle = |length: u32| (width.saturating_sub(length) / 2).cast_signed();
     // Who is to unlock is under the time, and the field under them: all of
     // it in the middle, and the time alone in the middle before it.
+    // With the power buttons, in what is left above them.
     let all = CLOCK * 2 + 16 + FACE + 8 + LINE + 12 + FIELD.1;
+    let row = if shown.power.0.is_some() {
+        BUTTON + BOTTOM
+    } else {
+        0
+    };
+    let above = height.saturating_sub(row);
     let alone = f32::from(u16::try_from((height / 2).saturating_sub(CLOCK)).unwrap_or(0));
-    let together = f32::from(u16::try_from((height / 2).saturating_sub(all / 2)).unwrap_or(0));
+    let together = f32::from(u16::try_from((above / 2).saturating_sub(all / 2)).unwrap_or(0));
     let mut top = whole((together - alone).mul_add(share, alone));
     // Text is drawn in the middle of the screen, whole if it fits between
     // its margins, and cut short only if it does not.
@@ -624,7 +750,7 @@ fn paint(theme: &Theme, text: &mut Text, shown: &Shown, size: (u32, u32), scale:
     let area = (left, top, across, CLOCK * 2);
     text.draw_centered(&mut canvas, shown.time, area, ink, &font);
     if share <= 0.0 {
-        return canvas;
+        return (canvas, Vec::new());
     }
     top += (CLOCK * 2 + 16).cast_signed() + whole(RISE * (1.0 - share));
     let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
@@ -691,7 +817,67 @@ fn paint(theme: &Theme, text: &mut Text, shown: &Shown, size: (u32, u32), scale:
         text.draw_centered(&mut canvas, &asking.said, area, said, font);
         top += LINE.cast_signed();
     }
-    canvas
+    let buttons = shown.power.0.map_or_else(Vec::new, |power| {
+        let painting = (&mut canvas, text);
+        paint_power(theme, painting, (power, shown.power.1), (size, share))
+    });
+    (canvas, buttons)
+}
+
+/// Paints the power buttons along the bottom of a screen `size` units
+/// large, `share` of them in view, the one `hovered` as such; and above
+/// them what is being asked about, why what was asked last failed, and who
+/// keeps the machine from sleeping or turning off. Returns where each
+/// button is.
+fn paint_power(
+    theme: &Theme,
+    (canvas, text): (&mut Canvas, &mut Text),
+    (power, hovered): (&Power, Option<Button>),
+    ((width, height), share): ((u32, u32), f32),
+) -> Vec<(Button, Area)> {
+    let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
+    let said = faint(theme.style(Part::Question, States::NONE).color);
+    let font = theme.font(Part::Question, States::NONE);
+    let row = height.saturating_sub(BOTTOM + BUTTON).cast_signed();
+    let asked = power.confirming.and_then(Act::question);
+    let failed = Some(power.failed.as_str()).filter(|failed| !failed.is_empty());
+    let held = power.offered.held.iter().map(String::as_str);
+    let lines: Vec<&str> = held.chain(asked).chain(failed).collect();
+    let mut top = row - 8 - (LINE * u32::try_from(lines.len()).unwrap_or(0)).cast_signed();
+    let (left, across) = (MARGIN.cast_signed(), width.saturating_sub(MARGIN * 2));
+    for line in lines {
+        text.draw_centered(canvas, line, (left, top, across, LINE), said, font);
+        top += LINE.cast_signed();
+    }
+    let buttons = power.buttons();
+    let font = theme.font(Part::QuestionButton, States::NONE);
+    let wide: Vec<u32> = buttons
+        .iter()
+        .map(|button| text.measure(button.label(), font) + PADDING * 2)
+        .collect();
+    let gaps = GAP * u32::try_from(wide.len().saturating_sub(1)).unwrap_or(0);
+    let all = wide.iter().sum::<u32>() + gaps;
+    let mut along = (width.saturating_sub(all) / 2).cast_signed();
+    let mut placed = Vec::new();
+    for (button, wide) in buttons.into_iter().zip(wide) {
+        let mut states = States::NONE;
+        if matches!(button, Button::Yes(_)) {
+            states = states.with(omorfos_config::State::Active);
+        }
+        if hovered == Some(button) {
+            states = states.with(omorfos_config::State::Hovered);
+        }
+        let style = theme
+            .style(Part::QuestionButton, states)
+            .blended(&Style::NONE, share);
+        let area = (along, row, wide, BUTTON);
+        canvas.draw_box(area, &style);
+        let font = theme.font(Part::QuestionButton, states);
+        text.draw_centered(canvas, button.label(), area, style.color, font);
+        placed.push((button, area));
+        along += (wide + GAP).cast_signed();
+    }
+    placed
 }
 
 /// The initials of what someone is called: the first letters of their
@@ -816,13 +1002,44 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // A button pressed shows who is to unlock, as a key does.
-        if let wl_pointer::Event::Button {
-            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
-            ..
-        } = event
-        {
-            shell.wake();
+        match event {
+            wl_pointer::Event::Enter {
+                surface,
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                let mut screens = shell.screens.iter();
+                let on = screens.find(|screen| {
+                    let face = screen.face.as_ref();
+                    face.is_some_and(|face| face.surface == surface)
+                });
+                shell.pointer = on.map(|screen| (screen.global, (surface_x, surface_y)));
+                shell.hover();
+            }
+            wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                let moved = shell.pointer.map(|(on, _)| (on, (surface_x, surface_y)));
+                shell.pointer = moved;
+                shell.hover();
+            }
+            wl_pointer::Event::Leave { .. } => {
+                shell.pointer = None;
+                shell.hover();
+            }
+            // A button pressed shows who is to unlock, as a key does; and
+            // once they are shown, presses the button it is over.
+            wl_pointer::Event::Button {
+                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                ..
+            } => {
+                let woke = shell.wake();
+                shell.chosen = shell.over().filter(|_| !woke);
+            }
+            _ => {}
         }
     }
 }
