@@ -114,6 +114,8 @@ seatd. The rest is wanted, and done without if it is not there:
 | `xdg-desktop-portal-gtk` | Choosing files, which omorfos leaves to it |
 | `gdbus` (`libglib2.0-bin`) | Starting the portal at login once omorfos's own part of it is there |
 | PipeWire | Sharing the screen in a browser or a call |
+| `wpctl` (WirePlumber) | The volume keys |
+| `wl-copy` and `wl-paste` (`wl-clipboard`) | Copying and pasting in an editor in a terminal, such as Neovim, which otherwise goes through X11 and cannot read what programs written for Wayland copy |
 
 To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
 which needs `libEGL`, and the DejaVu fonts to draw as CI does.

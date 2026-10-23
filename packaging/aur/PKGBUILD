@@ -20,7 +20,8 @@ optdepends=('foot: the terminal started by the default key bindings'
             'glib2: to wait at login for the portal backend of omorfos (gdbus)'
             'dbus: to tell D-Bus of the session (dbus-update-activation-environment)'
             'pipewire: to share the screen in a browser or a call'
-            'wireplumber: for the volume keys (wpctl)')
+            'wireplumber: for the volume keys (wpctl)'
+            'wl-clipboard: for an editor in a terminal, such as Neovim, to copy and paste')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
