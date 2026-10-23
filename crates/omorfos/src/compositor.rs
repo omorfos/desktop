@@ -351,10 +351,8 @@ pub struct Compositor {
     /// The programs that come with omorfos and run for the whole session,
     /// once a backend has said where each is: the panel first.
     components: Vec<Component>,
-    /// The launcher, once a backend has said where it is, and the one that
-    /// is open, by the number of
-    /// its process.
-    launcher: (Option<PathBuf>, Option<u32>),
+    /// The programs started when asked for, rather than with the session.
+    on_demand: OnDemand,
     /// What programs have been refused for want of a role.
     pub(crate) refused: Refused,
     /// What is changing colour or coming in, and the time it goes by.
@@ -501,7 +499,7 @@ impl Compositor {
                     children: Vec::new(),
                     autostarted: Autostarted::default(),
                     components: Vec::new(),
-                    launcher: (None, None),
+                    on_demand: OnDemand::default(),
                     refused: Refused::default(),
                     animation: Animation::new(),
                     ipc: None,
@@ -943,7 +941,7 @@ impl Compositor {
         self.settle_capture(now);
         // Collect children that have exited so they do not linger as
         // zombies, noting those that did not exit as they should have.
-        let mut failed = Vec::new();
+        let (mut failed, mut ended) = (Vec::new(), Vec::new());
         self.children.retain_mut(|child| {
             // One that cannot even be asked is taken to have failed.
             let waited = child.try_wait();
@@ -951,10 +949,14 @@ impl Compositor {
             if exited == Some(false) {
                 failed.push(child.id());
             }
+            if exited.is_some() {
+                ended.push(child.id());
+            }
             exited.is_none()
         });
         self.forget_ended();
         self.revive(&failed, now);
+        self.relock(&ended, now);
         self.serve_ipc();
         self.manage_x11(now);
         self.reveal(now);
@@ -1250,9 +1252,35 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         match &config.general.locker {
             Some(locker) => {
-                self.start(locker.program().as_ref(), locker.arguments(), Roles::LOCK);
+                let started =
+                    self.start(locker.program().as_ref(), locker.arguments(), Roles::LOCK);
+                self.on_demand.locker.0 = started;
             }
             None => self.refused.say(NO_LOCKER),
+        }
+    }
+
+    /// Starts the locker again if it ended, of those that `ended`, while the
+    /// session is still locked, which a locker that crashed leaves it; at
+    /// most three times in a minute, after which the screen stays black and
+    /// locked, and the user is told how to unlock it from elsewhere.
+    fn relock(&mut self, ended: &[u32], now: Instant) {
+        let gone = self
+            .on_demand
+            .locker
+            .0
+            .take_if(|locker| ended.contains(locker));
+        if gone.is_none() || !self.is_locked() {
+            return;
+        }
+        if self.on_demand.locker.1.allow(now) {
+            self.start_locker();
+        } else {
+            self.problems.push(
+                "The locker keeps stopping with the session locked: from another virtual \
+                 terminal, `omorfosctl action lock` starts it again"
+                    .to_owned(),
+            );
         }
     }
 
@@ -1260,18 +1288,18 @@ impl Compositor {
     /// up in `PATH`, or a path. Until this is called there is none to
     /// open.
     pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
-        self.launcher.0 = Some(program.into());
+        self.on_demand.launcher.0 = Some(program.into());
     }
 
     /// Opens the launcher, unless one is open already.
     fn open_launcher(&mut self) {
-        let (program, open) = &self.launcher;
+        let (program, open) = &self.on_demand.launcher;
         let open = open.is_some_and(|open| self.children.iter().any(|child| child.id() == open));
         let program = program.clone().filter(|_| !open);
         if let Some(program) = program {
             // It has the keyboard, whatever had it, while it is open.
             let roles = Roles::OVERLAY;
-            self.launcher.1 = self.start(program.as_os_str(), &[], roles);
+            self.on_demand.launcher.1 = self.start(program.as_os_str(), &[], roles);
         }
     }
 
@@ -3084,6 +3112,18 @@ fn program(pid: Option<u32>) -> String {
         || "A program".to_owned(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+/// The programs the compositor starts when asked for, rather than with the
+/// session.
+#[derive(Debug, Default)]
+struct OnDemand {
+    /// The launcher, once a backend has said where it is, and the one that
+    /// is open, by the number of its process.
+    launcher: (Option<PathBuf>, Option<u32>),
+    /// The locker last started, while it runs, and when it was started
+    /// again after ending with the session still locked.
+    locker: (Option<u32>, Restarts),
 }
 
 /// Whether the programs to start with the session have been, and what

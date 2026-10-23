@@ -1,0 +1,4 @@
+# The password for omorfos-lock, the lock screen of the omorfos desktop:
+# whatever the system's login asks. A second factor, such as a security key
+# and the password both, goes here, where its questions come in turn.
+auth include login

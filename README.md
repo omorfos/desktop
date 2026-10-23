@@ -60,8 +60,8 @@ screen reads, then pick omorfos when you log in:
 
 ```sh
 cargo build --release -p omorfos -p omorfosctl -p omorfos-panel \
-  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p xdg-desktop-portal-omorfos
-sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,omorfos-wallpaper,xdg-desktop-portal-omorfos} /usr/local/bin/
+  -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos
+sudo install -m755 target/release/{omorfos,omorfosctl,omorfos-panel,omorfos-launcher,omorfos-notifications,omorfos-screenshot,omorfos-clipboard,omorfos-recording,omorfos-session,omorfos-ask,omorfos-wallpaper,omorfos-lock,xdg-desktop-portal-omorfos} /usr/local/bin/
 sudo install -Dm644 packaging/omorfos.desktop /usr/share/wayland-sessions/omorfos.desktop
 sudo install -Dm644 packaging/omorfos.portal /usr/share/xdg-desktop-portal/portals/omorfos.portal
 sudo install -Dm644 packaging/omorfos-portals.conf /usr/share/xdg-desktop-portal/omorfos-portals.conf
@@ -95,11 +95,12 @@ Everything else, and how to change any of it, is in
 
 To build: Rust (the version is pinned in `rust-toolchain.toml`),
 `pkg-config`, `clang`, and the development files for libxkbcommon, pixman,
-udev, libinput, libseat, GBM and PipeWire. On Debian and Ubuntu:
+udev, libinput, libseat, GBM, PipeWire and PAM. On Debian and Ubuntu:
 
 ```sh
 sudo apt install pkg-config libxkbcommon-dev libpixman-1-dev libudev-dev \
-  libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libclang-dev clang
+  libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev \
+  libclang-dev clang
 ```
 
 To run: EGL and OpenGL ES (`libegl1 libgles2`), and a seat from logind or
@@ -118,7 +119,8 @@ seatd. The rest is wanted, and done without if it is not there:
 | `wl-copy` and `wl-paste` (`wl-clipboard`) | Copying and pasting in an editor in a terminal, such as Neovim, which otherwise goes through X11 and cannot read what programs written for Wayland copy |
 
 To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
-which needs `libEGL`, and the DejaVu fonts to draw as CI does.
+which needs `libEGL`; `pam_wrapper` (`libpam-wrapper`), which the lock
+screen's tests ask PAM through; and the DejaVu fonts to draw as CI does.
 
 ## Documentation
 
@@ -147,8 +149,8 @@ cargo deny check
 ```
 
 `cargo coverage` is the coverage gate, an alias in `.cargo/config.toml`.
-The tests also need `dbus-daemon` and `Xwayland`, and `Xwayland` needs
-`libEGL`. Commits follow
+The tests also need `dbus-daemon`, `Xwayland` and `pam_wrapper`, and
+`Xwayland` needs `libEGL`. Commits follow
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/),
 and releases are made from them: see
 [docs/RELEASING.md](docs/RELEASING.md).

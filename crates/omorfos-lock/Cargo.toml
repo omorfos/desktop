@@ -1,0 +1,36 @@
+[package]
+name = "omorfos-lock"
+description = "The lock screen of the omorfos desktop, which asks PAM for each way of unlocking at once"
+keywords = ["wayland", "lock", "pam"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Asks PAM whether the user is who they say, in the helper. Pinned to the
+# version read, and read again at every update (ADR 52).
+nonstick = "=0.1.2"
+omorfos-config = { path = "../omorfos-config" }
+omorfos-shell = { path = "../omorfos-shell" }
+omorfos-ui = { path = "../omorfos-ui" }
+# Already in the tree through Smithay. Waits on the compositor and the
+# helpers at once (`event`), wakes for what was heard (`pipe`), and says
+# who the user is (`process`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "pipe", "process"] }
+# The lock screen is a Wayland client. All three are already in the tree.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# Turns the keys the compositor reports into what they type, as the
+# prompt for a secret does.
+xkbcommon = { version = "0.8.0", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

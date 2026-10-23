@@ -39,6 +39,7 @@ assets = [
     ["target/release/omorfosctl", "usr/bin/", "755"],
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["target/release/omorfos-wallpaper", "usr/bin/", "755"],
+    ["target/release/omorfos-lock", "usr/bin/", "755"],
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
@@ -50,6 +51,10 @@ assets = [
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
     ["../../packaging/omorfos-session.target", "usr/lib/systemd/user/", "644"],
+    # How the lock screen asks PAM: configuration files, once installed.
+    ["../../packaging/pam/omorfos-lock", "etc/pam.d/", "644"],
+    ["../../packaging/pam/omorfos-lock-fingerprint", "etc/pam.d/", "644"],
+    ["../../packaging/pam/omorfos-lock-key", "etc/pam.d/", "644"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
     ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
     # The built-in theme, to copy from.
@@ -105,6 +110,7 @@ smithay = { version = "0.7.0", default-features = false, features = [
 # a real one. It does not depend on the compositor, so nothing goes round.
 omorfos-panel = { path = "../omorfos-panel" }
 omorfos-wallpaper = { path = "../omorfos-wallpaper" }
+omorfos-lock = { path = "../omorfos-lock" }
 omorfos-launcher = { path = "../omorfos-launcher" }
 omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
