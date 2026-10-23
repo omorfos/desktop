@@ -4,6 +4,7 @@
 //! go. Which windows, in what order and where each is shown is the desktop
 //! model's business (`omorfos_core::Switcher`).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,12 +23,13 @@ use smithay::output::Output;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::{Logical, Point, Rectangle, Transform};
-use smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager;
+use smithay::reexports::wayland_protocols::xdg::toplevel_icon::v1::server::xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1;
+use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
 use crate::compositor::{Compositor, Element, Painted, View};
-use crate::icons::{Icon, WindowIcons};
+use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
 use crate::paint::{self, Places, Shown};
 
@@ -54,8 +56,9 @@ pub(crate) struct Switch {
     pub(crate) held: Modifiers,
     /// The icons of windows.
     pub(crate) icons: WindowIcons,
-    /// The protocol by which programs give their windows icons.
-    _given: XdgToplevelIconManager,
+    /// The icons programs are making for their windows, by the number of
+    /// each, until it is set on one.
+    pub(crate) making: HashMap<ObjectId, Making>,
 }
 
 impl Switch {
@@ -63,14 +66,14 @@ impl Switch {
     /// `display`, asking for icons of the size the switcher draws them
     /// largest.
     pub(crate) fn offer(display: &DisplayHandle) -> Self {
-        let mut given = XdgToplevelIconManager::new::<Compositor>(display);
-        given.add_icon_size(paint::LARGE_ICON.cast_signed());
+        let sizes = Sizes(vec![paint::LARGE_ICON.cast_signed()]);
+        display.create_global::<Compositor, XdgToplevelIconManagerV1, _>(1, sizes);
         Self {
             open: None,
             used: Used::default(),
             held: Modifiers::NONE,
             icons: WindowIcons::default(),
-            _given: given,
+            making: HashMap::new(),
         }
     }
 }

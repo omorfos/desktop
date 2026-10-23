@@ -555,9 +555,11 @@ what only games and touchpads need last.
       Wayland library would print of it, unsigned, it no longer does; and a
       setting named as the guide names it, `lock.power`, is said how to
       write.
-- [ ] The rest of that log made quiet: Visual Studio Code, which is
-      disconnected seconds after it starts, made to work, once the log
-      says why; what the programs the session starts print kept in the
+- [x] Visual Studio Code, which was disconnected seconds after it
+      started for destroying its icon's buffer before the icon, made to
+      work: window icons served by omorfos, an icon's lost pixels let go
+      (ADR 54).
+- [ ] The rest of that log made quiet: what the programs the session starts print kept in the
       journal under their own names, not in omorfos's log; those the
       compositor started asked to close before it does, at the end of a
       session; buffers released as soon as they are drawn, which foot
