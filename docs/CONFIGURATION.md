@@ -1448,7 +1448,8 @@ first unlocks: you never wait for a finger to time out before typing.
 Each is offered only where its module is installed and you have
 something enrolled: `pam_fprintd` with a finger enrolled by `fprintd-enroll`,
 and `pam_u2f` with a key registered by `pamu2fcfg`. Turn either off with
-`lock.fingerprint: false` or `lock.key: false`. The password is always
+`fingerprint: false` or `key: false` under `lock:`, as in the example
+above. The password is always
 offered, so that a reader that breaks or a key that is lost never keeps
 you out. The screen says nothing of the other ways until they speak: a
 reader once it asks for a finger, and a key once it is plugged in and asks
@@ -1465,7 +1466,13 @@ close and what is not saved in them is lost; Cancel or Escape says no.
 Sleep is done at once, and you come back to the lock screen. When a
 program keeps the machine from turning off, such as a download, the
 screen says which, and that button is not there. On a machine others use,
-`lock.power: false` takes them all away.
+`power: false` under `lock:` takes them all away:
+
+```yaml
+# config.yaml
+lock:
+  power: false
+```
 
 The services are files the package installs in `/etc/pam.d`, yours to
 change: `omorfos-lock` for the password (as your system's login asks),
