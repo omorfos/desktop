@@ -12,7 +12,6 @@
 //! back.
 
 mod bar;
-mod clock;
 mod panel;
 
 use std::ffi::OsStr;

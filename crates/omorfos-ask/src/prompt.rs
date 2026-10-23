@@ -8,14 +8,14 @@
 //! buttons to show it, to give up and to go on. Enter goes on and Escape
 //! gives up. It is drawn as the `question` parts of the theme.
 
-use std::fs::File;
 use std::io;
 use std::mem;
-use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
-use std::os::unix::fs::FileExt;
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 
 use omorfos_config::{Color, Part, State, States, Store, Theme};
+use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
+use omorfos_shell::typing::{Key, Typing};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Area, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -30,7 +30,6 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-use xkbcommon::xkb;
 
 use crate::Failure;
 
@@ -47,18 +46,6 @@ pub const FIELD: Area = (MARGIN, 100, 400, 32);
 /// hides it again.
 pub const EYE: Area = (MARGIN + 400 - 30, 104, 24, 24);
 
-/// How far the box goes each way as it shakes, and the room it has to on
-/// each side of it: the surface is so much wider than the box.
-pub const SHAKE: i32 = 8;
-
-/// How long the box shakes for, in milliseconds: no longer than anything
-/// moves (ADR 32).
-pub const SHAKING: u32 = 300;
-
-/// How long a frame is taken to be, in milliseconds, for the first of a
-/// shake: how far into it the box is when it is first shown moved.
-const FRAME: u32 = 16;
-
 /// How large the surface is, in units of layout: the box, and the room it
 /// shakes in.
 pub const SURFACE: (u32, u32) = (SIZE.0 + 2 * SHAKE.unsigned_abs(), SIZE.1);
@@ -69,9 +56,6 @@ pub const GO: Area = (300, 164, 120, 32);
 
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
-
-/// The largest keyboard layout taken in, in bytes.
-const LARGEST_KEYMAP: u32 = 1024 * 1024;
 
 /// The longest secret taken in, in characters.
 const LONGEST: usize = 1024;
@@ -151,16 +135,6 @@ pub fn shown(typed: &str, open: bool) -> String {
     } else {
         "\u{2022}".repeat(typed.chars().count())
     }
-}
-
-/// How far the box is from where it rests, `elapsed` milliseconds into
-/// shaking: three times each way, less each time, and still again once it
-/// has shaken for as long as it does.
-#[must_use]
-pub fn shaken(elapsed: u32) -> i32 {
-    let through = f64::from(elapsed.min(SHAKING)) / f64::from(SHAKING);
-    let swing = (through * 3.0 * std::f64::consts::TAU).sin() * (1.0 - through);
-    whole(swing * f64::from(SHAKE) + 0.5)
 }
 
 /// What the tooltip over the eye says: what pressing it does.
@@ -382,8 +356,7 @@ struct Shell {
     shaking: Option<(Option<u32>, u32)>,
     store: Store,
     text: Text,
-    layouts: xkb::Context,
-    typing: Option<xkb::State>,
+    typing: Typing,
     /// Whether what is on the screen may not be what should be.
     stale: bool,
 }
@@ -429,20 +402,6 @@ impl Shell {
         self.stale = true;
     }
 
-    /// Takes in the keyboard layout the compositor sent.
-    fn learn_layout(&mut self, layout: OwnedFd, size: u32) {
-        let length = usize::try_from(size.min(LARGEST_KEYMAP)).unwrap_or(0);
-        let mut bytes = vec![0; length];
-        let read = File::from(layout).read_exact_at(&mut bytes, 0);
-        let text = read.ok().and_then(|()| String::from_utf8(bytes).ok());
-        let keymap = text.and_then(|text| {
-            let text = text.trim_end_matches('\0').to_owned();
-            let (format, flags) = (xkb::KEYMAP_FORMAT_TEXT_V1, xkb::KEYMAP_COMPILE_NO_FLAGS);
-            xkb::Keymap::new_from_string(&self.layouts, text, format, flags)
-        });
-        self.typing = keymap.as_ref().map(xkb::State::new);
-    }
-
     /// Takes in a key going down: what it types goes in the field, `⌫`
     /// takes the last character out, Enter goes on and Escape gives up.
     fn pressed(&mut self, code: u32) {
@@ -450,29 +409,23 @@ impl Shell {
             .asked
             .as_ref()
             .is_none_or(|(asking, _)| asking.checking);
-        let Some(typing) = self.typing.as_ref().filter(|_| !checking) else {
+        if checking {
             return;
-        };
-        // The numbers the layout knows keys by are eight higher.
-        let code = xkb::Keycode::new(code.saturating_add(8));
-        let held = |name| typing.mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE);
-        let chord = held(xkb::MOD_NAME_CTRL) || held(xkb::MOD_NAME_ALT) || held(xkb::MOD_NAME_LOGO);
-        match typing.key_get_one_sym(code) {
-            xkb::Keysym::Return | xkb::Keysym::KP_Enter => self.go(),
-            xkb::Keysym::Escape => self.answered(Answer::Cancel),
-            xkb::Keysym::BackSpace => {
+        }
+        match self.typing.pressed(code) {
+            Key::Enter => self.go(),
+            Key::Escape => self.answered(Answer::Cancel),
+            Key::Back => {
                 self.typed.pop();
                 self.stale = true;
             }
-            _ => {
-                let typed = typing.key_get_utf8(code);
-                let printable = typed.chars().all(|character| !character.is_control());
-                let room = self.typed.chars().count() < LONGEST;
-                if !chord && printable && room {
-                    self.typed.push_str(&typed);
-                    self.stale = true;
-                }
+            Key::Typed(typed) => {
+                // No more than a secret may be is kept.
+                let room = LONGEST.saturating_sub(self.typed.chars().count());
+                self.typed.extend(typed.chars().take(room));
+                self.stale = true;
             }
+            Key::Nothing => {}
         }
     }
 
@@ -610,8 +563,7 @@ impl Desk {
                 shaking: None,
                 store,
                 text: Text::new(),
-                layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
-                typing: None,
+                typing: Typing::default(),
                 stale: false,
             };
             let mut desk = Self {
@@ -801,7 +753,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Keymap { fd, size, .. } => shell.learn_layout(fd, size),
+            wl_keyboard::Event::Keymap { fd, size, .. } => shell.typing.learn_layout(fd, size),
             wl_keyboard::Event::Modifiers {
                 mods_depressed,
                 mods_latched,
@@ -809,11 +761,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 group,
                 ..
             } => {
-                // The layout is always said first.
-                let typing = shell.typing.as_mut();
-                let _ = typing.map(|typing| {
-                    typing.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
-                });
+                let held = (mods_depressed, mods_latched, mods_locked, group);
+                shell.typing.modifiers(held);
             }
             wl_keyboard::Event::Key {
                 key,
@@ -905,6 +854,29 @@ delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_box_drawn_moved_is_where_it_was_moved_to() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let background = argb(theme.style(Part::Question, States::NONE).background);
+        let left = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (-SHAKE, false),
+        );
+        let right = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&asking(), "", false),
+            (SHAKE, false),
+        );
+        assert_eq!(left.at(12, 12), background);
+        assert_ne!(right.at(12, 12), background, "not yet there");
+    }
 
     fn asking() -> Asking {
         Asking {
@@ -1128,41 +1100,6 @@ mod tests {
         );
         let quiet = paint(&theme, &mut text, Scale::ONE, (&open, "", false), (0, true));
         assert_eq!(pixels(&still, below), pixels(&quiet, below));
-    }
-
-    #[test]
-    fn the_box_shakes_three_times_less_each_time_and_comes_to_rest() {
-        assert_eq!(shaken(0), 0);
-        assert_eq!(shaken(SHAKING), 0, "at rest once it has shaken");
-        assert_eq!(shaken(u32::MAX), 0);
-        let swings: Vec<i32> = (0..SHAKING).step_by(10).map(shaken).collect();
-        let most = swings.iter().map(|swing| swing.abs()).max().unwrap();
-        assert!(most > SHAKE / 2 && most <= SHAKE, "{swings:?}");
-        assert!(swings.iter().any(|swing| *swing < 0), "both ways");
-        // The first swing is wider than the last.
-        let early = swings[..10].iter().map(|swing| swing.abs()).max().unwrap();
-        let late = swings[20..].iter().map(|swing| swing.abs()).max().unwrap();
-        assert!(early > late, "{swings:?}");
-        // Drawn moved, the box is where it was moved to.
-        let theme = Theme::default();
-        let mut text = Text::new();
-        let background = argb(theme.style(Part::Question, States::NONE).background);
-        let left = paint(
-            &theme,
-            &mut text,
-            Scale::ONE,
-            (&asking(), "", false),
-            (-SHAKE, false),
-        );
-        let right = paint(
-            &theme,
-            &mut text,
-            Scale::ONE,
-            (&asking(), "", false),
-            (SHAKE, false),
-        );
-        assert_eq!(left.at(12, 12), background);
-        assert_ne!(right.at(12, 12), background, "not yet there");
     }
 
     #[test]

@@ -12,7 +12,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 omorfos-config = { path = "../omorfos-config" }
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-shell = { path = "../omorfos-shell" }

@@ -4,6 +4,7 @@
 //! their own, and each draws on a canvas and hands the picture to the
 //! compositor. The handing over is the same for all of them and is here.
 //! It is exercised wherever a component is tested against a compositor.
+//! So is [`said`], what a helper that asks PAM says.
 
 use std::env;
 use std::fs::File;
@@ -11,6 +12,11 @@ use std::io::{self, Write};
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+
+pub mod clock;
+pub mod said;
+pub mod shake;
+pub mod typing;
 
 use omorfos_ui::Canvas;
 use rustix::fs::{MemfdFlags, memfd_create};

@@ -1,4 +1,4 @@
-//! The time of day, as the panel shows it.
+//! The time of day, as the panel and the lock screen show it.
 
 use std::time::Duration;
 
@@ -6,7 +6,8 @@ use jiff::Zoned;
 
 /// The time now where the user is, as it reads on the bar, and how long
 /// until it reads differently.
-pub(crate) fn now() -> (String, Duration) {
+#[must_use]
+pub fn now() -> (String, Duration) {
     let now = Zoned::now();
     reading(now.hour(), now.minute(), now.second(), now.millisecond())
 }
