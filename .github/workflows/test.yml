@@ -14,6 +14,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Line tables are all the coverage gate and a panic's place need. Full
+  # debug information made the instrumented tests 9.7 GB, and the amd64
+  # runner ran out of disk building them; with line tables they are 5.2 GB.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   test:
@@ -45,6 +49,10 @@ jobs:
       # `cargo coverage` is an alias defined in .cargo/config.toml.
       - name: Unit and integration tests with the coverage gate
         run: cargo coverage --locked
+      # How much room was left, for the next time it runs short.
+      - name: Room left on the disk
+        if: ${{ !cancelled() }}
+        run: df -h /
       # Doctests cannot be instrumented on stable, so they run separately.
       - name: Doctests
         run: cargo test --workspace --all-features --doc --locked
