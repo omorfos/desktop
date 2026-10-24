@@ -42,7 +42,8 @@ call them by their ids:
   been run on that tree. Fix it, and find out how it got past.
 - **Every test passes and coverage falls short, in CI only.** What the
   runner has is not what is here, and a branch runs here that does not
-  there: its PipeWire is 1.0, which does not say everything 1.4 does.
+  there: its PipeWire is 1.6, and one here older or newer may say what
+  it does not, or not say what it does.
   Find the lines in the container (below) with a text report, and the
   `^0` under a line that marks what did not run. Make the case reachable
   from a test, or, where no test can make the system say what it does not,
@@ -69,7 +70,7 @@ call them by their ids:
 
 ## 3. Reproduce what the runner has
 
-The runners are Ubuntu 24.04 with only what the workflow installs. The
+The runners are Ubuntu 26.04 with only what the workflow installs. The
 script beside this file runs a command in that, with `podman`, as an
 ordinary user as the runner does, reading the release and the packages
 from `.github/workflows/test.yml`:
@@ -78,7 +79,7 @@ from `.github/workflows/test.yml`:
 .claude/skills/ci-failure/reproduce.sh                      # cargo coverage --locked
 .claude/skills/ci-failure/reproduce.sh cargo llvm-cov --locked -p <crate> \
   --text --output-path /cache/report.txt
-podman run --rm -v omorfos-ci-24.04:/cache ubuntu:24.04 grep -n -B3 '\^0' /cache/report.txt
+podman run --rm -v omorfos-ci-26.04:/cache ubuntu:26.04 grep -n -B3 '\^0' /cache/report.txt
 ```
 
 The first run downloads the packages, Rust and the crates, and takes half

@@ -46,4 +46,5 @@ the hardware backend exists.
 - Attestation and the AUR need a public repository.
 - The AUR package does not run the test suite when it builds.
 - The Debian package's dependency list is produced by `dpkg-shlibdeps`, so
-  it reflects the libraries on the build runner (Ubuntu 24.04).
+  it reflects the libraries on the build runner (Ubuntu 26.04 since
+  [ADR 56](0056-pipewire-1.4-and-ubuntu-26.04.md)).

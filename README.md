@@ -102,7 +102,8 @@ Everything else, and how to change any of it, is in
 
 To build: Rust (the version is pinned in `rust-toolchain.toml`),
 `pkg-config`, `clang`, and the development files for libxkbcommon, pixman,
-udev, libinput, libseat, GBM, PipeWire and PAM. On Debian and Ubuntu:
+udev, libinput, libseat, GBM, PipeWire (1.4 or later) and PAM. On Debian 13,
+or Ubuntu 25.10 and later:
 
 ```sh
 sudo apt install pkg-config libxkbcommon-dev libpixman-1-dev libudev-dev \
@@ -121,7 +122,7 @@ seatd. The rest is wanted, and done without if it is not there:
 | `xdg-desktop-portal` | Applications following the look of the desktop, and asking for screenshots |
 | `xdg-desktop-portal-gtk` | Choosing files, which omorfos leaves to it |
 | `gdbus` (`libglib2.0-bin`) | Starting the portal at login once omorfos's own part of it is there |
-| PipeWire | Sharing the screen in a browser or a call |
+| PipeWire, 1.4 or later | Sharing the screen in a browser or a call |
 | `wpctl` (WirePlumber) | The volume keys |
 | `wl-copy` and `wl-paste` (`wl-clipboard`) | Copying and pasting in an editor in a terminal, such as Neovim, which otherwise goes through X11 and cannot read what programs written for Wayland copy |
 

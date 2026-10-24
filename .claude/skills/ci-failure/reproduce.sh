@@ -14,7 +14,7 @@
 # it leaves in `/cache` is kept, such as a report:
 #
 #   reproduce.sh cargo llvm-cov --locked -p omorfos-recording --text --output-path /cache/report.txt
-#   podman run --rm -v omorfos-ci-24.04:/cache ubuntu:24.04 grep -n -B3 '\^0' /cache/report.txt
+#   podman run --rm -v omorfos-ci-26.04:/cache ubuntu:26.04 grep -n -B3 '\^0' /cache/report.txt
 set -euo pipefail
 
 workflow=.github/workflows/test.yml

@@ -22,8 +22,10 @@ It is configured with YAML files that are reloaded as you save them."""
 section = "x11"
 priority = "optional"
 # EGL and OpenGL ES are loaded at run time, so they are not found by the
-# automatic shared-library scan and are listed by hand.
-depends = "$auto, libegl1, libgles2"
+# automatic shared-library scan and are listed by hand. The scan asks only
+# for a libpipewire with what is linked against, and omorfos needs 1.4
+# (docs/adr/0056-pipewire-1.4-and-ubuntu-26.04.md).
+depends = "$auto, libegl1, libgles2, libpipewire-0.3-0t64 (>= 1.4)"
 # Titles are drawn with whatever fonts are installed; make sure one is. The
 # rest are programs omorfos runs or speaks to, and does without if absent:
 # the portal service and the GTK backend it leaves files to; `gdbus`, which
@@ -33,7 +35,7 @@ depends = "$auto, libegl1, libgles2"
 # whose `wpctl` the volume keys set the volume with; and `wl-clipboard`,
 # which an editor in a terminal, Neovim among them, copies and pastes
 # with, since through X11 it cannot read what Wayland programs copy.
-recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire, wireplumber, wl-clipboard"
+recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire (>= 1.4), wireplumber, wl-clipboard"
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],

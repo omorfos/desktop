@@ -10,7 +10,7 @@ pkgdesc='A lightweight Wayland compositor'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
 license=('MIT' 'CC-BY-SA-4.0')
-depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire' 'libxkbcommon' 'mesa' 'pam'
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire>=1.4' 'libxkbcommon' 'mesa' 'pam'
          'seatd' 'systemd-libs' 'ttf-font')
 makedepends=('cargo' 'clang')
 # How the lock screen asks PAM, the system's to change once installed.
@@ -21,7 +21,7 @@ optdepends=('foot: the terminal started by the default key bindings'
             'xdg-desktop-portal-gtk: to choose files, which omorfos leaves to it'
             'glib2: to wait at login for the portal backend of omorfos (gdbus)'
             'dbus: to tell D-Bus of the session (dbus-update-activation-environment)'
-            'pipewire: to share the screen in a browser or a call'
+            'pipewire>=1.4: to share the screen in a browser or a call'
             'wireplumber: for the volume keys (wpctl)'
             'wl-clipboard: for an editor in a terminal, such as Neovim, to copy and paste')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
