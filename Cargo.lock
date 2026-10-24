@@ -1849,6 +1849,7 @@ dependencies = [
  "omorfos-core",
  "omorfos-icons",
  "omorfos-ipc",
+ "omorfos-journal",
  "omorfos-launcher",
  "omorfos-lock",
  "omorfos-notifications",

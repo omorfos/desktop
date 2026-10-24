@@ -70,6 +70,7 @@ omorfos-core = { path = "../omorfos-core" }
 # Finds and reads the icons of windows' programs, for the switcher.
 omorfos-icons = { path = "../omorfos-icons" }
 omorfos-ipc = { path = "../omorfos-ipc" }
+omorfos-journal = { path = "../omorfos-journal" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay; named here for the `process` feature,
 # which lets the event loop be woken when a program we started exits, and
