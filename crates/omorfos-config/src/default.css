@@ -248,6 +248,11 @@ question-input {
   border-radius: 6px;
 }
 question-input:focus { border-color: var(--accent); }
+/* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
+question-input:active {
+  background: var(--accent);
+  color: var(--background);
+}
 
 /* The switcher on Alt+Tab: the box in the middle of the screen, each
  * window's place in it, its picture over its title, and the title. The

@@ -610,12 +610,17 @@ what only games and touchpads need last.
 - [x] The administrator's prompt's buttons, the eye, Cancel and
       Authenticate, reached with Tab and Shift+Tab and pressed with Enter,
       as the lock screen's are.
-- [ ] The fields a secret is typed into, on the lock screen and in the
+- [x] The fields a secret is typed into, on the lock screen and in the
       administrator's prompt, behaving as other fields do: Backspace held
       down taking out one character after another, as keys repeat
       (`wl_keyboard.repeat_info`); Ctrl+A choosing all that is typed, to
-      take it out or type over it at once, with Super+A as on a Mac; and a
-      text cursor in the lock screen's field, where the prompt has one.
+      take it out or type over it at once, with Super+A as on a Mac,
+      marked `question-input:active`; and a text cursor in the lock
+      screen's field, where the prompt has one. Only what types and
+      Backspace repeat, so that Escape or Enter held does one thing once.
+- [ ] Ctrl+A in a layout that is not Latin, as Greek or Russian, where
+      the key types another letter: programs commonly take the Latin
+      letter of the key for a shortcut, which the fields do not yet.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and
@@ -687,8 +692,10 @@ Stage 2 says what it is to be; this builds it.
       `Shift+Print` keeps its picture as a file rather than on the
       clipboard; the star key (`XF86Favorites`); a key for
       `next_layout`; the keys for the volume, the brightness and what is
-      playing; `XF86Display` for `next_screens`; and the theme's parts
-      made along the way.
+      playing; `XF86Display` for `next_screens`; one of `Ctrl+A` and
+      `Super+A` to choose all that is typed in a field for a secret, not
+      both, with the keys to copy and paste; and the theme's parts made
+      along the way.
 
 ## 5. The shell: a bar and a dock
 

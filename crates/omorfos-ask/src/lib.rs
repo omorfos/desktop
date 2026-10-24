@@ -23,6 +23,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
+use std::time::Instant;
 
 pub use agent::{AGENT, Agent, Asked, Begin, PATH, POLKIT};
 pub use helper::Helper;
@@ -34,7 +35,7 @@ pub use prompt::{
     Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SIZE, SURFACE, button_at, eye_says,
     label, paint, shown,
 };
-use rustix::event::{PollFd, PollFlags, poll};
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
 use zbus::message::Message;
 
@@ -200,7 +201,7 @@ fn serve(
         }
         // What changed is shown, and what the user did taken in; and what
         // that changes is shown in turn, before anything is waited for.
-        let answer = match desk.turn() {
+        let answer = match desk.turn(Instant::now()) {
             Ok(answer) => answer,
             // As it is, so that the session ending is known for what it is.
             Err(failure) => return failure,
@@ -216,7 +217,12 @@ fn serve(
             PollFd::new(&desk, PollFlags::IN),
             PollFd::new(&woken, PollFlags::IN),
         ];
-        let _ = poll(&mut sources, None);
+        // Until something is heard, or a key held is due to be done again.
+        let longest = desk
+            .deadline()
+            .map(|due| due.saturating_duration_since(Instant::now()));
+        let longest = longest.and_then(|longest| Timespec::try_from(longest).ok());
+        let _ = poll(&mut sources, longest.as_ref());
         if !sources[0].revents().is_empty() {
             return "polkit can no longer be heard".into();
         }

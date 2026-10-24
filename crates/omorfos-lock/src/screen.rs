@@ -18,7 +18,7 @@ use omorfos_config::{Color, Fit, Part, States, Store, Style, Theme, Transition};
 use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
-use omorfos_shell::typing::{Key, Typing};
+use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_ui::{Canvas, Image, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -185,6 +185,7 @@ impl Lock {
         // on how the library was built; a real failure comes back from the
         // flush that ends the turn.
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
+        self.shell.now = now;
         let dispatched = self.queue.dispatch_pending(&mut self.shell);
         dispatched
             .map_err(Failure::from)
@@ -234,8 +235,9 @@ impl Lock {
     }
 
     /// When there will next be something to do without anything having
-    /// happened: the time changing, a helper due to be asked again, or the
-    /// lock screen due to show only the time again.
+    /// happened: the time changing, a helper due to be asked again, the
+    /// lock screen due to show only the time again, or a key held due to be
+    /// done again.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
         let clock = self.shell.clock.as_ref().map(|(_, changes)| *changes);
@@ -243,7 +245,13 @@ impl Lock {
             View::Awake { until } => until,
             View::Resting => None,
         };
-        clock.into_iter().chain(self.shell.again).chain(rest).min()
+        let repeat = self.shell.repeat.deadline();
+        clock
+            .into_iter()
+            .chain(self.shell.again)
+            .chain(rest)
+            .chain(repeat)
+            .min()
     }
 
     /// Runs the lock screen, asleep until there is something to do, until
@@ -295,6 +303,14 @@ struct Shell {
     text: Text,
     typing: Typing,
     typed: String,
+    /// Whether all that is typed is chosen, as Ctrl and A choose it, to be
+    /// typed over or taken out at once.
+    marked: bool,
+    /// The key held down, done again as keys repeat.
+    repeat: Repeat,
+    /// The time of the turn being taken, which keys going down are timed
+    /// by.
+    now: Instant,
     ways: Ways,
     /// The power buttons, if they are offered.
     power: Option<Power>,
@@ -396,6 +412,9 @@ impl Shell {
             text: Text::new(),
             typing: Typing::default(),
             typed: String::new(),
+            marked: false,
+            repeat: Repeat::default(),
+            now: Instant::now(),
             ways,
             power: None,
             pointer: None,
@@ -436,6 +455,13 @@ impl Shell {
                 .manager
                 .as_ref()
                 .map(|manager| manager.lock(handle, ()));
+        }
+        // A key held is done again when it is due, as it would be pressed
+        // again, and puts off showing only the time as a key does.
+        if let Some(code) = self.repeat.due(now) {
+            let key = self.typing.pressed(code);
+            self.key(key);
+            self.view = View::Awake { until: None };
         }
         match self.view {
             View::Awake { until: None } => {
@@ -545,7 +571,7 @@ impl Shell {
             let shown = Shown {
                 time,
                 who,
-                typed: self.typed.chars().count(),
+                typed: (self.typed.chars().count(), self.marked),
                 ways,
                 shift,
                 share,
@@ -625,7 +651,8 @@ impl Shell {
     fn rest(&mut self) {
         self.move_from_here();
         self.view = View::Resting;
-        wipe(&mut self.typed);
+        self.repeat.stop();
+        self.empty();
         self.power.iter_mut().for_each(Power::forget);
         self.focused = None;
         self.stale = true;
@@ -727,8 +754,17 @@ impl Shell {
             return;
         }
         let key = self.typing.pressed(code);
-        // What types, or takes out, is for the field.
-        if matches!(key, Key::Typed(_) | Key::Back) {
+        // Only what types, or takes out, is done again while it is held:
+        // not Enter, Escape or Tab, which do something once.
+        let again = matches!(key, Key::Typed(_) | Key::Back) && self.typing.repeats(code);
+        self.repeat.pressed(code, again, self.now);
+        self.key(key);
+    }
+
+    /// Does what `key` does, going down or held.
+    fn key(&mut self, key: Key) {
+        // What types, takes out or chooses is for the field.
+        if matches!(key, Key::Typed(_) | Key::Back | Key::All) {
             self.focused = None;
         }
         match key {
@@ -736,7 +772,7 @@ impl Shell {
                 Some(button) => self.chosen = Some(button),
                 None => {
                     if self.ways.answer(&self.typed) {
-                        wipe(&mut self.typed);
+                        self.empty();
                     }
                 }
             },
@@ -752,10 +788,17 @@ impl Shell {
             }
             Key::Next => self.tab(false),
             Key::Previous => self.tab(true),
+            Key::All => self.marked = !self.typed.is_empty(),
+            // All of it, if all is chosen.
+            Key::Back if self.marked => self.empty(),
             Key::Back => {
                 self.typed.pop();
             }
             Key::Typed(typed) => {
+                // In place of all of it, if all is chosen.
+                if self.marked {
+                    self.empty();
+                }
                 // No more than a secret may be is kept.
                 let room = LONGEST.saturating_sub(self.typed.chars().count());
                 self.typed.extend(typed.chars().take(room));
@@ -763,6 +806,12 @@ impl Shell {
             Key::Nothing => {}
         }
         self.stale = true;
+    }
+
+    /// Empties the field, wiping what was typed.
+    fn empty(&mut self) {
+        wipe(&mut self.typed);
+        self.marked = false;
     }
 }
 
@@ -778,8 +827,9 @@ struct Shown<'a> {
     time: &'a str,
     /// What the user is called, and their face.
     who: (&'a str, Option<&'a Image>),
-    /// How many characters are typed in the field.
-    typed: usize,
+    /// How many characters are typed in the field, and whether all of them
+    /// are chosen.
+    typed: (usize, bool),
     ways: &'a Ways,
     /// How far the field is moved across as it shakes, in units of layout.
     shift: i32,
@@ -872,20 +922,13 @@ fn paint(
         .find(|asking| asking.way == Way::Password);
     // The field looks focused while the keyboard is on it and it asks.
     let asks = password.is_some_and(|password| password.asks) && shown.power.2.is_none();
-    let states = if asks {
-        States::NONE.with(omorfos_config::State::Focused)
-    } else {
-        States::NONE
-    };
-    let field = theme
-        .style(Part::QuestionInput, states)
-        .blended(&Style::NONE, share);
     let area = (middle(FIELD.0) + shown.shift, top, FIELD.0, FIELD.1);
-    canvas.draw_box(area, &field);
-    let dots = "\u{2022}".repeat(shown.typed);
-    let font = theme.font(Part::QuestionInput, states);
-    let inside = omorfos_ui::inset(area, field.inset());
-    text.draw(&mut canvas, &dots, inside, field.color, font);
+    paint_field(
+        theme,
+        (&mut canvas, text),
+        (area, share),
+        (shown.typed, asks),
+    );
     top += FIELD.1.cast_signed() + 8;
     // What each way says: the password's first, under the field. Another
     // is shown only once it has said something, as a key does once it is
@@ -907,6 +950,58 @@ fn paint(
         paint_power(theme, painting, (power, hovered, focused), (size, share))
     });
     (canvas, buttons)
+}
+
+/// Paints the field for the password in `area`, `share` of it in view:
+/// focused if it `asks`, with a dot for each of the characters typed, on
+/// what the theme marks them with if all are chosen, and a line where the
+/// next goes while it is typed into.
+fn paint_field(
+    theme: &Theme,
+    (canvas, text): (&mut Canvas, &mut Text),
+    (area, share): (Area, f32),
+    ((typed, marked), asks): ((usize, bool), bool),
+) {
+    let states = if asks {
+        States::NONE.with(omorfos_config::State::Focused)
+    } else {
+        States::NONE
+    };
+    let field = theme
+        .style(Part::QuestionInput, states)
+        .blended(&Style::NONE, share);
+    canvas.draw_box(area, &field);
+    let dots = "\u{2022}".repeat(typed);
+    let font = theme.font(Part::QuestionInput, states);
+    let inside = omorfos_ui::inset(area, field.inset());
+    let (left_in, top_in, room, tall) = inside;
+    let wide = text.measure(&dots, font).min(room.saturating_sub(1));
+    let ink = if marked {
+        // All of it chosen: the dots on what the theme marks it with.
+        let chosen = theme
+            .style(
+                Part::QuestionInput,
+                states.with(omorfos_config::State::Active),
+            )
+            .blended(&Style::NONE, share);
+        canvas.fill((left_in, top_in, wide, tall), chosen.background);
+        chosen.color
+    } else {
+        field.color
+    };
+    text.draw(canvas, &dots, inside, ink, font);
+    // A line where the next character will go, while the field is typed
+    // into, which stays in the field however much has been typed.
+    if asks && !marked {
+        let margin = tall / 5;
+        let caret = (
+            left_in.saturating_add_unsigned(wide),
+            top_in.saturating_add_unsigned(margin),
+            1,
+            tall.saturating_sub(margin * 2),
+        );
+        canvas.fill(caret, field.color);
+    }
 }
 
 /// Paints the power buttons along the bottom of a screen `size` units
@@ -1077,6 +1172,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
                 ..
             } => shell.pressed(key),
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Released),
+                ..
+            } => shell.repeat.released(key),
+            wl_keyboard::Event::RepeatInfo { rate, delay } => shell.repeat.learn((rate, delay)),
+            wl_keyboard::Event::Leave { .. } => shell.repeat.stop(),
             _ => {}
         }
     }

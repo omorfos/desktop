@@ -12,10 +12,11 @@ use std::io;
 use std::mem;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
+use std::time::Instant;
 
 use omorfos_config::{Color, Part, State, States, Store, Style, Theme};
 use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
-use omorfos_shell::typing::{Key, Typing};
+use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Area, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -201,7 +202,7 @@ pub fn paint(
     theme: &Theme,
     text: &mut Text,
     scale: Scale,
-    (asking, typed, open): (&Asking, &str, bool),
+    (asking, (typed, marked), open): (&Asking, (&str, bool), bool),
     (shift, on_eye, focused): (i32, bool, Option<Button>),
 ) -> Canvas {
     let (width, height) = SURFACE;
@@ -240,12 +241,20 @@ pub fn paint(
     // The text stops short of the eye.
     let within = along((left + 8, top + 6, across - 48, down - 12), by);
     let showing = shown(typed, open || asking.open);
-    text.draw(&mut canvas, &showing, within, field.color, font);
+    let (left, top, room, tall) = within;
+    let at = text.measure(&showing, font).min(room.saturating_sub(1));
+    let ink = if marked {
+        // All of it chosen: what is typed on what the theme marks it with.
+        let chosen = theme.style(Part::QuestionInput, typing.with(State::Active));
+        canvas.fill((left, top, at, tall), chosen.background);
+        chosen.color
+    } else {
+        field.color
+    };
+    text.draw(&mut canvas, &showing, within, ink, font);
     // A line where the next character will go, while it may be typed, which
     // stays in the field however much has been typed.
-    if typed_into {
-        let (left, top, room, tall) = within;
-        let at = text.measure(&showing, font).min(room.saturating_sub(1));
+    if typed_into && !marked {
         let margin = tall / 5;
         let caret = (
             left.saturating_add_unsigned(at),
@@ -365,6 +374,14 @@ struct Shell {
     /// What is typed, and whether it is shown.
     typed: String,
     open: bool,
+    /// Whether all that is typed is chosen, as Ctrl and A choose it, to be
+    /// typed over or taken out at once.
+    marked: bool,
+    /// The key held down, done again as keys repeat.
+    repeat: Repeat,
+    /// The time of the turn being taken, which keys going down are timed
+    /// by.
+    now: Instant,
     answer: Option<Answer>,
     /// Where the pointer is on the box, while it is over it.
     over: Option<(i32, i32)>,
@@ -418,6 +435,7 @@ impl Shell {
 
     /// Goes on with what is typed, which is no longer kept here.
     fn go(&mut self) {
+        self.marked = false;
         let typed = mem::take(&mut self.typed);
         self.answered(Answer::Typed(typed));
         self.stale = true;
@@ -436,8 +454,32 @@ impl Shell {
             return;
         }
         let key = self.typing.pressed(code);
-        // What types, or takes out, is for the field.
-        if matches!(key, Key::Typed(_) | Key::Back) {
+        // Only what types, or takes out, is done again while it is held:
+        // not Enter, Escape or Tab, which do something once.
+        let again = matches!(key, Key::Typed(_) | Key::Back) && self.typing.repeats(code);
+        self.repeat.pressed(code, again, self.now);
+        self.key(key);
+    }
+
+    /// Does again the key held down, if it is due by `now` and something is
+    /// asked that is not being checked.
+    fn repeated(&mut self, now: Instant) {
+        let checking = self
+            .asked
+            .as_ref()
+            .is_none_or(|(asking, _)| asking.checking);
+        if checking {
+            self.repeat.stop();
+        } else if let Some(code) = self.repeat.due(now) {
+            let key = self.typing.pressed(code);
+            self.key(key);
+        }
+    }
+
+    /// Does what `key` does, going down or held.
+    fn key(&mut self, key: Key) {
+        // What types, takes out or chooses is for the field.
+        if matches!(key, Key::Typed(_) | Key::Back | Key::All) {
             self.focused = None;
         }
         match key {
@@ -446,11 +488,24 @@ impl Shell {
                 None => self.go(),
             },
             Key::Escape => self.answered(Answer::Cancel),
+            Key::All => {
+                self.marked = !self.typed.is_empty();
+                self.stale = true;
+            }
             Key::Back => {
-                self.typed.pop();
+                // All of it, if all is chosen.
+                if mem::take(&mut self.marked) {
+                    wipe(&mut self.typed);
+                } else {
+                    self.typed.pop();
+                }
                 self.stale = true;
             }
             Key::Typed(typed) => {
+                // In place of all of it, if all is chosen.
+                if mem::take(&mut self.marked) {
+                    wipe(&mut self.typed);
+                }
                 // No more than a secret may be is kept.
                 let room = LONGEST.saturating_sub(self.typed.chars().count());
                 self.typed.extend(typed.chars().take(room));
@@ -557,7 +612,7 @@ impl Shell {
             theme,
             &mut self.text,
             face.scale,
-            (asking, &self.typed, self.open),
+            (asking, (&self.typed, self.marked), self.open),
             (shift, on_eye, focused),
         );
         picture(&globals.shm, &canvas, handle).map(|buffer| {
@@ -628,6 +683,9 @@ impl Desk {
                 face: None,
                 asked: None,
                 typed: String::new(),
+                marked: false,
+                repeat: Repeat::default(),
+                now: Instant::now(),
                 open: false,
                 answer: None,
                 over: None,
@@ -655,6 +713,8 @@ impl Desk {
     pub fn ask(&mut self, asking: Asking, afresh: bool) -> bool {
         if afresh {
             wipe(&mut self.shell.typed);
+            self.shell.marked = false;
+            self.shell.repeat.stop();
             self.shell.answer = None;
             self.shell.focused = None;
         }
@@ -687,28 +747,40 @@ impl Desk {
         self.shell.answer = None;
         self.shell.open = false;
         self.shell.focused = None;
+        self.shell.marked = false;
+        self.shell.repeat.stop();
         wipe(&mut self.shell.typed);
         self.shell.stale = true;
     }
 
-    /// Does whatever there is to do, without waiting: takes in what the
-    /// compositor said, and shows what should be shown. Returns what the
-    /// user did, once they have.
+    /// Does whatever there is to do by `now`, without waiting: takes in
+    /// what the compositor said, does again a key held down if it is due,
+    /// and shows what should be shown. Returns what the user did, once
+    /// they have.
     ///
     /// # Errors
     ///
     /// Returns an error once the compositor has gone.
-    pub fn turn(&mut self) -> Result<Option<Answer>, Failure> {
+    pub fn turn(&mut self, now: Instant) -> Result<Option<Answer>, Failure> {
         let guard = self.queue.prepare_read();
         let mut socket = [PollFd::new(&self.connection, PollFlags::IN)];
         let there = poll(&mut socket, Some(&Timespec::default())).is_ok_and(|ready| ready > 0);
         let _ = guard.filter(|_| there).map(ReadEventsGuard::read);
+        self.shell.now = now;
         // A failure is kept by the connection and comes back from the
         // flush that ends the turn.
         let _ = self.queue.dispatch_pending(&mut self.shell);
+        self.shell.repeated(now);
         let _ = self.shell.show(&self.queue.handle());
         let flushed = self.connection.flush().map_err(Failure::from);
         flushed.map(|()| self.shell.answer.take())
+    }
+
+    /// When there will next be something to do without anything having
+    /// happened: a key held down due to be done again.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Instant> {
+        self.shell.repeat.deadline()
     }
 }
 
@@ -843,6 +915,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
                 ..
             } => shell.pressed(key),
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Released),
+                ..
+            } => shell.repeat.released(key),
+            wl_keyboard::Event::RepeatInfo { rate, delay } => shell.repeat.learn((rate, delay)),
+            wl_keyboard::Event::Leave { .. } => shell.repeat.stop(),
             _ => {}
         }
     }
@@ -938,14 +1017,14 @@ mod tests {
             &theme,
             &mut text,
             Scale::ONE,
-            (&asking(), "", false),
+            (&asking(), ("", false), false),
             (-SHAKE, false, None),
         );
         let right = paint(
             &theme,
             &mut text,
             Scale::ONE,
-            (&asking(), "", false),
+            (&asking(), ("", false), false),
             (SHAKE, false, None),
         );
         assert_eq!(left.at(12, 12), background);
@@ -1012,7 +1091,7 @@ mod tests {
             &theme,
             &mut text,
             Scale::ONE,
-            (&asking(), "secret", false),
+            (&asking(), ("secret", false), false),
             (0, false, None),
         );
         let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
@@ -1031,7 +1110,7 @@ mod tests {
             &theme,
             &mut text,
             Scale::ONE,
-            (&checking, "secret", true),
+            (&checking, ("secret", false), true),
             (0, false, None),
         );
         let field = |states| theme.style(Part::QuestionInput, states).border.top.color;
@@ -1041,6 +1120,29 @@ mod tests {
         );
         let (x, y) = on((FIELD.0, FIELD.1 + 16));
         assert_ne!(canvas.at(x, y), other.at(x, y));
+    }
+
+    #[test]
+    fn what_is_typed_when_all_of_it_is_chosen_is_drawn_on_the_themes_mark() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let mut drawn = |marked: bool| {
+            paint(
+                &theme,
+                &mut text,
+                Scale::ONE,
+                (&asking(), ("secret", marked), false),
+                (0, false, None),
+            )
+        };
+        let (plain, marked) = (drawn(false), drawn(true));
+        let typing = States::NONE.with(State::Focused);
+        let mark = theme.style(Part::QuestionInput, typing.with(State::Active));
+        // Just inside where the text begins, above its dots.
+        let (left, top, ..) = FIELD;
+        let corner = (left + 9, top + 7, 1, 1);
+        assert_eq!(pixels(&marked, corner), [argb(mark.background)]);
+        assert_ne!(pixels(&plain, corner), [argb(mark.background)]);
     }
 
     #[test]
@@ -1058,7 +1160,7 @@ mod tests {
                 &theme,
                 &mut text,
                 Scale::ONE,
-                (asked, typed, false),
+                (asked, (typed, false), false),
                 (0, false, None),
             )
         };
@@ -1100,7 +1202,7 @@ mod tests {
                 &theme,
                 &mut Text::new(),
                 Scale::ONE,
-                (asked, "", open),
+                (asked, ("", false), open),
                 (0, false, None),
             );
             pixels(&canvas, EYE)
@@ -1126,7 +1228,7 @@ mod tests {
             &theme,
             &mut text,
             Scale::new(2.0),
-            (&asking(), "", false),
+            (&asking(), ("", false), false),
             (0, false, None),
         );
         assert_eq!(large.units(), SURFACE);
@@ -1149,14 +1251,14 @@ mod tests {
             &theme,
             &mut text,
             Scale::ONE,
-            (&asking(), "", false),
+            (&asking(), ("", false), false),
             (0, false, None),
         );
         let over = paint(
             &theme,
             &mut text,
             Scale::ONE,
-            (&asking(), "", false),
+            (&asking(), ("", false), false),
             (0, true, None),
         );
         assert_ne!(pixels(&away, below), pixels(&over, below));
@@ -1169,14 +1271,14 @@ mod tests {
             &theme,
             &mut text,
             Scale::ONE,
-            (&open, "", false),
+            (&open, ("", false), false),
             (0, false, None),
         );
         let quiet = paint(
             &theme,
             &mut text,
             Scale::ONE,
-            (&open, "", false),
+            (&open, ("", false), false),
             (0, true, None),
         );
         assert_eq!(pixels(&still, below), pixels(&quiet, below));

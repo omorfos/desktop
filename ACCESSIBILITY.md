@@ -45,6 +45,9 @@ is, what is not there yet, and how to tell us what stands in your way.
   would end the session is answered no by Enter unless you move to yes.
 - The pictures and windows to share or take a picture of are picked with
   the keyboard as well as the pointer.
+- The fields for a password take Backspace held down, which goes on
+  taking out as keys repeat, and Ctrl and A, or Super and A, to choose
+  all of what was typed; each has a line where the next character goes.
 - Languages that are written through an input method can be.
 
 **The pointer**
@@ -75,9 +78,6 @@ others:
   border and its titlebar in other colours, and nothing else yet; the
   design language asks for a ring as well, which comes with the
   built-in theme's redrawing.
-- **The fields for a password** do not yet repeat Backspace held down,
-  nor choose all that is typed with Ctrl and A; and the lock screen's has
-  no text cursor.
 
 ## Telling us
 

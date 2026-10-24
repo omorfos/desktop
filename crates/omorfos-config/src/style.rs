@@ -109,7 +109,8 @@ pub enum Part {
     /// A button of the question. The one that gives is [`State::Active`].
     QuestionButton,
     /// Where a question asks for a secret to be typed, such as a password:
-    /// [`State::Focused`] while it is typed into.
+    /// [`State::Focused`] while it is typed into, and [`State::Active`]
+    /// what is typed when all of it is chosen, its background behind it.
     QuestionInput,
     /// The switcher on `Alt+Tab`: the box the windows are shown in, in the
     /// middle of the screen.

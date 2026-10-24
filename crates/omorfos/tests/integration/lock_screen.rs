@@ -913,3 +913,103 @@ fn asked_from_the_keyboard_whether_to_go_ahead_enter_says_no_until_moved_to_yes(
     tap(&mut session, key::RETURN);
     assert_eq!(asked(&mut session, &mut lock, there.path(), 1), ["log-out"]);
 }
+
+/// Presses `code` down, or lets it go.
+fn key_down(session: &mut Session, code: Keycode, pressed: bool) {
+    session
+        .compositor_mut()
+        .input(Input::Key { code, pressed }, 0);
+}
+
+/// Lets the lock screen and the compositor talk as [`settle`] does, with
+/// the lock screen's clock at `at` throughout.
+fn settle_at(session: &mut Session, lock: &mut Lock, at: Instant) {
+    for _ in 0..20 {
+        lock.turn(at).unwrap();
+        session.step();
+    }
+}
+
+/// Presses Enter until the lock screen has unlocked: once its helper is
+/// asking, it is handed what is in the field.
+fn entered(session: &mut Session, lock: &mut Lock) {
+    for _ in 0..500 {
+        tap(session, key::RETURN);
+        if settle(session, lock) {
+            return;
+        }
+    }
+    unreachable!("the session was never unlocked");
+}
+
+#[test]
+fn backspace_held_takes_out_one_character_after_another_as_keys_repeat() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = awake(&mut session, there.path(), &[Way::Password]);
+    typed(
+        &mut session,
+        &[key::A, key::T, key::X, key::X, key::X, key::X],
+    );
+    settle(&mut session, &mut lock);
+    // Held: once at once, again 400 ms later, and then thirty times a
+    // second, as the compositor says keys repeat; and no more once let go.
+    let start = Instant::now();
+    let at = |millis| start + Duration::from_millis(millis);
+    key_down(&mut session, key::BACKSPACE, true);
+    settle_at(&mut session, &mut lock, start);
+    // Due again by then; the clock may be due to change first.
+    assert!(
+        lock.deadline().is_some_and(|due| due <= at(400)),
+        "due again"
+    );
+    settle_at(&mut session, &mut lock, at(400));
+    settle_at(&mut session, &mut lock, at(434));
+    key_down(&mut session, key::BACKSPACE, false);
+    settle_at(&mut session, &mut lock, at(434));
+    settle_at(&mut session, &mut lock, at(1000));
+    entered(&mut session, &mut lock);
+    assert!(!session.compositor().is_locked(), "with what was left: atx");
+}
+
+#[test]
+fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = awake(&mut session, there.path(), &[Way::Password]);
+    // Once the helper asks, the field has a line where the next character
+    // goes, at its start.
+    let (start, plain) = (167, 200);
+    let caret = |session: &mut Session| {
+        let row = field(session);
+        row[start] != row[plain]
+    };
+    for _ in 0..500 {
+        settle(&mut session, &mut lock);
+        if caret(&mut session) {
+            break;
+        }
+    }
+    assert!(caret(&mut session), "a line at the start");
+    let chosen = |session: &mut Session, lock: &mut Lock, held: Keycode| {
+        key_down(session, held, true);
+        tap(session, key::A);
+        key_down(session, held, false);
+        settle(session, lock);
+    };
+    // Taken out at once.
+    typed(&mut session, &[key::X, key::X]);
+    settle(&mut session, &mut lock);
+    let two = field(&mut session);
+    chosen(&mut session, &mut lock, key::CONTROL);
+    assert_ne!(field(&mut session), two, "marked as chosen");
+    tap(&mut session, key::BACKSPACE);
+    settle(&mut session, &mut lock);
+    assert!(caret(&mut session), "empty again, the line at the start");
+    // Typed over.
+    typed(&mut session, &[key::Q]);
+    chosen(&mut session, &mut lock, key::SUPER);
+    typed(&mut session, &[key::A, key::T, key::X]);
+    entered(&mut session, &mut lock);
+    assert!(!session.compositor().is_locked(), "with atx alone");
+}

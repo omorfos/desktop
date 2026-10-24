@@ -974,3 +974,87 @@ fn typing_goes_back_to_the_field_and_enter_on_cancel_gives_up() {
     let refused = answer.join().unwrap().unwrap_err();
     assert!(refused.contains("Cancelled"), "{refused}");
 }
+
+/// Presses `code` down, or lets it go.
+fn key_down(session: &mut Session, code: Keycode, pressed: bool) {
+    session
+        .compositor_mut()
+        .input(Input::Key { code, pressed }, 0);
+}
+
+#[test]
+fn backspace_held_takes_out_one_character_after_another_as_keys_repeat() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    for _ in 0..6 {
+        tap(&mut session, key::Q);
+    }
+    // Held until no dot is left where they are drawn, which one press alone
+    // would not do; that more are taken out than there are is nothing.
+    let undotted = |session: &mut Session| {
+        let row = field_row(session);
+        row[12..60].iter().all(|pixel| *pixel == row[150])
+    };
+    session.eventually(|session| !undotted(session));
+    key_down(&mut session, key::BACKSPACE, true);
+    session.eventually(undotted);
+    key_down(&mut session, key::BACKSPACE, false);
+    for code in [key::A, key::T, key::X, key::RETURN] {
+        tap(&mut session, code);
+    }
+    session.eventually(|_| answer.is_finished());
+    assert_eq!(answer.join().unwrap(), Ok(()));
+    assert!(
+        helped(&cookie).ends_with("typed atx\n"),
+        "{}",
+        helped(&cookie)
+    );
+}
+
+#[test]
+fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    let chosen = |session: &mut Session, held: Keycode| {
+        key_down(session, held, true);
+        tap(session, key::A);
+        key_down(session, held, false);
+    };
+    // Taken out at once by Backspace, then typed over: only what is typed
+    // after both is what polkit's helper is given.
+    for code in [key::Q, key::Q] {
+        tap(&mut session, code);
+    }
+    chosen(&mut session, key::CONTROL);
+    tap(&mut session, key::BACKSPACE);
+    tap(&mut session, key::Q);
+    chosen(&mut session, key::SUPER);
+    for code in [key::A, key::T, key::X, key::RETURN] {
+        tap(&mut session, code);
+    }
+    session.eventually(|_| answer.is_finished());
+    assert_eq!(answer.join().unwrap(), Ok(()));
+    assert!(
+        helped(&cookie).ends_with("typed atx\n"),
+        "{}",
+        helped(&cookie)
+    );
+}
