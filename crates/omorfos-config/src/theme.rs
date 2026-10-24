@@ -127,6 +127,22 @@ impl Theme {
         })
     }
 
+    /// Whether the theme is dark: whether it writes its menus in a colour
+    /// brighter than the one it writes them on. What follows the desktop's
+    /// scheme goes by this: the wallpaper, and what applications are told.
+    #[must_use]
+    pub fn dark(&self) -> bool {
+        // How bright a colour looks, weighing green most and blue least as
+        // the eye does. Only for telling which of two is the brighter.
+        let brightness = |color: Color| {
+            2126 * u32::from(color.red)
+                + 7152 * u32::from(color.green)
+                + 722 * u32::from(color.blue)
+        };
+        let menu = self.style(Part::Menu, States::NONE);
+        brightness(menu.color) > brightness(menu.background)
+    }
+
     /// How `part` looks while it is in `states`. States a part cannot be
     /// in make no difference to it.
     #[must_use]
@@ -920,6 +936,18 @@ mod tests {
             Theme::default().style(Part::Titlebar, FOCUSED)
         );
         assert_ne!(theme, Theme::default());
+    }
+
+    #[test]
+    fn a_theme_is_dark_if_its_menus_are_written_light_on_dark() {
+        assert!(Theme::default().dark(), "the built-in one");
+        let light = Theme::parse("menu { color: #000; background: #fff; }").unwrap();
+        assert!(!light.dark());
+        // Green counts for more than blue, as it looks brighter.
+        let green_on_blue = Theme::parse("menu { color: #00c800; background: #0000ff; }");
+        assert!(green_on_blue.unwrap().dark());
+        let nearly = Theme::parse("menu { color: #feffff; background: #ffffff; }");
+        assert!(!nearly.unwrap().dark(), "only what is brighter is dark");
     }
 
     #[test]
