@@ -1,0 +1,20 @@
+[package]
+name = "omorfos-journal"
+description = "Hands what a program the omorfos session starts writes to the systemd journal, under its name"
+keywords = ["wayland", "compositor", "journal"]
+categories = ["os::unix-apis"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

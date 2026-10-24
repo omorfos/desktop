@@ -1944,6 +1944,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-journal"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "omorfos-launcher"
 version = "0.1.0"
 dependencies = [
