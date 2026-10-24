@@ -445,6 +445,7 @@ mod tests {
             autostart: Vec::new(),
             desktops: Vec::new(),
             scoper: None,
+            journal: PathBuf::from("/nowhere/journal"),
         }
     }
 

@@ -200,6 +200,9 @@ pub struct Places {
     /// own that ends with the session: `systemd-run`, where systemd's user
     /// manager runs, and nothing otherwise.
     pub scoper: Option<PathBuf>,
+    /// Where the journal takes what the programs it starts write, each
+    /// under its name; where there is none, they write where this does.
+    pub journal: PathBuf,
 }
 
 impl Places {
@@ -226,6 +229,7 @@ impl Places {
             ),
             scoper: user_manager(variable("XDG_RUNTIME_DIR").as_deref())
                 .then(|| PathBuf::from("systemd-run")),
+            journal: PathBuf::from(omorfos_journal::SOCKET),
             desktops: address("XDG_CURRENT_DESKTOP")
                 .unwrap_or_else(|| "omorfos".to_owned())
                 .split(':')
@@ -337,6 +341,7 @@ mod tests {
             autostart: Vec::new(),
             desktops: Vec::new(),
             scoper: None,
+            journal: PathBuf::from("/nowhere/journal"),
         }
     }
 

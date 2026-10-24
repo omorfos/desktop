@@ -16,6 +16,7 @@ publish.workspace = true
 omorfos-entries = { path = "../omorfos-entries" }
 # Hears from the compositor when the session is locked, and asks it to lock.
 omorfos-ipc = { path = "../omorfos-ipc" }
+omorfos-journal = { path = "../omorfos-journal" }
 # What an action is written as, to the compositor.
 serde_json = "1.0"
 # Already in the tree through the notifications. Speaks to logind, to what

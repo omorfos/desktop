@@ -165,6 +165,14 @@ pub(crate) fn start(places: &Places) -> Result<(), Failure> {
         let (program, arguments) = scoped(places.scoper.as_deref(), &start);
         let mut command = Command::new(program);
         command.args(arguments).stdin(Stdio::null());
+        // What it writes is kept in the journal under its own name, where
+        // there is one, and not in the compositor's log.
+        let named = omorfos_journal::name(start.program.as_ref());
+        let stream = omorfos_journal::stream(&places.journal, &named);
+        let both = stream.and_then(|out| out.try_clone().ok().map(|err| (out, err)));
+        if let Some((out, err)) = both {
+            command.stdout(out).stderr(err);
+        }
         if let Some(directory) = &start.directory {
             command.current_dir(directory);
         }
@@ -316,6 +324,29 @@ mod tests {
     }
 
     #[test]
+    fn what_a_program_started_writes_is_kept_in_the_journal_under_its_name() {
+        let root = tempfile::TempDir::new().unwrap();
+        let directory = root.path().join("autostart");
+        write(&directory, "says.desktop", &["Exec=sh -c \"echo started\""]);
+        let journal = root.path().join("journal");
+        let listener = std::os::unix::net::UnixListener::bind(&journal).unwrap();
+        let places = Places {
+            autostart: vec![directory],
+            desktops: ours(),
+            path: std::ffi::OsString::from("/usr/bin:/bin"),
+            journal,
+            ..Places::from(&|_| None)
+        };
+        start(&places).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let heard = std::io::read_to_string(stream).unwrap();
+        assert_eq!(heard, "sh\n\n6\n0\n0\n0\n0\nstarted\n");
+    }
+
+    #[test]
     fn a_users_entry_takes_the_place_of_the_systems_of_the_same_name() {
         let root = tempfile::TempDir::new().unwrap();
         let (own, system) = (root.path().join("own"), root.path().join("system"));
@@ -364,6 +395,8 @@ mod tests {
             autostart: vec![directory.clone()],
             desktops: ours(),
             path: std::ffi::OsString::from("/usr/bin:/bin"),
+            // No journal: it writes where this does.
+            journal: root.path().join("no-journal"),
             ..Places::from(&|_| None)
         };
         start(&places).unwrap();
@@ -374,12 +407,11 @@ mod tests {
         );
 
         // Started in a scope of its own where there is what makes one,
-        // which here writes down what it was asked, and starts it.
-        let scoper = root.path().join("systemd-run");
-        let script = "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/scoped\"\n\
-                      while [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n";
-        fs::write(&scoper, script).unwrap();
-        fs::set_permissions(&scoper, fs::Permissions::from_mode(0o755)).unwrap();
+        // which here writes down what it was asked, and starts it. It is a
+        // file of the repository's, not one written here: a program run
+        // just after it is written may be refused as busy, while another
+        // test that starts a program holds a copy of it open.
+        let scoper = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/systemd-run");
         let scoping = Places {
             scoper: Some(scoper),
             ..places.clone()

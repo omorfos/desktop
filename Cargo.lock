@@ -2070,6 +2070,7 @@ version = "0.1.0"
 dependencies = [
  "omorfos-entries",
  "omorfos-ipc",
+ "omorfos-journal",
  "serde_json",
  "tempfile",
  "zbus",
