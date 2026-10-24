@@ -14,6 +14,10 @@ fn main() -> ExitCode {
         env::var_os("XDG_CONFIG_HOME").as_deref(),
         env::var_os("XDG_CACHE_HOME").as_deref(),
         env::var_os("HOME").as_deref(),
+        (
+            env::var_os("XDG_DATA_HOME").as_deref(),
+            env::var_os("XDG_DATA_DIRS").as_deref(),
+        ),
     );
     // The session ending is how it is told to stop, and nothing to say.
     let failure = omorfos_shell::ended::quietly(failure).err();

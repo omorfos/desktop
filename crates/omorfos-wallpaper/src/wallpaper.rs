@@ -8,7 +8,9 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Color, Easing, Fit, Part, States, Store, Transition, Watcher};
+use omorfos_config::{
+    Color, Easing, Fit, Part, Picture, Shown, States, Store, Transition, Watcher,
+};
 use omorfos_shell::{picture, pixels};
 use omorfos_ui::{Canvas, Image, Scale};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -57,8 +59,9 @@ pub struct Wallpaper {
 
 impl Wallpaper {
     /// A wallpaper on the Wayland connection `wayland`, as the
-    /// configuration in `config` has it, with pictures named from `home`.
-    /// The pictures of a directory are shuffled from `seed`.
+    /// configuration in `config` has it, with pictures named from `home`,
+    /// and `unnamed` on a screen for which it names neither a picture nor a
+    /// colour. The pictures of a directory are shuffled from `seed`.
     ///
     /// What each screen was given is kept in `cache`, if there is one, to
     /// be given again at once the next time it would be drawn the same; and
@@ -72,6 +75,7 @@ impl Wallpaper {
         config: &Path,
         cache: Option<PathBuf>,
         home: Option<PathBuf>,
+        unnamed: Option<Picture>,
         seed: u64,
     ) -> Result<Self, Failure> {
         let connection = Connection::from_socket(wayland).map_err(Failure::from);
@@ -81,7 +85,12 @@ impl Wallpaper {
             Self {
                 connection,
                 queue,
-                shell: Shell::new(Store::open(config), Cache::new(cache), home, seed),
+                shell: Shell::new(
+                    Store::open(config),
+                    Cache::new(cache),
+                    (home, unnamed),
+                    seed,
+                ),
                 watcher: Watcher::new(config).ok(),
             }
         })
@@ -153,7 +162,8 @@ impl Wallpaper {
             .iter()
             .filter_map(|screen| screen.face.as_ref());
         let fading = faces.filter_map(|face| face.fade.as_ref());
-        let ends = fading.map(|fade| fade.since + lasts);
+        // One not yet begun begins at the next turn, which is due at once.
+        let ends = fading.map(|fade| fade.since.map_or(Duration::ZERO, |since| since + lasts));
         slides.chain(ends).min()
     }
 
@@ -202,12 +212,13 @@ impl Wallpaper {
 
 /// Runs a wallpaper in the session whose Wayland socket is at `wayland`,
 /// as the configuration in `config` has it, keeping what it draws in
-/// `cache`, until it cannot go on. Returns why.
+/// `cache` and showing `unnamed` where it names nothing, until it cannot go
+/// on. Returns why.
 pub(crate) fn run(
     wayland: &Path,
     config: &Path,
     cache: Option<PathBuf>,
-    home: Option<PathBuf>,
+    (home, unnamed): (Option<PathBuf>, Option<Picture>),
 ) -> Failure {
     // Chance enough for a shuffle: what the clock says, which is never the
     // same twice for a person to see.
@@ -220,7 +231,7 @@ pub(crate) fn run(
     let seed = seed as u64;
     let wallpaper = omorfos_shell::connect(wayland)
         .map_err(Failure::from)
-        .and_then(|wayland| Wallpaper::new(wayland, config, cache, home, seed));
+        .and_then(|wayland| Wallpaper::new(wayland, config, cache, home, unnamed, seed));
     match wallpaper {
         Ok(mut wallpaper) => wallpaper.serve(),
         Err(failure) => failure,
@@ -243,6 +254,9 @@ struct Shell {
     /// What each screen was last given.
     cache: Cache,
     home: Option<PathBuf>,
+    /// What a screen shows when the configuration names neither a picture
+    /// nor a colour for it: the wallpapers that come with omorfos.
+    unnamed: Option<Picture>,
     /// What screens are to be given when a directory's next picture is
     /// shown, made ready before it is due.
     ready: Vec<(View, Drawing)>,
@@ -312,8 +326,10 @@ struct Fade {
     /// since a buffer is each surface's own to give back.
     buffer: wl_buffer::WlBuffer,
     after: wl_buffer::WlBuffer,
-    /// Since when.
-    since: Duration,
+    /// Since when: the turn after it was put up, once that has come, so
+    /// that however long what it shows took to draw, it fades in for as
+    /// long as it is to and not for what is left of that.
+    since: Option<Duration>,
 }
 
 /// What a screen shows, at a size and a scale.
@@ -347,7 +363,12 @@ struct Tools<'a> {
 }
 
 impl Shell {
-    fn new(store: Store, cache: Cache, home: Option<PathBuf>, seed: u64) -> Self {
+    fn new(
+        store: Store,
+        cache: Cache,
+        (home, unnamed): (Option<PathBuf>, Option<Picture>),
+        seed: u64,
+    ) -> Self {
         Self {
             compositor: None,
             shm: None,
@@ -361,6 +382,7 @@ impl Shell {
             store,
             cache,
             home,
+            unnamed,
             ready: Vec::new(),
             slides: Vec::new(),
             seed,
@@ -414,8 +436,8 @@ impl Shell {
         let named = self.screens.iter().filter(|screen| !screen.name.is_empty());
         let sources: Vec<(&str, PathBuf)> = named
             .filter_map(|screen| {
-                let picture = wallpaper.on(&screen.name).picture?;
-                Some((screen.name.as_str(), picture.path(self.home.as_deref())?))
+                let source = self.source(&wallpaper.on(&screen.name))?;
+                Some((screen.name.as_str(), source))
             })
             .collect();
         let mut wanted: Vec<PathBuf> = sources.iter().map(|(_, source)| source.clone()).collect();
@@ -449,14 +471,23 @@ impl Shell {
         changed
     }
 
+    /// The picture, or the directory of them, that `shown` names; or, where
+    /// it names neither a picture nor a colour, the one that comes with
+    /// omorfos. Of a pair, the one for a dark desktop while the theme is
+    /// dark, and the other while it is light.
+    fn source(&self, shown: &Shown<'_>) -> Option<PathBuf> {
+        let unnamed = self.unnamed.as_ref().filter(|_| shown.color.is_none());
+        let picture = shown.picture.or(unnamed)?;
+        let dark = self.store.current().theme.dark();
+        picture.path(self.home.as_deref(), dark)
+    }
+
     /// What the screen called `name` is to show: now, or once the pictures
     /// chosen to come next are shown, if `coming`.
     fn wanted(&self, name: &str, coming: bool) -> Option<Wanted> {
         let config = self.store.current();
         let shown = config.general.wallpaper.on(name);
-        let source = shown
-            .picture
-            .and_then(|picture| picture.path(self.home.as_deref()));
+        let source = self.source(&shown);
         let file = source.and_then(|source| {
             let mut slides = self.slides.iter();
             let slides = slides.find(|slides| slides.shows(&source));
@@ -467,10 +498,12 @@ impl Shell {
             };
             slides.and_then(which).map(Path::to_owned)
         });
-        // With neither a picture nor a colour, the compositor's desktop is
-        // shown, and there is nothing to draw.
+        // With neither a picture nor a colour, nor one that comes with
+        // omorfos, the compositor's desktop is shown, and there is nothing
+        // to draw.
         let desktop = config.theme.style(Part::Desktop, States::NONE).background;
-        let named = !name.is_empty() && (shown.picture.is_some() || shown.color.is_some());
+        let something = shown.picture.is_some() || shown.color.is_some() || self.unnamed.is_some();
+        let named = !name.is_empty() && something;
         named.then(|| Wanted {
             picture: file,
             fit: shown.fit,
@@ -551,26 +584,24 @@ impl Shell {
             };
             let drawing = made.or_else(|| recalled().map(Drawing::Kept));
             let drawing = drawing.unwrap_or_else(|| painter.paint(&view, &mut self.problems));
-            face.draw(&tools, &view, &drawing, (now, transition))
-                .map(|()| {
-                    // Kept for the next session, but not so often that a
-                    // directory shown in turn writes a screenful each time.
-                    let due = face
-                        .kept
-                        .is_none_or(|kept| now.saturating_sub(kept) >= KEEP_EVERY);
-                    if let (Drawing::Drawn(canvas), Some((picture, drawn)), true) =
-                        (&drawing, &about, due)
-                    {
-                        face.kept = Some(now);
-                        let pixels = ((canvas.width(), canvas.height()), canvas.bytes());
-                        let kept = self.cache.keep(&screen.name, picture, drawn, pixels);
-                        if let Err(why) = kept {
-                            let problem =
-                                format!("cannot keep what `{}` shows: {why}", screen.name);
-                            self.problems.push(problem);
-                        }
+            face.draw(&tools, &view, &drawing, transition).map(|()| {
+                // Kept for the next session, but not so often that a
+                // directory shown in turn writes a screenful each time.
+                let due = face
+                    .kept
+                    .is_none_or(|kept| now.saturating_sub(kept) >= KEEP_EVERY);
+                if let (Drawing::Drawn(canvas), Some((picture, drawn)), true) =
+                    (&drawing, &about, due)
+                {
+                    face.kept = Some(now);
+                    let pixels = ((canvas.width(), canvas.height()), canvas.bytes());
+                    let kept = self.cache.keep(&screen.name, picture, drawn, pixels);
+                    if let Err(why) = kept {
+                        let problem = format!("cannot keep what `{}` shows: {why}", screen.name);
+                        self.problems.push(problem);
                     }
-                })
+                }
+            })
         });
         drawn.map(|()| {
             // What was made ready for the pictures before has been shown,
@@ -721,14 +752,14 @@ impl Face {
     }
 
     /// Shows `drawing`, as what `view` is: faded in over what it showed
-    /// before, as `fade` says from `now`, if it showed something at the same
-    /// size and scale; at once otherwise.
+    /// before, as `fade` says from the next turn, if it showed something at
+    /// the same size and scale; at once otherwise.
     fn draw(
         &mut self,
         tools: &Tools<'_>,
         view: &View,
         drawing: &Drawing,
-        (now, fade): (Duration, Transition),
+        fade: Transition,
     ) -> io::Result<()> {
         let (wanted, size, scale) = view;
         let buffer = || match drawing {
@@ -743,7 +774,7 @@ impl Face {
         let fades = placed == Some((*size, *scale)) && fade.lasts() > Duration::ZERO;
         // One fading in already is done with at once, for this to fade in
         // over it.
-        self.step(Duration::MAX, fade, tools.handle);
+        self.finish();
         let units = (size.0.cast_signed(), size.1.cast_signed());
         // Fading in, it is given twice: once for the surface it fades in
         // on and once for the screen's own, which shows it after.
@@ -754,7 +785,7 @@ impl Face {
         given.map(|(buffer, after)| {
             match after {
                 Some(after) => {
-                    self.fade = Some(Fade::open(tools, &self.surface, units, buffer, after, now));
+                    self.fade = Some(Fade::open(tools, &self.surface, units, buffer, after));
                 }
                 None => self.put(buffer, units),
             }
@@ -778,15 +809,27 @@ impl Face {
     /// by `now`, and asks to hear once the compositor has shown it; or, if
     /// it has faded in all the way, shows it on the screen's own surface.
     fn step(&mut self, now: Duration, fade: Transition, handle: &QueueHandle<Shell>) {
+        let Some(mut fading) = self.fade.take() else {
+            return;
+        };
+        let since = *fading.since.get_or_insert(now);
+        let progress = fade.progress(now.saturating_sub(since));
+        self.fade = Some(fading);
+        if progress < 1.0 {
+            self.fade
+                .iter()
+                .for_each(|fading| fading.show(progress, handle));
+        } else {
+            self.finish();
+        }
+    }
+
+    /// Shows what is fading in, if anything is, wholly on the screen's own
+    /// surface at once, and lets the surface it faded in on go.
+    fn finish(&mut self) {
         let Some(fading) = self.fade.take() else {
             return;
         };
-        let progress = fade.progress(now.saturating_sub(fading.since));
-        if progress < 1.0 {
-            fading.show(progress, handle);
-            self.fade = Some(fading);
-            return;
-        }
         let (width, height) = self
             .shown
             .as_ref()
@@ -809,7 +852,6 @@ impl Fade {
         (width, height): (i32, i32),
         buffer: wl_buffer::WlBuffer,
         after: wl_buffer::WlBuffer,
-        since: Duration,
     ) -> Self {
         let handle = tools.handle;
         let surface = tools.compositor.create_surface(handle, ());
@@ -830,7 +872,7 @@ impl Fade {
             alpha,
             buffer,
             after,
-            since,
+            since: None,
         };
         fade.show(0.0, handle);
         // Where it is on the screen's surface comes with that one's commit.

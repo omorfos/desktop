@@ -90,13 +90,91 @@ pub struct Shown<'a> {
     pub color: Option<Color>,
 }
 
+/// A picture, or a directory of them: the same whether the desktop is
+/// dark or light, or one for each, written as `dark` and `light`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Picture {
+    /// The same in either.
+    One(PicturePlace),
+    /// One for a dark desktop and one for a light one.
+    Paired {
+        /// Shown while the desktop is dark.
+        dark: PicturePlace,
+        /// Shown while it is light.
+        light: PicturePlace,
+    },
+}
+
+impl Picture {
+    /// One for each, at paths already found: the pictures that come with
+    /// omorfos, which are shown when none is named.
+    #[must_use]
+    pub const fn paired(dark: PathBuf, light: PathBuf) -> Self {
+        Self::Paired {
+            dark: PicturePlace(dark),
+            light: PicturePlace(light),
+        }
+    }
+
+    /// Where it is while the desktop is `dark`, or light, given the home
+    /// directory: nothing if it is in the home directory and there is none.
+    #[must_use]
+    pub fn path(&self, home: Option<&Path>, dark: bool) -> Option<PathBuf> {
+        let place = match self {
+            Self::One(place) => place,
+            Self::Paired { dark: shown, .. } if dark => shown,
+            Self::Paired { light, .. } => light,
+        };
+        place.path(home)
+    }
+}
+
+impl<'de> Deserialize<'de> for Picture {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        /// The two, each by its name.
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Pair {
+            dark: PicturePlace,
+            light: PicturePlace,
+        }
+
+        /// A path, or a pair of them.
+        struct Written;
+
+        impl<'de> de::Visitor<'de> for Written {
+            type Value = Picture;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a path, or `dark` and `light` with a path for each")
+            }
+
+            fn visit_str<E: de::Error>(self, text: &str) -> Result<Picture, E> {
+                PicturePlace::try_from(text.to_owned())
+                    .map(Picture::One)
+                    .map_err(E::custom)
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Picture, A::Error> {
+                let pair = Pair::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(Picture::Paired {
+                    dark: pair.dark,
+                    light: pair.light,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(Written)
+    }
+}
+
 /// Where a picture is, or a directory of them: from the root, or from the
 /// home directory.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(try_from = "String")]
-pub struct Picture(PathBuf);
+pub struct PicturePlace(PathBuf);
 
-impl Picture {
+impl PicturePlace {
     /// Where it is, given the home directory: nothing if it is in the home
     /// directory and there is none.
     #[must_use]
@@ -108,7 +186,7 @@ impl Picture {
     }
 }
 
-impl TryFrom<String> for Picture {
+impl TryFrom<String> for PicturePlace {
     type Error = String;
 
     fn try_from(text: String) -> Result<Self, Self::Error> {
@@ -251,20 +329,49 @@ mod tests {
         let home = Some(Path::new("/home/someone"));
         let wallpaper = parse("picture: ~/Pictures/hills.jpg").unwrap();
         let picture = wallpaper.picture.unwrap();
-        assert_eq!(
-            picture.path(home),
-            Some(PathBuf::from("/home/someone/Pictures/hills.jpg"))
-        );
-        assert_eq!(picture.path(None), None, "no home to be in");
+        for dark in [true, false] {
+            assert_eq!(
+                picture.path(home, dark),
+                Some(PathBuf::from("/home/someone/Pictures/hills.jpg")),
+                "the same, dark or light"
+            );
+        }
+        assert_eq!(picture.path(None, true), None, "no home to be in");
         let wallpaper = parse("picture: /usr/share/backgrounds").unwrap();
         assert_eq!(
-            wallpaper.picture.unwrap().path(None),
+            wallpaper.picture.unwrap().path(None, false),
             Some(PathBuf::from("/usr/share/backgrounds"))
         );
         for relative in ["Pictures/hills.jpg", "~someone/hills.jpg", "''"] {
             let error = parse(&format!("picture: {relative}")).unwrap_err();
             assert!(error.contains("`/…` or `~/…`"), "{relative}: {error}");
         }
+    }
+
+    #[test]
+    fn a_picture_may_be_one_for_a_dark_desktop_and_one_for_a_light_one() {
+        let home = Some(Path::new("/home/someone"));
+        let wallpaper = parse("picture: { dark: ~/night.png, light: /srv/day }").unwrap();
+        let picture = wallpaper.picture.unwrap();
+        assert_eq!(
+            picture.path(home, true),
+            Some(PathBuf::from("/home/someone/night.png"))
+        );
+        assert_eq!(picture.path(home, false), Some(PathBuf::from("/srv/day")));
+        let installed = Picture::paired("/a/dark.png".into(), "/a/light.png".into());
+        assert_eq!(
+            installed.path(None, false),
+            Some(PathBuf::from("/a/light.png"))
+        );
+        // Each is a path as one alone is, and both are needed.
+        let relative = parse("picture: { dark: night.png, light: /srv/day }").unwrap_err();
+        assert!(relative.contains("`/…` or `~/…`"), "{relative}");
+        let half = parse("picture: { dark: ~/night.png }").unwrap_err();
+        assert!(half.contains("light"), "{half}");
+        let other = parse("picture: { dark: /a, light: /b, dusk: /c }").unwrap_err();
+        assert!(other.contains("dusk"), "{other}");
+        let number = parse("picture: 5").unwrap_err();
+        assert!(number.contains("`dark` and `light`"), "{number}");
     }
 
     #[test]

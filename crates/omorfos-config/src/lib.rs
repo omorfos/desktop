@@ -55,5 +55,7 @@ pub use store::Store;
 pub use style::{Edges, Line, Part, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
 pub use transition::{Easing, Transition};
-pub use wallpaper::{Fit, Order, Picture, ScreenWallpaper, Screens, Shown, Wallpaper};
+pub use wallpaper::{
+    Fit, Order, Picture, PicturePlace, ScreenWallpaper, Screens, Shown, Wallpaper,
+};
 pub use watcher::Watcher;

@@ -453,9 +453,33 @@
       "type": "object"
     },
     "Picture": {
-      "description": "A path from the root, or from the home directory as `~/`.",
-      "pattern": "^(/|~/)",
-      "type": "string"
+      "description": "A picture or a directory of them, the same whether the desktop is dark or light, or one for each.",
+      "oneOf": [
+        {
+          "description": "A path from the root, or from the home directory as `~/`.",
+          "pattern": "^(/|~/)",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One for a dark desktop and one for a light one.",
+          "properties": {
+            "dark": {
+              "pattern": "^(/|~/)",
+              "type": "string"
+            },
+            "light": {
+              "pattern": "^(/|~/)",
+              "type": "string"
+            }
+          },
+          "required": [
+            "dark",
+            "light"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Place": {
       "description": "Where a screen stands next to the one listed before it.",

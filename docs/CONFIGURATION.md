@@ -920,8 +920,11 @@ Like `autostart`, this takes effect the next time you log in.
 ## The wallpaper
 
 `omorfos-wallpaper` shows a picture or a colour behind everything on each
-screen. Until you name one, it shows nothing, and the theme's `desktop`
-is what is behind the windows.
+screen. Until you name one, it shows the wallpaper that comes with
+omorfos, in `share/backgrounds/omorfos/`: the dark one while the theme is
+dark and the light one while it is light, changing as the theme does.
+Without those installed, it shows nothing, and the theme's `desktop` is
+what is behind the windows.
 
 ```yaml
 wallpaper:
@@ -936,6 +939,21 @@ each for `every` seconds (5 to a week), by their names or, with `order:
 shuffled`, in any order, a different one each time through. The directory
 is looked at again each time, so a picture put there joins in; those in
 directories within it do not.
+
+A picture may also be one for a dark desktop and one for a light one,
+each a file or a directory, and the wallpaper shows the one that goes with
+the theme, changing over when the theme does:
+
+```yaml
+wallpaper:
+  picture:
+    dark: ~/Pictures/night.jpg
+    light: ~/Pictures/day.jpg
+```
+
+The desktop is dark while the theme writes its menus in a colour brighter
+than the one it writes them on, as the built-in theme does; this is what
+applications are told too, so that they follow it.
 
 `fit` says how a picture is laid on the screen:
 
@@ -986,7 +1004,10 @@ is in it is made again.
 
 A change of picture, colour or fit fades from the old to the new over
 `fade` milliseconds, eased in and out: 1000 unless you say otherwise, up
-to 10000, and 0 for at once. The first picture of a session is shown at
+to 10000, and 0 for at once. So does going from the dark picture of a
+pair to the light one as the theme changes. The fade begins once the new
+picture is ready, so a large one that takes a while to read still fades
+in for all of that time. The first picture of a session is shown at
 once, as is one drawn again because a screen changed size or scale.
 
 To use another program for it, such as `swaybg`, turn it off and start

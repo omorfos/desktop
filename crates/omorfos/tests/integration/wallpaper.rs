@@ -33,6 +33,16 @@ fn joined(session: &mut Session, home: Option<&Path>) -> Wallpaper {
 /// A wallpaper in the session as [`joined`] is, which keeps what it draws
 /// in `cache`.
 fn keeping(session: &mut Session, cache: Option<&Path>, home: Option<&Path>) -> Wallpaper {
+    installed(session, (cache, home), None)
+}
+
+/// A wallpaper in the session as [`keeping`] is, with `unnamed` the
+/// wallpapers that came with omorfos.
+fn installed(
+    session: &mut Session,
+    (cache, home): (Option<&Path>, Option<&Path>),
+    unnamed: Option<omorfos_config::Picture>,
+) -> Wallpaper {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
@@ -40,7 +50,7 @@ fn keeping(session: &mut Session, cache: Option<&Path>, home: Option<&Path>) -> 
         .unwrap();
     let config = session.config.path().to_owned();
     let (cache, home) = (cache.map(Path::to_owned), home.map(Path::to_owned));
-    Wallpaper::new(theirs, &config, cache, home, 0).unwrap()
+    Wallpaper::new(theirs, &config, cache, home, unnamed, 0).unwrap()
 }
 
 /// Lets the wallpaper and the compositor talk, `now` into the wallpaper's
@@ -96,6 +106,112 @@ fn without_a_picture_or_a_colour_the_desktop_shows_and_nothing_is_put_up() {
     assert_eq!(corners(&session.draw(), (WIDTH, HEIGHT)), [BACKGROUND; 4]);
     assert!(wallpaper.deadline().is_none());
     assert_eq!(wallpaper.problems(), [] as [String; 0]);
+}
+
+/// A theme whose menus are written dark on light, which makes the desktop
+/// light.
+const LIGHT: &str = "menu { color: #000000; background: #ffffff; }\n";
+
+#[test]
+fn with_nothing_named_the_wallpaper_that_came_with_omorfos_is_shown_as_dark_or_light() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    let (dark, light) = (
+        pictures.path().join("dark.png"),
+        pictures.path().join("light.png"),
+    );
+    png(&dark, (1, 1), |_, _| RED);
+    png(&light, (1, 1), |_, _| BLUE);
+    let unnamed = omorfos_config::Picture::paired(dark, light);
+    let mut session = Session::with_config(&[("config.yaml", "wallpaper: { fade: 0 }\n")]);
+    let program = RefCell::new(installed(&mut session, (None, None), Some(unnamed)));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    assert_eq!(
+        session.draw().at(10, 10),
+        RED,
+        "the dark one, as the theme is"
+    );
+    let turned = |session: &mut Session, colour: u32| {
+        program.borrow_mut().turn(Duration::ZERO).unwrap();
+        session.step();
+        session.draw().at(10, 10) == colour
+    };
+    // The light one once the theme is light, and back.
+    session.write_config("theme.css", LIGHT);
+    session.eventually(|session| turned(session, BLUE));
+    session.write_config("theme.css", "");
+    session.eventually(|session| turned(session, RED));
+    // A colour named is shown in its place.
+    session.write_config("config.yaml", "wallpaper: { color: '#00ff00', fade: 0 }\n");
+    session.eventually(|session| turned(session, GREEN));
+}
+
+#[test]
+fn going_from_dark_to_light_the_one_fades_into_the_other_however_long_it_took_to_draw() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    let (dark, light) = (
+        pictures.path().join("dark.png"),
+        pictures.path().join("light.png"),
+    );
+    png(&dark, (1, 1), |_, _| RED);
+    png(&light, (1, 1), |_, _| GREEN);
+    let unnamed = omorfos_config::Picture::paired(dark, light);
+    let mut session = Session::with_config(&[("config.yaml", "wallpaper: { fade: 1000 }\n")]);
+    let program = RefCell::new(installed(&mut session, (None, None), Some(unnamed)));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    assert_eq!(session.draw().at(10, 10), RED);
+    let colour = |session: &mut Session, millis: u64| {
+        program
+            .borrow_mut()
+            .turn(Duration::from_millis(millis))
+            .unwrap();
+        session.step();
+        let [_, red, green, _] = session.draw().at(10, 10).to_be_bytes();
+        (red, green)
+    };
+    // Heard at a second in, the light one is drawn then, and its fade
+    // is to begin at the next turn.
+    session.write_config("theme.css", LIGHT);
+    session.eventually(|session| {
+        colour(session, 1000);
+        program.borrow().deadline() == Some(Duration::ZERO)
+    });
+    // That comes most of a second later, as it does after a large picture
+    // has been read and laid on the screen. The fade begins then, and takes
+    // all of its second, rather than being over before it is seen.
+    assert_eq!(colour(&mut session, 1900), (255, 0), "it begins");
+    assert_eq!(
+        program.borrow().deadline(),
+        Some(Duration::from_millis(2900))
+    );
+    let (red, green) = colour(&mut session, 2400);
+    assert!(
+        red.abs_diff(128) < 24 && green.abs_diff(128) < 24,
+        "halfway: {red} {green}"
+    );
+    assert_eq!(colour(&mut session, 2900), (0, 255), "and done");
+}
+
+#[test]
+fn a_picture_named_for_a_dark_desktop_and_one_for_a_light_one_follow_the_theme() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    let (dark, light) = (
+        pictures.path().join("dark.png"),
+        pictures.path().join("light.png"),
+    );
+    png(&dark, (1, 1), |_, _| GREEN);
+    png(&light, (1, 1), |_, _| WHITE);
+    let config = format!(
+        "wallpaper: {{ picture: {{ dark: '{}', light: '{}' }}, fade: 0 }}\n",
+        dark.display(),
+        light.display()
+    );
+    for (theme, shown) in [("", GREEN), (LIGHT, WHITE)] {
+        let files = [("config.yaml", config.as_str()), ("theme.css", theme)];
+        let mut session = Session::with_config(&files);
+        let mut wallpaper = joined(&mut session, None);
+        settle(&mut session, &mut wallpaper, Duration::ZERO);
+        assert_eq!(session.draw().at(10, 10), shown);
+    }
 }
 
 #[test]
@@ -301,7 +417,8 @@ fn the_wallpaper_runs_by_itself_in_the_session_it_is_started_in() {
     let wallpaper = std::thread::spawn(move || {
         let runtime = Some(runtime.as_os_str());
         let display = Some(std::ffi::OsStr::new("wayland-test"));
-        omorfos_wallpaper::start(runtime, display, runtime, runtime, None)
+        // Data of its own, without the wallpapers that come with omorfos.
+        omorfos_wallpaper::start(runtime, display, runtime, runtime, None, (runtime, runtime))
     });
 
     session.eventually(|session| session.draw().at(10, 10) == RED);
@@ -321,7 +438,7 @@ fn the_wallpaper_says_why_when_there_is_no_session_where_it_is_told() {
     let directory = tempfile::TempDir::new().unwrap();
     let runtime = Some(directory.path().as_os_str());
     let display = Some(std::ffi::OsStr::new("wayland-none"));
-    let failure = omorfos_wallpaper::start(runtime, display, runtime, runtime, None);
+    let failure = omorfos_wallpaper::start(runtime, display, runtime, runtime, None, (None, None));
     assert_ne!(failure.to_string(), "");
 }
 

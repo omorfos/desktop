@@ -205,9 +205,25 @@ impl JsonSchema for Picture {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({
-            "description": "A path from the root, or from the home directory as `~/`.",
-            "type": "string",
-            "pattern": "^(/|~/)",
+            "description": "A picture or a directory of them, the same whether the desktop is \
+                dark or light, or one for each.",
+            "oneOf": [
+                {
+                    "description": "A path from the root, or from the home directory as `~/`.",
+                    "type": "string",
+                    "pattern": "^(/|~/)",
+                },
+                {
+                    "description": "One for a dark desktop and one for a light one.",
+                    "type": "object",
+                    "properties": {
+                        "dark": { "type": "string", "pattern": "^(/|~/)" },
+                        "light": { "type": "string", "pattern": "^(/|~/)" },
+                    },
+                    "required": ["dark", "light"],
+                    "additionalProperties": false,
+                },
+            ],
         })
     }
 }
