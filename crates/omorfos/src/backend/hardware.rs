@@ -327,6 +327,9 @@ fn set_components(compositor: &mut Compositor) {
     if super::user_manager(env::var_os("XDG_RUNTIME_DIR").as_deref()) {
         compositor.set_scoper("systemd-run");
     }
+    // What the programs started in it write is kept in the journal, where
+    // there is one; nested, the outer desktop's log is the place for it.
+    compositor.set_journal(omorfos_journal::SOCKET);
 }
 
 /// Tells whatever else starts programs for the user about this session,

@@ -70,6 +70,36 @@ fn the_login_screen_entry_starts_omorfos_under_the_name_programs_are_told() {
 
 /// A program that stands in for the panel, and leaves a mark in the
 /// session's directory when it is started.
+#[test]
+fn what_the_programs_started_in_the_session_write_is_kept_in_the_journal_by_name() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let socket = directory.path().join("journal");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let config = "autostart:\n  - [sh, -c, 'echo started']\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    session.compositor_mut().set_journal(&socket);
+    session.compositor_mut().autostart();
+    let spawn: Action = serde_json::from_value(json!({ "spawn": ["printf", "asked\\n"] })).unwrap();
+    session.compositor_mut().perform(&spawn);
+    let mut heard: Vec<String> = (0..2)
+        .map(|_| {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                .unwrap();
+            std::io::read_to_string(stream).unwrap()
+        })
+        .collect();
+    heard.sort();
+    assert_eq!(
+        heard,
+        [
+            "printf\n\n6\n0\n0\n0\n0\nasked\n",
+            "sh\n\n6\n0\n0\n0\n0\nstarted\n"
+        ]
+    );
+}
+
 fn stand_in_panel() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/panel")
 }

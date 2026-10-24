@@ -1404,7 +1404,8 @@ impl Compositor {
     /// understand. An ordinary program finds the socket by its name and is
     /// given nothing to read.
     fn start(&mut self, program: &OsStr, arguments: &[String], roles: Roles) -> Option<u32> {
-        self.launch(program, arguments, (roles, false))
+        let named = omorfos_journal::name(program);
+        self.launch(program, arguments, (roles, false), Some(&named))
     }
 
     /// Starts a program as [`Compositor::start`] does, and, if it is
@@ -1415,10 +1416,20 @@ impl Compositor {
         program: &OsStr,
         arguments: &[String],
         (roles, heard): (Roles, bool),
+        journalled: Option<&str>,
     ) -> Option<u32> {
         let mut process = std::process::Command::new(program);
         if heard {
             process.stdout(Stdio::piped());
+        }
+        // What a program writes is kept in the journal under its name,
+        // where there is one, and not in the compositor's own log.
+        let socket = self.autostarted.journal.as_deref();
+        let stream = socket.zip(journalled);
+        let stream = stream.and_then(|(socket, named)| omorfos_journal::stream(socket, named));
+        let both = stream.and_then(|out| out.try_clone().ok().map(|err| (out, err)));
+        if let Some((out, err)) = both {
+            process.stdout(out).stderr(err);
         }
         // The token says the window it opens was asked for.
         let ticket = self.ticket();
@@ -1524,6 +1535,15 @@ impl Compositor {
         self.autostarted.scoper = Some(program.into());
     }
 
+    /// Has what the programs started in the session write kept in the
+    /// journal that takes streams at `socket`, each under its name, and not
+    /// in the compositor's own log. Until this is called, or where there is
+    /// no journal there, they write where the compositor does. Its own
+    /// programs, the panel and the rest, write there all the same.
+    pub fn set_journal(&mut self, socket: impl Into<PathBuf>) {
+        self.autostarted.journal = Some(socket.into());
+    }
+
     /// Says where the program that asks for secrets is, polkit's agent for
     /// the session: a name to look up in `PATH`, or a path. It is then
     /// started with the session, with the role to ask in the sealed
@@ -1569,7 +1589,7 @@ impl Compositor {
                 let program = component.program.as_os_str();
                 let heard = component.kind == Program::Recorder;
                 let how = (component.kind.roles(), heard);
-                component.process = self.launch(program, &[], how);
+                component.process = self.launch(program, &[], how, None);
             }
         }
         self.components = components;
@@ -1580,7 +1600,10 @@ impl Compositor {
         for command in &config.general.autostart {
             let run = &command.run;
             let (program, arguments) = scoped(scoper.as_deref(), run.program(), run.arguments());
-            self.start(program.as_ref(), &arguments, Roles::named(&command.may));
+            // Known by its own name, whatever starts it.
+            let named = omorfos_journal::name(run.program().as_ref());
+            let roles = (Roles::named(&command.may), false);
+            self.launch(program.as_ref(), &arguments, roles, Some(&named));
         }
         // Then what the desktop entries in `~/.config/autostart` and the
         // system's say is to start, which the program that watches over the
@@ -1595,6 +1618,7 @@ impl Compositor {
                 session.as_os_str(),
                 &["autostart".to_owned()],
                 (Roles::NONE, false),
+                None,
             );
         }
     }
@@ -1624,7 +1648,7 @@ impl Compositor {
                 let program = component.program.as_os_str();
                 let heard = component.kind == Program::Recorder;
                 let how = (component.kind.roles(), heard);
-                component.process = self.launch(program, &[], how);
+                component.process = self.launch(program, &[], how, None);
             } else {
                 self.problems.push(format!(
                     "`{}` keeps stopping, and will not be started again until you log in",
@@ -3237,12 +3261,14 @@ enum Ending {
 /// asked to, before the session ends without them.
 const ENDING: Duration = Duration::from_secs(2);
 
-/// Whether the programs to start with the session have been, and what
-/// starts them in a scope of their own.
+/// Whether the programs to start with the session have been, what starts
+/// them in a scope of their own, and where what they write is kept.
 #[derive(Debug, Default)]
 struct Autostarted {
     done: bool,
     scoper: Option<PathBuf>,
+    /// Where the journal takes what programs write, once known.
+    journal: Option<PathBuf>,
 }
 
 /// The program and arguments that start `program` with `arguments`: by
