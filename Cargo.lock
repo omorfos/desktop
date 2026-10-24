@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cosmic-text",
  "omorfos-ask",
@@ -1880,7 +1880,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-ask"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-shell",
@@ -1895,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-clipboard"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-shell",
  "wayland-client",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-config"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "inotify",
  "schemars",
@@ -1915,18 +1915,18 @@ dependencies = [
 
 [[package]]
 name = "omorfos-core"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "omorfos-entries"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "omorfos-icons"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-ui",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-ipc"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1946,14 +1946,14 @@ dependencies = [
 
 [[package]]
 name = "omorfos-journal"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "omorfos-launcher"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-entries",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-lock"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "nonstick",
  "omorfos-config",
@@ -1987,7 +1987,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-notifications"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-icons",
@@ -2004,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-panel"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-ipc",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-picker"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-shell",
@@ -2033,14 +2033,14 @@ dependencies = [
 
 [[package]]
 name = "omorfos-pipewire"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "pipewire",
 ]
 
 [[package]]
 name = "omorfos-recording"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "inotify",
  "pipewire",
@@ -2050,7 +2050,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-screenshot"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "jiff",
  "omorfos-config",
@@ -2066,7 +2066,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-session"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-entries",
  "omorfos-ipc",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-shell"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "jiff",
  "omorfos-ui",
@@ -2090,14 +2090,14 @@ dependencies = [
 
 [[package]]
 name = "omorfos-shm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "smithay",
 ]
 
 [[package]]
 name = "omorfos-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cosmic-text",
  "omorfos-config",
@@ -2105,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "omorfos-wallpaper"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-config",
  "omorfos-shell",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "omorfosctl"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "omorfos-ipc",
  "serde_json",
@@ -3856,7 +3856,7 @@ checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
 
 [[package]]
 name = "xdg-desktop-portal-omorfos"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "gbm",
  "omorfos-config",
