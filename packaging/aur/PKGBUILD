@@ -9,7 +9,7 @@ pkgrel=1
 pkgdesc='A lightweight Wayland compositor'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
-license=('MIT')
+license=('MIT' 'CC-BY-SA-4.0')
 depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire' 'libxkbcommon' 'mesa' 'pam'
          'seatd' 'systemd-libs' 'ttf-font')
 makedepends=('cargo' 'clang')
@@ -37,13 +37,16 @@ build() {
   cd "desktop-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos
+  cargo build --frozen --release -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos -p omorfos-brand
+  # The icon and the wallpapers, drawn as omorfos is built.
+  target/release/omorfos-brand target/release/share
 }
 
 package() {
   cd "desktop-$pkgver"
   install -Dm755 target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 LICENSE LICENSE-pictures -t "$pkgdir/usr/share/licenses/$pkgname/"
+  cp -r target/release/share/icons target/release/share/backgrounds "$pkgdir/usr/share/"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"
   install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"

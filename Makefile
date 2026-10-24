@@ -19,12 +19,17 @@ DATADIR ?= /usr/share
 SYSTEMD_USER_DIR ?= /usr/lib/systemd/user
 PAM_DIR ?= /etc/pam.d
 DOC_DIR ?= $(PREFIX)/share/doc/omorfos
+# Where the icon and the wallpapers go, which programs find through
+# XDG_DATA_DIRS, /usr/local/share among them.
+SHARE_DIR ?= $(PREFIX)/share
 
 PROGRAMS = omorfos omorfosctl omorfos-panel omorfos-launcher omorfos-notifications \
 	omorfos-screenshot omorfos-clipboard omorfos-recording omorfos-session omorfos-ask \
 	omorfos-wallpaper omorfos-lock xdg-desktop-portal-omorfos
 PAM_SERVICES = omorfos-lock omorfos-lock-fingerprint omorfos-lock-key
 BUILT = target/$(PROFILE)
+# The pictures of the brand, drawn by omorfos-brand as omorfos is built.
+PICTURES = $(BUILT)/share
 
 .PHONY: all nightly build install uninstall
 
@@ -34,7 +39,14 @@ nightly:
 	$(MAKE) build PROFILE=nightly
 
 build:
-	cargo build --profile $(PROFILE) --locked $(addprefix -p ,$(PROGRAMS))
+	cargo build --profile $(PROFILE) --locked $(addprefix -p ,$(PROGRAMS)) -p omorfos-brand
+	$(MAKE) $(PICTURES).drawn
+
+# Drawn again only when the program that draws them has changed.
+$(PICTURES).drawn: $(BUILT)/omorfos-brand
+	rm -rf "$(PICTURES)"
+	"$(BUILT)/omorfos-brand" "$(PICTURES)"
+	touch "$@"
 
 install:
 	@for program in $(PROGRAMS); do \
@@ -43,6 +55,7 @@ install:
 			exit 1; \
 		}; \
 	done
+	@[ -e "$(PICTURES).drawn" ] || { echo "$(PICTURES) is not drawn: run make$(if $(filter nightly,$(PROFILE)), nightly,) first, as yourself" >&2; exit 1; }
 	install -d "$(DESTDIR)$(BINDIR)"
 	install -m755 $(addprefix $(BUILT)/,$(PROGRAMS)) "$(DESTDIR)$(BINDIR)/"
 	install -Dm644 packaging/omorfos.desktop "$(DESTDIR)$(DATADIR)/wayland-sessions/omorfos.desktop"
@@ -52,6 +65,8 @@ install:
 	install -Dm644 README.md "$(DESTDIR)$(DOC_DIR)/README.md"
 	install -Dm644 docs/CONFIGURATION.md "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md"
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
+	install -Dm644 LICENSE-pictures "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
+	cd "$(PICTURES)" && find icons backgrounds -type f -exec install -Dm644 {} "$(DESTDIR)$(SHARE_DIR)/{}" \;
 	@# The PAM services are the system's once installed, and an
 	@# administrator's changes to them are kept.
 	@for service in $(PAM_SERVICES); do \
@@ -69,5 +84,9 @@ uninstall:
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/portals/omorfos.portal"
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
-	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
+	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css" "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
+	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg
+	rm -f "$(DESTDIR)$(SHARE_DIR)"/backgrounds/omorfos/prism-*.png
+	@# Left if there is anything else in it, as a wallpaper someone put there.
+	-rmdir "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos" 2>/dev/null
 	@echo "The PAM services in $(DESTDIR)$(PAM_DIR) are left, as an administrator may have changed them: $(PAM_SERVICES)"

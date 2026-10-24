@@ -49,6 +49,11 @@ assets = [
     ["target/release/omorfos-ask", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
+    # The icon and the wallpapers, drawn by omorfos-brand as omorfos is
+    # built, under the licence of the pictures.
+    ["target/release/share/icons/**/*", "usr/share/icons/", "644"],
+    ["target/release/share/backgrounds/**/*", "usr/share/backgrounds/", "644"],
+    ["../../LICENSE-pictures", "usr/share/doc/omorfos/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
     ["../../packaging/omorfos-session.target", "usr/lib/systemd/user/", "644"],
     # How the lock screen asks PAM: configuration files, once installed.

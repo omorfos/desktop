@@ -3,4 +3,5 @@ Type=Application
 Name=omorfos
 Comment=A lightweight Wayland compositor
 Exec=omorfos
+Icon=omorfos
 DesktopNames=omorfos
