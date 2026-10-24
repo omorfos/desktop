@@ -13,6 +13,10 @@
 //! manager takes it away, as it means to. Nor is what is only selected,
 //! pasted with the middle button. What is too large to keep, or not handed
 //! over soon enough, is left with the program that copied it.
+//!
+//! What is kept may be forgotten after a while, as `clipboard.forget` says,
+//! for a password copied from where nothing says it is secret: the
+//! clipboard is emptied then, unless something else was copied meanwhile.
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -20,7 +24,9 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::AsFd;
 use std::path::Path;
-use std::sync::{Arc, mpsc};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -57,6 +63,9 @@ pub struct Limits {
     pub most: usize,
     /// How long a program that copied has to hand over all of it.
     pub wait: Duration,
+    /// How long what is kept stays on the clipboard before it is emptied,
+    /// if nothing else is copied meanwhile; for ever without.
+    pub forget: Option<Duration>,
 }
 
 impl Default for Limits {
@@ -66,6 +75,7 @@ impl Default for Limits {
         Self {
             most: 64 << 20,
             wait: Duration::from_secs(2),
+            forget: None,
         }
     }
 }
@@ -78,10 +88,26 @@ type Kept = Vec<(String, Arc<[u8]>)>;
 ///
 /// `variable` looks up an environment variable. The compositor is found
 /// by `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, unless it handed over a
-/// connection.
+/// connection; and how long what is copied is kept, by the configuration
+/// found from `XDG_CONFIG_HOME` and `HOME`, as it is when this starts.
 #[must_use]
 pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
-    start_with(variable, Limits::default())
+    let config = omorfos_config::config_dir(
+        variable("XDG_CONFIG_HOME").as_deref(),
+        variable("HOME").as_deref(),
+    );
+    let forget = config.map_or(0, |config| {
+        let store = omorfos_config::Store::open(&config);
+        store.current().general.clipboard.forget.get()
+    });
+    let forget = (forget > 0).then(|| Duration::from_secs(u64::from(forget)));
+    start_with(
+        variable,
+        Limits {
+            forget,
+            ..Limits::default()
+        },
+    )
 }
 
 /// The same, keeping no more and waiting no longer than `limits` say.
@@ -125,6 +151,19 @@ pub fn keep(connection: &Connection, limits: Limits) -> Failure {
     let handle = queue.handle();
     let mut state = State::default();
     let device = manager.get_data_device(&seat, &handle, ());
+    // Told each time something is kept, to forget it when it is due; and
+    // gone, and so ended, when this is.
+    let forgetting = limits.forget.map(|after| {
+        let (tell, told) = mpsc::channel();
+        let (device, connection) = (device.clone(), connection.clone());
+        let (kept, held) = (Arc::clone(&state.kept), Arc::clone(&state.held));
+        let thread = thread::spawn(move || forget(&told, (&device, &connection), (&kept, &held)));
+        Forgetting {
+            tell: Some(tell),
+            after,
+            thread: Some(thread),
+        }
+    });
     loop {
         // What was copied while the last was being read is seen to first.
         let waiting = state.copied.is_none();
@@ -155,7 +194,71 @@ pub fn keep(connection: &Connection, limits: Limits) -> Failure {
                 source.offer(kind.clone());
             }
             source.offer(MARK.to_owned());
+            // Counted as it is put on the clipboard, so that what forgets
+            // knows it from anything kept after it.
+            let held = state.held.lock();
+            let kept = state.kept.fetch_add(1, Ordering::SeqCst) + 1;
             device.set_selection(Some(&source));
+            drop(held);
+            if let Some(forgetting) = &forgetting {
+                forgetting.kept(kept);
+            }
+        }
+    }
+}
+
+/// What forgets what was kept when it is due: told each time something is
+/// kept, and ended, and waited for, as the keeper ends.
+struct Forgetting {
+    tell: Option<mpsc::Sender<(u64, Instant)>>,
+    /// How long after it is kept something is forgotten.
+    after: Duration,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl Forgetting {
+    /// Says that what is counted `kept` has just been kept.
+    fn kept(&self, kept: u64) {
+        let due = (kept, Instant::now() + self.after);
+        let _ = self.tell.as_ref().map(|tell| tell.send(due));
+    }
+}
+
+impl Drop for Forgetting {
+    fn drop(&mut self) {
+        // Told no more, it ends.
+        drop(self.tell.take());
+        let _ = self.thread.take().map(thread::JoinHandle::join);
+    }
+}
+
+/// Empties the clipboard when what was last kept is due to be forgotten,
+/// as `told` says each time something is kept, unless something else has
+/// been kept or copied since, which `kept` counts; until `told` is gone.
+fn forget(
+    told: &mpsc::Receiver<(u64, Instant)>,
+    (device, connection): (&ExtDataControlDeviceV1, &Connection),
+    (kept, held): (&AtomicU64, &Mutex<()>),
+) {
+    let mut due: Option<(u64, Instant)> = None;
+    loop {
+        let next = due.map_or_else(
+            || told.recv().map_err(RecvTimeoutError::from),
+            |(_, at)| told.recv_timeout(at.saturating_duration_since(Instant::now())),
+        );
+        match (next, due) {
+            (Ok(next), _) => due = Some(next),
+            (Err(RecvTimeoutError::Timeout), Some((which, _))) => {
+                let _held = held.lock();
+                if kept.load(Ordering::SeqCst) == which {
+                    device.set_selection(None);
+                    // A failure is seen by the keeper's own wait.
+                    let _ = connection.flush();
+                }
+                due = None;
+            }
+            // The keeper has gone.
+            _ => return,
         }
     }
 }
@@ -232,6 +335,11 @@ struct State {
     copied: Option<(ExtDataControlOfferV1, Vec<String>)>,
     /// Whether the clipboard has changed since it was last read.
     changed: bool,
+    /// How many times something has been kept or let go of, so that what
+    /// is forgotten is only ever what was kept last; and held while the
+    /// clipboard is set, for the same.
+    kept: Arc<AtomicU64>,
+    held: Arc<Mutex<()>>,
 }
 
 impl State {
@@ -314,24 +422,26 @@ impl Dispatch<ExtDataControlOfferV1, ()> for State {
 
 impl Dispatch<ExtDataControlSourceV1, Kept> for State {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         source: &ExtDataControlSourceV1,
         event: source::Event,
         kept: &Kept,
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        match event {
-            source::Event::Send { mime_type, fd } => {
-                // Handed over on a thread of its own, since a program that
-                // asks may take its time reading, or never read at all.
-                let found = kept.iter().find(|(kind, _)| *kind == mime_type);
-                let data = found.map(|(_, data)| Arc::clone(data));
-                let _ =
-                    data.map(|data| thread::spawn(move || drop(File::from(fd).write_all(&data))));
-            }
-            // Something else has been copied, and what this held is let go.
-            _ => source.destroy(),
+        if let source::Event::Send { mime_type, fd } = event {
+            // Handed over on a thread of its own, since a program that asks
+            // may take its time reading, or never read at all.
+            let found = kept.iter().find(|(kind, _)| *kind == mime_type);
+            let data = found.map(|(_, data)| Arc::clone(data));
+            let _ = data.map(|data| thread::spawn(move || drop(File::from(fd).write_all(&data))));
+        } else {
+            // Something else has been copied, and what this held is let go,
+            // and nothing is to be forgotten of it now. It only ever keeps
+            // something once another has copied, which lets go of what it
+            // held before: what it lets go of is what was on the clipboard.
+            state.kept.fetch_add(1, Ordering::SeqCst);
+            source.destroy();
         }
     }
 }

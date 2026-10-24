@@ -198,9 +198,11 @@ calls for them.
       `omorfos-screenshot` stop at once (ADR 42).
 - [ ] What `omorfos-clipboard` keeps, offered as a history to choose
       from (ADR 34 has its look).
-- [ ] Forgetting what was copied after a while, for passwords copied
+- [x] Forgetting what was copied after a while, for passwords copied
       from where nothing says they are secret: Proton Pass in Firefox
       clears what it copied only while its popup stays open.
+      `clipboard.forget` empties the clipboard that many seconds after
+      what the keeper kept, unless something else was copied since.
 - [x] The `private` rule, which leaves a window blank in any picture
       taken of the screen, for as long as it matches (ADR 38).
 - [x] Pictures of one window (`ext-foreign-toplevel-image-capture-source`),
@@ -694,7 +696,8 @@ Stage 2 says what it is to be; this builds it.
       `next_layout`; the keys for the volume, the brightness and what is
       playing; `XF86Display` for `next_screens`; one of `Ctrl+A` and
       `Super+A` to choose all that is typed in a field for a secret, not
-      both, with the keys to copy and paste; and the theme's parts made
+      both, with the keys to copy and paste; whether `clipboard.forget`
+      forgets by default, and after how long; and the theme's parts made
       along the way.
 
 ## 5. The shell: a bar and a dock

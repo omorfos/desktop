@@ -1905,6 +1905,7 @@ dependencies = [
 name = "omorfos-clipboard"
 version = "0.1.0"
 dependencies = [
+ "omorfos-config",
  "omorfos-shell",
  "wayland-client",
  "wayland-protocols",

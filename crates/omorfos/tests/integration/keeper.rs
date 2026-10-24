@@ -262,4 +262,74 @@ fn the_keeper_needs_the_clipboard_role_and_a_session() {
     };
     let said = omorfos_clipboard::start(&absent).to_string();
     assert!(said.contains("wayland-none"), "{said}");
+    // The configuration, read as it starts, says how long what is copied
+    // is kept; it goes no further without a session all the same.
+    let home = tempfile::TempDir::new().unwrap();
+    let config = home.path().join("omorfos");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("config.yaml"), "clipboard: { forget: 30 }\n").unwrap();
+    let configured = |name: &str| match name {
+        "XDG_CONFIG_HOME" => Some(home.path().as_os_str().to_owned()),
+        other => absent(other),
+    };
+    let said = omorfos_clipboard::start(&configured).to_string();
+    assert!(said.contains("wayland-none"), "{said}");
+}
+
+/// Lets the session run for `millis` milliseconds of real time, as what is
+/// forgotten is.
+fn wait(session: &mut Session, millis: u64) {
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_millis(millis) {
+        session.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn what_is_kept_is_forgotten_after_a_while_as_the_configuration_says() {
+    let soon = Limits {
+        forget: Some(Duration::from_millis(300)),
+        ..Limits::default()
+    };
+    let (mut session, keeper, mut editor) = kept(soon);
+    copied(&mut session, &mut editor, ("p4ssw0rd", &[TEXT]), |editor| {
+        editor.state.replaced
+    });
+    // Kept, though the program that copied is still there, until it is
+    // forgotten; and then there is nothing to paste.
+    assert_eq!(pasted(&mut session).as_deref(), Some("p4ssw0rd"));
+    let mut gone = false;
+    for _ in 0..50 {
+        wait(&mut session, 100);
+        if pasted(&mut session).is_none() {
+            gone = true;
+            break;
+        }
+    }
+    assert!(gone, "forgotten");
+    end(session, keeper);
+}
+
+#[test]
+fn what_was_copied_after_what_is_forgotten_is_left_on_the_clipboard() {
+    let soon = Limits {
+        forget: Some(Duration::from_millis(300)),
+        ..Limits::default()
+    };
+    let (mut session, keeper, mut editor) = kept(soon);
+    copied(&mut session, &mut editor, ("plain", &[TEXT]), |editor| {
+        editor.state.replaced
+    });
+    // A password manager copies after it, which the keeper does not keep;
+    // it is still there once what the keeper kept was due to be forgotten.
+    let mut manager = session.connect();
+    session.open(&mut manager, "manager", (200, 100), BLUE);
+    manager.copy_as("s3cret", &[TEXT, SECRET]);
+    session.roundtrip(&mut manager);
+    wait(&mut session, 800);
+    session.roundtrip(&mut manager);
+    assert!(!manager.state.replaced, "what it copied is still there");
+    assert_eq!(manager.state.asked, 0, "and was not even read");
+    end(session, keeper);
 }

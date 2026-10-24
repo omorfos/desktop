@@ -12,6 +12,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Reads how long what is copied is kept.
+omorfos-config = { path = "../omorfos-config" }
 # Takes the connection the compositor hands its components.
 omorfos-shell = { path = "../omorfos-shell" }
 # The keeper is a Wayland client. Both are already in the tree through

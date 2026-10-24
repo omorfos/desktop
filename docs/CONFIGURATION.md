@@ -81,6 +81,7 @@ screenshots:
   destination: file       # file | clipboard | both
 clipboard:
   enabled: true           # keep what is copied after its program closes
+  forget: 0               # seconds what is kept stays; 0 for as long as the session
 portals:
   enabled: true           # tell applications how the desktop looks
 xwayland:
@@ -1215,7 +1216,13 @@ clipboard:
   enabled: false
 ```
 
-Like `autostart`, this takes effect the next time you log in.
+What is kept can also be forgotten after a while, for passwords copied
+from somewhere that does not say they are secret: with `forget: 60`, the
+clipboard is emptied a minute after something was copied, even if the
+program that copied it is still open, unless something else was copied
+since. 0, as it comes, keeps it for as long as the session lasts.
+
+Like `autostart`, these take effect the next time you log in.
 
 A program written for X11 that copies, as `xsel` and `xclip` do for an
 editor in a terminal, goes on holding what it copied for the others
