@@ -598,6 +598,12 @@ what only games and touchpads need last.
 - [x] The administrator's prompt's buttons, the eye, Cancel and
       Authenticate, reached with Tab and Shift+Tab and pressed with Enter,
       as the lock screen's are.
+- [ ] The fields a secret is typed into, on the lock screen and in the
+      administrator's prompt, behaving as other fields do: Backspace held
+      down taking out one character after another, as keys repeat
+      (`wl_keyboard.repeat_info`); Ctrl+A choosing all that is typed, to
+      take it out or type over it at once, with Super+A as on a Mac; and a
+      text cursor in the lock screen's field, where the prompt has one.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and
