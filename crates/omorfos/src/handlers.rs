@@ -43,11 +43,12 @@ use smithay::output::Output;
 use smithay::wayland::fractional_scale::FractionalScaleHandler;
 use smithay::wayland::tablet_manager::TabletSeatHandler;
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::{
-    delegate_alpha_modifier, delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_single_pixel_buffer, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_alpha_modifier, delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_single_pixel_buffer, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_xdg_foreign, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
 use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
@@ -584,6 +585,13 @@ delegate_data_device!(Compositor);
 delegate_foreign_toplevel_list!(Compositor);
 delegate_primary_selection!(Compositor);
 delegate_xdg_activation!(Compositor);
+
+impl XdgForeignHandler for Compositor {
+    fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
+        &mut self.protocols.foreign
+    }
+}
+delegate_xdg_foreign!(Compositor);
 delegate_xdg_decoration!(Compositor);
 delegate_shm!(Compositor);
 delegate_seat!(Compositor);

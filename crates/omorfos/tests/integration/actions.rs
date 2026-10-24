@@ -338,3 +338,32 @@ fn two_windows_share_a_workspace_made_for_them_side_by_side() {
     assert_eq!(size, (640, 480));
     assert!(states.contains(&State::Fullscreen) && !states.contains(&State::TiledLeft));
 }
+
+#[test]
+fn a_dialog_of_another_program_opens_over_the_window_it_says_it_belongs_to() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let player = session.open(&mut client, "player", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Fullscreen);
+    let active = |session: &Session| session.compositor().desktop().active_workspace();
+    let frames = |session: &Session| session.compositor().desktop().frames().count();
+    assert_eq!((active(&session), frames(&session)), (1, 1));
+    // The window is shared by a handle, which another program, as a
+    // portal is, makes its dialog belong to.
+    let _shared = client.export(&player);
+    session.roundtrip(&mut client);
+    let handle = client.state.exported.clone().unwrap();
+    let mut portal = session.connect();
+    let dialog = portal.toplevel_uncommitted("portal", "choose a file");
+    let _imported = portal.import_parent_of(&handle, &dialog);
+    dialog.surface.commit();
+    session.roundtrip(&mut portal);
+    portal.fill(&dialog.surface, (100, 50), BLUE);
+    session.roundtrip(&mut portal);
+    session.roundtrip(&mut portal);
+    assert_eq!(
+        (active(&session), frames(&session)),
+        (1, 2),
+        "with it, over its fullscreen window"
+    );
+}

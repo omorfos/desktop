@@ -90,6 +90,7 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::xdg_foreign::XdgForeignState;
 
 use crate::Scale;
 use crate::asked::Asked;
@@ -269,7 +270,7 @@ pub struct Compositor {
     pub(crate) gpu_buffers: GpuBuffers,
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
-    _decorations: XdgDecorationState,
+    pub(crate) protocols: Protocols,
     pub(crate) seat: Seat<Self>,
     pub(crate) keyboard: KeyboardHandle<Self>,
     pub(crate) pointer: PointerHandle<Self>,
@@ -353,7 +354,6 @@ pub struct Compositor {
     pub(crate) lock_manager: SessionLockManagerState,
     /// Tells those who asked when the user has been away for a while.
     pub(crate) idle: IdleNotifierState<Self>,
-    _idle_inhibit: IdleInhibitManagerState,
     /// The input method, and what is known of it.
     pub(crate) typing: Typing,
     /// What dims each screen while a prompt asks for a secret.
@@ -463,9 +463,8 @@ impl Compositor {
                     switch: Switch::offer(&display),
                     typing: Typing::offer(&display),
                     seal: Vec::new(),
-                    _idle_inhibit: IdleInhibitManagerState::new::<Self>(&display),
+                    protocols: Protocols::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
-                    _decorations: XdgDecorationState::new::<Self>(&display),
                     x11: X11::new(&display),
                     shm: ShmState::new::<Self>(&display, Vec::new()),
                     gpu_buffers: GpuBuffers::default(),
@@ -3612,6 +3611,28 @@ impl MenuChrome {
             theme: theme.clone(),
             scale,
             panels,
+        }
+    }
+}
+
+/// Protocols offered whose state the compositor only has to keep, or to
+/// hand to Smithay when it asks.
+#[derive(Debug)]
+pub(crate) struct Protocols {
+    _decorations: XdgDecorationState,
+    _idle_inhibit: IdleInhibitManagerState,
+    /// Windows a program shares with another by a handle, for a dialog of
+    /// one to belong to a window of the other, as a portal's does.
+    pub(crate) foreign: XdgForeignState,
+}
+
+impl Protocols {
+    /// Offers them on `display`.
+    fn offer(display: &DisplayHandle) -> Self {
+        Self {
+            _decorations: XdgDecorationState::new::<Compositor>(display),
+            _idle_inhibit: IdleInhibitManagerState::new::<Compositor>(display),
+            foreign: XdgForeignState::new::<Compositor>(display),
         }
     }
 }

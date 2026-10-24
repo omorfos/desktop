@@ -79,6 +79,9 @@ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xd
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
+use wayland_protocols::xdg::foreign::zv2::client::{
+    zxdg_exported_v2, zxdg_exporter_v2, zxdg_imported_v2, zxdg_importer_v2,
+};
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
@@ -738,6 +741,11 @@ pub(crate) struct ClientState {
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
     capture_sources: Option<capture_sources::ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<capture_manager::ExtImageCopyCaptureManagerV1>,
+    /// Sharing a window with another program by a handle, and taking one
+    /// another shared; and the handle a window shared was given.
+    exporter: Option<zxdg_exporter_v2::ZxdgExporterV2>,
+    importer: Option<zxdg_importer_v2::ZxdgImporterV2>,
+    pub(crate) exported: Option<String>,
     window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
     pub(crate) offered: Vec<String>,
@@ -1295,6 +1303,27 @@ impl Client {
         window.surface.commit();
     }
 
+    /// Shares `window` with other programs, by a handle it is told and keeps
+    /// in [`ClientState::exported`]. It stays shared while what is returned
+    /// is kept.
+    pub(crate) fn export(&self, window: &Toplevel) -> zxdg_exported_v2::ZxdgExportedV2 {
+        let exporter = self.state.exporter.as_ref().unwrap();
+        exporter.export_toplevel(&window.surface, &self.handle(), ())
+    }
+
+    /// Makes `child` belong to the window another program shared as
+    /// `handle`, as a dialog of it.
+    pub(crate) fn import_parent_of(
+        &self,
+        handle: &str,
+        child: &Toplevel,
+    ) -> zxdg_imported_v2::ZxdgImportedV2 {
+        let importer = self.state.importer.as_ref().unwrap();
+        let parent = importer.import_toplevel(handle.to_owned(), &self.handle(), ());
+        parent.set_parent_of(&child.surface);
+        parent
+    }
+
     /// The protocol by which a program gives its windows icons, and a new
     /// icon of it, to be given what a test wants.
     pub(crate) fn icon(
@@ -1652,6 +1681,8 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             "ext_foreign_toplevel_image_capture_source_manager_v1" => {
                 state.window_sources = Some(registry.bind(name, version, handle, ()));
             }
+            "zxdg_exporter_v2" => state.exporter = Some(registry.bind(name, version, handle, ())),
+            "zxdg_importer_v2" => state.importer = Some(registry.bind(name, version, handle, ())),
             "ext_image_copy_capture_manager_v1" => {
                 state.capturers = Some(registry.bind(name, version, handle, ()));
             }
@@ -2273,6 +2304,24 @@ delegate_noop!(ClientState: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(ClientState: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(ClientState: ignore wl_shm::WlShm);
+delegate_noop!(ClientState: zxdg_exporter_v2::ZxdgExporterV2);
+delegate_noop!(ClientState: zxdg_importer_v2::ZxdgImporterV2);
+delegate_noop!(ClientState: ignore zxdg_imported_v2::ZxdgImportedV2);
+
+impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_exported_v2::ZxdgExportedV2,
+        event: zxdg_exported_v2::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_exported_v2::Event::Handle { handle } = event {
+            state.exported = Some(handle);
+        }
+    }
+}
 delegate_noop!(ClientState: ignore wl_buffer::WlBuffer);
 delegate_noop!(ClientState: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(ClientState: wp_viewporter::WpViewporter);

@@ -628,9 +628,14 @@ what only games and touchpads need last.
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and
       what is typed cleared from memory with `zeroize`, weighed as ADR 52
       says.
+- [x] A dialog of one program belonging to a window of another
+      (`xdg-foreign`), as a portal's file chooser does, which opens where
+      that window is, over it if it is fullscreen.
 - [ ] Smaller protocols that programs complain of lacking:
-      `xdg-foreign`, `presentation-time`,
-      `keyboard-shortcuts-inhibit`, content type and tearing control.
+      `presentation-time`, `keyboard-shortcuts-inhibit`, content type and
+      tearing control, which Smithay does not have yet. A program that
+      inhibits the shortcuts, as a virtual machine does, needs a key that
+      always gets back out, which is a decision to make first.
 - [ ] What games and remote desktops need of the pointer: locked,
       confined, and moved without a position (`pointer-constraints`,
       `relative-pointer`).
