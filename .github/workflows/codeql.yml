@@ -1,0 +1,55 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly as well, so that queries added to CodeQL look at what is
+  # already there and has not changed.
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # What it finds is shown in the repository's security tab.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # The code, and the workflows, which run with the repository's
+        # permissions.
+        language: [rust, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Rust is read without being built, but the build scripts still run,
+      # and some of them look for these. The standard library's sources let
+      # what calls into it be followed; the toolchain file installs the
+      # least it can, which leaves them out.
+      - name: Install system libraries
+        if: matrix.language == 'rust'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang
+          rustup component add rust-src
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # The default queries and those for security that may say more
+          # that is not so; not those for quality, which clippy has.
+          queries: security-extended
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:${{ matrix.language }}
