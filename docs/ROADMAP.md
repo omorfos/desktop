@@ -562,12 +562,21 @@ what only games and touchpads need last.
 - [x] The programs the session started asked to close before it ends, and
       given two seconds, so that they end as on any desktop and not with
       the compositor gone from under them; asked again, it ends at once.
-- [ ] The rest of that log made quiet: what the programs the session
-      starts print kept in the journal under their own names, not in
-      omorfos's log; and buffers in shared memory released as soon as they
-      are drawn, which foot asks for, weighed against the software
-      renderer and drawing with several cards, which read them where they
-      are. foot 1.21.0 also says window icons are not offered, which they
+- [x] What the programs the session starts write kept in the journal, each
+      under its name, and not in omorfos's log: those the compositor
+      starts, and those the autostart entries list.
+- [ ] New versions taken up without logging in again. The programs that
+      come with omorfos started again when their files change, or when
+      `make install` asks: the clipboard keeper handing what it holds to
+      the new one first, the portal waiting for a screen being shared to
+      stop. The compositor itself cannot be swapped under its windows,
+      whose state is in its memory and which most programs cannot rebuild
+      on another (only Qt 6's reconnect); it could at most start again
+      within the same login, without the login screen, its windows
+      closed, which is to be weighed against simply logging in again.
+- [ ] Buffers in shared memory released as soon as they are drawn,
+      which foot asks for, weighed against the software renderer and
+      drawing with several cards, which read them where they are. foot 1.21.0 also says window icons are not offered, which they
       are: it looks for the wrong name, fixed in foot since.
 - [ ] Known gaps in the lock screen's buttons: they are reached only with
       the pointer, not with Tab and Enter; and what logind's inhibitors
