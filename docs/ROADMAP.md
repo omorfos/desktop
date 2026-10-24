@@ -510,6 +510,20 @@ what only games and touchpads need last.
       theme's `desktop` shows.
 - [x] Wallpaper, a fade from one picture to the next, done by the
       compositor's renderer through `wp_alpha_modifier_v1` (ADR 49).
+- [x] The brand (ADR 55): the mark, the name, the icon and the
+      wallpapers, drawn by `omorfos-brand` as omorfos is built and
+      installed with it; the design language's grounds and accent taken
+      from it. With nothing named, the wallpaper shows the one that came
+      with omorfos, and a picture may be a pair, one for a dark desktop
+      and one for a light one, shown as the theme is.
+- [ ] More wallpapers that come with omorfos, drawn by `omorfos-brand`
+      beside Prism, each a dark one and a light one, and a choice of them
+      offered the first time the desktop is set up. A directory of
+      pictures that keeps pairs by their names (`-dark` and `-light`), so
+      that a directory shown in turn follows the theme too.
+- [ ] The lock screen's picture of the brand, drawn by `omorfos-brand`
+      as the wallpapers are, its mark small in the bottom right, once the
+      lock screen has a picture of its own (below).
 - [ ] Wallpaper, what is left: a directory watched, so that a picture put there or
       changed shows at once and not at the next turn; and other formats
       (WebP, AVIF, SVG) as they are asked for, each another decoder of

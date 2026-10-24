@@ -1,8 +1,13 @@
 # omorfos
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup.svg">
+  <img src="docs/brand/lockup-light.svg" alt="omorfos" width="347">
+</picture>
+
 A Wayland desktop for Linux, written in Rust: small, fast, driven by text
 files, with windows that can share a frame as tabs, and growing into a
-whole desktop with a modern look. *Omorfos* is Greek for "beautiful".
+whole desktop with a modern look. *omorfos* is Greek for "beautiful".
 
 > **Status:** early development, and not released yet. It runs as the
 > session you log in to, on real hardware, but has been tried on very

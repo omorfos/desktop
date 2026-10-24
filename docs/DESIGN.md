@@ -102,45 +102,54 @@ fullscreen has square corners, and so has the top bar.
 
 Two schemes, dark and light. Dark is the default, light can be chosen,
 and `auto` goes by the sun (see below). Each colour is a variable of the
-theme; the names are the same in both.
+theme; the names are the same in both. The grounds are the brand's
+([BRAND.md](BRAND.md)): navy in the dark and a warm cream in the light,
+not white.
 
 | Variable | Dark | Light | Used for |
 |---|---|---|---|
-| `--background` | `#0f1115` | `#e8ebf0` | Behind everything, where there is no wallpaper |
-| `--surface` | `#1e2128` | `#f6f7f9` | Glass: bars, menus, titlebars with focus |
-| `--surface-dim` | `#181a20` | `#eceef2` | The same where focus is elsewhere |
-| `--surface-raised` | `#2a2e37` | `#ffffff` | A field, a row under the pointer |
-| `--text` | `#eceef2` | `#1b1e25` | |
-| `--text-dim` | `#a3a9b7` | `#5b6170` | What is beside the point |
-| `--border` | `#3a3f4b` | `#d3d7df` | A hairline between or around surfaces |
-| `--border-strong` | `#6b7280` | `#7b8190` | The edge of something that takes input |
-| `--accent` | `#5b9cf5` | `#2563d9` | Focus, and what is picked out |
-| `--on-accent` | `#0f1115` | `#ffffff` | Text on the accent |
-| `--danger` | `#f0787f` | `#c4303a` | Close, delete, an error |
-| `--warning` | `#e5c07b` | `#8a5a00` | Minimize; something to look at |
-| `--success` | `#98c379` | `#2f7a35` | Maximize; something that went well |
+| `--background` | `#0c1226` | `#fcf7e3` | Behind everything, where there is no wallpaper |
+| `--surface` | `#141c38` | `#fffdf4` | Glass: bars, menus, titlebars with focus |
+| `--surface-dim` | `#10172f` | `#f6f0da` | The same where focus is elsewhere |
+| `--surface-raised` | `#243364` | `#ffffff` | A field, a row under the pointer |
+| `--text` | `#e6eaf5` | `#0c1226` | |
+| `--text-dim` | `#9aa4c7` | `#5c6888` | What is beside the point |
+| `--border` | `#2b3a6b` | `#e4ddc4` | A hairline between or around surfaces |
+| `--border-strong` | `#7482b3` | `#7a8099` | The edge of something that takes input |
+| `--accent` | `#22d3ee` | `#0e7490` | Focus, and what is picked out |
+| `--on-accent` | `#0c1226` | `#fffdf4` | Text on the accent |
+| `--danger` | `#f8616d` | `#c4303a` | Close, delete, an error |
+| `--warning` | `#fde047` | `#8a5a00` | Minimize; something to look at |
+| `--success` | `#a3e635` | `#2f7a35` | Maximize; something that went well |
 
 The accent is a setting. The ones that come with omorfos, each with a
-dark and a light value that meets the contrast below:
+dark and a light value that meets the contrast below. The brand's cyan
+is too pale to be seen on cream, so the light scheme has a deeper one.
 
 | Accent | Dark | Light |
 |---|---|---|
-| Blue (default) | `#5b9cf5` | `#2563d9` |
+| Cyan (default) | `#22d3ee` | `#0e7490` |
+| Blue | `#5b9cf5` | `#2563d9` |
 | Teal | `#4fc3b5` | `#0f766e` |
 | Purple | `#a78bfa` | `#6d3fd4` |
 | Pink | `#f27fb0` | `#c02a72` |
 | Orange | `#f29b5c` | `#b84a0e` |
+
+The brand's other colours, the five of its spectrum together, are for
+the logo, the wallpapers and the lock screen's picture, not for the
+interface, which has one accent.
 
 ### Contrast
 
 Measured as WCAG 2 does. These hold for every pair in the tables above
 and must hold for anything added:
 
-- Text on the surface it is on: at least **4.5 to 1**. As drawn today:
-  text 13.9 (dark) and 15.6 (light), dim text 6.8 and 5.8, text on the
-  accent 6.8 and 5.4.
+- Text on the surface it is on: at least **4.5 to 1**. With the values
+  above: text 13.9 (dark) and 18.2 (light), dim text 6.8 and 5.4, dim
+  text on a raised row 4.9 and 5.5, text on the accent 10.3 and 5.3.
 - The edge of something that takes input, and anything that says a state
-  without words: at least **3 to 1**.
+  without words: at least **3 to 1**. `--border-strong` is 4.5 and 3.8 on
+  the surface; every accent is at least 4.9 on the background.
 - Colour is never the only sign. A titlebar's buttons show a sign under
   the pointer; what is urgent has a mark as well as a red edge; what has
   focus has a ring as well as a tint.

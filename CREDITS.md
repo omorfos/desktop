@@ -15,6 +15,16 @@ by `cargo deny list`, and are checked against the licences allowed in
 |---|---|---|---|
 | [Lucide](https://lucide.dev) icons | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT | The signs of the interface: only the ones used, as shapes. Chosen in [ADR 32](docs/adr/0032-the-design-language.md); none is built in yet. |
 
+## Used to make what is shipped
+
+| What | By | Licence | Used for |
+|---|---|---|---|
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Florian Karsten and the Space Grotesk project authors | SIL Open Font Licence 1.1 | The name beside the mark, drawn once as outlines; the font itself is neither shipped nor needed |
+
+omorfos's own pictures, its mark, its name as drawn, its icon and its
+wallpapers, are under [CC BY-SA 4.0](LICENSE-pictures), and the
+[brand](docs/BRAND.md) says how they are made.
+
 ## Recommended by the packages, not shipped
 
 | What | By | Licence | Used for |

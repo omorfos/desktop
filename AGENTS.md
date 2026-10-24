@@ -20,7 +20,9 @@ It is a fresh implementation, not a port: see
 - How to test, and how to write code the coverage gate accepts:
   [docs/TESTING.md](docs/TESTING.md)
 - What it looks like, and the rules a part is drawn by:
-  [docs/DESIGN.md](docs/DESIGN.md). What is someone else's is credited in
+  [docs/DESIGN.md](docs/DESIGN.md); its mark, colours and pictures, and
+  how `omorfos-brand` draws them as it is built:
+  [docs/BRAND.md](docs/BRAND.md). What is someone else's is credited in
   [CREDITS.md](CREDITS.md) before it is built in.
 - Decisions and their reasons: [docs/adr/](docs/adr/)
 - Routines, step by step, in [.claude/skills/](.claude/skills/): handing a
