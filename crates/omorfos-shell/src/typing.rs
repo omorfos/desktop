@@ -20,6 +20,10 @@ pub enum Key {
     Escape,
     /// Backspace: takes the last character out.
     Back,
+    /// Tab: on to what comes next, as a button.
+    Next,
+    /// Shift and Tab: back to what came before.
+    Previous,
     /// Types this.
     Typed(String),
     /// Nothing: a key held with Ctrl, Alt or Super, or one that types
@@ -95,6 +99,8 @@ fn typed(state: &xkb::State, code: u32) -> Key {
         xkb::Keysym::Return | xkb::Keysym::KP_Enter => Key::Enter,
         xkb::Keysym::Escape => Key::Escape,
         xkb::Keysym::BackSpace => Key::Back,
+        xkb::Keysym::Tab => Key::Next,
+        xkb::Keysym::ISO_Left_Tab => Key::Previous,
         _ => {
             let typed = state.key_get_utf8(code);
             let printable = typed.chars().all(|character| !character.is_control());

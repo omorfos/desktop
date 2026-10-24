@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Color, Fit, Part, States, Store, Style, Theme};
+use omorfos_config::{Color, Fit, Part, States, Store, Style, Theme, Transition};
 use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
@@ -303,15 +303,22 @@ struct Shell {
     pointer: Option<(u32, (f64, f64))>,
     hovered: Option<Button>,
     chosen: Option<Button>,
+    /// The button the keyboard is on, reached with Tab; on none, it is on
+    /// the field.
+    focused: Option<Button>,
     /// What the user is called, and their face, cut to a circle.
     called: String,
     face: Option<Image>,
     /// Whether only the time is shown.
     view: View,
-    /// While who is to unlock comes into view: when the first frame of it
-    /// was shown, once one has been, and how long it has come for since,
-    /// in milliseconds, as the compositor tells the time of each.
-    waking: Option<(Option<u32>, u32)>,
+    /// While who is to unlock comes into view, or goes out of it: when the
+    /// first frame of that was shown, once one has been, and how long it
+    /// has moved for since, in milliseconds, as the compositor tells the
+    /// time of each.
+    moving: Option<(Option<u32>, u32)>,
+    /// How much of it was in view when it last began to come or go, so that
+    /// turning back halfway does not jump.
+    from: f32,
     /// What the clock reads, and when it reads differently.
     clock: Option<(String, Instant)>,
     /// When a helper is next due to be asked again.
@@ -394,10 +401,12 @@ impl Shell {
             pointer: None,
             hovered: None,
             chosen: None,
+            focused: None,
             called,
             face,
             view: View::Resting,
-            waking: None,
+            moving: None,
+            from: 0.0,
             clock: None,
             again: None,
             shaking: None,
@@ -434,12 +443,7 @@ impl Shell {
                     until: Some(now + REST),
                 }
             }
-            View::Awake { until: Some(until) } if until <= now => {
-                self.view = View::Resting;
-                wipe(&mut self.typed);
-                self.power.iter_mut().for_each(Power::forget);
-                self.stale = true;
-            }
+            View::Awake { until: Some(until) } if until <= now => self.rest(),
             View::Awake { .. } | View::Resting => {}
         }
         if self.held == Held::Locked {
@@ -451,7 +455,21 @@ impl Shell {
             let chosen = self.chosen.take();
             if let Some(power) = self.power.as_mut() {
                 if let Some(button) = chosen {
+                    let asked = power.confirming;
                     power.pressed(button, &told_by);
+                    self.focused = match (asked, power.confirming) {
+                        // Asked about, the keyboard is on Cancel, so that
+                        // Enter pressed again loses nothing.
+                        (_, Some(_)) => Some(Button::No),
+                        // Said no to from the keyboard, it is back on what
+                        // was asked about.
+                        (Some(act), None) if button == Button::No && self.focused.is_some() => {
+                            Some(Button::Act(act))
+                        }
+                        // Said yes to, it is back on the field; done at
+                        // once, it stays.
+                        _ => self.focused.filter(|_| asked.is_none()),
+                    };
                 }
                 // What is offered is asked once the buttons are to be seen.
                 if self.view != View::Resting {
@@ -509,20 +527,15 @@ impl Shell {
         let elapsed = self.shaking.map(|(_, elapsed)| elapsed);
         self.shaking = self.shaking.filter(|(_, elapsed)| *elapsed < SHAKING);
         let shift = elapsed.map_or(0, shaken);
-        // Coming into view, likewise, for as long as the theme says.
-        let coming = theme.style(Part::Question, States::NONE).transition;
-        let woken = self.waking.map(|(_, elapsed)| elapsed);
-        let lasts = coming.lasts();
+        // Coming into view or going, likewise, for as long as the theme
+        // says.
+        let moves = theme.style(Part::Question, States::NONE).transition;
+        let share = self.share(moves);
+        let lasts = moves.lasts();
         let done = |elapsed: &u32| Duration::from_millis(u64::from(*elapsed)) >= lasts;
-        self.waking = self.waking.filter(|(_, elapsed)| !done(elapsed));
-        let share = match self.view {
-            View::Resting => 0.0,
-            View::Awake { .. } => woken.map_or(1.0, |elapsed| {
-                coming.progress(Duration::from_millis(u64::from(elapsed)))
-            }),
-        };
+        self.moving = self.moving.filter(|(_, elapsed)| !done(elapsed));
         let who = (self.called.as_str(), self.face.as_ref());
-        let power = (self.power.as_ref(), self.hovered);
+        let power = (self.power.as_ref(), self.hovered, self.focus());
         let faces = self
             .screens
             .iter_mut()
@@ -594,10 +607,8 @@ impl Shell {
     /// again. Returns whether only the time was shown.
     fn wake(&mut self) -> bool {
         let resting = self.view == View::Resting;
-        let theme = &self.store.current().theme;
-        let moves = theme.style(Part::Question, States::NONE).transition;
-        if resting && moves.duration > 0 {
-            self.waking = Some((None, 0));
+        if resting {
+            self.move_from_here();
         }
         // What may be done may have changed while only the time showed.
         if resting {
@@ -606,6 +617,43 @@ impl Shell {
         self.view = View::Awake { until: None };
         self.stale = true;
         resting
+    }
+
+    /// Shows only the time again, the rest going out of view as the theme
+    /// has things move, and forgets what was typed, what was being asked
+    /// about and the button the keyboard was on.
+    fn rest(&mut self) {
+        self.move_from_here();
+        self.view = View::Resting;
+        wipe(&mut self.typed);
+        self.power.iter_mut().for_each(Power::forget);
+        self.focused = None;
+        self.stale = true;
+    }
+
+    /// How much of who is to unlock, the field and the rest is in view, as
+    /// it moves as `transition` says: from 0, only the time, to 1, all of it.
+    fn share(&self, transition: Transition) -> f32 {
+        let along = self
+            .moving
+            .map(|(_, elapsed)| transition.progress(Duration::from_millis(u64::from(elapsed))));
+        match self.view {
+            View::Resting => along.map_or(0.0, |along| self.from * (1.0 - along)),
+            View::Awake { .. } => {
+                along.map_or(1.0, |along| (1.0 - self.from).mul_add(along, self.from))
+            }
+        }
+    }
+
+    /// Has the view begin to move the other way from where it is, unless the
+    /// theme has nothing move.
+    fn move_from_here(&mut self) {
+        let theme = &self.store.current().theme;
+        let moves = theme.style(Part::Question, States::NONE).transition;
+        if moves.duration > 0 {
+            self.from = self.share(moves);
+            self.moving = Some((None, 0));
+        }
     }
 
     /// The button the pointer is over, if any.
@@ -624,6 +672,27 @@ impl Shell {
                 .find(|(_, area)| inside(area))
                 .map(|(button, _)| *button)
         })
+    }
+
+    /// The button the keyboard is on, if it is one of those shown; else it
+    /// is on the field.
+    fn focus(&self) -> Option<Button> {
+        let buttons = self.power.as_ref().map(Power::buttons);
+        let shown = |button: &Button| buttons.as_ref().is_some_and(|all| all.contains(button));
+        self.focused.filter(shown)
+    }
+
+    /// Moves the keyboard on from the field to each button in turn, and
+    /// round to the field again; or `back`.
+    fn tab(&mut self, back: bool) {
+        let buttons = self.power.as_ref().map(Power::buttons).unwrap_or_default();
+        let places = buttons.len() + 1;
+        let focus = self.focus();
+        let on = buttons.iter().position(|button| Some(*button) == focus);
+        // The field is the place after the last button.
+        let on = on.unwrap_or(buttons.len());
+        let to = (if back { on + places - 1 } else { on + 1 }) % places;
+        self.focused = buttons.get(to).copied();
     }
 
     /// Notes the button the pointer is over, drawn as hovered.
@@ -646,30 +715,43 @@ impl Shell {
     }
 
     /// Takes in a key going down: what it types goes in the field, `⌫`
-    /// takes the last character out, Escape empties it, and Enter hands it
-    /// to the password's helper if it is asking. While only the time is
-    /// shown, a key shows the rest and does nothing else, so that a key
-    /// pressed to wake the screen is not taken for part of the password.
+    /// takes the last character out, Escape shows only the time again, and
+    /// empties it, and Enter hands it
+    /// to the password's helper if it is asking. Tab and Shift with it move
+    /// the keyboard to each button and back to the field, and Enter on a
+    /// button presses it. While only the time is shown, a key shows the
+    /// rest and does nothing else, so that a key pressed to wake the screen
+    /// is not taken for part of the password.
     fn pressed(&mut self, code: u32) {
         if self.wake() {
             return;
         }
-        match self.typing.pressed(code) {
-            Key::Enter => {
-                if self.ways.answer(&self.typed) {
-                    wipe(&mut self.typed);
+        let key = self.typing.pressed(code);
+        // What types, or takes out, is for the field.
+        if matches!(key, Key::Typed(_) | Key::Back) {
+            self.focused = None;
+        }
+        match key {
+            Key::Enter => match self.focus() {
+                Some(button) => self.chosen = Some(button),
+                None => {
+                    if self.ways.answer(&self.typed) {
+                        wipe(&mut self.typed);
+                    }
+                }
+            },
+            // Escape says no to what is being asked about, if anything is,
+            // and else shows only the time, as being left alone does.
+            Key::Escape => {
+                let power = self.power.as_ref();
+                if power.is_some_and(|power| power.confirming.is_some()) {
+                    self.chosen = Some(Button::No);
+                } else {
+                    self.rest();
                 }
             }
-            // Escape says no to what is being asked about, if anything is,
-            // and else empties the field.
-            Key::Escape => match self
-                .power
-                .as_mut()
-                .filter(|power| power.confirming.is_some())
-            {
-                Some(power) => power.confirming = None,
-                None => wipe(&mut self.typed),
-            },
+            Key::Next => self.tab(false),
+            Key::Previous => self.tab(true),
             Key::Back => {
                 self.typed.pop();
             }
@@ -704,8 +786,9 @@ struct Shown<'a> {
     /// How much of who is to unlock, the field and what the ways say is in
     /// view: from 0, only the time, to 1, all of it.
     share: f32,
-    /// The power buttons, if offered, and the one the pointer is over.
-    power: (Option<&'a Power>, Option<Button>),
+    /// The power buttons, if offered, the one the pointer is over and the
+    /// one the keyboard is on.
+    power: (Option<&'a Power>, Option<Button>, Option<Button>),
 }
 
 /// Paints a screen `size` units large at `scale`: the time, in the middle
@@ -787,7 +870,8 @@ fn paint(
         .asking
         .iter()
         .find(|asking| asking.way == Way::Password);
-    let asks = password.is_some_and(|password| password.asks);
+    // The field looks focused while the keyboard is on it and it asks.
+    let asks = password.is_some_and(|password| password.asks) && shown.power.2.is_none();
     let states = if asks {
         States::NONE.with(omorfos_config::State::Focused)
     } else {
@@ -819,20 +903,22 @@ fn paint(
     }
     let buttons = shown.power.0.map_or_else(Vec::new, |power| {
         let painting = (&mut canvas, text);
-        paint_power(theme, painting, (power, shown.power.1), (size, share))
+        let (_, hovered, focused) = shown.power;
+        paint_power(theme, painting, (power, hovered, focused), (size, share))
     });
     (canvas, buttons)
 }
 
 /// Paints the power buttons along the bottom of a screen `size` units
-/// large, `share` of them in view, the one `hovered` as such; and above
+/// large, `share` of them in view, the one `hovered` and the one `focused`
+/// as such; and above
 /// them what is being asked about, why what was asked last failed, and who
 /// keeps the machine from sleeping or turning off. Returns where each
 /// button is.
 fn paint_power(
     theme: &Theme,
     (canvas, text): (&mut Canvas, &mut Text),
-    (power, hovered): (&Power, Option<Button>),
+    (power, hovered, focused): (&Power, Option<Button>, Option<Button>),
     ((width, height), share): ((u32, u32), f32),
 ) -> Vec<(Button, Area)> {
     let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
@@ -866,6 +952,9 @@ fn paint_power(
         }
         if hovered == Some(button) {
             states = states.with(omorfos_config::State::Hovered);
+        }
+        if focused == Some(button) {
+            states = states.with(omorfos_config::State::Focused);
         }
         let style = theme
             .style(Part::QuestionButton, states)
@@ -1117,11 +1206,11 @@ impl Dispatch<wl_callback::WlCallback, ()> for Shell {
         _: &QueueHandle<Self>,
     ) {
         // A drawing was shown, at the time it says; shaking, or coming into
-        // view, the next of it is due.
+        // view or going, the next of it is due.
         if let wl_callback::Event::Done { callback_data: now } = event
-            && (shell.shaking.is_some() || shell.waking.is_some())
+            && (shell.shaking.is_some() || shell.moving.is_some())
         {
-            for moving in [&mut shell.shaking, &mut shell.waking] {
+            for moving in [&mut shell.shaking, &mut shell.moving] {
                 if let Some((began, elapsed)) = moving.as_mut() {
                     // It was last shown as it was a frame before the first
                     // of the move, which is so far into it; time does not

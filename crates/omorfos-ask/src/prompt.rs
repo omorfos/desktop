@@ -425,7 +425,9 @@ impl Shell {
                 self.typed.extend(typed.chars().take(room));
                 self.stale = true;
             }
-            Key::Nothing => {}
+            // Its buttons are reached with the pointer; Enter and Escape
+            // say what they do.
+            Key::Next | Key::Previous | Key::Nothing => {}
         }
     }
 
