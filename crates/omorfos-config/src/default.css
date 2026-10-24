@@ -239,6 +239,7 @@ question-button:active {
   background: var(--accent);
   color: var(--background);
 }
+question-button:focus { border: 2px solid var(--text); }
 question-input {
   padding: 6px;
   background: var(--background);

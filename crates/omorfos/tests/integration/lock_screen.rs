@@ -116,11 +116,16 @@ fn typed(session: &mut Session, keys: &[Keycode]) {
     }
 }
 
+/// Takes out what the tries before left in the field, before the helper
+/// asked: three characters at most.
+const EMPTIED: [Keycode; 3] = [key::BACKSPACE; 3];
+
 /// Types the password, afresh, until the session is unlocked: until the
 /// helper has started and asks, Enter goes nowhere.
 fn unlock(session: &mut Session, lock: &mut Lock) {
     for _ in 0..500 {
-        typed(session, &[key::ESCAPE, key::A, key::T, key::X, key::RETURN]);
+        typed(session, &EMPTIED);
+        typed(session, &[key::A, key::T, key::X, key::RETURN]);
         if settle(session, lock) {
             return;
         }
@@ -149,14 +154,16 @@ fn the_password_typed_on_the_lock_screen_unlocks_the_session() {
     until(&mut session, &mut lock, |_| true);
     assert!(drawn(&mut session) > 500);
     // Wrong first, typed until the helper has heard it, and asked again;
-    // Escape empties the field too, and keys held with Ctrl type nothing.
+    // Escape empties the field too, showing only the time, and keys held
+    // with Ctrl type nothing.
     // The screen changes scale meanwhile, and is drawn again for it. What
     // PAM says of the wrong try is said instead of the lock screen's own.
     session.suggest_scale(omorfos::Scale::new(2.0));
     std::fs::write(there.path().join("locked"), "").unwrap();
     let wrong = there.path().join("wrong");
     for _ in 0..500 {
-        typed(&mut session, &[key::ESCAPE, key::A, key::RETURN]);
+        typed(&mut session, &EMPTIED);
+        typed(&mut session, &[key::A, key::RETURN]);
         settle(&mut session, &mut lock);
         if wrong.exists() {
             break;
@@ -300,7 +307,8 @@ fn the_lock_screen_runs_by_itself_in_the_session_it_is_started_in() {
     });
     session.eventually(|session| {
         session.draw();
-        typed(session, &[key::ESCAPE, key::A, key::T, key::X, key::RETURN]);
+        typed(session, &EMPTIED);
+        typed(session, &[key::A, key::T, key::X, key::RETURN]);
         !session.compositor().is_locked()
     });
     session.eventually(|_| running.is_finished());
@@ -357,7 +365,8 @@ fn wrong(stylesheet: &str) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
     let rest = field(&mut session);
     let wrong = there.path().join("wrong");
     for _ in 0..500 {
-        typed(&mut session, &[key::ESCAPE, key::A, key::RETURN]);
+        typed(&mut session, &EMPTIED);
+        typed(&mut session, &[key::A, key::RETURN]);
         settle(&mut session, &mut lock);
         if wrong.exists() {
             break;
@@ -416,7 +425,14 @@ fn only_the_time_is_shown_until_a_key_or_a_button_is_pressed_and_again_after_a_w
     assert!(inked(&mut session, NAME_ROW), "who is to unlock");
     let empty = field(&mut session);
     assert_ne!(empty, row(&mut session, 0), "the field");
+    tap(&mut session, key::A);
+    settle(&mut session, &mut lock);
+    assert_ne!(field(&mut session), empty, "what is typed now is");
+    // Escape shows only the time again, and what was typed has gone.
     tap(&mut session, key::ESCAPE);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, FIELD_ROW), "only the time");
+    tap(&mut session, key::A);
     settle(&mut session, &mut lock);
     assert_eq!(field(&mut session), empty, "nothing was typed");
     tap(&mut session, key::A);
@@ -502,6 +518,17 @@ fn who_is_to_unlock_comes_into_view_as_the_theme_has_things_move() {
             && ![RED, BACKGROUND].contains(face)
     });
     assert!(on_its_way, "on its way");
+    // Escape has it go the same way back, until only the time is shown.
+    tap(&mut session, key::ESCAPE);
+    let mut going = Vec::new();
+    for shown in 30..60 {
+        session.send_frames(Duration::from_millis(shown * 16));
+        settle(&mut session, &mut lock);
+        going.push(field(&mut session));
+    }
+    let partly = |field: &Vec<u32>| *field != all && field.iter().any(|pixel| *pixel != BACKGROUND);
+    assert!(going.iter().any(partly), "on its way out");
+    assert!(!inked(&mut session, FIELD_ROW), "and gone");
 }
 
 #[test]
@@ -543,6 +570,9 @@ fn a_reader_that_is_not_there_is_not_offered() {
 /// top.
 const BUTTONS_ROW: i32 = 428;
 const ABOVE_BUTTONS_ROW: i32 = 402;
+
+/// The middle of the field, which is higher with the power buttons below.
+const FIELD_ABOVE_BUTTONS_ROW: i32 = 356;
 
 /// The stand-in for `omorfos-session`.
 fn power_helper() -> PathBuf {
@@ -779,4 +809,107 @@ fn a_button_under_the_pointer_looks_so_on_each_screen() {
         away,
         "and not once it has gone"
     );
+}
+
+/// Presses Tab with Shift held.
+fn back_tab(session: &mut Session) {
+    let shift = |session: &mut Session, pressed| {
+        session.compositor_mut().input(
+            Input::Key {
+                code: key::SHIFT,
+                pressed,
+            },
+            0,
+        );
+    };
+    shift(session, true);
+    tap(session, key::TAB);
+    shift(session, false);
+}
+
+#[test]
+fn the_buttons_are_reached_with_tab_and_pressed_with_enter() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = powered(&mut session, there.path(), "can sleep\ncan restart\n");
+    tap(&mut session, key::SHIFT);
+    shown(&mut session, &mut lock, 2);
+    settle(&mut session, &mut lock);
+    let field = row(&mut session, FIELD_ABOVE_BUTTONS_ROW);
+    let nowhere = row(&mut session, BUTTONS_ROW);
+    let tabbed = |session: &mut Session, lock: &mut Lock, back: bool| {
+        if back {
+            back_tab(session);
+        } else {
+            tap(session, key::TAB);
+        }
+        settle(session, lock);
+        row(session, BUTTONS_ROW)
+    };
+    let on_sleep = tabbed(&mut session, &mut lock, false);
+    assert_ne!(on_sleep, nowhere, "on Sleep");
+    assert_ne!(
+        row(&mut session, FIELD_ABOVE_BUTTONS_ROW),
+        field,
+        "and off the field"
+    );
+    let on_restart = tabbed(&mut session, &mut lock, false);
+    assert_ne!(on_restart, on_sleep, "on Restart");
+    assert_eq!(tabbed(&mut session, &mut lock, false), nowhere, "round");
+    assert_eq!(
+        row(&mut session, FIELD_ABOVE_BUTTONS_ROW),
+        field,
+        "to the field"
+    );
+    assert_eq!(tabbed(&mut session, &mut lock, true), on_restart, "back");
+    assert_eq!(tabbed(&mut session, &mut lock, true), on_sleep);
+    tap(&mut session, key::RETURN);
+    assert_eq!(
+        asked(&mut session, &mut lock, there.path(), 1),
+        ["sleep --locked"]
+    );
+    settle(&mut session, &mut lock);
+    assert_eq!(
+        row(&mut session, BUTTONS_ROW),
+        on_sleep,
+        "done at once, it stays on it"
+    );
+    tap(&mut session, key::A);
+    settle(&mut session, &mut lock);
+    assert_eq!(
+        row(&mut session, BUTTONS_ROW),
+        nowhere,
+        "typing goes back to the field"
+    );
+}
+
+#[test]
+fn asked_from_the_keyboard_whether_to_go_ahead_enter_says_no_until_moved_to_yes() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = powered(&mut session, there.path(), "can sleep\ncan log-out\n");
+    tap(&mut session, key::SHIFT);
+    shown(&mut session, &mut lock, 2);
+    for _ in 0..2 {
+        tap(&mut session, key::TAB);
+    }
+    settle(&mut session, &mut lock);
+    let on_log_out = row(&mut session, BUTTONS_ROW);
+    // Enter on Cancel, and Escape, say no, and leave the keyboard on what
+    // was asked about.
+    for no in [key::RETURN, key::ESCAPE] {
+        tap(&mut session, key::RETURN);
+        settle(&mut session, &mut lock);
+        assert!(inked(&mut session, ABOVE_BUTTONS_ROW), "asked");
+        tap(&mut session, no);
+        settle(&mut session, &mut lock);
+        assert!(!inked(&mut session, ABOVE_BUTTONS_ROW), "said no");
+        assert_eq!(row(&mut session, BUTTONS_ROW), on_log_out);
+    }
+    assert!(!there.path().join("asked").exists(), "nothing was done");
+    tap(&mut session, key::RETURN);
+    settle(&mut session, &mut lock);
+    back_tab(&mut session);
+    tap(&mut session, key::RETURN);
+    assert_eq!(asked(&mut session, &mut lock, there.path(), 1), ["log-out"]);
 }

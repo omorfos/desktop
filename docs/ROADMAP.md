@@ -587,9 +587,15 @@ what only games and touchpads need last.
       changed from one buffer into the other, and since 1.25.0 off its
       main thread. foot 1.21.0 also says window icons are not offered,
       which they are: it looks for the wrong name, fixed in foot since.
-- [ ] Known gaps in the lock screen's buttons: they are reached only with
-      the pointer, not with Tab and Enter; and what logind's inhibitors
-      say is shown whole, which ADR 53 weighs.
+- [x] The lock screen's buttons reached with Tab and Shift+Tab and
+      pressed with Enter, the one the keyboard is on drawn
+      `question-button:focus`, and Cancel the one it is on when asked
+      whether to go ahead. Escape, unless it says no to that, shows only
+      the time again, as being left alone does; either way the rest goes
+      as it came, and turns back from where it is if woken meanwhile.
+- [ ] What logind's inhibitors say shown whole on the lock screen, which
+      ADR 53 weighs. The administrator's prompt, `omorfos-ask`, still has
+      its buttons reached only with the pointer, Enter and Escape.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and

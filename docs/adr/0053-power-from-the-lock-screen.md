@@ -85,6 +85,8 @@ nobody can see.
 - `omorfos-session` has two new commands, `offered` and `log-out`, and
   `--locked` after sleep, restart and shut down.
 - `omorfos-lock` draws buttons and follows the pointer.
-- Keyboard access to the buttons, Tab to reach them, is not there yet,
-  and is on the roadmap.
-- The built-in theme gives `question-button:hover` a look of its own.
+- The buttons are reached with Tab and Shift+Tab, and pressed with
+  Enter. Asked whether to go ahead, the keyboard is on Cancel, so that
+  Enter pressed twice is not a slip either.
+- The built-in theme gives `question-button:hover` and
+  `question-button:focus` looks of their own.
