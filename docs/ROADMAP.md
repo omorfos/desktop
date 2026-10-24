@@ -4,8 +4,7 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** stage 3, what a day's use needs. Of stage 1 only pushing the
-work and seeing it pass in CI is left, which the maintainer does.
+**Next:** stage 3, what a day's use needs.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -63,9 +62,8 @@ Small, independent, and each an improvement the day it lands.
       set by rules: shaded, above, on every workspace.
 - [x] The root menu, and the titlebar's, driven from the keyboard:
       arrows, Enter, Escape.
-- [ ] The work pushed and seen to pass in CI. At the time of writing 57
-      commits are on this machine only, and CI has not run on any of
-      them: the XWayland tests have never run anywhere else.
+- [x] The work pushed and seen to pass in CI, on amd64 and arm64, the
+      XWayland tests with it.
 
 ## 2. Decisions
 
