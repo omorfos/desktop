@@ -3,6 +3,7 @@
 //! configuration offers them and PAM is set up for them.
 
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::Sender;
@@ -80,7 +81,10 @@ impl Helper {
         (way, user): (Way, &str),
         heard_by: (Sender<(Way, Said)>, impl Fn() + Send + 'static),
     ) -> std::io::Result<Self> {
+        // Named as its service, which is what PAM's modules say they are in
+        // the journal; started as `/proc/self/exe`, it would be `exe`.
         let started = Command::new(program)
+            .arg0(way.service())
             .arg("check")
             .arg(way.service())
             .arg(user)
