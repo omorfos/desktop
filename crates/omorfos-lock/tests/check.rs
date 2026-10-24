@@ -10,6 +10,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 
 /// Where `pam_wrapper`'s modules are, which differs from one system to
 /// another.
@@ -53,9 +54,21 @@ fn services() -> tempfile::TempDir {
     directory
 }
 
+/// Held while a helper runs, so that only one at a time does.
+///
+/// `pam_wrapper` gives each process a folder of its own, `/tmp/pam.` and a
+/// single character it starts looking for from the number of the process,
+/// and makes it after seeing it is not there, carrying on if another has
+/// made it in between. Two helpers started at once can so share a folder,
+/// and the first to end takes it away from the other, whose PAM then finds
+/// no services. Only the tests use `pam_wrapper`.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
 /// What the helper says when it asks `service` about `user`, given the
 /// lines `typed`, and whether it said the user is who they say.
 fn check(services: &Path, service: &str, user: Option<&str>, typed: &str) -> (String, bool) {
+    // A test that failed while holding it leaves nothing to put right.
+    let _alone = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
     let mut helper = Command::new(env!("CARGO_BIN_EXE_omorfos-lock"));
     helper.arg("check").arg(service).args(user);
     let mut child = helper
