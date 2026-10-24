@@ -11,21 +11,24 @@ use omorfos_config::{Color, Config, Edges, Line, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Arrangement, Offer, WindowId};
 use smithay::backend::renderer::element::AsRenderElements as _;
-use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
+use smithay::backend::renderer::element::{Id, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::output::Output;
+use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::{Logical, Point, Rectangle};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::SurfaceCachedState;
 
 use crate::Scale;
 use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical_size};
+use crate::icons::{Icon, WindowIcons};
 use crate::input::Drag;
 use crate::outputs::Head;
-use crate::paint;
+use crate::paint::{self, Text};
+use crate::switcher::{given_icon, icon_pixels};
 use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
@@ -54,6 +57,73 @@ pub(crate) struct Lines {
     /// Their titles, painted, each kept until it would be painted
     /// differently.
     titles: Vec<Written>,
+}
+
+/// Paints the title of `window`, offered with its title on `line` and its
+/// picture at `picture`, at `scale` and under the pointer or not: after its
+/// icon, if it has one; and for a private window, its icon large in the
+/// middle of its blank.
+fn write(
+    (text, icons): (&mut Text, &mut WindowIcons),
+    config: &Arc<Config>,
+    (window, title, icon, private): (WindowId, String, Option<Icon>, bool),
+    (line, picture): (Rect, Rect),
+    (scale, hovered): (Scale, bool),
+) -> Written {
+    let room = line.size.width;
+    let states = States::NONE.when(State::Hovered, hovered);
+    let ink = config.theme.style(Part::Offer, states).color;
+    let pixels = icon_pixels(scale);
+    let mut image = |icon: &Icon| match icon {
+        Icon::Named(name) => icons.picture(name, pixels, ink).cloned(),
+        Icon::Given(_) => None,
+    };
+    let image = icon.as_ref().map(&mut image);
+    let before = match (&icon, image.as_ref()) {
+        (Some(_), Some(Some(image))) => paint::Before::Icon(image),
+        (Some(_), _) => paint::Before::Room,
+        (None, _) => paint::Before::Nothing,
+    };
+    let canvas = paint::offer_title(
+        text,
+        (&config.theme, states),
+        (&title, before),
+        (room, line.size.height),
+        scale,
+    );
+    // A private window's icon in the middle of its blank, as
+    // large as it is drawn where a picture would be.
+    let side = paint::LARGE_ICON
+        .min(picture.size.width)
+        .min(picture.size.height);
+    let middle = picture.origin.offset(
+        ((picture.size.width - side) / 2).cast_signed(),
+        ((picture.size.height - side) / 2).cast_signed(),
+    );
+    let large = match (&icon, image.as_ref()) {
+        (Some(Icon::Given(buffer)), _) => Some(Large::Given(buffer.clone())),
+        (_, Some(Some(image))) => Some(Large::Painted(Painted::new(&paint::large_icon(
+            image, side, scale,
+        )))),
+        _ => None,
+    };
+    let large = large
+        .filter(|_| private)
+        .map(|large| (Rect::new(middle, DomainSize::new(side, side)), large));
+    Written {
+        window,
+        title,
+        icon,
+        private,
+        room,
+        scale,
+        hovered,
+        config: Arc::clone(config),
+        at: line.origin,
+        pixels: Painted::new(&canvas),
+        large,
+        ids: [Id::new(), Id::new()],
+    }
 }
 
 /// The lines of a border round `area`, each as wide as it says, inside it.
@@ -90,12 +160,26 @@ fn edges(area: Rect, border: Edges<Line>) -> impl Iterator<Item = (Rect, Color)>
     shown.map(|(at, size, line)| (Rect::new(at, size), line.color))
 }
 
-/// The title of a window offered in a part with nothing in it, painted,
-/// with what it was painted from.
+/// A private window's icon, shown large in its blank: painted, if it is an
+/// icon of a theme, or the pixels its program gave, which the renderer
+/// draws.
+#[derive(Debug)]
+enum Large {
+    Painted(Painted),
+    Given(WlBuffer),
+}
+
+/// The title of a window offered in a part with nothing in it, painted
+/// after its icon, with what it was painted from; and, for a private
+/// window, its icon large in its blank.
 #[derive(Debug)]
 struct Written {
     window: WindowId,
     title: String,
+    /// Its icon, if it has one, and whether it is private, which has its
+    /// icon shown large where its picture would be.
+    icon: Option<Icon>,
+    private: bool,
     /// How wide it may be, the scale it was painted at, and whether the
     /// pointer was over its box.
     room: u32,
@@ -106,6 +190,11 @@ struct Written {
     /// Where it is drawn, in the middle of the line it is written on.
     at: DomainPoint,
     pixels: Painted,
+    /// Where the icon is drawn large, and what is drawn there; and what
+    /// the renderer draws an icon a program gave by, beside the title and
+    /// large.
+    large: Option<(Rect, Large)>,
+    ids: [Id; 2],
 }
 
 impl Compositor {
@@ -311,6 +400,7 @@ impl Compositor {
     fn paint_titles(&mut self) {
         let config = Arc::clone(self.store.current());
         let point = self.pointer_position();
+        let mut icons = std::mem::take(&mut self.switch.icons);
         let wanted: Vec<_> = self
             .hover
             .lines
@@ -319,21 +409,35 @@ impl Compositor {
             .map(|offer| {
                 let window = self.desktop.window(offer.window);
                 let title = window.map_or_else(String::new, |window| window.title.clone());
+                let app_id = window.map_or("", |window| window.app_id.as_str());
                 let scale = self
                     .head_for(offer.title)
                     .map_or(Scale::ONE, |head| head.scale);
                 let hovered = offer.whole.contains(point);
-                (offer.window, title, offer.title, (scale, hovered))
+                let states = States::NONE.when(State::Hovered, hovered);
+                let ink = config.theme.style(Part::Offer, states).color;
+                let mapped = self.mapped(offer.window);
+                let icon = mapped
+                    .and_then(|mapped| icons.of(&mapped.surface, app_id, icon_pixels(scale), ink));
+                let private = self.desktop.private(offer.window);
+                let shown = (title, icon, private);
+                (
+                    offer.window,
+                    shown,
+                    (offer.title, offer.at),
+                    (scale, hovered),
+                )
             })
             .collect();
         let mut had = std::mem::take(&mut self.hover.lines.titles);
-        let titles = wanted
-            .into_iter()
-            .map(|(window, title, line, (scale, hovered))| {
+        let titles = wanted.into_iter().map(
+            |(window, (title, icon, private), (line, picture), (scale, hovered))| {
                 let room = line.size.width;
                 let same = |kept: &Written| {
                     kept.window == window
                         && kept.title == title
+                        && kept.icon == icon
+                        && kept.private == private
                         && kept.room == room
                         && kept.scale == scale
                         && kept.hovered == hovered
@@ -341,35 +445,22 @@ impl Compositor {
                 };
                 let kept = had.iter().position(same).map(|at| had.swap_remove(at));
                 let mut painted = kept.unwrap_or_else(|| {
-                    let states = if hovered {
-                        States::NONE.with(State::Hovered)
-                    } else {
-                        States::NONE
-                    };
-                    let canvas = paint::offer_title(
-                        &mut self.text,
-                        (&config.theme, states),
-                        &title,
-                        (room, line.size.height),
-                        scale,
-                    );
-                    Written {
-                        window,
-                        title,
-                        room,
-                        scale,
-                        hovered,
-                        config: Arc::clone(&config),
-                        at: line.origin,
-                        pixels: Painted::new(&canvas),
-                    }
+                    write(
+                        (&mut self.text, &mut icons),
+                        &config,
+                        (window, title, icon, private),
+                        (line, picture),
+                        (scale, hovered),
+                    )
                 });
                 let width = painted.pixels.width();
                 let left = (room.saturating_sub(width) / 2).cast_signed();
                 painted.at = line.origin.offset(left, 0);
                 painted
-            });
+            },
+        );
         self.hover.lines.titles = titles.collect();
+        self.switch.icons = icons;
     }
 
     /// The titles of the windows offered in parts with nothing in them,
@@ -379,12 +470,45 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let titles = self.hover.lines.titles.iter();
-        let titles = titles.filter_map(|title| {
+        let mut elements = Vec::new();
+        for title in &self.hover.lines.titles {
+            // An icon a program gave, in the room left for it before the
+            // title, as tall as the line.
+            if let Some(Icon::Given(buffer)) = &title.icon {
+                let tall = title.pixels.height();
+                let beside = (title.at.x, title.at.y, tall, tall);
+                elements.extend(given_icon(renderer, buffer, beside, &title.ids[0], view));
+            }
             let at = Point::<i32, Logical>::from((title.at.x, title.at.y));
-            title.pixels.element(renderer, at.to_f64(), view, 1.0)
-        });
-        titles.collect()
+            elements.extend(title.pixels.element(renderer, at.to_f64(), view, 1.0));
+        }
+        elements
+    }
+
+    /// The icons of private windows offered in parts with nothing in them,
+    /// large in their blanks, to be over the blanks.
+    pub(crate) fn offer_icons<R>(&self, renderer: &mut R, view: View) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let mut elements = Vec::new();
+        for title in &self.hover.lines.titles {
+            let Some((at, large)) = &title.large else {
+                continue;
+            };
+            let area = (at.origin.x, at.origin.y, at.size.width, at.size.height);
+            match large {
+                Large::Given(buffer) => {
+                    elements.extend(given_icon(renderer, buffer, area, &title.ids[1], view));
+                }
+                Large::Painted(painted) => {
+                    let corner = Point::<i32, Logical>::from((at.origin.x, at.origin.y));
+                    elements.extend(painted.element(renderer, corner.to_f64(), view, 1.0));
+                }
+            }
+        }
+        elements
     }
 
     /// The windows offered in parts with nothing in them, drawn small where

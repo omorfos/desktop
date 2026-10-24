@@ -2578,6 +2578,9 @@ impl Compositor {
                     // Panels brought back over a fullscreen window.
                     let raised = (Layer::Top, Placing::Raised);
                     self.layer_elements(renderer, output, view, raised, &mut elements);
+                    // A private window offered in a part with nothing in it
+                    // shown by its icon, over its blank.
+                    elements.extend(self.offer_icons(renderer, view));
                     // The line between windows that share a workspace.
                     let lines = self.lines(|at| view.pixel(at), view.scale.factor());
                     elements.extend(lines.map(Element::Solid));
@@ -3637,6 +3640,11 @@ impl Painted {
     /// How wide it is on screen, in units of layout.
     pub(crate) fn width(&self) -> u32 {
         self.size.w.unsigned_abs()
+    }
+
+    /// How tall it is on screen, in units of layout.
+    pub(crate) fn height(&self) -> u32 {
+        self.size.h.unsigned_abs()
     }
 
     /// Readies a picture from a cursor theme to be drawn pixel for pixel at

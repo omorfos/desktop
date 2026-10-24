@@ -605,3 +605,59 @@ fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
     let done = |event: &crate::common::Event| matches!(event, crate::common::Event::FrameDone);
     assert!(client.take_events().iter().any(done));
 }
+
+/// A window offered in the empty half, as [`waiting`] has it, with the
+/// icons installed in `data` to be found.
+fn waiting_with_icons(
+    config: &[(&str, &str)],
+    data: &std::path::Path,
+) -> (Session, Client, Toplevel) {
+    let mut session = Session::with_config(config);
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.to_owned()]);
+    let mut client = session.connect();
+    let waiting = session.open(&mut client, "waiting", (400, 300), RED);
+    session.open(&mut client, "first", (200, 100), BLUE);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    session.step();
+    (session, client, waiting)
+}
+
+/// Whether `colour` is anywhere on the line a window offered has its title
+/// on.
+fn on_title_line(picture: &crate::common::Picture, colour: u32) -> bool {
+    let middle = i32::midpoint(TITLE.1, TITLE.3);
+    (TITLE.0..TITLE.2).any(|x| picture.at(x, middle) == colour)
+}
+
+#[test]
+fn a_window_offered_has_its_icon_before_its_title_or_the_one_its_program_gave() {
+    let data = crate::switcher::installed(&[("waiting", YELLOW)], &[]);
+    let (mut session, mut client, waiting) = waiting_with_icons(&[], data.path());
+    assert!(on_title_line(&session.draw(), YELLOW), "its application's");
+    assert_eq!(session.draw().at(480, 226), RED, "and its picture");
+    client.set_icon(&waiting, None, Some((32, MAGENTA)));
+    session.roundtrip(&mut client);
+    point(&mut session, 100, 240);
+    let picture = session.draw();
+    assert!(on_title_line(&picture, MAGENTA), "its program's own");
+    assert!(!on_title_line(&picture, YELLOW));
+}
+
+#[test]
+fn a_private_window_offered_is_shown_by_its_icon_in_its_blank() {
+    let data = crate::switcher::installed(&[("waiting", YELLOW)], &[]);
+    let rules = "rules:\n  - match: { app_id: waiting }\n    private: true\n";
+    let theme = "capture { background: #00ff00; }";
+    let config = [("rules.yaml", rules), ("theme.css", theme)];
+    let (mut session, mut client, waiting) = waiting_with_icons(&config, data.path());
+    let picture = session.draw();
+    assert_eq!(picture.at(480, 226), YELLOW, "in the middle of its blank");
+    assert_eq!(picture.at(360, 140), GREEN, "which is round it");
+    assert!(on_title_line(&picture, YELLOW), "and before its title");
+    client.set_icon(&waiting, None, Some((32, MAGENTA)));
+    session.roundtrip(&mut client);
+    point(&mut session, 100, 240);
+    assert_eq!(session.draw().at(480, 226), MAGENTA, "its program's own");
+}

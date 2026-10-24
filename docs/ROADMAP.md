@@ -168,9 +168,9 @@ calls for them.
       of the `offer` part for the title under the pointer; the wash shown
       over a private window's blank, under which it is hidden now; and the
       titles of a row on one line, under the tallest of its pictures.
-- [ ] Icons beside the titles of windows offered in an empty part, and
-      in place of a private window's blank (ADR 38), once there are icons
-      from the icon theme.
+- [x] Icons beside the titles of windows offered in an empty part, and
+      large in the middle of a private window's blank (ADR 38): the one
+      its program gives, or its application's, as the switcher has them.
 - [ ] Windows made small by halves (ADR 38), once the renderer for
       real hardware can draw from what it drew: before the switcher.
 - [x] A window that nobody asked for, opening while a fullscreen

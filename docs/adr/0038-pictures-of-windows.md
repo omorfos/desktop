@@ -190,7 +190,8 @@ bar for. The window chosen, or the one left as it was, has it back
 when the switcher closes.
 
 **Icons came after.** Each window's icon is beside its title, and a
-private window has it large where its picture would be. It is the one
+private window has it large where its picture would be: in the switcher
+and in the parts of a tiled workspace with nothing in them alike. It is the one
 its program gives (`xdg-toplevel-icon`): by name, looked up in the icon
 themes as the shell's components look theirs up, or else as pixels;
 failing that, the one its desktop entry names, or the one named as its

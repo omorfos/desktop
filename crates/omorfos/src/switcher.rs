@@ -109,7 +109,7 @@ struct Drawn {
 /// of `area`, as large as fits but no larger than its pixels, which would
 /// only make it blocky. Icons are square, as the protocol has them. Nothing
 /// if the renderer cannot read it.
-fn given_icon<R>(
+pub(crate) fn given_icon<R>(
     renderer: &mut R,
     buffer: &WlBuffer,
     area: Area,
@@ -156,7 +156,7 @@ where
 
 /// How many pixels across an icon is looked up at, to be drawn sharp at
 /// `scale` where it is drawn largest.
-fn icon_pixels(scale: Scale) -> u32 {
+pub(crate) fn icon_pixels(scale: Scale) -> u32 {
     let side = f64::from(paint::LARGE_ICON) * scale.factor();
     // At most a few hundred, so neither negative nor too large.
     #[expect(

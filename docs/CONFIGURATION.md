@@ -312,13 +312,15 @@ its room. A window that opens when every part is taken opens on the
 desktop.
 
 A part with nothing in it shows the windows of the desktop the workspace
-was made from, small, each in a box with its title under it, which the
-theme draws as `offer`: its border round the box, and its colour and font
-for the title, `offer:hover` under the pointer. The pictures of a row
-stand on one line and their titles are on another. Click anywhere in a
-box to put its window there. A window a rule makes `private` is shown as
-a blank, in the colour of the `capture` part, with its title under it all
-the same, since that is how it can be told.
+was made from, small, each in a box with its icon and its title under
+it, which the theme draws as `offer`: its border round the box, and its
+colour and font for the title, `offer:hover` under the pointer. The icon
+is the one the program gives its window, or else its application's, as
+in the switcher. The pictures of a row stand on one line and their titles
+are on another. Click anywhere in a box to put its window there. A window
+a rule makes `private` is shown as a blank, in the colour of the
+`capture` part, with its icon large in the middle and its title under it
+all the same, since that is how it can be told.
 
 On such a workspace, rest the pointer against the top of the screen for
 six tenths of a second, or hold it there and push on against the top a

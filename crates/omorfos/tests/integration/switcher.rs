@@ -427,7 +427,7 @@ const MAGENTA: u32 = 0xffff_00ff;
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
 )]
-fn installed(icons: &[(&str, u32)], entries: &[(&str, &str)]) -> tempfile::TempDir {
+pub(crate) fn installed(icons: &[(&str, u32)], entries: &[(&str, &str)]) -> tempfile::TempDir {
     let data = tempfile::tempdir().unwrap();
     let apps = data.path().join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&apps).unwrap();

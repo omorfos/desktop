@@ -395,19 +395,47 @@ pub(crate) fn tooltip(text: &mut Text, theme: &Theme, lines: &[String], scale: S
 /// Paints a window's title as it is written under its picture where it is
 /// offered in a part with nothing in it: in the `offer` part's colour and
 /// font in `states`, `height` tall and only as wide as it is, but no wider
-/// than `room`, where it is cut short.
+/// than `room`, where it is cut short; after `before`, as tall as the line.
 pub(crate) fn offer_title(
     text: &mut Text,
     (theme, states): (&Theme, States),
-    title: &str,
+    (title, before): (&str, Before<'_>),
     (room, height): (u32, u32),
     scale: Scale,
 ) -> Canvas {
     let style = theme.style(Part::Offer, states);
     let font = theme.font(Part::Offer, states);
-    let width = text.measure(title, font).clamp(1, room.max(1));
+    let aside = if matches!(before, Before::Nothing) {
+        0
+    } else {
+        (height + BESIDE).min(room)
+    };
+    let width = (aside + text.measure(title, font)).clamp(1, room.max(1));
     let mut canvas = Canvas::scaled(width, height, scale);
-    text.draw(&mut canvas, title, (0, 0, width, height), style.color, font);
+    if let Before::Icon(image) = before {
+        canvas.draw_image((0, 0, height.min(width), height), image);
+    }
+    let rest = (aside.cast_signed(), 0, width.saturating_sub(aside), height);
+    text.draw(&mut canvas, title, rest, style.color, font);
+    canvas
+}
+
+/// What goes before a title, in a square as tall as its line.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Before<'a> {
+    /// Nothing: the title starts where it is.
+    Nothing,
+    /// An icon, painted with it.
+    Icon(&'a Image),
+    /// Room for an icon the renderer draws, as a program gave it.
+    Room,
+}
+
+/// Paints an icon `side` units across, as a window's picture is shown by
+/// its icon where it is not shown.
+pub(crate) fn large_icon(image: &Image, side: u32, scale: Scale) -> Canvas {
+    let mut canvas = Canvas::scaled(side, side, scale);
+    canvas.draw_image((0, 0, side, side), image);
     canvas
 }
 
