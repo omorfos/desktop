@@ -70,20 +70,21 @@ call them by their ids:
 ## 3. Reproduce what the runner has
 
 The runners are Ubuntu 24.04 with only what the workflow installs. The
-script beside this file runs a command in that, with `podman`, reading
-the packages from `.github/workflows/test.yml`:
+script beside this file runs a command in that, with `podman`, as an
+ordinary user as the runner does, reading the release and the packages
+from `.github/workflows/test.yml`:
 
 ```sh
 .claude/skills/ci-failure/reproduce.sh                      # cargo coverage --locked
 .claude/skills/ci-failure/reproduce.sh cargo llvm-cov --locked -p <crate> \
   --text --output-path /cache/report.txt
-podman run --rm -v omorfos-ci:/cache ubuntu:24.04 grep -n -B3 '\^0' /cache/report.txt
+podman run --rm -v omorfos-ci-24.04:/cache ubuntu:24.04 grep -n -B3 '\^0' /cache/report.txt
 ```
 
 The first run downloads the packages, Rust and the crates, and takes half
-an hour; the volume `omorfos-ci` keeps all but the packages, so later runs
-take minutes. A package that is only recommended by another is not there:
-that is how `libEGL` was missing for `Xwayland`.
+an hour; the volume `omorfos-ci-<release>` keeps all but the packages, so
+later runs take minutes. A package that is only recommended by another is
+not there: that is how `libEGL` was missing for `Xwayland`.
 
 Only amd64 can be run this way on the maintainer's machine. A fix for
 arm64 is checked by reasoning and by the next push; say so.
