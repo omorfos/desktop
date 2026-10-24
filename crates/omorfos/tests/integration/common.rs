@@ -403,6 +403,10 @@ impl Session {
     /// in parallel another test may be starting a process, which briefly
     /// holds copies of every descriptor in this one. Such effects have to be
     /// waited for rather than assumed.
+    ///
+    /// A state never reached is said to be the caller's, which says which
+    /// of a test's waits it was.
+    #[track_caller]
     pub(crate) fn eventually(&mut self, mut condition: impl FnMut(&mut Self) -> bool) {
         for _ in 0..5000 {
             if condition(self) {
