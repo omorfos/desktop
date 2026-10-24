@@ -1,0 +1,25 @@
+[package]
+name = "omorfos-brand"
+description = "Draws the omorfos mark, icon and wallpapers from the rules of its brand"
+keywords = ["wayland", "desktop", "wallpaper"]
+categories = ["graphics"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Draws the pictures, which are made as SVG, and writes them as PNG. It is
+# what omorfos-icons draws icons with; without its default features it
+# reads no text and no pictures inside a drawing, neither of which these
+# have.
+resvg = { version = "0.48.1", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true
