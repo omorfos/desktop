@@ -575,9 +575,18 @@ what only games and touchpads need last.
       within the same login, without the login screen, its windows
       closed, which is to be weighed against simply logging in again.
 - [ ] Buffers in shared memory released as soon as they are drawn,
-      which foot asks for, weighed against the software renderer and
-      drawing with several cards, which read them where they are. foot 1.21.0 also says window icons are not offered, which they
-      are: it looks for the wrong name, fixed in foot since.
+      which foot asks for ("compositor is not releasing buffers
+      immediately"), to be done in Smithay, not here. Smithay keeps a
+      buffer until the next is attached, and has no way to let it go
+      sooner; niri, on Smithay too, does the same. Sending the release
+      from omorfos would release it twice, and is right only where the
+      pixels were copied: the card's renderer copies them, but the
+      software renderer of the tests reads them in place, and a second
+      card copies them only when it draws, perhaps after the program has
+      drawn into them again. What it costs is small: foot copies what
+      changed from one buffer into the other, and since 1.25.0 off its
+      main thread. foot 1.21.0 also says window icons are not offered,
+      which they are: it looks for the wrong name, fixed in foot since.
 - [ ] Known gaps in the lock screen's buttons: they are reached only with
       the pointer, not with Tab and Enter; and what logind's inhibitors
       say is shown whole, which ADR 53 weighs.
