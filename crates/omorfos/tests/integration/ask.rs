@@ -863,3 +863,114 @@ fn the_eye_says_what_it_does_when_the_pointer_rests_on_it() {
         .input(Input::Motion { x: 2.0, y: 2.0 }, 0);
     session.eventually(|session| row(session) == before);
 }
+
+/// Whether the keyboard is on the button in `area` of the prompt, by the
+/// colour of its top edge.
+fn ringed(session: &mut Session, (x, y, across, _): (i32, i32, u32, u32)) -> bool {
+    let colour = Theme::default()
+        .style(
+            Part::QuestionButton,
+            States::NONE.with(omorfos_config::State::Focused),
+        )
+        .border
+        .top
+        .color;
+    let ring = u32::from_be_bytes([colour.alpha, colour.red, colour.green, colour.blue]);
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + x;
+    let top = (HEIGHT - SIZE.1.cast_signed()) / 2 + y;
+    session.draw().at(left + across.cast_signed() / 2, top) == ring
+}
+
+/// Presses Tab with Shift held.
+fn back_tab(session: &mut Session) {
+    let shift = |session: &mut Session, pressed| {
+        session.compositor_mut().input(
+            Input::Key {
+                code: key::SHIFT,
+                pressed,
+            },
+            0,
+        );
+    };
+    shift(session, true);
+    tap(session, key::TAB);
+    shift(session, false);
+}
+
+/// A row across the field, which shows what is typed.
+fn field_row(session: &mut Session) -> Vec<u32> {
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + FIELD.0;
+    let middle = (HEIGHT - SIZE.1.cast_signed()) / 2 + FIELD.1 + FIELD.3.cast_signed() / 2;
+    let picture = session.draw();
+    (left..left + FIELD.2.cast_signed())
+        .map(|x| picture.at(x, middle))
+        .collect()
+}
+
+#[test]
+fn the_buttons_are_reached_with_tab_and_pressed_with_enter() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    for code in [key::A, key::T, key::X] {
+        tap(&mut session, code);
+    }
+    session.eventually(typing);
+    let hidden = field_row(&mut session);
+    // The eye first, which Enter has show what is typed.
+    tap(&mut session, key::TAB);
+    session.eventually(|session| ringed(session, EYE) && !typing(session));
+    tap(&mut session, key::RETURN);
+    session.eventually(|session| field_row(session) != hidden);
+    // Then Cancel, Authenticate, and round to the field.
+    tap(&mut session, key::TAB);
+    session.eventually(|session| ringed(session, CANCEL) && !ringed(session, EYE));
+    tap(&mut session, key::TAB);
+    session.eventually(|session| ringed(session, GO) && !ringed(session, CANCEL));
+    tap(&mut session, key::TAB);
+    session.eventually(|session| typing(session) && !ringed(session, GO));
+    // And back.
+    back_tab(&mut session);
+    session.eventually(|session| ringed(session, GO));
+    tap(&mut session, key::RETURN);
+    session.eventually(|_| answer.is_finished());
+    assert_eq!(answer.join().unwrap(), Ok(()));
+    assert!(helped(&cookie).ends_with("typed atx\n"));
+}
+
+#[test]
+fn typing_goes_back_to_the_field_and_enter_on_cancel_gives_up() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    for _ in 0..2 {
+        back_tab(&mut session);
+    }
+    session.eventually(|session| ringed(session, CANCEL));
+    tap(&mut session, key::A);
+    session.eventually(|session| typing(session) && !ringed(session, CANCEL));
+    for _ in 0..2 {
+        back_tab(&mut session);
+    }
+    session.eventually(|session| ringed(session, CANCEL));
+    tap(&mut session, key::RETURN);
+    session.eventually(|_| answer.is_finished());
+    let refused = answer.join().unwrap().unwrap_err();
+    assert!(refused.contains("Cancelled"), "{refused}");
+}
