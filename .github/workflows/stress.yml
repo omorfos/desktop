@@ -58,11 +58,14 @@ jobs:
         run: |
           mkdir -p failed
           failures=0
+          # Every binary runs though one before it failed, so that one
+          # flake does not hide another; and a binary that crashed, rather
+          # than having a test fail, is named.
           for run in $(seq "$RUNS"); do
-            if ! cargo test --workspace --all-features --locked > run.log 2>&1; then
+            if ! cargo test --workspace --all-features --locked --no-fail-fast > run.log 2>&1; then
               failures=$((failures + 1))
               echo "::error::run $run of $RUNS failed"
-              grep -E "^test .* FAILED$|panicked at" run.log | head -40
+              grep -E "^test .* FAILED$|panicked at|process didn't exit successfully" run.log | head -40
               mv run.log "failed/tests-$run.log"
             fi
           done
