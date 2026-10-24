@@ -594,8 +594,10 @@ what only games and touchpads need last.
       the time again, as being left alone does; either way the rest goes
       as it came, and turns back from where it is if woken meanwhile.
 - [ ] What logind's inhibitors say shown whole on the lock screen, which
-      ADR 53 weighs. The administrator's prompt, `omorfos-ask`, still has
-      its buttons reached only with the pointer, Enter and Escape.
+      ADR 53 weighs.
+- [x] The administrator's prompt's buttons, the eye, Cancel and
+      Authenticate, reached with Tab and Shift+Tab and pressed with Enter,
+      as the lock screen's are.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and

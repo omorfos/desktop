@@ -1498,7 +1498,10 @@ middle of the screen says what is asked for and whose password it wants:
 yours, if you are allowed to say yes, as an administrator is, and
 otherwise the first of those who are. Type it and press Enter; Escape or
 Cancel gives up. The eye at the end of the field shows what you typed, or
-hides it again, and says so when the pointer rests on it. A wrong
+hides it again, and says so when the pointer rests on it. Tab moves from
+the field to the eye, Cancel and Authenticate in turn, and Shift+Tab
+back; Enter presses the one you are on, which looks
+`question-button:focus`, and typing goes back to the field. A wrong
 password is asked for again, and the box shakes; a theme that has the
 `question` part change at once, `question { transition: none; }`, keeps it
 still.

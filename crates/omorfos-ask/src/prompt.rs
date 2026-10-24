@@ -13,7 +13,7 @@ use std::mem;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 
-use omorfos_config::{Color, Part, State, States, Store, Theme};
+use omorfos_config::{Color, Part, State, States, Store, Style, Theme};
 use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
 use omorfos_shell::typing::{Key, Typing};
 use omorfos_shell::{picture, whole};
@@ -194,14 +194,15 @@ const fn along((left, top, across, down): Area, by: i32) -> Area {
 /// Paints the box, `shift` units from where it rests: what is asked for,
 /// the field with what is typed shown or hidden and the eye that shows or
 /// hides it, what was said, the buttons with the one that goes on picked
-/// out; and, while the pointer is on the eye, what the eye is for.
+/// out and the one the keyboard is on, if it is on one, as such; and, while
+/// the pointer or the keyboard is on the eye, what the eye is for.
 #[must_use]
 pub fn paint(
     theme: &Theme,
     text: &mut Text,
     scale: Scale,
     (asking, typed, open): (&Asking, &str, bool),
-    (shift, on_eye): (i32, bool),
+    (shift, on_eye, focused): (i32, bool, Option<Button>),
 ) -> Canvas {
     let (width, height) = SURFACE;
     let mut canvas = Canvas::scaled(width, height, scale);
@@ -225,10 +226,12 @@ pub fn paint(
         detail.color,
         font,
     );
-    let typing = if asking.checking {
-        States::NONE
-    } else {
+    // Typed into while the keyboard is on the field, and not on a button.
+    let typed_into = !asking.checking && focused.is_none();
+    let typing = if typed_into {
         States::NONE.with(State::Focused)
+    } else {
+        States::NONE
     };
     let field = theme.style(Part::QuestionInput, typing);
     canvas.draw_box(along(FIELD, by), &field);
@@ -240,7 +243,7 @@ pub fn paint(
     text.draw(&mut canvas, &showing, within, field.color, font);
     // A line where the next character will go, while it may be typed, which
     // stays in the field however much has been typed.
-    if !asking.checking {
+    if typed_into {
         let (left, top, room, tall) = within;
         let at = text.measure(&showing, font).min(room.saturating_sub(1));
         let margin = tall / 5;
@@ -253,15 +256,30 @@ pub fn paint(
         canvas.fill(caret, field.color);
     }
     // A question whose answer may be seen has nothing to hide.
+    let on_it = |button: Button, states: States| {
+        if focused == Some(button) {
+            states.with(State::Focused)
+        } else {
+            states
+        }
+    };
     if !asking.open {
         paint_eye(&mut canvas, (along(EYE, by), scale), field.color, open);
+        // The keyboard on the eye rings it as it would a button.
+        let ringed = theme.style(Part::QuestionButton, on_it(Button::Show, States::NONE));
+        let ring = Style {
+            border: ringed.border,
+            radius: ringed.radius,
+            ..Style::NONE
+        };
+        canvas.draw_box(along(EYE, by), &ring);
     }
     let line = along((MARGIN, 140, room, 20), by);
     text.draw(&mut canvas, &asking.said, line, detail.color, font);
     let picked = States::NONE.with(State::Active);
     let buttons = [
-        (CANCEL, "Cancel", States::NONE),
-        (GO, "Authenticate", picked),
+        (CANCEL, "Cancel", on_it(Button::Cancel, States::NONE)),
+        (GO, "Authenticate", on_it(Button::Go, picked)),
     ];
     for (area, label, states) in buttons {
         let style = theme.style(Part::QuestionButton, states);
@@ -271,7 +289,7 @@ pub fn paint(
         let within = (left + 10, top + 6, across - 20, down - 12);
         text.draw(&mut canvas, label, within, style.color, font);
     }
-    if on_eye && !asking.open {
+    if (on_eye || focused == Some(Button::Show)) && !asking.open {
         paint_tooltip(&mut canvas, theme, text, (eye_says(open), by));
     }
     canvas
@@ -350,6 +368,9 @@ struct Shell {
     answer: Option<Answer>,
     /// Where the pointer is on the box, while it is over it.
     over: Option<(i32, i32)>,
+    /// The button the keyboard is on, reached with Tab; on none, it is on
+    /// the field.
+    focused: Option<Button>,
     /// While the box shakes: when the first frame of it was shown, once one
     /// has been, and how long it has shaken for since, in milliseconds, as
     /// the compositor tells the time of each frame.
@@ -403,7 +424,9 @@ impl Shell {
     }
 
     /// Takes in a key going down: what it types goes in the field, `⌫`
-    /// takes the last character out, Enter goes on and Escape gives up.
+    /// takes the last character out, Enter goes on and Escape gives up. Tab
+    /// and Shift with it move the keyboard to each button and back to the
+    /// field, and Enter on a button presses it.
     fn pressed(&mut self, code: u32) {
         let checking = self
             .asked
@@ -412,8 +435,16 @@ impl Shell {
         if checking {
             return;
         }
-        match self.typing.pressed(code) {
-            Key::Enter => self.go(),
+        let key = self.typing.pressed(code);
+        // What types, or takes out, is for the field.
+        if matches!(key, Key::Typed(_) | Key::Back) {
+            self.focused = None;
+        }
+        match key {
+            Key::Enter => match self.focus() {
+                Some(button) => self.press(button),
+                None => self.go(),
+            },
             Key::Escape => self.answered(Answer::Cancel),
             Key::Back => {
                 self.typed.pop();
@@ -425,9 +456,52 @@ impl Shell {
                 self.typed.extend(typed.chars().take(room));
                 self.stale = true;
             }
-            // Its buttons are reached with the pointer; Enter and Escape
-            // say what they do.
-            Key::Next | Key::Previous | Key::Nothing => {}
+            Key::Next => self.tab(false),
+            Key::Previous => self.tab(true),
+            Key::Nothing => {}
+        }
+    }
+
+    /// The buttons the keyboard may be on, in order: the eye, unless there
+    /// is nothing hidden, then Cancel and Authenticate.
+    fn buttons(&self) -> Vec<Button> {
+        let hidden = self.asked.as_ref().is_some_and(|(asking, _)| !asking.open);
+        let eye = hidden.then_some(Button::Show);
+        eye.into_iter()
+            .chain([Button::Cancel, Button::Go])
+            .collect()
+    }
+
+    /// The button the keyboard is on, if it is one there is; else it is on
+    /// the field.
+    fn focus(&self) -> Option<Button> {
+        self.focused
+            .filter(|button| self.buttons().contains(button))
+    }
+
+    /// Moves the keyboard on from the field to each button in turn, and
+    /// round to the field again; or `back`.
+    fn tab(&mut self, back: bool) {
+        let buttons = self.buttons();
+        let places = buttons.len() + 1;
+        let focus = self.focus();
+        let on = buttons.iter().position(|button| Some(*button) == focus);
+        // The field is the place after the last button.
+        let on = on.unwrap_or(buttons.len());
+        let to = (if back { on + places - 1 } else { on + 1 }) % places;
+        self.focused = buttons.get(to).copied();
+        self.stale = true;
+    }
+
+    /// Does what `button` does.
+    fn press(&mut self, button: Button) {
+        match button {
+            Button::Show => {
+                self.open = !self.open;
+                self.stale = true;
+            }
+            Button::Cancel => self.answered(Answer::Cancel),
+            Button::Go => self.go(),
         }
     }
 
@@ -448,14 +522,8 @@ impl Shell {
     /// Takes in a button going down on the box.
     fn clicked(&mut self, button: u32) {
         let on = self.pointed().filter(|_| button == LEFT_BUTTON);
-        match on {
-            Some(Button::Show) => {
-                self.open = !self.open;
-                self.stale = true;
-            }
-            Some(Button::Cancel) => self.answered(Answer::Cancel),
-            Some(Button::Go) => self.go(),
-            None => {}
+        if let Some(button) = on {
+            self.press(button);
         }
     }
 
@@ -471,6 +539,7 @@ impl Shell {
             return Ok(());
         };
         let on_eye = self.pointed() == Some(Button::Show);
+        let focused = self.focus();
         let face = self.face.get_or_insert_with(|| Face::new(globals, handle));
         if !face.ready {
             return Ok(());
@@ -489,7 +558,7 @@ impl Shell {
             &mut self.text,
             face.scale,
             (asking, &self.typed, self.open),
-            (shift, on_eye),
+            (shift, on_eye, focused),
         );
         picture(&globals.shm, &canvas, handle).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
@@ -562,6 +631,7 @@ impl Desk {
                 open: false,
                 answer: None,
                 over: None,
+                focused: None,
                 shaking: None,
                 store,
                 text: Text::new(),
@@ -586,6 +656,7 @@ impl Desk {
         if afresh {
             wipe(&mut self.shell.typed);
             self.shell.answer = None;
+            self.shell.focused = None;
         }
         let globals = self.shell.globals();
         let asked = globals.is_some();
@@ -615,6 +686,7 @@ impl Desk {
         self.shell.asked = None;
         self.shell.answer = None;
         self.shell.open = false;
+        self.shell.focused = None;
         wipe(&mut self.shell.typed);
         self.shell.stale = true;
     }
@@ -867,14 +939,14 @@ mod tests {
             &mut text,
             Scale::ONE,
             (&asking(), "", false),
-            (-SHAKE, false),
+            (-SHAKE, false, None),
         );
         let right = paint(
             &theme,
             &mut text,
             Scale::ONE,
             (&asking(), "", false),
-            (SHAKE, false),
+            (SHAKE, false, None),
         );
         assert_eq!(left.at(12, 12), background);
         assert_ne!(right.at(12, 12), background, "not yet there");
@@ -941,7 +1013,7 @@ mod tests {
             &mut text,
             Scale::ONE,
             (&asking(), "secret", false),
-            (0, false),
+            (0, false, None),
         );
         let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
         let unpicked = theme.style(Part::QuestionButton, States::NONE);
@@ -960,7 +1032,7 @@ mod tests {
             &mut text,
             Scale::ONE,
             (&checking, "secret", true),
-            (0, false),
+            (0, false, None),
         );
         let field = |states| theme.style(Part::QuestionInput, states).border.top.color;
         assert_ne!(
@@ -987,7 +1059,7 @@ mod tests {
                 &mut text,
                 Scale::ONE,
                 (asked, typed, false),
-                (0, false),
+                (0, false, None),
             )
         };
         let empty = drawn(&asking(), "");
@@ -1029,7 +1101,7 @@ mod tests {
                 &mut Text::new(),
                 Scale::ONE,
                 (asked, "", open),
-                (0, false),
+                (0, false, None),
             );
             pixels(&canvas, EYE)
         };
@@ -1055,7 +1127,7 @@ mod tests {
             &mut text,
             Scale::new(2.0),
             (&asking(), "", false),
-            (0, false),
+            (0, false, None),
         );
         assert_eq!(large.units(), SURFACE);
     }
@@ -1078,14 +1150,14 @@ mod tests {
             &mut text,
             Scale::ONE,
             (&asking(), "", false),
-            (0, false),
+            (0, false, None),
         );
         let over = paint(
             &theme,
             &mut text,
             Scale::ONE,
             (&asking(), "", false),
-            (0, true),
+            (0, true, None),
         );
         assert_ne!(pixels(&away, below), pixels(&over, below));
         // Nothing to hide, nothing to say.
@@ -1098,9 +1170,15 @@ mod tests {
             &mut text,
             Scale::ONE,
             (&open, "", false),
-            (0, false),
+            (0, false, None),
         );
-        let quiet = paint(&theme, &mut text, Scale::ONE, (&open, "", false), (0, true));
+        let quiet = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&open, "", false),
+            (0, true, None),
+        );
         assert_eq!(pixels(&still, below), pixels(&quiet, below));
     }
 
