@@ -1581,6 +1581,27 @@ bindings:
 
 All this needs logind; without it, nothing locks before sleep.
 
+## What programs say
+
+What omorfos and the programs that come with it say goes where omorfos's
+own output goes: a configuration it cannot read and why, a program it sent
+away for asking what Wayland does not allow, and why. That is a file if
+you start omorfos as `omorfos > ~/omorfos.log 2>&1`, or wherever your login
+screen keeps what a session says.
+
+What the programs started in the session say, those you open and those
+that start with it, is kept in the journal, each under its own name, where
+systemd's journal runs:
+
+```sh
+journalctl --user -t foot
+journalctl --user -t code --since today
+```
+
+So a program that complains, as most do now and then, does not fill
+omorfos's log, and what it said is still there after you log out and in
+again. Where there is no journal, they say it where omorfos does.
+
 ## Programs written for X11
 
 Programs that have not been written for Wayland run through `Xwayland`,

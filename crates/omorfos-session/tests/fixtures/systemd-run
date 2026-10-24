@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stands in for systemd-run: writes down what it was asked, in the
+# directory it is started in, and starts the program after `--`.
+printf '%s\n' "$*" > scoped
+while [ "$1" != -- ]; do shift; done
+shift
+exec "$@"
