@@ -43,6 +43,12 @@
           "default": true,
           "description": "Whether what is copied is kept by `omorfos-clipboard` once the\nprogram it was copied from has closed. Turn it off to have another\nprogram keep it, or none. What a password manager copies is never\nkept.",
           "type": "boolean"
+        },
+        "forget": {
+          "description": "How many seconds what is copied stays on the clipboard before it is\nemptied, if nothing else is copied meanwhile: for passwords copied\nfrom where nothing says they are secret. 0 never empties it, and\nthe most is a day.",
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "type": "object"

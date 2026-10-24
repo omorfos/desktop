@@ -142,11 +142,19 @@ pub struct Clipboard {
     /// program keep it, or none. What a password manager copies is never
     /// kept.
     pub enabled: bool,
+    /// How many seconds what is copied stays on the clipboard before it is
+    /// emptied, if nothing else is copied meanwhile: for passwords copied
+    /// from where nothing says they are secret. 0 never empties it, and
+    /// the most is a day.
+    pub forget: Bounded<0, 86_400>,
 }
 
 impl Default for Clipboard {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            forget: Bounded::clamped(0),
+        }
     }
 }
 
@@ -965,6 +973,13 @@ mod tests {
         let general = parse("clipboard: { enabled: false }").unwrap();
         assert!(!general.clipboard.enabled);
         assert!(parse("clipboard: { history: 10 }").is_err());
+        assert_eq!(General::default().clipboard.forget.get(), 0, "never");
+        let general = parse("clipboard: { forget: 45 }").unwrap();
+        assert_eq!(general.clipboard.forget.get(), 45);
+        assert!(
+            parse("clipboard: { forget: 86401 }").is_err(),
+            "more than a day"
+        );
     }
 
     #[test]
