@@ -59,6 +59,46 @@ pub enum Request {
         /// Kept from sleeping, as music being played is.
         sleep: bool,
     },
+    /// Say what radios the machine has and which are off, in place of what
+    /// was said before, for the state to tell those that show it. It is
+    /// told for as long as the connection lasts, as what speaks for the
+    /// radios says it.
+    Radios {
+        /// Each kind of radio there is.
+        radios: Vec<Radio>,
+    },
+}
+
+/// A kind of radio the machine has, as the kernel knows them: all of that
+/// kind together.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Radio {
+    /// What kind it is, as the kernel names it: `wlan`, `bluetooth`,
+    /// `wwan`, `gps`, `fm`, `nfc` or `uwb`.
+    pub kind: String,
+    /// Whether every radio of the kind is off.
+    pub off: bool,
+    /// Whether one is held off by a switch or the firmware, which no
+    /// program can turn on.
+    pub switched: bool,
+}
+
+impl Radio {
+    /// What its kind is called to people, or `A radio` for one not known.
+    #[must_use]
+    pub fn called(&self) -> &'static str {
+        match self.kind.as_str() {
+            "wlan" => "Wi-Fi",
+            "bluetooth" => "Bluetooth",
+            "uwb" => "Ultra-wideband",
+            "wimax" => "WiMAX",
+            "wwan" => "Mobile broadband",
+            "gps" => "GPS",
+            "fm" => "FM radio",
+            "nfc" => "NFC",
+            _ => "A radio",
+        }
+    }
 }
 
 /// What the compositor answers.
@@ -137,6 +177,10 @@ pub struct State {
     /// compositor too old to say.
     #[serde(default)]
     pub awake: Option<Awake>,
+    /// The kinds of radio the machine has, and which are off. Empty where
+    /// nothing has said, or from a compositor too old to say.
+    #[serde(default)]
+    pub radios: Vec<Radio>,
 }
 
 /// The session being kept awake, as the user asked.
@@ -358,6 +402,33 @@ mod tests {
     }
 
     #[test]
+    fn each_kind_of_radio_is_called_by_its_name_to_people() {
+        let called = |kind: &str| {
+            let radio = Radio {
+                kind: kind.to_owned(),
+                off: false,
+                switched: false,
+            };
+            radio.called()
+        };
+        let kinds = [
+            "wlan",
+            "bluetooth",
+            "uwb",
+            "wimax",
+            "wwan",
+            "gps",
+            "fm",
+            "nfc",
+            "odd",
+        ];
+        let names = kinds.map(called);
+        assert_eq!(names[0], "Wi-Fi");
+        assert_eq!(names[8], "A radio");
+        assert!(names.iter().all(|name| !name.is_empty()));
+    }
+
+    #[test]
     fn every_message_survives_a_round_trip() {
         for request in [
             Request::Version,
@@ -373,6 +444,13 @@ mod tests {
             Request::Hold {
                 idle: true,
                 sleep: false,
+            },
+            Request::Radios {
+                radios: vec![Radio {
+                    kind: "bluetooth".to_owned(),
+                    off: true,
+                    switched: false,
+                }],
             },
         ] {
             round_trip(&request);
@@ -418,6 +496,11 @@ mod tests {
             awake: Some(Awake {
                 until: Some(1_761_400_800),
             }),
+            radios: vec![Radio {
+                kind: "wlan".to_owned(),
+                off: false,
+                switched: true,
+            }],
         };
         for reply in [
             Reply::Version {

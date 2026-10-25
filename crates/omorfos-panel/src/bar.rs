@@ -15,6 +15,8 @@ enum Target {
     Window(u64),
     /// The session being kept awake, which a click lets go.
     Awake,
+    /// Which radios are off, which is only read.
+    Radios,
     /// Nothing: the clock is only read.
     Nothing,
 }
@@ -94,7 +96,8 @@ impl Bar {
     /// time. The time is whatever is to be read there, such as `14:05`; a
     /// bar told none has no clock. `awake` is what says the session is kept
     /// awake, such as `Awake until 15:30`, and is shown as the clock is,
-    /// before it; with none, nothing says so.
+    /// before it; with none, nothing says so. `radios` is what says which
+    /// radios are off, such as `Aeroplane mode`, before that.
     ///
     /// A workspace's button is as wide as its name needs, and the clock as
     /// wide as the time. The windows share what room is left. The theme
@@ -104,7 +107,7 @@ impl Bar {
         state: &State,
         output: &str,
         width: u32,
-        (time, awake): (&str, &str),
+        (time, awake, radios): (&str, &str, &str),
         theme: &Theme,
         text: &mut Text,
     ) -> Self {
@@ -162,6 +165,7 @@ impl Bar {
         };
         let clock = ending(time, Target::Nothing);
         let awake = ending(awake, Target::Awake);
+        let radios = ending(radios, Target::Radios);
 
         let mut workspaces = workspaces;
         let shown = workspaces.find(|workspace| workspace.active);
@@ -187,6 +191,7 @@ impl Bar {
                 target: Target::Window(window.id),
             });
         }
+        items.extend(radios);
         items.extend(awake);
         items.extend(clock);
 
@@ -225,7 +230,7 @@ impl Bar {
             Target::Awake => Some(Request::Perform {
                 action: json!("stay_awake"),
             }),
-            Target::Nothing => None,
+            Target::Nothing | Target::Radios => None,
         }
     }
 
@@ -251,6 +256,7 @@ impl Bar {
                 Target::Window(id) => id,
                 Target::Nothing => 0,
                 Target::Awake => 1,
+                Target::Radios => 2,
             };
             let style = motion.style(theme, item.part, key, item.states);
             canvas.draw_box(item.area, &style);
@@ -380,6 +386,7 @@ mod tests {
             screens: Vec::new(),
             locked: false,
             awake: None,
+            radios: Vec::new(),
         }
     }
 
@@ -389,7 +396,14 @@ mod tests {
 
     fn timed(state: &State, output: &str, time: &str) -> Bar {
         let theme = Theme::default();
-        Bar::new(state, output, WIDTH, (time, ""), &theme, &mut Text::new())
+        Bar::new(
+            state,
+            output,
+            WIDTH,
+            (time, "", ""),
+            &theme,
+            &mut Text::new(),
+        )
     }
 
     fn workspace_request(number: u32) -> Request {
@@ -534,7 +548,7 @@ mod tests {
             &state(),
             "left",
             10,
-            ("", ""),
+            ("", "", ""),
             &Theme::default(),
             &mut Text::new(),
         );
@@ -676,7 +690,7 @@ mod tests {
     #[test]
     fn what_says_the_session_is_kept_awake_is_before_the_time_and_lets_it_go() {
         let theme = Theme::default();
-        let times = ("14:05", "Awake until 15:30");
+        let times = ("14:05", "Awake until 15:30", "Bluetooth off");
         let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
         let clock = timed(&state(), "left", "14:05");
         let ask = |bar: &Bar, x: u32| bar.click(x.cast_signed());
@@ -749,7 +763,7 @@ mod tests {
     /// laid over it.
     fn styled(stylesheet: &str) -> (Bar, Theme) {
         let theme = Theme::parse(stylesheet).unwrap();
-        let times = ("14:05", "");
+        let times = ("14:05", "", "");
         let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
         (bar, theme)
     }

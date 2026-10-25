@@ -85,6 +85,9 @@ struct Peer {
     /// What it says the programs it speaks for ask the session to be kept
     /// from, while it is connected.
     kept: Kept,
+    /// What it says of the machine's radios, if it speaks for them, while
+    /// it is connected.
+    radios: Option<Vec<omorfos_ipc::Radio>>,
 }
 
 /// What programs ask the session to be kept from, through peers that
@@ -165,6 +168,7 @@ impl Peer {
                 idle: false,
                 sleep: false,
             },
+            radios: None,
         }
     }
 
@@ -289,6 +293,13 @@ impl Compositor {
                         peer.kept = Kept { idle, sleep };
                         peer.queue(&Reply::Done);
                     }
+                    Ok(Request::Radios { radios }) => {
+                        // Kept with the compositor too, as the state is made
+                        // while the server is out of its hands.
+                        self.radios.clone_from(&radios);
+                        peer.radios = Some(radios);
+                        peer.queue(&Reply::Done);
+                    }
                     Ok(request) => peer.queue(&self.answer(request)),
                     Err(message) => peer.queue(&Reply::Error { message }),
                 }
@@ -327,6 +338,9 @@ impl Compositor {
         gone.filter_map(|peer| peer.wake)
             .for_each(|wake| self.event_loop.remove(wake));
         server.peers.retain(|peer| peer.alive);
+        // What a peer that has gone said of the radios goes with it.
+        let said = server.peers.iter().find_map(|peer| peer.radios.clone());
+        self.radios = said.unwrap_or_default();
         let behind = server.peers.iter().any(|peer| !peer.outbox.is_empty());
         server.retry = behind.then(|| now + RETRY);
         self.ipc = Some(server);
@@ -341,9 +355,11 @@ impl Compositor {
             // A subscription is answered in `publish_ipc`, and what is
             // held is kept with its peer; should one get here it is treated
             // as asking for the state once.
-            Request::State | Request::Subscribe | Request::ShowProblems | Request::Hold { .. } => {
-                Reply::State(self.ipc_state())
-            }
+            Request::State
+            | Request::Subscribe
+            | Request::ShowProblems
+            | Request::Hold { .. }
+            | Request::Radios { .. } => Reply::State(self.ipc_state()),
             Request::Placed => Reply::Placed(self.placed()),
             Request::Reload => {
                 self.reload_config();
@@ -535,6 +551,7 @@ impl Compositor {
             awake: self.presence.awake.map(|awake| omorfos_ipc::Awake {
                 until: awake.said(),
             }),
+            radios: self.radios.clone(),
         }
     }
 }

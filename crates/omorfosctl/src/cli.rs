@@ -368,6 +368,7 @@ mod tests {
             screens: Vec::new(),
             locked: false,
             awake: None,
+            radios: Vec::new(),
         }
     }
 

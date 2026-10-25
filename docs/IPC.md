@@ -55,6 +55,7 @@ and reads one reply.
 | `{"activate": {"window": 7}}` | `"done"` |
 | `"placed"` | `{"placed": [...]}`, where the windows that can be seen are |
 | `{"hold": {"idle": true, "sleep": false}}` | `"done"` |
+| `{"radios": {"radios": [...]}}` | `"done"` |
 
 Anything that cannot be understood or carried out is answered with
 `{"error": {"message": "..."}}`, and the connection stays open. That
@@ -126,7 +127,11 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
     }
   ],
   "locked": false,
-  "awake": { "until": 1761400800 }
+  "awake": { "until": 1761400800 },
+  "radios": [
+    { "kind": "wlan", "off": false, "switched": false },
+    { "kind": "bluetooth", "off": true, "switched": false }
+  ]
 }
 ```
 
@@ -150,6 +155,14 @@ up, so a program that has to wait for the screen to be locked, as
 `omorfos-session` does before the machine sleeps, waits for it to be
 true. Asking for the `lock` action is refused with an error when nothing
 is set to lock the session with, so that such a program knows at once.
+
+`radios` are the kinds of radio the machine has, as the kernel names
+them (`wlan`, `bluetooth`, `wwan`, `gps`, `fm`, `nfc`, `uwb`), each `off`
+when every radio of the kind is, and `switched` when a switch or the
+firmware holds one off, which no program can undo. They are what
+`omorfos-session` says with `"radios"`, which holds for as long as its
+connection does; empty while nothing has said, or from an older
+compositor.
 
 `awake` is there while the user has asked for the session to stay awake,
 by the `stay_awake` or `stay_awake_for` action, with `until` the time it

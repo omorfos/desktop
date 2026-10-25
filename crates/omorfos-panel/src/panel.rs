@@ -272,6 +272,24 @@ struct Face {
 }
 
 /// What it takes to put a bar on a screen.
+/// What the bar says of the radios: that the machine is in aeroplane mode,
+/// all of them off; or which kinds are off; or nothing while none is.
+fn radios(radios: &[omorfos_ipc::Radio]) -> String {
+    if !radios.is_empty() && radios.iter().all(|radio| radio.off) {
+        return "Aeroplane mode".to_owned();
+    }
+    let off: Vec<&str> = radios
+        .iter()
+        .filter(|radio| radio.off)
+        .map(omorfos_ipc::Radio::called)
+        .collect();
+    match off.as_slice() {
+        [] => String::new(),
+        [one] => format!("{one} off"),
+        [first @ .., last] => format!("{} and {last} off", first.join(", ")),
+    }
+}
+
 /// What the bar says while the session is kept awake, as the user asked:
 /// until when, if it ends. Nothing while it is not.
 fn awake(awake: Option<omorfos_ipc::Awake>) -> String {
@@ -294,6 +312,8 @@ struct Tools<'a> {
     time: &'a str,
     /// What says the session is kept awake, while it is.
     awake: &'a str,
+    /// What says which radios are off, while any is.
+    radios: &'a str,
     now: Duration,
     theme: &'a Theme,
     text: &'a mut Text,
@@ -401,6 +421,7 @@ impl Shell {
             return Ok(());
         };
         let awake = awake(self.state.awake);
+        let radios = radios(&self.state.radios);
         let mut tools = Tools {
             compositor,
             shm,
@@ -411,6 +432,7 @@ impl Shell {
             state: &self.state,
             time: &self.time,
             awake: &awake,
+            radios: &radios,
             now: self.now,
             theme: &self.store.current().theme,
             text: &mut self.text,
@@ -480,7 +502,7 @@ impl Face {
         if self.width == 0 {
             return Ok(());
         }
-        let (state, times) = (tools.state, (tools.time, tools.awake));
+        let (state, times) = (tools.state, (tools.time, tools.awake, tools.radios));
         let bar = Bar::new(state, name, self.width, times, tools.theme, tools.text);
         let wanted = (bar, self.scale);
         // The same bar is drawn again while a button on it changes colour.
@@ -694,6 +716,35 @@ delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_bar_says_which_radios_are_off_and_aeroplane_mode_when_all_are() {
+        let radio = |kind: &str, off| omorfos_ipc::Radio {
+            kind: kind.to_owned(),
+            off,
+            switched: false,
+        };
+        assert_eq!(radios(&[]), "");
+        assert_eq!(
+            radios(&[radio("wlan", false), radio("bluetooth", false)]),
+            ""
+        );
+        assert_eq!(
+            radios(&[radio("wlan", false), radio("bluetooth", true)]),
+            "Bluetooth off"
+        );
+        let three = [
+            radio("wlan", true),
+            radio("bluetooth", true),
+            radio("nfc", true),
+            radio("gps", false),
+        ];
+        assert_eq!(radios(&three), "Wi-Fi, Bluetooth and NFC off");
+        assert_eq!(
+            radios(&[radio("wlan", true), radio("bluetooth", true)]),
+            "Aeroplane mode"
+        );
+    }
 
     #[test]
     fn the_bar_says_the_session_is_kept_awake_and_until_when() {

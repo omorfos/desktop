@@ -394,6 +394,9 @@ pub struct Compositor {
     /// What is changing colour or coming in, and the time it goes by.
     animation: Animation,
     pub(crate) ipc: Option<Server>,
+    /// What the peer that speaks for the machine's radios last said of
+    /// them, while it is connected.
+    pub(crate) radios: Vec<omorfos_ipc::Radio>,
     /// The event loop, to be woken by what the compositor waits for.
     pub(crate) event_loop: LoopHandle<'static, Self>,
     socket_name: Option<OsString>,
@@ -538,6 +541,7 @@ impl Compositor {
                     refused: Refused::default(),
                     animation: Animation::new(),
                     ipc: None,
+                    radios: Vec::new(),
                     event_loop,
                     socket_name: None,
                     running: true,

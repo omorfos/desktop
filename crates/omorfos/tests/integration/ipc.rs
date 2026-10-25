@@ -790,3 +790,29 @@ fn the_state_says_where_each_screen_stands_and_the_modes_it_can_be_driven_in() {
         .offer_modes(&second, &offered, offered[0]);
     assert_eq!(state(&mut session, &mut peer).screens.len(), 1);
 }
+
+#[test]
+fn what_speaks_for_the_radios_says_what_they_are_for_as_long_as_it_is_connected() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut radios = Client::connect(&socket).unwrap();
+    let mut reader = Client::connect(&socket).unwrap();
+    assert!(
+        state(&mut session, &mut reader).radios.is_empty(),
+        "nothing said yet"
+    );
+
+    let said = vec![omorfos_ipc::Radio {
+        kind: "bluetooth".to_owned(),
+        off: true,
+        switched: false,
+    }];
+    let asked = Request::Radios {
+        radios: said.clone(),
+    };
+    assert_eq!(session.ask(&mut radios, &asked), Reply::Done);
+    assert_eq!(state(&mut session, &mut reader).radios, said);
+
+    drop(radios);
+    session.eventually(|session| state(session, &mut reader).radios.is_empty());
+}
