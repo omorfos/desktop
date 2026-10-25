@@ -115,10 +115,14 @@ Each in dark and in light.
    for its area on others. They are to be felt more than seen; a regular
    grid of them was tried and is not used. A grain too fine to see, at
    5%, keeps the lift from stepping from one shade to the next.
-3. **The spill** is the five bands again, wider than the mark's, lying
-   under the mark along its angle and blurred a long way, at about half
-   opacity.
-4. **The mark** is on top, solid.
+3. **The spectrum**, made something of its own on each, in its order
+   and always all five.
+4. **The mark**, on top and solid, on Prism and the lock screen only.
+
+On Prism, the first wallpaper and the one shown when nothing is named,
+the spectrum is **the spill**: the five bands again, wider than the
+mark's, lying under the mark along its angle and blurred a long way, at
+about half opacity.
 
 | Picture | The mark | The spill |
 |---|---|---|
@@ -128,8 +132,19 @@ Each in dark and in light.
 The lock screen's picture is not drawn yet: it comes with the lock screen
 having a picture of its own.
 
+The other wallpapers have no mark, and the spectrum is:
+
+| Wallpaper | The spectrum |
+|---|---|
+| Spill | The bands alone, 7.5% of the width each, across the screen on the mark's angle a little right of the middle, blurred a long way at 55%; and again, 4% each and less blurred, at 45%, so that each colour is seen |
+| Horizon | The rings of an ellipse whose middle is far under the bottom edge, cyan outermost, each 2.4% of the height: an arc whose top is two thirds of the way down, softly edged at 60% over a wide glow of itself at 70%. The top two thirds are left to the ground |
+| Facets | The bands, 6% of the width each, right of the middle on the mark's angle, each starting and ending somewhere of its own; cut into lengths of 4% to 12% of the width, each cut along one diagonal or the other into two triangles, each at an opacity of its own and fainter towards the ends; over a glow of the bands at 35% |
+| Ground | A line 10 pixels high on a screen 3840 wide along the bottom edge, the colours running into each other from left to right, glowing a little above it at 45% |
+
 The wallpapers are installed in `share/backgrounds/omorfos/`, where the
-wallpaper looks for them and where more are to join them.
+wallpaper looks for them, each as a pair, as `spill-dark.png` and
+`spill-light.png`, so that the directory, named as the picture, shows them
+in turn as the theme is.
 
 ## The terminal
 

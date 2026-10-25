@@ -948,11 +948,16 @@ Like `autostart`, this takes effect the next time you log in.
 ## The wallpaper
 
 `omorfos-wallpaper` shows a picture or a colour behind everything on each
-screen. Until you name one, it shows the wallpaper that comes with
+screen. Until you name one, it shows Prism, the wallpaper that comes with
 omorfos, in `share/backgrounds/omorfos/`: the dark one while the theme is
 dark and the light one while it is light, changing as the theme does.
 Without those installed, it shows nothing, and the theme's `desktop` is
 what is behind the windows.
+
+Four more come with it, each dark and light: Spill, Horizon, Facets and
+Ground. Name one as `picture`, as
+`/usr/share/backgrounds/omorfos/horizon-dark.png` with its `-light` pair
+(below), or the directory itself, to have all five in turn.
 
 ```yaml
 wallpaper:
@@ -978,6 +983,11 @@ wallpaper:
     dark: ~/Pictures/night.jpg
     light: ~/Pictures/day.jpg
 ```
+
+In a directory, two pictures named alike but for `-dark` and `-light` at
+the end, as `hills-dark.png` and `hills-light.jpg`, are a pair, and are
+shown in turn as one picture, each as the theme is. One without its other
+half is shown whatever the theme.
 
 The desktop is dark while the theme writes its menus in a colour brighter
 than the one it writes them on, as the built-in theme does; this is what

@@ -69,7 +69,7 @@ MIT, as the rest of omorfos's code is.
 
 - omorfos has an icon, installed as `omorfos` in `hicolor`, and the
   desktop entry names it.
-- Building omorfos draws the pictures, which takes a few seconds and
+- Building omorfos draws the pictures, which takes about a minute and
   needs no tool beyond Rust.
 - A wallpaper is shown when the user has named none, from
   `share/backgrounds/omorfos/`: the dark one or the light one, as the
@@ -81,3 +81,15 @@ MIT, as the rest of omorfos's code is.
 - The pictures drawn here are not the ones that came with the brand to
   the pixel, as the program that drew those was not kept. What they are
   to look like is the brand's rules, and those are kept.
+- Four wallpapers joined Prism on 2026-10-25, chosen by the maintainer
+  from sketches: Spill, the spill alone; Horizon, the spectrum as an
+  arc rising from the bottom edge; Facets, the bands cut into shards;
+  and Ground, the ground with a line of the spectrum along its foot.
+  Each makes the same spectrum something of its own, on the same ground,
+  so that any of them is plainly omorfos's, and only Prism has the mark,
+  which would otherwise be on every screen. Drawing all ten at 3840 by
+  2160 takes about a minute and a quarter with the `nightly` profile, and
+  they are about 47 MB installed: the grain that keeps the lift from
+  stepping does not compress. They are drawn at the size of the largest
+  common screen to be sharp there; drawn smaller, they would take less
+  room and be softer on such a screen.

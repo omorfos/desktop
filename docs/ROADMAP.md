@@ -564,11 +564,15 @@ what only games and touchpads need last.
       from it. With nothing named, the wallpaper shows the one that came
       with omorfos, and a picture may be a pair, one for a dark desktop
       and one for a light one, shown as the theme is.
-- [ ] More wallpapers that come with omorfos, drawn by `omorfos-brand`
-      beside Prism, each a dark one and a light one, and a choice of them
-      offered the first time the desktop is set up. A directory of
-      pictures that keeps pairs by their names (`-dark` and `-light`), so
-      that a directory shown in turn follows the theme too.
+- [x] A directory of pictures that keeps pairs by their names (`-dark`
+      and `-light`), so that a directory shown in turn follows the theme
+      too.
+- [x] More wallpapers that come with omorfos, drawn by `omorfos-brand`
+      beside Prism, each a dark one and a light one: Spill, Horizon,
+      Facets and Ground.
+- [ ] A choice of the wallpapers offered the first time the desktop is
+      set up, with the rest of what is chosen then, once there is a
+      first time to offer it in.
 - [ ] The lock screen's picture of the brand, drawn by `omorfos-brand`
       as the wallpapers are, its mark small in the bottom right, once the
       lock screen has a picture of its own (below).

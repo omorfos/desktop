@@ -33,6 +33,9 @@ PAM_SERVICES = omorfos-lock omorfos-lock-fingerprint omorfos-lock-key
 BUILT = target/$(PROFILE)
 # The pictures of the brand, drawn by omorfos-brand as omorfos is built.
 PICTURES = $(BUILT)/share
+# The wallpapers it draws, each dark and light, as omorfos_brand::DESIGNS
+# has them.
+WALLPAPERS = prism spill horizon facets ground
 
 .PHONY: all nightly build install uninstall
 
@@ -89,7 +92,7 @@ uninstall:
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
 	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css" "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
 	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg
-	rm -f "$(DESTDIR)$(SHARE_DIR)"/backgrounds/omorfos/prism-*.png
+	rm -f $(foreach w,$(WALLPAPERS),"$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-dark.png" "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-light.png")
 	@# Left if there is anything else in it, as a wallpaper someone put there.
 	-rmdir "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos" 2>/dev/null
 	@echo "The PAM services in $(DESTDIR)$(PAM_DIR) are left, as an administrator may have changed them: $(PAM_SERVICES)"
