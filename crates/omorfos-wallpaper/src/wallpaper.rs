@@ -31,7 +31,8 @@ use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::cache::{Cache, Kept};
-use crate::{Slides, lay};
+use crate::watch::Watch;
+use crate::{Heard, Slide, Slides, lay};
 
 /// How long a screen's picture is shown before another one drawn for it is
 /// kept in its place, while a directory's pictures are shown in turn, so
@@ -55,6 +56,9 @@ pub struct Wallpaper {
     /// configuration directory cannot be watched, such as when there is
     /// none.
     watcher: Option<Watcher>,
+    /// Hears of the pictures shown changing. Absent when the kernel gives
+    /// no more watches; then they change at the next turn.
+    pictures: Option<Watch>,
 }
 
 impl Wallpaper {
@@ -92,6 +96,7 @@ impl Wallpaper {
                     seed,
                 ),
                 watcher: Watcher::new(config).ok(),
+                pictures: Watch::new().ok(),
             }
         })
     }
@@ -112,8 +117,15 @@ impl Wallpaper {
         self.shell.now = now;
         self.hear()
             .and_then(|()| self.learn().map_err(Failure::from))
+            .and_then(|()| self.look().map_err(Failure::from))
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle());
+                // Where the pictures shown now are is where to hear of them
+                // changing.
+                let places = self.shell.slides.iter().map(Slides::place);
+                self.pictures
+                    .iter_mut()
+                    .for_each(|watch| watch.follow(places.clone()));
                 shown.map_err(Failure::from)
             })
             .and_then(|()| self.connection.flush().map_err(Failure::from))
@@ -168,12 +180,14 @@ impl Wallpaper {
     }
 
     /// Sleeps until the connection has something to read, the
-    /// configuration changes, or `longest` has passed.
+    /// configuration or a picture shown changes, or `longest` has passed.
     fn wait(&self, longest: Option<Duration>) {
         let readable = PollFlags::IN;
         let mut sources = vec![PollFd::new(&self.connection, readable)];
         let watcher = self.watcher.iter();
         sources.extend(watcher.map(|watcher| PollFd::new(watcher, readable)));
+        let pictures = self.pictures.iter();
+        sources.extend(pictures.map(|watch| PollFd::new(watch, readable)));
         // A wait that is interrupted is a wake-up like any other, and
         // anything worse shows in the turn that follows.
         let longest = longest.and_then(|longest| Timespec::try_from(longest).ok());
@@ -189,6 +203,32 @@ impl Wallpaper {
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
         let handled = self.queue.dispatch_pending(&mut self.shell);
         handled.map(drop).map_err(Failure::from)
+    }
+
+    /// Follows the pictures shown where they changed: one changed is read
+    /// again, one taken out of its directory is followed by the next, and
+    /// one put in is shown, at once.
+    fn look(&mut self) -> io::Result<()> {
+        let heard = self.pictures.as_mut().map_or(Ok(Vec::new()), Watch::heard);
+        heard.map(|heard| {
+            let now = self.shell.now;
+            for path in heard {
+                // What was drawn of it ahead of its time is drawn again if
+                // it changed; taken out, it is shown as it was read, as it
+                // is ready.
+                let ready = &mut self.shell.ready;
+                let changed = path.is_file();
+                ready.retain(|(view, _)| !changed || view.0.picture.as_deref() != Some(&path));
+                let slides = self.shell.slides.iter_mut();
+                let heard: Vec<Heard> = slides.map(|slides| slides.heard(&path, now)).collect();
+                for heard in heard {
+                    self.shell.stale |= heard != Heard::Nothing;
+                    if let Heard::Again(slide) = heard {
+                        self.shell.again(&slide);
+                    }
+                }
+            }
+        })
     }
 
     /// Takes in the configuration if it changed.
@@ -510,6 +550,24 @@ impl Shell {
             fit: shown.fit,
             color: shown.color.unwrap_or(desktop),
         })
+    }
+
+    /// Has every screen showing `slide` read and draw it again, as it has
+    /// changed.
+    fn again(&mut self, slide: &Slide) {
+        let faces = self
+            .screens
+            .iter_mut()
+            .filter_map(|screen| screen.face.as_mut());
+        for face in faces {
+            let shown = face
+                .shown
+                .as_ref()
+                .and_then(|(wanted, ..)| wanted.picture.as_deref());
+            if shown.is_some_and(|shown| slide.has(shown)) {
+                face.shown = None;
+            }
+        }
     }
 
     /// Puts a surface on every screen that has something to show and none

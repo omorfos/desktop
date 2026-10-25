@@ -15,6 +15,9 @@ publish.workspace = true
 omorfos-config = { path = "../omorfos-config" }
 omorfos-shell = { path = "../omorfos-shell" }
 omorfos-ui = { path = "../omorfos-ui" }
+# Already in the tree through the configuration. Hears of pictures put in,
+# changed in or taken out of the directories shown from.
+inotify = { version = "0.11.5", default-features = false }
 # Reads the pictures that are PNG. Already in the tree for icons.
 png = "0.18.1"
 # Already in the tree through Smithay. Waits on several descriptors at once

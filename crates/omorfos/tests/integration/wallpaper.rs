@@ -249,6 +249,76 @@ fn a_pair_in_a_directory_shown_in_turn_follows_the_theme_as_one_picture() {
     assert_eq!(session.draw().at(10, 10), WHITE);
 }
 
+/// Whether the wallpaper, turned with no time gone by, has come to show
+/// `colour`.
+fn shows(session: &mut Session, wallpaper: &RefCell<Wallpaper>, colour: u32) -> bool {
+    wallpaper.borrow_mut().turn(Duration::ZERO).unwrap();
+    session.step();
+    session.draw().at(10, 10) == colour
+}
+
+#[test]
+fn a_picture_put_in_or_changed_in_the_directory_shown_is_shown_at_once() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    png(&pictures.path().join("a.png"), (1, 1), |_, _| RED);
+    // Another screen shows a colour, which nothing in the directory is.
+    let rest = "every: 3600, fade: 0, screens: [{ name: test-1, color: '#ffffff' }]";
+    let config = picture_config(&pictures.path().to_string_lossy(), rest);
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    session.add_output((300, 200));
+    let program = RefCell::new(joined(&mut session, None));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    assert_eq!(session.draw().at(10, 10), RED);
+    // Not in an hour, but as soon as it is there.
+    png(&pictures.path().join("b.png"), (1, 1), |_, _| BLUE);
+    session.eventually(|session| shows(session, &program, BLUE));
+    // The one shown, changed, is read again.
+    png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
+    session.eventually(|session| shows(session, &program, GREEN));
+    // Taken out, the next is shown in its place.
+    std::fs::remove_file(pictures.path().join("b.png")).unwrap();
+    session.eventually(|session| shows(session, &program, RED));
+    assert_eq!(session.draw_on(1).at(10, 10), WHITE, "and the colour stays");
+}
+
+#[test]
+fn a_picture_changed_after_it_was_made_ready_is_shown_as_it_is_now() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    png(&pictures.path().join("a.png"), (1, 1), |_, _| RED);
+    png(&pictures.path().join("b.png"), (1, 1), |_, _| GREEN);
+    let config = picture_config(&pictures.path().to_string_lossy(), "every: 20, fade: 0");
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let program = RefCell::new(joined(&mut session, None));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    // Ten seconds before it is due, the next is drawn ahead of its time.
+    let ready = Duration::from_secs(15);
+    settle(&mut session, &mut program.borrow_mut(), ready);
+    assert_eq!(session.draw().at(10, 10), RED, "not shown yet");
+    png(&pictures.path().join("b.png"), (1, 1), |_, _| BLUE);
+    session.eventually(|session| {
+        program.borrow_mut().turn(ready).unwrap();
+        session.step();
+        session.draw().at(10, 10) == BLUE
+    });
+}
+
+#[test]
+fn the_one_picture_named_changed_is_read_again_at_once() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    let path = pictures.path().join("hills.png");
+    png(&path, (1, 1), |_, _| RED);
+    let config = picture_config(&path.to_string_lossy(), "fade: 0");
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let program = RefCell::new(joined(&mut session, None));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    assert_eq!(session.draw().at(10, 10), RED);
+    // Saved as editors save, by putting another in its place.
+    let saved = pictures.path().join(".hills.png.new");
+    png(&saved, (1, 1), |_, _| BLUE);
+    std::fs::rename(&saved, &path).unwrap();
+    session.eventually(|session| shows(session, &program, BLUE));
+}
+
 #[test]
 fn a_colour_covers_every_screen_and_windows_are_over_it() {
     let config = "wallpaper: { color: '#ff0000' }\n";

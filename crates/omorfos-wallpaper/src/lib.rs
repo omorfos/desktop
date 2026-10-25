@@ -19,6 +19,7 @@ mod lay;
 pub mod picture;
 mod slides;
 mod wallpaper;
+mod watch;
 
 use std::env;
 use std::ffi::OsStr;
@@ -26,7 +27,7 @@ use std::path::{Path, PathBuf};
 
 use omorfos_config::Picture;
 
-pub use slides::{Slide, Slides};
+pub use slides::{Heard, Slide, Slides};
 pub use wallpaper::{Failure, Wallpaper};
 
 /// Runs the wallpaper in the session the environment describes, until it

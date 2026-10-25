@@ -65,9 +65,21 @@ impl Slide {
     }
 
     /// Whether `path` is this picture, or one of its pair.
-    fn has(&self, path: &Path) -> bool {
+    #[must_use]
+    pub fn has(&self, path: &Path) -> bool {
         self.dark == path || self.light == path
     }
+}
+
+/// What a change to a file means for the pictures shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Heard {
+    /// Nothing: it is not a picture shown, or to be.
+    Nothing,
+    /// The picture shown, this, has changed, and is to be read again.
+    Again(Slide),
+    /// Another picture is shown.
+    Moved,
 }
 
 /// How long before it is due the next picture is chosen, at most, so that
@@ -120,6 +132,51 @@ impl Slides {
     #[must_use]
     pub fn shows(&self, source: &Path) -> bool {
         self.source == source
+    }
+
+    /// Where a change to these pictures would be heard of: the directory,
+    /// or the one the file is in.
+    #[must_use]
+    pub fn place(&self) -> &Path {
+        let parent = self.source.parent().filter(|_| !self.directory);
+        parent.unwrap_or(&self.source)
+    }
+
+    /// What it means that the file at `path` changed, by `now`: if it is
+    /// the picture shown, that it is read again, or, gone from a
+    /// directory, that the next is shown; if it was put in the directory,
+    /// that it is shown, at once. The directory itself, as after more
+    /// changes than were told of, is the picture shown changing.
+    pub fn heard(&mut self, path: &Path, now: Duration) -> Heard {
+        let shown = self.shown.as_ref().filter(|shown| shown.has(path));
+        let shown = shown.is_some() || path == self.source;
+        let again = self
+            .shown
+            .clone()
+            .filter(|_| shown)
+            .map_or(Heard::Nothing, Heard::Again);
+        if !self.directory {
+            return again;
+        }
+        let listed = pictures(&self.source)
+            .into_iter()
+            .find(|slide| slide.has(path));
+        let still = self
+            .shown
+            .as_ref()
+            .is_some_and(|shown| shown.dark.is_file() && shown.light.is_file());
+        let next = match listed {
+            _ if shown && still => return again,
+            Some(slide) if !shown => Some(slide),
+            _ if shown => self.next(),
+            _ => return Heard::Nothing,
+        };
+        // Whatever was chosen to come next is chosen again when it is time.
+        self.upcoming = Upcoming::Open;
+        self.left.retain(|left| Some(left) != next.as_ref());
+        self.since = now;
+        self.shown = next;
+        Heard::Moved
     }
 
     /// The picture shown now, if there is one.
@@ -398,6 +455,89 @@ mod tests {
         let from = directory.path().join("hills-light.jpg");
         let again = Slides::new(source, Order::Name, MINUTE, Duration::ZERO, 0, Some(&from));
         assert_eq!(both(&again), seen[0]);
+    }
+
+    #[test]
+    fn a_change_to_the_picture_shown_has_it_read_again_and_others_mean_nothing() {
+        let directory = directory();
+        let source = directory.path().to_owned();
+        let mut slides = Slides::new(source, Order::Name, MINUTE, Duration::ZERO, 0, None);
+        let shown = directory.path().join("a.png");
+        assert_eq!(
+            slides.heard(&shown, MINUTE / 2),
+            Heard::Again(Slide::one(shown.clone()))
+        );
+        assert_eq!(name(&slides).as_deref(), Some("a.png"));
+        assert_eq!(slides.due(), Some(MINUTE), "and is shown for as long");
+        // Neither one taken out that was not shown, nor what is not a
+        // picture, nor something elsewhere.
+        fs::remove_file(directory.path().join("b.jpg")).unwrap();
+        for other in ["b.jpg", "notes.txt", "../a.png"] {
+            let other = directory.path().join(other);
+            assert_eq!(
+                slides.heard(&other, MINUTE / 2),
+                Heard::Nothing,
+                "{other:?}"
+            );
+        }
+        // After more changes than were told of, the directory is heard of,
+        // and the picture shown is read again.
+        assert_eq!(
+            slides.heard(directory.path(), MINUTE / 2),
+            Heard::Again(Slide::one(shown.clone()))
+        );
+        // A file shown is read again, and nothing else is anything to it.
+        let file = directory.path().join("c.JPEG");
+        let mut one = Slides::new(file.clone(), Order::Name, MINUTE, Duration::ZERO, 0, None);
+        assert_eq!(one.place(), directory.path());
+        assert_eq!(
+            one.heard(&file, MINUTE),
+            Heard::Again(Slide::one(file.clone()))
+        );
+        assert_eq!(
+            one.heard(&directory.path().join("b.jpg"), MINUTE),
+            Heard::Nothing
+        );
+        assert_eq!(slides.place(), directory.path());
+    }
+
+    #[test]
+    fn a_picture_put_in_or_changed_is_shown_at_once_and_one_taken_out_while_shown_moves_on() {
+        let directory = directory();
+        let source = directory.path().to_owned();
+        let mut slides = Slides::new(source, Order::Shuffled, MINUTE, Duration::ZERO, 3, None);
+        let put = directory.path().join("new.png");
+        fs::write(&put, "").unwrap();
+        assert_eq!(slides.heard(&put, MINUTE / 4), Heard::Moved);
+        assert_eq!(name(&slides).as_deref(), Some("new.png"));
+        let changed = directory.path().join("b.jpg");
+        assert_eq!(slides.heard(&changed, MINUTE / 3), Heard::Moved);
+        assert_eq!(name(&slides).as_deref(), Some("b.jpg"));
+        assert_eq!(slides.heard(&put, MINUTE / 2), Heard::Moved);
+        assert_eq!(
+            slides.due(),
+            Some(MINUTE / 2 + MINUTE),
+            "for as long as any"
+        );
+        // Nor is it shown again this time through.
+        let mut seen = Vec::new();
+        for minute in 1..4 {
+            slides.turn(MINUTE / 2 + MINUTE * minute);
+            seen.extend(name(&slides));
+        }
+        assert!(!seen.contains(&"new.png".to_owned()), "{seen:?}");
+        // Taken out while it is shown, the next is shown at once.
+        let shown = directory.path().join(name(&slides).unwrap());
+        fs::remove_file(&shown).unwrap();
+        assert_eq!(slides.heard(&shown, MINUTE * 4), Heard::Moved);
+        assert_ne!(slides.shown(), None);
+        assert!(!slides.shown().unwrap().has(&shown));
+        // So, after more changes than were told of, is the next when the
+        // one shown has gone.
+        let shown = directory.path().join(name(&slides).unwrap());
+        fs::remove_file(&shown).unwrap();
+        assert_eq!(slides.heard(directory.path(), MINUTE * 5), Heard::Moved);
+        assert!(!slides.shown().unwrap().has(&shown));
     }
 
     #[test]

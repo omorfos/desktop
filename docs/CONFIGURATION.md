@@ -969,9 +969,11 @@ wallpaper:
 home directory, as `~/`. A photograph is turned the way the camera says it
 was held. It may also be a directory of pictures, which are shown in turn,
 each for `every` seconds (5 to a week), by their names or, with `order:
-shuffled`, in any order, a different one each time through. The directory
-is looked at again each time, so a picture put there joins in; those in
-directories within it do not.
+shuffled`, in any order, a different one each time through. A picture put
+in the directory, or changed in it, is shown at once, and one taken out
+while it is shown is followed at once by the next; those in directories
+within it are not shown. A single picture named is read again at once when
+it changes.
 
 A picture may also be one for a dark desktop and one for a light one,
 each a file or a directory, and the wallpaper shows the one that goes with

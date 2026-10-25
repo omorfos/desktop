@@ -2117,6 +2117,7 @@ dependencies = [
 name = "omorfos-wallpaper"
 version = "0.1.0"
 dependencies = [
+ "inotify",
  "omorfos-config",
  "omorfos-shell",
  "omorfos-ui",

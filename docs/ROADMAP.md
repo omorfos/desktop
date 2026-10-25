@@ -576,10 +576,11 @@ what only games and touchpads need last.
 - [ ] The lock screen's picture of the brand, drawn by `omorfos-brand`
       as the wallpapers are, its mark small in the bottom right, once the
       lock screen has a picture of its own (below).
-- [ ] Wallpaper, what is left: a directory watched, so that a picture put there or
-      changed shows at once and not at the next turn; and other formats
-      (WebP, AVIF, SVG) as they are asked for, each another decoder of
-      untrusted input.
+- [x] Wallpaper, a directory watched, so that a picture put there or
+      changed shows at once and not at the next turn; and a picture named
+      read again when it changes.
+- [ ] Wallpaper, what is left: other formats (WebP, AVIF, SVG) as they
+      are asked for, each another decoder of untrusted input.
 - [x] A screen that mirrors another (ADR 15): `mirror` in `outputs` and
       `arrangements`, the other's picture as large as fits, out of the
       space and unknown to programs, and hidden when the session locks.
