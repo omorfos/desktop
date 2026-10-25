@@ -650,10 +650,13 @@ what only games and touchpads need last.
 - [x] Gestures on the touchpad: workspaces by a swipe of three fingers,
       and every other gesture the program's under the pointer
       (`pointer-gestures`).
-- [ ] The swipe following the fingers, the workspaces sliding with them
-      as they go, once workspaces change with movement (stage 4); and
-      whether three fingers or four, which is for the review of the
-      defaults.
+- [x] The swipe following the fingers: the workspaces slide with them
+      and settle over 240 ms once they lift, onto the next if they went
+      past half way or were flicked, and back otherwise.
+- [ ] The same slide when the keys go between workspaces, and through
+      those between when a number key goes further; nothing sliding with
+      `reduce_motion`; and whether three fingers or four, which is for the
+      review of the defaults.
 
 ## 4. The look
 

@@ -38,6 +38,7 @@ mod reveal;
 mod roles;
 mod sealed;
 mod session;
+mod slide;
 mod standing;
 mod switcher;
 mod tiles;

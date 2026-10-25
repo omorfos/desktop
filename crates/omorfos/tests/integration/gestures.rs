@@ -1,18 +1,28 @@
 //! Gestures on a touchpad: three fingers swiped across go from one
 //! workspace to the next, and every other gesture is the program's.
 
+use std::time::Duration;
+
 use omorfos::{Gesture, Input};
+use omorfos_config::Action;
 
 use crate::common::{Client, Event, Session};
 use crate::lock::lock;
-use crate::windows::RED;
+use crate::windows::{BACKGROUND, BLUE, RED};
 
-/// Makes a gesture on the touchpad, step by step.
-fn touch(session: &mut Session, steps: &[Gesture]) {
-    for step in steps {
-        session.compositor_mut().input(Input::Gesture(*step), 0);
+/// Makes a gesture on the touchpad, step by step, each at its time in
+/// milliseconds.
+fn touch_at(session: &mut Session, steps: &[(Gesture, u32)]) {
+    for (step, time) in steps {
+        session.compositor_mut().input(Input::Gesture(*step), *time);
     }
     session.step();
+}
+
+/// Makes a gesture on the touchpad, step by step, all at once.
+fn touch(session: &mut Session, steps: &[Gesture]) {
+    let timed: Vec<(Gesture, u32)> = steps.iter().map(|step| (*step, 0)).collect();
+    touch_at(session, &timed);
 }
 
 /// A swipe of `fingers` that goes by `(dx, dy)` in two steps, and is
@@ -30,8 +40,30 @@ fn swipe(fingers: u32, (dx, dy): (f64, f64), cancelled: bool) -> [Gesture; 4] {
     ]
 }
 
+/// Three fingers going across by `dx` in ten steps over `taking`
+/// milliseconds, without lifting.
+fn carry(session: &mut Session, dx: f64, taking: u32) {
+    let step = Gesture::SwipeUpdate {
+        dx: dx / 10.0,
+        dy: 0.0,
+    };
+    let steps = (1..=10).map(|at| (step, 1000 + taking * at / 10));
+    let begin = (Gesture::SwipeBegin { fingers: 3 }, 1000);
+    let steps: Vec<(Gesture, u32)> = [begin].into_iter().chain(steps).collect();
+    touch_at(session, &steps);
+}
+
+/// The fingers lifting, or the swipe being cancelled.
+fn lift(session: &mut Session, cancelled: bool) {
+    touch(session, &[Gesture::SwipeEnd { cancelled }]);
+}
+
 fn active(session: &Session) -> usize {
     session.compositor().desktop().active_workspace()
+}
+
+fn slid(session: &Session) -> i32 {
+    session.compositor().desktop().slid()
 }
 
 /// What the client was told of gestures.
@@ -44,29 +76,129 @@ fn told(client: &mut Client) -> Vec<Gesture> {
     told.collect()
 }
 
-#[test]
-fn three_fingers_swiped_left_bring_the_next_workspace_and_right_the_one_before() {
+/// Four workspaces, a red window on the first, which is shown, and a blue
+/// one on the second.
+fn two_windows() -> (Session, Client) {
     let mut session = Session::with_workspaces();
-    assert_eq!(active(&session), 0);
-
-    touch(&mut session, &swipe(3, (-150.0, 20.0), false));
-    assert_eq!(active(&session), 1, "as a page turned");
-    touch(&mut session, &swipe(3, (-150.0, 0.0), false));
-    assert_eq!(active(&session), 2);
-    touch(&mut session, &swipe(3, (150.0, -20.0), false));
-    assert_eq!(active(&session), 1, "and back");
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.open(&mut client, "second", (200, 100), BLUE);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.step();
+    (session, client)
 }
 
 #[test]
-fn a_swipe_that_goes_up_or_down_not_far_enough_or_is_cancelled_comes_to_nothing() {
-    let mut session = Session::with_workspaces();
+fn three_fingers_carry_the_workspace_shown_and_bring_the_next_in_from_the_right() {
+    let (mut session, _client) = two_windows();
+    assert_eq!(session.draw().at(545, 5), BACKGROUND);
 
-    touch(&mut session, &swipe(3, (-120.0, 200.0), false));
-    assert_eq!(active(&session), 0, "more down than across");
-    touch(&mut session, &swipe(3, (-60.0, 0.0), false));
-    assert_eq!(active(&session), 0, "not far enough");
-    touch(&mut session, &swipe(3, (-300.0, 0.0), true));
-    assert_eq!(active(&session), 0, "cancelled");
+    carry(&mut session, -100.0, 100);
+    assert_eq!(slid(&session), -100, "with no easing at all");
+    let picture = session.draw();
+    assert_eq!(picture.at(5, 5), RED, "the first gone a little way left");
+    assert_eq!(picture.at(545, 5), BLUE, "and the second in after it");
+    assert_eq!(active(&session), 0, "still the one shown");
+}
+
+#[test]
+fn let_go_past_half_way_the_workspace_that_came_in_is_shown_and_settles() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -400.0, 1000);
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1, "shown at once");
+    assert_eq!(slid(&session), 240, "from where it had got to");
+    assert!(session.compositor().deadline().is_some(), "and drawn again");
+    session.advance(Duration::from_millis(120));
+    let halfway = slid(&session);
+    assert!(0 < halfway && halfway < 240, "{halfway}");
+    session.advance(Duration::from_millis(120));
+    assert_eq!(slid(&session), 0, "where it belongs");
+    assert_eq!(session.draw().at(5, 5), BLUE);
+}
+
+#[test]
+fn let_go_short_of_half_way_the_workspace_goes_back() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -200.0, 1000);
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0);
+    assert_eq!(slid(&session), -200);
+    session.advance(Duration::from_millis(240));
+    assert_eq!(slid(&session), 0);
+    assert_eq!(session.draw().at(5, 5), RED);
+}
+
+#[test]
+fn a_quick_flick_turns_the_page_however_short() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -100.0, 20);
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1);
+}
+
+#[test]
+fn a_swipe_taken_back_half_way_goes_back() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -400.0, 1000);
+    let back = [
+        (Gesture::SwipeUpdate { dx: 125.0, dy: 0.0 }, 2025),
+        (Gesture::SwipeUpdate { dx: 125.0, dy: 0.0 }, 2050),
+    ];
+    touch_at(&mut session, &back);
+    assert_eq!(slid(&session), -150);
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0, "the way they were going decides");
+}
+
+#[test]
+fn a_cancelled_swipe_goes_back() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -500.0, 1000);
+
+    lift(&mut session, true);
+    assert_eq!(active(&session), 0);
+}
+
+#[test]
+fn three_fingers_right_bring_the_one_before_in_from_the_left() {
+    let (mut session, _client) = two_windows();
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    carry(&mut session, 400.0, 1000);
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0);
+    assert_eq!(slid(&session), 400 - 640);
+}
+
+#[test]
+fn with_one_workspace_it_goes_a_little_way_with_the_fingers_and_back() {
+    let mut session = Session::new();
+    carry(&mut session, -400.0, 100);
+    assert_eq!(slid(&session), -100, "a quarter of the way");
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0);
+    session.advance(Duration::from_millis(240));
+    assert_eq!(slid(&session), 0);
+}
+
+#[test]
+fn a_swipe_begun_while_the_last_settles_takes_it_up_from_where_it_is() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -400.0, 1000);
+    lift(&mut session, false);
+    session.advance(Duration::from_millis(60));
+    let there = slid(&session);
+
+    carry(&mut session, -50.0, 1000);
+    assert_eq!(slid(&session), there - 50);
+    session.advance(Duration::from_millis(240));
+    assert_eq!(slid(&session), there - 50, "held by the fingers");
 }
 
 #[test]
@@ -138,6 +270,6 @@ fn a_gesture_does_nothing_while_the_session_is_locked() {
     touch(&mut session, &swipe(4, (-150.0, 0.0), false));
     session.roundtrip(&mut client);
 
-    assert_eq!(active(&session), 0, "no workspace changes");
+    assert_eq!((active(&session), slid(&session)), (0, 0), "nothing moves");
     assert_eq!(told(&mut client), [], "and nothing behind the lock is told");
 }

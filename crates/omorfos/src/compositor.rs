@@ -947,6 +947,10 @@ impl Compositor {
         // What is changing colour is drawn again a moment later.
         let moving = self.animation.epoch.zip(self.animation.motion.deadline());
         let moving = moving.map(|(epoch, due)| epoch + due);
+        // So is a slide of the workspaces that is settling.
+        let settling = self.protocols.gestures.slide.settling();
+        let sliding = self.animation.epoch.filter(|_| settling);
+        let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         [
@@ -964,6 +968,7 @@ impl Compositor {
             },
             screens_off,
             moving,
+            sliding,
             said,
         ]
         .into_iter()
@@ -1019,6 +1024,7 @@ impl Compositor {
         self.manage_x11(now);
         self.reveal(now);
         self.offer_arrangements(now);
+        self.settle_slide();
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
