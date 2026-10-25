@@ -15,6 +15,7 @@ use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
 use crate::compositor::{Compositor, Look};
+use crate::holding::Held;
 use crate::reveal::Placing;
 use omorfos_core::KeyOutcome;
 
@@ -52,6 +53,11 @@ pub enum Input {
         dx: f64,
         /// Distance moved down.
         dy: f64,
+        /// Distance moved to the right as the device measured it, before
+        /// a fast move was made to go further.
+        raw_dx: f64,
+        /// Distance moved down, as the device measured it.
+        raw_dy: f64,
     },
     /// A pointer button was pressed or released.
     Button {
@@ -257,11 +263,58 @@ impl Compositor {
         let seat = self.seat.clone();
         self.idle.notify_activity(&seat);
         self.presence.stirred = true;
-        // A distance moved becomes the position arrived at.
-        let event = match event {
+        if self.is_locked() || self.sealed().is_some() {
+            // A locked session sees none of what follows, nor one a prompt
+            // asks a secret over.
+            let event = self.place(event, time);
+            self.guarded_input(event, time);
+            return;
+        }
+        // The program under the pointer is told how far it moved, and one
+        // that holds it keeps it where it lets it be.
+        if let Input::MotionBy {
+            dx,
+            dy,
+            raw_dx,
+            raw_dy,
+        } = event
+        {
+            self.moved_relatively((dx, dy), (raw_dx, raw_dy), time);
+            match self.held() {
+                Some(Held::Locked) => return,
+                Some(Held::Confined(bounds)) => {
+                    let to = bounds.slide(self.pointer_location, (dx, dy));
+                    self.motion(to.x, to.y, time);
+                    return;
+                }
+                None => {}
+            }
+        }
+        match self.place(event, time) {
+            Placed::Key { code, pressed } => self.key(code, pressed, time),
+            Placed::Motion { x, y } => self.motion(x, y, time),
+            Placed::Button { button, pressed } => self.button(button, pressed, time),
+            Placed::Scroll {
+                horizontal,
+                vertical,
+            } => {
+                let frame = AxisFrame::new(time)
+                    .value(Axis::Horizontal, horizontal)
+                    .value(Axis::Vertical, vertical);
+                let pointer = self.pointer.clone();
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
+        }
+    }
+
+    /// What an event comes to on the screens: a distance moved becomes the
+    /// position arrived at.
+    fn place(&mut self, event: Input, time: u32) -> Placed {
+        match event {
             Input::Key { code, pressed } => Placed::Key { code, pressed },
             Input::Motion { x, y } => Placed::Motion { x, y },
-            Input::MotionBy { dx, dy } => {
+            Input::MotionBy { dx, dy, .. } => {
                 // What of the move did not happen, the pointer being held at
                 // an edge it was against already, is a push against it. A
                 // move that only reaches the edge, however fast, is not:
@@ -280,28 +333,6 @@ impl Compositor {
                 horizontal,
                 vertical,
             },
-        };
-        if self.is_locked() || self.sealed().is_some() {
-            // A locked session sees none of what follows, nor one a prompt
-            // asks a secret over.
-            self.guarded_input(event, time);
-            return;
-        }
-        match event {
-            Placed::Key { code, pressed } => self.key(code, pressed, time),
-            Placed::Motion { x, y } => self.motion(x, y, time),
-            Placed::Button { button, pressed } => self.button(button, pressed, time),
-            Placed::Scroll {
-                horizontal,
-                vertical,
-            } => {
-                let frame = AxisFrame::new(time)
-                    .value(Axis::Horizontal, horizontal)
-                    .value(Axis::Vertical, vertical);
-                let pointer = self.pointer.clone();
-                pointer.axis(self, frame);
-                pointer.frame(self);
-            }
         }
     }
 
@@ -562,6 +593,8 @@ impl Compositor {
         };
         pointer.motion(self, focus, &event);
         pointer.frame(self);
+        // Over a program that asked to hold it, the pointer may now be held.
+        self.hold();
     }
 
     /// Tells the program under a pointer that has not moved that it is,

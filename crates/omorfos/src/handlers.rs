@@ -1,6 +1,8 @@
 //! Wayland protocol handlers: what clients ask for, translated into
 //! operations on the desktop model.
 
+use std::borrow::Cow;
+
 use omorfos_core::geometry::Size as DomainSize;
 use omorfos_core::{Desktop, Edges, WindowId};
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -455,9 +457,14 @@ impl SeatHandler for Compositor {
         // The clipboard, and the selection pasted with the middle button,
         // are offered to whichever client has the keyboard.
         let surface = focused.and_then(WaylandFocus::wl_surface);
-        let client = surface.and_then(|surface| self.display.get_client(surface.id()).ok());
+        let client = surface
+            .as_ref()
+            .and_then(|surface| self.display.get_client(surface.id()).ok());
         set_data_device_focus(&self.display, seat, client.clone());
         set_primary_focus(&self.display, seat, client);
+        // A program holds the pointer only while its window has the keyboard.
+        self.holding.keyboard = surface.map(Cow::into_owned);
+        self.hold();
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {

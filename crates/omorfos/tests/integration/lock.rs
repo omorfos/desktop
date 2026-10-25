@@ -297,6 +297,8 @@ fn the_pointer_reaches_only_the_locker() {
         Input::MotionBy {
             dx: 400.0,
             dy: 300.0,
+            raw_dx: 400.0,
+            raw_dy: 300.0,
         },
     );
     input(

@@ -18,6 +18,7 @@ mod display_key;
 mod dragging;
 mod executable;
 mod gpu;
+mod holding;
 mod idle;
 mod input;
 mod ipc;

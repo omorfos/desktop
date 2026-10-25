@@ -130,8 +130,7 @@ calls for them.
       back by resting the pointer against an edge (ADR 36).
 - [x] The same by pushing against the edge, without the wait, on a real
       mouse or touchpad.
-- [ ] Not at all while a program holds the pointer, once programs can
-      (`pointer-constraints`, below).
+- [x] Not at all while a program holds the pointer (ADR 57).
 - [x] Tiled workspaces (ADR 39): a workspace made for up to four
       windows that fill the screen between them. First the model, with
       two windows side by side made from the titlebar's menu and by a
@@ -638,12 +637,16 @@ what only games and touchpads need last.
       heard of.
 - [ ] Smaller protocols that programs complain of lacking:
       `keyboard-shortcuts-inhibit`, content type, and tearing control,
-      which Smithay does not have yet. A program that inhibits the
+      which Smithay does not have yet. Content type says what a window
+      shows, for a screen to be driven to suit it or its refresh to
+      follow a game's; it is offered once omorfos does one of those, and
+      not to quiet a program's log before then. A program that inhibits the
       shortcuts, as a virtual machine does, needs a key that always gets
       back out, which is a decision to make first.
-- [ ] What games and remote desktops need of the pointer: locked,
+- [x] What games and remote desktops need of the pointer: locked,
       confined, and moved without a position (`pointer-constraints`,
-      `relative-pointer`).
+      `relative-pointer`), held only while the window has the keyboard
+      (ADR 57).
 - [ ] Gestures on the touchpad: workspaces by a swipe of three fingers.
 
 ## 4. The look

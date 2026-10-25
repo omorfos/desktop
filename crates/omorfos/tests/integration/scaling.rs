@@ -214,6 +214,8 @@ fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
         Input::MotionBy {
             dx: 9000.0,
             dy: 9000.0,
+            raw_dx: 9000.0,
+            raw_dy: 9000.0,
         },
         2,
     );
@@ -221,6 +223,8 @@ fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
         Input::MotionBy {
             dx: -5.0,
             dy: -20.0,
+            raw_dx: -5.0,
+            raw_dy: -20.0,
         },
         3,
     );

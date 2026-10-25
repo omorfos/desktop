@@ -62,12 +62,18 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
 };
+use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
+};
 use wayland_protocols::wp::presentation_time::client::{wp_presentation, wp_presentation_feedback};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
     zwp_primary_selection_device_v1 as primary_device,
     zwp_primary_selection_offer_v1 as primary_offer,
     zwp_primary_selection_source_v1 as primary_source,
+};
+use wayland_protocols::wp::relative_pointer::zv1::client::{
+    zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1,
 };
 use wayland_protocols::wp::security_context::v1::client::{
     wp_security_context_manager_v1, wp_security_context_v1,
@@ -690,6 +696,19 @@ pub(crate) enum Event {
     },
     /// What a surface committed was never shown.
     Discarded,
+    /// The pointer moved by this much, and by this much as the device
+    /// measured it, at a time in millionths of a second.
+    RelativeMotion {
+        by: (f64, f64),
+        raw: (f64, f64),
+        utime: u64,
+    },
+    /// The pointer is held in place, or let go of.
+    PointerLocked,
+    PointerUnlocked,
+    /// The pointer is kept within a surface, or let go of.
+    PointerConfined,
+    PointerUnconfined,
     /// A panel was told it has nowhere to be any more.
     LayerClosed,
     /// The session is locked, as this client asked.
@@ -773,6 +792,9 @@ pub(crate) struct ClientState {
     pub(crate) exported: Option<String>,
     /// Being told when what was drawn is shown, and by which clock.
     presentation: Option<wp_presentation::WpPresentation>,
+    /// Holding the pointer, and being told how far it moved.
+    constraints: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
+    relative: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
     pub(crate) clock: Option<u32>,
     window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
@@ -1339,6 +1361,50 @@ impl Client {
         exporter.export_toplevel(&window.surface, &self.handle(), ())
     }
 
+    /// A region of the client's of one rectangle, to hold the pointer in.
+    pub(crate) fn region(
+        &self,
+        (x, y, width, height): (i32, i32, i32, i32),
+    ) -> wl_region::WlRegion {
+        let compositor = self.state.compositor.as_ref().unwrap();
+        let region = compositor.create_region(&self.handle(), ());
+        region.add(x, y, width, height);
+        region
+    }
+
+    /// Asks for the pointer to be held in place while it is over `surface`,
+    /// or over `region` of it, until what is returned is destroyed.
+    pub(crate) fn lock_pointer(
+        &self,
+        surface: &wl_surface::WlSurface,
+        region: Option<&wl_region::WlRegion>,
+    ) -> zwp_locked_pointer_v1::ZwpLockedPointerV1 {
+        let constraints = self.state.constraints.as_ref().unwrap();
+        let pointer = self.state.pointer.as_ref().unwrap();
+        let lifetime = zwp_pointer_constraints_v1::Lifetime::Persistent;
+        constraints.lock_pointer(surface, pointer, region, lifetime, &self.handle(), ())
+    }
+
+    /// Asks for the pointer to be kept within `surface`, or `region` of it,
+    /// once it is over it, until what is returned is destroyed.
+    pub(crate) fn confine_pointer(
+        &self,
+        surface: &wl_surface::WlSurface,
+        region: Option<&wl_region::WlRegion>,
+    ) -> zwp_confined_pointer_v1::ZwpConfinedPointerV1 {
+        let constraints = self.state.constraints.as_ref().unwrap();
+        let pointer = self.state.pointer.as_ref().unwrap();
+        let lifetime = zwp_pointer_constraints_v1::Lifetime::Persistent;
+        constraints.confine_pointer(surface, pointer, region, lifetime, &self.handle(), ())
+    }
+
+    /// Asks to be told how far the pointer moves.
+    pub(crate) fn relative_pointer(&self) -> zwp_relative_pointer_v1::ZwpRelativePointerV1 {
+        let manager = self.state.relative.as_ref().unwrap();
+        let pointer = self.state.pointer.as_ref().unwrap();
+        manager.get_relative_pointer(pointer, &self.handle(), ())
+    }
+
     /// Asks to be told when what `surface` commits next is shown.
     pub(crate) fn feedback(
         &self,
@@ -1720,6 +1786,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "zxdg_exporter_v2" => state.exporter = Some(registry.bind(name, version, handle, ())),
             "zxdg_importer_v2" => state.importer = Some(registry.bind(name, version, handle, ())),
+            "zwp_pointer_constraints_v1" => {
+                state.constraints = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_relative_pointer_manager_v1" => {
+                state.relative = Some(registry.bind(name, version, handle, ()));
+            }
             "wp_presentation" => {
                 state.presentation = Some(registry.bind(name, version, handle, ()));
             }
@@ -2347,6 +2419,71 @@ delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: zxdg_exporter_v2::ZxdgExporterV2);
 delegate_noop!(ClientState: zxdg_importer_v2::ZxdgImporterV2);
 delegate_noop!(ClientState: ignore zxdg_imported_v2::ZxdgImportedV2);
+
+delegate_noop!(ClientState: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
+delegate_noop!(ClientState: zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
+
+impl Dispatch<zwp_relative_pointer_v1::ZwpRelativePointerV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_relative_pointer_v1::ZwpRelativePointerV1,
+        event: zwp_relative_pointer_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_relative_pointer_v1::Event::RelativeMotion {
+            utime_hi,
+            utime_lo,
+            dx,
+            dy,
+            dx_unaccel,
+            dy_unaccel,
+        } = event
+        {
+            state.events.push(Event::RelativeMotion {
+                by: (dx, dy),
+                raw: (dx_unaccel, dy_unaccel),
+                utime: u64::from(utime_hi) << 32 | u64::from(utime_lo),
+            });
+        }
+    }
+}
+
+impl Dispatch<zwp_locked_pointer_v1::ZwpLockedPointerV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_locked_pointer_v1::ZwpLockedPointerV1,
+        event: zwp_locked_pointer_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwp_locked_pointer_v1::Event::Locked => state.events.push(Event::PointerLocked),
+            zwp_locked_pointer_v1::Event::Unlocked => state.events.push(Event::PointerUnlocked),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<zwp_confined_pointer_v1::ZwpConfinedPointerV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_confined_pointer_v1::ZwpConfinedPointerV1,
+        event: zwp_confined_pointer_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let told = match event {
+            zwp_confined_pointer_v1::Event::Confined => Event::PointerConfined,
+            zwp_confined_pointer_v1::Event::Unconfined => Event::PointerUnconfined,
+            _ => return,
+        };
+        state.events.push(told);
+    }
+}
 
 impl Dispatch<wp_presentation::WpPresentation, ()> for ClientState {
     fn event(

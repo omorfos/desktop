@@ -102,6 +102,7 @@ use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
+use crate::holding::Holding;
 use crate::icons::WindowIcons;
 use crate::input::Drag;
 use crate::input::Focused;
@@ -282,6 +283,8 @@ pub struct Compositor {
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
     pub(crate) protocols: Protocols,
+    /// Programs holding the pointer, and what decides whether they may.
+    pub(crate) holding: Holding,
     pub(crate) seat: Seat<Self>,
     pub(crate) keyboard: KeyboardHandle<Self>,
     pub(crate) pointer: PointerHandle<Self>,
@@ -475,6 +478,7 @@ impl Compositor {
                     typing: Typing::offer(&display),
                     seal: Vec::new(),
                     protocols: Protocols::offer(&display),
+                    holding: Holding::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     x11: X11::new(&display),
                     shm: ShmState::new::<Self>(&display, Vec::new()),

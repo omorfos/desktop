@@ -211,6 +211,8 @@ pub(super) fn on_input<B: InputBackend>(
             let moved = Input::MotionBy {
                 dx: event.delta_x(),
                 dy: event.delta_y(),
+                raw_dx: event.delta_x_unaccel(),
+                raw_dy: event.delta_y_unaccel(),
             };
             (moved, event.time_msec())
         }

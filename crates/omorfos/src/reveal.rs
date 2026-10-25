@@ -187,7 +187,10 @@ impl Compositor {
         // pointer is on it, a panel or the titlebar under the panels, or
         // is still on its way somewhere: it goes when the pointer has
         // stopped elsewhere.
-        let against = self.edge(|_, _| 1.0);
+        // Nothing is brought back while a program holds the pointer: a
+        // game's pointer kept against an edge is not the user asking.
+        let held = self.held().is_some();
+        let against = self.edge(|_, _| 1.0).filter(|_| !held);
         let over = self.edge(|output, side| self.reach(output, side));
         let on_it = |shown: &(usize, Side)| over == Some(*shown);
         let stopped = self.hover.reveal.moved.map(|moved| moved + LINGER);

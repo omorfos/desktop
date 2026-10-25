@@ -167,13 +167,21 @@ fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
     session.roundtrip(&mut client);
     client.take_events();
 
-    session
-        .compositor_mut()
-        .input(Input::MotionBy { dx: 5.0, dy: -3.0 }, 2);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: 5.0,
+            dy: -3.0,
+            raw_dx: 5.0,
+            raw_dy: -3.0,
+        },
+        2,
+    );
     session.compositor_mut().input(
         Input::MotionBy {
             dx: -9000.0,
             dy: -9000.0,
+            raw_dx: -9000.0,
+            raw_dy: -9000.0,
         },
         3,
     );
@@ -195,6 +203,8 @@ fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
         Input::MotionBy {
             dx: 9000.0,
             dy: 9000.0,
+            raw_dx: 9000.0,
+            raw_dy: 9000.0,
         },
         4,
     );
@@ -204,6 +214,8 @@ fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
         Input::MotionBy {
             dx: -5.0,
             dy: -20.0,
+            raw_dx: -5.0,
+            raw_dy: -20.0,
         },
         5,
     );
@@ -230,9 +242,15 @@ fn the_pointer_is_drawn_only_for_a_backend_that_asks() {
     assert_eq!(picture.at(330, 203), background, "right of it");
 
     // It follows the pointer.
-    session
-        .compositor_mut()
-        .input(Input::MotionBy { dx: 50.0, dy: 0.0 }, 2);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: 50.0,
+            dy: 0.0,
+            raw_dx: 50.0,
+            raw_dy: 0.0,
+        },
+        2,
+    );
     let picture = session.draw();
     assert_eq!(picture.at(301, 203), background);
     assert_eq!(picture.at(351, 203), 0xffff_ffff);

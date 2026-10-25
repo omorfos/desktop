@@ -160,9 +160,15 @@ fn the_pointer_crosses_where_outputs_meet_and_stops_at_their_other_edges() {
     let (mut session, _second) = two_screens();
     session.compositor_mut().show_pointer();
     let by = |session: &mut Session, dx: f64, dy: f64| {
-        session
-            .compositor_mut()
-            .input(Input::MotionBy { dx, dy }, 0);
+        session.compositor_mut().input(
+            Input::MotionBy {
+                dx,
+                dy,
+                raw_dx: dx,
+                raw_dy: dy,
+            },
+            0,
+        );
         session.step();
     };
     // The painted arrow is white a little inside its tip.
@@ -327,9 +333,15 @@ fn unplugging_an_output_moves_what_was_on_it_to_the_first() {
     session.step();
     assert_eq!(session.draw().at(150, 80), RED);
     // The pointer came too, to the nearest point: the right-hand edge.
-    session
-        .compositor_mut()
-        .input(Input::MotionBy { dx: -10.0, dy: 0.0 }, 0);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: -10.0,
+            dy: 0.0,
+            raw_dx: -10.0,
+            raw_dy: 0.0,
+        },
+        0,
+    );
     assert_eq!(session.draw().at(WIDTH - 11 + 1, 200 + 3), WHITE);
 
     // What is said about an output that has gone changes nothing.
@@ -351,9 +363,15 @@ fn a_session_carries_on_with_no_output_until_one_is_plugged_in() {
     session.compositor_mut().remove_output(&only);
 
     // Nothing to point at, nowhere to put a panel, and nothing breaks.
-    session
-        .compositor_mut()
-        .input(Input::MotionBy { dx: 50.0, dy: 50.0 }, 0);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: 50.0,
+            dy: 50.0,
+            raw_dx: 50.0,
+            raw_dy: 50.0,
+        },
+        0,
+    );
     pointer_to(&mut session, 10, 10);
     perform(&mut session, &Action::ShowMenu);
     client.layer(&panel());

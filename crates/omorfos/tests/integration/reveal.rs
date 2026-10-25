@@ -265,9 +265,15 @@ fn a_pointer_that_does_not_rest_brings_nothing_back() {
 /// Moves the pointer by a distance, as a mouse or touchpad does, at a
 /// time in thousandths of a second.
 fn push(session: &mut Session, dy: f64, time: u32) {
-    session
-        .compositor_mut()
-        .input(Input::MotionBy { dx: 0.0, dy }, time);
+    session.compositor_mut().input(
+        Input::MotionBy {
+            dx: 0.0,
+            dy,
+            raw_dx: 0.0,
+            raw_dy: dy,
+        },
+        time,
+    );
     session.step();
 }
 
