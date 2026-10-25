@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use omorfos_config::Picture;
 
-pub use slides::Slides;
+pub use slides::{Slide, Slides};
 pub use wallpaper::{Failure, Wallpaper};
 
 /// Runs the wallpaper in the session the environment describes, until it

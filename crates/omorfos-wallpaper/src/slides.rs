@@ -1,6 +1,10 @@
 //! Which picture is shown: the one file the configuration names, or one of
-//! a directory of them, a new one at an interval.
+//! a directory of them, a new one at an interval. Two pictures of a
+//! directory named alike but for `-dark` and `-light` at the end are a
+//! pair, shown as one: the first while the desktop is dark, the other
+//! while it is light.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -16,11 +20,11 @@ pub struct Slides {
     order: Order,
     every: Duration,
     /// The picture shown, and since when.
-    shown: Option<PathBuf>,
+    shown: Option<Slide>,
     since: Duration,
     /// Those not yet shown this time through a shuffled directory, the
     /// next last.
-    left: Vec<PathBuf>,
+    left: Vec<Slide>,
     /// What the next shuffle is made from.
     seed: u64,
     /// The picture to be shown next, once it has been chosen ahead of
@@ -34,7 +38,36 @@ enum Upcoming {
     /// Not chosen yet.
     Open,
     /// The picture chosen, or none if the directory has none left.
-    Chosen(Option<PathBuf>),
+    Chosen(Option<Slide>),
+}
+
+/// A picture of those shown in turn: one, or a pair of them, one for a
+/// dark desktop and one for a light one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Slide {
+    dark: PathBuf,
+    light: PathBuf,
+}
+
+impl Slide {
+    /// The one picture, whether the desktop is dark or light.
+    fn one(path: PathBuf) -> Self {
+        Self {
+            dark: path.clone(),
+            light: path,
+        }
+    }
+
+    /// The picture shown while the desktop is `dark`, or light.
+    #[must_use]
+    pub fn path(&self, dark: bool) -> &Path {
+        if dark { &self.dark } else { &self.light }
+    }
+
+    /// Whether `path` is this picture, or one of its pair.
+    fn has(&self, path: &Path) -> bool {
+        self.dark == path || self.light == path
+    }
 }
 
 /// How long before it is due the next picture is chosen, at most, so that
@@ -68,13 +101,11 @@ impl Slides {
             seed,
             upcoming: Upcoming::Open,
         };
-        let known = from.filter(|from| {
-            directory
-                && pictures(&slides.source)
-                    .iter()
-                    .any(|picture| picture == from)
+        let listed = from.filter(|_| directory).map(|from| {
+            let mut pictures = pictures(&slides.source).into_iter();
+            pictures.find(|picture| picture.has(from))
         });
-        slides.shown = known.map(Path::to_owned).or_else(|| slides.next());
+        slides.shown = listed.flatten().or_else(|| slides.next());
         slides
     }
 
@@ -93,8 +124,8 @@ impl Slides {
 
     /// The picture shown now, if there is one.
     #[must_use]
-    pub fn shown(&self) -> Option<&Path> {
-        self.shown.as_deref()
+    pub fn shown(&self) -> Option<&Slide> {
+        self.shown.as_ref()
     }
 
     /// When another picture may be shown: for a directory, once each has
@@ -127,9 +158,9 @@ impl Slides {
 
     /// The picture chosen to be shown next, if one has been.
     #[must_use]
-    pub fn coming(&self) -> Option<&Path> {
+    pub fn coming(&self) -> Option<&Slide> {
         match &self.upcoming {
-            Upcoming::Chosen(coming) => coming.as_deref(),
+            Upcoming::Chosen(coming) => coming.as_ref(),
             Upcoming::Open => None,
         }
     }
@@ -151,9 +182,9 @@ impl Slides {
     }
 
     /// The picture after the one shown.
-    fn next(&mut self) -> Option<PathBuf> {
+    fn next(&mut self) -> Option<Slide> {
         if !self.directory {
-            return Some(self.source.clone());
+            return Some(Slide::one(self.source.clone()));
         }
         let pictures = pictures(&self.source);
         match self.order {
@@ -179,7 +210,7 @@ impl Slides {
     }
 
     /// The pictures in an order of chance, a different one each time.
-    fn shuffled(&mut self, mut pictures: Vec<PathBuf>) -> Vec<PathBuf> {
+    fn shuffled(&mut self, mut pictures: Vec<Slide>) -> Vec<Slide> {
         // Fisher and Yates's shuffle, by Vigna's SplitMix64: chance enough
         // to choose a picture by, from any seed, with nothing to depend on.
         for last in (1..pictures.len()).rev() {
@@ -197,8 +228,9 @@ impl Slides {
 }
 
 /// The pictures in a directory, by name: the files that are PNG or JPEG,
-/// as their names say. Those in directories within it are not.
-fn pictures(directory: &Path) -> Vec<PathBuf> {
+/// as their names say, each pair of them as one. Those in directories
+/// within it are not.
+fn pictures(directory: &Path) -> Vec<Slide> {
     let entries = fs::read_dir(directory).into_iter().flatten().flatten();
     let paths = entries.map(|entry| entry.path());
     let mut pictures: Vec<PathBuf> = paths
@@ -210,7 +242,28 @@ fn pictures(directory: &Path) -> Vec<PathBuf> {
         })
         .collect();
     pictures.sort();
-    pictures
+    // What a picture's name is without `end`, if it ends so.
+    let without = |picture: &Path, end: &str| {
+        let name = picture.file_stem().and_then(OsStr::to_str);
+        name.and_then(|name| name.strip_suffix(end))
+            .map(str::to_owned)
+    };
+    let light = |dark: &Path| {
+        let named = without(dark, "-dark");
+        let mut lights = pictures.iter();
+        named.and_then(|named| lights.find(|light| without(light, "-light") == Some(named.clone())))
+    };
+    let paired: Vec<&PathBuf> = pictures.iter().filter_map(|dark| light(dark)).collect();
+    let alone = pictures.iter().filter(|picture| !paired.contains(picture));
+    alone
+        .map(|picture| match light(picture) {
+            Some(light) => Slide {
+                dark: picture.clone(),
+                light: light.clone(),
+            },
+            None => Slide::one(picture.clone()),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -230,7 +283,9 @@ mod tests {
     }
 
     fn name(slides: &Slides) -> Option<String> {
-        let name = slides.shown().and_then(Path::file_name);
+        let name = slides
+            .shown()
+            .and_then(|shown| shown.path(true).file_name());
         name.map(|name| name.to_string_lossy().into_owned())
     }
 
@@ -245,7 +300,7 @@ mod tests {
             0,
             None,
         );
-        assert_eq!(slides.shown(), Some(file.as_path()));
+        assert_eq!(slides.shown(), Some(&Slide::one(file.clone())));
         assert_eq!(slides.due(), None);
         assert!(!slides.turn(MINUTE * 1000));
         assert!(slides.are(&file, Order::Shuffled, MINUTE));
@@ -300,6 +355,49 @@ mod tests {
         fs::write(directory.path().join("new.jpg"), "").unwrap();
         assert!(slides.turn(MINUTE * 5));
         assert_eq!(name(&slides).as_deref(), Some("new.jpg"));
+    }
+
+    #[test]
+    fn pictures_named_alike_but_for_dark_and_light_are_shown_as_one() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let names = [
+            "hills-dark.png",
+            "hills-light.jpg",
+            "lone-dark.png",
+            "sea.png",
+            "town-light.png",
+        ];
+        for name in names {
+            fs::write(directory.path().join(name), "").unwrap();
+        }
+        let source = directory.path().to_owned();
+        let mut slides = Slides::new(source, Order::Name, MINUTE, Duration::ZERO, 0, None);
+        let both = |slides: &Slides| {
+            let shown = slides.shown().unwrap();
+            let name = |dark| shown.path(dark).file_name().unwrap().to_owned();
+            (name(true), name(false))
+        };
+        let mut seen = vec![both(&slides)];
+        for minute in 1..4 {
+            slides.turn(MINUTE * minute);
+            seen.push(both(&slides));
+        }
+        // Without its other half, a picture is itself, dark or light.
+        let alone = |name: &str| (name.into(), name.into());
+        assert_eq!(
+            seen,
+            [
+                ("hills-dark.png".into(), "hills-light.jpg".into()),
+                alone("lone-dark.png"),
+                alone("sea.png"),
+                alone("town-light.png"),
+            ]
+        );
+        // One left showing the light half starts the pair again.
+        let source = directory.path().to_owned();
+        let from = directory.path().join("hills-light.jpg");
+        let again = Slides::new(source, Order::Name, MINUTE, Duration::ZERO, 0, Some(&from));
+        assert_eq!(both(&again), seen[0]);
     }
 
     #[test]
@@ -363,7 +461,7 @@ mod tests {
         assert!(slides.choose(Duration::from_secs(50)));
         assert_eq!(
             slides.coming(),
-            Some(directory.path().join("b.jpg").as_path())
+            Some(&Slide::one(directory.path().join("b.jpg")))
         );
         assert_eq!(slides.choosing(), None, "chosen once");
         assert!(!slides.choose(Duration::from_secs(55)));
@@ -418,6 +516,6 @@ mod tests {
             0,
             Some(from),
         );
-        assert_eq!(slides.shown(), Some(file.as_path()));
+        assert_eq!(slides.shown(), Some(&Slide::one(file.clone())));
     }
 }

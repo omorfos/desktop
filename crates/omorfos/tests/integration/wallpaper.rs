@@ -215,6 +215,41 @@ fn a_picture_named_for_a_dark_desktop_and_one_for_a_light_one_follow_the_theme()
 }
 
 #[test]
+fn a_pair_in_a_directory_shown_in_turn_follows_the_theme_as_one_picture() {
+    let pictures = tempfile::TempDir::new().unwrap();
+    png(&pictures.path().join("hills-dark.png"), (1, 1), |_, _| {
+        GREEN
+    });
+    png(&pictures.path().join("hills-light.png"), (1, 1), |_, _| {
+        WHITE
+    });
+    let config = format!(
+        "wallpaper: {{ picture: '{}', every: 60, fade: 0 }}\n",
+        pictures.path().display()
+    );
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let program = RefCell::new(joined(&mut session, None));
+    settle(&mut session, &mut program.borrow_mut(), Duration::ZERO);
+    assert_eq!(
+        session.draw().at(10, 10),
+        GREEN,
+        "the dark one, as the theme is"
+    );
+    let turned = |session: &mut Session, colour: u32| {
+        program.borrow_mut().turn(Duration::ZERO).unwrap();
+        session.step();
+        session.draw().at(10, 10) == colour
+    };
+    session.write_config("theme.css", LIGHT);
+    session.eventually(|session| turned(session, WHITE));
+    // The pair is one picture: turning, the directory shows it again, as
+    // the theme is.
+    program.borrow_mut().turn(Duration::from_secs(60)).unwrap();
+    session.step();
+    assert_eq!(session.draw().at(10, 10), WHITE);
+}
+
+#[test]
 fn a_colour_covers_every_screen_and_windows_are_over_it() {
     let config = "wallpaper: { color: '#ff0000' }\n";
     let mut session = Session::with_config(&[("config.yaml", config)]);

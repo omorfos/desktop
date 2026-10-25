@@ -496,7 +496,8 @@ impl Shell {
             } else {
                 Slides::shown
             };
-            slides.and_then(which).map(Path::to_owned)
+            let slide = slides.and_then(which);
+            slide.map(|slide| slide.path(config.theme.dark()).to_owned())
         });
         // With neither a picture nor a colour, nor one that comes with
         // omorfos, the compositor's desktop is shown, and there is nothing
