@@ -24,11 +24,10 @@ use smithay::wayland::shell::xdg::SurfaceCachedState;
 
 use crate::Scale;
 use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical_size};
-use crate::icons::{Icon, WindowIcons};
+use crate::icons::{Icon, WindowIcons, icon_pixels};
 use crate::input::Drag;
 use crate::outputs::Head;
 use crate::paint::{self, Text};
-use crate::switcher::{given_icon, icon_pixels};
 use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
@@ -477,7 +476,13 @@ impl Compositor {
             if let Some(Icon::Given(buffer)) = &title.icon {
                 let tall = title.pixels.height();
                 let beside = (title.at.x, title.at.y, tall, tall);
-                elements.extend(given_icon(renderer, buffer, beside, &title.ids[0], view));
+                elements.extend(self.switch.icons.given(
+                    renderer,
+                    buffer,
+                    beside,
+                    &title.ids[0],
+                    view,
+                ));
             }
             let at = Point::<i32, Logical>::from((title.at.x, title.at.y));
             elements.extend(title.pixels.element(renderer, at.to_f64(), view, 1.0));
@@ -500,7 +505,13 @@ impl Compositor {
             let area = (at.origin.x, at.origin.y, at.size.width, at.size.height);
             match large {
                 Large::Given(buffer) => {
-                    elements.extend(given_icon(renderer, buffer, area, &title.ids[1], view));
+                    elements.extend(self.switch.icons.given(
+                        renderer,
+                        buffer,
+                        area,
+                        &title.ids[1],
+                        view,
+                    ));
                 }
                 Large::Painted(painted) => {
                     let corner = Point::<i32, Logical>::from((at.origin.x, at.origin.y));

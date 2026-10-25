@@ -38,7 +38,10 @@ has been set on a window, and a buffer that is not in shared memory or
 not square, are still refused with the errors the protocol names, and the
 log says which program and why. The icon is double-buffered with the
 window's surface, as the protocol says. The buffers are drawn by the
-renderer, never read by omorfos, as before.
+renderer, never read by omorfos, as before. What the renderer makes of
+each is kept until the program destroys the buffer, as the protocol has
+its pixels never change once given, so that it is handed to the graphics
+card once and not with every frame the icon is drawn in.
 
 ## Consequences
 

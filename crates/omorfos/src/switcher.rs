@@ -11,18 +11,16 @@ use std::time::Duration;
 use omorfos_config::{Color, Config, Modifiers, Part, State, States, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Switcher, SwitcherLayout, SwitcherMetrics, Used, WindowId};
-use omorfos_ui::{Area, Image};
+use omorfos_ui::Image;
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
-use smithay::backend::renderer::element::{Id, Kind};
+use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
-use smithay::utils::{Logical, Point, Rectangle, Transform};
+use smithay::utils::{Logical, Point, Rectangle};
 use smithay::reexports::wayland_protocols::xdg::toplevel_icon::v1::server::xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1;
 use smithay::reexports::wayland_server::backend::ObjectId;
 
@@ -103,69 +101,6 @@ struct Drawn {
     config: Arc<Config>,
     scale: Scale,
     pixels: Painted,
-}
-
-/// An icon a program gave as pixels, drawn by the renderer in the middle
-/// of `area`, as large as fits but no larger than its pixels, which would
-/// only make it blocky. Icons are square, as the protocol has them. Nothing
-/// if the renderer cannot read it.
-pub(crate) fn given_icon<R>(
-    renderer: &mut R,
-    buffer: &WlBuffer,
-    area: Area,
-    id: &Id,
-    view: View,
-) -> Option<Element<R>>
-where
-    R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + Texture + Send + 'static,
-{
-    let texture = renderer
-        .import_buffer(buffer, None, &[])
-        .and_then(Result::ok);
-    let context = renderer.context_id();
-    texture.map(|texture| {
-        let pixels = texture.size().w.max(1);
-        // As many units of layout as it has pixels at this scale, which
-        // is no more than it has pixels, an `i32`.
-        #[expect(clippy::cast_possible_truncation, reason = "see above")]
-        let most = (f64::from(pixels) / view.scale.factor()).floor() as i32;
-        let room = area.2.min(area.3).cast_signed();
-        let side = room.min(most.max(1));
-        let left = area.0 + (area.2.cast_signed() - side) / 2;
-        let top = area.1 + (area.3.cast_signed() - side) / 2;
-        let at = view.pixel(Point::<f64, Logical>::from((
-            f64::from(left),
-            f64::from(top),
-        )));
-        Element::Texture(TextureRenderElement::from_static_texture(
-            id.clone(),
-            context,
-            at.to_f64(),
-            texture,
-            1,
-            Transform::Normal,
-            None,
-            None,
-            Some((side, side).into()),
-            None,
-            Kind::Unspecified,
-        ))
-    })
-}
-
-/// How many pixels across an icon is looked up at, to be drawn sharp at
-/// `scale` where it is drawn largest.
-pub(crate) fn icon_pixels(scale: Scale) -> u32 {
-    let side = f64::from(paint::LARGE_ICON) * scale.factor();
-    // At most a few hundred, so neither negative nor too large.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "see above"
-    )]
-    let pixels = side.ceil() as u32;
-    pixels
 }
 
 /// The colour of a window's title in the switcher, which an icon that is
@@ -332,7 +267,7 @@ impl Compositor {
         };
         let (metrics, picture) = metrics(&config.theme);
         let layout = switching.switcher.layout(switching.screen, metrics);
-        let pixels = icon_pixels(scale);
+        let pixels = crate::icons::icon_pixels(scale);
         let mut icons = std::mem::take(&mut self.switch.icons);
         let shown: Vec<Shown<Icon>> = layout
             .items
@@ -433,7 +368,7 @@ impl Compositor {
             let large = (!shown.pictured).then_some(places.large);
             let areas = [Some(places.icon), large].into_iter().zip(ids);
             for (area, id) in areas.filter_map(|(area, id)| Some((area?, id))) {
-                elements.extend(given_icon(renderer, buffer, area, id, view));
+                elements.extend(self.switch.icons.given(renderer, buffer, area, id, view));
             }
         }
         for (window, place, picked) in &drawn.layout.items {

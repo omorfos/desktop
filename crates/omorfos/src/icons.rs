@@ -13,13 +13,20 @@
 //! the desktops they are tried on let them: an icon that has lost its
 //! pixels here is drawn as though it had none (ADR 54).
 
+use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omorfos_config::Color;
 use omorfos_icons::Icons;
-use omorfos_ui::Image;
-use smithay::backend::renderer::{BufferType, buffer_dimensions, buffer_type};
+use omorfos_ui::{Area, Image};
+use smithay::backend::renderer::element::texture::TextureRenderElement;
+use smithay::backend::renderer::element::{Id, Kind};
+use smithay::backend::renderer::{
+    BufferType, ErasedContextId, ImportAll, ImportMem, Renderer, Texture, buffer_dimensions,
+    buffer_type,
+};
 use smithay::reexports::wayland_protocols::xdg::toplevel_icon::v1::server::{
     xdg_toplevel_icon_manager_v1::{self, XdgToplevelIconManagerV1},
     xdg_toplevel_icon_v1::{self, XdgToplevelIconV1},
@@ -30,9 +37,12 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
+use smithay::utils::{Logical, Point, Transform};
 use smithay::wayland::compositor::{Cacheable, with_states};
 
-use crate::compositor::Compositor;
+use crate::Scale;
+use crate::compositor::{Compositor, Element, View};
+use crate::paint;
 
 /// The icon a program gave a window, double-buffered with the window's
 /// surface: the name of one of a theme, and the pixels it gave, each
@@ -84,6 +94,24 @@ pub(crate) struct WindowIcons {
     icons: Icons,
     /// The icon each application's desktop entry names, by identifier.
     entries: HashMap<String, Option<String>>,
+    /// The icons programs gave as pixels, as each renderer has them, so that
+    /// each is handed to the graphics card once and not with every frame.
+    textures: RefCell<Textures>,
+}
+
+/// What the renderer made of each icon a program gave as pixels, by the
+/// buffer and the renderer's context, with the buffer, until the program
+/// destroys it.
+#[derive(Default)]
+struct Textures(HashMap<(ObjectId, ErasedContextId), (WlBuffer, Box<dyn Any + Send>)>);
+
+impl std::fmt::Debug for Textures {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("Textures")
+            .field(&self.0.len())
+            .finish()
+    }
 }
 
 impl WindowIcons {
@@ -95,6 +123,7 @@ impl WindowIcons {
             data,
             icons,
             entries: HashMap::new(),
+            textures: RefCell::default(),
         }
     }
 
@@ -109,6 +138,11 @@ impl WindowIcons {
         pixels: u32,
         ink: Color,
     ) -> Option<Icon> {
+        // What the renderer kept of pixels their programs have destroyed is
+        // let go of here, as an icon is looked up, as well as when one is
+        // drawn: an icon whose pixels are gone is not drawn again.
+        let textures = &mut self.textures.get_mut().0;
+        textures.retain(|_, (kept, _)| kept.is_alive());
         let (named, given) = with_states(surface, |states| {
             let mut cached = states.cached_state.get::<GivenIcon>();
             let current = cached.current();
@@ -138,10 +172,103 @@ impl WindowIcons {
         name.map(Icon::Named)
     }
 
+    /// An icon a program gave as pixels, drawn by the renderer in the middle
+    /// of `area`, as large as fits but no larger than its pixels, which would
+    /// only make it blocky. Icons are square, as the protocol has them. Nothing
+    /// if the renderer cannot read it.
+    pub(crate) fn given<R>(
+        &self,
+        renderer: &mut R,
+        buffer: &WlBuffer,
+        area: Area,
+        id: &Id,
+        view: View,
+    ) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let context = renderer.context_id();
+        let key = (buffer.id(), context.clone().erased());
+        let mut textures = self.textures.borrow_mut();
+        // Those of icons their programs have destroyed are let go of.
+        textures.0.retain(|_, (kept, _)| kept.is_alive());
+        let kept = textures.0.get(&key);
+        let kept = kept.and_then(|(_, texture)| texture.downcast_ref::<R::TextureId>());
+        let kept = kept.cloned();
+        // An icon's pixels do not change once it is given, so it is read
+        // once, and kept.
+        let mut imported = || {
+            renderer
+                .import_buffer(buffer, None, &[])
+                .and_then(Result::ok)
+        };
+        let texture = kept.or_else(|| {
+            imported().inspect(|texture| {
+                let held = (
+                    buffer.clone(),
+                    Box::new(texture.clone()) as Box<dyn Any + Send>,
+                );
+                textures.0.insert(key, held);
+            })
+        });
+        texture.map(|texture| {
+            let pixels = texture.size().w.max(1);
+            // As many units of layout as it has pixels at this scale, which
+            // is no more than it has pixels, an `i32`.
+            #[expect(clippy::cast_possible_truncation, reason = "see above")]
+            let most = (f64::from(pixels) / view.scale.factor()).floor() as i32;
+            let room = area.2.min(area.3).cast_signed();
+            let side = room.min(most.max(1));
+            let left = area.0 + (area.2.cast_signed() - side) / 2;
+            let top = area.1 + (area.3.cast_signed() - side) / 2;
+            let at = view.pixel(Point::<f64, Logical>::from((
+                f64::from(left),
+                f64::from(top),
+            )));
+            Element::Texture(TextureRenderElement::from_static_texture(
+                id.clone(),
+                context,
+                at.to_f64(),
+                texture,
+                1,
+                Transform::Normal,
+                None,
+                None,
+                Some((side, side).into()),
+                None,
+                Kind::Unspecified,
+            ))
+        })
+    }
+
     /// The picture of an icon of a theme, as [`Self::of`] found it.
     pub(crate) fn picture(&mut self, name: &str, pixels: u32, ink: Color) -> Option<&Image> {
         self.icons.get(name, pixels, ink)
     }
+}
+
+impl Compositor {
+    /// How many icons that programs gave as pixels the renderer keeps,
+    /// drawn once and drawn from again.
+    #[must_use]
+    pub fn icon_textures(&self) -> usize {
+        self.switch.icons.textures.borrow().0.len()
+    }
+}
+
+/// How many pixels across an icon is looked up at, to be drawn sharp at
+/// `scale` where it is drawn largest.
+pub(crate) fn icon_pixels(scale: Scale) -> u32 {
+    let side = f64::from(paint::LARGE_ICON) * scale.factor();
+    // At most a few hundred, so neither negative nor too large.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "see above"
+    )]
+    let pixels = side.ceil() as u32;
+    pixels
 }
 
 /// Of the buffers an icon was given that the program has not destroyed,
@@ -259,5 +386,16 @@ impl Dispatch<XdgToplevelIconV1, ()> for Compositor {
         // What was set on a window stays set there, in the window's state.
         let gone: ObjectId = icon.id();
         state.switch.making.remove(&gone);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_is_kept_of_programs_pixels_is_shown_by_how_many_not_what() {
+        let icons = WindowIcons::default();
+        assert!(format!("{icons:?}").contains("Textures(0)"));
     }
 }

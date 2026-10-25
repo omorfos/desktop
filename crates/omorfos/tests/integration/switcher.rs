@@ -562,6 +562,9 @@ fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applicatio
     session.roundtrip(&mut client);
     alt_tab(&mut session, 1, false);
     assert_eq!(icons_shown(&mut session)[1], (YELLOW, RED), "the second");
+    // Drawn again, it is drawn from what the renderer made of it at first.
+    assert_eq!(icons_shown(&mut session)[1], (YELLOW, RED));
+    assert_eq!(session.compositor().icon_textures(), 1, "read once");
     press(&mut session, key::ALT, false);
     first.destroy();
     second.destroy();
@@ -571,6 +574,11 @@ fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applicatio
         icons_shown(&mut session)[0],
         (CYAN, RED),
         "its application's"
+    );
+    assert_eq!(
+        session.compositor().icon_textures(),
+        0,
+        "and what was kept of its pixels let go of"
     );
     press(&mut session, key::ALT, false);
     // An icon taken back with none, and the protocol let go of.
