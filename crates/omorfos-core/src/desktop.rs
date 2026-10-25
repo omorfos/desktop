@@ -1049,6 +1049,9 @@ struct Set {
     /// Set while a fullscreen window's titlebar is asked for: how far
     /// down from the top of the output it is laid over the window.
     revealed: Option<u32>,
+    /// How far right the workspace shown is drawn, in units of layout,
+    /// while the workspaces are slid across: see [`Desktop::slide`].
+    slid: i32,
 }
 
 impl Set {
@@ -1265,6 +1268,7 @@ impl Desktop {
             workspaces,
             active: 0,
             revealed: None,
+            slid: 0,
         }
     }
 
@@ -2263,6 +2267,41 @@ impl Desktop {
         }
     }
 
+    /// Draws the workspaces of the current output slid across by `offset`,
+    /// in units of layout, as fingers on a touchpad carry them: the one
+    /// shown moved right by it, and beside it the one that comes in on the
+    /// side it leaves, the next from the right or the one before from the
+    /// left. Frames that are on every workspace stay where they are, and
+    /// what is shown and has the keyboard does not change. `0` ends it.
+    pub fn slide(&mut self, offset: i32) {
+        self.sets[self.current].slid = offset;
+    }
+
+    /// How far right the workspace the current output shows is slid.
+    #[must_use]
+    pub fn slid(&self) -> i32 {
+        self.sets[self.current].slid
+    }
+
+    /// The workspace that comes in beside the one a set shows while it is
+    /// slid, and how far right it is drawn; none if it is not slid, or if
+    /// there is no other.
+    fn beside(&self, set: usize) -> Option<(usize, i32)> {
+        let shown = &self.sets[set];
+        let width = self
+            .outputs
+            .get(set)
+            .map_or(0, |output| output.area.size.width);
+        let width = width.cast_signed();
+        let count = shown.workspaces.len();
+        let (workspace, shift) = match shown.slid.signum() {
+            -1 => ((shown.active + 1) % count, shown.slid + width),
+            1 => ((shown.active + count - 1) % count, shown.slid - width),
+            _ => return None,
+        };
+        (workspace != shown.active).then_some((workspace, shift))
+    }
+
     /// Shows the following workspace on the current output, wrapping
     /// around.
     pub fn next_workspace(&mut self) {
@@ -2354,63 +2393,79 @@ impl Desktop {
         let order = (0..self.sets.len())
             .filter(|index| *index != self.current)
             .chain([self.current]);
+        // While a set is slid, the workspace beside the one it shows is
+        // drawn too, moved across with it.
         let shown = move |level: u8| {
             order.clone().flat_map(move |index| {
                 let set = &self.sets[index];
-                let workspace = &set.workspaces[set.active];
-                let groups = workspace.groups.iter();
-                groups
-                    .filter(move |group| !group.minimized && group.level() == level)
-                    .map(move |group| (index, workspace, group))
+                let here = [(set.active, set.slid, true)].into_iter();
+                let beside = self.beside(index).map(|(at, shift)| (at, shift, false));
+                here.chain(beside).flat_map(move |(at, shift, shown)| {
+                    let workspace = &set.workspaces[at];
+                    let groups = workspace.groups.iter();
+                    groups
+                        .filter(move |group| !group.minimized && group.level() == level)
+                        .map(move |group| {
+                            let shift = if group.standing.sticky { 0 } else { shift };
+                            (index, workspace, group, (shift, shown))
+                        })
+                })
             })
         };
-        (0..3).flat_map(shown).map(|(index, workspace, group)| {
-            // A frame fills its own output; with none, it has only
-            // itself to fill.
-            let own = self.outputs.get(index).copied();
-            let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
-            let part = workspace.solo.filter(|_| group.fullscreen);
-            let part = part.map(|tiling| {
+        (0..3)
+            .flat_map(shown)
+            .map(|(index, workspace, group, (shift, shown))| {
+                // A frame fills its own output; with none, it has only
+                // itself to fill.
+                let own = self.outputs.get(index).copied();
+                let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
+                let part = workspace.solo.filter(|_| group.fullscreen);
+                let part = part.map(|tiling| {
+                    let titlebar = self.settings.decoration.titlebar;
+                    let roomy = tiling.with_room(screen.area, &workspace.groups, titlebar);
+                    roomy.part_of(group.serial, screen.area)
+                });
+                let mut geometry = match (part, group.maximized) {
+                    (Some(part), _) => part,
+                    (None, true) => screen.usable,
+                    (None, false) => group.geometry,
+                };
+                geometry.origin = geometry.origin.offset(shift, 0);
+                let home = workspace.solo.map_or(Home::Desktop, |tiling| {
+                    if tiling.shared() {
+                        Home::Shared
+                    } else {
+                        Home::Solo
+                    }
+                });
+                let decorated = group.decorated() && !group.fullscreen;
+                // Rolled up, a frame is as tall as its titlebar and no more.
+                let shaded = group.standing.shaded && decorated;
                 let titlebar = self.settings.decoration.titlebar;
-                let roomy = tiling.with_room(screen.area, &workspace.groups, titlebar);
-                roomy.part_of(group.serial, screen.area)
-            });
-            let mut geometry = match (part, group.maximized) {
-                (Some(part), _) => part,
-                (None, true) => screen.usable,
-                (None, false) => group.geometry,
-            };
-            let home = workspace.solo.map_or(Home::Desktop, |tiling| {
-                if tiling.shared() {
-                    Home::Shared
-                } else {
-                    Home::Solo
+                let rolled = geometry.size.height.min(titlebar);
+                geometry.size.height = if shaded { rolled } else { geometry.size.height };
+                Frame {
+                    tabs: &group.tabs,
+                    active: group.active,
+                    geometry,
+                    decoration: decorated
+                        .then_some((geometry, self.settings.decoration))
+                        .or(self.laid_over(index, group, geometry, home == Home::Shared))
+                        .map(|(within, metrics)| {
+                            Decoration::new(within, metrics, group.tabs.len())
+                        }),
+                    maximized: group.maximized,
+                    fullscreen: group.fullscreen,
+                    home,
+                    focused: index == self.current
+                        && shown
+                        && workspace.focused == Some(group.serial),
+                    standing: Standing {
+                        shaded,
+                        ..group.standing
+                    },
                 }
-            });
-            let decorated = group.decorated() && !group.fullscreen;
-            // Rolled up, a frame is as tall as its titlebar and no more.
-            let shaded = group.standing.shaded && decorated;
-            let titlebar = self.settings.decoration.titlebar;
-            let rolled = geometry.size.height.min(titlebar);
-            geometry.size.height = if shaded { rolled } else { geometry.size.height };
-            Frame {
-                tabs: &group.tabs,
-                active: group.active,
-                geometry,
-                decoration: decorated
-                    .then_some((geometry, self.settings.decoration))
-                    .or(self.laid_over(index, group, geometry, home == Home::Shared))
-                    .map(|(within, metrics)| Decoration::new(within, metrics, group.tabs.len())),
-                maximized: group.maximized,
-                fullscreen: group.fullscreen,
-                home,
-                focused: index == self.current && workspace.focused == Some(group.serial),
-                standing: Standing {
-                    shaded,
-                    ..group.standing
-                },
-            }
-        })
+            })
     }
 
     // --- Internals ---------------------------------------------------------
@@ -5120,6 +5175,92 @@ mod tests {
         desktop.set_workspace_count(0);
         assert_eq!(desktop.workspace_count(), 1);
         assert_eq!(desktop.focused(), Some(id));
+    }
+
+    /// Where each frame on the screen is across, by the window it shows,
+    /// and whether it has the keyboard.
+    fn across(desktop: &Desktop) -> Vec<(WindowId, i32, bool)> {
+        let frames = desktop.frames();
+        frames
+            .map(|frame| (frame.window().id, frame.geometry.origin.x, frame.focused))
+            .collect()
+    }
+
+    #[test]
+    fn slid_left_the_workspace_shown_goes_with_the_next_beside_it_on_the_right() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        desktop.next_workspace();
+        let second = open(&mut desktop, "second");
+        desktop.previous_workspace();
+        let at = frame(&desktop, first).geometry.origin.x;
+        let there = |desktop: &mut Desktop| {
+            desktop.next_workspace();
+            let x = frame(desktop, second).geometry.origin.x;
+            desktop.previous_workspace();
+            x
+        };
+        let there = there(&mut desktop);
+
+        desktop.slide(-300);
+        assert_eq!(desktop.slid(), -300);
+        let width = SCREEN.size.width.cast_signed();
+        assert_eq!(
+            across(&desktop),
+            [
+                (first, at - 300, true),
+                (second, there - 300 + width, false)
+            ],
+            "only the one shown has the keyboard"
+        );
+        assert_eq!(
+            desktop.active_workspace(),
+            0,
+            "and it is still the one shown"
+        );
+
+        desktop.slide(0);
+        assert_eq!(across(&desktop), [(first, at, true)], "and back");
+    }
+
+    #[test]
+    fn slid_right_the_one_before_comes_in_on_the_left_round_from_the_last() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        desktop.previous_workspace();
+        assert_eq!(desktop.active_workspace(), 2, "round to the last");
+        let last = open(&mut desktop, "last");
+        desktop.next_workspace();
+        let at = frame(&desktop, first).geometry.origin.x;
+
+        desktop.slide(200);
+        let width = SCREEN.size.width.cast_signed();
+        let shown = across(&desktop);
+        assert_eq!(shown[0], (first, at + 200, true));
+        assert_eq!(shown[1].0, last);
+        assert!(shown[1].1 < 200 && shown[1].1 >= 200 - width, "{shown:?}");
+    }
+
+    #[test]
+    fn with_one_workspace_nothing_comes_in_beside_it() {
+        let mut desktop = Desktop::new(Settings::default(), 1);
+        desktop.set_outputs(vec![SCREEN]);
+        let only = open(&mut desktop, "only");
+        let at = frame(&desktop, only).geometry.origin.x;
+
+        desktop.slide(-100);
+        assert_eq!(across(&desktop), [(only, at - 100, true)]);
+    }
+
+    #[test]
+    fn a_frame_on_every_workspace_stays_where_it_is_while_they_slide() {
+        let mut desktop = desktop();
+        let note = open(&mut desktop, "note");
+        desktop.toggle_sticky(note);
+        let at = frame(&desktop, note).geometry.origin.x;
+
+        desktop.slide(-400);
+        assert_eq!(across(&desktop), [(note, at, true)]);
     }
 
     // --- Outputs -----------------------------------------------------------
