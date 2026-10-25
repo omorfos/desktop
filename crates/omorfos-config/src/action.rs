@@ -110,6 +110,12 @@ pub enum Action {
     ShowLauncher,
     /// Lock the session, with the program `locker` in config.yaml names.
     Lock,
+    /// Keep the session from locking, the screens from going off and the
+    /// machine from sleeping when the user is away, until asked again; or,
+    /// while it is kept so, let it go.
+    StayAwake,
+    /// The same for at most this many seconds, up to a day.
+    StayAwakeFor(Bounded<1, 86_400>),
     /// Type with the next of the keyboard's layouts, and after the last
     /// with the first again.
     NextLayout,
@@ -334,6 +340,17 @@ mod tests {
         assert_eq!(parse("stick"), Ok(Action::Stick));
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
         assert_eq!(parse("lock"), Ok(Action::Lock));
+        assert_eq!(parse("stay_awake"), Ok(Action::StayAwake));
+        let hour = Bounded::clamped(3600);
+        assert_eq!(
+            parse("stay_awake_for: 3600"),
+            Ok(Action::StayAwakeFor(hour))
+        );
+        assert!(parse("stay_awake_for: 0").is_err(), "not for no time");
+        assert!(
+            parse("stay_awake_for: 86401").is_err(),
+            "nor for more than a day"
+        );
         assert_eq!(parse("next_layout"), Ok(Action::NextLayout));
         assert_eq!(parse("next_screens"), Ok(Action::NextScreens));
         assert_eq!(

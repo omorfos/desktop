@@ -206,6 +206,26 @@
           "type": "string"
         },
         {
+          "const": "stay_awake",
+          "description": "Keep the session from locking, the screens from going off and the\nmachine from sleeping when the user is away, until asked again; or,\nwhile it is kept so, let it go.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The same for at most this many seconds, up to a day.",
+          "properties": {
+            "stay_awake_for": {
+              "maximum": 86400,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "stay_awake_for"
+          ],
+          "type": "object"
+        },
+        {
           "const": "next_layout",
           "description": "Type with the next of the keyboard's layouts, and after the last\nwith the first again.",
           "type": "string"

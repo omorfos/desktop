@@ -115,7 +115,8 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "modes": ["3840x2160@60", "3840x2160@48"]
     }
   ],
-  "locked": false
+  "locked": false,
+  "awake": { "until": 1761400800 }
 }
 ```
 
@@ -139,6 +140,11 @@ up, so a program that has to wait for the screen to be locked, as
 `omorfos-session` does before the machine sleeps, waits for it to be
 true. Asking for the `lock` action is refused with an error when nothing
 is set to lock the session with, so that such a program knows at once.
+
+`awake` is there while the user has asked for the session to stay awake,
+by the `stay_awake` or `stay_awake_for` action, with `until` the time it
+ends in seconds since the Unix epoch, or `null` if it lasts until it is
+asked to end. It is `null`, or absent from an older compositor, otherwise.
 
 `shaded`, `above` and `sticky` say how a window's frame stands apart, as
 the titlebar's menu, the actions of those names and rules set it: rolled

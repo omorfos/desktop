@@ -120,6 +120,19 @@ pub struct State {
     /// screen. Until then a session that is being locked is not.
     #[serde(default)]
     pub locked: bool,
+    /// Whether the user has asked for the session to stay awake: not to
+    /// lock, turn the screens off or sleep when they are away. None from a
+    /// compositor too old to say.
+    #[serde(default)]
+    pub awake: Option<Awake>,
+}
+
+/// The session being kept awake, as the user asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Awake {
+    /// When it ends, in seconds since the Unix epoch; none if it lasts until
+    /// it is asked to end.
+    pub until: Option<u64>,
 }
 
 /// A screen, and the ways it can be driven.
@@ -386,6 +399,9 @@ mod tests {
                 off: false,
             }],
             locked: true,
+            awake: Some(Awake {
+                until: Some(1_761_400_800),
+            }),
         };
         for reply in [
             Reply::Version {

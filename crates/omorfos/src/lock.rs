@@ -21,7 +21,7 @@
 //!
 //! See `docs/adr/0014-idle-and-session-lock.md`.
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::WindowSurfaceType;
@@ -79,6 +79,47 @@ pub(crate) struct Presence {
     /// last there before it: each is done once a time away.
     locked_for: Option<Instant>,
     slept_for: Option<Instant>,
+    /// The session kept awake, as the user asked, while it is.
+    pub(crate) awake: Option<Awake>,
+}
+
+/// The session kept awake, as the user asked: whatever else is so, the
+/// user is taken to be there.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Awake {
+    /// For how long at most, from when it was asked.
+    lasts: Option<Duration>,
+    /// When it ends, once the compositor has been brought up to date since
+    /// it was asked.
+    until: Option<Instant>,
+    /// When that is by the wall clock, in seconds since the Unix epoch, as
+    /// programs are told it.
+    said: Option<u64>,
+}
+
+impl Awake {
+    /// Kept awake for `seconds` at most, or until asked again.
+    pub(crate) fn asked(seconds: Option<u32>) -> Self {
+        let lasts = seconds.map(|seconds| Duration::from_secs(u64::from(seconds)));
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        Self {
+            lasts,
+            until: None,
+            said: lasts.map(|lasts| (epoch + lasts).as_secs()),
+        }
+    }
+
+    /// When it ends, if it does and has begun.
+    pub(crate) const fn until(self) -> Option<Instant> {
+        self.until
+    }
+
+    /// When it ends by the wall clock, if it does, as programs are told.
+    pub(crate) const fn said(self) -> Option<u64> {
+        self.said
+    }
 }
 
 /// Whether the screens are on.
@@ -101,6 +142,7 @@ impl Default for Presence {
             screens: Screens::On,
             locked_for: None,
             slept_for: None,
+            awake: None,
         }
     }
 }
@@ -292,7 +334,8 @@ impl Compositor {
             }
             self.is_shown(&root)
         };
-        let inhibited = !self.is_locked() && self.inhibitors.iter().any(shown);
+        let asked = self.presence.awake.is_some();
+        let inhibited = !self.is_locked() && (asked || self.inhibitors.iter().any(shown));
         self.presence.kept_awake = inhibited;
         self.idle.set_is_inhibited(inhibited);
     }
@@ -323,6 +366,15 @@ impl Compositor {
         let after = u64::from(self.config().general.idle.screen_off);
         let since = self.presence.last_active.filter(|_| after > 0);
         since.map(|since| since + Duration::from_secs(after))
+    }
+
+    /// Keeps the session awake, for `seconds` at most if they are given, as
+    /// the user asks; or, if it is kept awake already, lets it go.
+    pub(crate) fn stay_awake(&mut self, seconds: Option<u32>) {
+        let was = self.presence.awake.take();
+        if was.is_none() {
+            self.presence.awake = Some(Awake::asked(seconds));
+        }
     }
 
     /// When the session is to be locked, and when the machine put to sleep,
@@ -367,6 +419,18 @@ impl Compositor {
     /// there, as it does for the session going idle.
     pub(crate) fn rest_or_wake(&mut self, now: Instant) {
         let presence = &mut self.presence;
+        // Kept awake for a while, it is from now on that it lasts, and
+        // once that is over it is not kept so any longer.
+        if let Some(awake) = presence.awake.as_mut() {
+            awake.until = awake.until.or(awake.lasts.map(|lasts| now + lasts));
+        }
+        let over = presence
+            .awake
+            .and_then(|awake| awake.until)
+            .is_some_and(|until| until <= now);
+        if over {
+            presence.awake = None;
+        }
         let here = std::mem::take(&mut presence.stirred) || presence.kept_awake;
         if here || presence.last_active.is_none() {
             presence.last_active = Some(now);

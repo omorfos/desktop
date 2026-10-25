@@ -418,13 +418,15 @@ not begin with keys you have bound on their own.
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
 | `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. One past the last is made first; further than that does nothing. |
 | `new_workspace` | Make a workspace after the last on the screen the pointer is on, and switch to it. |
-| `next_workspace`, `previous_workspace` | Cycle workspaces on the screen the pointer is on. |
+| `next_workspace`, `previous_workspace` | Go to the next or the previous workspace on the screen the pointer is on. They do not go round: past the last, if a window is on it, a new one is made. |
 | `move_to_workspace: N` | Send the focused window to workspace N of its screen. One past the last is made first. |
 | `move_to_new_workspace` | Send the focused window to a workspace made for it, after the last. |
 | `join_workspace: ID` | Put the focused window beside those sharing a workspace made for windows, and show it. The `ID` is the one `omorfosctl state` gives the workspace. The titlebar's menu offers the same by name. |
 | `move_to_next_output` | Send the focused window to the next screen. |
 | `show_menu` | Open the root menu. |
 | `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
+| `stay_awake` | Keep the session from locking, the screens from going off and the machine from sleeping when you are away, until it is chosen again, the session is locked by hand, or you log out. The panel says so while it lasts, and a click there ends it. The root menu offers it. |
+| `stay_awake_for: N` | The same for N seconds at most, up to a day (86400). |
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |

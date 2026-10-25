@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use omorfos::Input;
 use omorfos_config::Action;
+use omorfos_ipc::Awake;
 use serde_json::json;
 
 use crate::common::{Client, Event, Session};
@@ -346,4 +347,112 @@ fn away_for_the_time_configured_the_machine_is_asked_to_sleep() {
     session.advance(seconds(3600));
     a_moment();
     assert_eq!(said(), "sleep\n", "once for the time away");
+}
+
+// --- Staying awake --------------------------------------------------------
+
+/// Whether the session says, to those that ask it, that it is kept awake,
+/// and until when.
+fn said_awake(session: &mut Session, peer: &mut omorfos_ipc::Client) -> Option<Awake> {
+    let omorfos_ipc::Reply::State(state) = session.ask(peer, &omorfos_ipc::Request::State) else {
+        unreachable!("the state was asked for");
+    };
+    state.awake
+}
+
+#[test]
+fn kept_awake_the_session_does_not_lock_until_it_is_let_go() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    assert_eq!(said_awake(&mut session, &mut peer), None);
+
+    session.compositor_mut().perform(&Action::StayAwake);
+    session.step();
+    assert_eq!(
+        said_awake(&mut session, &mut peer),
+        Some(Awake { until: None }),
+        "until let go"
+    );
+    session.advance(seconds(3600));
+    a_moment();
+    assert_eq!(started(&noted), 0);
+
+    session.compositor_mut().perform(&Action::StayAwake);
+    session.step();
+    assert_eq!(
+        said_awake(&mut session, &mut peer),
+        None,
+        "asked again, it is let go"
+    );
+    session.advance(seconds(61));
+    session.eventually(|_| started(&noted) == 1);
+}
+
+#[test]
+fn kept_awake_for_a_while_the_session_locks_once_that_is_over() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    let hour: Action = serde_json::from_value(json!({ "stay_awake_for": 3600 })).unwrap();
+    let before = std::time::SystemTime::now();
+
+    session.compositor_mut().perform(&hour);
+    session.step();
+    let until = said_awake(&mut session, &mut peer).and_then(|awake| awake.until);
+    let until = until.unwrap();
+    let from = before
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert!(
+        (from + 3599..=from + 3601).contains(&until),
+        "an hour on: {until}"
+    );
+    session.advance(seconds(3599));
+    a_moment();
+    assert_eq!(started(&noted), 0, "not within the hour");
+
+    session.advance(seconds(2));
+    assert_eq!(said_awake(&mut session, &mut peer), None, "over");
+    session.advance(seconds(61));
+    session.eventually(|_| started(&noted) == 1);
+}
+
+#[test]
+fn locking_by_hand_lets_go_of_the_session_being_kept_awake() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    session.compositor_mut().perform(&Action::StayAwake);
+    session.step();
+
+    session.compositor_mut().perform(&Action::Lock);
+    session.eventually(|_| started(&noted) == 1);
+    assert_eq!(said_awake(&mut session, &mut peer), None);
+}
+
+#[test]
+fn a_program_waiting_for_the_user_to_be_away_waits_while_the_session_is_kept_awake() {
+    let (mut session, mut client, _window) = opened();
+    session.compositor_mut().perform(&Action::StayAwake);
+    session.step();
+    watch(&mut session, &mut client);
+    assert!(!idles_within(&mut session, &mut client, A_WHILE));
+}
+
+#[test]
+fn kept_awake_for_a_while_the_session_is_brought_up_to_date_when_that_is_over() {
+    let mut session = Session::new();
+    session.step();
+    let hour: Action = serde_json::from_value(json!({ "stay_awake_for": 3600 })).unwrap();
+    session.compositor_mut().perform(&hour);
+    session.step();
+    assert_eq!(
+        session.compositor().deadline(),
+        Some(session.now + seconds(3600))
+    );
 }

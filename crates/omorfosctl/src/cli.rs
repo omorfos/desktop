@@ -367,6 +367,7 @@ mod tests {
             events: Vec::new(),
             screens: Vec::new(),
             locked: false,
+            awake: None,
         }
     }
 

@@ -272,6 +272,17 @@ struct Face {
 }
 
 /// What it takes to put a bar on a screen.
+/// What the bar says while the session is kept awake, as the user asked:
+/// until when, if it ends. Nothing while it is not.
+fn awake(awake: Option<omorfos_ipc::Awake>) -> String {
+    let until = awake.map(|awake| awake.until.and_then(omorfos_shell::clock::at));
+    match until {
+        None => String::new(),
+        Some(None) => "Awake".to_owned(),
+        Some(Some(at)) => format!("Awake until {at}"),
+    }
+}
+
 struct Tools<'a> {
     compositor: &'a wl_compositor::WlCompositor,
     shm: &'a wl_shm::WlShm,
@@ -281,6 +292,8 @@ struct Tools<'a> {
     handle: &'a QueueHandle<Shell>,
     state: &'a State,
     time: &'a str,
+    /// What says the session is kept awake, while it is.
+    awake: &'a str,
     now: Duration,
     theme: &'a Theme,
     text: &'a mut Text,
@@ -387,6 +400,7 @@ impl Shell {
         let Some((((compositor, shm), layers), (viewporter, scales))) = globals else {
             return Ok(());
         };
+        let awake = awake(self.state.awake);
         let mut tools = Tools {
             compositor,
             shm,
@@ -396,6 +410,7 @@ impl Shell {
             handle,
             state: &self.state,
             time: &self.time,
+            awake: &awake,
             now: self.now,
             theme: &self.store.current().theme,
             text: &mut self.text,
@@ -465,8 +480,8 @@ impl Face {
         if self.width == 0 {
             return Ok(());
         }
-        let (state, time) = (tools.state, tools.time);
-        let bar = Bar::new(state, name, self.width, time, tools.theme, tools.text);
+        let (state, times) = (tools.state, (tools.time, tools.awake));
+        let bar = Bar::new(state, name, self.width, times, tools.theme, tools.text);
         let wanted = (bar, self.scale);
         // The same bar is drawn again while a button on it changes colour.
         let again = self.motion.due(tools.now);
@@ -675,3 +690,24 @@ delegate_noop!(Shell: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
 delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_bar_says_the_session_is_kept_awake_and_until_when() {
+        use omorfos_ipc::Awake;
+
+        assert_eq!(awake(None), "");
+        assert_eq!(awake(Some(Awake { until: None })), "Awake");
+        let until = awake(Some(Awake {
+            until: Some(1_761_400_800),
+        }));
+        assert!(until.starts_with("Awake until "), "{until}");
+        let never = Some(Awake {
+            until: Some(u64::MAX),
+        });
+        assert_eq!(awake(never), "Awake", "a time no calendar has is not said");
+    }
+}

@@ -502,6 +502,9 @@ impl Compositor {
             events: self.events().map(str::to_owned).collect(),
             screens: self.ipc_screens(),
             locked: self.is_locked_for_certain(),
+            awake: self.presence.awake.map(|awake| omorfos_ipc::Awake {
+                until: awake.said(),
+            }),
         }
     }
 }

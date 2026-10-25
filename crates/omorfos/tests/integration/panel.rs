@@ -108,7 +108,7 @@ fn button(session: &mut Session, request: &Request) -> i32 {
         &state,
         "test-0",
         width,
-        TIME,
+        (TIME, ""),
         &Theme::default(),
         &mut Text::new(),
     );

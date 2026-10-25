@@ -460,6 +460,16 @@ what only games and touchpads need last.
 - [x] Locking and sleeping when the user is away, after the times the
       configuration gives (`idle.lock`, `idle.sleep`), with no idle daemon:
       each once a time away, and held off by what is being watched.
+- [x] Staying awake as the user asks (`stay_awake`, `stay_awake_for`, and
+      in the root menu): nothing locks, goes dark or sleeps until it is
+      asked again, its time is up or the session is locked by hand; the
+      panel says so, until when, and a click there lets it go.
+- [ ] Programs that ask to be kept awake other than by Wayland heard too:
+      by `org.freedesktop.ScreenSaver`, as Chromium, Electron, VLC and
+      programs written for X11 ask, and by the portal's `Inhibit`, as
+      programs in Flatpak do; each held only while the program that asked
+      is there, and also while the session is locked, so that music
+      behind the lock screen keeps the machine from sleeping.
 - [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another

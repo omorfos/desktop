@@ -13,6 +13,8 @@ enum Target {
     Workspace(u32),
     /// A window, by its identifier.
     Window(u64),
+    /// The session being kept awake, which a click lets go.
+    Awake,
     /// Nothing: the clock is only read.
     Nothing,
 }
@@ -30,7 +32,8 @@ struct Item {
 }
 
 /// The bar of one output: a button for each of its workspaces, then one for
-/// each window on the workspace it is showing, and the time at the end.
+/// each window on the workspace it is showing, and at the end what says the
+/// session is kept awake, while it is, and the time.
 ///
 /// Each of these, and the bar itself, is a box as the theme describes it,
 /// with its margin, border and padding.
@@ -89,7 +92,9 @@ impl Bar {
     /// The bar for the output called `output`, `width` units of layout
     /// wide, showing what `state` says of that output, and `time` as the
     /// time. The time is whatever is to be read there, such as `14:05`; a
-    /// bar told none has no clock.
+    /// bar told none has no clock. `awake` is what says the session is kept
+    /// awake, such as `Awake until 15:30`, and is shown as the clock is,
+    /// before it; with none, nothing says so.
     ///
     /// A workspace's button is as wide as its name needs, and the clock as
     /// wide as the time. The windows share what room is left. The theme
@@ -99,7 +104,7 @@ impl Bar {
         state: &State,
         output: &str,
         width: u32,
-        time: &str,
+        (time, awake): (&str, &str),
         theme: &Theme,
         text: &mut Text,
     ) -> Self {
@@ -135,23 +140,28 @@ impl Bar {
             });
         }
 
-        // The clock stands at the far end, and the windows stop short of it.
+        // The clock stands at the far end, what says the session is kept
+        // awake before it, and the windows stop short of them.
         let mut end = inside.0.saturating_add_unsigned(inside.2);
-        let clock = (!time.is_empty()).then(|| {
-            let (part, states) = (Part::Clock, States::NONE);
-            let style = theme.style(part, states);
-            let wide = style.fit(row.needed(part, states, time));
-            let outer = wide.saturating_add(style.margin.across());
-            end = end.saturating_sub_unsigned(outer);
-            let (area, _) = row.place(part, states, end, wide);
-            Item {
-                area,
-                label: time.to_owned(),
-                part,
-                states,
-                target: Target::Nothing,
-            }
-        });
+        let mut ending = |label: &str, target| {
+            (!label.is_empty()).then(|| {
+                let (part, states) = (Part::Clock, States::NONE);
+                let style = theme.style(part, states);
+                let wide = style.fit(row.needed(part, states, label));
+                let outer = wide.saturating_add(style.margin.across());
+                end = end.saturating_sub_unsigned(outer);
+                let (area, _) = row.place(part, states, end, wide);
+                Item {
+                    area,
+                    label: label.to_owned(),
+                    part,
+                    states,
+                    target,
+                }
+            })
+        };
+        let clock = ending(time, Target::Nothing);
+        let awake = ending(awake, Target::Awake);
 
         let mut workspaces = workspaces;
         let shown = workspaces.find(|workspace| workspace.active);
@@ -177,6 +187,7 @@ impl Bar {
                 target: Target::Window(window.id),
             });
         }
+        items.extend(awake);
         items.extend(clock);
 
         Self {
@@ -210,6 +221,10 @@ impl Bar {
                 action: json!({ "workspace": number }),
             }),
             Target::Window(window) => Some(Request::Activate { window }),
+            // Asked again, it is let go.
+            Target::Awake => Some(Request::Perform {
+                action: json!("stay_awake"),
+            }),
             Target::Nothing => None,
         }
     }
@@ -235,6 +250,7 @@ impl Bar {
                 Target::Workspace(number) => u64::from(number),
                 Target::Window(id) => id,
                 Target::Nothing => 0,
+                Target::Awake => 1,
             };
             let style = motion.style(theme, item.part, key, item.states);
             canvas.draw_box(item.area, &style);
@@ -363,6 +379,7 @@ mod tests {
             events: Vec::new(),
             screens: Vec::new(),
             locked: false,
+            awake: None,
         }
     }
 
@@ -372,7 +389,7 @@ mod tests {
 
     fn timed(state: &State, output: &str, time: &str) -> Bar {
         let theme = Theme::default();
-        Bar::new(state, output, WIDTH, time, &theme, &mut Text::new())
+        Bar::new(state, output, WIDTH, (time, ""), &theme, &mut Text::new())
     }
 
     fn workspace_request(number: u32) -> Request {
@@ -517,7 +534,7 @@ mod tests {
             &state(),
             "left",
             10,
-            "",
+            ("", ""),
             &Theme::default(),
             &mut Text::new(),
         );
@@ -657,6 +674,43 @@ mod tests {
     }
 
     #[test]
+    fn what_says_the_session_is_kept_awake_is_before_the_time_and_lets_it_go() {
+        let theme = Theme::default();
+        let times = ("14:05", "Awake until 15:30");
+        let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
+        let clock = timed(&state(), "left", "14:05");
+        let ask = |bar: &Bar, x: u32| bar.click(x.cast_signed());
+
+        // Where the windows ended without it, it is now.
+        let last = (0..WIDTH)
+            .rev()
+            .find(|x| ask(&clock, *x).is_some())
+            .unwrap();
+        let awake = Request::Perform {
+            action: json!("stay_awake"),
+        };
+        let found = (last..WIDTH).find(|x| ask(&bar, *x) == Some(awake.clone()));
+        let found = found.unwrap();
+        assert!(
+            ask(&bar, WIDTH - PADDING - 1).is_none(),
+            "the clock is still last"
+        );
+        let windows = (0..found)
+            .rev()
+            .find(|x| ask(&bar, *x).is_some_and(|asked| asked != awake));
+        assert!(
+            windows.is_some_and(|x| x < found),
+            "and windows keep clear of it"
+        );
+        // And it is written there.
+        let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
+        let background = palette(&theme).unfocused.titlebar;
+        let height = bar.height();
+        let all = usize::try_from(20 * height).unwrap();
+        assert!(count(&canvas, found..found + 20, 0..height, background) < all);
+    }
+
+    #[test]
     fn windows_keep_clear_of_the_time() {
         let mut state = state();
         for id in 10..40 {
@@ -695,7 +749,8 @@ mod tests {
     /// laid over it.
     fn styled(stylesheet: &str) -> (Bar, Theme) {
         let theme = Theme::parse(stylesheet).unwrap();
-        let bar = Bar::new(&state(), "left", WIDTH, "14:05", &theme, &mut Text::new());
+        let times = ("14:05", "");
+        let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
         (bar, theme)
     }
 

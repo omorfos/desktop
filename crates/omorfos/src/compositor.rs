@@ -108,7 +108,7 @@ use crate::icons::WindowIcons;
 use crate::input::Drag;
 use crate::input::Focused;
 use crate::ipc::Server;
-use crate::lock::{Lock, Presence};
+use crate::lock::{Awake, Lock, Presence};
 use crate::outputs::{Aside, Head};
 use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
@@ -944,8 +944,10 @@ impl Compositor {
     pub fn deadline(&self) -> Option<Instant> {
         // Once the screens are off there is nothing more to wait for.
         let screens_off = self.screens_off_at().filter(|_| self.screens_on());
-        // And so are the session to be locked and the machine put to sleep.
+        // And so are the session to be locked and the machine put to sleep,
+        // and the end of its being kept awake.
         let away = self.away_at().into_iter().flatten().min();
+        let awake = self.presence.awake.and_then(Awake::until);
         // What is changing colour is drawn again a moment later.
         let moving = self.animation.epoch.zip(self.animation.motion.deadline());
         let moving = moving.map(|(epoch, due)| epoch + due);
@@ -970,6 +972,7 @@ impl Compositor {
             },
             screens_off,
             away,
+            awake,
             moving,
             sliding,
             said,
@@ -1168,6 +1171,8 @@ impl Compositor {
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
             Action::Lock => self.start_locker(),
+            Action::StayAwake => self.stay_awake(None),
+            Action::StayAwakeFor(seconds) => self.stay_awake(Some(seconds.get())),
             Action::NextLayout => {
                 let keyboard = self.keyboard.clone();
                 keyboard.with_xkb_state(self, |mut xkb| xkb.cycle_next_layout());
@@ -1328,6 +1333,8 @@ impl Compositor {
     /// which is let lock by having been started for it. With none named
     /// there is nothing to lock with, which the user is told.
     pub(crate) fn start_locker(&mut self) {
+        // Locked by hand, the session is not kept awake any longer.
+        self.presence.awake = None;
         let config = Arc::clone(self.store.current());
         match &config.general.locker {
             Some(locker) => {
