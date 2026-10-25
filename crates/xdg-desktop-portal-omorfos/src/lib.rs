@@ -14,6 +14,7 @@ mod appearance;
 mod bus;
 mod card;
 mod feed;
+mod inhibit;
 mod prompt;
 mod screencast;
 mod stream;
@@ -30,6 +31,7 @@ pub use appearance::Appearance;
 pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
 use card::Card;
 pub use feed::{Feed, Seen};
+pub use inhibit::{INHIBIT, Keep, SCREENSAVER};
 use omorfos_config::{Store, Watcher};
 use omorfos_pipewire::{Held, Picture};
 use omorfos_screenshot::Shared;
@@ -95,7 +97,8 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let session = session.map_err(|error| Failure::from(format!("{}: {error}", wayland.display())));
     let asked = config.clone();
     let portal = session.and_then(|session| {
-        let portal = Portal::open(address, Box::new(move || look(&asked)));
+        let keep = keeper(socket.clone());
+        let portal = Portal::open(address, Box::new(move || look(&asked)), keep);
         portal.map(|portal| (portal, session))
     });
     let portal = portal.and_then(|(portal, session)| {
@@ -106,6 +109,35 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote, entries, socket)),
         Err(failure) => failure,
     }
+}
+
+/// Tells the compositor whose socket is at `socket` what programs ask the
+/// session to be kept from, over a connection kept for it, so that if this
+/// ends, so does what it held. One that could not be told is tried again
+/// the next time there is something to tell.
+///
+/// It is told on a thread of its own, so that a program that asks over the
+/// bus is answered at once, whatever the compositor is doing.
+fn keeper(socket: Option<PathBuf>) -> Keep {
+    let (tell, told) = channel::<(bool, bool)>();
+    std::thread::spawn(move || {
+        let mut kept: Option<omorfos_ipc::Client> = None;
+        for (idle, sleep) in told {
+            let asked = omorfos_ipc::Request::Hold { idle, sleep };
+            let connected = |socket: &Path| omorfos_ipc::Client::connect(socket).ok();
+            let client = kept
+                .take()
+                .or_else(|| socket.as_deref().and_then(connected));
+            kept = client.and_then(|mut client| {
+                let answered = client.send(&asked).and_then(|()| client.receive());
+                answered.ok().map(|_| client)
+            });
+        }
+    });
+    Box::new(move |idle, sleep| {
+        // Nobody is told once the thread has gone, which it never does.
+        let _ = tell.send((idle, sleep));
+    })
 }
 
 /// An address for a file, as one is given to an application: anything in

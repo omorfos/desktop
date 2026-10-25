@@ -25,6 +25,7 @@ use zbus::fdo::RequestNameFlags;
 use zbus::message::{Message, Type};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Structure, Value};
 
+use crate::inhibit::{self, Holds, INHIBIT, Keep, SCREENSAVER};
 use crate::screencast::{self, Pointer, SCREENCAST, SESSION, Sessions};
 use crate::{Appearance, Failure};
 
@@ -50,7 +51,8 @@ pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
 /// What can be read of each interface: which version of it is spoken,
 /// and, of sharing the screen, that screens and windows can be shared,
 /// with the pointer not shown, drawn in, or sent beside the pictures.
-const PROPERTIES: [(&str, &str, u32); 6] = [
+const PROPERTIES: [(&str, &str, u32); 7] = [
+    (INHIBIT, "version", 3),
     (SETTINGS, "version", 1),
     (SCREENSHOT, "version", 2),
     (SCREENCAST, "version", 5),
@@ -168,6 +170,29 @@ const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS 
     <property name="AvailableCursorModes" type="u" access="read"/>
     <property name="version" type="u" access="read"/>
   </interface>
+  <interface name="org.freedesktop.impl.portal.Inhibit">
+    <method name="Inhibit">
+      <arg direction="in" name="handle" type="o"/>
+      <arg direction="in" name="app_id" type="s"/>
+      <arg direction="in" name="window" type="s"/>
+      <arg direction="in" name="flags" type="u"/>
+      <arg direction="in" name="options" type="a{sv}"/>
+    </method>
+    <property name="version" type="u" access="read"/>
+  </interface>
+  <interface name="org.freedesktop.ScreenSaver">
+    <method name="Inhibit">
+      <arg direction="in" name="application_name" type="s"/>
+      <arg direction="in" name="reason_for_inhibit" type="s"/>
+      <arg direction="out" name="cookie" type="u"/>
+    </method>
+    <method name="UnInhibit">
+      <arg direction="in" name="cookie" type="u"/>
+    </method>
+    <method name="GetActive">
+      <arg direction="out" name="active" type="b"/>
+    </method>
+  </interface>
   <interface name="org.freedesktop.impl.portal.Screenshot">
     <method name="Screenshot">
       <arg direction="in" name="handle" type="o"/>
@@ -211,13 +236,15 @@ pub struct Portal {
 impl Portal {
     /// Joins the bus at `address`, or the session's own if there is none
     /// given, and takes the name the portals pass questions for omorfos
-    /// to. `look` says how the desktop looks whenever that is asked.
+    /// to, and the screensaver's if nobody else has it. `look` says how the
+    /// desktop looks whenever that is asked, and `keep` is told what
+    /// programs ask the session to be kept from whenever that changes.
     ///
     /// # Errors
     ///
     /// Returns an error if the bus cannot be joined, or if another program
     /// already has the name.
-    pub fn open(address: Option<&str>, look: Look) -> Result<Self, Failure> {
+    pub fn open(address: Option<&str>, look: Look, keep: Keep) -> Result<Self, Failure> {
         let builder = address.map_or_else(Builder::session, Builder::address);
         let connection = builder.and_then(Builder::build).map_err(Failure::from);
         let pipe = || pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
@@ -233,6 +260,16 @@ impl Portal {
             let flags = RequestNameFlags::DoNotQueue
                 | RequestNameFlags::ReplaceExisting
                 | RequestNameFlags::AllowReplacement;
+            // Programs that leave the bus let go of what they held; and
+            // the screensaver is answered for, unless another program
+            // already does, which is then left to. Both before the portal's
+            // own name, so that once that is seen to be taken all is ready.
+            let left = "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged'";
+            let bus = "org.freedesktop.DBus";
+            let watched = (Some(bus), "/org/freedesktop/DBus", Some(bus), "AddMatch");
+            let (to, at, on, asked) = watched;
+            let _ = connection.call_method(to, at, on, asked, &(left,));
+            let _ = connection.request_name_with_flags(SCREENSAVER, flags);
             let named = connection.request_name_with_flags(NAME, flags);
             let taken = |error: zbus::Error| {
                 let message = format!(
@@ -247,9 +284,14 @@ impl Portal {
                 thread::spawn(move || {
                     let waiting = Waiting { sender, ask };
                     let mut sessions = Sessions::new();
+                    let mut holds = Holds::new(keep);
                     let messages = messages.map_while(Result::ok);
                     for message in messages.take_while(|message| !lost(message)) {
-                        answer(&answering, &message, &look, (&waiting, &mut sessions));
+                        if let Some(left) = left_the_bus(&message) {
+                            holds.gone(&left);
+                        }
+                        let held = (&waiting, &mut sessions, &mut holds);
+                        answer(&answering, &message, &look, held);
                     }
                     // If nobody is waiting any more, there is nobody to tell.
                     let _ = rustix::io::write(&going, &[1]);
@@ -439,12 +481,29 @@ fn asked(groups: &[String]) -> bool {
     groups.is_empty() || groups.iter().any(stands)
 }
 
+/// The program that a message says has left the bus, by its own name
+/// there, if it says one has.
+fn left_the_bus(message: &Message) -> Option<String> {
+    let header = message.header();
+    let member = header.member().map(ToString::to_string);
+    let changed =
+        header.message_type() == Type::Signal && member.as_deref() == Some("NameOwnerChanged");
+    let said = changed.then(|| {
+        message
+            .body()
+            .deserialize::<(String, String, String)>()
+            .ok()
+    });
+    let (name, _, now) = said.flatten()?;
+    (name.starts_with(':') && now.is_empty()).then_some(name)
+}
+
 /// Answers one message.
 fn answer(
     connection: &Connection,
     message: &Message,
     look: &Look,
-    (waiting, sessions): (&Waiting, &mut Sessions),
+    (waiting, sessions, holds): (&Waiting, &mut Sessions, &mut Holds),
 ) {
     let header = message.header();
     // Replies and signals pass by on the same connection.
@@ -454,7 +513,9 @@ fn answer(
     let interface = header.interface().map(ToString::to_string);
     let member = header.member().map(ToString::to_string);
     let called = (interface.as_deref().unwrap_or(SETTINGS), member.as_deref());
-    if let Some(sent) = screencast::answer(connection, message, called, sessions, waiting) {
+    let kept = inhibit::answer(connection, message, called, holds);
+    let sent = kept.or_else(|| screencast::answer(connection, message, called, sessions, waiting));
+    if let Some(sent) = sent {
         // As below.
         let _ = sent;
         return;
@@ -627,6 +688,16 @@ pub(crate) mod tests {
         }
     }
 
+    /// What the service is to tell of what programs hold, and where it is
+    /// told.
+    pub(crate) fn keeper() -> (Keep, Receiver<(bool, bool)>) {
+        let (tell, told) = mpsc::channel();
+        let keep: Keep = Box::new(move |idle, sleep| {
+            let _ = tell.send((idle, sleep));
+        });
+        (keep, told)
+    }
+
     /// Everything about how the desktop looks, as a peer is told it.
     pub(crate) type Told = HashMap<String, HashMap<String, OwnedValue>>;
 
@@ -681,7 +752,7 @@ pub(crate) mod tests {
 
     /// The service on a bus, saying the desktop looks as given.
     fn service(daemon: &Daemon, look: Appearance) -> Portal {
-        Portal::open(Some(&daemon.address), Box::new(move || look)).unwrap()
+        Portal::open(Some(&daemon.address), Box::new(move || look), keeper().0).unwrap()
     }
 
     #[test]
@@ -1039,14 +1110,18 @@ pub(crate) mod tests {
         holder
             .request_name_with_flags(NAME, RequestNameFlags::DoNotQueue.into())
             .unwrap();
-        let refused = Portal::open(Some(&other.address), Box::new(|| DARK));
+        let refused = Portal::open(Some(&other.address), Box::new(|| DARK), keeper().0);
         let said = refused.unwrap_err().to_string();
         assert!(said.contains("will not give it up"), "{said}");
     }
 
     #[test]
     fn a_bus_that_is_not_there_cannot_be_joined() {
-        let nowhere = Portal::open(Some("unix:path=/nowhere/bus"), Box::new(|| DARK));
+        let nowhere = Portal::open(
+            Some("unix:path=/nowhere/bus"),
+            Box::new(|| DARK),
+            keeper().0,
+        );
         assert!(nowhere.is_err());
     }
 }

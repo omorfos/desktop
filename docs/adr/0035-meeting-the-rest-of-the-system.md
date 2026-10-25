@@ -111,6 +111,12 @@ ours, for what only omorfos can answer:
   contrast (ADR 32), so that applications match.
 - **Screenshot and sharing the screen**, with the compositor's capture
   protocol behind them and the user asked each time.
+- **Keeping the session awake** (`Inhibit`), for programs in a sandbox;
+  and, beside the portal, the screensaver's own interface on the bus
+  (`org.freedesktop.ScreenSaver`), which programs that know nothing of
+  portals ask. Each hold is told to the compositor over its IPC, on a
+  connection that ends what it held when it ends, and is let go when the
+  program that asked leaves the bus.
 
 What any desktop can answer is left to a backend that exists, by the
 file that says which backend serves what: choosing a file, above all,

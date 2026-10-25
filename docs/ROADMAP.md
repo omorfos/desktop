@@ -464,12 +464,16 @@ what only games and touchpads need last.
       in the root menu): nothing locks, goes dark or sleeps until it is
       asked again, its time is up or the session is locked by hand; the
       panel says so, until when, and a click there lets it go.
-- [ ] Programs that ask to be kept awake other than by Wayland heard too:
+- [x] Programs that ask to be kept awake other than by Wayland heard too:
       by `org.freedesktop.ScreenSaver`, as Chromium, Electron, VLC and
       programs written for X11 ask, and by the portal's `Inhibit`, as
       programs in Flatpak do; each held only while the program that asked
-      is there, and also while the session is locked, so that music
-      behind the lock screen keeps the machine from sleeping.
+      is there, and keeping the machine from sleeping also while the
+      session is locked, so that music behind the lock screen plays on.
+- [ ] Keys and passphrases forgotten when the session is locked, as a
+      choice: what `ssh-agent` holds (`ssh-add -D`) and what `gpg-agent`
+      has kept, so that a locked machine left behind has no key to use.
+      Off unless chosen, since every key is to be given again after.
 - [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another

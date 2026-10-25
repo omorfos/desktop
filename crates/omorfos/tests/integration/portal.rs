@@ -999,3 +999,49 @@ fn asked_first_as_the_portal_asks_the_question_still_goes_up() {
     });
     assert_eq!(picked.0, 0);
 }
+
+#[test]
+fn a_player_that_asks_the_desktop_over_d_bus_keeps_the_session_awake_until_it_lets_go() {
+    use xdg_desktop_portal_omorfos::SCREENSAVER;
+
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("config.yaml", "idle: { screen_off: 60 }\n")]);
+    session.listen();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let off_at = |session: &Session| session.compositor().deadline();
+    let a_minute_on = |session: &Session| Some(session.now + Duration::from_secs(60));
+
+    let player = daemon.peer();
+    let path = "/org/freedesktop/ScreenSaver";
+    let asked = ("vlc", "Playing a film");
+    let reply = player.call_method(
+        Some(SCREENSAVER),
+        path,
+        Some(SCREENSAVER),
+        "Inhibit",
+        &asked,
+    );
+    let cookie: u32 = reply.unwrap().body().deserialize().unwrap();
+    // Held, the user is taken to be there: the screens go off a minute
+    // from now, whenever now is.
+    session.eventually(|session| {
+        session.advance(Duration::from_secs(10));
+        off_at(session) == a_minute_on(session)
+    });
+    session.advance(Duration::from_secs(600));
+    assert!(session.compositor().screens_on());
+
+    player
+        .call_method(
+            Some(SCREENSAVER),
+            path,
+            Some(SCREENSAVER),
+            "UnInhibit",
+            &(cookie,),
+        )
+        .unwrap();
+    session.eventually(|session| {
+        session.advance(Duration::from_secs(61));
+        !session.compositor().screens_on()
+    });
+}
