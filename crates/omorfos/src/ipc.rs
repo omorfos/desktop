@@ -82,6 +82,17 @@ struct Peer {
     /// What wakes the event loop when the peer writes, to be removed with
     /// the peer.
     wake: Option<RegistrationToken>,
+    /// What it says the programs it speaks for ask the session to be kept
+    /// from, while it is connected.
+    kept: Kept,
+}
+
+/// What programs ask the session to be kept from, through peers that
+/// speak for them: going idle, or only sleeping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Kept {
+    pub(crate) idle: bool,
+    pub(crate) sleep: bool,
 }
 
 impl Server {
@@ -150,6 +161,10 @@ impl Peer {
             alive: true,
             listening: true,
             wake,
+            kept: Kept {
+                idle: false,
+                sleep: false,
+            },
         }
     }
 
@@ -233,6 +248,16 @@ impl Compositor {
         showing.any(|peer| peer.alive)
     }
 
+    /// What the peers connected say programs ask the session to be kept
+    /// from, all together.
+    pub(crate) fn kept_from(&self) -> Kept {
+        let peers = self.ipc.iter().flat_map(|server| &server.peers);
+        peers.fold(Kept::default(), |all, peer| Kept {
+            idle: all.idle || peer.kept.idle,
+            sleep: all.sleep || peer.kept.sleep,
+        })
+    }
+
     /// Where the IPC socket is, if one is being served.
     pub(crate) fn ipc_path(&self) -> Option<&Path> {
         self.ipc.as_ref().map(|server| server.path.as_path())
@@ -259,6 +284,10 @@ impl Compositor {
                     Ok(Request::ShowProblems) => {
                         peer.follows = Some(Follows::Problems);
                         peer.waiting = true;
+                    }
+                    Ok(Request::Hold { idle, sleep }) => {
+                        peer.kept = Kept { idle, sleep };
+                        peer.queue(&Reply::Done);
                     }
                     Ok(request) => peer.queue(&self.answer(request)),
                     Err(message) => peer.queue(&Reply::Error { message }),
@@ -309,9 +338,10 @@ impl Compositor {
                 protocol: PROTOCOL,
                 compositor: env!("CARGO_PKG_VERSION").to_owned(),
             },
-            // A subscription is answered in `publish_ipc`; should one get
-            // here it is treated as asking for the state once.
-            Request::State | Request::Subscribe | Request::ShowProblems => {
+            // A subscription is answered in `publish_ipc`, and what is
+            // held is kept with its peer; should one get here it is treated
+            // as asking for the state once.
+            Request::State | Request::Subscribe | Request::ShowProblems | Request::Hold { .. } => {
                 Reply::State(self.ipc_state())
             }
             Request::Placed => Reply::Placed(self.placed()),

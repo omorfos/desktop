@@ -334,7 +334,8 @@ impl Compositor {
             }
             self.is_shown(&root)
         };
-        let asked = self.presence.awake.is_some();
+        // As the user asked, or a program by way of what speaks for it.
+        let asked = self.presence.awake.is_some() || self.kept_from().idle;
         let inhibited = !self.is_locked() && (asked || self.inhibitors.iter().any(shown));
         self.presence.kept_awake = inhibited;
         self.idle.set_is_inhibited(inhibited);
@@ -387,10 +388,10 @@ impl Compositor {
             let since = since.filter(|since| after > 0 && done != Some(*since));
             since.map(|since| since + Duration::from_secs(u64::from(after)))
         };
-        [
-            at(idle.lock, self.presence.locked_for),
-            at(idle.sleep, self.presence.slept_for),
-        ]
+        // What a program asks to be kept from sleeping, as music being
+        // played does, is kept so even while the session is locked.
+        let sleep = at(idle.sleep, self.presence.slept_for).filter(|_| !self.kept_from().sleep);
+        [at(idle.lock, self.presence.locked_for), sleep]
     }
 
     /// Locks the session, and puts the machine to sleep, once the user has

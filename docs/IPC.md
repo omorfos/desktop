@@ -54,6 +54,7 @@ and reads one reply.
 | `{"perform": {"action": ...}}` | `"done"` |
 | `{"activate": {"window": 7}}` | `"done"` |
 | `"placed"` | `{"placed": [...]}`, where the windows that can be seen are |
+| `{"hold": {"idle": true, "sleep": false}}` | `"done"` |
 
 Anything that cannot be understood or carried out is answered with
 `{"error": {"message": "..."}}`, and the connection stays open. That
@@ -65,6 +66,15 @@ answered with `"done"`, as the same key binding would be.
 
 An action is written exactly as in `keys.yaml`: `"close"`,
 `{"workspace": 2}`, `{"spawn": ["foot", "--title", "scratch"]}`.
+
+`"hold"` says what the programs a client speaks for ask the session to be
+kept from, in place of what it said before: going `idle`, which keeps it
+from locking, turning the screens off and sleeping while the user is
+away, but not once it is locked, since nobody is watching then; or only
+`sleep`, which holds while it is locked too. It lasts for as long as the
+connection does, so a client that ends lets go of it. The portal backend
+that comes with omorfos speaks so for programs that ask the desktop over
+D-Bus; a program that speaks Wayland asks by `idle-inhibit` instead.
 
 After `"subscribe"` the connection carries updates only. Each update is the
 whole state, not a difference, so a client never has to reconstruct

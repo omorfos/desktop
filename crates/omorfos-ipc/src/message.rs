@@ -47,6 +47,18 @@ pub enum Request {
     /// answered once and is not part of the [`State`], which would
     /// otherwise be sent again each time a window moved.
     Placed,
+    /// Say what the programs this connection speaks for ask the session to
+    /// be kept from, in place of what it said before: going `idle`, which
+    /// would lock it, turn the screens off and put the machine to sleep
+    /// while the user is away; or only `sleep`, which holds even while the
+    /// session is locked. It holds for as long as the connection does and
+    /// no longer, so that one that ends lets go.
+    Hold {
+        /// Kept from going idle, as a film being watched is.
+        idle: bool,
+        /// Kept from sleeping, as music being played is.
+        sleep: bool,
+    },
 }
 
 /// What the compositor answers.
@@ -358,6 +370,10 @@ mod tests {
             },
             Request::Activate { window: u64::MAX },
             Request::Placed,
+            Request::Hold {
+                idle: true,
+                sleep: false,
+            },
         ] {
             round_trip(&request);
         }

@@ -456,3 +456,75 @@ fn kept_awake_for_a_while_the_session_is_brought_up_to_date_when_that_is_over() 
         Some(session.now + seconds(3600))
     );
 }
+
+// --- What programs ask by way of what speaks for them ------------------
+
+/// Says over `peer` that the programs it speaks for keep the session from
+/// going idle, or from sleeping.
+fn hold(session: &mut Session, peer: &mut omorfos_ipc::Client, idle: bool, sleep: bool) {
+    let asked = omorfos_ipc::Request::Hold { idle, sleep };
+    assert_eq!(session.ask(peer, &asked), omorfos_ipc::Reply::Done);
+}
+
+#[test]
+fn a_program_kept_from_going_idle_keeps_the_session_from_locking_while_it_is_connected() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    hold(&mut session, &mut peer, true, false);
+
+    session.advance(seconds(600));
+    a_moment();
+    assert_eq!(started(&noted), 0);
+
+    hold(&mut session, &mut peer, false, false);
+    session.advance(seconds(61));
+    session.eventually(|_| started(&noted) == 1);
+}
+
+#[test]
+fn what_a_connection_held_is_let_go_when_it_ends() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    hold(&mut session, &mut peer, true, false);
+    drop(peer);
+
+    session.eventually(|session| {
+        session.advance(seconds(61));
+        started(&noted) == 1
+    });
+}
+
+#[test]
+fn a_program_kept_from_sleeping_keeps_the_machine_awake_even_while_locked() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::TempDir::new().unwrap();
+    let asked = directory.path().join("asked");
+    let program = directory.path().join("omorfos-session");
+    let script = format!("#!/bin/sh\necho \"$@\" >> '{}'\n", asked.display());
+    std::fs::write(&program, script).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config = "idle: { sleep: 600, screen_off: 60 }\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    session.compositor_mut().set_session(&program);
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    // Music plays, and a film is kept from showing behind the lock.
+    hold(&mut session, &mut peer, true, true);
+    let (_locker, _lock, _surface) = crate::lock::lock(&mut session);
+
+    session.advance(seconds(3600));
+    a_moment();
+    assert!(!asked.exists(), "not put to sleep");
+    assert!(
+        !session.compositor().screens_on(),
+        "though the screens go off"
+    );
+
+    hold(&mut session, &mut peer, false, false);
+    let said = || std::fs::read_to_string(&asked).unwrap_or_default();
+    session.eventually(|_| said() == "sleep\n");
+}
