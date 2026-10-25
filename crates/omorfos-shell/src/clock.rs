@@ -12,6 +12,16 @@ pub fn now() -> (String, Duration) {
     reading(now.hour(), now.minute(), now.second(), now.millisecond())
 }
 
+/// How the moment `seconds` after the Unix epoch reads on the bar, where
+/// the user is: none for one no calendar has.
+#[must_use]
+pub fn at(seconds: u64) -> Option<String> {
+    let seconds = i64::try_from(seconds).ok()?;
+    let moment = jiff::Timestamp::from_second(seconds).ok()?;
+    let zoned = moment.to_zoned(jiff::tz::TimeZone::system());
+    Some(reading(zoned.hour(), zoned.minute(), 0, 0).0)
+}
+
 /// How a time of day reads on the bar, and how long until the minute after
 /// it begins.
 fn reading(hour: i8, minute: i8, second: i8, millisecond: i16) -> (String, Duration) {
@@ -43,6 +53,14 @@ mod tests {
         assert_eq!(reading(9, 5, 59, 999).1, Duration::from_millis(1));
         // A leap second is still a wait, however short.
         assert_eq!(reading(23, 59, 60, 500).1, Duration::from_millis(1));
+    }
+
+    #[test]
+    fn a_moment_reads_as_a_time_of_day_if_there_is_one() {
+        let read = at(1_761_400_800).unwrap();
+        assert_eq!((read.len(), &read[2..3]), (5, ":"), "{read}");
+        assert_eq!(at(u64::MAX), None, "past where time is counted");
+        assert_eq!(at(1 << 40), None, "past where calendars go");
     }
 
     #[test]
