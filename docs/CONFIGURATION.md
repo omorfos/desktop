@@ -245,6 +245,11 @@ with one workspace makes a second. A workspace that was made is called by
 its number, and goes again once nothing is on it and another is being
 shown. A screen has 32 at most.
 
+On a touchpad, three fingers swiped left go to the next workspace, as
+`Super+Right` does, and swiped right to the one before. The swipe counts
+once the fingers lift, if it went more across than up or down. Every
+other gesture, as a pinch to zoom, is the program's under the pointer.
+
 A window made fullscreen, by the second button of its titlebar, by
 `Super+f`, or because its program asked, goes alone to a workspace made
 for it, directly after the one it was on, with no panel over it and no

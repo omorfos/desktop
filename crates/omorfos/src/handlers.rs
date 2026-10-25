@@ -463,7 +463,7 @@ impl SeatHandler for Compositor {
         set_data_device_focus(&self.display, seat, client.clone());
         set_primary_focus(&self.display, seat, client);
         // A program holds the pointer only while its window has the keyboard.
-        self.holding.keyboard = surface.map(Cow::into_owned);
+        self.protocols.holding.keyboard = surface.map(Cow::into_owned);
         self.hold();
     }
 

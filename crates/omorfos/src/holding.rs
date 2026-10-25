@@ -127,7 +127,7 @@ impl Compositor {
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        let typed_into = self.holding.keyboard.as_ref() == Some(&root);
+        let typed_into = self.protocols.holding.keyboard.as_ref() == Some(&root);
         let asked = with_pointer_constraint(&surface, &self.pointer, |constraint| {
             constraint.map(|constraint| (constraint.is_active(), constraint.region().cloned()))
         });

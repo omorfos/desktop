@@ -647,7 +647,13 @@ what only games and touchpads need last.
       confined, and moved without a position (`pointer-constraints`,
       `relative-pointer`), held only while the window has the keyboard
       (ADR 57).
-- [ ] Gestures on the touchpad: workspaces by a swipe of three fingers.
+- [x] Gestures on the touchpad: workspaces by a swipe of three fingers,
+      and every other gesture the program's under the pointer
+      (`pointer-gestures`).
+- [ ] The swipe following the fingers, the workspaces sliding with them
+      as they go, once workspaces change with movement (stage 4); and
+      whether three fingers or four, which is for the review of the
+      defaults.
 
 ## 4. The look
 

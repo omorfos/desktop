@@ -100,6 +100,7 @@ use crate::bridge::{self, Bindings};
 use crate::capture::{self, Capture, Due, Gpu, Pass, Subject};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
+use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
 use crate::holding::Holding;
@@ -283,8 +284,6 @@ pub struct Compositor {
     pub(crate) seats: SeatState<Self>,
     _output_manager_state: OutputManagerState,
     pub(crate) protocols: Protocols,
-    /// Programs holding the pointer, and what decides whether they may.
-    pub(crate) holding: Holding,
     pub(crate) seat: Seat<Self>,
     pub(crate) keyboard: KeyboardHandle<Self>,
     pub(crate) pointer: PointerHandle<Self>,
@@ -478,7 +477,6 @@ impl Compositor {
                     typing: Typing::offer(&display),
                     seal: Vec::new(),
                     protocols: Protocols::offer(&display),
-                    holding: Holding::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     x11: X11::new(&display),
                     shm: ShmState::new::<Self>(&display, Vec::new()),
@@ -3648,7 +3646,7 @@ impl MenuChrome {
 }
 
 /// Protocols offered whose state the compositor only has to keep, or to
-/// hand to Smithay when it asks.
+/// hand to Smithay when it asks, and the little it keeps of some.
 #[derive(Debug)]
 pub(crate) struct Protocols {
     _decorations: XdgDecorationState,
@@ -3657,6 +3655,10 @@ pub(crate) struct Protocols {
     /// one to belong to a window of the other, as a portal's does.
     pub(crate) foreign: XdgForeignState,
     _presentation: PresentationState,
+    /// Programs holding the pointer, and what decides whether they may.
+    pub(crate) holding: Holding,
+    /// Gestures on a touchpad, and the swipe of ours under way.
+    pub(crate) gestures: Gestures,
 }
 
 impl Protocols {
@@ -3667,6 +3669,8 @@ impl Protocols {
             _idle_inhibit: IdleInhibitManagerState::new::<Compositor>(display),
             foreign: XdgForeignState::new::<Compositor>(display),
             _presentation: PresentationState::new::<Compositor>(display, Monotonic::ID as u32),
+            holding: Holding::offer(display),
+            gestures: Gestures::offer(display),
         }
     }
 }

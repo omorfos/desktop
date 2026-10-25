@@ -73,6 +73,64 @@ pub enum Input {
         /// Downwards scroll distance.
         vertical: f64,
     },
+    /// Fingers moved together on a touchpad.
+    Gesture(Gesture),
+}
+
+/// A gesture on a touchpad, in the steps the touchpad reports it: each
+/// begins, may go on, and ends.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Gesture {
+    /// Fingers began to move across the touchpad together.
+    SwipeBegin {
+        /// How many.
+        fingers: u32,
+    },
+    /// They moved, by a distance in units of layout.
+    SwipeUpdate {
+        /// Distance moved to the right.
+        dx: f64,
+        /// Distance moved down.
+        dy: f64,
+    },
+    /// They lifted, or the swipe was `cancelled`.
+    SwipeEnd {
+        /// Whether it was cancelled rather than finished.
+        cancelled: bool,
+    },
+    /// Fingers began to move towards or away from each other.
+    PinchBegin {
+        /// How many.
+        fingers: u32,
+    },
+    /// They moved: their middle by a distance, how far apart they are by
+    /// `scale` of how far they began, and turned by `rotation`.
+    PinchUpdate {
+        /// Distance their middle moved to the right.
+        dx: f64,
+        /// Distance their middle moved down.
+        dy: f64,
+        /// How far apart they are, as a part of how far they began.
+        scale: f64,
+        /// How far they turned since the last update, in degrees
+        /// clockwise.
+        rotation: f64,
+    },
+    /// They lifted, or the pinch was `cancelled`.
+    PinchEnd {
+        /// Whether it was cancelled rather than finished.
+        cancelled: bool,
+    },
+    /// Fingers came to rest on the touchpad.
+    HoldBegin {
+        /// How many.
+        fingers: u32,
+    },
+    /// They lifted, or moved, which `cancelled` says.
+    HoldEnd {
+        /// Whether they moved rather than lifted.
+        cancelled: bool,
+    },
 }
 
 /// What a key means to an open menu, if anything. A key pressed with a
@@ -130,6 +188,7 @@ pub(crate) enum Placed {
     Motion { x: f64, y: f64 },
     Button { button: u32, pressed: bool },
     Scroll { horizontal: f64, vertical: f64 },
+    Gesture(Gesture),
 }
 
 /// Linux input event codes for the pointer buttons.
@@ -305,6 +364,7 @@ impl Compositor {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
+            Placed::Gesture(gesture) => self.gesture(gesture, time),
         }
     }
 
@@ -333,6 +393,7 @@ impl Compositor {
                 horizontal,
                 vertical,
             },
+            Input::Gesture(gesture) => Placed::Gesture(gesture),
         }
     }
 

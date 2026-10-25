@@ -190,6 +190,8 @@ impl Compositor {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
+            // Nothing a gesture does is done behind a lock or a prompt.
+            Placed::Gesture(_) => {}
         }
     }
 

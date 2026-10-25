@@ -19,6 +19,7 @@ pub mod cli;
 mod compositor;
 mod corners;
 mod cursor;
+mod gestures;
 mod ghost;
 mod gpu;
 mod handlers;
@@ -45,7 +46,7 @@ mod x11;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME, Drawn};
 pub use cursor::Themes;
-pub use input::Input;
+pub use input::{Gesture, Input};
 pub use omorfos_ui::Scale;
 pub use presentation::Feedback;
 pub use roles::Roles;

@@ -65,6 +65,10 @@ use wayland_protocols::wp::linux_dmabuf::zv1::client::{
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
 };
+use wayland_protocols::wp::pointer_gestures::zv1::client::{
+    zwp_pointer_gesture_hold_v1, zwp_pointer_gesture_pinch_v1, zwp_pointer_gesture_swipe_v1,
+    zwp_pointer_gestures_v1,
+};
 use wayland_protocols::wp::presentation_time::client::{wp_presentation, wp_presentation_feedback};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
@@ -703,6 +707,9 @@ pub(crate) enum Event {
         raw: (f64, f64),
         utime: u64,
     },
+    /// What the client was told of a gesture on a touchpad, as the
+    /// compositor told it.
+    Gesture(omorfos::Gesture),
     /// The pointer is held in place, or let go of.
     PointerLocked,
     PointerUnlocked,
@@ -795,6 +802,8 @@ pub(crate) struct ClientState {
     /// Holding the pointer, and being told how far it moved.
     constraints: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
     relative: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
+    /// Being told of gestures on a touchpad.
+    gestures: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
     pub(crate) clock: Option<u32>,
     window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
@@ -1398,6 +1407,25 @@ impl Client {
         constraints.confine_pointer(surface, pointer, region, lifetime, &self.handle(), ())
     }
 
+    /// Asks to be told of swipes, pinches and fingers held still on a
+    /// touchpad.
+    pub(crate) fn gestures(
+        &self,
+    ) -> (
+        zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1,
+        zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1,
+        zwp_pointer_gesture_hold_v1::ZwpPointerGestureHoldV1,
+    ) {
+        let gestures = self.state.gestures.as_ref().unwrap();
+        let pointer = self.state.pointer.as_ref().unwrap();
+        let handle = self.handle();
+        (
+            gestures.get_swipe_gesture(pointer, &handle, ()),
+            gestures.get_pinch_gesture(pointer, &handle, ()),
+            gestures.get_hold_gesture(pointer, &handle, ()),
+        )
+    }
+
     /// Asks to be told how far the pointer moves.
     pub(crate) fn relative_pointer(&self) -> zwp_relative_pointer_v1::ZwpRelativePointerV1 {
         let manager = self.state.relative.as_ref().unwrap();
@@ -1786,15 +1814,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "zxdg_exporter_v2" => state.exporter = Some(registry.bind(name, version, handle, ())),
             "zxdg_importer_v2" => state.importer = Some(registry.bind(name, version, handle, ())),
-            "zwp_pointer_constraints_v1" => {
-                state.constraints = Some(registry.bind(name, version, handle, ()));
-            }
-            "zwp_relative_pointer_manager_v1" => {
-                state.relative = Some(registry.bind(name, version, handle, ()));
-            }
-            "wp_presentation" => {
-                state.presentation = Some(registry.bind(name, version, handle, ()));
-            }
             "ext_image_copy_capture_manager_v1" => {
                 state.capturers = Some(registry.bind(name, version, handle, ()));
             }
@@ -1865,7 +1884,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             "zwp_idle_inhibit_manager_v1" => {
                 state.inhibitors = Some(registry.bind(name, version, handle, ()));
             }
-            _ => {}
+            interface => state.bind_pointing(registry, interface, (name, version), handle),
         }
     }
 }
@@ -1976,6 +1995,34 @@ impl Dispatch<wl_seat::WlSeat, ()> for ClientState {
             state
                 .pointer
                 .get_or_insert_with(|| seat.get_pointer(handle, ()));
+        }
+    }
+}
+
+impl ClientState {
+    /// Binds the globals about the pointer and how what is drawn is shown,
+    /// if `interface` is one of them.
+    fn bind_pointing(
+        &mut self,
+        registry: &wl_registry::WlRegistry,
+        interface: &str,
+        (name, version): (u32, u32),
+        handle: &QueueHandle<Self>,
+    ) {
+        match interface {
+            "zwp_pointer_constraints_v1" => {
+                self.constraints = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_pointer_gestures_v1" => {
+                self.gestures = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_relative_pointer_manager_v1" => {
+                self.relative = Some(registry.bind(name, version, handle, ()));
+            }
+            "wp_presentation" => {
+                self.presentation = Some(registry.bind(name, version, handle, ()));
+            }
+            _ => {}
         }
     }
 }
@@ -2422,6 +2469,86 @@ delegate_noop!(ClientState: ignore zxdg_imported_v2::ZxdgImportedV2);
 
 delegate_noop!(ClientState: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
 delegate_noop!(ClientState: zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
+delegate_noop!(ClientState: zwp_pointer_gestures_v1::ZwpPointerGesturesV1);
+
+impl Dispatch<zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1,
+        event: zwp_pointer_gesture_swipe_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use omorfos::Gesture;
+        use zwp_pointer_gesture_swipe_v1::Event as Swipe;
+        let told = match event {
+            Swipe::Begin { fingers, .. } => Gesture::SwipeBegin { fingers },
+            Swipe::Update { dx, dy, .. } => Gesture::SwipeUpdate { dx, dy },
+            Swipe::End { cancelled, .. } => Gesture::SwipeEnd {
+                cancelled: cancelled != 0,
+            },
+            _ => return,
+        };
+        state.events.push(Event::Gesture(told));
+    }
+}
+
+impl Dispatch<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1,
+        event: zwp_pointer_gesture_pinch_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use omorfos::Gesture;
+        use zwp_pointer_gesture_pinch_v1::Event as Pinch;
+        let told = match event {
+            Pinch::Begin { fingers, .. } => Gesture::PinchBegin { fingers },
+            Pinch::Update {
+                dx,
+                dy,
+                scale,
+                rotation,
+                ..
+            } => Gesture::PinchUpdate {
+                dx,
+                dy,
+                scale,
+                rotation,
+            },
+            Pinch::End { cancelled, .. } => Gesture::PinchEnd {
+                cancelled: cancelled != 0,
+            },
+            _ => return,
+        };
+        state.events.push(Event::Gesture(told));
+    }
+}
+
+impl Dispatch<zwp_pointer_gesture_hold_v1::ZwpPointerGestureHoldV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_pointer_gesture_hold_v1::ZwpPointerGestureHoldV1,
+        event: zwp_pointer_gesture_hold_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use omorfos::Gesture;
+        use zwp_pointer_gesture_hold_v1::Event as Hold;
+        let told = match event {
+            Hold::Begin { fingers, .. } => Gesture::HoldBegin { fingers },
+            Hold::End { cancelled, .. } => Gesture::HoldEnd {
+                cancelled: cancelled != 0,
+            },
+            _ => return,
+        };
+        state.events.push(Event::Gesture(told));
+    }
+}
 
 impl Dispatch<zwp_relative_pointer_v1::ZwpRelativePointerV1, ()> for ClientState {
     fn event(

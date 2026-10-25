@@ -15,7 +15,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
+    AbsolutePositionEvent, Axis, ButtonState, Event, GestureBeginEvent, GestureEndEvent,
+    GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent, KeyState,
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -26,7 +27,7 @@ use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
 use crate::Roles;
-use crate::{Compositor, Input, Scale, Session, Themes};
+use crate::{Compositor, Gesture, Input, Scale, Session, Themes};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
 const WHEEL_NOTCH: f64 = 15.0;
@@ -243,9 +244,59 @@ pub(super) fn on_input<B: InputBackend>(
             };
             (scroll, event.time_msec())
         }
-        _ => return,
+        other => {
+            let Some((gesture, time)) = gesture(other) else {
+                return;
+            };
+            (Input::Gesture(gesture), time)
+        }
     };
     compositor.input(input, time);
+}
+
+/// A gesture on a touchpad that `event` is, and when it was, if it is one.
+fn gesture<B: InputBackend>(event: InputEvent<B>) -> Option<(Gesture, u32)> {
+    let gesture = match event {
+        InputEvent::GestureSwipeBegin { event } => {
+            let fingers = event.fingers();
+            (Gesture::SwipeBegin { fingers }, event.time_msec())
+        }
+        InputEvent::GestureSwipeUpdate { event } => {
+            let (dx, dy) = (event.delta_x(), event.delta_y());
+            (Gesture::SwipeUpdate { dx, dy }, event.time_msec())
+        }
+        InputEvent::GestureSwipeEnd { event } => {
+            let cancelled = event.cancelled();
+            (Gesture::SwipeEnd { cancelled }, event.time_msec())
+        }
+        InputEvent::GesturePinchBegin { event } => {
+            let fingers = event.fingers();
+            (Gesture::PinchBegin { fingers }, event.time_msec())
+        }
+        InputEvent::GesturePinchUpdate { event } => {
+            let pinched = Gesture::PinchUpdate {
+                dx: event.delta_x(),
+                dy: event.delta_y(),
+                scale: event.scale(),
+                rotation: event.rotation(),
+            };
+            (pinched, event.time_msec())
+        }
+        InputEvent::GesturePinchEnd { event } => {
+            let cancelled = event.cancelled();
+            (Gesture::PinchEnd { cancelled }, event.time_msec())
+        }
+        InputEvent::GestureHoldBegin { event } => {
+            let fingers = event.fingers();
+            (Gesture::HoldBegin { fingers }, event.time_msec())
+        }
+        InputEvent::GestureHoldEnd { event } => {
+            let cancelled = event.cancelled();
+            (Gesture::HoldEnd { cancelled }, event.time_msec())
+        }
+        _ => return None,
+    };
+    Some(gesture)
 }
 
 impl Screen {
