@@ -1707,6 +1707,13 @@ impl Client {
         manager.get_input_method(self.seat(), &self.handle(), ())
     }
 
+    /// Lets go of what input methods are asked for by, as a program that
+    /// will not be one does.
+    pub(crate) fn let_go_of_input_methods(&mut self) {
+        let manager = self.state.input_methods.take().unwrap();
+        manager.destroy();
+    }
+
     /// Puts `text` in the field being typed into, as an input method does
     /// once the user has chosen what they meant.
     pub(crate) fn type_text(&self, typing: &input_method::ZwpInputMethodV2, text: &str) {

@@ -17,15 +17,27 @@ use smithay::backend::renderer::element::surface::render_elements_from_surface_t
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
-use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_keyboard_grab_v2::ZwpInputMethodKeyboardGrabV2;
+use smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_manager_v2::{
+    self, ZwpInputMethodManagerV2,
+};
+use smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_v2::{
+    self, ZwpInputMethodV2,
+};
+use smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_popup_surface_v2::ZwpInputPopupSurfaceV2;
+use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::{
+    Client, DataInit, Dispatch, DisplayHandle, delegate_dispatch, delegate_global_dispatch,
+};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle};
-use smithay::wayland::input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface};
+use smithay::wayland::input_method::{
+    InputMethodHandler, InputMethodKeyboardUserData, InputMethodManagerGlobalData,
+    InputMethodManagerState, InputMethodPopupSurfaceUserData, InputMethodUserData, PopupSurface,
+};
 use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
-use smithay::{
-    delegate_input_method_manager, delegate_text_input_manager, delegate_virtual_keyboard_manager,
-};
+use smithay::{delegate_text_input_manager, delegate_virtual_keyboard_manager};
 
 use crate::compositor::{Compositor, Element, View};
 use crate::outputs::Head;
@@ -107,6 +119,8 @@ impl Compositor {
 pub(crate) struct Typing {
     /// Its popups that are to be shown, by the text they are for.
     pub(crate) popups: Vec<PopupSurface>,
+    /// Whether there is one: a second is refused while there is.
+    taken: bool,
     /// Text fields saying what they are; the input method, for a program
     /// with the role; and the keyboard it types with, for the same.
     _offered: (
@@ -121,6 +135,7 @@ impl Typing {
     pub(crate) fn offer(display: &DisplayHandle) -> Self {
         Self {
             popups: Vec::new(),
+            taken: false,
             _offered: (
                 TextInputManagerState::new::<Compositor>(display),
                 InputMethodManagerState::new::<Compositor, _>(display, Compositor::types),
@@ -149,6 +164,89 @@ impl InputMethodHandler for Compositor {
     }
 }
 
+/// An input method refused, as a second is while there is one: told so,
+/// and heard no further.
+#[derive(Debug)]
+pub(crate) struct Refused;
+
+// What follows is what `delegate_input_method_manager!` would say, but for
+// the input method itself, which is answered here first. Smithay, asked
+// for a second, tells the one there already that it is no longer one and
+// leaves the second untold; the protocol has the second told and the first
+// kept, which is what is done here. To be taken back to Smithay.
+delegate_global_dispatch!(Compositor: [ZwpInputMethodManagerV2: InputMethodManagerGlobalData] => InputMethodManagerState);
+delegate_dispatch!(Compositor: [ZwpInputMethodKeyboardGrabV2: InputMethodKeyboardUserData<Compositor>] => InputMethodManagerState);
+delegate_dispatch!(Compositor: [ZwpInputPopupSurfaceV2: InputMethodPopupSurfaceUserData] => InputMethodManagerState);
+
+impl Dispatch<ZwpInputMethodManagerV2, ()> for Compositor {
+    fn request(
+        state: &mut Self,
+        client: &Client,
+        manager: &ZwpInputMethodManagerV2,
+        request: zwp_input_method_manager_v2::Request,
+        data: &(),
+        display: &DisplayHandle,
+        made: &mut DataInit<'_, Self>,
+    ) {
+        match request {
+            zwp_input_method_manager_v2::Request::GetInputMethod { input_method, .. }
+                if state.typing.taken =>
+            {
+                made.init(input_method, Refused).unavailable();
+            }
+            request => {
+                use zwp_input_method_manager_v2::Request::GetInputMethod;
+                state.typing.taken |= matches!(request, GetInputMethod { .. });
+                <InputMethodManagerState as Dispatch<ZwpInputMethodManagerV2, (), Self>>::request(
+                    state, client, manager, request, data, display, made,
+                );
+            }
+        }
+    }
+}
+
+impl Dispatch<ZwpInputMethodV2, InputMethodUserData<Self>> for Compositor {
+    fn request(
+        state: &mut Self,
+        client: &Client,
+        method: &ZwpInputMethodV2,
+        request: zwp_input_method_v2::Request,
+        data: &InputMethodUserData<Self>,
+        display: &DisplayHandle,
+        made: &mut DataInit<'_, Self>,
+    ) {
+        <InputMethodManagerState as Dispatch<ZwpInputMethodV2, InputMethodUserData<Self>, Self>>::request(
+            state, client, method, request, data, display, made,
+        );
+    }
+
+    fn destroyed(
+        state: &mut Self,
+        client: ClientId,
+        method: &ZwpInputMethodV2,
+        data: &InputMethodUserData<Self>,
+    ) {
+        // The one there was has gone, and another may be.
+        state.typing.taken = false;
+        <InputMethodManagerState as Dispatch<ZwpInputMethodV2, InputMethodUserData<Self>, Self>>::destroyed(
+            state, client, method, data,
+        );
+    }
+}
+
+impl Dispatch<ZwpInputMethodV2, Refused> for Compositor {
+    // Nothing a refused input method asks is done: it is to go.
+    fn request(
+        _: &mut Self,
+        _: &Client,
+        _: &ZwpInputMethodV2,
+        _: zwp_input_method_v2::Request,
+        _: &Refused,
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, Self>,
+    ) {
+    }
+}
+
 delegate_text_input_manager!(Compositor);
-delegate_input_method_manager!(Compositor);
 delegate_virtual_keyboard_manager!(Compositor);

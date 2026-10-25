@@ -518,8 +518,11 @@ what only games and touchpads need last.
       the `next_layout` action, which no key is bound to.
 - [ ] The layout shown: which one is being typed with, on the panel, and
       a key for `next_layout` decided with the other default keys.
-- [ ] A second input method refused, not the first: Smithay tells the one
-      there already that it may no longer be one.
+- [x] A second input method refused, not the first: Smithay told the one
+      there already that it may no longer be one and left the second
+      untold, so the compositor answers for the input method itself and
+      hands the first to Smithay. The fix is to be offered to Smithay, and
+      this let go of once it has it.
 - [x] Programs listed in `~/.config/autostart` started with the session,
       and the session's environment told to D-Bus and systemd, without
       which portals and much else do not find it. The environment was

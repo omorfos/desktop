@@ -127,6 +127,43 @@ fn only_a_program_given_the_input_role_may_be_an_input_method_or_type_as_a_keybo
 }
 
 #[test]
+fn a_second_input_method_is_refused_and_the_first_stays_the_one() {
+    let (mut session, mut app, (mut typist, _method)) = typing();
+    typist.take_events();
+    let mut second = session.connect_as(Roles::INPUT);
+    let other = second.input_method();
+    session.roundtrip(&mut second);
+    assert!(
+        second.take_events().contains(&Event::TypingRefused),
+        "the second is told"
+    );
+    session.roundtrip(&mut typist);
+    assert!(
+        !typist.take_events().contains(&Event::TypingRefused),
+        "the first is not"
+    );
+    // Refused, it goes, as the protocol has it, and so may what it was
+    // asked for by.
+    other.destroy();
+    second.let_go_of_input_methods();
+    session.roundtrip(&mut second);
+
+    let field = app.text_input();
+    session.roundtrip(&mut app);
+    enable(&field, (10, 10, 2, 16));
+    session.eventually(|session| {
+        session.roundtrip(&mut app);
+        session.roundtrip(&mut typist);
+        typist.state.events.contains(&Event::TypingOn)
+    });
+    session.roundtrip(&mut second);
+    assert!(
+        !second.take_events().contains(&Event::TypingOn),
+        "the first is typed with"
+    );
+}
+
+#[test]
 fn an_input_method_started_again_after_it_stopped_is_the_one() {
     let (mut session, mut app, (typist, _method)) = typing();
     drop(typist);
