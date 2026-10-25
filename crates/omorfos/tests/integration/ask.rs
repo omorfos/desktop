@@ -1312,41 +1312,56 @@ fn gnupg_waits_its_turn_behind_polkit_and_is_asked_once_polkit_gives_up() {
     assert!(signed.join().unwrap(), "then it is asked");
 }
 
-/// Keeps the session going until GnuPG's pinentry has knocked at the
-/// asker's door and been let in, which is when it is in line to be asked:
-/// the asker takes it in before it hears anything polkit says next. How
-/// long gpg-agent takes to start its pinentry is its own affair, the more
-/// so with other tests at work, so it is given up on only after a minute.
-fn knocked(session: &mut Session, asker: &Asker) {
+/// The pinentries the asker has let in at its door and not yet answered,
+/// each by the number the kernel knows its connection by. A connection
+/// there that the asker has accepted is listed as connected, the sixth of
+/// what the kernel lists of it, until the asker closes it, which it does as
+/// it gives the pinentry what was typed.
+fn let_in(asker: &Asker) -> Vec<String> {
     let door = asker.directory.path().join(omorfos_ask::DOOR);
     let door = door.to_string_lossy().into_owned();
-    // A connection the asker has taken is one at the door whose state, the
-    // sixth of what the kernel lists of it, is connected.
-    let taken = || {
-        let sockets = std::fs::read_to_string("/proc/net/unix").unwrap();
-        sockets.lines().any(|socket| {
-            let fields: Vec<&str> = socket.split_whitespace().collect();
-            fields.last() == Some(&door.as_str()) && fields.get(5) == Some(&"03")
-        })
-    };
+    let sockets = std::fs::read_to_string("/proc/net/unix").unwrap();
+    let connected = sockets.lines().filter_map(|socket| {
+        let fields: Vec<&str> = socket.split_whitespace().collect();
+        let there = fields.last() == Some(&door.as_str()) && fields.get(5) == Some(&"03");
+        there.then(|| fields[6].to_owned())
+    });
+    connected.collect()
+}
+
+/// Keeps the session going until `done`, giving up after a minute, as
+/// `failure` says: how long GnuPG takes is its own affair, the more so
+/// with other tests at work.
+fn until(session: &mut Session, mut done: impl FnMut() -> bool, failure: &str) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-    while !taken() && std::time::Instant::now() < deadline {
+    while !done() && std::time::Instant::now() < deadline {
         session.step();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert!(taken(), "GnuPG's pinentry did not knock in a minute");
+    assert!(done(), "{failure}");
+}
+
+/// Keeps the session going until GnuPG's pinentry has knocked at the
+/// asker's door and been let in, which is when it is in line to be asked:
+/// the asker takes it in before it hears anything polkit says next.
+fn knocked(session: &mut Session, asker: &Asker) {
+    let knocked = || !let_in(asker).is_empty();
+    until(
+        session,
+        knocked,
+        "GnuPG's pinentry did not knock in a minute",
+    );
 }
 
 /// Keeps the session going until `gnupg`, a program of GnuPG's running on
 /// a thread of its own, is done: GnuPG takes its time over a key, the more
 /// so with other tests at work, so it is given up on only after a minute.
 fn finished<T>(session: &mut Session, gnupg: &JoinHandle<T>) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-    while !gnupg.is_finished() && std::time::Instant::now() < deadline {
-        session.step();
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    assert!(gnupg.is_finished(), "GnuPG did not finish in a minute");
+    until(
+        session,
+        || gnupg.is_finished(),
+        "GnuPG did not finish in a minute",
+    );
 }
 
 /// Whether anything has been typed in the field, by the dots it shows.
@@ -1364,17 +1379,36 @@ fn dotted(session: &mut Session) -> bool {
     (left + 3..left + 40).any(|x| picture.at(x, middle) != field)
 }
 
-/// Types `word` in the sealed prompt once it is up, and goes on; then
-/// waits for it to go, or to be asked afresh, empty, as the next of a new
-/// passphrase is, so that what is typed next is typed into the next.
-fn type_in(session: &mut Session, word: &[Keycode]) {
+/// Types `word` in the sealed prompt for the pinentry that has knocked,
+/// and goes on; then waits for the asker to have given it what was typed,
+/// so that what is typed next is for the next.
+///
+/// What is on the screen does not say when either is: once what was typed
+/// is taken, the prompt shows an empty field until it is taken down, and
+/// what is typed meanwhile is for nobody.
+fn type_in(session: &mut Session, asker: &Asker, word: &[Keycode]) {
+    let mut asking = Vec::new();
+    let knocked = || {
+        asking = let_in(asker);
+        !asking.is_empty()
+    };
+    until(
+        session,
+        knocked,
+        "GnuPG's pinentry did not knock in a minute",
+    );
     wait_up(session);
     for code in word {
         tap(session, *code);
     }
     session.eventually(dotted);
     tap(session, key::RETURN);
-    session.eventually(|session| !up(session) || !dotted(session));
+    let answered = || let_in(asker).iter().all(|now| !asking.contains(now));
+    until(
+        session,
+        answered,
+        "the asker did not answer GnuPG in a minute",
+    );
 }
 
 #[test]
@@ -1387,9 +1421,9 @@ fn a_new_passphrase_is_asked_for_twice_in_the_sealed_prompt() {
         std::thread::spawn(move || changing.output().is_ok_and(|done| done.status.success()));
 
     // The one it has, then the new one, and the new one again.
-    type_in(&mut session, &[key::A, key::T, key::X]);
-    type_in(&mut session, &[key::Q, key::A, key::T]);
-    type_in(&mut session, &[key::Q, key::A, key::T]);
+    type_in(&mut session, &asker, &[key::A, key::T, key::X]);
+    type_in(&mut session, &asker, &[key::Q, key::A, key::T]);
+    type_in(&mut session, &asker, &[key::Q, key::A, key::T]);
     finished(&mut session, &changed);
     assert!(changed.join().unwrap());
     let signed = gnupg
@@ -1421,7 +1455,7 @@ fn a_passphrase_a_program_asks_gpg_agent_for_itself_names_no_key() {
         ]);
     let given = std::thread::spawn(move || asking.output().unwrap().stdout);
 
-    type_in(&mut session, &[key::Q, key::A, key::T]);
+    type_in(&mut session, &asker, &[key::Q, key::A, key::T]);
     finished(&mut session, &given);
     let given = String::from_utf8(given.join().unwrap()).unwrap();
     assert!(given.contains("D qat"), "{given}");
@@ -1495,7 +1529,7 @@ fn polkit_waits_its_turn_behind_gnupg() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(helped(&cookie).is_empty(), "its helper is not started yet");
-    type_in(&mut session, &[key::A, key::T, key::X]);
+    type_in(&mut session, &asker, &[key::A, key::T, key::X]);
     finished(&mut session, &signed);
     assert!(signed.join().unwrap());
     session.eventually(|_| !helped(&cookie).is_empty());
