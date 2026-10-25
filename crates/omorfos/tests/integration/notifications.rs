@@ -645,9 +645,14 @@ fn the_notifications_take_only_the_state_of_the_session_from_what_they_are_told(
         session.draw().at(EDGE.0, EDGE.1) == alarming()
     });
 
-    // Once the compositor has gone, so are the notifications.
+    // Once the compositor has gone, so are the notifications: once the last
+    // copy of its end has closed, which a test starting a program meanwhile
+    // holds for a while.
     drop(compositor);
-    let failed = (0..50).any(|_| notifier.turn(Duration::ZERO).is_err());
+    let failed = (0..5000).any(|_| {
+        std::thread::sleep(Duration::from_millis(1));
+        notifier.turn(Duration::ZERO).is_err()
+    });
     assert!(failed);
 }
 
