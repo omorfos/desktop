@@ -4,7 +4,8 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** stage 3, what a day's use needs.
+**Next:** stage 3, what a day's use needs, then what is taken from
+stage 8 straight after it (below), then stage 4.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -39,6 +40,26 @@ performance, then everything else. Three things follow from them.
 4. The look comes before the shell that is to wear it.
 5. Applications come last, because they are the most work, the least
    bound to omorfos, and need the toolkit decision of stage 2.
+
+Four things change that order where it would have cost more than it
+saves, as a review of the roadmap on 2026-10-25 found:
+
+- **A known gap does not hold its stage open.** An item that begins
+  "Known gaps" is written down so that it is not forgotten, and is taken
+  when the code beside it is touched. None stops omorfos being used all
+  day.
+- **Some of stage 8 comes straight after stage 3**, being cheap and of
+  use at once: `omorfosctl report`, which every report from real
+  hardware has wanted; the parsers fuzzed, for security; the links
+  between documents checked; what a version promises, and CI that finds
+  a breaking change not marked as one; and the first release, which is
+  the first real run of the release pipeline. Each stays in stage 8,
+  where it is described, and is taken first.
+- **In stage 4, `appearance` and the redrawn theme come before glass**:
+  more waits on them (the portal's settings, `reduce_motion`, `scheme:
+  auto`) than on the blur.
+- **What waits on another project says so** ("Waits on"), and is not
+  started until that has changed.
 
 ## 1. Quick wins
 
@@ -196,7 +217,8 @@ calls for them.
       our own with the `clipboard` role, which would also let
       `omorfos-screenshot` stop at once (ADR 42).
 - [ ] What `omorfos-clipboard` keeps, offered as a history to choose
-      from (ADR 34 has its look).
+      from: the clipboard with a history of stage 6, which is the same
+      work and is taken there.
 - [x] Forgetting what was copied after a while, for passwords copied
       from where nothing says they are secret: Proton Pass in Firefox
       clears what it copied only while its popup stays open.
@@ -224,7 +246,8 @@ calls for them.
       and a program cannot yet say of its own window that it is private.
 - [ ] Sharing the screen in Firefox froze once, on real hardware, just
       after a private window opened, and not again with every picture
-      logged: what failed, if anything, is not known.
+      logged: what failed, if anything, is not known. Waits on: its
+      happening again.
 - [x] The stream that sharing a screen in a browser or a call needs
       (PipeWire), in buffers of the GPU so that nothing is copied, with
       the user asked each time.
@@ -287,10 +310,11 @@ calls for them.
       The picker says what to do at the bottom of each screen, and a line
       round a screen that is shared or recorded says so, in nothing that
       is shared.
-- [ ] A layer surface with a subsurface that reaches past its screen is
-      not drawn at all, found as the picker's line of what to do was
-      made, which is now kept within the screen. To be found out and
-      put right in the compositor.
+- [x] A layer surface with a subsurface that reaches out past it, left
+      or up, drawn and pointed at where it is: it was put out of place by
+      as much, which took the picker off its screen when its line of what
+      to do was wider than the screen. The line is still kept within it,
+      as text cut off at the edge reads better than text running off.
 - [x] A screen that changes size goes on being shared at its new size:
       the stream offers it, what reads it agrees on it again, and is given
       memory made to it, of the card or shared.
@@ -395,8 +419,8 @@ calls for them.
       has it, for games that go fullscreen there. Smithay asks it only by
       waiting for the X server's answer, and the X server can be waiting
       on the compositor at the time: tried, it froze the tests as the
-      server started and as it was started again. It needs a request
-      that does not wait.
+      server started and as it was started again. Waits on: Smithay, for
+      a request that does not wait.
 - [x] An arrangement of the screens for each set that may be plugged in
       (`arrangements`), followed as screens come and go.
 
@@ -483,8 +507,10 @@ what only games and touchpads need last.
       radios and says when they change. The keys are not bound: the
       kernel has already acted on them, and a binding as well would undo
       it. The radios are read from `/dev/rfkill`, which tells of each
-      change as it happens, by the part of `omorfos-session` that runs
-      all session, which tells the compositor.
+      change as it happens, by a program of ours that runs all session,
+      which tells the compositor. Where first: `omorfos-session watch`
+      ends at once on a machine without logind, so either its logind
+      half is made to be optional, or the radios go to another.
 - [x] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`, `virtual-keyboard-v1`), for a
       program given the `input` role, its popup under the text and no key
@@ -603,7 +629,7 @@ what only games and touchpads need last.
       closed, which is to be weighed against simply logging in again.
 - [ ] Buffers in shared memory released as soon as they are drawn,
       which foot asks for ("compositor is not releasing buffers
-      immediately"), to be done in Smithay, not here. Smithay keeps a
+      immediately"). Waits on: Smithay, where it is to be done, not here. Smithay keeps a
       buffer until the next is attached, and has no way to let it go
       sooner; niri, on Smithay too, does the same. Sending the release
       from omorfos would release it twice, and is right only where the
@@ -649,14 +675,15 @@ what only games and touchpads need last.
       refreshes, for a video to keep time with its sound. A nested
       compositor's host says nothing of it, so there it is the time it is
       heard of.
-- [ ] Smaller protocols that programs complain of lacking:
-      `keyboard-shortcuts-inhibit`, content type, and tearing control,
-      which Smithay does not have yet. Content type says what a window
+- [ ] Smaller protocols that programs complain of lacking, each waiting
+      on something different. `keyboard-shortcuts-inhibit`, which Smithay
+      has: a program that inhibits the shortcuts, as a virtual machine
+      does, needs a key that always gets back out, and waits on that
+      decision. Content type, which Smithay has: it says what a window
       shows, for a screen to be driven to suit it or its refresh to
-      follow a game's; it is offered once omorfos does one of those, and
-      not to quiet a program's log before then. A program that inhibits the
-      shortcuts, as a virtual machine does, needs a key that always gets
-      back out, which is a decision to make first.
+      follow a game's, and waits on omorfos doing one of those, rather
+      than being offered to quiet a program's log. Tearing control waits
+      on Smithay, which does not have it yet.
 - [x] What games and remote desktops need of the pointer: locked,
       confined, and moved without a position (`pointer-constraints`,
       `relative-pointer`), held only while the window has the keyboard
@@ -681,7 +708,9 @@ what only games and touchpads need last.
 
 ## 4. The look
 
-Stage 2 says what it is to be; this builds it.
+Stage 2 says what it is to be; this builds it. The redrawn theme and
+`appearance` come first, then the shadows, then glass, as more waits on
+the first than on the last.
 
 - [ ] Shadows under windows, menus and panels (`box-shadow`), as
       pictures made on the CPU (ADR 33).
@@ -891,16 +920,20 @@ Ongoing, and taken between the stages above as much as after them.
 
 Security:
 
-- [ ] The configuration, theme and IPC parsers fuzzed.
+- [ ] The configuration, theme and IPC parsers fuzzed. `cargo-fuzz` needs
+      a nightly toolchain, so it runs as a job of its own and not among
+      the gates, which build with the stable one.
 - [x] Sandboxed programs recognised and held to less
       (`security-context-v1`): done in stage 3.
 - [ ] What a sandbox says its program is (the application's name) kept
       with the connection, for the portals to ask the user by.
 - [ ] Smithay asked for a safe way to write into a buffer a program
-      shares, so that the one `unsafe` block can go (ADR 40).
+      shares, so that the one `unsafe` block can go (ADR 40). Waits on:
+      Smithay.
 - [ ] A safe way offered to the PipeWire bindings to hold a stream's
       buffer and to give one memory of the caller's own, so that
-      `omorfos-pipewire` can go (ADR 41). Wanted soon.
+      `omorfos-pipewire` can go (ADR 41). Wanted soon. Waits on: the
+      PipeWire bindings, to which it is to be offered.
 - [ ] A review of everything a client can make the compositor allocate or
       wait for.
 
@@ -942,9 +975,9 @@ Programs written for X11:
 
 - [ ] Dialogs kept with the window they belong to, and docks, splash
       screens and the like treated as such.
-- [ ] The X server started when first asked for. This waits on a change
-      in Smithay, which is worth offering to it, as is the fix for what
-      it leaves unsent (ADR 27).
+- [ ] The X server started when first asked for. Waits on: a change in
+      Smithay, which is worth offering to it, as is the fix for what it
+      leaves unsent (ADR 27).
 
 Known gaps carried forward:
 
@@ -968,9 +1001,8 @@ Known gaps carried forward:
       So the request was sent, and either it was not read or the program
       started from it never ran.
 - [ ] Protocols that let another's dock or bar manage windows and
-      workspaces (`ext-workspace`, foreign-toplevel management). Not
-      planned while ours use the IPC socket; to be looked at again if
-      people want to bring their own.
+      workspaces (`ext-workspace`, foreign-toplevel management). Waits on:
+      people wanting to bring their own, as ours use the IPC socket.
 
 A way in:
 
