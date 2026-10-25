@@ -1450,3 +1450,34 @@ fn a_gnupg_passphrase_whose_agent_goes_while_it_waits_is_never_asked() {
     }
     assert!(!up(&mut session), "and GnuPG's is not asked after it");
 }
+
+#[test]
+fn polkit_waits_its_turn_behind_gnupg() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+    let signed = gnupg.sign();
+    wait_up(&mut session);
+
+    // Asked meanwhile, polkit waits for GnuPG's to be answered.
+    let me = rustix::process::getuid().as_raw();
+    let cookie = asker.directory.path().join("asked");
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    for _ in 0..50 {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(helped(&cookie).is_empty(), "its helper is not started yet");
+    type_in(&mut session, &[key::A, key::T, key::X]);
+    finished(&mut session, &signed);
+    assert!(signed.join().unwrap());
+    session.eventually(|_| !helped(&cookie).is_empty());
+    wait_up(&mut session);
+    tap(&mut session, key::ESCAPE);
+    session.eventually(|_| answer.is_finished());
+}

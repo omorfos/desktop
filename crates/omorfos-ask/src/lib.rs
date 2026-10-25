@@ -164,6 +164,15 @@ pub fn run(places: &Places, stream: UnixStream) -> Failure {
     let Some(session) = places.session.as_deref() else {
         return "polkit is told which session this is by XDG_SESSION_ID, which is not set".into();
     };
+    // Without the door, polkit is still asked for; GnuPG is not. It is open
+    // before polkit is told of the agent, so that once polkit may ask, GnuPG
+    // may too.
+    let door = places.door.as_deref().and_then(|path| {
+        let opened = Door::open(path, places.pinentry.clone());
+        opened
+            .inspect_err(|error| note(&format!("{}: {error}", path.display())))
+            .ok()
+    });
     let config = places.config.clone().unwrap_or_default();
     let desk = Desk::new(stream, Store::open(&config));
     let agent = desk.and_then(|desk| {
@@ -173,16 +182,7 @@ pub fn run(places: &Places, stream: UnixStream) -> Failure {
     let waking = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
     let ready = agent.and_then(|ready| waking.map(|waking| (ready, waking)));
     match ready {
-        Ok(((agent, desk), waking)) => {
-            // Without the door, polkit is still asked for; GnuPG is not.
-            let door = places.door.as_deref().and_then(|path| {
-                let opened = Door::open(path, places.pinentry.clone());
-                opened
-                    .inspect_err(|error| note(&format!("{}: {error}", path.display())))
-                    .ok()
-            });
-            serve(places, (&agent, door.as_ref()), desk, waking)
-        }
+        Ok(((agent, desk), waking)) => serve(places, (&agent, door.as_ref()), desk, waking),
         Err(failure) => failure,
     }
 }
