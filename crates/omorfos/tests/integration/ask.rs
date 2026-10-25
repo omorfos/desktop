@@ -1286,9 +1286,9 @@ fn gnupg_waits_its_turn_behind_polkit_and_is_asked_once_polkit_gives_up() {
     );
     wait_up(&mut session);
 
-    // Asked meanwhile, GnuPG waits, as long as it takes its pinentry to
-    // knock.
+    // Asked meanwhile, GnuPG waits, once its pinentry has knocked.
     let signed = gnupg.sign();
+    knocked(&mut session, &asker);
     for _ in 0..100 {
         session.step();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -1310,6 +1310,31 @@ fn gnupg_waits_its_turn_behind_polkit_and_is_asked_once_polkit_gives_up() {
     tap(&mut session, key::RETURN);
     finished(&mut session, &signed);
     assert!(signed.join().unwrap(), "then it is asked");
+}
+
+/// Keeps the session going until GnuPG's pinentry has knocked at the
+/// asker's door and been let in, which is when it is in line to be asked:
+/// the asker takes it in before it hears anything polkit says next. How
+/// long gpg-agent takes to start its pinentry is its own affair, the more
+/// so with other tests at work, so it is given up on only after a minute.
+fn knocked(session: &mut Session, asker: &Asker) {
+    let door = asker.directory.path().join(omorfos_ask::DOOR);
+    let door = door.to_string_lossy().into_owned();
+    // A connection the asker has taken is one at the door whose state, the
+    // sixth of what the kernel lists of it, is connected.
+    let taken = || {
+        let sockets = std::fs::read_to_string("/proc/net/unix").unwrap();
+        sockets.lines().any(|socket| {
+            let fields: Vec<&str> = socket.split_whitespace().collect();
+            fields.last() == Some(&door.as_str()) && fields.get(5) == Some(&"03")
+        })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !taken() && std::time::Instant::now() < deadline {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(taken(), "GnuPG's pinentry did not knock in a minute");
 }
 
 /// Keeps the session going until `gnupg`, a program of GnuPG's running on
@@ -1417,10 +1442,7 @@ fn a_gnupg_passphrase_whose_agent_goes_while_it_waits_is_never_asked() {
     );
     wait_up(&mut session);
     let signed = gnupg.sign();
-    for _ in 0..100 {
-        session.step();
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
+    knocked(&mut session, &asker);
 
     // The agent goes while its pinentry waits behind polkit's question.
     let stopped = Command::new("gpgconf")
