@@ -659,9 +659,10 @@ what only games and touchpads need last.
       marked `question-input:active`; and a text cursor in the lock
       screen's field, where the prompt has one. Only what types and
       Backspace repeat, so that Escape or Enter held does one thing once.
-- [ ] Ctrl+A in a layout that is not Latin, as Greek or Russian, where
-      the key types another letter: programs commonly take the Latin
-      letter of the key for a shortcut, which the fields do not yet.
+- [x] Ctrl+A in a layout that is not Latin, as Greek or Russian, where
+      the key types another letter: the fields take the Latin letter the
+      key has in the first of the layouts where it has one, as programs
+      do. With no Latin layout beside it there is none to take.
 - [ ] `omorfos-lock` the default locker, once it has been used for a
       while; its own parts in the theme; a field that shows what it asks
       as PAM says it; the on-screen keyboard (stage 7) usable on it; and

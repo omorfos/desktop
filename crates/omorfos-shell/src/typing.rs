@@ -109,8 +109,15 @@ fn typed(state: &xkb::State, code: u32) -> Key {
     let held = |name| state.mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE);
     let command = held(xkb::MOD_NAME_CTRL) || held(xkb::MOD_NAME_LOGO);
     let chord = command || held(xkb::MOD_NAME_ALT);
-    match state.key_get_one_sym(code) {
-        xkb::Keysym::a | xkb::Keysym::A if command && !held(xkb::MOD_NAME_ALT) => Key::All,
+    let sym = state.key_get_one_sym(code);
+    // A shortcut is the key's, whatever letter the layout typed with puts
+    // on it, as programs take it.
+    let shortcut = command.then(|| latin(state, code)).flatten().unwrap_or(sym);
+    let all = matches!(shortcut, xkb::Keysym::a | xkb::Keysym::A);
+    if all && command && !held(xkb::MOD_NAME_ALT) {
+        return Key::All;
+    }
+    match sym {
         xkb::Keysym::Return | xkb::Keysym::KP_Enter => Key::Enter,
         xkb::Keysym::Escape => Key::Escape,
         xkb::Keysym::BackSpace => Key::Back,
@@ -126,6 +133,20 @@ fn typed(state: &xkb::State, code: u32) -> Key {
             }
         }
     }
+}
+
+/// What the key numbered `code` types in the first of the keyboard's
+/// layouts where it types a Latin letter, if one does: in Greek or Russian,
+/// with a Latin layout beside it, the key that is A in Latin is A to a
+/// shortcut, as programs commonly take it.
+fn latin(state: &xkb::State, code: xkb::Keycode) -> Option<xkb::Keysym> {
+    let keymap = state.get_keymap();
+    let layouts = 0..keymap.num_layouts_for_key(code);
+    layouts.into_iter().find_map(|layout| {
+        let syms = keymap.key_get_syms_by_level(code, layout, 0);
+        let first = syms.first().copied();
+        first.filter(|sym| u8::try_from(sym.raw()).is_ok_and(|byte| byte.is_ascii_alphabetic()))
+    })
 }
 
 /// A key held down, done again and again as the compositor says keys
@@ -192,6 +213,42 @@ impl Repeat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The key that is A on a Latin keyboard, as the compositor numbers it.
+    const A: u32 = 30;
+
+    /// A keyboard with `layouts`, typing with the one at `group`, and
+    /// Ctrl held or not.
+    fn keyboard(layouts: &str, group: u32, ctrl: bool) -> xkb::State {
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let flags = xkb::KEYMAP_COMPILE_NO_FLAGS;
+        let keymap = xkb::Keymap::new_from_names(&context, "", "", layouts, "", None, flags);
+        let mut state = xkb::State::new(&keymap.unwrap());
+        let ctrl_mask = 1 << state.get_keymap().mod_get_index(xkb::MOD_NAME_CTRL);
+        let depressed = if ctrl { ctrl_mask } else { 0 };
+        state.update_mask(depressed, 0, 0, 0, 0, group);
+        state
+    }
+
+    #[test]
+    fn ctrl_and_the_key_that_is_a_chooses_all_whatever_the_layout_types_on_it() {
+        assert_eq!(typed(&keyboard("us", 0, true), A), Key::All);
+        assert_eq!(typed(&keyboard("us,gr", 1, true), A), Key::All, "in Greek");
+        assert_eq!(
+            typed(&keyboard("us,ru", 1, true), A),
+            Key::All,
+            "in Russian"
+        );
+        assert_eq!(
+            typed(&keyboard("us,gr", 1, false), A),
+            Key::Typed("α".to_owned())
+        );
+    }
+
+    #[test]
+    fn with_no_latin_layout_beside_it_there_is_no_a_to_choose_all_by() {
+        assert_eq!(typed(&keyboard("gr", 0, true), A), Key::Nothing);
+    }
 
     #[test]
     fn a_key_held_is_done_again_after_a_while_and_then_so_often() {
