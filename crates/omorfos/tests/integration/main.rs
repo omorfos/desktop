@@ -36,6 +36,7 @@ mod palette;
 mod panel;
 mod popups;
 mod portal;
+mod presentation;
 mod recording;
 mod reveal;
 mod roles;

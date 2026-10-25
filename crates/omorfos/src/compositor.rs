@@ -64,7 +64,8 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::Sta
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{
-    IsAlive, Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size, Transform,
+    ClockSource, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, SERIAL_COUNTER, Size,
+    Transform,
 };
 use smithay::wayland::alpha_modifier::AlphaModifierState;
 use smithay::wayland::compositor::{
@@ -77,6 +78,7 @@ use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fract
 use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
 use smithay::wayland::idle_notify::IdleNotifierState;
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::presentation::PresentationState;
 use smithay::wayland::security_context::SecurityContextState;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::ext_data_control::DataControlState;
@@ -108,6 +110,7 @@ use crate::lock::{Lock, Presence};
 use crate::outputs::{Aside, Head};
 use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
+use crate::presentation::Feedback;
 use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
@@ -177,12 +180,19 @@ pub struct Drawn {
     pub damage: Option<Vec<Rectangle<i32, Physical>>>,
     /// When the drawing is finished.
     pub sync: SyncPoint,
+    /// The programs to be told when it reaches the screen.
+    pub feedback: Feedback,
 }
 
 impl Drawn {
     /// What the last drawing of a screen came to, with what the drawings
-    /// before it in the same turn changed.
-    fn of(last: RenderOutputResult<'_>, mut before: Vec<Rectangle<i32, Physical>>) -> Self {
+    /// before it in the same turn changed, and who is to be told when it
+    /// is shown.
+    fn of(
+        last: RenderOutputResult<'_>,
+        mut before: Vec<Rectangle<i32, Physical>>,
+        feedback: Feedback,
+    ) -> Self {
         let damage = if before.is_empty() {
             last.damage.cloned()
         } else {
@@ -192,6 +202,7 @@ impl Drawn {
         Self {
             damage,
             sync: last.sync,
+            feedback,
         }
     }
 }
@@ -2056,7 +2067,7 @@ impl Compositor {
             // turn it off; one that cannot is shown black.
             let none: &[Element<R>] = &[];
             let drawn = tracker.render_output(renderer, framebuffer, age, none, BLACK);
-            return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
+            return self.drawn(output, output, drawn, Vec::new());
         }
         let mirror = self
             .aside
@@ -2079,7 +2090,7 @@ impl Compositor {
                 head.blanked.set(true);
             }
             let drawn = tracker.render_output(renderer, framebuffer, age, &elements, BLACK);
-            return drawn.map(|drawn| Drawn::of(drawn, Vec::new()));
+            return self.drawn(output, output, drawn, Vec::new());
         }
         // A pointer an application draws is drawn by itself for programs
         // following it, on the screen it is on.
@@ -2166,7 +2177,23 @@ impl Compositor {
         };
         let elements = self.elements(renderer, output, view, shown);
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
-        drawn.map(|drawn| Drawn::of(drawn, before))
+        self.drawn(output, output, drawn, before)
+    }
+
+    /// What drawing `output` came to, with what was drawn before it in the
+    /// same turn, and who is to be told when it is shown. `shows` is the
+    /// output whose surfaces were drawn, which is another for a mirror.
+    fn drawn<E>(
+        &self,
+        output: &Output,
+        shows: &Output,
+        drawn: Result<RenderOutputResult<'_>, E>,
+        before: Vec<Rectangle<i32, Physical>>,
+    ) -> Result<Drawn, E> {
+        drawn.map(|drawn| {
+            let feedback = self.feedback(output, shows, &drawn.states);
+            Drawn::of(drawn, before, feedback)
+        })
     }
 
     /// Where the mark that says the screen is captured is on `output`: in
@@ -2444,7 +2471,8 @@ impl Compositor {
             ))
         }));
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
-        drawn.map(|drawn| Drawn::of(drawn, Vec::new()))
+        let output = self.aside.mirrors[at].head.output.clone();
+        self.drawn(&output, &source, drawn, Vec::new())
     }
 
     /// What a locked screen shows: the pointer, over what the locker put
@@ -3624,6 +3652,7 @@ pub(crate) struct Protocols {
     /// Windows a program shares with another by a handle, for a dialog of
     /// one to belong to a window of the other, as a portal's does.
     pub(crate) foreign: XdgForeignState,
+    _presentation: PresentationState,
 }
 
 impl Protocols {
@@ -3633,6 +3662,7 @@ impl Protocols {
             _decorations: XdgDecorationState::new::<Compositor>(display),
             _idle_inhibit: IdleInhibitManagerState::new::<Compositor>(display),
             foreign: XdgForeignState::new::<Compositor>(display),
+            _presentation: PresentationState::new::<Compositor>(display, Monotonic::ID as u32),
         }
     }
 }

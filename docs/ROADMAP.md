@@ -631,11 +631,16 @@ what only games and touchpads need last.
 - [x] A dialog of one program belonging to a window of another
       (`xdg-foreign`), as a portal's file chooser does, which opens where
       that window is, over it if it is fullscreen.
+- [x] Programs told when what they drew reached the screen
+      (`presentation-time`), by the card's own clock and count of
+      refreshes, for a video to keep time with its sound. A nested
+      compositor's host says nothing of it, so there it is the time it is
+      heard of.
 - [ ] Smaller protocols that programs complain of lacking:
-      `presentation-time`, `keyboard-shortcuts-inhibit`, content type and
-      tearing control, which Smithay does not have yet. A program that
-      inhibits the shortcuts, as a virtual machine does, needs a key that
-      always gets back out, which is a decision to make first.
+      `keyboard-shortcuts-inhibit`, content type, and tearing control,
+      which Smithay does not have yet. A program that inhibits the
+      shortcuts, as a virtual machine does, needs a key that always gets
+      back out, which is a decision to make first.
 - [ ] What games and remote desktops need of the pointer: locked,
       confined, and moved without a position (`pointer-constraints`,
       `relative-pointer`).

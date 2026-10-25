@@ -252,7 +252,7 @@ impl Screen {
         self.report_problems(compositor);
         if self.redraw.replace(false) {
             let age = self.backend.buffer_age().unwrap_or(0);
-            let damage = {
+            let (damage, feedback) = {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
                 // A window by itself is drawn in a buffer of the card's
                 // that can be read back from.
@@ -263,9 +263,12 @@ impl Screen {
                     &mut self.tracker,
                     age,
                 )?;
-                result.damage
+                (result.damage, result.feedback)
             };
             self.backend.submit(damage.as_deref())?;
+            // The host compositor does not say when it showed what was
+            // submitted, so it is taken to be now.
+            feedback.shown(None, None);
             compositor.send_frames(&self.output, self.started.elapsed());
             // Draw continuously; the host compositor paces us.
             self.backend.window().request_redraw();

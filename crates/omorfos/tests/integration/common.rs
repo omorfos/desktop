@@ -12,8 +12,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos::Compositor;
+use omorfos::{Compositor, Feedback};
 use smithay::backend::allocator::Fourcc;
+use smithay::backend::drm::DrmEventMetadata;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::pixman::PixmanRenderer;
 use smithay::backend::renderer::{Bind, ExportMem};
@@ -61,6 +62,7 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
 };
+use wayland_protocols::wp::presentation_time::client::{wp_presentation, wp_presentation_feedback};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1 as primary_manager,
     zwp_primary_selection_device_v1 as primary_device,
@@ -153,6 +155,8 @@ struct Monitor {
     image: Image<'static, 'static>,
     tracker: OutputDamageTracker,
     size: (i32, i32),
+    /// Who is to be told when the frame drawn last is shown.
+    drawn: Option<Feedback>,
 }
 
 pub(crate) struct Picture {
@@ -236,6 +240,7 @@ impl Session {
             image: Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap(),
             output: output.clone(),
             size,
+            drawn: None,
         });
         output
     }
@@ -255,6 +260,14 @@ impl Session {
     pub(crate) fn suggest_scale(&mut self, scale: omorfos::Scale) {
         let output = self.output();
         self.inner.compositor_mut().suggest_scale(&output, scale);
+    }
+
+    /// Says that the frame drawn last on the first output was shown, as
+    /// the graphics card would, with what it says of it, if anything, and
+    /// how long the screen's refresh takes, if that is known.
+    pub(crate) fn present(&mut self, card: Option<&DrmEventMetadata>, refresh: Option<Duration>) {
+        let drawn = self.monitors[0].drawn.take().unwrap();
+        drawn.shown(card, refresh);
     }
 
     /// Tells what is on the first output that a frame was shown.
@@ -579,6 +592,7 @@ impl Session {
             )
             .unwrap();
         let damaged = result.damage.is_some();
+        monitor.drawn = Some(result.feedback);
         let width = monitor.size.0;
         let region = Rectangle::from_size(monitor.size.into());
         let mapping = self
@@ -665,6 +679,17 @@ pub(crate) enum Event {
         pressed: bool,
     },
     FrameDone,
+    /// What a surface committed was shown, at a time by the clock the
+    /// compositor named, in the screen's refresh `sequence`, which takes
+    /// `refresh`; with how it was shown.
+    Presented {
+        at: Duration,
+        refresh: Duration,
+        sequence: u64,
+        kind: wp_presentation_feedback::Kind,
+    },
+    /// What a surface committed was never shown.
+    Discarded,
     /// A panel was told it has nowhere to be any more.
     LayerClosed,
     /// The session is locked, as this client asked.
@@ -746,6 +771,9 @@ pub(crate) struct ClientState {
     exporter: Option<zxdg_exporter_v2::ZxdgExporterV2>,
     importer: Option<zxdg_importer_v2::ZxdgImporterV2>,
     pub(crate) exported: Option<String>,
+    /// Being told when what was drawn is shown, and by which clock.
+    presentation: Option<wp_presentation::WpPresentation>,
+    pub(crate) clock: Option<u32>,
     window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
     pub(crate) offered: Vec<String>,
@@ -1311,6 +1339,15 @@ impl Client {
         exporter.export_toplevel(&window.surface, &self.handle(), ())
     }
 
+    /// Asks to be told when what `surface` commits next is shown.
+    pub(crate) fn feedback(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> wp_presentation_feedback::WpPresentationFeedback {
+        let presentation = self.state.presentation.as_ref().unwrap();
+        presentation.feedback(surface, &self.handle(), ())
+    }
+
     /// Makes `child` belong to the window another program shared as
     /// `handle`, as a dialog of it.
     pub(crate) fn import_parent_of(
@@ -1683,6 +1720,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "zxdg_exporter_v2" => state.exporter = Some(registry.bind(name, version, handle, ())),
             "zxdg_importer_v2" => state.importer = Some(registry.bind(name, version, handle, ())),
+            "wp_presentation" => {
+                state.presentation = Some(registry.bind(name, version, handle, ()));
+            }
             "ext_image_copy_capture_manager_v1" => {
                 state.capturers = Some(registry.bind(name, version, handle, ()));
             }
@@ -2307,6 +2347,52 @@ delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: zxdg_exporter_v2::ZxdgExporterV2);
 delegate_noop!(ClientState: zxdg_importer_v2::ZxdgImporterV2);
 delegate_noop!(ClientState: ignore zxdg_imported_v2::ZxdgImportedV2);
+
+impl Dispatch<wp_presentation::WpPresentation, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wp_presentation::WpPresentation,
+        event: wp_presentation::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wp_presentation::Event::ClockId { clk_id } = event {
+            state.clock = Some(clk_id);
+        }
+    }
+}
+
+impl Dispatch<wp_presentation_feedback::WpPresentationFeedback, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &wp_presentation_feedback::WpPresentationFeedback,
+        event: wp_presentation_feedback::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let told = match event {
+            wp_presentation_feedback::Event::Presented {
+                tv_sec_hi,
+                tv_sec_lo,
+                tv_nsec,
+                refresh,
+                seq_hi,
+                seq_lo,
+                flags,
+            } => Event::Presented {
+                at: Duration::new(u64::from(tv_sec_hi) << 32 | u64::from(tv_sec_lo), tv_nsec),
+                refresh: Duration::from_nanos(u64::from(refresh)),
+                sequence: u64::from(seq_hi) << 32 | u64::from(seq_lo),
+                kind: flags.into_result().unwrap(),
+            },
+            wp_presentation_feedback::Event::Discarded => Event::Discarded,
+            _ => return,
+        };
+        state.events.push(told);
+    }
+}
 
 impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ()> for ClientState {
     fn event(

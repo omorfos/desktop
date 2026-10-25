@@ -23,7 +23,8 @@ use omorfos_config::{Acceleration, Action, Command, Mouse, OfferedMode, ScreenMo
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{
-    DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmNode, GbmBufferedSurface, NodeType,
+    DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmEventMetadata, DrmNode,
+    GbmBufferedSurface, NodeType,
 };
 use smithay::backend::input::InputEvent;
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
@@ -49,7 +50,7 @@ use super::winit::{
     cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
     wallpaper,
 };
-use crate::{Compositor, Scale, Session};
+use crate::{Compositor, Feedback, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
 /// several is also its only way to a GPU renderer without `unsafe`.
@@ -96,7 +97,7 @@ struct Screen {
     modes: Vec<Mode>,
     mode: Mode,
     wanted: Option<ScreenMode>,
-    surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
+    surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Feedback>,
     tracker: OutputDamageTracker,
     /// How long it shows one frame.
     frame: Duration,
@@ -215,8 +216,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let shown = Rc::clone(&hardware);
     session
         .handle()
-        .insert_source(card_events, move |event, _, compositor| match event {
-            DrmEvent::VBlank(crtc) => shown.borrow_mut().frame_shown(crtc, compositor),
+        .insert_source(card_events, move |event, card, compositor| match event {
+            DrmEvent::VBlank(crtc) => {
+                let card = card.as_ref();
+                shown.borrow_mut().frame_shown(crtc, card, compositor);
+            }
             DrmEvent::Error(error) => {
                 let _ = writeln!(stderr(), "omorfos: {error}");
             }
@@ -680,12 +684,20 @@ impl Hardware {
             .find(|crtc| !in_use(crtc))
     }
 
-    /// Notes that a frame reached the screen driven by `crtc`, and tells
-    /// the applications on it to draw the next.
-    fn frame_shown(&mut self, crtc: crtc::Handle, compositor: &mut Compositor) {
+    /// Notes that a frame reached the screen driven by `crtc`, at the time
+    /// the card gives in `card`, and tells the applications on it so and to
+    /// draw the next.
+    fn frame_shown(
+        &mut self,
+        crtc: crtc::Handle,
+        card: Option<&DrmEventMetadata>,
+        compositor: &mut Compositor,
+    ) {
         let elapsed = self.started.elapsed();
         if let Some(screen) = self.screens.iter_mut().find(|screen| screen.crtc == crtc) {
-            let _ = screen.surface.frame_submitted();
+            if let Ok(Some(feedback)) = screen.surface.frame_submitted() {
+                feedback.shown(card, Some(screen.frame));
+            }
             // A frame from before the screen was taken away says nothing
             // about what is on it now.
             if screen.picture == Picture::Queued {
@@ -803,11 +815,13 @@ impl Screen {
                 &mut self.tracker,
                 usize::from(age),
             )?;
-            result.damage.map(|damage| (damage, result.sync))
+            let (damage, sync, feedback) = (result.damage, result.sync, result.feedback);
+            damage.map(|damage| (damage, sync, feedback))
         };
         match drawn {
-            Some((damage, sync)) => {
-                self.surface.queue_buffer(Some(sync), Some(damage), ())?;
+            Some((damage, sync, feedback)) => {
+                self.surface
+                    .queue_buffer(Some(sync), Some(damage), feedback)?;
                 self.picture = Picture::Queued;
                 Ok(true)
             }
