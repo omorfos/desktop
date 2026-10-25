@@ -566,6 +566,29 @@ impl Viewer {
 impl Drop for Viewer {
     fn drop(&mut self) {
         let _ = self.stream.disconnect();
+        // PipeWire is to have taken the link away before the next viewer
+        // links to the stream, which it refuses while the stream's only
+        // way out is taken. The socket closing is not enough: a test
+        // starting a program meanwhile holds a copy of it for a while.
+        let heard = Rc::new(Cell::new(false));
+        let hearing = Rc::clone(&heard);
+        let asked = self.core.sync(0).unwrap();
+        let _listener = self
+            .core
+            .add_listener_local()
+            .done(move |id, said| {
+                hearing.set(hearing.get() || (id == pw::core::PW_ID_CORE && said == asked));
+            })
+            .register();
+        // A PipeWire that has gone says nothing, and is not waited on long.
+        for _ in 0..500 {
+            if heard.get() {
+                break;
+            }
+            self.main
+                .loop_()
+                .iterate(pw::loop_::Timeout::Finite(Duration::from_millis(10)));
+        }
     }
 }
 
