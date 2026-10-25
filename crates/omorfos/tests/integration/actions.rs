@@ -95,9 +95,18 @@ fn workspaces_can_be_switched_and_windows_sent_between_them() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     assert_eq!(active(&session), 3);
     session.compositor_mut().perform(&Action::NextWorkspace);
-    assert_eq!(active(&session), 0, "the four workspaces wrap around");
+    assert_eq!(
+        active(&session),
+        3,
+        "none after the last, with nothing on it"
+    );
     session.compositor_mut().perform(&Action::PreviousWorkspace);
-    assert_eq!(active(&session), 3);
+    assert_eq!(active(&session), 2);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    assert_eq!(active(&session), 0, "and none before the first");
+    session.settle();
 
     session
         .compositor_mut()

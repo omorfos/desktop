@@ -8,8 +8,11 @@
 //! one that was there is kept otherwise, which is how a swipe is taken
 //! back halfway. Either way it is shown at once, so that nothing waits on
 //! the movement, and the workspaces settle where they belong over 240 ms,
-//! as `docs/DESIGN.md` says of a workspace sliding. With nothing beside
-//! the one shown, it goes a little way with the fingers, and back.
+//! as `docs/DESIGN.md` says of a workspace sliding. Workspaces do not go
+//! round: before the first there is nothing, and after the last only a
+//! new one, if there is a window on the last. With nothing to come in on
+//! the side it leaves, the one shown goes a little way with the fingers,
+//! and back.
 //!
 //! The keys that go between workspaces slide them the same way, without
 //! the fingers: the one a key brings is shown at once and slides in from
@@ -88,14 +91,6 @@ impl Compositor {
         f64::from(width)
     }
 
-    /// Whether the current output has a workspace to slide in beside the
-    /// one it shows.
-    fn slides_to_another(&self) -> bool {
-        let output = self.desktop.current_output();
-        let workspaces = self.desktop.workspaces();
-        workspaces.filter(|place| place.output == output).count() > 1
-    }
-
     /// Takes three fingers that began to swipe at `time`, on the output the
     /// pointer is on. A slide still settling is taken up from where it is.
     pub(crate) fn swipe_began(&mut self, time: u32) {
@@ -114,11 +109,6 @@ impl Compositor {
     /// `time`. Says whether there was a swipe of ours to carry them.
     pub(crate) fn swipe_moved(&mut self, dx: f64, time: u32) -> bool {
         let width = self.slide_width();
-        let resisted = if self.slides_to_another() {
-            1.0
-        } else {
-            RESISTED
-        };
         let Some(following) = self.protocols.gestures.slide.following.as_mut() else {
             return false;
         };
@@ -128,7 +118,16 @@ impl Compositor {
             following.last = time;
         }
         following.moved += dx;
-        let offset = following.moved.mul_add(resisted, following.from);
+        let (from, moved) = (following.from, following.moved);
+        // Fingers going left bring in what is after; with nothing there,
+        // the workspace gives a little and no more.
+        let forwards = from + moved < 0.0;
+        let resisted = if self.desktop.goes_on(forwards) {
+            1.0
+        } else {
+            RESISTED
+        };
+        let offset = moved.mul_add(resisted, from);
         self.desktop.slide(layout(offset.clamp(-width, width)));
         true
     }
@@ -145,7 +144,7 @@ impl Compositor {
         let next = offset < 0.0;
         let thrown = following.speed.mul_add(THROW, offset);
         let far = thrown.abs() > width / 2.0 && (thrown < 0.0) == next;
-        let turned = !cancelled && far && self.slides_to_another();
+        let turned = !cancelled && far && self.desktop.goes_on(next);
         // The workspace that came in is shown from where it has got to.
         let from = match (turned, next) {
             (false, _) => offset,

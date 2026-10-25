@@ -2323,32 +2323,54 @@ impl Desktop {
             .map_or(0, |output| output.area.size.width);
         let width = width.cast_signed();
         let count = shown.workspaces.len();
+        // There is none before the first, nor yet after the last.
         let (next, shift) = match shown.slid.signum() {
-            -1 => ((shown.active + 1) % count, shown.slid + width),
-            1 => ((shown.active + count - 1) % count, shown.slid - width),
+            -1 => (Some(shown.active + 1), shown.slid + width),
+            1 => (shown.active.checked_sub(1), shown.slid - width),
             _ => return None,
         };
-        let workspace = shown
-            .beside
-            .filter(|beside| *beside < count)
-            .unwrap_or(next);
+        let next = next.filter(|next| *next < count);
+        let workspace = shown.beside.filter(|beside| *beside < count).or(next)?;
         (workspace != shown.active).then_some((workspace, shift))
     }
 
-    /// Shows the following workspace on the current output, wrapping
-    /// around.
-    pub fn next_workspace(&mut self) {
-        let count = self.sets[self.current].workspaces.len();
-        let next = (self.sets[self.current].active + 1) % count;
-        self.turn(self.current, next);
+    /// Whether the current output has a workspace to go to `forwards`, or
+    /// back: there is none before the first, and after the last only a new
+    /// one, if a window is on the last and there is room for another. So
+    /// there is never more than one empty workspace past the others.
+    #[must_use]
+    pub fn goes_on(&self, forwards: bool) -> bool {
+        let set = &self.sets[self.current];
+        if !forwards {
+            return set.active > 0;
+        }
+        let last = set.active + 1 == set.workspaces.len();
+        // What is on every workspace is no reason to make another.
+        let groups = set.workspaces[set.active].groups.iter();
+        let occupied = groups.into_iter().any(|group| !group.standing.sticky);
+        !last || (occupied && set.desktops().len() < Self::MOST_WORKSPACES)
     }
 
-    /// Shows the preceding workspace on the current output, wrapping
-    /// around.
+    /// Shows the following workspace on the current output, making one
+    /// after the last if [`Desktop::goes_on`] says there is to be one.
+    pub fn next_workspace(&mut self) {
+        if !self.goes_on(true) {
+            return;
+        }
+        let set = &self.sets[self.current];
+        if set.active + 1 < set.workspaces.len() {
+            self.turn(self.current, set.active + 1);
+        } else {
+            self.new_workspace();
+        }
+    }
+
+    /// Shows the preceding workspace on the current output, if there is one.
     pub fn previous_workspace(&mut self) {
-        let count = self.sets[self.current].workspaces.len();
-        let previous = (self.sets[self.current].active + count - 1) % count;
-        self.turn(self.current, previous);
+        if self.goes_on(false) {
+            let before = self.sets[self.current].active - 1;
+            self.turn(self.current, before);
+        }
     }
 
     /// Sends a window's whole frame to another workspace of its output,
@@ -4328,7 +4350,7 @@ mod tests {
         desktop.next_workspace();
         desktop.next_workspace();
         desktop.next_workspace();
-        assert_eq!(desktop.active_workspace(), 0, "round the four of them");
+        assert_eq!(desktop.active_workspace(), 3, "the last of the four, empty");
 
         // Sent to a desktop by its number, it leaves fullscreen to go.
         desktop.move_to_workspace(video, 2);
@@ -5076,14 +5098,49 @@ mod tests {
     }
 
     #[test]
-    fn next_and_previous_workspace_wrap_around() {
+    fn next_and_previous_workspace_stop_at_the_ends_with_one_made_past_the_last() {
         let mut desktop = desktop();
         desktop.previous_workspace();
-        assert_eq!(desktop.active_workspace(), 2);
+        assert_eq!(desktop.active_workspace(), 0, "nothing before the first");
+        assert!(!desktop.goes_on(false));
         desktop.next_workspace();
-        assert_eq!(desktop.active_workspace(), 0);
         desktop.next_workspace();
-        assert_eq!(desktop.active_workspace(), 1);
+        desktop.next_workspace();
+        assert_eq!(
+            desktop.active_workspace(),
+            2,
+            "nothing after the last, empty"
+        );
+        assert!(!desktop.goes_on(true));
+
+        open(&mut desktop, "app");
+        assert!(desktop.goes_on(true));
+        desktop.next_workspace();
+        assert_eq!(desktop.active_workspace(), 3, "with a window, one is made");
+        desktop.next_workspace();
+        assert_eq!(desktop.active_workspace(), 3, "and only one");
+        desktop.previous_workspace();
+        assert_eq!(desktop.workspace_count(), 3, "which goes once left");
+    }
+
+    #[test]
+    fn a_window_on_every_workspace_makes_none_past_the_last() {
+        let mut desktop = Desktop::new(Settings::default(), 1);
+        desktop.set_outputs(vec![SCREEN]);
+        let note = open(&mut desktop, "note");
+        desktop.toggle_sticky(note);
+        assert!(!desktop.goes_on(true));
+    }
+
+    #[test]
+    fn no_workspace_is_made_past_the_most_there_can_be() {
+        let mut desktop = Desktop::new(Settings::default(), Desktop::MOST_WORKSPACES);
+        desktop.set_outputs(vec![SCREEN]);
+        desktop.switch_workspace(Desktop::MOST_WORKSPACES - 1);
+        open(&mut desktop, "app");
+        assert!(!desktop.goes_on(true));
+        desktop.next_workspace();
+        assert_eq!(desktop.active_workspace(), Desktop::MOST_WORKSPACES - 1);
     }
 
     #[test]
@@ -5268,21 +5325,36 @@ mod tests {
     }
 
     #[test]
-    fn slid_right_the_one_before_comes_in_on_the_left_round_from_the_last() {
+    fn slid_right_the_one_before_comes_in_on_the_left_and_none_before_the_first() {
         let mut desktop = desktop();
         let first = open(&mut desktop, "first");
-        desktop.previous_workspace();
-        assert_eq!(desktop.active_workspace(), 2, "round to the last");
-        let last = open(&mut desktop, "last");
-        desktop.next_workspace();
         let at = frame(&desktop, first).geometry.origin.x;
+        desktop.slide(200);
+        assert_eq!(
+            across(&desktop),
+            [(first, at + 200, true)],
+            "none before it"
+        );
 
+        desktop.slide(0);
+        desktop.next_workspace();
+        let second = open(&mut desktop, "second");
         desktop.slide(200);
         let width = SCREEN.size.width.cast_signed();
         let shown = across(&desktop);
-        assert_eq!(shown[0], (first, at + 200, true));
-        assert_eq!(shown[1].0, last);
-        assert!(shown[1].1 < 200 && shown[1].1 >= 200 - width, "{shown:?}");
+        assert_eq!(shown[0].0, second);
+        assert_eq!(shown[1], (first, at + 200 - width, false));
+    }
+
+    #[test]
+    fn slid_left_from_the_last_nothing_comes_in_until_one_is_made() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(2);
+        let last = open(&mut desktop, "last");
+        let at = frame(&desktop, last).geometry.origin.x;
+
+        desktop.slide(-200);
+        assert_eq!(across(&desktop), [(last, at - 200, true)]);
     }
 
     #[test]

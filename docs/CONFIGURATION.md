@@ -246,7 +246,11 @@ its number, and goes again once nothing is on it and another is being
 shown. A screen has 32 at most.
 
 Going to another workspace slides it in from the side it lies on: the
-next from the right, the one before from the left.
+next from the right, the one before from the left. The row does not go
+round. There is nothing before the first workspace; after the last, if a
+window is on it, `Super+Right` makes a new one, and goes no further than
+that while it is empty. A swipe towards where there is nothing gives a
+little, and goes back.
 
 On a touchpad, three fingers swiped left carry the workspace with them
 and bring the next in from the right, and swiped right bring in the one

@@ -361,3 +361,59 @@ fn a_window_slides_off_and_in_with_its_workspace_without_fading() {
     session.advance(Duration::from_millis(240));
     assert_eq!(session.draw().at(5, 5), BLUE, "nor coming in afresh");
 }
+
+// --- The ends -------------------------------------------------------------
+
+#[test]
+fn before_the_first_workspace_there_is_nothing_and_a_swipe_gives_a_little() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, 400.0, 100);
+    assert_eq!(slid(&session), 100, "a quarter of the way");
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0);
+    session.settle();
+    assert_eq!(slid(&session), 0);
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    assert_eq!((active(&session), slid(&session)), (0, 0), "nor a key");
+}
+
+#[test]
+fn past_the_last_with_a_window_on_it_one_empty_workspace_is_made_and_no_more() {
+    let (mut session, mut client) = two_windows();
+    let last = Action::Workspace(WorkspaceNumber::clamped(4));
+    session.compositor_mut().perform(&last);
+    session.settle();
+    session.open(&mut client, "last", (200, 100), RED);
+    let count = |session: &Session| session.compositor().desktop().workspace_count();
+    assert_eq!((active(&session), count(&session)), (3, 4));
+
+    carry(&mut session, -400.0, 1000);
+    assert_eq!(slid(&session), -400, "all the way with the fingers");
+    lift(&mut session, false);
+    assert_eq!(
+        (active(&session), count(&session)),
+        (4, 5),
+        "made and shown"
+    );
+    session.settle();
+
+    carry(&mut session, -400.0, 100);
+    assert_eq!(slid(&session), -100, "nothing on it, so nothing after it");
+    lift(&mut session, false);
+    session.settle();
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!((active(&session), count(&session)), (4, 5), "nor by a key");
+}
+
+#[test]
+fn the_key_past_the_last_slides_in_the_one_it_makes() {
+    let (mut session, mut client) = two_windows();
+    let last = Action::Workspace(WorkspaceNumber::clamped(4));
+    session.compositor_mut().perform(&last);
+    session.settle();
+    session.open(&mut client, "last", (200, 100), RED);
+
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!((active(&session), slid(&session)), (4, 640));
+}

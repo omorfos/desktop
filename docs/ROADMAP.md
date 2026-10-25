@@ -658,6 +658,9 @@ what only games and touchpads need last.
       however far apart the two are, and a key pressed again taking them
       on from where they are. What slides in or off with its workspace
       does not fade.
+- [x] The row of workspaces not going round: nothing before the first,
+      and after the last only a new one, empty, made when the last has a
+      window on it.
 - [ ] Nothing sliding with `reduce_motion`, once `appearance` has it; and
       whether three fingers or four, which is for the review of the
       defaults.
