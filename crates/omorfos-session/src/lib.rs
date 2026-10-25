@@ -33,6 +33,7 @@ mod autostart;
 mod brightness;
 mod media;
 mod power;
+mod radios;
 mod shown;
 #[cfg(test)]
 mod stand_in;
@@ -203,6 +204,8 @@ pub struct Places {
     /// Where the journal takes what the programs it starts write, each
     /// under its name; where there is none, they write where this does.
     pub journal: PathBuf,
+    /// Where the kernel says what the machine's radios are and do.
+    pub rfkill: PathBuf,
 }
 
 impl Places {
@@ -230,6 +233,7 @@ impl Places {
             scoper: user_manager(variable("XDG_RUNTIME_DIR").as_deref())
                 .then(|| PathBuf::from("systemd-run")),
             journal: PathBuf::from(omorfos_journal::SOCKET),
+            rfkill: PathBuf::from("/dev/rfkill"),
             desktops: address("XDG_CURRENT_DESKTOP")
                 .unwrap_or_else(|| "omorfos".to_owned())
                 .split(':')
@@ -342,6 +346,7 @@ mod tests {
             desktops: Vec::new(),
             scoper: None,
             journal: PathBuf::from("/nowhere/journal"),
+            rfkill: PathBuf::from("/nowhere/rfkill"),
         }
     }
 

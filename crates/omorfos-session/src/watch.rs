@@ -147,9 +147,10 @@ impl Watch {
     }
 }
 
-/// Runs until the compositor ends, locking the session when logind asks
-/// and before the machine sleeps. A machine without logind has nothing to
-/// lock before and nobody to ask, and this ends at once.
+/// Runs until the compositor ends, following the machine's radios, and
+/// locking the session when logind asks and before the machine sleeps. A
+/// machine without logind has nothing to lock before and nobody to ask,
+/// and this only follows the radios.
 ///
 /// # Errors
 ///
@@ -159,7 +160,14 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
     let compositor = compositor.ok_or("there is no compositor to lock the session of")?;
     let news = Client::connect(compositor);
     let news = news.and_then(|mut news| news.send(&Request::Subscribe).map(|()| news))?;
+    let (radios, told, shown) = (
+        places.rfkill.clone(),
+        compositor.to_owned(),
+        places.session.clone(),
+    );
+    std::thread::spawn(move || crate::radios::follow(&radios, &told, shown.as_deref()));
     let Ok(bus) = connect(&places.system) else {
+        ended(news);
         return Ok(());
     };
     // Listened to before sleep is held back, so that nothing said in
@@ -171,6 +179,7 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
     if let Err(error) = &held
         && absent(error)
     {
+        ended(news);
         return Ok(());
     }
     let mut held = Some(held?);
@@ -295,6 +304,11 @@ fn tell_signals(signals: MessageIterator, session: Option<&OwnedObjectPath>, tel
             let _ = tell.send(Ok(heard));
         }
     }
+}
+
+/// Waits for the compositor to end, hearing nothing else of it.
+fn ended(mut news: Client) {
+    while news.receive().is_ok() {}
 }
 
 /// Tells whether the session is locked each time the compositor says it
@@ -446,6 +460,7 @@ mod tests {
             desktops: Vec::new(),
             scoper: None,
             journal: PathBuf::from("/nowhere/journal"),
+            rfkill: PathBuf::from("/nowhere/rfkill"),
         }
     }
 
@@ -558,18 +573,23 @@ mod tests {
     }
 
     #[test]
-    fn without_logind_there_is_nothing_to_watch_for() {
+    fn without_logind_it_goes_on_until_the_compositor_ends() {
         let daemon = Daemon::start();
-        let compositor = Compositor::start();
-        assert!(
-            watch(&places(&daemon, &compositor)).is_ok(),
-            "logind not on the bus"
-        );
-        let unreachable = Places {
-            system: "unix:path=/nowhere/bus".to_owned(),
-            ..places(&daemon, &compositor)
-        };
-        assert!(watch(&unreachable).is_ok(), "no bus");
+        for system in [None, Some("unix:path=/nowhere/bus")] {
+            let compositor = Compositor::start();
+            let mut places = places(&daemon, &compositor);
+            if let Some(system) = system {
+                system.clone_into(&mut places.system);
+            }
+            let running = std::thread::spawn(move || watch(&places).is_ok());
+            eventually(|| compositor.subscribers() == 1);
+            // What the compositor says meanwhile is heard and is nothing to
+            // act on.
+            compositor.locked(true);
+            assert!(!running.is_finished(), "not while the compositor is there");
+            compositor.end();
+            assert!(running.join().unwrap(), "and then without fault");
+        }
     }
 
     #[test]

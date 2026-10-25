@@ -54,6 +54,19 @@ pub(crate) fn show(session: &Connection, level: &Level) -> Result<(), Failure> {
     notify(session, &body)
 }
 
+/// Shows `title`, with `icon`, among the notifications, in place of what
+/// was said of the radios before.
+pub(crate) fn said(session: &Connection, title: &str, icon: &str) -> Result<(), Failure> {
+    let hints = HashMap::from([
+        ("synchronous", Value::from("radios")),
+        ("transient", Value::Bool(true)),
+        ("urgency", Value::U8(0)),
+    ]);
+    let actions: Vec<&str> = Vec::new();
+    let body = ("omorfos", 0_u32, icon, title, "", actions, hints, STAYS);
+    notify(session, &body)
+}
+
 /// A notification as the specification has it be sent: from whom, what
 /// it replaces, its icon, title and words, what can be done with it, what
 /// else it says, and for how long it is shown.

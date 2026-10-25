@@ -17,6 +17,9 @@ omorfos-entries = { path = "../omorfos-entries" }
 # Hears from the compositor when the session is locked, and asks it to lock.
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-journal = { path = "../omorfos-journal" }
+# Already in the tree through Smithay. Says whether the kernel has said
+# more of the radios than has been read (`event`).
+rustix = { version = "1.1.5", default-features = false, features = ["event"] }
 # What an action is written as, to the compositor.
 serde_json = "1.0"
 # Already in the tree through the notifications. Speaks to logind, to what

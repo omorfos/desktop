@@ -145,6 +145,7 @@ fn watching(session: &mut Session, daemon: &Daemon, logind: &Logind) -> JoinHand
         desktops: Vec::new(),
         scoper: None,
         journal: PathBuf::from("/nowhere/journal"),
+        rfkill: PathBuf::from("/nowhere/rfkill"),
     };
     let running = std::thread::spawn(move || match omorfos_session::watch(&places) {
         Ok(()) => "ended".to_owned(),

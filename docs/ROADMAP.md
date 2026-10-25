@@ -498,7 +498,7 @@ what only games and touchpads need last.
       choice: what `ssh-agent` holds (`ssh-add -D`) and what `gpg-agent`
       has kept, so that a locked machine left behind has no key to use.
       Off unless chosen, since every key is to be given again after.
-- [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
+- [x] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another
       program. Each change is shown as the volume is, "Bluetooth off",
@@ -507,10 +507,9 @@ what only games and touchpads need last.
       radios and says when they change. The keys are not bound: the
       kernel has already acted on them, and a binding as well would undo
       it. The radios are read from `/dev/rfkill`, which tells of each
-      change as it happens, by a program of ours that runs all session,
-      which tells the compositor. Where first: `omorfos-session watch`
-      ends at once on a machine without logind, so either its logind
-      half is made to be optional, or the radios go to another.
+      change as it happens, by `omorfos-session watch`, whose logind half
+      is now its optional part, and which tells the compositor. The
+      panel says "Aeroplane mode", or which are off.
 - [x] Writing in languages that need an input method
       (`text-input-v3`, `input-method-v2`, `virtual-keyboard-v1`), for a
       program given the `input` role, its popup under the text and no key

@@ -1443,6 +1443,14 @@ listen for (MPRIS); browsers and most music players do.
 The keys do nothing while the screen is locked, and a key held down
 changes the level once.
 
+The radios, Wi-Fi, Bluetooth and the rest, are followed as the kernel
+knows them, whatever turned them off or on: the key the laptop has for
+them, which the kernel acts on itself, a switch on the side, or another
+program. Each change is shown as the volume is, "Bluetooth off", and
+"Aeroplane mode on" when every radio is off; the panel says "Aeroplane
+mode", or which are off, for as long as they are. omorfos binds no key to
+them, as the kernel has already done what the key asks.
+
 ## Locking the screen
 
 omorfos does not lock by itself; it starts a screen locker to. Name the

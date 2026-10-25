@@ -368,11 +368,12 @@ impl Notifications {
         let tag = hints
             .remove("synchronous")
             .and_then(|tag| String::try_from(tag).ok());
-        // A level has no words and goes by itself soon; a warning has its
-        // words, here in place of the tag, and stays.
-        let heard = if let Some(value) = value {
+        // A level, or what the radios are, has no words and goes by itself
+        // soon; a warning has its words, here in place of the tag, and
+        // stays.
+        let heard = if let Some(tag) = tag {
             assert_eq!((body.as_str(), stays), ("", 1500));
-            (icon, title, value, tag.unwrap())
+            (icon, title, value.unwrap_or(-1), tag)
         } else {
             assert_eq!(stays, 0);
             (icon, title, -1, body)

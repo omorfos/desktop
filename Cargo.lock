@@ -2080,6 +2080,7 @@ dependencies = [
  "omorfos-entries",
  "omorfos-ipc",
  "omorfos-journal",
+ "rustix 1.1.5",
  "serde_json",
  "tempfile",
  "zbus",
