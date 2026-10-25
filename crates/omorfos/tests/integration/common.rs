@@ -405,9 +405,9 @@ impl Session {
         std::fs::write(self.config.path().join(name), contents).unwrap();
     }
 
-    /// Lets whatever is coming onto the screen, or changing colour, get
-    /// there. Needed where the built-in theme is in use, which takes its
-    /// time over both.
+    /// Lets whatever is coming onto the screen, changing colour, or sliding
+    /// in with a workspace, get there. Needed where the built-in theme is
+    /// in use, which takes its time over the first two.
     pub(crate) fn settle(&mut self) {
         // What is new is first seen now, and is all there a second on.
         self.step();

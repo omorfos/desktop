@@ -569,7 +569,7 @@ fn workspace(number: u32) -> WorkspaceNumber {
 fn switching_workspace_changes_only_the_screen_the_pointer_is_on() {
     let (mut session, _second, _client) = a_window_on_each();
     perform(&mut session, &Action::Workspace(workspace(2)));
-    session.step();
+    session.settle();
     assert_eq!(
         session.draw_on(1).at(100, 50),
         BACKGROUND,
@@ -579,10 +579,10 @@ fn switching_workspace_changes_only_the_screen_the_pointer_is_on() {
 
     pointer_to(&mut session, 100, 100);
     perform(&mut session, &Action::NextWorkspace);
-    session.step();
+    session.settle();
     assert_eq!(session.draw_on(0).at(100, 50), BACKGROUND);
     perform(&mut session, &Action::PreviousWorkspace);
-    session.step();
+    session.settle();
     assert_eq!(session.draw_on(0).at(100, 50), RED);
     assert_eq!(
         session.draw_on(1).at(100, 50),
@@ -646,7 +646,7 @@ fn a_window_from_an_unplugged_screen_keeps_its_workspace_number() {
     );
     pointer_to(&mut session, 100, 100);
     perform(&mut session, &Action::Workspace(workspace(3)));
-    session.step();
+    session.settle();
     assert_eq!(session.draw().at(100, 50), BLUE, "on the first's third");
 }
 

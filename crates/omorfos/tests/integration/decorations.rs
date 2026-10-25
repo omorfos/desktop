@@ -330,8 +330,8 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     session.advance(Duration::from_millis(100));
     assert_eq!(seen(&mut session), whole);
 
-    // Its workspace is left, which takes it from the screen.
-    session.compositor_mut().perform(&Action::NextWorkspace);
+    // Minimized, it goes from the screen.
+    session.compositor_mut().perform(&Action::Minimize);
     session.step();
     assert_eq!(seen(&mut session), whole, "still all there");
     let start = session.now;
@@ -352,13 +352,6 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
     session.step();
     assert!(!session.draw().damaged, "and not drawn again");
-
-    // Shown again, it comes in afresh.
-    session.compositor_mut().perform(&Action::PreviousWorkspace);
-    session.step();
-    assert_eq!(seen(&mut session), [BACKGROUND; 3], "coming back");
-    session.advance(Duration::from_millis(100));
-    assert_eq!(seen(&mut session), whole);
 }
 
 #[test]
@@ -436,7 +429,7 @@ fn a_window_of_one_colour_fades_out_too() {
 
     session
         .compositor_mut()
-        .perform(&omorfos_config::Action::NextWorkspace);
+        .perform(&omorfos_config::Action::Minimize);
     session.step();
     session.advance(Duration::from_millis(50));
     let half = inside(&mut session);
@@ -829,7 +822,7 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     session.step();
     assert_eq!(session.draw().at(100, 80), BACKGROUND, "left where it was");
     session.compositor_mut().perform(&Action::NextWorkspace);
-    session.step();
+    session.settle();
 
     // The last row opens a list of the workspaces beside it, and the
     // third of those is where the window is sent.
@@ -840,7 +833,7 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     click(&mut session, (send.0 + 220, send.1 + 2 * 28));
     assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone from this one");
     session.compositor_mut().perform(&Action::NextWorkspace);
-    session.step();
+    session.settle();
     assert_eq!(session.draw().at(100, 80), RED, "and on the third");
 }
 
@@ -885,7 +878,7 @@ fn a_window_is_put_beside_a_fullscreen_one_from_the_menu_of_its_titlebar() {
     session.compositor_mut().perform(&Action::Fullscreen);
     let desk = Action::Workspace(WorkspaceNumber::clamped(1));
     session.compositor_mut().perform(&desk);
-    session.step();
+    session.settle();
 
     // Beside the last row are the one desktop, then the workspace the
     // second window has to itself, which has room for another.
@@ -924,7 +917,7 @@ fn a_window_can_be_sent_to_a_new_workspace_from_its_titlebar() {
     session
         .compositor_mut()
         .perform(&omorfos_config::Action::NextWorkspace);
-    session.step();
+    session.settle();
     assert_eq!(
         session.draw().at(100, 80),
         RED,

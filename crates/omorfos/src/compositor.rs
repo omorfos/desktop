@@ -20,8 +20,8 @@ use omorfos_config::{
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
-    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Standing,
-    WindowId, WorkspaceId,
+    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Showing,
+    Standing, WindowId, WorkspaceId,
 };
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
 use smithay::backend::allocator::Format;
@@ -1087,6 +1087,16 @@ impl Compositor {
 
     // --- Actions -------------------------------------------------------------
 
+    /// Goes to another workspace of the output the pointer is on, by `go`,
+    /// which is given the one shown and says whether it went forwards; and
+    /// slides in the one it went to.
+    fn go_to_workspace(&mut self, go: impl FnOnce(&mut Desktop, usize) -> bool) {
+        self.desktop.turn_to(self.pointer_position());
+        let was = self.desktop.active_workspace();
+        let forwards = go(&mut self.desktop, was);
+        self.slide_in(was, forwards);
+    }
+
     /// Carries out an action from a key binding or menu entry.
     pub fn perform(&mut self, action: &Action) {
         // A menu that is open was opened on what was there then: a
@@ -1124,22 +1134,24 @@ impl Compositor {
             Action::PreviousTab => self.on_focused(Desktop::previous_tab),
             // Switching workspace applies to the screen the pointer is on.
             Action::Workspace(number) => {
-                self.desktop.turn_to(self.pointer_position());
-                self.desktop
-                    .switch_workspace(bridge::workspace_index(*number));
+                let to = bridge::workspace_index(*number);
+                self.go_to_workspace(|desktop, was| {
+                    desktop.switch_workspace(to);
+                    desktop.active_workspace() > was
+                });
             }
-            Action::NewWorkspace => {
-                self.desktop.turn_to(self.pointer_position());
-                self.desktop.new_workspace();
-            }
-            Action::NextWorkspace => {
-                self.desktop.turn_to(self.pointer_position());
-                self.desktop.next_workspace();
-            }
-            Action::PreviousWorkspace => {
-                self.desktop.turn_to(self.pointer_position());
-                self.desktop.previous_workspace();
-            }
+            Action::NewWorkspace => self.go_to_workspace(|desktop, _| {
+                desktop.new_workspace();
+                true
+            }),
+            Action::NextWorkspace => self.go_to_workspace(|desktop, _| {
+                desktop.next_workspace();
+                true
+            }),
+            Action::PreviousWorkspace => self.go_to_workspace(|desktop, _| {
+                desktop.previous_workspace();
+                false
+            }),
             Action::MoveToNextOutput => self.on_focused(Desktop::move_to_next_output),
             Action::MoveToWorkspace(number) => {
                 let workspace = bridge::workspace_index(*number);
@@ -1758,6 +1770,9 @@ impl Compositor {
         let mut previous = std::mem::take(&mut self.scene);
         let mut veils = Veils::kept(&mut previous, &config.theme);
         let text = &mut self.text;
+        // What slides into view with the workspace it is on was there all
+        // along, and does not come in afresh.
+        let sliding = self.desktop.slid() != 0;
         let motion = &mut self.animation.motion;
         motion.begin(self.animation.clock);
 
@@ -1800,15 +1815,7 @@ impl Compositor {
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     let private = self.desktop.private(*id);
-                    // Every window of the frame is in the picture, so that
-                    // showing another of its tabs is not a coming in.
-                    let mut opacity = 1.0;
-                    for tab in &frame.tabs {
-                        let share = motion.presence(&config.theme, Part::Window, tab.raw());
-                        if tab == id {
-                            opacity = share;
-                        }
-                    }
+                    let opacity = presence(motion, &config.theme, (&frame.tabs, *id), sliding);
                     scene.push((
                         order,
                         Shown {
@@ -1823,6 +1830,7 @@ impl Compositor {
                             chrome,
                             veil: private.then(|| veils.veil(*id, frame.geometry.size)),
                             private,
+                            on: frame.on,
                         },
                     ));
                 }
@@ -3559,7 +3567,9 @@ impl Animation {
     /// being drawn, as they last were, while they fade.
     fn leave(&mut self, previous: Vec<Shown>, scene: &[Shown]) {
         for shown in previous {
-            let still = scene.iter().any(|now| now.id == shown.id);
+            // What slid from the screen with its workspace has not gone.
+            let beside = shown.on == Showing::Beside;
+            let still = beside || scene.iter().any(|now| now.id == shown.id);
             let pieces = (!still).then(|| self.noted(&shown.surface));
             let gone = pieces.flatten().map(|pieces| Gone {
                 part: Part::Window,
@@ -3789,6 +3799,29 @@ impl Painted {
     }
 }
 
+/// How much there is to see of the window `id` of a frame with `tabs`.
+/// Every window of the frame is in the picture, so that showing another of
+/// its tabs is not a coming in; and what is `sliding` into view with its
+/// workspace was there all along.
+fn presence(
+    motion: &mut Motion,
+    theme: &Theme,
+    (tabs, id): (&[WindowId], WindowId),
+    sliding: bool,
+) -> f32 {
+    let mut opacity = 1.0;
+    for tab in tabs {
+        if sliding {
+            motion.arrived(Part::Window, tab.raw());
+        }
+        let share = motion.presence(theme, Part::Window, tab.raw());
+        if *tab == id {
+            opacity = share;
+        }
+    }
+    opacity
+}
+
 /// A window on screen: where it is and the decoration drawn around it.
 #[derive(Debug)]
 pub(crate) struct Shown {
@@ -3816,6 +3849,10 @@ pub(crate) struct Shown {
     /// Whether a rule calls it private, which it still is once the veil
     /// it was drawn with has gone to the next frame.
     private: bool,
+    /// Which of the workspaces drawn on its output it is on: one beside
+    /// the one shown, while they slide, is gone from without fading once
+    /// they settle.
+    on: Showing,
 }
 
 /// What stands for private windows in pictures taken of the screen, kept
@@ -3973,6 +4010,8 @@ struct FrameInfo {
     hovered: Option<Button>,
     /// How it stands apart from the others: rolled up, kept above.
     standing: Standing,
+    /// Which of the workspaces drawn on its output it is on.
+    on: Showing,
 }
 
 impl FrameInfo {
@@ -3984,6 +4023,7 @@ impl FrameInfo {
         Self {
             hovered: over.map(|(_, button)| button),
             standing: frame.standing,
+            on: frame.on,
             shown,
             scale,
             geometry: frame.geometry,

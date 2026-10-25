@@ -145,6 +145,18 @@ pub struct Frame<'a> {
     pub focused: bool,
     /// How it stands apart from the others, as the user asked.
     pub standing: Standing,
+    /// Which of the workspaces drawn on its output it is on.
+    pub on: Showing,
+}
+
+/// Which of the workspaces drawn on an output a frame is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Showing {
+    /// The one the output shows.
+    Shown,
+    /// The one drawn beside it while the workspaces slide: see
+    /// [`Desktop::slide`].
+    Beside,
 }
 
 /// How a frame stands apart from the others, each as the user asked.
@@ -1052,6 +1064,9 @@ struct Set {
     /// How far right the workspace shown is drawn, in units of layout,
     /// while the workspaces are slid across: see [`Desktop::slide`].
     slid: i32,
+    /// The workspace drawn beside it while it is slid, if not the one next
+    /// to it on the side it leaves: see [`Desktop::slide_from`].
+    beside: Option<usize>,
 }
 
 impl Set {
@@ -1269,6 +1284,7 @@ impl Desktop {
             active: 0,
             revealed: None,
             slid: 0,
+            beside: None,
         }
     }
 
@@ -2274,7 +2290,20 @@ impl Desktop {
     /// left. Frames that are on every workspace stay where they are, and
     /// what is shown and has the keyboard does not change. `0` ends it.
     pub fn slide(&mut self, offset: i32) {
-        self.sets[self.current].slid = offset;
+        let set = &mut self.sets[self.current];
+        set.slid = offset;
+        if offset == 0 {
+            set.beside = None;
+        }
+    }
+
+    /// As [`Desktop::slide`], with `workspace` beside the one shown in place
+    /// of the one next to it, until the slide ends: the one a key went from,
+    /// when it went further than the next.
+    pub fn slide_from(&mut self, offset: i32, workspace: usize) {
+        self.slide(offset);
+        let set = &mut self.sets[self.current];
+        set.beside = (offset != 0).then_some(workspace);
     }
 
     /// How far right the workspace the current output shows is slid.
@@ -2294,11 +2323,15 @@ impl Desktop {
             .map_or(0, |output| output.area.size.width);
         let width = width.cast_signed();
         let count = shown.workspaces.len();
-        let (workspace, shift) = match shown.slid.signum() {
+        let (next, shift) = match shown.slid.signum() {
             -1 => ((shown.active + 1) % count, shown.slid + width),
             1 => ((shown.active + count - 1) % count, shown.slid - width),
             _ => return None,
         };
+        let workspace = shown
+            .beside
+            .filter(|beside| *beside < count)
+            .unwrap_or(next);
         (workspace != shown.active).then_some((workspace, shift))
     }
 
@@ -2463,6 +2496,11 @@ impl Desktop {
                     standing: Standing {
                         shaded,
                         ..group.standing
+                    },
+                    on: if shown {
+                        Showing::Shown
+                    } else {
+                        Showing::Beside
                     },
                 }
             })
@@ -5218,6 +5256,12 @@ mod tests {
             0,
             "and it is still the one shown"
         );
+        let on: Vec<Showing> = desktop.frames().map(|frame| frame.on).collect();
+        assert_eq!(
+            on,
+            [Showing::Shown, Showing::Beside],
+            "and only the second beside it"
+        );
 
         desktop.slide(0);
         assert_eq!(across(&desktop), [(first, at, true)], "and back");
@@ -5250,6 +5294,28 @@ mod tests {
 
         desktop.slide(-100);
         assert_eq!(across(&desktop), [(only, at - 100, true)]);
+    }
+
+    #[test]
+    fn slid_from_a_workspace_further_off_it_is_that_one_beside_until_the_slide_ends() {
+        let mut desktop = desktop();
+        let first = open(&mut desktop, "first");
+        let at = frame(&desktop, first).geometry.origin.x;
+        desktop.switch_workspace(2);
+        let third = open(&mut desktop, "third");
+        let width = SCREEN.size.width.cast_signed();
+
+        desktop.slide_from(300, 0);
+        assert_eq!(desktop.slid(), 300);
+        let shown = across(&desktop);
+        assert_eq!(shown[0].0, third);
+        assert_eq!(shown[1], (first, at + 300 - width, false), "not the second");
+
+        desktop.slide(100);
+        assert_eq!(across(&desktop)[1].0, first, "for as long as it lasts");
+        desktop.slide(0);
+        desktop.slide(100);
+        assert_eq!(across(&desktop).len(), 1, "and then the next again");
     }
 
     #[test]

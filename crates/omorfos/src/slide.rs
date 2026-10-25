@@ -10,6 +10,12 @@
 //! the movement, and the workspaces settle where they belong over 240 ms,
 //! as `docs/DESIGN.md` says of a workspace sliding. With nothing beside
 //! the one shown, it goes a little way with the fingers, and back.
+//!
+//! The keys that go between workspaces slide them the same way, without
+//! the fingers: the one a key brings is shown at once and slides in from
+//! the side it lies on, with the one it left beside it, however far apart
+//! the two are. A key pressed again before they settle takes them on from
+//! where they are.
 
 use std::time::Duration;
 
@@ -156,6 +162,22 @@ impl Compositor {
         let began = self.clock();
         self.protocols.gestures.slide.settling = Some(Settling { from, began });
         true
+    }
+
+    /// Slides in the workspace a key has brought onto the current output,
+    /// from the side it lies on, `forwards` being the right, with `was`,
+    /// the one it was showing, beside it. Nothing slides if the key brought
+    /// nothing else.
+    pub(crate) fn slide_in(&mut self, was: usize, forwards: bool) {
+        if self.desktop.active_workspace() == was {
+            return;
+        }
+        let width = self.slide_width();
+        let side = if forwards { width } else { -width };
+        let from = f64::from(self.desktop.slid()) + side;
+        self.desktop.slide_from(layout(from), was);
+        let began = self.clock();
+        self.protocols.gestures.slide.settling = Some(Settling { from, began });
     }
 
     /// Brings a slide that is settling to where it has got to by now.

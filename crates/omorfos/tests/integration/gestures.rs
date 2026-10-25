@@ -4,9 +4,9 @@
 use std::time::Duration;
 
 use omorfos::{Gesture, Input};
-use omorfos_config::Action;
+use omorfos_config::{Action, WorkspaceNumber};
 
-use crate::common::{Client, Event, Session};
+use crate::common::{Client, Event, FOUR_WORKSPACES, Session};
 use crate::lock::lock;
 use crate::windows::{BACKGROUND, BLUE, RED};
 
@@ -169,6 +169,7 @@ fn a_cancelled_swipe_goes_back() {
 fn three_fingers_right_bring_the_one_before_in_from_the_left() {
     let (mut session, _client) = two_windows();
     session.compositor_mut().perform(&Action::NextWorkspace);
+    session.settle();
     carry(&mut session, 400.0, 1000);
     lift(&mut session, false);
     assert_eq!(active(&session), 0);
@@ -272,4 +273,91 @@ fn a_gesture_does_nothing_while_the_session_is_locked() {
 
     assert_eq!((active(&session), slid(&session)), (0, 0), "nothing moves");
     assert_eq!(told(&mut client), [], "and nothing behind the lock is told");
+}
+
+// --- The keys -----------------------------------------------------------
+
+#[test]
+fn the_keys_slide_the_next_in_from_the_right_and_the_one_before_from_the_left() {
+    let (mut session, _client) = two_windows();
+
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!(
+        (active(&session), slid(&session)),
+        (1, 640),
+        "shown at once"
+    );
+    session.step();
+    assert_eq!(session.draw().at(5, 5), RED, "from where the first was");
+    session.advance(Duration::from_millis(120));
+    let halfway = slid(&session);
+    assert!(0 < halfway && halfway < 640, "{halfway}");
+    session.advance(Duration::from_millis(120));
+    assert_eq!(slid(&session), 0);
+    assert_eq!(session.draw().at(5, 5), BLUE);
+
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    assert_eq!((active(&session), slid(&session)), (0, -640));
+}
+
+#[test]
+fn a_number_key_that_goes_further_slides_with_the_workspace_it_left_beside() {
+    let (mut session, _client) = two_windows();
+
+    let third = Action::Workspace(WorkspaceNumber::clamped(3));
+    session.compositor_mut().perform(&third);
+    assert_eq!((active(&session), slid(&session)), (2, 640));
+    session.step();
+    let picture = session.draw();
+    assert_eq!(picture.at(5, 5), RED, "the first beside it, not the second");
+    session.advance(Duration::from_millis(240));
+    assert_eq!(session.draw().at(5, 5), BACKGROUND);
+}
+
+#[test]
+fn a_key_pressed_again_before_they_settle_takes_them_on_from_where_they_are() {
+    let (mut session, _client) = two_windows();
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.advance(Duration::from_millis(120));
+    let there = slid(&session);
+
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!((active(&session), slid(&session)), (2, there + 640));
+}
+
+#[test]
+fn a_key_that_brings_the_workspace_already_shown_slides_nothing() {
+    let (mut session, _client) = two_windows();
+    let first = Action::Workspace(WorkspaceNumber::clamped(1));
+    session.compositor_mut().perform(&first);
+    assert_eq!((active(&session), slid(&session)), (0, 0));
+}
+
+#[test]
+fn a_window_slides_off_and_in_with_its_workspace_without_fading() {
+    let theme = "window { transition: 1000ms linear; }\n";
+    let mut session =
+        Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
+    let mut client = session.connect();
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.settle();
+    session.open(&mut client, "second", (200, 100), BLUE);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(5, 5), BLUE);
+
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    // The first frame comes with the key.
+    session.step();
+    session.advance(Duration::from_millis(240));
+    assert_eq!(
+        session.draw().at(5, 5),
+        BACKGROUND,
+        "not left behind to fade"
+    );
+
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    // The first frame comes with the key.
+    session.step();
+    session.advance(Duration::from_millis(240));
+    assert_eq!(session.draw().at(5, 5), BLUE, "nor coming in afresh");
 }

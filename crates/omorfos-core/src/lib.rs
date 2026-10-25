@@ -26,7 +26,7 @@ mod switcher;
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{
     Arrangement, Desktop, Frame, Half, Home, Line, Listed, Offer, Opening, Place, Screen, Settings,
-    Standing, Window, WindowId, WorkspaceId,
+    Showing, Standing, Window, WindowId, WorkspaceId,
 };
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};

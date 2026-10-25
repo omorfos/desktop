@@ -653,10 +653,14 @@ what only games and touchpads need last.
 - [x] The swipe following the fingers: the workspaces slide with them
       and settle over 240 ms once they lift, onto the next if they went
       past half way or were flicked, and back otherwise.
-- [ ] The same slide when the keys go between workspaces, and through
-      those between when a number key goes further; nothing sliding with
-      `reduce_motion`; and whether three fingers or four, which is for the
-      review of the defaults.
+- [x] The same slide when the keys go between workspaces: the one they
+      bring in from the side it lies on, with the one they left beside it
+      however far apart the two are, and a key pressed again taking them
+      on from where they are. What slides in or off with its workspace
+      does not fade.
+- [ ] Nothing sliding with `reduce_motion`, once `appearance` has it; and
+      whether three fingers or four, which is for the review of the
+      defaults.
 
 ## 4. The look
 

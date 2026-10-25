@@ -23,9 +23,10 @@ pub struct Motion {
     /// When the picture is to be drawn again, if anything in it is still
     /// on its way.
     again: Option<Duration>,
-    /// What is in the picture, by when it first was, and whether it is in
-    /// the one being drawn.
-    present: HashMap<(Part, u64), (Duration, bool)>,
+    /// What is in the picture, by when it first was, or none if it is taken
+    /// to have been there all along, and whether it is in the one being
+    /// drawn.
+    present: HashMap<(Part, u64), (Option<Duration>, bool)>,
     parts: HashMap<(Part, u64), Changing>,
 }
 
@@ -81,12 +82,19 @@ impl Motion {
     /// Something left out of a picture comes in afresh the next time.
     pub fn presence(&mut self, theme: &Theme, part: Part, key: u64) -> f32 {
         let now = self.now;
-        let (since, seen) = self.present.entry((part, key)).or_insert((now, true));
+        let (since, seen) = self.present.entry((part, key)).or_insert((Some(now), true));
         *seen = true;
         let coming = theme.style(part, States::NONE).transition;
-        let share = coming.progress(now.saturating_sub(*since));
+        let share = since.map_or(1.0, |since| coming.progress(now.saturating_sub(since)));
         self.moving |= share < 1.0;
         share
+    }
+
+    /// Takes the `part` that goes by `key` to have been in the picture all
+    /// along, if it is not in it yet: for something that slides into view
+    /// with what is around it, rather than comes into being.
+    pub fn arrived(&mut self, part: Part, key: u64) {
+        self.present.entry((part, key)).or_insert((None, false));
     }
 
     /// How the `part` that goes by `key` looks in the picture being drawn,
@@ -304,6 +312,18 @@ mod tests {
         motion.begin(millis(600));
         motion.end();
         assert_eq!(present(&mut motion, Part::Task, 700), (0, true));
+    }
+
+    #[test]
+    fn something_that_arrived_with_what_is_around_it_is_all_there_at_once() {
+        let mut motion = Motion::new();
+        motion.begin(millis(1000));
+        motion.arrived(Part::Task, 7);
+        let share = motion.presence(&theme(), Part::Task, 7);
+        assert!((share - 1.0).abs() < f32::EPSILON, "{share}");
+        assert!(!motion.end(), "nothing on its way");
+        // Once it is in the picture, it is there as anything else is.
+        assert_eq!(present(&mut motion, Part::Task, 1010), (100, false));
     }
 
     #[test]

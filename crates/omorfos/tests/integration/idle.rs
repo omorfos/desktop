@@ -102,6 +102,7 @@ fn a_window_that_is_not_shown_has_no_say() {
     let _inhibitor = client.inhibit_idle(&window.surface);
     let elsewhere: Action = serde_json::from_value(json!({ "workspace": 2 })).unwrap();
     session.compositor_mut().perform(&elsewhere);
+    session.settle();
     assert!(idles_within(&mut session, &mut client, SOON));
 }
 

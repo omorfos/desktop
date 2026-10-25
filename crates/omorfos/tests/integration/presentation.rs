@@ -105,7 +105,7 @@ fn a_window_not_on_the_screen_is_told_of_the_first_frame_it_is_in() {
     let window = session.open(&mut client, "player", (200, 100), RED);
     let workspace = |number| Action::Workspace(WorkspaceNumber::clamped(number));
     session.compositor_mut().perform(&workspace(2));
-    session.step();
+    session.settle();
 
     let _feedback = client.feedback(&window.surface);
     client.fill(&window.surface, (200, 100), BLUE);
@@ -116,7 +116,7 @@ fn a_window_not_on_the_screen_is_told_of_the_first_frame_it_is_in() {
     assert_eq!(told(client.take_events()), [], "not while it is elsewhere");
 
     session.compositor_mut().perform(&workspace(1));
-    session.step();
+    session.settle();
     session.draw();
     session.present(Some(&CARD), Some(REFRESH));
     session.roundtrip(&mut client);

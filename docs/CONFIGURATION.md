@@ -245,6 +245,9 @@ with one workspace makes a second. A workspace that was made is called by
 its number, and goes again once nothing is on it and another is being
 shown. A screen has 32 at most.
 
+Going to another workspace slides it in from the side it lies on: the
+next from the right, the one before from the left.
+
 On a touchpad, three fingers swiped left carry the workspace with them
 and bring the next in from the right, and swiped right bring in the one
 before. Lift them past half way, or flick, and the one that came in is
