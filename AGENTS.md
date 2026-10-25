@@ -25,6 +25,8 @@ It is a fresh implementation, not a port: see
   [docs/BRAND.md](docs/BRAND.md). What is someone else's is credited in
   [CREDITS.md](CREDITS.md) before it is built in.
 - Decisions and their reasons: [docs/adr/](docs/adr/)
+- What is to go back to the projects omorfos is built on, and how to see
+  whether it still has to: [docs/UPSTREAM.md](docs/UPSTREAM.md)
 - Routines, step by step, in [.claude/skills/](.claude/skills/): handing a
   change over (`handover`), a failed pipeline (`ci-failure`), and
   Dependabot's updates (`dependencies`).

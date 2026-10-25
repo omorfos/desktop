@@ -81,3 +81,9 @@ those in the same change, take them out of the `ignore` in
 longer there. Its changes of interface go through the compositor's tests
 like any other change, and are tried by the maintainer on real hardware
 before they are merged.
+
+An update of Smithay, or of the PipeWire bindings, may also mend what
+omorfos works around. Run the checks of what it is in, in
+`docs/UPSTREAM.md`: for each that shows a fault gone, take the workaround
+out in a commit of its own, after Dependabot's, tick the roadmap item it
+names, and take the entry out of the list.
