@@ -76,4 +76,4 @@ gone; nothing reads them, and the program holds no other secret.
 - One request at a time; another waits until the first is answered or
   given up on, and polkit may give up on either meanwhile.
 - `omorfos-pinentry`, for GnuPG and SSH passphrases, is to use the same
-  prompt.
+  prompt, in words of omorfos's alone (ADR 58).

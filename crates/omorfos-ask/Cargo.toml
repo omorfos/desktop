@@ -16,9 +16,10 @@ omorfos-config = { path = "../omorfos-config" }
 omorfos-shell = { path = "../omorfos-shell" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay. Waits on the compositor, polkit and
-# the helper at once (`event`), wakes for what was heard (`pipe`), and says
-# who the user is (`process`).
-rustix = { version = "1.1.5", default-features = false, features = ["event", "pipe", "process"] }
+# the helper at once (`event`), wakes for what was heard (`pipe`), says
+# who the user is (`process`), and who is at the other end of the socket a
+# pinentry asks through (`net`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "net", "pipe", "process"] }
 # The prompt is a Wayland client. All three are already in the tree.
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

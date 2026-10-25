@@ -26,6 +26,9 @@ SHARE_DIR ?= $(PREFIX)/share
 PROGRAMS = omorfos omorfosctl omorfos-panel omorfos-launcher omorfos-notifications \
 	omorfos-screenshot omorfos-clipboard omorfos-recording omorfos-session omorfos-ask \
 	omorfos-wallpaper omorfos-lock xdg-desktop-portal-omorfos
+# What is installed: each program, and those built beside another, as
+# omorfos-pinentry is beside omorfos-ask.
+INSTALLED = $(PROGRAMS) omorfos-pinentry
 PAM_SERVICES = omorfos-lock omorfos-lock-fingerprint omorfos-lock-key
 BUILT = target/$(PROFILE)
 # The pictures of the brand, drawn by omorfos-brand as omorfos is built.
@@ -49,7 +52,7 @@ $(PICTURES).drawn: $(BUILT)/omorfos-brand
 	touch "$@"
 
 install:
-	@for program in $(PROGRAMS); do \
+	@for program in $(INSTALLED); do \
 		[ -x "$(BUILT)/$$program" ] || { \
 			echo "$(BUILT)/$$program is not built: run make$(if $(filter nightly,$(PROFILE)), nightly,) first, as yourself" >&2; \
 			exit 1; \
@@ -57,7 +60,7 @@ install:
 	done
 	@[ -e "$(PICTURES).drawn" ] || { echo "$(PICTURES) is not drawn: run make$(if $(filter nightly,$(PROFILE)), nightly,) first, as yourself" >&2; exit 1; }
 	install -d "$(DESTDIR)$(BINDIR)"
-	install -m755 $(addprefix $(BUILT)/,$(PROGRAMS)) "$(DESTDIR)$(BINDIR)/"
+	install -m755 $(addprefix $(BUILT)/,$(INSTALLED)) "$(DESTDIR)$(BINDIR)/"
 	install -Dm644 packaging/omorfos.desktop "$(DESTDIR)$(DATADIR)/wayland-sessions/omorfos.desktop"
 	install -Dm644 packaging/omorfos.portal "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/portals/omorfos.portal"
 	install -Dm644 packaging/omorfos-portals.conf "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"
@@ -79,7 +82,7 @@ install:
 	done
 
 uninstall:
-	rm -f $(addprefix "$(DESTDIR)$(BINDIR)/,$(addsuffix ",$(PROGRAMS)))
+	rm -f $(addprefix "$(DESTDIR)$(BINDIR)/,$(addsuffix ",$(INSTALLED)))
 	rm -f "$(DESTDIR)$(DATADIR)/wayland-sessions/omorfos.desktop"
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/portals/omorfos.portal"
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"

@@ -64,6 +64,10 @@ const LONGEST: usize = 1024;
 /// What the prompt asks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asking {
+    /// What the box says it is, in words of ours alone.
+    pub heading: String,
+    /// What the button that goes on says, in words of ours alone.
+    pub go: String,
     /// What is asked for, as polkit says it.
     pub message: String,
     /// Whose secret it is.
@@ -212,9 +216,8 @@ pub fn paint(
     canvas.draw_box((by, 0, SIZE.0, SIZE.1), &whole_box);
     let room = SIZE.0 - MARGIN.unsigned_abs() * 2;
     let font = theme.font(Part::Question, States::NONE);
-    let title = "Authentication is required";
     let line = along((MARGIN, MARGIN, room, 24), by);
-    text.draw(&mut canvas, title, line, whole_box.color, font);
+    text.draw(&mut canvas, &asking.heading, line, whole_box.color, font);
     let detail = theme.style(Part::QuestionDetail, States::NONE);
     let font = theme.font(Part::QuestionDetail, States::NONE);
     let line = along((MARGIN, MARGIN + 28, room, 20), by);
@@ -288,7 +291,7 @@ pub fn paint(
     let picked = States::NONE.with(State::Active);
     let buttons = [
         (CANCEL, "Cancel", on_it(Button::Cancel, States::NONE)),
-        (GO, "Authenticate", on_it(Button::Go, picked)),
+        (GO, asking.go.as_str(), on_it(Button::Go, picked)),
     ];
     for (area, label, states) in buttons {
         let style = theme.style(Part::QuestionButton, states);
@@ -1033,6 +1036,8 @@ mod tests {
 
     fn asking() -> Asking {
         Asking {
+            heading: "Authentication is required".to_owned(),
+            go: "Authenticate".to_owned(),
             message: "Authentication is needed to install software".to_owned(),
             user: "rafal".to_owned(),
             question: "Password: ".to_owned(),

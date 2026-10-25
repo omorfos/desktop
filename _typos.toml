@@ -3,6 +3,8 @@
 omorfos = "omorfos"
 # What the PipeWire crate calls the parts of a buffer (`datas_mut`).
 datas = "datas"
+# What GnuPG calls a key's fingerprint in what it lists, and asks for by.
+fpr = "fpr"
 
 [files]
 extend-exclude = ["Cargo.lock"]

@@ -1579,6 +1579,32 @@ What you type goes only to polkit's own helper, which checks it, and is
 not kept once it has been handed over. Programs written for X11, and one in a
 sandbox, ask through polkit like any other.
 
+## Asking for a key's passphrase
+
+GnuPG asks for the passphrase of a key, to sign, decrypt or use a key it
+holds for SSH, through a pinentry. Name omorfos's in `gpg-agent.conf`, and
+the same sealed box asks:
+
+```sh
+echo "pinentry-program /usr/local/bin/omorfos-pinentry" >> ~/.gnupg/gpg-agent.conf
+gpg-connect-agent reloadagent /bye
+```
+
+It says only what omorfos says: that GnuPG asks for the passphrase of a
+key, or for a new one twice, with the key's name and fingerprint as GnuPG
+lists them. What GnuPG gives the box to say is not shown, as any program
+can give it words to say there, such as "Type your login password"; it is
+in the session's log, under `omorfos-ask`, if you want to read it. A wrong
+passphrase is asked for again. Asked to confirm something, it says no,
+for now, and GnuPG goes on as if you had: so a new passphrase GnuPG thinks
+too weak, which it asks you to confirm, is not taken. Choose a stronger
+one, or set `min-passphrase-len` and `min-passphrase-nonalpha` in
+`gpg-agent.conf`.
+
+Outside an omorfos session, or with `omorfos-ask` not running, it asks
+nothing and GnuPG says so; name another pinentry there. Only
+`omorfos-pinentry` started by `gpg-agent` is heard.
+
 ## Typing in other languages
 
 Two things help with typing what a keyboard has no keys for.

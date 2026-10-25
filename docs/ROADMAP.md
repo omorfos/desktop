@@ -533,8 +533,13 @@ what only games and touchpads need last.
       password (wish 9): `omorfos-ask`, in the sealed prompt, the session
       dimmed behind it and the keyboard and pointer its alone, what is
       typed hidden unless asked to be shown (ADR 48).
-- [ ] `omorfos-pinentry` for keys and passphrases, GnuPG's and SSH's, in
-      the same sealed prompt.
+- [x] `omorfos-pinentry` for keys and passphrases, GnuPG's and the SSH
+      keys `gpg-agent` holds, in the same sealed prompt, in words of
+      omorfos's alone, the key named by what GnuPG lists of it (ADR 58).
+- [ ] What `gpg-agent` asks to be confirmed, as a key added with `ssh-add
+      -c` is each time it is used, asked in the sealed prompt in our words,
+      in place of being said no to; and keys held by `ssh-agent`, which ask
+      through `SSH_ASKPASS`, asked the same way.
 - [ ] The session blurred as well as dimmed behind the sealed prompt,
       once Glass has brought the blur.
 - [ ] Screen readers: what the shell's components draw, the sealed prompt

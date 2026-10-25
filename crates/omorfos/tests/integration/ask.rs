@@ -205,6 +205,18 @@ fn start(session: &mut Session) -> Asker {
 
 /// The same, with the helper at `helper`.
 fn start_with(session: &mut Session, helper: PathBuf) -> Asker {
+    start_with_door(session, helper, |directory| {
+        Some(directory.join(omorfos_ask::DOOR))
+    })
+}
+
+/// The same, with the door GnuPG's pinentry asks at where `door` says, in
+/// the agent's directory.
+fn start_with_door(
+    session: &mut Session,
+    helper: PathBuf,
+    door: impl FnOnce(&Path) -> Option<PathBuf>,
+) -> Asker {
     let daemon = Daemon::start();
     let polkit = Polkit::start(&daemon);
     let directory = tempfile::TempDir::new().unwrap();
@@ -219,6 +231,8 @@ fn start_with(session: &mut Session, helper: PathBuf) -> Asker {
         me: rustix::process::getuid().as_raw(),
         config: Some(session.config.path().to_owned()),
         wayland: None,
+        door: door(directory.path()),
+        pinentry: pinentry(),
     };
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
@@ -746,6 +760,8 @@ fn the_agent_cannot_start_without_its_session_or_polkit() {
         me: 0,
         config: None,
         wayland: None,
+        door: None,
+        pinentry: PathBuf::from("/nowhere"),
     };
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
@@ -1057,4 +1073,380 @@ fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
         "{}",
         helped(&cookie)
     );
+}
+
+// --- GnuPG's passphrases ------------------------------------------------
+
+/// The pinentry, as the workspace builds it beside the tests.
+fn pinentry() -> PathBuf {
+    let tests = std::env::current_exe().unwrap();
+    let built = tests
+        .parent()
+        .and_then(Path::parent)
+        .unwrap()
+        .join("omorfos-pinentry");
+    assert!(
+        built.exists(),
+        "omorfos-pinentry is built with the workspace: {}",
+        built.display()
+    );
+    built
+}
+
+/// A home of GnuPG's of its own, whose agent asks with the pinentry, and a
+/// key in it of Alice's whose passphrase is `atx`. Its agent is stopped
+/// when it goes.
+struct Gnupg {
+    home: tempfile::TempDir,
+    runtime: PathBuf,
+}
+
+impl Gnupg {
+    fn new(asker: &Asker) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = tempfile::TempDir::new().unwrap();
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        // A new passphrase is let be short and all letters: GnuPG would
+        // otherwise ask to confirm it, which the pinentry says no to.
+        let conf = format!(
+            "pinentry-program {}\nallow-loopback-pinentry\nmin-passphrase-len 0\n\
+             min-passphrase-nonalpha 0\n",
+            pinentry().display()
+        );
+        std::fs::write(home.path().join("gpg-agent.conf"), conf).unwrap();
+        let gnupg = Self {
+            home,
+            runtime: asker.directory.path().to_owned(),
+        };
+        let made = gnupg
+            .gpg(&["--pinentry-mode", "loopback", "--passphrase", "atx"])
+            .args([
+                "--quick-gen-key",
+                "Alice <alice@example.org>",
+                "ed25519",
+                "sign",
+                "never",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            made.status.success(),
+            "{}",
+            String::from_utf8_lossy(&made.stderr)
+        );
+        gnupg
+    }
+
+    /// `gpg`, in this home, as a program of the session runs it.
+    fn gpg(&self, options: &[&str]) -> Command {
+        let mut gpg = Command::new("gpg");
+        gpg.env("GNUPGHOME", self.home.path())
+            .env("XDG_RUNTIME_DIR", &self.runtime)
+            .args(["--batch", "--yes"])
+            .args(options);
+        gpg
+    }
+
+    /// Signs a file, which asks for the key's passphrase, on a thread of its
+    /// own; and says whether it was signed.
+    fn sign(&self) -> JoinHandle<bool> {
+        let file = self.home.path().join("note.txt");
+        std::fs::write(&file, "hello").unwrap();
+        let mut signing = self.gpg(&["--pinentry-mode", "ask", "--sign"]);
+        signing.arg(&file);
+        std::thread::spawn(move || signing.output().is_ok_and(|output| output.status.success()))
+    }
+}
+
+impl Drop for Gnupg {
+    fn drop(&mut self) {
+        let _ = Command::new("gpgconf")
+            .env("GNUPGHOME", self.home.path())
+            .args(["--kill", "gpg-agent"])
+            .status();
+    }
+}
+
+#[test]
+fn a_gnupg_passphrase_is_asked_in_the_sealed_prompt_and_given_to_gpg_agent() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+
+    let signed = gnupg.sign();
+    wait_up(&mut session);
+    // Wrong first: the agent asks again, and the box says so as it shakes.
+    tap(&mut session, key::A);
+    tap(&mut session, key::RETURN);
+    session.eventually(|session| !up(session) || signed.is_finished());
+    wait_up(&mut session);
+    assert!(!signed.is_finished(), "asked again");
+    for code in [key::A, key::T, key::X] {
+        tap(&mut session, code);
+    }
+    tap(&mut session, key::RETURN);
+    finished(&mut session, &signed);
+    assert!(signed.join().unwrap(), "signed with the key");
+    session.eventually(|session| !up(session));
+}
+
+#[test]
+fn a_gnupg_passphrase_given_up_on_signs_nothing() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+
+    let signed = gnupg.sign();
+    wait_up(&mut session);
+    tap(&mut session, key::ESCAPE);
+    finished(&mut session, &signed);
+    assert!(!signed.join().unwrap());
+}
+
+#[test]
+fn a_pinentry_not_started_by_gpg_agent_is_not_heard() {
+    use std::io::Write;
+
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let mut started = Command::new(pinentry())
+        .env("XDG_RUNTIME_DIR", asker.directory.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut asking = started.stdin.take().unwrap();
+    asking.write_all(b"GETPIN\nBYE\n").unwrap();
+    drop(asking);
+    // It is turned away when the agent next looks, and says so to whoever
+    // asked it.
+    let said = std::thread::spawn(move || started.wait_with_output().unwrap().stdout);
+    session.eventually(|_| said.is_finished());
+    let said = String::from_utf8(said.join().unwrap()).unwrap();
+    assert!(said.contains("ERR 83886165"), "{said}");
+    assert!(!up(&mut session), "and nothing is asked");
+}
+
+#[test]
+fn without_a_door_for_gnupg_polkit_is_still_asked_for() {
+    let mut session = Session::new();
+    let helper = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/polkit-helper");
+    let asker = start_with_door(&mut session, helper, |_| {
+        Some(PathBuf::from("/nowhere/door"))
+    });
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    for code in [key::A, key::T, key::X] {
+        tap(&mut session, code);
+    }
+    tap(&mut session, key::RETURN);
+    session.eventually(|_| answer.is_finished() || helped(&cookie).contains("typed atx"));
+    assert!(!asker.running.is_finished());
+}
+
+#[test]
+fn a_gnupg_passphrase_whose_agent_goes_is_asked_for_no_longer() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+
+    let signed = gnupg.sign();
+    wait_up(&mut session);
+    let stopped = Command::new("gpgconf")
+        .env("GNUPGHOME", gnupg.home.path())
+        .args(["--kill", "gpg-agent"])
+        .status()
+        .unwrap();
+    assert!(stopped.success());
+    session.eventually(|session| !up(session));
+    finished(&mut session, &signed);
+    assert!(!signed.join().unwrap());
+}
+
+#[test]
+fn gnupg_waits_its_turn_behind_polkit_and_is_asked_once_polkit_gives_up() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+    let me = rustix::process::getuid().as_raw();
+    let cookie = asker.directory.path().join("asked");
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+
+    // Asked meanwhile, GnuPG waits, as long as it takes its pinentry to
+    // knock.
+    let signed = gnupg.sign();
+    for _ in 0..100 {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!signed.is_finished(), "it waits");
+    let reply = asker.polkit.connection.call_method(
+        Some(asker.agent.as_str()),
+        PATH,
+        Some(AGENT),
+        "CancelAuthentication",
+        &(cookie.display().to_string(),),
+    );
+    reply.unwrap();
+    session.eventually(|_| answer.is_finished());
+    wait_up(&mut session);
+    for code in [key::A, key::T, key::X] {
+        tap(&mut session, code);
+    }
+    tap(&mut session, key::RETURN);
+    finished(&mut session, &signed);
+    assert!(signed.join().unwrap(), "then it is asked");
+}
+
+/// Keeps the session going until `gnupg`, a program of GnuPG's running on
+/// a thread of its own, is done: GnuPG takes its time over a key, the more
+/// so with other tests at work, so it is given up on only after a minute.
+fn finished<T>(session: &mut Session, gnupg: &JoinHandle<T>) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !gnupg.is_finished() && std::time::Instant::now() < deadline {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(gnupg.is_finished(), "GnuPG did not finish in a minute");
+}
+
+/// Whether anything has been typed in the field, by the dots it shows.
+fn dotted(session: &mut Session) -> bool {
+    let picture = session.draw();
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + FIELD.0 + 8;
+    let middle = (HEIGHT - SIZE.1.cast_signed()) / 2 + FIELD.1 + FIELD.3.cast_signed() / 2;
+    let focused = States::NONE.with(omorfos_config::State::Focused);
+    let colour = Theme::default()
+        .style(Part::QuestionInput, focused)
+        .background;
+    let field = u32::from_be_bytes([colour.alpha, colour.red, colour.green, colour.blue]);
+    // Past where the line that marks where the next will go stands in an
+    // empty field.
+    (left + 3..left + 40).any(|x| picture.at(x, middle) != field)
+}
+
+/// Types `word` in the sealed prompt once it is up, and goes on; then
+/// waits for it to go, or to be asked afresh, empty, as the next of a new
+/// passphrase is, so that what is typed next is typed into the next.
+fn type_in(session: &mut Session, word: &[Keycode]) {
+    wait_up(session);
+    for code in word {
+        tap(session, *code);
+    }
+    session.eventually(dotted);
+    tap(session, key::RETURN);
+    session.eventually(|session| !up(session) || !dotted(session));
+}
+
+#[test]
+fn a_new_passphrase_is_asked_for_twice_in_the_sealed_prompt() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+    let mut changing = gnupg.gpg(&["--pinentry-mode", "ask", "--passwd", "alice@example.org"]);
+    let changed =
+        std::thread::spawn(move || changing.output().is_ok_and(|done| done.status.success()));
+
+    // The one it has, then the new one, and the new one again.
+    type_in(&mut session, &[key::A, key::T, key::X]);
+    type_in(&mut session, &[key::Q, key::A, key::T]);
+    type_in(&mut session, &[key::Q, key::A, key::T]);
+    finished(&mut session, &changed);
+    assert!(changed.join().unwrap());
+    let signed = gnupg
+        .gpg(&[
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase",
+            "qat",
+            "--sign",
+        ])
+        .arg(gnupg.home.path().join("gpg-agent.conf"))
+        .output()
+        .unwrap();
+    assert!(signed.status.success(), "the key has the new one");
+}
+
+#[test]
+fn a_passphrase_a_program_asks_gpg_agent_for_itself_names_no_key() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+    let mut asking = Command::new("gpg-connect-agent");
+    asking
+        .env("GNUPGHOME", gnupg.home.path())
+        .env("XDG_RUNTIME_DIR", asker.directory.path())
+        .args([
+            "GET_PASSPHRASE --data mine X X Type+your+login+password",
+            "/bye",
+        ]);
+    let given = std::thread::spawn(move || asking.output().unwrap().stdout);
+
+    type_in(&mut session, &[key::Q, key::A, key::T]);
+    finished(&mut session, &given);
+    let given = String::from_utf8(given.join().unwrap()).unwrap();
+    assert!(given.contains("D qat"), "{given}");
+}
+
+#[test]
+fn a_gnupg_passphrase_whose_agent_goes_while_it_waits_is_never_asked() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let gnupg = Gnupg::new(&asker);
+    let me = rustix::process::getuid().as_raw();
+    let cookie = asker.directory.path().join("asked");
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    let signed = gnupg.sign();
+    for _ in 0..100 {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    // The agent goes while its pinentry waits behind polkit's question.
+    let stopped = Command::new("gpgconf")
+        .env("GNUPGHOME", gnupg.home.path())
+        .args(["--kill", "gpg-agent"])
+        .status()
+        .unwrap();
+    assert!(stopped.success());
+    finished(&mut session, &signed);
+    assert!(!signed.join().unwrap());
+    for _ in 0..50 {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let reply = asker.polkit.connection.call_method(
+        Some(asker.agent.as_str()),
+        PATH,
+        Some(AGENT),
+        "CancelAuthentication",
+        &(cookie.display().to_string(),),
+    );
+    reply.unwrap();
+    session.eventually(|_| answer.is_finished());
+    session.eventually(|session| !up(session));
+    for _ in 0..50 {
+        session.step();
+    }
+    assert!(!up(&mut session), "and GnuPG's is not asked after it");
 }

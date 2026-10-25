@@ -3,4 +3,4 @@ allow-panic-in-tests = true
 allow-unwrap-in-tests = true
 # Names of things that are not code, which documentation may write as
 # they are spelt.
-doc-valid-idents = ["..", "PipeWire", "PulseAudio", "WirePlumber"]
+doc-valid-idents = ["..", "GnuPG", "PipeWire", "PulseAudio", "WirePlumber"]

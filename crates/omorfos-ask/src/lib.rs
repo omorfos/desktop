@@ -10,8 +10,11 @@
 //! `ask` role. See `docs/adr/0048-asking-for-a-secret.md`.
 
 mod agent;
+pub mod assuan;
+mod door;
 mod helper;
 mod people;
+pub mod pinentry;
 mod prompt;
 
 use std::collections::VecDeque;
@@ -26,11 +29,14 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::Instant;
 
 pub use agent::{AGENT, Agent, Asked, Begin, PATH, POLKIT};
+pub use door::NAME as DOOR;
+use door::{Door, Passing};
 pub use helper::Helper;
 use omorfos_config::Store;
 pub use omorfos_shell::said::{Said, heard};
 pub use omorfos_shell::shake::{SHAKE, SHAKING, shaken};
 pub use people::{Identity, Person, chosen, named, users};
+use pinentry::{Step, Wanted};
 pub use prompt::{
     Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SIZE, SURFACE, button_at, eye_says,
     label, paint, shown,
@@ -77,6 +83,11 @@ pub struct Places {
     pub config: Option<PathBuf>,
     /// Where the compositor is, unless it handed over a connection.
     pub wayland: Option<PathBuf>,
+    /// Where `omorfos-pinentry` asks for a passphrase to be asked, in the
+    /// runtime directory.
+    pub door: Option<PathBuf>,
+    /// The pinentry that may ask there: the one installed beside this.
+    pub pinentry: PathBuf,
 }
 
 impl Places {
@@ -106,9 +117,23 @@ impl Places {
             groups: PathBuf::from("/etc/group"),
             me: rustix::process::getuid().as_raw(),
             config: omorfos_config::config_dir(config.as_deref(), home.as_deref()),
+            door: runtime
+                .as_ref()
+                .map(|runtime| Path::new(runtime).join(door::NAME)),
             wayland: runtime.zip(display).map(socket),
+            pinentry: beside("omorfos-pinentry"),
         }
     }
+}
+
+/// Where the program called `name` is installed beside this one.
+fn beside(name: &str) -> PathBuf {
+    let own = std::env::current_exe().ok();
+    let folder = own
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(Path::new("/usr/bin"));
+    folder.join(name)
 }
 
 /// Where the compositor's socket is: the display's, in the runtime
@@ -148,9 +173,37 @@ pub fn run(places: &Places, stream: UnixStream) -> Failure {
     let waking = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
     let ready = agent.and_then(|ready| waking.map(|waking| (ready, waking)));
     match ready {
-        Ok(((agent, desk), waking)) => serve(places, &agent, desk, waking),
+        Ok(((agent, desk), waking)) => {
+            // Without the door, polkit is still asked for; GnuPG is not.
+            let door = places.door.as_deref().and_then(|path| {
+                let opened = Door::open(path, places.pinentry.clone());
+                opened
+                    .inspect_err(|error| note(&format!("{}: {error}", path.display())))
+                    .ok()
+            });
+            serve(places, (&agent, door.as_ref()), desk, waking)
+        }
         Err(failure) => failure,
     }
+}
+
+/// Says in the session's log what became of something asked.
+fn note(said: &str) {
+    // If even that cannot be said, there is nobody to say it to.
+    let _ = writeln!(std::io::stderr(), "omorfos-ask: {said}");
+}
+
+/// What waits to be asked: polkit's request, or a passphrase GnuPG asks
+/// for.
+enum Waiting {
+    Polkit(Begin),
+    Key(Passing),
+}
+
+/// What is being asked.
+enum Current {
+    Polkit(Request),
+    Key(Passing),
 }
 
 /// What wakes the loop when the helper has said something.
@@ -169,35 +222,64 @@ struct Request {
     said: Receiver<Said>,
 }
 
-/// Asks what polkit asks, one request after another, until the compositor
-/// or polkit can no longer be heard.
+/// Asks what polkit asks, and what GnuPG asks through `door`, one request
+/// after another, until the compositor or polkit can no longer be heard.
 fn serve(
     places: &Places,
-    agent: &Agent,
+    (agent, door): (&Agent, Option<&Door>),
     mut desk: Desk,
     (woken, wake): (OwnedFd, OwnedFd),
 ) -> Failure {
     let wake = std::sync::Arc::new(wake);
-    let mut waiting: VecDeque<Begin> = VecDeque::new();
-    let mut asked: Option<Request> = None;
+    let mut waiting: VecDeque<Waiting> = VecDeque::new();
+    let mut asked: Option<Current> = None;
     loop {
-        for said in drain(asked.as_ref(), &woken) {
-            asked = asked.and_then(|request| told(places, &mut desk, agent, request, said, &wake));
+        let heard = drain(polkit(asked.as_ref()), &woken);
+        if let Some(Current::Polkit(request)) =
+            asked.take_if(|current| matches!(current, Current::Polkit(_)))
+        {
+            let mut told = |request, said| told(places, &mut desk, agent, request, said, &wake);
+            asked = heard
+                .into_iter()
+                .try_fold(request, &mut told)
+                .map(Current::Polkit);
         }
         // What is given up on goes first, the request being asked among it.
         for heard in agent.asked() {
             match heard {
-                Asked::Begin(begin) => waiting.push_back(begin),
+                Asked::Begin(begin) => waiting.push_back(Waiting::Polkit(begin)),
                 Asked::Cancel(cookie) => {
                     asked = withdrawn(&mut desk, agent, asked, &mut waiting, &cookie);
                 }
             }
         }
+        waiting.extend(
+            door.iter()
+                .flat_map(|door| door.knocked())
+                .map(Waiting::Key),
+        );
+        // A pinentry gpg-agent has given up on has gone, and is asked for no
+        // longer.
+        waiting.retain(still_wanted);
+        if let Some(Current::Key(passing)) = &asked
+            && passing.gone()
+        {
+            desk.dismiss();
+            asked = None;
+        }
         // One at a time: the next once this is done.
         while asked.is_none()
-            && let Some(begin) = waiting.pop_front()
+            && let Some(next) = waiting.pop_front()
         {
-            asked = begun(places, &mut desk, agent, begin, &wake);
+            asked = match next {
+                Waiting::Polkit(begin) => {
+                    begun(places, &mut desk, agent, begin, &wake).map(Current::Polkit)
+                }
+                Waiting::Key(passing) => {
+                    desk.ask(of_key(&passing.wanted), passing.wanted.again);
+                    Some(Current::Key(passing))
+                }
+            };
         }
         // What changed is shown, and what the user did taken in; and what
         // that changes is shown in turn, before anything is waited for.
@@ -207,16 +289,43 @@ fn serve(
             Err(failure) => return failure,
         };
         if let Some(answer) = answer {
-            asked = asked.and_then(|request| answered(&mut desk, agent, request, answer));
+            asked = asked.and_then(|current| match current {
+                Current::Polkit(request) => {
+                    answered(&mut desk, agent, request, answer).map(Current::Polkit)
+                }
+                Current::Key(passing) => {
+                    let typed = match answer {
+                        Answer::Typed(typed) => Some(typed),
+                        Answer::Cancel => None,
+                    };
+                    passing.give(typed);
+                    desk.dismiss();
+                    None
+                }
+            });
             continue;
         }
         let asking = agent.asking();
-        let mut sources = [
+        let mut sources = vec![
             PollFd::new(agent, PollFlags::IN),
             PollFd::new(&asking, PollFlags::IN),
             PollFd::new(&desk, PollFlags::IN),
             PollFd::new(&woken, PollFlags::IN),
         ];
+        sources.extend(door.map(|door| PollFd::new(door, PollFlags::IN)));
+        let pinentries = waiting.iter().filter_map(|waiting| match waiting {
+            Waiting::Key(passing) => Some(passing),
+            Waiting::Polkit(_) => None,
+        });
+        let current = match &asked {
+            Some(Current::Key(passing)) => Some(passing),
+            _ => None,
+        };
+        sources.extend(
+            pinentries
+                .chain(current)
+                .map(|passing| PollFd::new(passing, PollFlags::IN)),
+        );
         // Until something is heard, or a key held is due to be done again.
         let longest = desk
             .deadline()
@@ -228,6 +337,55 @@ fn serve(
         }
     }
 }
+
+/// Whether what waits is still wanted: a pinentry `gpg-agent` has given up
+/// on has gone, and is asked for no longer.
+fn still_wanted(waiting: &Waiting) -> bool {
+    !matches!(waiting, Waiting::Key(passing) if passing.gone())
+}
+
+/// The request polkit asks that is being asked, if one is.
+const fn polkit(asked: Option<&Current>) -> Option<&Request> {
+    match asked {
+        Some(Current::Polkit(request)) => Some(request),
+        _ => None,
+    }
+}
+
+/// What the prompt says when GnuPG asks for a passphrase, in words of ours
+/// alone (ADR 58): which passphrase, of which key, as GnuPG lists it.
+fn of_key(wanted: &Wanted) -> Asking {
+    let (heading, go) = match wanted.step {
+        Step::Passphrase => ("GnuPG asks for the passphrase of a key", "Unlock"),
+        Step::New => ("GnuPG asks for a new passphrase for a key", "Go on"),
+        Step::NewAgain => ("Type the new passphrase again", "Set"),
+    };
+    let key = wanted.key.as_ref();
+    let named = key.map_or_else(|| UNNAMED.to_owned(), |key| key.name.clone());
+    let fingerprint = key.map_or_else(String::new, |key| {
+        format!("Fingerprint {}", key.fingerprint)
+    });
+    Asking {
+        heading: heading.to_owned(),
+        go: go.to_owned(),
+        message: named,
+        user: String::new(),
+        question: fingerprint,
+        open: false,
+        said: if wanted.again {
+            NOT_RIGHT.to_owned()
+        } else {
+            String::new()
+        },
+        checking: false,
+    }
+}
+
+/// What a key GnuPG does not name is called.
+pub const UNNAMED: &str = "A key GnuPG does not name";
+
+/// What is said when the passphrase GnuPG was given was not right.
+pub const NOT_RIGHT: &str = "That passphrase was not right.";
 
 /// What the helper of the request being asked has said since this was
 /// last asked.
@@ -284,6 +442,8 @@ fn begun(
         return None;
     };
     let asking = Asking {
+        heading: "Authentication is required".to_owned(),
+        go: "Authenticate".to_owned(),
         message,
         user: person.name.clone(),
         question: String::new(),
@@ -385,26 +545,29 @@ fn answered(
 fn withdrawn(
     desk: &mut Desk,
     agent: &Agent,
-    asked: Option<Request>,
-    waiting: &mut VecDeque<Begin>,
+    asked: Option<Current>,
+    waiting: &mut VecDeque<Waiting>,
     cookie: &str,
-) -> Option<Request> {
-    waiting.retain(|begin| {
+) -> Option<Current> {
+    waiting.retain(|waiting| {
+        let Waiting::Polkit(begin) = waiting else {
+            return true;
+        };
         let keep = begin.cookie != cookie;
         if !keep {
             agent.cancelled(&begin.call);
         }
         keep
     });
-    let (this, other) = asked
-        .into_iter()
-        .partition::<Vec<_>, _>(|request| request.cookie == cookie);
-    for mut request in this {
-        request.helper.take().into_iter().for_each(Helper::stop);
-        agent.cancelled(&request.call);
-        desk.dismiss();
+    match asked {
+        Some(Current::Polkit(mut request)) if request.cookie == cookie => {
+            request.helper.take().into_iter().for_each(Helper::stop);
+            agent.cancelled(&request.call);
+            desk.dismiss();
+            None
+        }
+        other => other,
     }
-    other.into_iter().next()
 }
 
 #[cfg(test)]

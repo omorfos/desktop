@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       # As the Test workflow has it.
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg
       - name: Make room for X servers
         run: sudo mkdir -p -m 1777 /tmp/.X11-unix
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
