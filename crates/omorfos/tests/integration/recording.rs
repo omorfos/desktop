@@ -6,13 +6,12 @@
     reason = "test support code fails the test on any error"
 )]
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Duration;
 
 use omorfos::{Input, Roles};
 
-use crate::common::{Session, WIDTH};
+use crate::common::{Session, WIDTH, runnable};
 use crate::windows::BACKGROUND;
 
 /// The colour the signs of the mark are drawn in.
@@ -47,8 +46,7 @@ fn watched_until(ends: bool) -> Session {
         end = if ends { "exit 0" } else { ":" },
     );
     let watcher = folder.join("watcher");
-    std::fs::write(&watcher, script).unwrap();
-    std::fs::set_permissions(&watcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+    runnable(&watcher, &script);
     session.compositor_mut().set_recorder(watcher);
     session.compositor_mut().autostart();
     session

@@ -2809,6 +2809,29 @@ fn still(theme: &str) -> String {
     format!("{theme}\n* {{ transition: none; }}\n")
 }
 
+/// Writes `script` to `path` as a program that may be run.
+///
+/// A program cannot be run while a file of it is open for writing, and a
+/// test starting a program meanwhile holds a copy of every descriptor of
+/// this process for a while: written here, it may then fail to start with
+/// "Text file busy". So it is written by a process of its own, whose
+/// descriptors nothing else has.
+pub(crate) fn runnable(path: &Path, script: &str) {
+    let mut writer = std::process::Command::new("sh")
+        .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+        .arg(path)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    writer
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(script.as_bytes())
+        .unwrap();
+    assert!(writer.wait().unwrap().success());
+}
+
 /// Whether a colour on the screen is about half way from red to blue, as
 /// something changing from the one to the other is in the middle of it.
 pub(crate) fn half_way(color: u32) -> bool {

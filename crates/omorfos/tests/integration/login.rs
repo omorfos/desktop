@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use omorfos_config::Action;
 use serde_json::json;
 
-use crate::common::Session;
+use crate::common::{Session, runnable};
 
 #[test]
 fn programs_are_told_what_kind_of_session_they_are_in() {
@@ -265,9 +265,7 @@ fn what_is_to_start_with_the_session_is_started_in_a_scope_of_its_own() {
     let scoper = directory.path().join("systemd-run");
     let script = "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/scoped\"\n\
                   while [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n";
-    std::fs::write(&scoper, script).unwrap();
-    let runnable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
-    std::fs::set_permissions(&scoper, runnable).unwrap();
+    runnable(&scoper, script);
     session.compositor_mut().set_scoper(&scoper);
     session.compositor_mut().autostart();
     session.eventually(|_| mark.exists());

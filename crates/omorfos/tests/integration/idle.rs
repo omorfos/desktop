@@ -8,7 +8,7 @@ use omorfos_config::Action;
 use omorfos_ipc::Awake;
 use serde_json::json;
 
-use crate::common::{Client, Event, Session};
+use crate::common::{Client, Event, Session, runnable};
 use crate::windows::{BLUE, RED};
 
 /// The time without input after which the client asks to be told.
@@ -327,16 +327,13 @@ fn a_session_locked_already_is_not_locked_again_when_away() {
 
 #[test]
 fn away_for_the_time_configured_the_machine_is_asked_to_sleep() {
-    use std::os::unix::fs::PermissionsExt;
-
     let directory = tempfile::TempDir::new().unwrap();
     let asked = directory.path().join("asked");
     // A stand-in for what watches over the session, which notes what it is
     // asked to do.
     let program = directory.path().join("omorfos-session");
     let script = format!("#!/bin/sh\necho \"$@\" >> '{}'\n", asked.display());
-    std::fs::write(&program, script).unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    runnable(&program, &script);
     let mut session = Session::with_config(&[("config.yaml", "idle: { sleep: 1800 }\n")]);
     session.compositor_mut().set_session(&program);
     session.step();
@@ -500,14 +497,11 @@ fn what_a_connection_held_is_let_go_when_it_ends() {
 
 #[test]
 fn a_program_kept_from_sleeping_keeps_the_machine_awake_even_while_locked() {
-    use std::os::unix::fs::PermissionsExt;
-
     let directory = tempfile::TempDir::new().unwrap();
     let asked = directory.path().join("asked");
     let program = directory.path().join("omorfos-session");
     let script = format!("#!/bin/sh\necho \"$@\" >> '{}'\n", asked.display());
-    std::fs::write(&program, script).unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    runnable(&program, &script);
     let config = "idle: { sleep: 600, screen_off: 60 }\n";
     let mut session = Session::with_config(&[("config.yaml", config)]);
     session.compositor_mut().set_session(&program);

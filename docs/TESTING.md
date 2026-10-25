@@ -110,6 +110,10 @@ instant.
   holds.
 - Do not assert straight after the cause. It will pass here and fail on a
   slower machine.
+- Write a script a test runs with `runnable`, not `std::fs::write`. A
+  file cannot be run while any copy of a descriptor writing it is open,
+  so one written by the tests' own process sometimes fails to start with
+  "Text file busy".
 - Where the clock must not move while waiting (how often something may be
   restarted goes by it), wait with real time only, as `wait` in `x11.rs`
   does.
