@@ -49,7 +49,7 @@ use smithay::backend::renderer::{
     Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, RendererSuper, Texture,
 };
 use smithay::desktop::utils::send_frames_surface_tree;
-use smithay::desktop::{LayerSurface, PopupManager, Space, Window, layer_map_for_output};
+use smithay::desktop::{LayerMap, LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
 use smithay::input::pointer::{
     CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
@@ -2954,7 +2954,7 @@ impl Compositor {
         };
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             // A panel is placed within its own output.
-            let at = layers.layer_geometry(surface).unwrap_or_default().loc + view.origin;
+            let at = layer_origin(&layers, surface) + view.origin;
             // A panel of a shell component may be coming in, and what it
             // is drawn from is noted, to fade it out by when it goes.
             let mut known = self.animation.layers.iter();
@@ -3809,6 +3809,17 @@ impl Painted {
         .ok()
         .map(Element::Memory)
     }
+}
+
+/// Where a layer surface itself is on its output, in units of layout.
+///
+/// What Smithay calls its geometry is where all of it is, its subsurfaces
+/// too, and begins further left or up than the surface when one of them
+/// reaches out past it, as a line of text wider than the screen does: taken
+/// for where the surface is, it put all of it that much out of place.
+pub(crate) fn layer_origin(layers: &LayerMap, layer: &LayerSurface) -> Point<i32, Logical> {
+    let all = layers.layer_geometry(layer).unwrap_or_default();
+    all.loc - layer.bbox().loc
 }
 
 /// How much there is to see of the window `id` of a frame with `tabs`.

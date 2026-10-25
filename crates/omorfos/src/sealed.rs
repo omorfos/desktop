@@ -36,7 +36,7 @@ impl Compositor {
                 Self::roles(client.as_ref()).has(Roles::ASK)
             });
             asks.map(|layer| {
-                let within = layers.layer_geometry(layer).unwrap_or_default().loc;
+                let within = crate::compositor::layer_origin(&layers, layer);
                 let at = head.area().loc + within;
                 (head.output.clone(), layer.wl_surface().clone(), at)
             })
@@ -54,7 +54,7 @@ impl Compositor {
                 Self::roles(client.as_ref()).has(Roles::ASK)
             });
             asks.and_then(|layer| {
-                let within = layers.layer_geometry(layer).unwrap_or_default().loc;
+                let within = crate::compositor::layer_origin(&layers, layer);
                 let origin = head.area().loc + within;
                 let under = layer.surface_under(point - origin.to_f64(), WindowSurfaceType::ALL);
                 under.map(|(surface, offset)| (surface, (offset + origin).to_f64()))

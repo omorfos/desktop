@@ -42,8 +42,8 @@ impl Compositor {
             self.heads.iter().find_map(|head| {
                 let layers = layer_map_for_output(&head.output);
                 let layer = layers.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL);
-                let within = layer.and_then(|layer| layers.layer_geometry(layer));
-                within.map(|within| head.area().loc + within.loc)
+                let within = layer.map(|layer| crate::compositor::layer_origin(&layers, layer));
+                within.map(|within| head.area().loc + within)
             })
         };
         window.or_else(panel)

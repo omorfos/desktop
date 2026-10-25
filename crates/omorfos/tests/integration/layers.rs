@@ -526,3 +526,84 @@ fn a_panel_that_accepts_the_keyboard_has_it_from_a_click_until_a_click_elsewhere
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::KeyboardEnter));
 }
+
+/// A layer that covers the screen, over everything.
+fn over_all() -> LayerShape {
+    LayerShape {
+        layer: Layer::Overlay,
+        anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
+        size: (0, 0),
+        exclusive_zone: -1,
+        keyboard: KeyboardInteractivity::Exclusive,
+    }
+}
+
+#[test]
+fn a_layer_with_a_part_reaching_out_past_its_left_and_top_is_drawn_where_it_is() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let (surface, _role) = session.open_layer(&mut client, &over_all(), (WIDTH, HEIGHT), YELLOW);
+    // A line across it wider than the screen, in the middle, as the
+    // picker's line of what to do was; and a part above its top.
+    let _line = client.subsurface(&surface, (-50, 400), (WIDTH + 100, 40), BLUE);
+    let _above = client.subsurface(&surface, (300, -20), (20, 40), GREEN);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(WIDTH - 5, HEIGHT - 5),
+        YELLOW,
+        "out to its far corner"
+    );
+    assert_eq!(picture.at(5, 100), YELLOW);
+    assert_eq!(
+        (picture.at(5, 420), picture.at(WIDTH - 5, 420)),
+        (BLUE, BLUE)
+    );
+    assert_eq!(
+        picture.at(310, 10),
+        GREEN,
+        "what is on the screen of the part above"
+    );
+    assert_eq!(picture.at(310, 25), YELLOW);
+}
+
+#[test]
+fn a_layer_with_a_part_reaching_out_past_it_is_pointed_at_where_it_is() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let (surface, _role) = session.open_layer(&mut client, &over_all(), (WIDTH, HEIGHT), YELLOW);
+    let _line = client.subsurface(&surface, (-50, -30), (WIDTH + 100, 40), BLUE);
+    session.roundtrip(&mut client);
+    client.take_events();
+
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 200.0, y: 200.0 }, 0);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::PointerEnter { x: 200.0, y: 200.0 }),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn a_layer_with_a_sharp_part_reaching_out_past_it_is_drawn_where_it_is_at_any_scale() {
+    let mut session = Session::new();
+    session.suggest_scale(omorfos::Scale::new(2.0));
+    session.step();
+    let mut client = session.connect();
+    let (width, height) = (WIDTH / 2, HEIGHT / 2);
+    let (surface, _role) = session.open_layer(&mut client, &over_all(), (width, height), YELLOW);
+    let line = client.subsurface(&surface, (-25, 200), (width + 50, 20), BLUE);
+    client.fill_scaled(&line, ((width + 50) * 2, 40), (width + 50, 20), BLUE);
+    surface.commit();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+
+    let picture = session.draw();
+    assert_eq!(picture.at(WIDTH - 5, 100), YELLOW, "out to its far edge");
+    assert_eq!(picture.at(5, 420), BLUE, "and the line across it");
+}

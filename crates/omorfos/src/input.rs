@@ -776,7 +776,7 @@ impl Compositor {
             let area = layers.layer_geometry(surface).unwrap_or_default();
             let shown = self.standing(index, layer, area) == standing;
             let surface = shown.then_some(surface)?;
-            let origin = layers.layer_geometry(surface).unwrap_or_default().loc + corner;
+            let origin = crate::compositor::layer_origin(&layers, surface) + corner;
             let within = self.pointer_location - origin.to_f64();
             let takes_keyboard = surface
                 .can_receive_keyboard_focus()
