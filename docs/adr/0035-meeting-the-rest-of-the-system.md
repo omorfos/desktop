@@ -66,8 +66,13 @@ Started by the compositor with the others and started again if it stops
 - **Is never told to unlock.** logind can say "unlock". It is not
   heeded. A locked session is opened by its user's secret and nothing
   else.
-- **Locks and sleeps when the user is away**, after the times the
-  configuration gives, going by the compositor's own notice of idleness.
+- **Sleeps when the user is away**, after the time the configuration
+  gives, when the compositor asks it to as the menu does. The compositor
+  itself locks when the user is away: it is what knows they are, and
+  what starts the locker whichever way the session is locked, so nothing
+  is gained by its asking another program to ask it back. Sleep needs
+  logind, and so goes through this program, which locks the session
+  first as it does for any sleep.
 - **Sleeps, restarts and shuts down** when the menu asks, by asking
   logind, which decides whether this user may. `omorfos-session sleep`
   and the like are what the menu's entries run.

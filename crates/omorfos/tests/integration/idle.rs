@@ -241,3 +241,109 @@ fn the_time_can_be_changed_or_taken_away_while_running() {
     session.step();
     assert!(!session.compositor().screens_on(), "long since");
 }
+
+// --- Locking and sleeping when away -------------------------------------
+
+/// A session that locks after a minute away, with a locker that only notes
+/// in `noted` that it was started.
+fn locking(noted: &std::path::Path) -> Session {
+    let config = format!(
+        "idle: {{ lock: 60 }}\nlocker: [sh, -c, 'echo started >> \"$0\"', '{}']\n",
+        noted.display()
+    );
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    session.step();
+    session
+}
+
+/// How many times what notes in `noted` has been started.
+fn started(noted: &std::path::Path) -> usize {
+    std::fs::read_to_string(noted).map_or(0, |noted| noted.lines().count())
+}
+
+/// Gives what was started the moment it may need to have noted that it was:
+/// enough for a check that it was not to mean something.
+fn a_moment() {
+    std::thread::sleep(Duration::from_millis(200));
+}
+
+#[test]
+fn away_for_the_time_configured_the_session_is_locked_once_each_time() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let at = session.now + seconds(60);
+    assert_eq!(
+        session.compositor().deadline(),
+        Some(at),
+        "it is waited for"
+    );
+
+    session.advance(seconds(59));
+    a_moment();
+    assert_eq!(started(&noted), 0, "not yet");
+    session.advance(seconds(2));
+    session.eventually(|_| started(&noted) == 1);
+    session.advance(seconds(600));
+    a_moment();
+    assert_eq!(started(&noted), 1, "once for the time away");
+    assert_eq!(session.compositor().deadline(), None);
+
+    // Back, and away again.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 5.0, y: 5.0 }, 0);
+    session.advance(seconds(61));
+    session.eventually(|_| started(&noted) == 2);
+}
+
+#[test]
+fn something_being_watched_keeps_the_session_from_locking() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "film", (200, 100), RED);
+    let _inhibitor = client.inhibit_idle(&window.surface);
+    session.roundtrip(&mut client);
+
+    session.advance(seconds(120));
+    a_moment();
+    assert_eq!(started(&noted), 0);
+}
+
+#[test]
+fn a_session_locked_already_is_not_locked_again_when_away() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let noted = directory.path().join("noted");
+    let mut session = locking(&noted);
+    let (_locker, _lock, _surface) = crate::lock::lock(&mut session);
+
+    session.advance(seconds(61));
+    a_moment();
+    assert_eq!(started(&noted), 0);
+}
+
+#[test]
+fn away_for_the_time_configured_the_machine_is_asked_to_sleep() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::TempDir::new().unwrap();
+    let asked = directory.path().join("asked");
+    // A stand-in for what watches over the session, which notes what it is
+    // asked to do.
+    let program = directory.path().join("omorfos-session");
+    let script = format!("#!/bin/sh\necho \"$@\" >> '{}'\n", asked.display());
+    std::fs::write(&program, script).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut session = Session::with_config(&[("config.yaml", "idle: { sleep: 1800 }\n")]);
+    session.compositor_mut().set_session(&program);
+    session.step();
+
+    session.advance(seconds(1801));
+    let said = || std::fs::read_to_string(&asked).unwrap_or_default();
+    session.eventually(|_| said() == "sleep\n");
+    session.advance(seconds(3600));
+    a_moment();
+    assert_eq!(said(), "sleep\n", "once for the time away");
+}

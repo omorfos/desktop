@@ -74,6 +74,11 @@ pub(crate) struct Presence {
     last_active: Option<Instant>,
     /// Whether the screens are to be on, and if not whether they are off.
     screens: Screens,
+    /// The time away the session was last locked for, and the one the
+    /// machine was last put to sleep for, each known by when the user was
+    /// last there before it: each is done once a time away.
+    locked_for: Option<Instant>,
+    slept_for: Option<Instant>,
 }
 
 /// Whether the screens are on.
@@ -94,6 +99,8 @@ impl Default for Presence {
             stirred: false,
             last_active: None,
             screens: Screens::On,
+            locked_for: None,
+            slept_for: None,
         }
     }
 }
@@ -318,6 +325,43 @@ impl Compositor {
         since.map(|since| since + Duration::from_secs(after))
     }
 
+    /// When the session is to be locked, and when the machine put to sleep,
+    /// for the user being away: the configured times after they were last
+    /// there, where times are configured and it has not been done yet.
+    pub(crate) fn away_at(&self) -> [Option<Instant>; 2] {
+        let idle = self.config().general.idle;
+        let since = self.presence.last_active;
+        let at = |after: u32, done: Option<Instant>| {
+            let since = since.filter(|since| after > 0 && done != Some(*since));
+            since.map(|since| since + Duration::from_secs(u64::from(after)))
+        };
+        [
+            at(idle.lock, self.presence.locked_for),
+            at(idle.sleep, self.presence.slept_for),
+        ]
+    }
+
+    /// Locks the session, and puts the machine to sleep, once the user has
+    /// been away for as long as the configuration says, as of `now`. Each
+    /// is done once a time away; the session is not locked again if it is
+    /// locked already.
+    fn act_on_absence(&mut self, now: Instant) {
+        let [lock, sleep] = self.away_at().map(|at| at.is_some_and(|at| at <= now));
+        let away = self.presence.last_active;
+        if lock {
+            self.presence.locked_for = away;
+            if !self.is_locked() {
+                self.start_locker();
+            }
+        }
+        if sleep {
+            self.presence.slept_for = away;
+            // Asked as the menu asks it, of what speaks to logind, which
+            // has the session locked before the machine sleeps.
+            self.ask_session("sleep");
+        }
+    }
+
     /// Notes whether the user is there as of `now`, and settles whether the
     /// screens are on. Something being watched counts as the user being
     /// there, as it does for the session going idle.
@@ -333,6 +377,7 @@ impl Compositor {
             (false, Screens::Off) => Screens::Off,
             (false, _) => Screens::ToBeOff,
         };
+        self.act_on_absence(now);
     }
 }
 

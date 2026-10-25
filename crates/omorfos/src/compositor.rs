@@ -944,6 +944,8 @@ impl Compositor {
     pub fn deadline(&self) -> Option<Instant> {
         // Once the screens are off there is nothing more to wait for.
         let screens_off = self.screens_off_at().filter(|_| self.screens_on());
+        // And so are the session to be locked and the machine put to sleep.
+        let away = self.away_at().into_iter().flatten().min();
         // What is changing colour is drawn again a moment later.
         let moving = self.animation.epoch.zip(self.animation.motion.deadline());
         let moving = moving.map(|(epoch, due)| epoch + due);
@@ -967,6 +969,7 @@ impl Compositor {
                 Ending::Not | Ending::Asked => None,
             },
             screens_off,
+            away,
             moving,
             sliding,
             said,
@@ -1324,7 +1327,7 @@ impl Compositor {
     /// Starts the program the configuration names to lock the session,
     /// which is let lock by having been started for it. With none named
     /// there is nothing to lock with, which the user is told.
-    fn start_locker(&mut self) {
+    pub(crate) fn start_locker(&mut self) {
         let config = Arc::clone(self.store.current());
         match &config.general.locker {
             Some(locker) => {
@@ -1638,18 +1641,20 @@ impl Compositor {
         // Then what the desktop entries in `~/.config/autostart` and the
         // system's say is to start, which the program that watches over the
         // session reads and starts as ordinary programs, once.
+        self.ask_session("autostart");
+    }
+
+    /// Asks the program that watches over the session to do `request`, as
+    /// a key or the menu does. Without one there is nobody to ask.
+    pub(crate) fn ask_session(&mut self, request: &str) {
         let session = self
             .components
             .iter()
             .find(|component| component.kind == Program::Session);
         let session = session.map(|component| component.program.clone());
         if let Some(session) = session {
-            self.launch(
-                session.as_os_str(),
-                &["autostart".to_owned()],
-                (Roles::NONE, false),
-                None,
-            );
+            let request = [request.to_owned()];
+            self.launch(session.as_os_str(), &request, (Roles::NONE, false), None);
         }
     }
 

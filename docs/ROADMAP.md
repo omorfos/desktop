@@ -457,9 +457,9 @@ what only games and touchpads need last.
       `loginctl lock-session` locks too. The lid and the keys for sleep
       and for turning off are logind's, which already acts on them, so
       they are not bound (ADR 35).
-- [ ] Sleeping when the user is away, after a time the configuration
-      gives, as ADR 35 has it: today only the screens go off, and an idle
-      daemon is needed to lock.
+- [x] Locking and sleeping when the user is away, after the times the
+      configuration gives (`idle.lock`, `idle.sleep`), with no idle daemon:
+      each once a time away, and held off by what is being watched.
 - [ ] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another
