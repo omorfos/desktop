@@ -421,6 +421,12 @@ pub struct Idle {
     /// Seconds without input after which the screens are turned off. `0`
     /// never turns them off.
     pub screen_off: u32,
+    /// Seconds without input after which the session is locked, with the
+    /// locker the configuration names. `0` never locks it.
+    pub lock: u32,
+    /// Seconds without input after which the machine is put to sleep,
+    /// locked first. `0` never puts it to sleep.
+    pub sleep: u32,
 }
 
 /// Touchpad behaviour.
@@ -1118,9 +1124,12 @@ autostart:
 
     #[test]
     fn the_screens_stay_on_unless_a_time_is_given() {
-        assert_eq!(General::default().idle.screen_off, 0);
-        let idle = parse("idle: { screen_off: 600 }").unwrap().idle;
-        assert_eq!(idle.screen_off, 600);
+        assert_eq!(General::default().idle, Idle::default());
+        let idle = parse("idle: { screen_off: 600, lock: 300, sleep: 1800 }")
+            .unwrap()
+            .idle;
+        assert_eq!((idle.screen_off, idle.lock, idle.sleep), (600, 300, 1800));
+        assert!(parse("idle: { lock: -1 }").is_err());
         assert!(parse("idle: { screen_off: -5 }").is_err());
         assert!(parse("idle: { screen_of: 5 }").is_err());
     }

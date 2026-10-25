@@ -149,9 +149,23 @@
       "additionalProperties": false,
       "description": "What happens when the user is away.",
       "properties": {
+        "lock": {
+          "default": 0,
+          "description": "Seconds without input after which the session is locked, with the\nlocker the configuration names. `0` never locks it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "screen_off": {
           "default": 0,
           "description": "Seconds without input after which the screens are turned off. `0`\nnever turns them off.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sleep": {
+          "default": 0,
+          "description": "Seconds without input after which the machine is put to sleep,\nlocked first. `0` never puts it to sleep.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"

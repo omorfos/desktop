@@ -54,6 +54,8 @@ output:
 outputs: []               # particular screens, by name
 idle:
   screen_off: 0           # seconds without input; 0 never
+  lock: 0                 # seconds without input; 0 never
+  sleep: 0                # seconds without input; 0 never
 autostart: []             # programs to start with the session
 panel:
   enabled: true           # start the panel that comes with omorfos
@@ -93,16 +95,18 @@ The values shown are the defaults, except `workspaces`, which defaults to
 `["1"]`.
 
 `idle.screen_off` turns the screens off after that many seconds without
-input, and on again at the next key or movement. Something that asks for
-the session to stay awake, such as a film being played, keeps them on. It
-is off by default.
+input, and on again at the next key or movement. `idle.lock` locks the
+session after that many, with the `locker` named below, and `idle.sleep`
+puts the machine to sleep, locking it first. Each happens once for each
+time you are away. Something that asks for the session to stay awake, such
+as a film being played, holds off all three. They are off by default.
 
 `autostart` lists programs to start when the session does, each as a
 program and its arguments, as for `spawn`:
 
 ```yaml
 autostart:
-  - [swayidle, -w, timeout, "300", omorfosctl action lock]
+  - [foot, --server]
   - { run: [waybar], may: [panel] }
 ```
 
@@ -1439,15 +1443,15 @@ changes the level once.
 
 ## Locking the screen
 
-omorfos does not lock by itself; it starts a screen locker to, and tells
-an idle daemon when you have been away. Name the locker in `config.yaml`,
-and the `lock` action starts it, as the one program let lock:
+omorfos does not lock by itself; it starts a screen locker to. Name the
+locker in `config.yaml`, and the `lock` action starts it, as the one
+program let lock, as does being away for `idle.lock` seconds:
 
 ```yaml
 # config.yaml
 locker: [swaylock, -f]
-autostart:
-  - [swayidle, -w, timeout, "300", omorfosctl action lock]
+idle:
+  lock: 300
 ```
 
 ```yaml
@@ -1457,8 +1461,10 @@ bindings:
     action: lock
 ```
 
-The idle daemon asks omorfos to lock and does not start the locker
-itself: a locker it started would be an ordinary program, and refused.
+An idle daemon of your own, as `swayidle`, still works: it is told when
+you have been away, and asks omorfos to lock with `omorfosctl action
+lock`. It does not start the locker itself: a locker it started would be
+an ordinary program, and refused.
 While the screen is locked nothing else is shown and no key binding
 works, except Ctrl+Alt+F1 to F12. If the locker ends with the screen still
 locked, as one that crashed does, omorfos starts it again, up to three
