@@ -413,11 +413,14 @@ pub(crate) mod tests {
         pub(crate) fn start() -> Self {
             let directory = tempfile::TempDir::new().unwrap();
             let listen = format!("--address=unix:path={}/bus", directory.path().display());
-            let mut child = Command::new("dbus-daemon")
-                .args(["--session", "--nofork", "--print-address=1", &listen])
+            // Killed by the kernel once the thread that started it ends, so
+            // that a test killed before it could stop it leaves none running.
+            let mut child = Command::new("setpriv")
+                .args(["--pdeathsig", "KILL", "--", "dbus-daemon", "--session"])
+                .args(["--nofork", "--print-address=1", &listen])
                 .stdout(Stdio::piped())
                 .spawn()
-                .expect("dbus-daemon is needed to test notifications");
+                .expect("setpriv and dbus-daemon are needed to test notifications");
             let mut address = String::new();
             let stdout = child.stdout.take().unwrap();
             BufReader::new(stdout).read_line(&mut address).unwrap();

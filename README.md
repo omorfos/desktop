@@ -127,7 +127,8 @@ seatd. The rest is wanted, and done without if it is not there:
 | `wl-copy` and `wl-paste` (`wl-clipboard`) | Copying and pasting in an editor in a terminal, such as Neovim, which otherwise goes through X11 and cannot read what programs written for Wayland copy |
 
 To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
-which needs `libEGL`; `pam_wrapper` (`libpam-wrapper`), which the lock
+which needs `libEGL`; `setpriv` (`util-linux`), which stops a test's
+own bus and PipeWire with the test however it ends; `pam_wrapper` (`libpam-wrapper`), which the lock
 screen's tests ask PAM through; and the DejaVu fonts to draw as CI does.
 
 ## Documentation

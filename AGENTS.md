@@ -8,7 +8,7 @@ work on omorfos. Deeper detail lives in `docs/`.
 omorfos is a Wayland compositor for Linux (`x86_64`, `aarch64`), written in
 Rust. It needs `pkg-config`, `clang` and the development files for
 libxkbcommon, pixman, udev, libinput, libseat, GBM, PipeWire (1.4 or
-later) and PAM to build, and `dbus-daemon`, `pipewire`, `Xwayland` and
+later) and PAM to build, and `dbus-daemon`, `pipewire`, `setpriv`, `Xwayland` and
 `pam_wrapper` and GnuPG (`gpg`, `gpg-agent`) to run the tests. `Xwayland` needs `libEGL` to start at all,
 which its package only recommends.
 It is a fresh implementation, not a port: see

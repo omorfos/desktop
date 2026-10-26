@@ -35,7 +35,10 @@ impl Pipewire {
             .prefix("pw")
             .tempdir_in("/tmp")
             .unwrap();
-        let child = Command::new("pipewire")
+        // Killed by the kernel once the thread that started it ends, so
+        // that a test killed before it could stop it leaves none running.
+        let child = Command::new("setpriv")
+            .args(["--pdeathsig", "KILL", "--", "pipewire"])
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("XDG_RUNTIME_DIR", folder.path())

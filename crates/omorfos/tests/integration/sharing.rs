@@ -52,8 +52,11 @@ impl Daemon {
         use std::io::{BufRead, BufReader};
         let directory = tempfile::TempDir::new().unwrap();
         let listen = format!("--address=unix:path={}/bus", directory.path().display());
-        let mut child = Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1", &listen])
+        // Killed by the kernel once the thread that started it ends, so
+        // that a test killed before it could stop it leaves none running.
+        let mut child = Command::new("setpriv")
+            .args(["--pdeathsig", "KILL", "--", "dbus-daemon", "--session"])
+            .args(["--nofork", "--print-address=1", &listen])
             .stdout(std::process::Stdio::piped())
             .spawn()
             .unwrap();
@@ -95,7 +98,10 @@ impl Pipewire {
             .prefix("pw")
             .tempdir_in("/tmp")
             .unwrap();
-        let child = Command::new("pipewire")
+        // Killed by the kernel once the thread that started it ends, so
+        // that a test killed before it could stop it leaves none running.
+        let child = Command::new("setpriv")
+            .args(["--pdeathsig", "KILL", "--", "pipewire"])
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("XDG_RUNTIME_DIR", folder.path())
@@ -127,6 +133,70 @@ impl Drop for Pipewire {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// Set for the test that starts a bus and a PipeWire and waits to be
+/// killed, which is run by the one after it as a process of its own, and
+/// does nothing otherwise.
+const KILLED: &str = "OMORFOS_TEST_KILLED";
+
+#[test]
+fn a_bus_and_a_pipewire_are_started_and_the_test_waits_to_be_killed() {
+    use std::io::Write;
+    if std::env::var_os(KILLED).is_none() {
+        return;
+    }
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "started {} {}", daemon.child.id(), pipewire.child.id()).unwrap();
+    out.flush().unwrap();
+    std::thread::sleep(Duration::from_secs(60));
+}
+
+#[test]
+fn a_test_killed_midway_leaves_neither_its_bus_nor_its_pipewire_running() {
+    use std::io::{BufRead, BufReader};
+    // A test is killed so by a timeout, or by Ctrl-C, which run nothing
+    // of the test's to stop what it started.
+    let mut test = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "sharing::a_bus_and_a_pipewire_are_started_and_the_test_waits_to_be_killed",
+            "--nocapture",
+        ])
+        .env(KILLED, "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let said = BufReader::new(test.stdout.take().unwrap()).lines();
+    let started = said
+        .map(Result::unwrap)
+        .find_map(|line| line.strip_prefix("started ").map(str::to_owned))
+        .unwrap();
+    test.kill().unwrap();
+    test.wait().unwrap();
+    // Once gone, a process is no longer one, nor one ended and not yet
+    // waited on.
+    let running = |process: &str| {
+        let stat = std::fs::read_to_string(format!("/proc/{process}/stat"));
+        // The state follows the name, which is in brackets.
+        let state = stat.map(|stat| stat.rsplit(')').next().unwrap().trim_start().to_owned());
+        state.is_ok_and(|state| !state.starts_with('Z'))
+    };
+    let names = ["the bus", "PipeWire"];
+    for _ in 0..500 {
+        if !started.split(' ').any(running) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let left = started.split(' ').zip(names);
+    let left: Vec<_> = left.filter(|(process, _)| running(process)).collect();
+    for (process, _) in &left {
+        let _ = Command::new("kill").args(["-9", process]).status();
+    }
+    panic!("left running, and now killed: {left:?}");
 }
 
 /// What a call was answered with.
