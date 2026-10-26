@@ -15,7 +15,11 @@
 use std::cell::RefCell;
 use std::env;
 use std::error::Error;
-use std::io::{Write, stderr};
+use std::fs::File;
+use std::io::{self, Write, stderr};
+use std::os::fd::AsFd;
+use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -50,6 +54,7 @@ use super::winit::{
     cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
     wallpaper,
 };
+use crate::cli::Start;
 use crate::{Compositor, Feedback, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
@@ -124,18 +129,21 @@ enum Picture {
     Queued,
 }
 
-/// Runs the compositor on the hardware until the session ends.
+/// Runs the compositor on the hardware until the session ends, or, started
+/// with nothing above it and `omorfos-hold` beside it, becomes the holder,
+/// which starts it again under itself (ADR 60).
 ///
 /// # Errors
 ///
 /// Returns an error if the seat cannot be taken, if no graphics card is
-/// found, or if drawing fails.
-pub fn run() -> Result<(), Box<dyn Error>> {
+/// found, if drawing fails, or, held, if the holder hands nothing over.
+pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let config_directory = omorfos_config::config_dir(
         env::var_os("XDG_CONFIG_HOME").as_deref(),
         env::var_os("HOME").as_deref(),
     )
     .ok_or("cannot find the configuration directory: set HOME or XDG_CONFIG_HOME")?;
+    let holder = holder(start)?;
 
     let (mut seat, seat_events) = LibSeatSession::new().map_err(|error| {
         format!(
@@ -148,7 +156,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let (card, card_events, gbm, gpus, renderer) = open_card(&mut seat)?;
 
     let mut session = Session::new(config_directory)?;
-    listen(&mut session)?;
+    match holder {
+        Some(holder) => session.hold(holder)?,
+        None => listen(&mut session)?,
+    }
     let hardware = Rc::new(RefCell::new(Hardware {
         seat: seat.clone(),
         card,
@@ -239,8 +250,40 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let handle = session.handle();
     let ended = session.run(move |compositor| turn(&hardware, &handle, compositor));
-    end_session();
+    end_session(session.compositor());
     ended
+}
+
+/// Becomes the holder, if the compositor was started with nothing above it
+/// and there is one beside it; or, started by the holder, the connection
+/// to it; or nothing, to run as before there was a holder.
+fn holder(start: Start) -> io::Result<Option<UnixStream>> {
+    let own = env::current_exe().ok();
+    if let Some(holder) = super::holder_program(start, own.as_deref()) {
+        // Only returns if the holder could not be started; the session is
+        // then run as it was before there was one.
+        let failed = std::process::Command::new(&holder).exec();
+        let _ = writeln!(
+            stderr(),
+            "omorfos: cannot start {}: {failed}",
+            holder.display()
+        );
+    }
+    (start == Start::Held).then(take_holder).transpose()
+}
+
+/// The connection `omorfos-hold` started the compositor with, as what it
+/// reads from: taken, with what it reads from then put to nothing, so
+/// that no program it starts can speak to the holder in its name.
+fn take_holder() -> io::Result<UnixStream> {
+    // Started from the holder's name for the file, `/proc/<holder>/fd/N`,
+    // the process would be listed as `N`; it is named as it is installed,
+    // so that `ps`, `top` and `pgrep -x omorfos` find it.
+    let _ = std::fs::write("/proc/thread-self/comm", "omorfos");
+    let holder = io::stdin().as_fd().try_clone_to_owned()?;
+    let nothing = File::open("/dev/null")?;
+    rustix::stdio::dup2_stdin(&nothing)?;
+    Ok(UnixStream::from(holder))
 }
 
 /// Reads the keyboard, mice and touchpads, and keeps track of which
@@ -365,6 +408,12 @@ fn set_components(compositor: &mut Compositor) {
 /// was pending for it. What the session is told of is handed to the shell
 /// as arguments, never as text for the shell to read.
 fn announce_session(compositor: &mut Compositor) {
+    // Started again in the same login, D-Bus and systemd have been told of
+    // the session already, under the same names, and the services of the
+    // graphical session are running.
+    if compositor.started_again() {
+        return;
+    }
     let told = compositor.session_environment().into_iter();
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
     let script = "dbus-update-activation-environment --systemd \"$@\"; \
@@ -383,7 +432,11 @@ fn announce_session(compositor: &mut Compositor) {
 
 /// Tells systemd that the session has ended, so that the services of the
 /// graphical session stop with it and none is left for the next.
-fn end_session() {
+fn end_session(compositor: &Compositor) {
+    // One that steps down is to be started again in the same session.
+    if compositor.stepping_down() {
+        return;
+    }
     let _ = std::process::Command::new("systemctl")
         .args(["--user", "stop", "--no-block", "omorfos-session.target"])
         .status();

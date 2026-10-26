@@ -19,6 +19,7 @@ mod dragging;
 mod executable;
 mod gestures;
 mod gpu;
+mod hold;
 mod holding;
 mod idle;
 mod input;

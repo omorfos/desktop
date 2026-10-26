@@ -125,6 +125,10 @@ pub enum Action {
     NextScreens,
     /// Re-read the configuration now.
     ReloadConfig,
+    /// Start the compositor again, keeping the login, as `omorfos-hold`
+    /// does when it ends: the newest version installed, with the windows
+    /// closed.
+    RestartCompositor,
     /// End the session.
     Quit,
 }
@@ -335,6 +339,7 @@ mod tests {
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
         assert_eq!(parse("switch_windows_back"), Ok(Action::SwitchWindowsBack));
         assert_eq!(parse("reload_config"), Ok(Action::ReloadConfig));
+        assert_eq!(parse("restart_compositor"), Ok(Action::RestartCompositor));
         assert_eq!(parse("shade"), Ok(Action::Shade));
         assert_eq!(parse("keep_above"), Ok(Action::KeepAbove));
         assert_eq!(parse("stick"), Ok(Action::Stick));

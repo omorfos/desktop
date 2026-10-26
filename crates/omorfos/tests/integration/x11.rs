@@ -1347,3 +1347,57 @@ fn a_window_of_a_program_written_for_x11_is_shown_if_omorfos_started_it() {
     next(&mut session);
     assert!(!shown(&mut session, "unasked", &|_| ()));
 }
+
+#[test]
+fn started_again_under_a_holder_the_x_server_has_the_number_the_session_had() {
+    let _alone = alone();
+    let mut before = Session::new();
+    before.compositor_mut().start_xwayland(None);
+    let number = display(&before).unwrap();
+    let number: u32 = number.trim_start_matches(':').parse().unwrap();
+    before.eventually(|before| server(before).is_some());
+    let old = server(&before);
+    // The compositor before goes, and its X server with it, which holds
+    // the number for a moment after.
+    drop(before);
+
+    let mut session = Session::new();
+    let told = omorfos_ipc::hold::Told {
+        display: Some(number),
+        ..omorfos_ipc::hold::Told::default()
+    };
+    let (mut holder, _) = crate::hold::hold(&mut session, told);
+    session.compositor_mut().start_xwayland(None);
+    let expected = format!(":{number}");
+    assert_eq!(
+        display(&session).as_deref(),
+        Some(expected.as_str()),
+        "at once"
+    );
+    // A program that connects while the old one is still going is turned
+    // away, as when an X server is started again; one after finds the new.
+    wait(&mut session, |session| {
+        server(session).is_some_and(|new| Some(new) != old)
+    });
+    let program = connect(&mut session);
+    open(&mut session, &program, "xapp", (100, 100), 0x00ff_0000);
+    assert_eq!(display(&session).as_deref(), Some(expected.as_str()));
+    // The holder knew the number already.
+    assert_eq!(holder.said(), [omorfos_ipc::hold::Word::Up]);
+}
+
+#[test]
+fn the_first_compositor_under_a_holder_tells_it_the_number_its_x_server_took() {
+    let _starting = STARTING.read().unwrap_or_else(PoisonError::into_inner);
+    let mut session = Session::new();
+    let (mut holder, _) = crate::hold::hold(&mut session, omorfos_ipc::hold::Told::default());
+    session.compositor_mut().start_xwayland(None);
+    let number = display(&session).unwrap();
+    let number: u32 = number.trim_start_matches(':').parse().unwrap();
+    session.step();
+    let said = holder.said();
+    assert!(
+        said.contains(&omorfos_ipc::hold::Word::Display(number)),
+        "{said:?}"
+    );
+}

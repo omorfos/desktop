@@ -27,6 +27,7 @@ use smithay::reexports::wayland_server::ListeningSocket;
 use smithay::utils::Transform;
 
 use crate::Roles;
+use crate::cli::Start;
 use crate::{Compositor, Gesture, Input, Scale, Session, Themes};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
@@ -50,7 +51,7 @@ struct Screen {
 ///
 /// Returns an error if no display or GPU is available, if the Wayland socket
 /// cannot be created, or if rendering fails.
-pub fn run() -> Result<(), Box<dyn Error>> {
+pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
     let config_directory = omorfos_config::config_dir(
         env::var_os("XDG_CONFIG_HOME").as_deref(),
         env::var_os("HOME").as_deref(),

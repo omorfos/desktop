@@ -103,6 +103,7 @@ use crate::cursor::{self, Themes};
 use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
+use crate::hold::Holder;
 use crate::holding::Holding;
 use crate::icons::WindowIcons;
 use crate::input::Drag;
@@ -404,7 +405,9 @@ pub struct Compositor {
     /// The event loop, to be woken by what the compositor waits for.
     pub(crate) event_loop: LoopHandle<'static, Self>,
     socket_name: Option<OsString>,
-    running: bool,
+    pub(crate) running: bool,
+    /// `omorfos-hold`, where the compositor was started by it.
+    pub(crate) holder: Option<Holder>,
 }
 
 /// What a surface may be told or tell beyond the core protocol, which is
@@ -550,6 +553,7 @@ impl Compositor {
                     event_loop,
                     socket_name: None,
                     running: true,
+                    holder: None,
                 };
                 compositor.apply_config(startup_problems);
                 compositor.wake_on_changes();
@@ -1061,6 +1065,7 @@ impl Compositor {
         self.space.refresh();
         self.popups.cleanup();
         self.publish_ipc(now);
+        self.tell_holder();
     }
 
     // --- Configuration -------------------------------------------------------
@@ -1198,6 +1203,7 @@ impl Compositor {
             }
             Action::NextScreens => self.next_screens(),
             Action::ReloadConfig => self.reload_config(),
+            Action::RestartCompositor => self.restart_compositor(),
             Action::Quit => self.quit(),
         }
     }
@@ -1668,6 +1674,11 @@ impl Compositor {
             .map(|component| component.program.as_path());
         let own = self.updates.own.0.as_deref();
         self.updates.versions.follow(programs.chain(own));
+        // A compositor started again in the same login leaves alone what
+        // the first started, which may well be running still.
+        if self.started_again() {
+            return;
+        }
         // Each in a scope of its own, where there is what makes one, so
         // that it ends with the session: a program that is not the
         // compositor's client is told of nothing else that does.
@@ -1827,6 +1838,9 @@ impl Compositor {
                 "XCURSOR_SIZE",
                 OsString::from(cursor.size.get().to_string()),
             ),
+            // Qt connects again, to the same socket, when the compositor
+            // is started again under the holder (ADR 60), but only if told.
+            ("QT_WAYLAND_RECONNECT", OsString::from("1")),
         ];
         let located = [
             ("WAYLAND_DISPLAY", display),

@@ -241,6 +241,11 @@
           "type": "string"
         },
         {
+          "const": "restart_compositor",
+          "description": "Start the compositor again, keeping the login, as `omorfos-hold`\ndoes when it ends: the newest version installed, with the windows\nclosed.",
+          "type": "string"
+        },
+        {
           "const": "quit",
           "description": "End the session.",
           "type": "string"

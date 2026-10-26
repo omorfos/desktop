@@ -38,6 +38,10 @@ fn the_session_is_described_by_where_it_is_once_that_is_known() {
     assert_eq!(before.get("OMORFOS_SOCKET"), None);
     assert_eq!(before["XDG_SESSION_TYPE"], "wayland");
     assert_eq!(before["XCURSOR_SIZE"], "24");
+    assert_eq!(
+        before["QT_WAYLAND_RECONNECT"], "1",
+        "Qt connects again to a compositor started again under the holder"
+    );
 
     session.compositor_mut().set_socket_name("wayland-7");
     let path = session.listen();

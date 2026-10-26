@@ -10,8 +10,12 @@
 
 use std::error::Error;
 use std::io;
-use std::path::PathBuf;
+use std::os::fd::AsFd;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+use omorfos_ipc::hold::{self, Told};
 
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
@@ -100,11 +104,50 @@ impl Session {
     ///
     /// Returns an error if the socket cannot be added to the event loop.
     pub fn serve(&mut self, socket: ListeningSocket, roles: Roles) -> Result<(), Box<dyn Error>> {
+        self.serve_on(socket, roles)
+    }
+
+    /// Takes up what `omorfos-hold` hands over `holder`, the compositor's
+    /// end of the connection it was started with: serves the socket it
+    /// hands, with the IPC socket beside it, comes up as the holder says
+    /// the compositor before it left the session, and tells it from then
+    /// on what it is to keep. See `docs/adr/0060-the-session-outlives-the-compositor.md`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if nothing is handed over, if no socket with a
+    /// name comes with it, or if the IPC socket cannot be opened.
+    pub fn hold(&mut self, holder: UnixStream) -> Result<(), Box<dyn Error>> {
+        let (text, fds) = hold::take(&holder)?;
+        let socket = fds.into_iter().next().map(UnixListener::from);
+        let socket = socket.ok_or("omorfos-hold handed over no socket to serve")?;
+        let address = socket.local_addr().ok();
+        let path = address.and_then(|address| address.as_pathname().map(Path::to_owned));
+        let path = path.ok_or("the socket omorfos-hold handed over has no name")?;
+        // Neither is ever to make the compositor wait.
+        socket
+            .set_nonblocking(true)
+            .and_then(|()| holder.set_nonblocking(true))
+            .and_then(|()| {
+                self.compositor
+                    .take_up_holder(holder, Told::read(&text), &path)
+            })
+            .map_err(Box::from)
+            .and_then(|()| self.serve_on(socket, Roles::NONE))
+    }
+
+    /// Accepts the clients that connect to `socket`, of whichever kind it
+    /// is, each with `roles`.
+    fn serve_on<S: Listening + AsFd + 'static>(
+        &mut self,
+        socket: S,
+        roles: Roles,
+    ) -> Result<(), Box<dyn Error>> {
         let socket = Generic::new(socket, Interest::READ, Mode::Level);
         self.event_loop
             .handle()
             .insert_source(socket, move |_, socket, compositor| {
-                accept_all(socket, compositor, roles).map(|()| PostAction::Continue)
+                accept_all(&**socket, compositor, roles).map(|()| PostAction::Continue)
             })
             .map(drop)
             .map_err(Box::from)
@@ -180,17 +223,42 @@ impl Session {
     }
 }
 
+/// What programs connect to: a socket the session bound itself, or one
+/// handed to it.
+trait Listening {
+    /// The next program waiting to connect, if one is.
+    fn next(&self) -> io::Result<Option<UnixStream>>;
+}
+
+impl Listening for ListeningSocket {
+    fn next(&self) -> io::Result<Option<UnixStream>> {
+        self.accept()
+    }
+}
+
+impl Listening for UnixListener {
+    fn next(&self) -> io::Result<Option<UnixStream>> {
+        let waiting = |error: io::Error| {
+            let none = error.kind() == io::ErrorKind::WouldBlock;
+            none.then_some(None).ok_or(error)
+        };
+        self.accept()
+            .map(|(stream, _)| Some(stream))
+            .or_else(waiting)
+    }
+}
+
 /// Takes on every client waiting to connect.
 fn accept_all(
-    socket: &ListeningSocket,
+    socket: &impl Listening,
     compositor: &mut Compositor,
     roles: Roles,
 ) -> io::Result<()> {
-    let mut waiting = socket.accept();
+    let mut waiting = socket.next();
     while let Ok(Some(stream)) = waiting {
         waiting = compositor
             .insert_client(stream, roles)
-            .and_then(|_| socket.accept());
+            .and_then(|_| socket.next());
     }
     waiting.map(drop)
 }

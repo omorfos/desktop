@@ -52,8 +52,9 @@ use crate::roles::Roles;
 #[derive(Debug)]
 pub(crate) struct Lock {
     /// The locker's hold on the session. The lock is its to release, and
-    /// nobody else's while it lives.
-    by: ExtSessionLockV1,
+    /// nobody else's while it lives. A session that came up locked is held
+    /// by nobody until a locker takes it.
+    by: Option<ExtSessionLockV1>,
     /// What the locker shows on each output, once it has something to
     /// show there.
     surfaces: Vec<(Output, LockSurface)>,
@@ -148,6 +149,17 @@ impl Default for Presence {
 }
 
 impl Compositor {
+    /// Locks the session with nobody holding the lock, as a compositor
+    /// started again while it was locked comes up: nothing of the session
+    /// is shown or reached until a locker takes the lock and lets it go.
+    pub(crate) fn come_up_locked(&mut self) {
+        self.lock = Some(Lock {
+            by: None,
+            surfaces: Vec::new(),
+            unconfirmed: None,
+        });
+    }
+
     /// Whether the session is locked.
     #[must_use]
     pub const fn is_locked(&self) -> bool {
@@ -459,7 +471,8 @@ impl SessionLockHandler for Compositor {
             self.refuse(client.as_ref(), "lock the session", "lock");
             return;
         }
-        if self.lock.as_ref().is_some_and(|lock| lock.by.is_alive()) {
+        let held = |lock: &Lock| lock.by.as_ref().is_some_and(Resource::is_alive);
+        if self.lock.as_ref().is_some_and(held) {
             // Somebody holds the lock. Dropping the request refuses it.
             return;
         }
@@ -470,7 +483,7 @@ impl SessionLockHandler for Compositor {
             head.blanked.set(false);
         }
         self.lock = Some(Lock {
-            by: confirmation.ext_session_lock().clone(),
+            by: Some(confirmation.ext_session_lock().clone()),
             surfaces: Vec::new(),
             unconfirmed: Some(confirmation),
         });
@@ -500,7 +513,7 @@ impl SessionLockHandler for Compositor {
         // when the session is not locked at all.
         let client = surface.wl_surface().client();
         let lock = self.lock.as_mut();
-        let held = lock.filter(|lock| lock.by.client() == client);
+        let held = lock.filter(|lock| lock.by.as_ref().is_some_and(|by| by.client() == client));
         if let Some((lock, output)) = held.zip(Output::from_resource(&output)) {
             lock.surfaces.push((output, surface));
             self.configure_lock_surfaces();

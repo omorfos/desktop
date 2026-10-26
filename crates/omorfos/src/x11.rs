@@ -320,6 +320,9 @@ pub(crate) struct X11 {
     /// stopped and could not be yet, with when to give up, and when to
     /// try next if nothing happens sooner.
     again: Option<(u32, Instant, Instant)>,
+    /// The number the session's X server had under the compositor before,
+    /// which the next is to have, until it is tried.
+    held: Option<u32>,
     /// The window manager, once the X server is ready for one.
     wm: Option<X11Wm>,
     /// Windows that are to be shown and are not part of the desktop, the
@@ -362,6 +365,7 @@ impl X11 {
             told: None,
             stopped: None,
             again: None,
+            held: None,
             wm: None,
             apart: Vec::new(),
             clipboard: Holding::default(),
@@ -385,11 +389,18 @@ impl X11 {
     /// What programs written for X11 are to be told to connect to, once
     /// the X server has been started.
     pub(crate) fn display(&self) -> Option<OsString> {
-        // One that is about to be replaced is replaced where it was.
+        let number = self.number();
+        number.map(|number| format!(":{number}").into())
+    }
+
+    /// The number of the session's X server, once it has been started or
+    /// is to be: one that is about to be replaced is replaced where it was,
+    /// and one the session had before is had again.
+    fn number(&self) -> Option<u32> {
         let server = self.server.as_ref().or(self.stopped.as_ref());
         let number = server.map(|server| server.process.display_number());
         let number = number.or(self.again.map(|(number, ..)| number));
-        number.map(|number| format!(":{number}").into())
+        number.or(self.held)
     }
 }
 
@@ -406,8 +417,21 @@ impl Compositor {
         if !self.config().general.xwayland.enabled || self.x11.server.is_some() {
             return;
         }
-        let started = self.spawn_x11(display);
-        self.started_x11(started);
+        // The number the session had, where it was started again, is taken
+        // as one that stopped is: its X server may hold it for a moment yet.
+        match display.or(self.held_display()) {
+            Some(number) if display.is_none() => self.x11.held = Some(number),
+            display => {
+                let started = self.spawn_x11(display);
+                self.started_x11(started);
+            }
+        }
+    }
+
+    /// The number of the session's X server, once it has been started or
+    /// is to be.
+    pub(crate) fn x11_number(&self) -> Option<u32> {
+        self.x11.number()
     }
 
     /// Starts an X server with the number `display`, or the first that is
@@ -532,6 +556,9 @@ impl Compositor {
             // again at once, before anything else can have it.
             let number = stopped.process.display_number();
             drop(stopped);
+            self.x11.again = Some((number, now + TAKING_AGAIN, now));
+        }
+        if let Some(number) = self.x11.held.take() {
             self.x11.again = Some((number, now + TAKING_AGAIN, now));
         }
         if let Some((number, until, _)) = self.x11.again.take() {

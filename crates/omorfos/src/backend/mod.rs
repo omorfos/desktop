@@ -8,6 +8,8 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use crate::cli::Start;
+
 pub mod hardware;
 pub mod winit;
 
@@ -103,6 +105,22 @@ pub fn asker_program(own: Option<&Path>) -> PathBuf {
     beside(own, ASKER)
 }
 
+/// What the executable that holds the session is called.
+const HOLDER: &str = "omorfos-hold";
+
+/// The holder the compositor, started as `start` from the executable
+/// `own`, is to become before anything else, so that the session outlives
+/// it (ADR 60): the one beside it, where it was started with nothing above
+/// it. Only that one: a build tried by hand would otherwise be handed to
+/// some other holder installed, which would start the compositor beside
+/// itself. Without one beside it, it runs as it always did.
+#[must_use]
+pub fn holder_program(start: Start, own: Option<&Path>) -> Option<PathBuf> {
+    let holder = own.and_then(Path::parent).map(|folder| folder.join(HOLDER));
+    let holder = holder.filter(|holder| holder.is_file());
+    holder.filter(|_| start == Start::Alone)
+}
+
 /// Whether systemd's user manager runs for the session whose runtime
 /// directory is `runtime`, as its socket there says.
 #[must_use]
@@ -118,8 +136,9 @@ fn beside(own: Option<&Path>, name: &str) -> PathBuf {
     beside.unwrap_or_else(|| PathBuf::from(name))
 }
 
-/// A way of running the compositor until the session ends.
-pub type Launcher = fn() -> Result<(), Box<dyn Error>>;
+/// A way of running the compositor until the session ends, started as it
+/// was.
+pub type Launcher = fn(Start) -> Result<(), Box<dyn Error>>;
 
 /// The backends there are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,6 +200,22 @@ mod tests {
         assert_eq!(session_program(None), Path::new(SESSION));
         assert_eq!(asker_program(None), Path::new(ASKER));
         assert_eq!(panel_program(Some(Path::new("/"))), Path::new(PANEL));
+    }
+
+    #[test]
+    fn started_alone_beside_a_holder_the_compositor_becomes_it() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let own = folder.path().join("omorfos");
+        assert_eq!(holder_program(Start::Alone, Some(&own)), None, "none there");
+        std::fs::write(folder.path().join(HOLDER), "").unwrap();
+        let holder = Some(folder.path().join(HOLDER));
+        assert_eq!(holder_program(Start::Alone, Some(&own)), holder);
+        assert_eq!(
+            holder_program(Start::Held, Some(&own)),
+            None,
+            "held already"
+        );
+        assert_eq!(holder_program(Start::Alone, None), None, "not known where");
     }
 
     #[test]

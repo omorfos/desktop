@@ -23,6 +23,7 @@ mod gestures;
 mod ghost;
 mod gpu;
 mod handlers;
+mod hold;
 mod holding;
 mod icons;
 mod input;

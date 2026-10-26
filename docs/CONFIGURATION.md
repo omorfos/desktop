@@ -431,6 +431,7 @@ not begin with keys you have bound on their own.
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
 | `reload_config` | Re-read the configuration. |
+| `restart_compositor` | Start the compositor again without logging out, with the newest version installed. For now its windows close with it, but for those of Qt 6 programs, which connect again; the session stays locked if it was, programs written for X11 find their X server under the same number, and what starts with the session is not started a second time. Only where omorfos is the whole session, under `omorfos-hold`; elsewhere it is refused, with a notice. No key is bound to it. |
 | `quit` | End the session. The programs started in it are asked to close first, as any desktop asks them, and given two seconds to; asked again meanwhile, it ends at once. |
 
 To run a shell command, spawn the shell: `spawn: [sh, -c, "grim - | wl-copy"]`.

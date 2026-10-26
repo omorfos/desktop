@@ -38,6 +38,7 @@ depends = "$auto, libegl1, libgles2, libpipewire-0.3-0t64 (>= 1.4)"
 recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire (>= 1.4), wireplumber, wl-clipboard"
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
+    ["target/release/omorfos-hold", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["target/release/omorfos-wallpaper", "usr/bin/", "755"],
@@ -83,9 +84,11 @@ omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-journal = { path = "../omorfos-journal" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay; named here for the `process` feature,
-# which lets the event loop be woken when a program we started exits, and
-# `fs`, which keeps what the watcher of what records says from blocking.
-rustix = { version = "1.1.5", default-features = false, features = ["fs", "process"] }
+# which lets the event loop be woken when a program we started exits,
+# `fs`, which keeps what the watcher of what records says from blocking, and
+# `stdio`, which puts what the compositor reads from to nothing once it has
+# taken the connection `omorfos-hold` started it with.
+rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "stdio"] }
 serde = "1.0.229"
 # Reads cursor theme files. Already in the tree through Smithay's winit
 # backend.
