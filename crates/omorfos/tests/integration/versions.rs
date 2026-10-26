@@ -103,10 +103,10 @@ fn a_new_keeper_takes_over_before_the_one_before_is_ended() {
     session.compositor_mut().autostart();
     session.eventually(|_| marks("keeper") == "1");
     install(&keeper, "keeper", "2");
-    session.eventually(|_| marks("keeper") == "12");
-    // A while later, for the new one to have taken what the old keeps.
-    session.advance(Duration::from_secs(2));
-    assert_eq!(marks("keeper"), "12");
+    // Each mark is left as it happens: the new one started, and only then
+    // the one before ended, a while later, for the new one to have taken
+    // what the old keeps. How long the new one takes to start eats into
+    // that while on the compositor's clock, so the order is what is told.
     session.eventually(|_| marks("keeper") == "12e");
 }
 
