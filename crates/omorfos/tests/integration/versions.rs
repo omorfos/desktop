@@ -7,9 +7,10 @@
 
 use std::fs;
 use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos::Roles;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
@@ -71,6 +72,33 @@ fn session(config: &[(&str, &str)]) -> (Session, impl Fn(&str) -> String + use<>
     (session, marks)
 }
 
+/// The processes running the program at `path`, each with the one that
+/// started it: a stand-in's shell names its script in its command line,
+/// and so does a copy of it the shell has made and not yet replaced.
+fn running(path: &Path) -> Vec<(u32, u32)> {
+    let wanted = path.as_os_str().as_bytes();
+    let processes = fs::read_dir("/proc").unwrap().filter_map(Result::ok);
+    let found = processes.filter_map(|process| {
+        let number = process.file_name().to_str()?.parse().ok()?;
+        let line = fs::read(process.path().join("cmdline")).ok()?;
+        line.split(|byte| *byte == 0)
+            .any(|word| word == wanted)
+            .then_some(())?;
+        // Its parent is the second field past its name, which is in
+        // parentheses and may hold spaces.
+        let stat = fs::read_to_string(process.path().join("stat")).ok()?;
+        let parent = stat
+            .rsplit_once(')')?
+            .1
+            .split_whitespace()
+            .nth(1)?
+            .parse()
+            .ok()?;
+        Some((number, parent))
+    });
+    found.collect()
+}
+
 /// A directory for programs, and where in it the one called `name` is.
 fn place(name: &str) -> (tempfile::TempDir, PathBuf) {
     let place = tempfile::TempDir::new().unwrap();
@@ -102,11 +130,20 @@ fn a_new_keeper_takes_over_before_the_one_before_is_ended() {
     session.compositor_mut().set_keeper(&keeper);
     session.compositor_mut().autostart();
     session.eventually(|_| marks("keeper") == "1");
+    let before: Vec<u32> = running(&keeper).iter().map(|(number, _)| *number).collect();
     install(&keeper, "keeper", "2");
-    // Each mark is left as it happens: the new one started, and only then
-    // the one before ended, a while later, for the new one to have taken
-    // what the old keeps. How long the new one takes to start eats into
-    // that while on the compositor's clock, so the order is what is told.
+    // The new one is started, and the one before ended a while later on the
+    // compositor's clock, for the new one to have taken what the old keeps.
+    // Here that clock runs far faster than the new one takes to start, so
+    // it is held once the new one has been started until it has left its
+    // mark: what is checked is the order the compositor does things in.
+    let new = |(number, parent): &(u32, u32)| !before.contains(number) && !before.contains(parent);
+    session.eventually(|_| running(&keeper).iter().any(new));
+    let by = Instant::now() + Duration::from_secs(10);
+    while marks("keeper") != "12" {
+        assert!(Instant::now() < by, "{:?}", marks("keeper"));
+        std::thread::sleep(Duration::from_millis(1));
+    }
     session.eventually(|_| marks("keeper") == "12e");
 }
 
