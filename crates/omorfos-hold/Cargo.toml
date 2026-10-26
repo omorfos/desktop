@@ -15,8 +15,10 @@ publish.workspace = true
 # What the holder and the compositor say, and how the socket is handed over.
 omorfos-ipc = { path = "../omorfos-ipc" }
 # Already in the tree through Smithay. Locks the socket's name as every
-# Wayland compositor does (`fs`).
-rustix = { version = "1.1.5", default-features = false, features = ["fs", "std"] }
+# Wayland compositor does (`fs`), and waits on and stops the relay by its
+# process (`process`), as a version of the holder that takes up another's
+# has it as a child but no handle to it.
+rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

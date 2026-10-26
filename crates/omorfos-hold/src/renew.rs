@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{self, Told};
 use rustix::fs::{OFlags, fcntl_setfl};
+use rustix::process::Pid;
 
 use crate::{Hold, Policy, Socket, Which};
 
@@ -40,9 +41,8 @@ impl Hold {
     /// held, the compositor to start next being from `which` file. Says on
     /// `log` why there is none to become, where there was one installed.
     ///
-    /// The relay is stopped first, where there is one to become: its
-    /// connection to the holder is not handed over, and the new version
-    /// starts its own (ADR 61).
+    /// The relay, where there is one, is handed over with the rest: its
+    /// connection to the holder, and its process (ADR 61).
     pub fn renewal(&mut self, which: Which, log: &mut dyn Write) -> Option<(PathBuf, UnixStream)> {
         let own = self.own.clone().filter(|own| replaced(own))?;
         if !starts(&own) {
@@ -51,10 +51,7 @@ impl Hold {
             return None;
         }
         let handing = self.handing(which).ok();
-        handing.map(|handing| {
-            self.stop_relay();
-            (own, handing)
-        })
+        handing.map(|handing| (own, handing))
     }
 
     /// The connection that hands what is held to another version, which is
@@ -65,6 +62,7 @@ impl Hold {
         pair.and_then(|(running, (ours, theirs))| {
             let mut fds = vec![running.as_fd(), self.socket.as_fd(), self.socket.lock()];
             fds.extend(self.held.as_ref().map(AsFd::as_fd));
+            fds.extend(self.relay.as_ref().map(|relay| relay.connection.as_fd()));
             hold::give(&ours, &self.written(which), &fds).map(|()| theirs)
         })
     }
@@ -88,7 +86,13 @@ impl Hold {
         let relay = relay
             .map(|relay| format!("relay {relay}\n"))
             .unwrap_or_default();
-        format!("{text}socket {socket}\ncompositor {compositor}\n{own}{relay}{held}{next}\n")
+        let relayed = self.relay.as_ref().map(|relay| relay.pid.as_raw_nonzero());
+        let relayed = relayed
+            .map(|pid| format!("relayed by {pid}\n"))
+            .unwrap_or_default();
+        format!(
+            "{text}socket {socket}\ncompositor {compositor}\n{own}{relay}{relayed}{held}{next}\n"
+        )
     }
 }
 
@@ -145,7 +149,13 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
         found.next().map(PathBuf::from)
     };
     let flag = |name: &str| text.lines().any(|line| line == name);
-    let enough = fds.len() >= 3 + usize::from(flag("held"));
+    let relayed = text
+        .lines()
+        .find_map(|line| line.strip_prefix("relayed by "));
+    let relayed = relayed
+        .and_then(|pid| pid.parse().ok())
+        .and_then(Pid::from_raw);
+    let enough = fds.len() >= 3 + usize::from(flag("held")) + usize::from(relayed.is_some());
     let (Some(path), Some(compositor), true) = (line("socket "), line("compositor "), enough)
     else {
         return Err((text.to_owned(), fds));
@@ -154,7 +164,8 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
     let mut fds = fds.into_iter().skip(1);
     let listener = fds.next().map(UnixListener::from);
     let lock = fds.next().map(File::from);
-    let held = fds.next().map(File::from);
+    let held = flag("held").then(|| fds.next()).flatten().map(File::from);
+    let relay = relayed.zip(fds.next());
     let socket = listener.zip(lock);
     let socket = socket.map(|(listener, lock)| Socket::from_parts(listener, path, lock));
     let socket = socket.ok_or((String::new(), Vec::new()));
@@ -167,6 +178,8 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
         // one installed beside this one is used.
         let beside = || taken.own.as_deref().and_then(crate::relay_beside);
         taken.relay_program = line("relay ").or_else(beside);
+        taken.relay_started = relay.is_some();
+        taken.relay = relay.map(|(pid, connection)| crate::Relay { pid, connection });
         let which = if flag("next held") {
             Which::Held
         } else {
@@ -369,11 +382,24 @@ mod tests {
         assert!(held.relay_connection(&mut log).is_some(), "a relay running");
         let (program, handing) = held.renewal(Which::Installed, &mut log).unwrap();
         assert_eq!(program, own);
-        // The relay is not handed over, and is stopped; where it is, is.
-        assert!(held.relay.is_none());
+        // The relay is handed over running: where it is, its process, and
+        // its connection to the holder.
+        let pid = held.relay.as_ref().map(|relay| relay.pid);
         let (text, fds) = hold::take(&handing).unwrap();
         assert!(text.contains(&format!("own {}\n", own.display())), "{text}");
-        let (taken, _) = take(&text, fds).unwrap();
+        assert_eq!(
+            fds.len(),
+            4,
+            "its own file, the socket, its lock and the relay's connection"
+        );
+        let (mut taken, _) = take(&text, fds).unwrap();
         assert_eq!(taken.relay_program, Some(relay));
+        assert_eq!(taken.relay.as_ref().map(|relay| relay.pid), pid);
+        assert!(
+            taken.relay_connection(&mut log).is_some(),
+            "joined as it was"
+        );
+        // The version before is not to stop it as it ends.
+        held.relay = None;
     }
 }

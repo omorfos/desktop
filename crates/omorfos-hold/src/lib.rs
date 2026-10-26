@@ -26,6 +26,7 @@ use std::time::Instant;
 
 use omorfos_ipc::hold::{self, Heard, Told};
 use omorfos_ipc::relay::{self, Hand};
+use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
 
 pub use exec::give_back;
 pub use policy::{Next, Policy, Which};
@@ -48,17 +49,19 @@ pub struct Hold {
     /// compositor through it (ADR 61).
     relay_program: Option<PathBuf>,
     /// The relay, once one has been started.
-    relay: Option<Relay>,
+    pub(crate) relay: Option<Relay>,
     /// Whether a relay has been started in this login.
-    relay_started: bool,
+    pub(crate) relay_started: bool,
 }
 
 /// The relay running, as far as the holder is concerned.
 #[derive(Debug)]
-struct Relay {
-    child: Child,
+pub(crate) struct Relay {
+    /// Its process, waited on by its number: a version of the holder that
+    /// takes up another's has the relay as its child, and no handle to it.
+    pub(crate) pid: Pid,
     /// The holder's end of the connection the relay was started with.
-    connection: OwnedFd,
+    pub(crate) connection: OwnedFd,
 }
 
 impl Relay {
@@ -66,7 +69,7 @@ impl Relay {
     /// end of a new connection, and returns the other, for the compositor.
     /// Nothing, if the relay has ended or will not take it.
     fn join(&mut self) -> Option<OwnedFd> {
-        let running = matches!(self.child.try_wait(), Ok(None));
+        let running = matches!(waitpid(Some(self.pid), WaitOptions::NOHANG), Ok(None));
         let pair = relay::pair().ok().filter(|_| running);
         pair.and_then(|(relays, compositor)| {
             let handed = relay::send(
@@ -279,7 +282,7 @@ impl Hold {
                 // One that has ended already is found so when it is joined.
                 let _ = relay::send(ours.as_fd(), &Hand::Socket, &[self.socket.as_fd()]);
                 Relay {
-                    child,
+                    pid: Pid::from_child(&child),
                     connection: ours,
                 }
             })
@@ -288,9 +291,9 @@ impl Hold {
 
     /// Stops the relay, if one is running, and waits for it to end.
     pub(crate) fn stop_relay(&mut self) {
-        if let Some(mut relay) = self.relay.take() {
-            let _ = relay.child.kill();
-            let _ = relay.child.wait();
+        if let Some(relay) = self.relay.take() {
+            let _ = kill_process(relay.pid, Signal::KILL);
+            let _ = waitpid(Some(relay.pid), WaitOptions::empty());
         }
     }
 
