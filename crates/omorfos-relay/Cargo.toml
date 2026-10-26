@@ -1,0 +1,39 @@
+[package]
+name = "omorfos-relay"
+description = "Stands between Wayland programs and the omorfos compositor, so that the compositor can be started again without closing them"
+keywords = ["wayland", "compositor", "session"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The list of protocols the compositor offers, and the words between the
+# relay, the holder and the compositor.
+omorfos-ipc = { path = "../omorfos-ipc" }
+# Already in the tree through Smithay. Passes descriptors on with the
+# messages they come with and finds who a program is (`net`), waits on
+# every connection at once (`event`), and puts what the relay reads from
+# to nothing once it has taken the holder's connection (`stdio`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "net", "std", "stdio"] }
+# Already in the tree through Smithay. What each message of each protocol
+# carries, which the relay reads by: `wayland-backend`'s descriptions,
+# generated into the crates below for each protocol (`server`, as the
+# descriptions are made for a server's side as well as a client's).
+wayland-backend = "0.3.17"
+wayland-server = { version = "0.31.14", default-features = false }
+wayland-protocols = { version = "0.32.13", features = ["server", "staging", "unstable"] }
+wayland-protocols-misc = { version = "0.3.12", features = ["server"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# Who the tests run as, to check the relay says so.
+rustix = { version = "1.1.5", default-features = false, features = ["process"] }
+tempfile = "3.27.0"

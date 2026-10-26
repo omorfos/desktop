@@ -186,6 +186,24 @@ for i in $(seq 1 100); do "$bin" x11:: >/dev/null 2>&1 || echo "failed on run $i
 for i in $(seq 1 25); do "$bin" >/dev/null 2>&1 || echo "failed on run $i"; done
 ```
 
+## Fuzzing
+
+The relay reads what untrusted programs send before the compositor does,
+so its reader is fuzzed (ADR 61). The fuzzer is a crate of its own in
+`fuzz/`, outside the workspace, as `cargo-fuzz` needs a nightly toolchain
+and the project is built with a stable one. CI runs it for two minutes on
+each change to the relay or `omorfos-ipc`, and for an hour each night
+(`.github/workflows/fuzz.yml`). To run it by hand, with a nightly
+toolchain and `cargo-fuzz` installed:
+
+```sh
+cd fuzz
+cargo +nightly fuzz run messages -- -max_total_time=60
+```
+
+What makes it fail is kept in `fuzz/artifacts/`. Turn each into a test of
+the relay before mending it.
+
 ## Flaky tests
 
 A test that fails only sometimes, or a gate that falls short only

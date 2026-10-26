@@ -2069,6 +2069,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-relay"
+version = "0.1.0"
+dependencies = [
+ "omorfos-ipc",
+ "rustix 1.1.5",
+ "tempfile",
+ "wayland-backend",
+ "wayland-protocols",
+ "wayland-protocols-misc",
+ "wayland-protocols-wlr",
+ "wayland-server",
+]
+
+[[package]]
 name = "omorfos-screenshot"
 version = "0.1.0"
 dependencies = [

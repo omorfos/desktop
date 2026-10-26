@@ -4,9 +4,10 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** the relay (ADR 60), at the end of stage 3; then the rest of
-stage 3, what a day's use needs, then what is taken from stage 8 straight
-after it (below), then stage 4.
+**Next:** programs kept by the relay (ADR 61, step 2), at the end of
+stage 3; then the rest of the relay; then the rest of stage 3, what a
+day's use needs, then what is taken from stage 8 straight after it
+(below), then stage 4.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -752,15 +753,33 @@ what only games and touchpads need last.
       the relay, from what each protocol says, and are a first word that
       building the relay will correct; nothing reads the list yet but
       its tests.
-- [ ] The relay, `omorfos-relay`: what programs connect to in the
-      compositor's place, keeping every connection and the protocol's
-      state on it, and connecting each program again to a compositor
-      started anew, so that nothing closes when the compositor ends;
-      fuzzed from the first. Then the compositor's own new version taken
-      up at a quiet moment, as ADR 59 takes up the others', and its word
-      about the next login goes. Programs written for X11 still close
-      with their X server until Smithay can take up a running one (stage
-      8).
+- [x] The relay, `omorfos-relay` (ADR 60), in the path (ADR 61, step 1):
+      started and kept by the holder, handed the socket and joined to
+      each compositor by a connection only the holder makes; reading
+      every message both ways against the list of protocols, with a
+      table of each program's objects, and dropping a program that
+      breaks a bound; telling the compositor who each program is, which
+      it takes in place of asking the socket; fuzzed by `cargo-fuzz` in
+      a nightly CI job of its own. A restart still closes every window.
+- [ ] Known gaps in the relay: it has not been tried on real hardware; a
+      program it lets go for what it sent is closed without the
+      protocol's error, which the compositor would have sent it; it
+      makes its list of what to wait on anew each turn, where epoll
+      would keep one; the holder learns that it has ended only between
+      one compositor and the next, so one that hangs is not noticed; and
+      it is stopped, not handed over, when the holder takes up its own
+      new version, which step 2 has to change for programs to be kept.
+- [ ] Programs kept by the relay (ADR 61, step 2): what `foot` uses made
+      again for a compositor started anew, so that a terminal and what
+      runs in it outlive a restart. A program holding anything the relay
+      cannot yet make again is closed, as before.
+- [ ] The rest of the relay (ADR 61, step 3): every protocol in the
+      list made again; components kept as programs are; a sandbox's
+      listener handed to the relay; then the compositor's own new
+      version taken up at a quiet moment, as ADR 59 takes up the
+      others', and its word about the next login goes. Programs written
+      for X11 still close with their X server until Smithay can take up
+      a running one (stage 8).
 
 ## 4. The look
 

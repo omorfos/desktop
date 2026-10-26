@@ -1,0 +1,63 @@
+name: Fuzz
+
+# The relay reads what untrusted programs send before the compositor does,
+# so its reader is fuzzed (ADR 61): for two minutes on each change to what
+# it reads with, and for an hour every night. cargo-fuzz needs a nightly
+# toolchain, which nothing else here uses; the project's own is stable.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/omorfos-relay/**"
+      - "crates/omorfos-ipc/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "crates/omorfos-relay/**"
+      - "crates/omorfos-ipc/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A nightly of a known day, so that a run is the same run again.
+  NIGHTLY: nightly-2026-10-01
+
+jobs:
+  messages:
+    name: Messages
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the nightly toolchain
+        run: rustup toolchain install "$NIGHTLY" --profile minimal
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-fuzz
+      - name: Fuzz
+        working-directory: fuzz
+        env:
+          # Longer at night than on a change.
+          SECONDS_TO_RUN: ${{ github.event_name == 'schedule' && '3600' || '120' }}
+        run: cargo "+$NIGHTLY" fuzz run messages -- -max_total_time="$SECONDS_TO_RUN" -rss_limit_mb=2048
+      - name: Keep what made it fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          retention-days: 30

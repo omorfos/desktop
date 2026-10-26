@@ -1,0 +1,24 @@
+# The relay's reader fuzzed (ADR 61). A workspace of its own, outside the
+# project's, as cargo-fuzz needs a nightly toolchain and the project is
+# built with a stable one; run as `cargo +nightly fuzz run messages`.
+[package]
+name = "omorfos-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.10"
+omorfos-relay = { path = "../crates/omorfos-relay" }
+
+[[bin]]
+name = "messages"
+path = "fuzz_targets/messages.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

@@ -37,6 +37,11 @@ code, so the full list is visible in one place.
 | `crates/omorfos-hold/src/exec.rs` | Becomes another program in the same process, as `omorfos-hold` does to take up its own new version and to go back to the one before (ADR 60). This runs in CI, but a process that becomes another ends without writing down the coverage it counted, so it cannot be measured. It holds three calls: what to become and with what is worked out in `renew`, which is covered, and the tests run the holder taking its own place for real and see the session go on in the same process. |
 | `crates/omorfos/src/backend/hardware.rs` | Takes the seat, opens the graphics card and the input devices, and sets a mode on a real screen; CI runners have none of these. It translates libinput events into `Input` with the same function as the nested backend, and draws with `Compositor::render`. What it needs decided (which backend to use, where the pointer stops, which keys switch virtual terminal) is decided in covered code. See ADR 10. |
 
+Outside the workspace, and so never measured, is the fuzzer of the relay's
+reader, `fuzz/` (ADR 61): `cargo-fuzz` builds it with a nightly toolchain,
+which nothing else uses. It holds only what feeds the fuzzer; what it runs,
+the relay's `wire` and `objects`, is covered by the relay's tests.
+
 ## Consequences
 
 - Hardware glue must stay thin, which also keeps it easy to review.

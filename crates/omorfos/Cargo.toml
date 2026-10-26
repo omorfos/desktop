@@ -39,6 +39,7 @@ recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-p
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfos-hold", "usr/bin/", "755"],
+    ["target/release/omorfos-relay", "usr/bin/", "755"],
     ["target/release/omorfosctl", "usr/bin/", "755"],
     ["target/release/omorfos-panel", "usr/bin/", "755"],
     ["target/release/omorfos-wallpaper", "usr/bin/", "755"],
