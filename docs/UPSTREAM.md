@@ -98,6 +98,19 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'pub fn spawn\|listen\|socket' "$S"/src/xwayland/xserver.rs`
   for a way to hand it sockets already listened on.
 
+### A window manager started against a running X server takes up none of its windows
+
+- **Wrong:** `X11Wm::start_wm` manages the windows it hears of from then
+  on. It does not ask the X server for those already there
+  (`QueryTree`), nor read which surface each one is. A compositor
+  started again under a running X server (ADR 60) would find its
+  windows unmanaged.
+- **Meanwhile:** the X server is started again with the compositor, and
+  its programs close (ADR 27).
+- **Check:** `grep -n -i 'query_tree' "$S"/src/xwayland/xwm/mod.rs` for
+  the windows already there being taken up when the window manager
+  starts.
+
 ### No safe way to write into a buffer a program shares
 
 - **Wrong:** a program's buffer in shared memory is handed over only as a
