@@ -1093,6 +1093,65 @@ fn pinentry() -> PathBuf {
     built
 }
 
+/// What every home of GnuPG's here tells its agent. How many times a
+/// passphrase is hashed is said: left to itself, the agent times how many
+/// it can do in a tenth of a second, which on a busy machine is as
+/// unreliable as anything timed.
+const AGENT_CONF: &str = "allow-loopback-pinentry\ns2k-count 65536\n";
+
+/// A home of GnuPG's of its own, private to the user as GnuPG wants it.
+fn home_of_gnupg() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tempfile::TempDir::new().unwrap();
+    std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    home
+}
+
+/// Alice's key, whose passphrase is `atx`: the files of a home of GnuPG's
+/// that holds it, by where they are in it. It is made once, for every test
+/// to have a copy of. Making a key is not what is tested, takes GnuPG a
+/// while on a busy machine, and now and then fails there with "Corrupted
+/// protection", in other projects' tests too (GnuPG's T5309); what its
+/// agent said is kept, so that a failure says more.
+fn alices_key() -> &'static [(PathBuf, Vec<u8>)] {
+    static KEY: std::sync::OnceLock<Vec<(PathBuf, Vec<u8>)>> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        let home = home_of_gnupg();
+        let log = home.path().join("agent.log");
+        let conf = format!("{AGENT_CONF}log-file {}\n", log.display());
+        std::fs::write(home.path().join("gpg-agent.conf"), conf).unwrap();
+        let made = Command::new("gpg")
+            .env("GNUPGHOME", home.path())
+            .args(["--batch", "--yes", "--pinentry-mode", "loopback"])
+            .args(["--passphrase", "atx", "--quick-gen-key"])
+            .args(["Alice <alice@example.org>", "ed25519", "sign", "never"])
+            .output()
+            .unwrap();
+        let _ = Command::new("gpgconf")
+            .env("GNUPGHOME", home.path())
+            .args(["--kill", "all"])
+            .status();
+        assert!(
+            made.status.success(),
+            "{}\ngpg-agent said:\n{}",
+            String::from_utf8_lossy(&made.stderr),
+            std::fs::read_to_string(&log).unwrap_or_default()
+        );
+        let files = ["pubring.kbx", "trustdb.gpg"].map(PathBuf::from);
+        let keys = std::fs::read_dir(home.path().join("private-keys-v1.d")).unwrap();
+        let keys = keys.map(|key| Path::new("private-keys-v1.d").join(key.unwrap().file_name()));
+        files
+            .into_iter()
+            .chain(keys)
+            .map(|file| {
+                let held = std::fs::read(home.path().join(&file)).unwrap();
+                (file, held)
+            })
+            .collect()
+    })
+}
+
 /// A home of GnuPG's of its own, whose agent asks with the pinentry, and a
 /// key in it of Alice's whose passphrase is `atx`. Its agent is stopped
 /// when it goes.
@@ -1103,39 +1162,33 @@ struct Gnupg {
 
 impl Gnupg {
     fn new(asker: &Asker) -> Self {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
-        let home = tempfile::TempDir::new().unwrap();
-        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let home = home_of_gnupg();
         // A new passphrase is let be short and all letters: GnuPG would
         // otherwise ask to confirm it, which the pinentry says no to.
         let conf = format!(
-            "pinentry-program {}\nallow-loopback-pinentry\nmin-passphrase-len 0\n\
-             min-passphrase-nonalpha 0\n",
+            "{AGENT_CONF}pinentry-program {}\nmin-passphrase-len 0\nmin-passphrase-nonalpha 0\n",
             pinentry().display()
         );
         std::fs::write(home.path().join("gpg-agent.conf"), conf).unwrap();
-        let gnupg = Self {
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(home.path().join("private-keys-v1.d"))
+            .unwrap();
+        for (file, held) in alices_key() {
+            let mut copy = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(home.path().join(file))
+                .unwrap();
+            std::io::Write::write_all(&mut copy, held).unwrap();
+        }
+        Self {
             home,
             runtime: asker.directory.path().to_owned(),
-        };
-        let made = gnupg
-            .gpg(&["--pinentry-mode", "loopback", "--passphrase", "atx"])
-            .args([
-                "--quick-gen-key",
-                "Alice <alice@example.org>",
-                "ed25519",
-                "sign",
-                "never",
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            made.status.success(),
-            "{}",
-            String::from_utf8_lossy(&made.stderr)
-        );
-        gnupg
+        }
     }
 
     /// `gpg`, in this home, as a program of the session runs it.
