@@ -1385,13 +1385,19 @@ fn let_in(asker: &Asker) -> Vec<String> {
 /// Keeps the session going until `done`, giving up after a minute, as
 /// `failure` says: how long GnuPG takes is its own affair, the more so
 /// with other tests at work.
-fn until(session: &mut Session, mut done: impl FnMut() -> bool, failure: &str) {
+fn until(session: &mut Session, done: impl FnMut() -> bool, failure: &str) {
+    assert!(waited(session, done), "{failure}");
+}
+
+/// Keeps the session going until `done`, for a minute at most; and says
+/// whether it was done.
+fn waited(session: &mut Session, mut done: impl FnMut() -> bool) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while !done() && std::time::Instant::now() < deadline {
         session.step();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert!(done(), "{failure}");
+    done()
 }
 
 /// Keeps the session going until GnuPG's pinentry has knocked at the
@@ -1457,10 +1463,24 @@ fn type_in(session: &mut Session, asker: &Asker, word: &[Keycode]) {
     session.eventually(dotted);
     tap(session, key::RETURN);
     let answered = || let_in(asker).iter().all(|now| !asking.contains(now));
-    until(
-        session,
-        answered,
-        "the asker did not answer GnuPG in a minute",
+    // What the screen and the door say then tells which side it was that
+    // did not get on: the keys, the asker or the pinentry.
+    assert!(
+        waited(session, answered),
+        "the asker did not answer GnuPG in a minute: of {asking:?} let in, {:?} were still \
+         connected; the asker had {}; the prompt was {}, with {}",
+        let_in(asker),
+        if asker.running.is_finished() {
+            "ended"
+        } else {
+            "not ended"
+        },
+        if up(session) { "up" } else { "down" },
+        if dotted(session) {
+            "something typed"
+        } else {
+            "nothing typed"
+        },
     );
 }
 
