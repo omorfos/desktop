@@ -140,8 +140,9 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "wp_cursor_shape_manager_v1",
         version: 2,
-        replayed: "Each device made again for its pointer, and the shape last set set again when \
-                   the pointer enters, with the serial the new compositor gave.",
+        replayed: "Each device made again for its pointer. Told the pointer has left as the \
+                   compositor goes and entered again, the program names the shape again, with \
+                   the serial the new compositor gave, as it would to any compositor.",
     },
     Protocol {
         interface: "wp_fractional_scale_manager_v1",
@@ -262,9 +263,9 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "zwp_text_input_manager_v3",
         version: 1,
-        replayed: "Each text input made again for its seat, and what it last committed, the text \
-                   around the cursor, the kind of text and where the cursor is, committed again \
-                   once its surface has the keyboard. The count of commits that the program and \
+        replayed: "Each text input made again for its seat. Told it has been left as the \
+                   compositor goes and entered again, the program enables it again with what it \
+                   holds, as it would on any enter. The count of commits that the program and \
                    the compositor keep in step is the relay's to keep in step.",
     },
     Protocol {

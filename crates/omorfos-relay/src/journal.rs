@@ -15,6 +15,11 @@
 //! Its number is not given back to the program, which the compositor says
 //! by `wl_display.delete_id`, until nothing kept names it any more, so that
 //! the program cannot take it for something else meanwhile.
+//!
+//! A surface's parts (`wl_subsurface`) are stacked as they last were, and
+//! each surface is committed after its parts, so that what a part shows,
+//! which it shows only once the surface it is part of is committed, is
+//! there by then.
 
 use std::collections::{HashMap, HashSet};
 use std::os::fd::OwnedFd;
@@ -42,6 +47,10 @@ const ATTACH: u16 = 1;
 const DAMAGE: u16 = 2;
 const COMMIT: u16 = 6;
 const DAMAGE_BUFFER: u16 = 9;
+
+/// The numbers of a part's requests that put it over, and under, another.
+const PLACE_ABOVE: u16 = 2;
+const PLACE_BELOW: u16 = 3;
 
 /// What a request does to what is kept of the object it is to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,23 +91,28 @@ pub fn rule(interface: &str, request: &str) -> Rule {
             "xdg_toplevel",
             "set_parent" | "set_title" | "set_app_id" | "set_max_size" | "set_min_size",
         )
-        | ("xdg_positioner", _) => Rule::Lasting,
+        | ("xdg_positioner", _)
+        | ("zxdg_toplevel_decoration_v1", "set_mode" | "unset_mode")
+        | ("wp_viewport", "set_source" | "set_destination")
+        | ("wl_subsurface", "set_position" | "set_sync" | "set_desync") => Rule::Lasting,
         _ => Rule::Passing,
     }
 }
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 16] = [
+const KEPT: [&str; 23] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
     "wl_surface",
+    "wl_subsurface",
     "wl_region",
     "wl_shm_pool",
     "wl_buffer",
     "wl_pointer",
     "wl_keyboard",
+    "wp_cursor_shape_device_v1",
     "wl_data_device",
     "wl_data_source",
     "zwp_primary_selection_device_v1",
@@ -106,6 +120,11 @@ const KEPT: [&str; 16] = [
     "xdg_surface",
     "xdg_toplevel",
     "xdg_positioner",
+    "zxdg_toplevel_decoration_v1",
+    "wp_viewport",
+    "wp_fractional_scale_v1",
+    "zxdg_output_v1",
+    "zwp_text_input_v3",
 ];
 
 /// Whether an object of `interface` can be made again.
@@ -254,6 +273,10 @@ pub struct Journal {
     withheld: HashSet<u32>,
     /// Numbers the program is now to be told may be taken again.
     freed: Vec<u32>,
+    /// How the parts of each surface that has had any are stacked, from the
+    /// bottom, the surface itself among them. A part destroyed may still be
+    /// in it; it is passed over.
+    stacks: HashMap<u32, Vec<u32>>,
 }
 
 impl Journal {
@@ -270,6 +293,7 @@ impl Journal {
     ) {
         if let Some((made, interface, version)) = read.made {
             let message = Message::kept(bytes, fds, described);
+            self.stacked(made, interface.name, &message.names);
             self.name(made, &message.names);
             self.made += 1;
             let kept = Kept {
@@ -290,6 +314,12 @@ impl Journal {
         }
         let object = header.object;
         let rule = rule(read.interface.name, described.name);
+        if read.interface.name == "wl_subsurface"
+            && matches!(read.opcode, PLACE_ABOVE | PLACE_BELOW)
+        {
+            let sibling = wire::word(bytes, HEADER).unwrap_or_default();
+            self.place(object, sibling, read.opcode == PLACE_ABOVE);
+        }
         if read.ends {
             let message = Message::kept(bytes, fds, described);
             self.ended(object, message);
@@ -297,6 +327,47 @@ impl Journal {
             let message = Message::kept(bytes, fds, described);
             self.keep(object, rule, message);
         }
+    }
+
+    /// Takes in that `made`, of `interface`, was made by a request naming
+    /// `names`: a surface is in no stack yet, and a part is put on top of
+    /// the stack of the surface it is part of.
+    fn stacked(&mut self, made: u32, interface: &str, names: &[u32]) {
+        let part = (interface == "wl_subsurface")
+            .then(|| names.get(1).zip(names.get(2)))
+            .flatten();
+        if interface == "wl_surface" {
+            self.stacks.remove(&made);
+        }
+        let surface = part.map_or(made, |(surface, _)| *surface);
+        if interface == "wl_surface" || part.is_some() {
+            for stack in self.stacks.values_mut() {
+                stack.retain(|stacked| *stacked != surface);
+            }
+        }
+        if let Some((surface, parent)) = part {
+            let stack = self.stacks.entry(*parent).or_insert_with(|| vec![*parent]);
+            stack.push(*surface);
+        }
+    }
+
+    /// Puts the surface of the part `part` over `sibling`, or under it.
+    fn place(&mut self, part: u32, sibling: u32, above: bool) {
+        let names = self.kept.get(&part).map(|kept| &kept.made.names);
+        let found = names.and_then(|names| names.get(1).zip(names.get(2)));
+        let found = found.and_then(|(surface, parent)| {
+            let surface = *surface;
+            self.stacks.get_mut(parent).map(|stack| (surface, stack))
+        });
+        let placed = found.map(|(surface, stack)| {
+            stack.retain(|stacked| *stacked != surface);
+            // Put by what is not its sibling, which the compositor ends the
+            // program for, it is put on top.
+            let at = stack.iter().position(|stacked| *stacked == sibling);
+            let at = at.map_or(stack.len(), |at| at + usize::from(above));
+            stack.insert(at, surface);
+        });
+        let _ = placed;
     }
 
     /// Keeps `message`, to `object`, as `rule` says.
@@ -366,10 +437,18 @@ impl Journal {
         std::mem::take(&mut self.freed)
     }
 
-    /// Whether everything the program has made can be made again.
+    /// What, of what the program has made, cannot be made again: each
+    /// interface once, in the order first made.
     #[must_use]
-    pub fn keepable(&self) -> bool {
-        self.kept.values().all(|kept| keeps(kept.interface.name))
+    pub fn unkept(&self) -> Vec<&'static str> {
+        let mut unkept = Vec::new();
+        for (_, kept) in self.ordered() {
+            let interface = kept.interface.name;
+            if !keeps(interface) && !unkept.contains(&interface) {
+                unkept.push(interface);
+            }
+        }
+        unkept
     }
 
     /// The requests that make the program's registries again, in the order
@@ -401,6 +480,9 @@ impl Journal {
         numbering: &mut Numbering,
     ) -> Result<(Vec<Sending>, Vec<u32>), Broken> {
         let mut sending = Vec::new();
+        // What is asked of an `xdg_surface`, where its window's edges are,
+        // may be asked only once it has a role, which is made after it.
+        let mut roled = Vec::new();
         let ordered = self.ordered();
         for (number, kept) in &ordered {
             if kept.interface.name == "wl_registry" {
@@ -414,15 +496,39 @@ impl Journal {
                 wire::put(&mut bytes, HEADER, name);
             }
             sending.push((bytes, fds));
-            for message in kept.lasting.iter().chain(&kept.adding) {
-                sending.push(message.sending());
+            let lasting = kept
+                .lasting
+                .iter()
+                .chain(&kept.adding)
+                .map(Message::sending);
+            if kept.interface.name == "xdg_surface" {
+                roled.extend(lasting);
+            } else {
+                sending.extend(lasting);
             }
         }
+        sending.extend(roled);
+        let parts = self.parts();
+        sending.extend(self.stacking(&parts));
         let windows = self.windows();
         let mut awaited = Vec::new();
-        let surfaces = ordered
+        let mut surfaces: Vec<&(u32, &Kept)> = ordered
             .iter()
-            .filter(|(_, kept)| kept.interface.name == "wl_surface" && kept.gone.is_none());
+            .filter(|(_, kept)| kept.interface.name == "wl_surface" && kept.gone.is_none())
+            .collect();
+        // Parts first, the deepest first, so that each is committed before
+        // what it is part of.
+        let depth = |mut surface: u32| {
+            let mut depth = 0;
+            while let Some((_, parent)) = parts.get(&surface)
+                && depth < parts.len()
+            {
+                depth += 1;
+                surface = *parent;
+            }
+            depth
+        };
+        surfaces.sort_by_key(|(number, _)| std::cmp::Reverse(depth(*number)));
         for (number, kept) in surfaces {
             match windows.get(number) {
                 Some(window) => {
@@ -466,6 +572,53 @@ impl Journal {
         gone.sort_by_key(|kept| std::cmp::Reverse(kept.order));
         let gone = gone.into_iter().filter_map(|kept| kept.gone.as_ref());
         gone.map(Message::sending).collect()
+    }
+
+    /// Each surface that is a living part, with the part and the surface it
+    /// is part of.
+    fn parts(&self) -> HashMap<u32, (u32, u32)> {
+        let parts = self
+            .kept
+            .iter()
+            .filter(|(_, kept)| kept.interface.name == "wl_subsurface" && kept.gone.is_none());
+        let parts = parts.filter_map(|(number, kept)| {
+            let names = &kept.made.names;
+            let found = names.get(1).zip(names.get(2));
+            found.map(|(surface, parent)| (*surface, (*number, *parent)))
+        });
+        parts.collect()
+    }
+
+    /// The requests that stack the living `parts` of each surface as they
+    /// were: outwards from the surface, each over the one below it, and each
+    /// under the one above it.
+    fn stacking(&self, parts: &HashMap<u32, (u32, u32)>) -> Vec<Sending> {
+        let mut sending = Vec::new();
+        let mut stacks: Vec<(&u32, &Vec<u32>)> = self.stacks.iter().collect();
+        stacks.sort_by_key(|(parent, _)| **parent);
+        for (parent, stack) in stacks {
+            let (mut below, mut above) = (Vec::new(), Vec::new());
+            for surface in stack {
+                if surface == parent {
+                    std::mem::swap(&mut below, &mut above);
+                } else if let Some((part, _)) = parts.get(surface) {
+                    above.push((*part, *surface));
+                }
+            }
+            // Before the surface itself was met, its parts went into what
+            // is now `below`.
+            let mut previous = *parent;
+            for (part, surface) in above {
+                sending.push(message(part, PLACE_ABOVE, &[previous]));
+                previous = surface;
+            }
+            previous = *parent;
+            for (part, surface) in below.into_iter().rev() {
+                sending.push(message(part, PLACE_BELOW, &[previous]));
+                previous = surface;
+            }
+        }
+        sending
     }
 
     /// Each surface that is a living window's, and the window's
@@ -552,15 +705,16 @@ fn surface(number: u32, kept: &Kept) -> Vec<Sending> {
     sending
 }
 
-/// Puts `message` in the place of the one of the same request in `kept`,
-/// and returns the one it replaced.
+/// Puts `message` last in `kept`, in the place of the one of the same
+/// request, which it returns: so that requests that undo each other, as one
+/// that sets something and one that unsets it, are made again in the order
+/// they were last made.
 fn replace(kept: &mut Vec<Message>, message: Message) -> Option<Message> {
     let opcode = message.opcode();
-    if let Some(same) = kept.iter_mut().find(|kept| kept.opcode() == opcode) {
-        return Some(std::mem::replace(same, message));
-    }
+    let same = kept.iter().position(|kept| kept.opcode() == opcode);
+    let replaced = same.map(|at| kept.remove(at));
     kept.push(message);
-    None
+    replaced
 }
 
 #[cfg(test)]
@@ -765,6 +919,115 @@ mod tests {
     }
 
     #[test]
+    fn where_a_windows_edges_are_is_said_again_once_it_is_a_window() {
+        let mut program = Program::default();
+        program.bind(1, "xdg_wm_base", 6, 3);
+        program.bind(2, "wl_compositor", 6, 4);
+        program.send(&sent(4, 0, &words(&[5])), &[]);
+        program.send(&sent(3, 2, &words(&[6, 5])), &[]);
+        program.send(&sent(6, 1, &words(&[7])), &[]);
+        program.send(&sent(6, 3, &words(&[30, 20, 200, 100])), &[]);
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let sent = opcodes(&sending);
+        let at = |wanted| sent.iter().position(|sent| *sent == wanted).unwrap();
+        assert!(at((6, 1)) < at((6, 3)), "the role first: {sent:?}");
+    }
+
+    #[test]
+    fn what_undoes_what_was_set_is_made_again_in_the_order_last_made() {
+        let mut program = Program::default();
+        program.bind(1, "xdg_wm_base", 6, 3);
+        program.bind(2, "wl_compositor", 6, 4);
+        program.bind(3, "zxdg_decoration_manager_v1", 1, 5);
+        program.send(&sent(4, 0, &words(&[6])), &[]);
+        program.send(&sent(3, 2, &words(&[7, 6])), &[]);
+        program.send(&sent(7, 1, &words(&[8])), &[]);
+        program.send(&sent(5, 1, &words(&[9, 8])), &[]);
+        // Drawn by the compositor, then as the compositor would, then by
+        // itself.
+        program.send(&sent(9, 1, &words(&[2])), &[]);
+        program.send(&sent(9, 2, &[]), &[]);
+        program.send(&sent(9, 1, &words(&[1])), &[]);
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let decoration: Vec<(u32, u32)> = opcodes(&sending)
+            .into_iter()
+            .filter(|(object, _)| *object == 9)
+            .collect();
+        assert_eq!(decoration, [(9, 2), (9, 1)], "unset, then set");
+        let mode = sending
+            .iter()
+            .rfind(|(bytes, _)| wire::word(bytes, 0) == Some(9));
+        assert_eq!(wire::word(&mode.unwrap().0, HEADER), Some(1), "by itself");
+    }
+
+    #[test]
+    fn parts_are_stacked_as_they_last_were_and_committed_before_what_they_are_part_of() {
+        let mut program = surfaced();
+        program.bind(2, "wl_subcompositor", 1, 5);
+        for surface in [6, 7, 8, 12] {
+            program.send(&sent(3, 0, &words(&[surface])), &[]);
+        }
+        // 6, 7 and 12 parts of 4, and 8 of 6.
+        program.send(&sent(5, 1, &words(&[9, 6, 4])), &[]);
+        program.send(&sent(5, 1, &words(&[10, 7, 4])), &[]);
+        program.send(&sent(5, 1, &words(&[11, 8, 6])), &[]);
+        program.send(&sent(5, 1, &words(&[13, 12, 4])), &[]);
+        // 7 put under 4; 6 put by what is not its sibling, so on top; and
+        // 12 no longer a part.
+        program.send(&sent(10, 3, &words(&[4])), &[]);
+        program.send(&sent(9, 2, &words(&[8])), &[]);
+        program.send(&sent(13, 0, &[]), &[]);
+        for surface in [4, 6, 7, 8, 12] {
+            program.send(&sent(surface, 6, &[]), &[]);
+        }
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let sent = opcodes(&sending);
+        let placed: Vec<&(u32, u32)> = sent
+            .iter()
+            .filter(|(object, opcode)| [9, 10, 11].contains(object) && *opcode >= 2)
+            .collect();
+        assert_eq!(placed, [&(9, 2), &(10, 3), &(11, 2)]);
+        let under = sending
+            .iter()
+            .find(|(bytes, _)| wire::word(bytes, 0) == Some(10));
+        assert_eq!(wire::word(&under.unwrap().0, HEADER), Some(4), "under 4");
+        let committed: Vec<u32> = sent
+            .iter()
+            .filter(|(_, opcode)| *opcode == 6)
+            .map(|(object, _)| *object)
+            .collect();
+        assert_eq!(committed, [8, 6, 7, 4, 12], "the deepest first");
+    }
+
+    #[test]
+    fn a_surface_made_again_under_a_number_or_given_another_part_is_stacked_anew() {
+        let mut program = surfaced();
+        program.bind(2, "wl_subcompositor", 1, 5);
+        program.send(&sent(3, 0, &words(&[6])), &[]);
+        program.send(&sent(3, 0, &words(&[7])), &[]);
+        program.send(&sent(5, 1, &words(&[8, 6, 4])), &[]);
+        program.send(&sent(5, 1, &words(&[9, 7, 6])), &[]);
+        // 6's part let go and 6 destroyed; the number taken by a surface new
+        // and with no parts; 7 then made part of 4 instead.
+        program.send(&sent(8, 0, &[]), &[]);
+        program.send(&sent(9, 0, &[]), &[]);
+        program.send(&sent(6, 0, &[]), &[]);
+        for freed in [8, 9, 6] {
+            assert!(program.told(&sent(1, 1, &words(&[freed]))), "{freed} freed");
+        }
+        program.send(&sent(3, 0, &words(&[6])), &[]);
+        program.send(&sent(5, 1, &words(&[8, 7, 4])), &[]);
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let placed: Vec<(u32, u32)> = opcodes(&sending)
+            .into_iter()
+            .filter(|(object, opcode)| *object == 8 && *opcode >= 2)
+            .collect();
+        assert_eq!(placed, [(8, 2)], "7 over 4, and nothing of 6");
+        let stacked: Vec<_> = program.journal.stacks.keys().copied().collect();
+        assert_eq!(stacked, [4]);
+    }
+
+    #[test]
     fn a_window_is_committed_bare_and_shown_once_the_compositor_has_said_how() {
         let mut program = surfaced();
         program.bind(2, "xdg_wm_base", 6, 5);
@@ -851,11 +1114,17 @@ mod tests {
     #[test]
     fn a_program_holding_what_cannot_be_made_again_cannot_be_kept() {
         let mut program = surfaced();
-        program.bind(2, "wl_subcompositor", 1, 5);
-        assert!(program.journal.keepable(), "a global bound");
-        program.send(&sent(3, 0, &words(&[6])), &[]);
-        program.send(&sent(5, 1, &words(&[7, 6, 4])), &[]);
-        assert!(!program.journal.keepable(), "a subsurface");
+        program.bind(2, "zwp_linux_dmabuf_v1", 3, 5);
+        assert_eq!(program.journal.unkept(), [""; 0], "a global bound");
+        program.send(&sent(5, 1, &words(&[6])), &[]);
+        program.send(&sent(5, 1, &words(&[7])), &[]);
+        program.bind(3, "wp_presentation", 2, 8);
+        program.send(&sent(8, 1, &words(&[4, 9])), &[]);
+        assert_eq!(
+            program.journal.unkept(),
+            ["zwp_linux_buffer_params_v1", "wp_presentation_feedback"],
+            "each once, in the order made"
+        );
         assert!(keeps("wl_seat") && keeps("xdg_toplevel") && !keeps("xdg_popup"));
     }
 
@@ -871,6 +1140,9 @@ mod tests {
         assert_eq!(rule("wl_data_source", "set_actions"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "set_title"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "move"), Rule::Passing);
+        assert_eq!(rule("wp_viewport", "set_destination"), Rule::Lasting);
+        assert_eq!(rule("wl_subsurface", "set_desync"), Rule::Lasting);
+        assert_eq!(rule("wl_subsurface", "place_above"), Rule::Passing);
     }
 
     #[test]

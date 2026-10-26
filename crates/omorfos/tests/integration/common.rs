@@ -100,6 +100,7 @@ use wayland_protocols::xdg::shell::client::{
 use wayland_protocols::xdg::toplevel_icon::v1::client::{
     xdg_toplevel_icon_manager_v1 as icon_manager, xdg_toplevel_icon_v1 as toplevel_icon,
 };
+use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zxdg_output_v1};
 use wayland_protocols_misc::zwp_input_method_v2::client::{
     zwp_input_method_keyboard_grab_v2 as keyboard_grab,
     zwp_input_method_manager_v2 as input_method_manager, zwp_input_method_v2 as input_method,
@@ -651,6 +652,8 @@ pub(crate) enum Event {
     PopupRepositioned(u32),
     /// The compositor dismissed a popup.
     PopupDone,
+    /// How large an output is in the space windows are laid out in.
+    ScreenSize(i32, i32),
     PointerEnter {
         x: f64,
         y: f64,
@@ -747,8 +750,9 @@ pub(crate) enum Event {
     TextCommitted(String),
     /// What the input method shows in a text field as it is being typed.
     TextPreedit(String),
-    /// That is all the input method put there for now.
-    TextDone,
+    /// That is all the input method put there for now, after as many
+    /// commits of the field as the serial says.
+    TextDone(u32),
     /// This input method is told to type into a field, or no longer.
     TypingOn,
     TypingOff,
@@ -824,6 +828,9 @@ pub(crate) struct ClientState {
     inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
     /// The outputs the compositor offers, in the order they appeared.
     pub(crate) screens: Vec<wl_output::WlOutput>,
+    /// What says how large each output is in the space windows are laid
+    /// out in.
+    screen_sizes: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
     /// What the client's surfaces were last told about how they are shown.
     pub(crate) told: Told,
     /// In the order told: each time a surface was told it is no longer on
@@ -1314,6 +1321,13 @@ impl Client {
         device.set_shape(self.state.entered, shape);
     }
 
+    /// Asks to be told how large the first output is in the space windows
+    /// are laid out in.
+    pub(crate) fn watch_screen_size(&self) -> zxdg_output_v1::ZxdgOutputV1 {
+        let sizes = self.state.screen_sizes.as_ref().unwrap();
+        sizes.get_xdg_output(&self.state.screens[0], &self.handle(), ())
+    }
+
     /// Asks to be told the exact scale `surface` is shown at.
     pub(crate) fn watch_scale(&self, surface: &wl_surface::WlSurface) {
         let fractions = self.state.fractions.as_ref().unwrap();
@@ -1508,6 +1522,16 @@ impl Client {
             &self.handle(),
             (),
         )
+    }
+
+    /// Makes `surface` a part of `parent`, drawn with it, as a new part is.
+    pub(crate) fn part_of(
+        &self,
+        surface: &wl_surface::WlSurface,
+        parent: &wl_surface::WlSurface,
+    ) -> wl_subsurface::WlSubsurface {
+        let subcompositor = self.state.subcompositor.as_ref().unwrap();
+        subcompositor.get_subsurface(surface, parent, &self.handle(), ())
     }
 
     /// Attaches a filled subsurface to `parent` at `position`.
@@ -1881,6 +1905,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             "wl_seat" => state.seat = Some(registry.bind(name, version, handle, ())),
             "xdg_toplevel_icon_manager_v1" => {
                 state.icons = Some(registry.bind(name, version, handle, ()));
+            }
+            "zxdg_output_manager_v1" => {
+                state.screen_sizes = Some(registry.bind(name, version, handle, ()));
             }
             "wl_output" => {
                 state.screens.push(registry.bind(name, version, handle, ()));
@@ -2811,6 +2838,22 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for ClientState {
     }
 }
 delegate_noop!(ClientState: ignore wl_output::WlOutput);
+delegate_noop!(ClientState: zxdg_output_manager_v1::ZxdgOutputManagerV1);
+
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_output_v1::ZxdgOutputV1,
+        event: zxdg_output_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_output_v1::Event::LogicalSize { width, height } = event {
+            state.events.push(Event::ScreenSize(width, height));
+        }
+    }
+}
 
 /// A theme with a rule after it that has every part change colour, and
 /// come onto the screen, at once. A theme that says how long some part
@@ -2909,7 +2952,7 @@ impl Dispatch<text_input::ZwpTextInputV3, ()> for ClientState {
             text_input::Event::PreeditString { text, .. } => {
                 Event::TextPreedit(text.unwrap_or_default())
             }
-            text_input::Event::Done { .. } => Event::TextDone,
+            text_input::Event::Done { serial } => Event::TextDone(serial),
             _ => return,
         };
         state.events.push(heard);

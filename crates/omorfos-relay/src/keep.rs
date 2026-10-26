@@ -1,7 +1,7 @@
 //! Keeping a program through a change of compositor (ADR 61, step 2).
 //!
-//! When the compositor ends, the program waits, told only that the pointer
-//! and the keyboard have left its surfaces. When the next is joined, what
+//! When the compositor ends, the program waits, told only that the pointer,
+//! the keyboard and any field typed into have left its surfaces. When the next is joined, what
 //! the program had is made again in two parts, each ended by a sync of the
 //! relay's own: its registries, so that the new compositor's globals are
 //! known, then the rest, as [`Journal`] kept it. Until the second is
@@ -12,8 +12,12 @@
 //! the program's in their place and theirs in the program's: the names of
 //! globals, and the numbers of the objects a compositor makes, which a new
 //! one takes from where the one before did while the program may still hold
-//! some of those. Serials it does not change yet: a window's configure acked
-//! by the relay is not acked again, nor one the compositor before sent.
+//! some of those. Of serials it changes only a field's, which counts the
+//! field's commits: the new compositor counts from when it made the field
+//! again. The rest it does not change: a window's configure acked by the
+//! relay is not acked again, nor one the compositor before sent, and a
+//! program told the pointer has come back names its shape again with the
+//! new compositor's serial, as it would to any compositor.
 
 use std::collections::{HashMap, HashSet};
 
@@ -25,6 +29,10 @@ use crate::wire::{self, Broken, HEADER, Header};
 
 /// The display, which every connection starts with.
 const DISPLAY: u32 = 1;
+
+/// Which of a field's events ends what is typed into it for now, with the
+/// number of times it has been committed.
+const TEXT_DONE: u16 = 5;
 
 /// Numbers that mean something only to one compositor, kept as the
 /// program's for theirs where the two differ.
@@ -85,11 +93,13 @@ struct Window {
     held: Option<Sending>,
 }
 
-/// What has the pointer or the keyboard, as the program was told.
+/// What has the pointer, the keyboard or a field typed into, as the program
+/// was told.
 #[derive(Debug, Clone, Copy)]
 struct Focus {
     surface: u32,
-    serial: u32,
+    /// The serial it was told it with, but for a field's, which has none.
+    serial: Option<u32>,
     /// Which event says it has left.
     leave: u16,
     /// Whether a frame ends what a pointer says, as from version 5.
@@ -127,8 +137,15 @@ pub struct Keeping {
     /// The windows, by their `xdg_surface`, and each toplevel's.
     windows: HashMap<u32, Window>,
     toplevels: HashMap<u32, u32>,
-    /// What has the pointer or the keyboard, by the pointer or keyboard.
+    /// What has the pointer, the keyboard or a field, by the pointer,
+    /// keyboard or field.
     focus: HashMap<u32, Focus>,
+    /// How many times each field has been committed: as the program counts,
+    /// and as the compositor does, which counts from when it made it.
+    commits: HashMap<u32, (u32, u32)>,
+    /// What the program was last told of how something is, by the object and
+    /// the event that said it.
+    described: HashMap<(u32, u16), Vec<u8>>,
     /// The numbers the new compositor has taken as what the program had is
     /// made again.
     numbering: Numbering,
@@ -156,6 +173,8 @@ impl Default for Keeping {
             windows: HashMap::new(),
             toplevels: HashMap::new(),
             focus: HashMap::new(),
+            commits: HashMap::new(),
+            described: HashMap::new(),
             numbering: Numbering::default(),
             syncs: Vec::new(),
             private: HashSet::new(),
@@ -182,11 +201,14 @@ impl Keeping {
             opcode: read.opcode,
             size: bytes.len(),
         };
-        if let Some((made, interface, _)) = read.made
-            && interface.name == "xdg_toplevel"
-        {
-            self.toplevels.insert(made, header.object);
-            self.windows.entry(header.object).or_default();
+        if let Some((made, interface, _)) = read.made {
+            // What was told of what had the number before is not of this.
+            self.described.retain(|(object, _), _| *object != made);
+            self.commits.remove(&made);
+            if interface.name == "xdg_toplevel" {
+                self.toplevels.insert(made, header.object);
+                self.windows.entry(header.object).or_default();
+            }
         }
         if read.interface.name == "xdg_surface" && described.name == "ack_configure" {
             let serial = wire::word(bytes, HEADER).unwrap_or_default();
@@ -197,6 +219,10 @@ impl Keeping {
             }
             window.offered.retain(|offered| *offered > serial);
             window.acked.clone_from(&window.told);
+        }
+        if read.interface.name == "zwp_text_input_v3" && described.name == "commit" {
+            let commits = self.commits.entry(header.object).or_default();
+            *commits = (commits.0.wrapping_add(1), commits.1.wrapping_add(1));
         }
         if read.interface.name == "wl_registry" && described.name == "bind" {
             let name = wire::word(bytes, HEADER).unwrap_or_default();
@@ -264,6 +290,13 @@ impl Keeping {
         let interface = objects.living(object).map(|interface| interface.name);
         if interface == Some("wl_registry") {
             return Ok(self.registry(header, bytes));
+        }
+        if interface == Some("zwp_text_input_v3") && header.opcode == TEXT_DONE {
+            // Said as the compositor counts the field's commits, it is told
+            // as the program does.
+            let (said, heard) = self.commits.get(&object).copied().unwrap_or_default();
+            let serial = wire::word(bytes, HEADER).unwrap_or_default();
+            wire::put(bytes, HEADER, serial.wrapping_add(said.wrapping_sub(heard)));
         }
         // One to no object, or with no such event, is found broken when it
         // is read as the program's.
@@ -364,9 +397,10 @@ impl Keeping {
         let word = |at| wire::word(body, at).unwrap_or_default();
         let catching = self.phase != Phase::Live;
         match (read.interface.name, read.opcode) {
-            ("wl_pointer", 0) => self.focused(object, word(4), word(0), 1, read),
-            ("wl_keyboard", 1) => self.focused(object, word(4), word(0), 2, read),
-            ("wl_pointer", 1) | ("wl_keyboard", 2) => {
+            ("wl_pointer", 0) => self.focused(object, word(4), Some(word(0)), 1, read),
+            ("wl_keyboard", 1) => self.focused(object, word(4), Some(word(0)), 2, read),
+            ("zwp_text_input_v3", 0) => self.focused(object, word(0), None, 1, read),
+            ("wl_pointer" | "zwp_text_input_v3", 1) | ("wl_keyboard", 2) => {
                 self.focus.remove(&object);
             }
             ("xdg_toplevel", 0) => {
@@ -379,7 +413,14 @@ impl Keeping {
                 window.told = Some(body.to_vec());
             }
             ("xdg_surface", 0) => return self.configured(object, word(0)),
-            ("wl_shm", 0) | ("wl_seat" | "wl_output", _) => return !catching,
+            ("wl_shm", 0) | ("wl_seat" | "wl_output" | "zxdg_output_v1", _) => return !catching,
+            (interface, opcode) if let Some(changes) = describes(interface, opcode) => {
+                // Told again as it was, while the relay catches up or of
+                // what is told only as it changes, it is not told at all.
+                let same = self.described.get(&(object, opcode)).map(Vec::as_slice) == Some(body);
+                self.described.insert((object, opcode), body.to_vec());
+                return !(same && (catching || changes));
+            }
             _ => {}
         }
         true
@@ -387,7 +428,7 @@ impl Keeping {
 
     /// Keeps that `surface` has `device`'s focus, as `read`'s enter says,
     /// with `serial`; `leave` is the event that says it has left.
-    fn focused(&mut self, device: u32, surface: u32, serial: u32, leave: u16, read: &Read) {
+    fn focused(&mut self, device: u32, surface: u32, serial: Option<u32>, leave: u16, read: &Read) {
         let framed = read.interface.name == "wl_pointer" && read.interface.version >= 5;
         let focus = Focus {
             surface,
@@ -510,10 +551,16 @@ impl Keeping {
 
     /// Takes in that the compositor has gone: what it made is no one's, the
     /// program is told that the pointer and keyboard have left its
-    /// surfaces, and it waits. Returns whether it can be kept at all.
-    pub fn lost(&mut self, objects: &Objects) -> bool {
-        if !self.journal.keepable() {
-            return false;
+    /// surfaces, and it waits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the interfaces of what the program holds that cannot be
+    /// made again, when there is any, as it cannot be kept.
+    pub fn lost(&mut self, objects: &Objects) -> Result<(), Vec<&'static str>> {
+        let unkept = self.journal.unkept();
+        if !unkept.is_empty() {
+            return Err(unkept);
         }
         let made = objects
             .each_living()
@@ -529,14 +576,19 @@ impl Keeping {
         let mut focus: Vec<(u32, Focus)> = self.focus.drain().collect();
         focus.sort_by_key(|(device, _)| *device);
         for (device, focus) in focus {
-            let leave = journal::message(device, focus.leave, &[focus.serial, focus.surface]);
+            let arguments: Vec<u32> = focus.serial.into_iter().chain([focus.surface]).collect();
+            let leave = journal::message(device, focus.leave, &arguments);
             self.to_program.push(leave);
             if focus.framed {
                 self.to_program.push(journal::message(device, 5, &[]));
             }
         }
+        // The next compositor counts each field's commits from none.
+        for commits in self.commits.values_mut() {
+            commits.1 = 0;
+        }
         self.phase = Phase::Waiting;
-        true
+        Ok(())
     }
 
     /// Joins the program to a new compositor: its registries are made again
@@ -549,6 +601,22 @@ impl Keeping {
         self.to_compositor.extend(registries);
         self.sync();
         self.phase = Phase::Registering;
+    }
+}
+
+/// Whether the event `opcode` of `interface` says how something is, which a
+/// program told the same again need not be: a decoration's mode, the scale a
+/// surface is best drawn at, how large a window may be and what it may do.
+/// If so, says whether the protocol tells it only as it changes, so that
+/// the same again is never needed: the scale and the transform, which the
+/// new compositor tells once a surface is shown, after the relay has caught
+/// up. The rest are told with a window's configure, and only those the new
+/// compositor tells while the relay catches up are sifted.
+fn describes(interface: &str, opcode: u16) -> Option<bool> {
+    match (interface, opcode) {
+        ("wp_fractional_scale_v1", 0) | ("wl_surface", 2 | 3) => Some(true),
+        ("zxdg_toplevel_decoration_v1", 0) | ("xdg_toplevel", 2 | 3) => Some(false),
+        _ => None,
     }
 }
 
@@ -632,7 +700,7 @@ mod tests {
         /// Loses the compositor, and joins the next, which offers `globals`;
         /// answers the relay's syncs as it would.
         fn restarted(&mut self, globals: &[(u32, &str, u32)]) {
-            assert!(self.keeping.lost(&self.objects));
+            assert_eq!(self.keeping.lost(&self.objects), Ok(()));
             self.keeping.join();
             let sync = *self.keeping.syncs.first().unwrap();
             for (name, interface, version) in globals {
@@ -688,7 +756,7 @@ mod tests {
     #[test]
     fn a_global_taken_away_while_the_relay_catches_up_is_kept_from_the_program() {
         let mut kept = Kept::registered(&[(1, "wl_compositor", 6)]);
-        assert!(kept.keeping.lost(&kept.objects));
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         kept.keeping.join();
         assert_eq!(kept.told(&message(2, 1, &words(&[1]))), None);
     }
@@ -706,7 +774,7 @@ mod tests {
         kept.told(&message(7, 1, &words(&[11, 5, 0]))).unwrap();
         kept.told(&message(6, 1, &words(&[12, 5]))).unwrap();
         kept.told(&message(7, 2, &words(&[13, 5]))).unwrap();
-        assert!(kept.keeping.lost(&kept.objects));
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         assert_eq!(kept.keeping.to_program.len(), 0, "nothing had them");
     }
 
@@ -846,7 +914,7 @@ mod tests {
         assert_eq!(passed[4], Some(message(4, 0, &words(&[5, SERVERS]))));
 
         let (objects, keeping) = &mut kept;
-        assert!(keeping.lost(objects));
+        assert_eq!(keeping.lost(objects), Ok(()));
         keeping.join();
         let after = run(&mut kept, &[(false, message(4, 0, &words(&[6, SERVERS])))]);
         assert_eq!(
@@ -869,7 +937,7 @@ mod tests {
             ],
         );
         let (objects, keeping) = &mut kept;
-        assert!(keeping.lost(objects));
+        assert_eq!(keeping.lost(objects), Ok(()));
         keeping.join();
         let told = run(
             &mut kept,
@@ -964,7 +1032,7 @@ mod tests {
         kept.send(&message(3, 1, &words(&[7]))).unwrap();
         kept.told(&message(6, 0, &words(&[10, 5, 0, 0]))).unwrap();
         kept.told(&message(7, 1, &words(&[11, 5, 0]))).unwrap();
-        assert!(kept.keeping.lost(&kept.objects));
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         let told: Vec<&Vec<u8>> = kept
             .keeping
             .to_program
@@ -1012,10 +1080,119 @@ mod tests {
     }
 
     #[test]
+    fn a_scale_is_told_only_as_it_changes_and_anew_to_what_is_made_anew() {
+        let mut kept = Kept::registered(&[
+            (1, "wl_compositor", 6),
+            (2, "wp_fractional_scale_manager_v1", 1),
+        ]);
+        kept.bind(1, "wl_compositor", 6, 3);
+        kept.bind(2, "wp_fractional_scale_manager_v1", 1, 4);
+        kept.send(&message(3, 0, &words(&[5]))).unwrap();
+        kept.send(&message(4, 1, &words(&[6, 5]))).unwrap();
+        let scale = |scale| message(6, 0, &words(&[scale]));
+        assert!(kept.told(&scale(120)).is_some());
+        assert_eq!(kept.told(&scale(120)), None, "the same again");
+        assert!(kept.told(&scale(180)).is_some(), "changed");
+        // Destroyed, and another made under its number, which is told.
+        kept.send(&message(6, 0, &[])).unwrap();
+        kept.told(&message(1, 1, &words(&[6]))).unwrap();
+        kept.send(&message(4, 1, &words(&[6, 5]))).unwrap();
+        assert!(kept.told(&scale(180)).is_some(), "told the new one");
+    }
+
+    #[test]
+    fn a_decorations_mode_told_again_is_kept_from_the_program_only_as_the_relay_catches_up() {
+        let mut kept = Kept::registered(&[
+            (1, "xdg_wm_base", 6),
+            (2, "wl_compositor", 6),
+            (3, "zxdg_decoration_manager_v1", 1),
+        ]);
+        kept.bind(1, "xdg_wm_base", 6, 4);
+        kept.bind(2, "wl_compositor", 6, 5);
+        kept.bind(3, "zxdg_decoration_manager_v1", 1, 6);
+        kept.send(&message(5, 0, &words(&[7]))).unwrap();
+        kept.send(&message(4, 2, &words(&[8, 7]))).unwrap();
+        kept.send(&message(8, 1, &words(&[9]))).unwrap();
+        kept.send(&message(6, 1, &words(&[10, 9]))).unwrap();
+        let server_side = message(10, 0, &words(&[2]));
+        assert!(kept.told(&server_side).is_some());
+        assert!(kept.told(&server_side).is_some(), "live, with a configure");
+        kept.restarted(&[
+            (1, "xdg_wm_base", 6),
+            (2, "wl_compositor", 6),
+            (3, "zxdg_decoration_manager_v1", 1),
+        ]);
+        assert_eq!(kept.told(&server_side), None, "as it was");
+        let client_side = message(10, 0, &words(&[1]));
+        assert!(kept.told(&client_side).is_some(), "as it was not");
+    }
+
+    #[test]
+    fn a_field_is_told_it_was_left_and_what_is_typed_by_its_own_count_of_commits() {
+        let mut kept = Kept::registered(&[
+            (1, "wl_seat", 7),
+            (2, "wl_compositor", 6),
+            (3, "zwp_text_input_manager_v3", 1),
+        ]);
+        kept.bind(1, "wl_seat", 7, 4);
+        kept.bind(2, "wl_compositor", 6, 5);
+        kept.bind(3, "zwp_text_input_manager_v3", 1, 6);
+        kept.send(&message(5, 0, &words(&[7]))).unwrap();
+        kept.send(&message(6, 1, &words(&[8, 4]))).unwrap();
+        kept.told(&message(8, 0, &words(&[7]))).unwrap();
+        for _ in 0..2 {
+            kept.send(&message(8, 7, &[])).unwrap();
+        }
+        let done = |serial| message(8, 5, &words(&[serial]));
+        assert_eq!(kept.told(&done(2)), Some(done(2)), "counted alike");
+        kept.restarted(&[
+            (1, "wl_seat", 7),
+            (2, "wl_compositor", 6),
+            (3, "zwp_text_input_manager_v3", 1),
+        ]);
+        assert_eq!(
+            kept.keeping.to_program.first().map(|(bytes, _)| bytes),
+            Some(&message(8, 1, &words(&[7]))),
+            "left, with no serial"
+        );
+        kept.send(&message(8, 7, &[])).unwrap();
+        assert_eq!(kept.told(&done(1)), Some(done(3)), "as the field counts");
+
+        // Destroyed, and another made under its number, which counts anew.
+        kept.send(&message(8, 0, &[])).unwrap();
+        kept.told(&message(1, 1, &words(&[8]))).unwrap();
+        kept.send(&message(6, 1, &words(&[8, 4]))).unwrap();
+        kept.send(&message(8, 7, &[])).unwrap();
+        assert_eq!(kept.told(&done(1)), Some(done(1)));
+    }
+
+    #[test]
+    fn how_large_a_screen_is_told_again_as_the_relay_catches_up_is_kept_from_the_program() {
+        let globals = [(1, "wl_output", 4), (2, "zxdg_output_manager_v1", 3)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "wl_output", 4, 3);
+        kept.bind(2, "zxdg_output_manager_v1", 3, 4);
+        kept.send(&message(4, 1, &words(&[5, 3]))).unwrap();
+        let size = message(5, 1, &words(&[1920, 1080]));
+        assert!(kept.told(&size).is_some());
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        kept.keeping.join();
+        assert_eq!(kept.told(&size), None);
+    }
+
+    #[test]
+    fn what_says_how_something_is_is_told_the_same_again_only_with_a_configure() {
+        assert_eq!(describes("wl_surface", 2), Some(true), "a scale");
+        assert_eq!(describes("wl_surface", 3), Some(true), "a transform");
+        assert_eq!(describes("xdg_toplevel", 2), Some(false), "bounds");
+        assert_eq!(describes("xdg_toplevel", 0), None, "a configure itself");
+    }
+
+    #[test]
     fn a_program_bound_to_what_the_next_compositor_no_longer_offers_cannot_be_kept() {
         let mut kept = Kept::registered(&[(1, "wl_shm", 1)]);
         kept.bind(1, "wl_shm", 1, 3);
-        assert!(kept.keeping.lost(&kept.objects));
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         kept.keeping.join();
         let sync = *kept.keeping.syncs.first().unwrap();
         let mut done = message(sync, 0, &words(&[0]));
@@ -1026,12 +1203,13 @@ mod tests {
 
     #[test]
     fn a_program_holding_what_cannot_be_made_again_is_not_kept() {
-        let mut kept = Kept::registered(&[(1, "wl_compositor", 6), (2, "wl_subcompositor", 1)]);
-        kept.bind(1, "wl_compositor", 6, 3);
-        kept.bind(2, "wl_subcompositor", 1, 4);
-        kept.send(&message(3, 0, &words(&[5]))).unwrap();
-        kept.send(&message(3, 0, &words(&[6]))).unwrap();
-        kept.send(&message(4, 1, &words(&[7, 5, 6]))).unwrap();
-        assert!(!kept.keeping.lost(&kept.objects));
+        let mut kept = Kept::registered(&[(1, "zwp_linux_dmabuf_v1", 3)]);
+        kept.bind(1, "zwp_linux_dmabuf_v1", 3, 3);
+        // What a buffer on the graphics card is to be made of.
+        kept.send(&message(3, 1, &words(&[4]))).unwrap();
+        assert_eq!(
+            kept.keeping.lost(&kept.objects),
+            Err(vec!["zwp_linux_buffer_params_v1"])
+        );
     }
 }

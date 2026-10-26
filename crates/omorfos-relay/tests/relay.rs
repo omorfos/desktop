@@ -89,6 +89,13 @@ impl Held {
     }
 }
 
+/// How the relay names the programs these tests are: this process.
+fn named() -> String {
+    let exe = std::env::current_exe().unwrap();
+    let name = exe.file_name().unwrap().to_string_lossy().into_owned();
+    format!("{name}, process {}", std::process::id())
+}
+
 /// `wl_display.get_registry`, as the object 2.
 fn get_registry() -> Vec<u8> {
     let mut bytes = 1_u32.to_ne_bytes().to_vec();
@@ -227,23 +234,28 @@ fn when_the_compositor_goes_a_program_that_can_be_kept_waits_for_the_next() {
 }
 
 #[test]
-fn when_the_compositor_goes_a_program_holding_what_cannot_be_made_again_is_let_go() {
+fn when_the_compositor_goes_a_program_holding_what_cannot_be_made_again_is_let_go_and_said_to_be() {
     let mut held = Held::new();
     let compositor = held.compositor();
     let (mut program, mut connection, _) = held.connect(&compositor);
-    // Two surfaces, one a subsurface of the other.
+    // What a buffer on the graphics card is to be made of.
     let mut sent = get_registry();
-    sent.extend(bind(1, "wl_compositor", 6, 3));
-    sent.extend(message(3, 0, &[4]));
-    sent.extend(message(3, 0, &[5]));
-    sent.extend(bind(2, "wl_subcompositor", 1, 6));
-    sent.extend(message(6, 1, &[7, 4, 5]));
+    sent.extend(bind(1, "zwp_linux_dmabuf_v1", 3, 3));
+    sent.extend(message(3, 1, &[4]));
     program.write_all(&sent).unwrap();
     read(&mut held, &mut connection, sent.len());
     drop((compositor, connection));
     held.until(|held| held.relay.programs() == 0);
     let mut rest = Vec::new();
     assert_eq!(program.read_to_end(&mut rest).unwrap(), 0, "closed");
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was let go, as it held zwp_linux_buffer_params_v1, which cannot be made again",
+            named()
+        )),
+        "{said}"
+    );
 }
 
 #[test]
@@ -291,7 +303,10 @@ fn a_program_that_sends_what_cannot_be_read_is_let_go_and_said_to_be() {
     held.until(|held| held.relay.programs() == 0);
     let said = String::from_utf8_lossy(&held.said);
     assert!(
-        said.contains("a program was let go, for a request to no object"),
+        said.contains(&format!(
+            "{} was let go, for a request to no object",
+            named()
+        )),
         "{said}"
     );
 }
@@ -409,6 +424,29 @@ fn the_relay_ends_when_the_holder_has_gone() {
 }
 
 #[test]
+fn a_program_whose_connection_closes_a_moment_before_the_compositor_has_gone_is_kept() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (_program, connection, _) = held.connect(&compositor);
+    // A compositor ending closes its connections one at a time, and another
+    // process may hold a copy of the last for a moment.
+    drop(connection);
+    let closing = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        drop(compositor);
+    });
+    held.step();
+    held.step();
+    closing.join().unwrap();
+    assert_eq!(
+        held.relay.programs(),
+        1,
+        "kept: {}",
+        String::from_utf8_lossy(&held.said)
+    );
+}
+
+#[test]
 fn a_program_the_compositor_lets_go_while_it_goes_on_is_let_go() {
     let mut held = Held::new();
     let compositor = held.compositor();
@@ -418,6 +456,14 @@ fn a_program_the_compositor_lets_go_while_it_goes_on_is_let_go() {
     held.until(|held| held.relay.programs() == 0);
     let mut rest = Vec::new();
     assert_eq!(program.read_to_end(&mut rest).unwrap(), 0, "closed");
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was let go, as the compositor closed its connection",
+            named()
+        )),
+        "{said}"
+    );
     drop(compositor);
 }
 
@@ -436,7 +482,10 @@ fn a_program_kept_for_a_compositor_that_has_gone_already_is_let_go_and_said_to_b
     held.until(|held| held.relay.programs() == 0);
     let said = String::from_utf8_lossy(&held.said);
     assert!(
-        said.contains("could not be kept for the next compositor"),
+        said.contains(&format!(
+            "{} could not be kept for the next compositor",
+            named()
+        )),
         "{said}"
     );
 }

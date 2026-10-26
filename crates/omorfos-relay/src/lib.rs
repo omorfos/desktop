@@ -18,6 +18,7 @@ pub mod wire;
 use std::io::{self, Write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::Path;
 use std::time::Duration;
 
 use omorfos_ipc::relay::{self, Hand, Program, Received};
@@ -27,6 +28,14 @@ use crate::link::{Ended, Link, Way};
 
 /// What a connection being ready to read is, or its other end gone.
 const READABLE: PollFlags = PollFlags::IN.union(PollFlags::HUP).union(PollFlags::ERR);
+
+/// How long the compositor is given to be seen gone once a program's
+/// connection to it has closed with no error said. A compositor ending
+/// closes its connections one at a time, and another process may hold a
+/// copy of one for a moment, as one being started does; a compositor that
+/// lets a program go while it goes on does so only with an error, so the
+/// wait is all but never waited out.
+const GRACE: Duration = Duration::from_millis(500);
 
 /// The relay, and every program's connection through it.
 #[derive(Debug)]
@@ -105,7 +114,7 @@ impl Relay {
                 Err(why) => ended.push((index, why)),
             }
         }
-        let gone = (lost || compositor_ready == Some(true)) && self.compositor_gone();
+        let gone = (lost || compositor_ready == Some(true)) && self.compositor_gone(GRACE);
         if gone {
             // One that lost it is kept with the rest; one let go alone, by
             // a compositor still there, is not.
@@ -113,7 +122,7 @@ impl Relay {
         }
         remove(&mut self.links, ended, log);
         if gone {
-            self.lose_compositor();
+            self.lose_compositor(log);
         } else if socket_ready == Some(true) {
             let both = self.socket.as_ref().zip(self.compositor.as_ref());
             let (links, next) = (&mut self.links, &mut self.next);
@@ -167,11 +176,12 @@ impl Relay {
     }
 
     /// Whether the compositor has gone: there is none, or its connection to
-    /// the relay has closed.
-    fn compositor_gone(&self) -> bool {
+    /// the relay has closed, or does within `grace`.
+    fn compositor_gone(&self, grace: Duration) -> bool {
         self.compositor.as_ref().is_none_or(|compositor| {
             let mut polled = [PollFd::new(compositor, PollFlags::IN)];
-            let _ = poll(&mut polled, Some(&Timespec::default()));
+            let grace = Timespec::try_from(grace).unwrap_or_default();
+            let _ = poll(&mut polled, Some(&grace));
             let readable = polled
                 .iter()
                 .any(|polled| polled.revents().intersects(READABLE));
@@ -180,11 +190,21 @@ impl Relay {
     }
 
     /// Takes in that the compositor has gone: each program that can be kept
-    /// waits for the next; the rest are let go.
-    fn lose_compositor(&mut self) {
+    /// waits for the next; the rest are let go, and said on `log` to be.
+    fn lose_compositor(&mut self, log: &mut dyn Write) {
         self.compositor = None;
-        self.links
-            .retain_mut(|link| link.compositor().is_none() || link.lose());
+        self.links.retain_mut(|link| {
+            let lost = link.compositor().is_some().then(|| link.lose());
+            if let Some(Err(unkept)) = &lost {
+                let _ = writeln!(
+                    log,
+                    "omorfos-relay: {} was let go, as it held {}, which cannot be made again yet",
+                    named(link.who()),
+                    unkept.join(", ")
+                );
+            }
+            !matches!(lost, Some(Err(_)))
+        });
     }
 
     /// Takes what the holder has handed. Returns whether the holder is
@@ -213,7 +233,7 @@ impl Relay {
             (Some(Hand::Compositor), Some(compositor)) => {
                 // One not yet seen to go has gone, as the holder starts
                 // another only then.
-                self.lose_compositor();
+                self.lose_compositor(log);
                 let towards = compositor.as_fd();
                 self.links.retain_mut(|link| rejoin(link, towards, log));
                 self.compositor = Some(compositor);
@@ -223,14 +243,41 @@ impl Relay {
     }
 }
 
+/// How the log names `who`: by the file its process runs, and its number,
+/// as the compositor names programs. The name is only to tell the user
+/// which it was, and anything in it that is not plain text is escaped.
+fn named(who: Program) -> String {
+    let file = std::fs::read_link(format!("/proc/{}/exe", who.pid)).ok();
+    let name = file.as_deref().and_then(Path::file_name);
+    let name = name.map(|name| name.to_string_lossy().escape_debug().to_string());
+    format!(
+        "{}, process {}",
+        name.as_deref().unwrap_or("a program"),
+        who.pid
+    )
+}
+
 /// Lets go of each link in `ended`, saying on `log` why where it was for
-/// what the program sent.
+/// what the program sent, or the compositor let it go.
 fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write) {
     for (index, why) in ended.into_iter().rev() {
-        links.remove(index);
-        if let Ended::Broken(broken) = why {
-            let _ = writeln!(log, "omorfos-relay: a program was let go, for {}", broken.0);
-        }
+        let who = links.remove(index).who();
+        let said = match why {
+            Ended::Broken(broken) => writeln!(
+                log,
+                "omorfos-relay: {} was let go, for {}",
+                named(who),
+                broken.0
+            ),
+            Ended::Lost => writeln!(
+                log,
+                "omorfos-relay: {} was let go, as the compositor closed its connection and went \
+                 on",
+                named(who)
+            ),
+            Ended::Closed => Ok(()),
+        };
+        let _ = said;
     }
 }
 
@@ -285,7 +332,8 @@ fn rejoin(link: &mut Link, compositor: BorrowedFd<'_>, log: &mut dyn Write) -> b
     if joined.is_err() {
         let _ = writeln!(
             log,
-            "omorfos-relay: a program could not be kept for the next compositor"
+            "omorfos-relay: {} could not be kept for the next compositor",
+            named(link.who())
         );
     }
     joined.is_ok()

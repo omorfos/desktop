@@ -88,7 +88,7 @@ fn what_an_input_method_types_goes_into_the_field_being_typed_in() {
         typed.contains(&Event::TextCommitted("日本".to_owned())),
         "{typed:?}"
     );
-    assert!(typed.contains(&Event::TextDone), "{typed:?}");
+    assert!(typed.contains(&Event::TextDone(1)), "{typed:?}");
 
     // Done with the field, the input method is told so.
     disable(&field);

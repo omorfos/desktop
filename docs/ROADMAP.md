@@ -4,8 +4,9 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** programs kept by the relay (ADR 61, step 2b), at the end of
-stage 3; then the rest of the relay; then the rest of stage 3, what a
+**Next:** the rest of the relay (ADR 61, step 3), at the end of stage 3,
+once `foot` has been seen to outlive a restart on real hardware; then the
+rest of stage 3, what a
 day's use needs, then what is taken from stage 8 straight after it
 (below), then stage 4.
 
@@ -775,19 +776,31 @@ what only games and touchpads need last.
       the relay handed over when the holder takes up its own new version.
       For the protocols the tests' client speaks, and tested with two
       compositors one after the other.
-- [ ] Known gaps in keeping programs, after 2a: only the protocols the
-      tests' client speaks are made again, so `foot` and most programs
-      are still let go (2b); a program bound to a screen the next
-      compositor does not have is let go; a window comes back neither
-      maximized nor full screen, as the program had it, but as the next
-      compositor first says, and the program is told so; the pointer and
-      the keyboard leave and enter again; and none of it has been tried
-      on real hardware, which nothing in 2a would show.
-- [ ] Programs kept by the relay, `foot` (ADR 61, step 2b): the rest of
-      what `foot` speaks made again, a protocol at a time, and the serials
-      a program holds kept for it, so that a terminal and what runs in it
-      outlive a restart. A program holding anything the relay cannot yet
-      make again is closed, as before.
+- [x] Programs kept by the relay, `foot` (ADR 61, step 2b): what `foot`
+      makes of the protocols the compositor offers made again, so that a
+      terminal and what runs in it outlive a restart: decorations,
+      viewports, single-pixel buffers, fractional scales, the shape of
+      the pointer, screens' sizes (`zxdg_output_v1`), fields typed into,
+      told what is typed by their own count of commits, and a surface's
+      parts, stacked and committed as they were. What says how something
+      is is not told again as it was. A program let go is named, with
+      everything it held that cannot be made again.
+- [ ] Known gaps in keeping programs, after 2b: a program holding a
+      popup, a picture's presentation feedback, an activation token, a
+      touchpad gesture or a buffer on the graphics card is still let go, and so is one bound to
+      a screen the next compositor does not have; what the next compositor
+      says of a screen while the relay catches up is kept from the
+      program even where it changed; what a program put on
+      the clipboard or the primary selection is no longer there, as
+      setting it is not made again; a window comes back neither maximized
+      nor full screen, as the program had it, but as the next compositor
+      first says, and the program is told so; the pointer, the keyboard
+      and a field leave and enter again, where the serials a program holds
+      could be put in place of the new compositor's (step 3); a part
+      placed is taken to be stacked at once, where the compositor stacks
+      it as its surface is next committed; touch is not made again, as
+      the compositor offers none yet; and none of it has been tried on
+      real hardware.
 - [ ] The rest of the relay (ADR 61, step 3): every protocol in the
       list made again, programs drawn on the graphics card among them;
       where each window was carried to the next compositor, keyed by the

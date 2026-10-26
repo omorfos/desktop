@@ -18,7 +18,7 @@ fuzz_target!(|data: &[u8]| {
     while let Some((&from, bytes)) = rest.split_first() {
         // The compositor ends, and the next is joined.
         if from % 3 == 2 {
-            if !keeping.lost(&objects) {
+            if keeping.lost(&objects).is_err() {
                 break;
             }
             keeping.join();

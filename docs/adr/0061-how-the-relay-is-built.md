@@ -164,7 +164,12 @@ as GTK's are, come in step 3.
   from it, so that what it sends waits, until the holder hands it the
   next compositor. A program holding an object of a protocol the relay
   cannot yet make again is let go then, as before; a global it has bound
-  and made nothing of can always be made again, by binding it.
+  and made nothing of can always be made again, by binding it. A
+  compositor ending closes its connections one at a time, and another
+  process may hold a copy of one for a moment, so a program whose
+  connection closes, with no error said, waits up to half a second for
+  the compositor to be seen gone before it is taken to have been let go
+  by a compositor that goes on, which omorfos does only with an error.
 - **What each program has made is written down as it is made**: for each
   object living, the request that made it, with its descriptors held,
   and what has been asked of it since that lasts, as a table for each
@@ -196,14 +201,39 @@ as GTK's are, come in step 3.
   is passed on only if it differs from what the program last acked, whose
   own ack of it is then kept from the compositor, as it is acked already.
 - **What was focused leaves, and comes back.** When the compositor ends,
-  the relay tells the program that the pointer and the keyboard have left
-  its surfaces, and the new compositor tells it they entered, with its
-  own serials. Keeping even that from the program needs the serials it
-  holds put in place of the new compositor's, which comes in 2b, where
-  `foot` setting its pointer needs it. Built, the program is also told
-  the new compositor's first configure of its window where it differs
-  from the one it last acked, as the first of a window not yet focused
-  does.
+  the relay tells the program that the pointer, the keyboard and any field
+  typed into have left its surfaces, and the new compositor tells it they
+  entered, with its own serials. The program does then what it does on
+  any enter: it names the pointer's shape again, under the new serial, and
+  enables its field again. Keeping the leave and the enter from the
+  program would need every serial it holds put in place of the new
+  compositor's, both ways, in every request that carries one; that was
+  meant for 2b, and is left to step 3, as it spares only a flicker of
+  focus and `foot` comes back without it. The program is also told the
+  new compositor's first configure of its window where it differs from
+  the one it last acked, as the first of a window not yet focused does.
+- **A field's count of its commits is the program's** (2b). The
+  compositor's `done` to a field carries how many times the field has
+  been committed, and the program sets aside what is typed for an older
+  state than its own. A new compositor counts from when it made the field
+  again; the relay counts both, and adds the difference.
+- **What says how something is is not said again as it was** (2b). The
+  scale and transform a surface is best drawn at are told only as they
+  change, and the relay keeps the same again from the program at any
+  time, as the new compositor tells them once a surface is shown, after
+  the relay has caught up. A decoration's mode and how large a window may
+  be come with a configure, and are kept from it only while the relay
+  catches up.
+- **A surface's parts are stacked as they last were** (2b). A part
+  (`wl_subsurface`) put over or under another names it, and that one may
+  since have gone, so the requests are not kept; how each surface's parts
+  are stacked is, and the relay puts each over or under its neighbour
+  again, outwards from the surface. What a part shows is shown with what
+  it is part of, so each surface is committed after its parts, the
+  deepest first.
+- **A program let go is said to be**, named by the file it runs and its
+  process, with everything it held that cannot be made again, so that a
+  program that did not come back on real hardware says why.
 - **A window comes back as a new one would**: placed by the new
   compositor, on the workspace in front. Carrying where each was is the
   compositor's to hand on, through the holder, keyed by a number the

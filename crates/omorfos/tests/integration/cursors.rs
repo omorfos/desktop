@@ -21,6 +21,12 @@ const GREY: u32 = 0xff80_8080;
 /// 8 pixels across: a different colour for each shape.
 fn themed() -> Session {
     let mut session = Session::new();
+    theme(&mut session);
+    session
+}
+
+/// Has `session` draw its own pointer as [`themed`] says.
+pub(crate) fn theme(session: &mut Session) {
     let themes = session.install_cursors(
         "default",
         &[
@@ -35,11 +41,10 @@ fn themed() -> Session {
     );
     session.compositor_mut().set_cursor_themes(themes);
     session.compositor_mut().show_pointer();
-    session
 }
 
 /// Moves the pointer and returns the colour it is drawn in there.
-fn pointer_at(session: &mut Session, x: i32, y: i32) -> u32 {
+pub(crate) fn pointer_at(session: &mut Session, x: i32, y: i32) -> u32 {
     let position = Input::Motion {
         x: f64::from(x),
         y: f64::from(y),
@@ -50,7 +55,7 @@ fn pointer_at(session: &mut Session, x: i32, y: i32) -> u32 {
 
 /// The colour of the pointer drawn at a position: a little inside its
 /// picture, whose corner is one pixel up and left of the position.
-fn color_at(session: &mut Session, x: i32, y: i32) -> u32 {
+pub(crate) fn color_at(session: &mut Session, x: i32, y: i32) -> u32 {
     session.step();
     session.draw().at(x + 3, y + 3)
 }

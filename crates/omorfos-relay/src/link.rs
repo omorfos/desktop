@@ -217,12 +217,13 @@ impl Link {
 
     /// Takes in that the compositor has gone: the program waits for the
     /// next, told that the pointer and the keyboard have left its surfaces.
-    /// Returns whether it can be kept: not if it holds what cannot be made
-    /// again.
-    pub fn lose(&mut self) -> bool {
-        if !self.keeping.lost(&self.objects) {
-            return false;
-        }
+    ///
+    /// # Errors
+    ///
+    /// Returns the interfaces of what the program holds that cannot be made
+    /// again, if it cannot be kept for that.
+    pub fn lose(&mut self) -> Result<(), Vec<&'static str>> {
+        self.keeping.lost(&self.objects)?;
         self.compositor = None;
         // What was on its way to the compositor is written down already.
         self.up.written.clear();
@@ -231,7 +232,7 @@ impl Link {
         self.down.read_fds.clear();
         self.tell_program();
         let _ = self.give_out(Way::Down);
-        true
+        Ok(())
     }
 
     /// Joins the program to a new compositor, `compositor`, and makes what
@@ -570,6 +571,21 @@ mod tests {
     }
 
     #[test]
+    fn a_program_holding_what_cannot_be_made_again_is_not_kept_and_says_what() {
+        let (mut link, program, _compositor) = linked();
+        let mut sent = get_registry();
+        let mut body = words(&[1]);
+        body.extend(text("zwp_linux_dmabuf_v1"));
+        body.extend(words(&[3, 3]));
+        sent.extend(message(2, 0, &body));
+        sent.extend(message(3, 1, &words(&[4])));
+        send(&program, &sent, &[]);
+        link.read(Way::Up).unwrap();
+        assert_eq!(link.lose(), Err(vec!["zwp_linux_buffer_params_v1"]));
+        assert!(link.compositor().is_some(), "not left waiting");
+    }
+
+    #[test]
     fn what_cannot_be_passed_on_ends_the_link() {
         let (mut link, program, _compositor) = linked();
         send(&program, &message(9, 0, &[]), &[]);
@@ -703,7 +719,7 @@ mod tests {
         drop(compositor);
         assert_eq!(link.read(Way::Down), Err(Ended::Lost));
         received(&program);
-        assert!(link.lose());
+        assert_eq!(link.lose(), Ok(()));
         let mut left = message(4, 1, &words(&[10, 9]));
         left.extend(message(4, 5, &[]));
         assert_eq!(received(&program).0, left, "told it left, and the frame");
@@ -785,7 +801,7 @@ mod tests {
         link.read(Way::Up).unwrap();
         drop(compositor);
         let _ = link.read(Way::Down);
-        assert!(link.lose());
+        assert_eq!(link.lose(), Ok(()));
         let (towards, next) = UnixStream::pair().unwrap();
         link.join(towards).unwrap();
         // No seat is offered: the relay's sync is answered at once.

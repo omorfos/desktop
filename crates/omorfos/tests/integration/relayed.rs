@@ -15,16 +15,19 @@ use std::process::{Child, Command};
 use std::rc::Rc;
 use std::time::Duration;
 
+use omorfos::Roles;
 use omorfos_ipc::hold::{Told, Word};
 use omorfos_ipc::relay::{self, Hand, Program};
+use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
 use crate::common::{Client, Event, LayerShape, Session};
+use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
-use crate::windows::{GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 /// Puts `session` under a holder that has it served by a relay; returns the
 /// holder, the relay's end of its connection to the compositor, where the
@@ -174,6 +177,8 @@ fn relayed_with_no_socket_beside_it_is_not_held() {
 /// A relay, as the tests step it, and the holder's end of its connection.
 struct Relayed {
     relay: Rc<RefCell<omorfos_relay::Relay>>,
+    /// What the relay has said, of programs let go.
+    said: Rc<RefCell<Vec<u8>>>,
     holder: OwnedFd,
     socket: UnixListener,
     path: PathBuf,
@@ -190,6 +195,7 @@ impl Relayed {
         relay::send(holder.as_fd(), &Hand::Socket, &[socket.as_fd()]).unwrap();
         Self {
             relay: Rc::new(RefCell::new(omorfos_relay::Relay::new(relays))),
+            said: Rc::default(),
             holder,
             socket,
             path,
@@ -224,11 +230,11 @@ impl Relayed {
 
     /// What steps the relay once, without waiting.
     fn stepping(&self) -> Box<dyn FnMut()> {
-        let relay = Rc::clone(&self.relay);
+        let (relay, said) = (Rc::clone(&self.relay), Rc::clone(&self.said));
         Box::new(move || {
             relay
                 .borrow_mut()
-                .step(Some(Duration::ZERO), &mut std::io::sink());
+                .step(Some(Duration::ZERO), &mut *said.borrow_mut());
         })
     }
 
@@ -236,7 +242,18 @@ impl Relayed {
     fn step(&self) {
         self.relay
             .borrow_mut()
-            .step(Some(Duration::ZERO), &mut std::io::sink());
+            .step(Some(Duration::ZERO), &mut *self.said.borrow_mut());
+    }
+
+    /// Checks that the one program connected was kept, and if not, says
+    /// what the relay said of it.
+    fn kept(&self) {
+        let said = String::from_utf8_lossy(&self.said.borrow()).into_owned();
+        assert_eq!(
+            self.relay.borrow().programs(),
+            1,
+            "the program kept: {said}"
+        );
     }
 }
 
@@ -254,7 +271,7 @@ fn a_window_kept_by_the_relay_is_shown_by_the_next_compositor_as_it_was() {
     drop((first, first_holder));
     relayed.step();
     relayed.step();
-    assert_eq!(relayed.relay.borrow().programs(), 1, "the program kept");
+    relayed.kept();
     let (mut second, _holder) = relayed.compositor();
     second.eventually(|session| session.draw().at(10, 10) == RED);
 
@@ -374,4 +391,220 @@ fn what_the_compositor_before_offered_goes_nowhere_and_the_next_ones_offers_are_
     let mut text = String::new();
     pasted.read_to_string(&mut text).unwrap();
     assert_eq!(text, "after");
+}
+
+#[test]
+fn a_decorated_window_drawn_through_a_viewport_is_shown_again_as_it_was() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open_decorated(&mut client, "app", (200, 100), RED);
+    client.watch_scale(&window.surface);
+    client.fill_plain(&window.surface, (200, 100), GREEN);
+    first.roundtrip(&mut client);
+    first.roundtrip(&mut client);
+    let (titlebar, inside) = ((20, 5), (20, 60));
+    let before = first.draw();
+    let framed = before.at(titlebar.0, titlebar.1);
+    assert_eq!(before.at(inside.0, inside.1), GREEN);
+    assert_ne!(framed, GREEN, "a titlebar");
+    assert!(client.state.told.scale.is_some(), "told its scale");
+    client.take_events();
+    client.state.told.scale = None;
+
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(inside.0, inside.1) == GREEN);
+    assert_eq!(
+        second.draw().at(titlebar.0, titlebar.1),
+        framed,
+        "framed as before"
+    );
+    second.roundtrip(&mut client);
+    // Neither is told again what has not changed.
+    let told = client.take_events();
+    let decoration = told
+        .iter()
+        .any(|event| matches!(event, Event::Decoration { .. }));
+    assert!(!decoration, "{told:?}");
+    assert_eq!(client.state.told.scale, None);
+}
+
+#[test]
+fn a_window_drawn_in_parts_is_shown_again_with_each_where_and_over_what_it_was() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut client, "app", (200, 100), RED);
+    // A part drawn on its own, one drawn with it, shown only once it is
+    // committed, and one drawn with the window and put under the first.
+    let over = client.subsurface(&window.surface, (10, 10), (40, 40), GREEN);
+    let inner = client.surface();
+    client.part_of(&inner, &over).set_position(5, 5);
+    client.fill(&inner, (10, 10), BLUE);
+    over.commit();
+    let under = client.surface();
+    let below = client.part_of(&under, &window.surface);
+    below.set_position(30, 30);
+    below.place_below(&over);
+    client.fill(&under, (40, 40), BLUE);
+    window.surface.commit();
+    first.roundtrip(&mut client);
+    let parts = [
+        (12, 12, GREEN),
+        (18, 18, BLUE),
+        (35, 35, GREEN),
+        (60, 45, BLUE),
+    ];
+    let shown = |session: &mut Session| {
+        let drawn = session.draw();
+        parts.iter().all(|(x, y, color)| drawn.at(*x, *y) == *color) && drawn.at(150, 50) == RED
+    };
+    assert!(shown(&mut first), "drawn in parts");
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(shown);
+}
+
+#[test]
+fn a_program_that_named_the_pointers_shape_names_it_again_once_the_pointer_is_back() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor_with(theme);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(pointer_at(&mut first, 50, 50), GREEN, "the ordinary one");
+    first.roundtrip(&mut client);
+    client.set_cursor_shape(Shape::Text);
+    first.roundtrip(&mut client);
+    assert_eq!(color_at(&mut first, 50, 50), BLUE);
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+
+    // Told the pointer has come back, it says again what it is to look
+    // like, as it would to any compositor.
+    let (mut second, _holder) = relayed.compositor_with(theme);
+    second.eventually(|session| session.draw().at(150, 90) == RED);
+    pointer_at(&mut second, 50, 50);
+    second.roundtrip(&mut client);
+    let told = client.take_events();
+    let back = |event: &Event| matches!(event, Event::PointerEnter { .. });
+    assert!(told.iter().any(back), "{told:?}");
+    client.set_cursor_shape(Shape::Text);
+    second.roundtrip(&mut client);
+    assert_eq!(color_at(&mut second, 50, 50), BLUE);
+}
+
+#[test]
+fn a_program_watching_how_large_a_screen_is_is_not_told_again_what_has_not_changed() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    client.watch_screen_size();
+    first.roundtrip(&mut client);
+    let sized = |event: &Event| matches!(event, Event::ScreenSize(..));
+    assert!(client.take_events().iter().any(sized), "told its size");
+    first.open(&mut client, "app", (200, 100), RED);
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    let told = client.take_events();
+    assert!(!told.iter().any(sized), "{told:?}");
+}
+
+#[test]
+fn a_field_is_told_what_is_typed_into_it_by_its_own_count_of_what_it_said() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    // A field is entered only while there is an input method to type in it.
+    let mut typist = first.connect_as(Roles::INPUT);
+    let _method = typist.input_method();
+    first.roundtrip(&mut typist);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let field = client.text_input();
+    first.open(&mut client, "app", (200, 100), RED);
+    assert!(client.take_events().contains(&Event::TextEnter));
+    // Enabled, then moved: two commits.
+    field.enable();
+    field.set_cursor_rectangle(10, 10, 2, 16);
+    field.commit();
+    field.set_cursor_rectangle(20, 10, 2, 16);
+    field.commit();
+    first.roundtrip(&mut client);
+    drop((first, holder, typist));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+
+    let (mut second, _holder) = relayed.compositor();
+    let mut typist = second.connect_as(Roles::INPUT);
+    let method = typist.input_method();
+    second.roundtrip(&mut typist);
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    let told = client.take_events();
+    let left = told.iter().position(|event| *event == Event::TextLeave);
+    let entered = told.iter().position(|event| *event == Event::TextEnter);
+    assert!(
+        left.zip(entered)
+            .is_some_and(|(left, entered)| left < entered),
+        "{told:?}"
+    );
+    // Back in the field, the program enables it again, as on any enter.
+    field.enable();
+    field.set_cursor_rectangle(20, 10, 2, 16);
+    field.commit();
+    second.roundtrip(&mut client);
+    second.roundtrip(&mut typist);
+    typist.type_text(&method, "日本");
+    second.roundtrip(&mut typist);
+    second.roundtrip(&mut client);
+    let typed = client.take_events();
+    assert!(
+        typed.contains(&Event::TextCommitted("日本".to_owned())),
+        "{typed:?}"
+    );
+    assert!(
+        typed.contains(&Event::TextDone(3)),
+        "three commits: {typed:?}"
+    );
+}
+
+#[test]
+fn a_window_that_said_where_its_edges_are_is_shown_again_by_them() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    // The window proper is the middle of a larger surface, as it is for an
+    // application that draws a shadow around itself, as `foot` does.
+    let window = client.toplevel("app", "app");
+    first.roundtrip(&mut client);
+    window.xdg_surface.set_window_geometry(30, 20, 200, 100);
+    client.fill(&window.surface, (260, 160), RED);
+    first.roundtrip(&mut client);
+    first.roundtrip(&mut client);
+    let placed = |session: &mut Session| {
+        let drawn = session.draw();
+        drawn.at(229, 139) == RED && drawn.at(231, 141) == BACKGROUND
+    };
+    assert!(placed(&mut first), "its shadow off the screen");
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(placed);
+    second.roundtrip(&mut client);
+    relayed.kept();
 }
