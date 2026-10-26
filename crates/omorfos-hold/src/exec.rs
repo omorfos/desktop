@@ -17,7 +17,7 @@ use crate::{Hold, Which};
 
 /// Becomes the holder's own new version, if there is one to become. Says
 /// on `log` why not, if it could not be.
-pub(crate) fn renew(hold: &Hold, which: Which, log: &mut dyn Write) {
+pub(crate) fn renew(hold: &mut Hold, which: Which, log: &mut dyn Write) {
     if let Some((own, handing)) = hold.renewal(which, log) {
         let error = become_program(&own, TAKING, handing);
         let _ = writeln!(

@@ -39,15 +39,22 @@ impl Hold {
     /// where it is and starts, with the connection that hands it what is
     /// held, the compositor to start next being from `which` file. Says on
     /// `log` why there is none to become, where there was one installed.
-    pub fn renewal(&self, which: Which, log: &mut dyn Write) -> Option<(PathBuf, UnixStream)> {
-        let own = self.own.as_deref().filter(|own| replaced(own))?;
-        if !starts(own) {
+    ///
+    /// The relay is stopped first, where there is one to become: its
+    /// connection to the holder is not handed over, and the new version
+    /// starts its own (ADR 61).
+    pub fn renewal(&mut self, which: Which, log: &mut dyn Write) -> Option<(PathBuf, UnixStream)> {
+        let own = self.own.clone().filter(|own| replaced(own))?;
+        if !starts(&own) {
             let said = "its own new version does not start; going on as it is";
             let _ = writeln!(log, "omorfos-hold: {said}");
             return None;
         }
         let handing = self.handing(which).ok();
-        handing.map(|handing| (own.to_owned(), handing))
+        handing.map(|handing| {
+            self.stop_relay();
+            (own, handing)
+        })
     }
 
     /// The connection that hands what is held to another version, which is
@@ -77,7 +84,11 @@ impl Hold {
         let compositor = self.compositor.display();
         let own = self.own.as_deref().map(Path::display);
         let own = own.map(|own| format!("own {own}\n")).unwrap_or_default();
-        format!("{text}socket {socket}\ncompositor {compositor}\n{own}{held}{next}\n")
+        let relay = self.relay_program.as_deref().map(Path::display);
+        let relay = relay
+            .map(|relay| format!("relay {relay}\n"))
+            .unwrap_or_default();
+        format!("{text}socket {socket}\ncompositor {compositor}\n{own}{relay}{held}{next}\n")
     }
 }
 
@@ -152,6 +163,10 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
         let mut taken = Hold::new(socket, compositor, policy);
         taken.held = held;
         taken.own = line("own ");
+        // A version from before there was a relay says nothing of it: the
+        // one installed beside this one is used.
+        let beside = || taken.own.as_deref().and_then(crate::relay_beside);
+        taken.relay_program = line("relay ").or_else(beside);
         let which = if flag("next held") {
             Which::Held
         } else {
@@ -225,7 +240,7 @@ mod tests {
             4,
             "its own file, the socket, its lock and the one held"
         );
-        let (taken, which) = take(&text, fds).unwrap();
+        let (mut taken, which) = take(&text, fds).unwrap();
         assert_eq!(which, Which::Held);
         assert_eq!(taken.socket.path(), held.socket.path());
         assert_eq!(taken.compositor, held.compositor);
@@ -234,8 +249,7 @@ mod tests {
         let told = taken.policy.told();
         assert_eq!((told.locked, told.display), (true, Some(4)));
         // The one that takes it is not the first.
-        let mut policy = taken.policy;
-        assert!(policy.starting(Which::Installed).again);
+        assert!(taken.policy.starting(Which::Installed).again);
         // Programs still find the socket, which the version before keeps
         // until it ends: both name the same.
         UnixStream::connect(taken.socket.path()).unwrap();
@@ -255,6 +269,20 @@ mod tests {
         assert!(taken.held.is_none());
         assert!(taken.own.is_none());
         std::mem::forget(held);
+    }
+
+    #[test]
+    fn a_version_from_before_the_relay_has_the_relay_beside_it_taken_up() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let relay = runtime.path().join("omorfos-relay");
+        program(&relay, "#!/bin/sh\nexec sleep 30\n");
+        // It knows where it is installed, and says nothing of a relay.
+        let held = hold(runtime.path()).renewed_from(runtime.path().join("omorfos-hold"));
+        let handing = held.handing(Which::Installed).unwrap();
+        let (text, fds) = hold::take(&handing).unwrap();
+        assert!(!text.contains("relay "), "{text}");
+        let (taken, _) = take(&text, fds).unwrap();
+        assert_eq!(taken.relay_program, Some(relay));
     }
 
     #[test]
@@ -288,16 +316,16 @@ mod tests {
     fn a_holder_not_replaced_has_nothing_to_become() {
         let runtime = tempfile::TempDir::new().unwrap();
         let mut log = Vec::new();
-        let held = hold(runtime.path());
+        let mut held = hold(runtime.path());
         assert!(
             held.renewal(Which::Installed, &mut log).is_none(),
             "not known where"
         );
         // Installed where it is, and the same file as the one running.
-        let held = held.renewed_from(PathBuf::from("/proc/self/exe"));
+        let mut held = held.renewed_from(PathBuf::from("/proc/self/exe"));
         assert!(held.renewal(Which::Installed, &mut log).is_none());
         // Not there at all.
-        let held = held.renewed_from(runtime.path().join("gone"));
+        let mut held = held.renewed_from(runtime.path().join("gone"));
         assert!(held.renewal(Which::Installed, &mut log).is_none());
         assert_eq!(log, b"");
     }
@@ -313,7 +341,7 @@ mod tests {
         ] {
             let own = runtime.path().join("omorfos-hold");
             program(&own, script);
-            let held = hold(runtime.path()).renewed_from(own);
+            let mut held = hold(runtime.path()).renewed_from(own);
             assert!(
                 held.renewal(Which::Installed, &mut log).is_none(),
                 "{script}"
@@ -322,7 +350,7 @@ mod tests {
         // Nor one that cannot be run at all.
         let own = runtime.path().join("not-a-program");
         fs::write(&own, "").unwrap();
-        let held = hold(runtime.path()).renewed_from(own);
+        let mut held = hold(runtime.path()).renewed_from(own);
         assert!(held.renewal(Which::Installed, &mut log).is_none());
         let said = String::from_utf8(log).unwrap();
         assert_eq!(said.matches("does not start").count(), 4, "{said}");
@@ -333,11 +361,19 @@ mod tests {
         let runtime = tempfile::TempDir::new().unwrap();
         let own = runtime.path().join("omorfos-hold");
         program(&own, "#!/bin/sh\necho omorfos-hold 9.9.9\n");
+        let relay = runtime.path().join("omorfos-relay");
+        program(&relay, "#!/bin/sh\nexec sleep 30\n");
         let held = hold(runtime.path()).renewed_from(own.clone());
+        let mut held = held.relayed_by(relay.clone());
         let mut log = Vec::new();
+        assert!(held.relay_connection(&mut log).is_some(), "a relay running");
         let (program, handing) = held.renewal(Which::Installed, &mut log).unwrap();
         assert_eq!(program, own);
-        let (text, _) = hold::take(&handing).unwrap();
+        // The relay is not handed over, and is stopped; where it is, is.
+        assert!(held.relay.is_none());
+        let (text, fds) = hold::take(&handing).unwrap();
         assert!(text.contains(&format!("own {}\n", own.display())), "{text}");
+        let (taken, _) = take(&text, fds).unwrap();
+        assert_eq!(taken.relay_program, Some(relay));
     }
 }

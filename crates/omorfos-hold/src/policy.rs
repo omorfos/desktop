@@ -57,6 +57,8 @@ pub struct Policy {
     stepping_down: bool,
     /// When the compositor failed, lately.
     failures: Vec<Instant>,
+    /// When the relay ended, lately.
+    relay_ended: Vec<Instant>,
     pause: Duration,
 }
 
@@ -78,6 +80,7 @@ impl Policy {
             up: false,
             stepping_down: false,
             failures: Vec::new(),
+            relay_ended: Vec::new(),
             pause,
         }
     }
@@ -134,6 +137,16 @@ impl Policy {
         self.up
     }
 
+    /// Whether to start the relay again, having found it ended at `now`
+    /// (ADR 61): not once it has ended more than three times in a minute,
+    /// after which programs connect to the compositor itself.
+    pub fn relay_ended(&mut self, now: Instant) -> bool {
+        self.relay_ended
+            .retain(|at| now.saturating_duration_since(*at) < LATELY);
+        self.relay_ended.push(now);
+        self.relay_ended.len() <= MOST
+    }
+
     /// What to do now that the compositor running has ended at `now`,
     /// having `failed` or not. `other` says whether the file held open is
     /// another than the one installed now.
@@ -188,6 +201,18 @@ mod tests {
             which,
             after: PAUSE,
         }
+    }
+
+    #[test]
+    fn a_relay_that_keeps_ending_is_given_up_but_not_one_that_ends_now_and_then() {
+        let mut policy = Policy::default();
+        for _ in 0..MOST {
+            assert!(policy.relay_ended(at(0)));
+        }
+        assert!(policy.relay_ended(at(61)), "a minute later");
+        assert!(policy.relay_ended(at(61)));
+        assert!(policy.relay_ended(at(62)));
+        assert!(!policy.relay_ended(at(62)), "the fourth in a minute");
     }
 
     #[test]

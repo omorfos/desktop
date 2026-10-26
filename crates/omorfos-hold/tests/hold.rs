@@ -88,12 +88,46 @@ impl Place {
     /// moment after a failure; returns whether it was given up and what
     /// the holder said.
     fn hold(&self) -> (bool, String) {
+        self.held_by(|hold| hold)
+    }
+
+    /// Holds the session as [`Place::hold`] does, with programs reaching
+    /// the compositor through the relay installed.
+    fn hold_relayed(&self) -> (bool, String) {
+        self.held_by(|hold| hold.relayed_by(self.relay()))
+    }
+
+    fn held_by(&self, made: impl FnOnce(Hold) -> Hold) -> (bool, String) {
         let socket = Socket::bind(self.path()).unwrap();
         let policy = Policy::with_pause(Duration::from_millis(10));
-        let mut hold = Hold::new(socket, self.compositor(), policy);
+        let mut hold = made(Hold::new(socket, self.compositor(), policy));
         let mut log = Vec::new();
         let failed = hold.run(&mut log);
         (failed, String::from_utf8(log).unwrap())
+    }
+
+    /// Where the relay is installed.
+    fn relay(&self) -> PathBuf {
+        self.path().join("omorfos-relay")
+    }
+
+    /// Installs a stand-in for the relay that counts its runs, and then
+    /// does `then`.
+    fn install_relay(&self, then: &str) {
+        let marks = self.path().display();
+        let script = format!(
+            "#!/bin/sh\n\
+             marks='{marks}'\n\
+             n=$(cat \"$marks/relays\" 2>/dev/null || echo 0); echo $((n + 1)) > \"$marks/relays\"\n\
+             {then}\n"
+        );
+        written(&self.relay(), &script);
+    }
+
+    /// How many times the relay's stand-in has run.
+    fn relays(&self) -> u32 {
+        let runs = fs::read_to_string(self.path().join("relays")).unwrap_or_default();
+        runs.trim().parse().unwrap_or(0)
     }
 }
 
@@ -187,4 +221,86 @@ fn a_compositor_that_is_not_a_program_is_tried_and_given_up() {
         4,
         "{said}"
     );
+}
+
+/// What a compositor's stand-in does first, where the relay's stand-in is
+/// to be counted: waits for it to have counted itself, which it may not
+/// have done before a session that ends at once stops it.
+const COUNTED: &str = "until [ -s \"$marks/relays\" ]; do sleep 0.01; done; ";
+
+#[test]
+fn a_compositor_is_joined_to_the_relay_once_it_is_started() {
+    let place = Place::new();
+    // One that holds its connection to the holder open, as the relay does.
+    place.install_relay("exec sleep 30");
+    let then = format!("{COUNTED}printf 'up\\n' >&0; exit 0");
+    place.install(&place.compositor(), &then);
+    let (failed, said) = place.hold_relayed();
+    assert!(!failed, "{said}");
+    assert_eq!(place.told(), "relayed,;");
+    assert_eq!(place.relays(), 1);
+}
+
+#[test]
+fn the_relay_outlives_each_compositor() {
+    let place = Place::new();
+    place.install_relay("exec sleep 30");
+    let then = format!(
+        "{COUNTED}if [ $n -lt 3 ]; then printf 'up\\nstepping down\\n' >&0; exit 0; fi; \
+         printf 'up\\n' >&0; exit 0"
+    );
+    place.install(&place.compositor(), &then);
+    let (failed, said) = place.hold_relayed();
+    assert!(!failed, "{said}");
+    assert_eq!(place.told(), "relayed,;again,relayed,;again,relayed,;");
+    assert_eq!(place.relays(), 1, "started once");
+}
+
+#[test]
+fn a_relay_that_keeps_ending_is_given_up_and_programs_connect_to_the_compositor() {
+    let place = Place::new();
+    place.install_relay("exit 0");
+    let then = "if [ $n -lt 8 ]; then printf 'up\\nstepping down\\n' >&0; exit 0; fi; \
+                printf 'up\\n' >&0; exit 0";
+    place.install(&place.compositor(), then);
+    let (failed, said) = place.hold_relayed();
+    assert!(!failed, "{said}");
+    // Started, and three times again, and no more.
+    assert_eq!(place.relays(), 4, "{said}");
+    assert!(said.contains("the relay keeps failing"), "{said}");
+    assert!(place.told().ends_with(";again,;"), "{}", place.told());
+}
+
+#[test]
+fn a_relay_that_cannot_be_started_is_given_up() {
+    let place = Place::new();
+    place.install(&place.compositor(), "printf 'up\\n' >&0; exit 0");
+    let (failed, said) = place.hold_relayed();
+    assert!(!failed, "{said}");
+    assert!(said.contains("cannot start the relay"), "{said}");
+    assert!(said.contains("the relay keeps failing"), "{said}");
+    assert_eq!(place.told(), ";");
+}
+
+#[test]
+fn the_version_held_is_handed_the_socket_itself_and_the_relay_stopped() {
+    let place = Place::new();
+    place.install_relay("exec sleep 30");
+    let compositor = place.compositor();
+    let failing = place.path().join("failing");
+    place.install(&failing, "exit 1");
+    let then = format!(
+        "{COUNTED}if [ $n = 1 ]; then cp '{}' '{}.next' && mv '{}.next' '{}'; \
+         printf 'up\\nstepping down\\n' >&0; exit 0; fi; printf 'up\\n' >&0; exit 0",
+        failing.display(),
+        compositor.display(),
+        compositor.display(),
+        compositor.display()
+    );
+    place.install(&compositor, &then);
+    let (failed, said) = place.hold_relayed();
+    assert!(!failed, "{said}");
+    assert!(place.told().starts_with("relayed,;"), "{}", place.told());
+    assert!(place.told().ends_with(";again,older,;"), "{}", place.told());
+    assert_eq!(place.relays(), 1);
 }

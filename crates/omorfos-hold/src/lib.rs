@@ -16,15 +16,16 @@ mod socket;
 
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
-use omorfos_ipc::hold::{self, Heard};
+use omorfos_ipc::hold::{self, Heard, Told};
+use omorfos_ipc::relay::{self, Hand};
 
 pub use exec::give_back;
 pub use policy::{Next, Policy, Which};
@@ -43,6 +44,39 @@ pub struct Hold {
     /// Where the holder itself is installed, where it takes up its own new
     /// versions.
     own: Option<PathBuf>,
+    /// Where the relay is installed, while programs are to reach the
+    /// compositor through it (ADR 61).
+    relay_program: Option<PathBuf>,
+    /// The relay, once one has been started.
+    relay: Option<Relay>,
+    /// Whether a relay has been started in this login.
+    relay_started: bool,
+}
+
+/// The relay running, as far as the holder is concerned.
+#[derive(Debug)]
+struct Relay {
+    child: Child,
+    /// The holder's end of the connection the relay was started with.
+    connection: OwnedFd,
+}
+
+impl Relay {
+    /// Joins the relay to a compositor about to be started: hands it one
+    /// end of a new connection, and returns the other, for the compositor.
+    /// Nothing, if the relay has ended or will not take it.
+    fn join(&mut self) -> Option<OwnedFd> {
+        let running = matches!(self.child.try_wait(), Ok(None));
+        let pair = relay::pair().ok().filter(|_| running);
+        pair.and_then(|(relays, compositor)| {
+            let handed = relay::send(
+                self.connection.as_fd(),
+                &Hand::Compositor,
+                &[relays.as_fd()],
+            );
+            handed.ok().map(|()| compositor)
+        })
+    }
 }
 
 /// What the compositor running is, as far as the holder is concerned.
@@ -63,16 +97,25 @@ impl Hold {
             held: None,
             policy,
             own: None,
+            relay_program: None,
+            relay: None,
+            relay_started: false,
         }
     }
 
     /// Takes up the holder's own new versions installed at `own`.
     #[must_use]
-    pub fn renewed_from(self, own: PathBuf) -> Self {
-        Self {
-            own: Some(own),
-            ..self
-        }
+    pub fn renewed_from(mut self, own: PathBuf) -> Self {
+        self.own = Some(own);
+        self
+    }
+
+    /// Has programs reach the compositor through the relay installed at
+    /// `relay` (ADR 61).
+    #[must_use]
+    pub fn relayed_by(mut self, relay: PathBuf) -> Self {
+        self.relay_program = Some(relay);
+        self
     }
 
     /// Starts the compositor, and again each time it ends as it should be
@@ -104,7 +147,7 @@ impl Hold {
     /// and says what is next.
     fn once(&mut self, which: Which, log: &mut dyn Write) -> Next {
         let told = self.policy.starting(which);
-        let failed = match self.start(which, &told.written()) {
+        let failed = match self.start(which, told, log) {
             Ok(running) => self.hear(running),
             Err(error) => {
                 let _ = writeln!(log, "omorfos-hold: cannot start the compositor: {error}");
@@ -127,9 +170,10 @@ impl Hold {
         next
     }
 
-    /// Starts the compositor from `which` file, handing it the socket and
-    /// telling it `told`.
-    fn start(&self, which: Which, told: &str) -> io::Result<Running> {
+    /// Starts the compositor from `which` file, handing it the socket, or
+    /// its connection to the relay and the socket's name, and telling it
+    /// `told`.
+    fn start(&mut self, which: Which, told: Told, log: &mut dyn Write) -> io::Result<Running> {
         let file = match which {
             Which::Installed => File::open(&self.compositor),
             Which::Held => {
@@ -137,6 +181,17 @@ impl Hold {
                 self.held.as_ref().map_or(none, File::try_clone)
             }
         }?;
+        // One held may be older than the relay, and is handed the socket
+        // itself; the relay is not used again until the next login.
+        if which == Which::Held {
+            self.relay_program = None;
+            self.stop_relay();
+        }
+        let relayed = self.relay_connection(log);
+        let told = Told {
+            relayed: relayed.is_some(),
+            ..told
+        };
         // Started from the file held, by the holder's own name for it,
         // which stays good however the file installed is replaced.
         let program = format!("/proc/{}/fd/{}", std::process::id(), file.as_raw_fd());
@@ -157,7 +212,9 @@ impl Hold {
         started.map(|(connection, child)| {
             // One that has gone already cannot be handed anything, and is
             // heard to have ended.
-            let _ = hold::give(&connection, told, &[self.socket.as_fd()]);
+            let fds = relayed.iter().map(AsFd::as_fd).chain([self.socket.as_fd()]);
+            let fds: Vec<BorrowedFd<'_>> = fds.collect();
+            let _ = hold::give(&connection, &told.written(), &fds);
             Running {
                 child,
                 connection,
@@ -185,6 +242,58 @@ impl Hold {
         status.map_or(true, |status| !status.success())
     }
 
+    /// The compositor's end of a connection to the relay, which has been
+    /// handed the other: the relay running, or started for it, again if it
+    /// ended. Nothing where there is no relay, or it has ended too often,
+    /// and programs connect to the compositor itself.
+    fn relay_connection(&mut self, log: &mut dyn Write) -> Option<OwnedFd> {
+        loop {
+            let program = self.relay_program.clone()?;
+            if let Some(compositor) = self.relay.as_mut().and_then(Relay::join) {
+                return Some(compositor);
+            }
+            // It has ended, or never been started.
+            self.stop_relay();
+            if self.relay_started && !self.policy.relay_ended(Instant::now()) {
+                let said = "the relay keeps failing; programs connect to the compositor itself \
+                            until the next login";
+                let _ = writeln!(log, "omorfos-hold: {said}");
+                self.relay_program = None;
+                continue;
+            }
+            self.relay_started = true;
+            match self.start_relay(&program) {
+                Ok(relay) => self.relay = Some(relay),
+                Err(error) => {
+                    let _ = writeln!(log, "omorfos-hold: cannot start the relay: {error}");
+                }
+            }
+        }
+    }
+
+    /// Starts the relay installed at `program`, and hands it the socket.
+    fn start_relay(&self, program: &Path) -> io::Result<Relay> {
+        relay::pair().and_then(|(ours, theirs)| {
+            let started = Command::new(program).stdin(Stdio::from(theirs)).spawn();
+            started.map(|child| {
+                // One that has ended already is found so when it is joined.
+                let _ = relay::send(ours.as_fd(), &Hand::Socket, &[self.socket.as_fd()]);
+                Relay {
+                    child,
+                    connection: ours,
+                }
+            })
+        })
+    }
+
+    /// Stops the relay, if one is running, and waits for it to end.
+    pub(crate) fn stop_relay(&mut self) {
+        if let Some(mut relay) = self.relay.take() {
+            let _ = relay.child.kill();
+            let _ = relay.child.wait();
+        }
+    }
+
     /// Whether the file held open is another than the one installed now.
     fn other(&self) -> bool {
         let identity = |metadata: std::fs::Metadata| (metadata.dev(), metadata.ino());
@@ -207,6 +316,22 @@ impl Hold {
 pub fn hold(runtime: &Path, own: PathBuf, log: &mut dyn Write) -> io::Result<bool> {
     let socket = Socket::bind(runtime)?;
     let compositor = own.with_file_name("omorfos");
-    let hold = Hold::new(socket, compositor, Policy::default());
+    let mut hold = Hold::new(socket, compositor, Policy::default());
+    hold.relay_program = relay_beside(&own);
     Ok(hold.renewed_from(own).run(log))
+}
+
+/// The relay installed beside the holder installed at `own`, if there is
+/// one.
+pub(crate) fn relay_beside(own: &Path) -> Option<PathBuf> {
+    Some(own.with_file_name(RELAY)).filter(|relay| relay.is_file())
+}
+
+/// What the relay is called, installed beside the holder.
+const RELAY: &str = "omorfos-relay";
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        self.stop_relay();
+    }
 }

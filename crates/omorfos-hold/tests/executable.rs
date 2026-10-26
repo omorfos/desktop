@@ -133,6 +133,22 @@ fn it_holds_the_session_for_the_compositor_beside_it_until_that_ends() {
 }
 
 #[test]
+fn programs_reach_the_compositor_through_the_relay_beside_it() {
+    let (place, program) = installed();
+    install(
+        &place.path().join("omorfos-relay"),
+        "#!/bin/sh\nexec sleep 30\n",
+    );
+    compositor(place.path(), "printf 'up\\n' >&0; exit 0");
+    let output = holder(&program, Some(place.path())).output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    assert_eq!(
+        fs::read_to_string(place.path().join("told")).unwrap(),
+        "relayed,;"
+    );
+}
+
+#[test]
 fn a_session_whose_compositor_keeps_failing_fails() {
     let (place, program) = installed();
     compositor(place.path(), "exit 1");
