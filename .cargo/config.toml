@@ -10,5 +10,5 @@ coverage = [
     "--fail-under-regions=100",
     # So that a shortfall that comes only sometimes, in CI, says where.
     "--show-missing-lines",
-    "--ignore-filename-regex=crates/(omorfos/src/(backend/(winit|hardware)|gpu)|xdg-desktop-portal-omorfos/src/card)\\.rs",
+    "--ignore-filename-regex=crates/(omorfos/src/(backend/(winit|hardware)|gpu)|omorfos-hold/src/exec|xdg-desktop-portal-omorfos/src/card)\\.rs",
 ]

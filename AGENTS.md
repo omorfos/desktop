@@ -80,10 +80,11 @@ lists the programs; a new one is added there, and to the packaging.
 
 - **Coverage is 100%** of lines, functions and regions (`cargo coverage`, an
   alias in `.cargo/config.toml`). Do not lower the gate. Code that cannot run
-  in CI (real GPU, TTY, seat) is kept free of decisions and listed in
+  in CI (real GPU, TTY, seat), or whose running cannot be counted (a process
+  becoming another program), is kept free of decisions and listed in
   [docs/adr/0002-coverage-policy.md](docs/adr/0002-coverage-policy.md) before
-  it is excluded. Two files are excluded today: the nested winit backend
-  and the hardware backend.
+  it is excluded. The files excluded today are listed there, each with its
+  reason.
 - **Test behaviour, not implementation.** Test names read as sentences
   describing the behaviour.
 - **No panics in non-test code:** `unwrap`, `expect`, `panic!`, `todo!` and

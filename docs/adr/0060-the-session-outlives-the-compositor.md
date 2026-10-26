@@ -271,3 +271,68 @@ in, and one should not lose an afternoon to it.
 - How the compositor is given the socket as a descriptor it inherits,
   the spelling of the words, and the bound on a quiet moment are the
   build's.
+
+## What was built first, and what it settled
+
+`omorfos-hold` came first, as this ADR orders it, with the compositor's part
+of it and the action that asks the compositor to step down,
+`restart_compositor`.
+
+- **The compositor knows it is held by an argument**, `omorfos --held`, not
+  by something in its environment. Whatever is in the environment every
+  program the compositor starts inherits, and Smithay starts the X server
+  itself, with nothing taken out; an argument goes to the compositor alone.
+- **It takes the connection to the holder as what it reads from**, as the
+  components take theirs (ADR 37), and at once puts what it reads from to
+  nothing, before it starts anything, so that no program of the session
+  can say to the holder that the session is unlocked. The holder hands the
+  socket over that connection, as a descriptor, with what it was told.
+- **`omorfos` becomes the holder only if one is beside it.** Started on the
+  hardware with nothing above it, it runs the `omorfos-hold` in its own
+  folder in its place; with none there it runs as it did before there was
+  a holder. A build tried by hand would otherwise be handed to whatever
+  holder is installed, which would start the compositor beside itself.
+- **The holder starts the compositor from the file it holds open**, by its
+  own name for it, `/proc/<holder>/fd/N`, opened just before. The file that
+  runs is the file held, whatever is installed in its place meanwhile, and
+  the one that last came up is the one kept to go back to. The process
+  would then be listed by the last part of that name, `N`, so the
+  compositor names itself `omorfos` as it takes the holder's connection.
+- **The holder says the compositor is older**, as a line it tells it,
+  `older`, when it went back to the one before; the compositor shows that
+  as a problem, so that nobody thinks the fix is in.
+- **What starts with the session is started by the login's first start**,
+  not by the first compositor to say it is up. One that crashed before it
+  said so may have started some of it, and starting it twice is what this
+  was to prevent; the cost is that a first compositor that crashes that
+  early leaves the user's programs unstarted until the next login.
+- **The holder waits on the compositor without a timer.** Its connection to
+  the compositor closes only when the compositor ends, since nothing the
+  compositor starts has it, so it reads until then and waits for the
+  process. A compositor that hangs without ending is waited for for ever,
+  as it would hang the session without a holder; noticing one is left
+  for later.
+- **Its own new version is taken up between one compositor and the next**,
+  checked first by running it with `--check`, and handed, as
+  `omorfos-hold --taking`, the socket, its lock, the file held, its own old
+  file and a few lines of what it knew. One that cannot take it runs the old
+  file again with `--taking-back`. Becoming another program is in a file of
+  its own, `exec.rs`, left out of the coverage gate (ADR 2): a process that
+  becomes another never writes down what coverage it counted. What to
+  become, and with what, is decided in covered code, and the tests run the
+  holder taking its own place for real.
+- **Qt 6 programs are told to connect again**, by `QT_WAYLAND_RECONNECT=1`
+  in the session's environment. Qt does so only when told, and an omorfos
+  session told nothing; it is told always, held or not, since a program
+  whose socket has gone fails to connect and closes as it would have.
+- **The limit on starting it again is the holder's own copy** of ADR 28's,
+  three in a minute, not shared with the compositor's: the holder depends
+  on nothing of the compositor's crate.
+- **Any IPC peer may ask the compositor to step down**, as any may ask it to
+  quit (ADR 8): a peer is the same user.
+- **The relay comes next**, straight after the holder and the list of
+  protocols it is built from, not only before stage 5. Tried on real
+  hardware, the holder did what it is for, and showed what it is not: a
+  compositor started again closed every window but Qt 6's, a terminal and
+  what ran in it among them. Nothing else on the roadmap spares the user
+  as much.

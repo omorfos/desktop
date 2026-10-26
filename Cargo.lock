@@ -1935,6 +1935,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-hold"
+version = "0.1.0"
+dependencies = [
+ "omorfos-ipc",
+ "rustix 1.1.5",
+ "tempfile",
+]
+
+[[package]]
 name = "omorfos-icons"
 version = "0.1.0"
 dependencies = [
