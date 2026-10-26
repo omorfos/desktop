@@ -321,6 +321,12 @@ of it and the action that asks the compositor to step down,
   becomes another never writes down what coverage it counted. What to
   become, and with what, is decided in covered code, and the tests run the
   holder taking its own place for real.
+- **A compositor started again away from its virtual terminal waits for
+  it.** One that crashes, or is ended, while the user is at another
+  terminal is started again at once, and may not take the graphics card
+  until its own terminal is shown again. Tried on real hardware, three
+  such starts failed within seconds and the session was given up; so it
+  waits for its terminal before it opens the card, rather than fail.
 - **Qt 6 programs are told to connect again**, by `QT_WAYLAND_RECONNECT=1`
   in the session's environment. Qt does so only when told, and an omorfos
   session told nothing; it is told always, held or not, since a program

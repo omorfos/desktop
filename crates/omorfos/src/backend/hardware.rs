@@ -37,12 +37,12 @@ use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
 use smithay::backend::renderer::multigpu::GpuManager;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::{Bind, ImportDma};
-use smithay::backend::session::libseat::LibSeatSession;
+use smithay::backend::session::libseat::{LibSeatSession, LibSeatSessionNotifier};
 use smithay::backend::session::{Event as SeatEvent, Session as Seat};
 use smithay::backend::udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu};
 use smithay::output::Output;
-use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::calloop::{LoopHandle, channel};
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc,
 };
@@ -145,17 +145,12 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     .ok_or("cannot find the configuration directory: set HOME or XDG_CONFIG_HOME")?;
     let holder = holder(start)?;
 
-    let (mut seat, seat_events) = LibSeatSession::new().map_err(|error| {
-        format!(
-            "cannot take control of the screen and keyboard: {error}. Start omorfos from a \
-             text console (a virtual terminal such as Ctrl+Alt+F3), logged in directly and \
-             not over SSH, or from inside another desktop to run it in a window"
-        )
-    })?;
+    let (mut seat, seat_events) = take_seat()?;
     let seat_name = seat.seat();
+    let mut session = Session::new(config_directory)?;
+    let heard = wait_for_seat(&mut session, &seat, seat_events)?;
     let (card, card_events, gbm, gpus, renderer) = open_card(&mut seat)?;
 
-    let mut session = Session::new(config_directory)?;
     match holder {
         Some(holder) => session.hold(holder)?,
         None => listen(&mut session)?,
@@ -198,7 +193,10 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let switching = Rc::clone(&hardware);
     session
         .handle()
-        .insert_source(seat_events, move |event, (), compositor| {
+        .insert_source(heard, move |event, (), compositor| {
+            let channel::Event::Msg(event) = event else {
+                return;
+            };
             let mut hardware = switching.borrow_mut();
             match event {
                 SeatEvent::PauseSession => {
@@ -252,6 +250,48 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let ended = session.run(move |compositor| turn(&hardware, &handle, compositor));
     end_session(session.compositor());
     ended
+}
+
+/// Takes the seat: the screens and input devices of the virtual terminal it
+/// was started at.
+fn take_seat() -> Result<(LibSeatSession, LibSeatSessionNotifier), String> {
+    LibSeatSession::new().map_err(|error| {
+        format!(
+            "cannot take control of the screen and keyboard: {error}. Start omorfos from a \
+             text console (a virtual terminal such as Ctrl+Alt+F3), logged in directly and \
+             not over SSH, or from inside another desktop to run it in a window"
+        )
+    })
+}
+
+/// Keeps what the seat says, `events`, to be handled once there are screens
+/// and input devices for it to be about, in order; and waits, if need be,
+/// for the seat to be the compositor's.
+///
+/// Started again while the user is at another virtual terminal, as after a
+/// crash there, the compositor may not take the graphics card until its
+/// own is shown again: it waits until it is, rather than fail.
+fn wait_for_seat(
+    session: &mut Session,
+    seat: &LibSeatSession,
+    events: LibSeatSessionNotifier,
+) -> Result<channel::Channel<SeatEvent>, Box<dyn Error>> {
+    let (said, heard) = channel::channel();
+    session
+        .handle()
+        .insert_source(events, move |event, (), _| {
+            let _ = said.send(event);
+        })?;
+    if !seat.is_active() {
+        let _ = writeln!(
+            stderr(),
+            "omorfos: waiting for its virtual terminal to be shown"
+        );
+    }
+    while !seat.is_active() {
+        session.dispatch(None, Instant::now())?;
+    }
+    Ok(heard)
 }
 
 /// Becomes the holder, if the compositor was started with nothing above it
