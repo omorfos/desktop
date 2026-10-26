@@ -1855,6 +1855,7 @@ dependencies = [
  "omorfos-lock",
  "omorfos-notifications",
  "omorfos-panel",
+ "omorfos-relay",
  "omorfos-screenshot",
  "omorfos-session",
  "omorfos-shell",

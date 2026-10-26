@@ -20,7 +20,7 @@ use crate::wire::{self, Broken, Carried, HEADER, Header};
 pub const MOST: usize = 1 << 18;
 
 /// The first number the compositor gives the objects it makes.
-const SERVERS: u32 = 0xff00_0000;
+pub const SERVERS: u32 = 0xff00_0000;
 
 /// The number of the display, which every connection starts with.
 const DISPLAY: u32 = 1;
@@ -35,6 +35,22 @@ struct Object {
     version: u32,
     /// It has been destroyed, but messages to it may still come.
     gone: bool,
+}
+
+/// What a message was, once read.
+#[derive(Debug, Clone, Copy)]
+pub struct Read {
+    /// How many descriptors come with it.
+    pub fds: usize,
+    /// What the object it is to is.
+    pub interface: &'static Interface,
+    /// Which of that object's messages it is.
+    pub opcode: u16,
+    /// The object it makes, if it makes one, what that is, and at which
+    /// version.
+    pub made: Option<(u32, &'static Interface, u32)>,
+    /// Whether it destroys the object it is to.
+    pub ends: bool,
 }
 
 /// A program's objects.
@@ -58,14 +74,14 @@ impl Default for Objects {
 
 impl Objects {
     /// Reads `message`, a request the program sends, and keeps what it
-    /// makes and destroys. Returns how many descriptors come with it.
+    /// makes and destroys. Returns what it was.
     ///
     /// # Errors
     ///
     /// Returns an error if the program could not have sent it: to an
     /// object it has not, a message the object has not or is too old for,
     /// not as described, or making an object it may not.
-    pub fn request(&mut self, message: &[u8], header: Header) -> Result<usize, Broken> {
+    pub fn request(&mut self, message: &[u8], header: Header) -> Result<Read, Broken> {
         let object = self.known.get(&header.object).filter(|object| !object.gone);
         let object = object.copied().ok_or(Broken("a request to no object"))?;
         let described = object.interface.requests.get(usize::from(header.opcode));
@@ -74,6 +90,7 @@ impl Objects {
             return Err(Broken("a request newer than its object"));
         }
         let carried = wire::read(body(message, header), described)?;
+        let mut made_of = None;
         if let Some(made) = carried.made {
             if made >= SERVERS {
                 return Err(Broken(
@@ -82,28 +99,35 @@ impl Objects {
             }
             let (interface, version) = Self::what(described, carried, object.version)?;
             self.make(made, interface, version)?;
+            made_of = Some((made, interface, version));
         }
         if described.is_destructor {
             self.destroy(header.object);
         }
-        Ok(carried.fds)
+        Ok(Read {
+            fds: carried.fds,
+            interface: object.interface,
+            opcode: header.opcode,
+            made: made_of,
+            ends: described.is_destructor,
+        })
     }
 
     /// Reads `message`, an event the compositor sends the program, and
-    /// keeps what it makes and destroys. Returns how many descriptors come
-    /// with it.
+    /// keeps what it makes and destroys. Returns what it was.
     ///
     /// # Errors
     ///
     /// Returns an error if the compositor could not have sent it, as for
     /// [`Objects::request`].
-    pub fn event(&mut self, message: &[u8], header: Header) -> Result<usize, Broken> {
+    pub fn event(&mut self, message: &[u8], header: Header) -> Result<Read, Broken> {
         let object = self.known.get(&header.object).copied();
         let object = object.ok_or(Broken("an event to no object"))?;
         let described = object.interface.events.get(usize::from(header.opcode));
         let described = described.ok_or(Broken("an event its object has not"))?;
         let body = body(message, header);
         let carried = wire::read(body, described)?;
+        let mut made_of = None;
         if let Some(made) = carried.made {
             if made < SERVERS {
                 return Err(Broken("an object made with one of the program's numbers"));
@@ -111,6 +135,7 @@ impl Objects {
             let interface = described.child_interface;
             let interface = interface.ok_or(Broken("an object made of no interface"))?;
             self.make(made, interface, object.version)?;
+            made_of = Some((made, interface, object.version));
         }
         if header.object == DISPLAY && header.opcode == DELETE_ID {
             // Only a program's own numbers are freed so, and never the
@@ -124,7 +149,42 @@ impl Objects {
         if described.is_destructor {
             self.destroy(header.object);
         }
-        Ok(carried.fds)
+        Ok(Read {
+            fds: carried.fds,
+            interface: object.interface,
+            opcode: header.opcode,
+            made: made_of,
+            ends: described.is_destructor,
+        })
+    }
+
+    /// What the object `number` is, if the program has it and it is not
+    /// gone.
+    #[must_use]
+    pub fn living(&self, number: u32) -> Option<&'static Interface> {
+        let object = self.known.get(&number).filter(|object| !object.gone);
+        object.map(|object| object.interface)
+    }
+
+    /// The description of the event `opcode` to the object `number`, gone
+    /// or not, if the program has it and it has that event.
+    #[must_use]
+    pub fn event_described(&self, number: u32, opcode: u16) -> Option<&'static MessageDesc> {
+        let object = self.known.get(&number)?;
+        object.interface.events.get(usize::from(opcode))
+    }
+
+    /// Whether `number` is free for the compositor to make an object with,
+    /// as the program sees it.
+    #[must_use]
+    pub fn free(&self, number: u32) -> bool {
+        self.known.get(&number).is_none_or(|object| object.gone)
+    }
+
+    /// What each object living is, in no order.
+    pub fn each_living(&self) -> impl Iterator<Item = (u32, &'static Interface)> + '_ {
+        let living = self.known.iter().filter(|(_, object)| !object.gone);
+        living.map(|(number, object)| (*number, object.interface))
     }
 
     /// How many objects the program has, gone or not.
@@ -210,13 +270,13 @@ mod tests {
     /// Reads `bytes` as a request.
     fn requested(objects: &mut Objects, bytes: &[u8]) -> Result<usize, Broken> {
         let header = wire::header(bytes).unwrap().unwrap();
-        objects.request(bytes, header)
+        objects.request(bytes, header).map(|read| read.fds)
     }
 
     /// Reads `bytes` as an event.
     fn sent(objects: &mut Objects, bytes: &[u8]) -> Result<usize, Broken> {
         let header = wire::header(bytes).unwrap().unwrap();
-        objects.event(bytes, header)
+        objects.event(bytes, header).map(|read| read.fds)
     }
 
     /// Binds `name` at `version` as the object `number`, through the

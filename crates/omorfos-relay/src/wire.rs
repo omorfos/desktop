@@ -121,6 +121,74 @@ pub fn read<'a>(body: &'a [u8], message: &MessageDesc) -> Result<Carried<'a>, Br
     }
 }
 
+/// Changes, in `body`, the arguments of a message `message` describes and
+/// [`read`] has read, the number of each object it names or makes, other
+/// than nothing, to what `change` makes of it, told whether the message
+/// makes it. Says whether all could be: `change` giving nothing says one
+/// cannot, and the message is not to be passed on.
+pub fn renumber(
+    body: &mut [u8],
+    message: &MessageDesc,
+    change: &mut dyn FnMut(u32, bool) -> Option<u32>,
+) -> bool {
+    let mut at = 0;
+    for argument in message.signature {
+        match argument {
+            ArgumentType::Fd => {}
+            ArgumentType::Str(_) | ArgumentType::Array => {
+                let length = word(body, at).unwrap_or_default();
+                let length = usize::try_from(length).unwrap_or(usize::MAX);
+                at += 4 + length.next_multiple_of(4);
+            }
+            ArgumentType::Object(_) | ArgumentType::NewId => {
+                let number = word(body, at).unwrap_or_default();
+                let makes = matches!(argument, ArgumentType::NewId);
+                if number != 0 {
+                    let Some(changed) = change(number, makes) else {
+                        return false;
+                    };
+                    put(body, at, changed);
+                }
+                at += 4;
+            }
+            ArgumentType::Int | ArgumentType::Uint | ArgumentType::Fixed => at += 4,
+        }
+    }
+    true
+}
+
+/// The objects the arguments `body` of a message `message` describes name,
+/// other than nothing, but not one it makes.
+#[must_use]
+pub fn named(body: &[u8], message: &MessageDesc) -> Vec<u32> {
+    let mut named = Vec::new();
+    let mut at = 0;
+    for argument in message.signature {
+        match argument {
+            ArgumentType::Str(_) | ArgumentType::Array => {
+                let length = word(body, at).unwrap_or_default();
+                let length = usize::try_from(length).unwrap_or(usize::MAX);
+                at += 4 + length.next_multiple_of(4);
+            }
+            ArgumentType::Object(_) => {
+                named.extend(word(body, at).filter(|number| *number != 0));
+                at += 4;
+            }
+            ArgumentType::Fd => {}
+            _ => at += 4,
+        }
+    }
+    named
+}
+
+/// Puts `value` as the word at `at` in `bytes`, where there is one.
+pub fn put(bytes: &mut [u8], at: usize, value: u32) {
+    let word = at.checked_add(4).and_then(|end| bytes.get_mut(at..end));
+    if let Some(word) = word {
+        word.copy_from_slice(&value.to_ne_bytes());
+    }
+}
+
 /// The word at `at` in `bytes`, if there is one.
 pub fn word(bytes: &[u8], at: usize) -> Option<u32> {
     let bytes = bytes.get(at..at.checked_add(4)?)?;
@@ -355,6 +423,92 @@ pub(crate) mod tests {
         let offer = offered.and_then(|event| event.child_interface).unwrap();
         let accept = request(offer, "accept");
         assert!(read(&words(&[5, 0]), accept).is_ok(), "accepting no type");
+    }
+
+    #[test]
+    fn the_objects_a_message_names_and_makes_are_renumbered_and_nothing_else() {
+        // wl_registry.bind: a name, a string, a version, and what it makes.
+        let bind = request(registry(), "bind");
+        let mut body = words(&[12]);
+        body.extend(text("wl_compositor"));
+        body.extend(words(&[6, 4]));
+        assert!(renumber(&mut body, bind, &mut |number, makes| makes
+            .then_some(number + 100)));
+        let carried = read(&body, bind).unwrap();
+        assert_eq!(
+            (carried.made, carried.named),
+            (Some(104), Some((&b"wl_compositor"[..], 6)))
+        );
+        assert_eq!(word(&body, 0), Some(12), "the name is not an object");
+
+        // wl_surface.attach of no buffer, at a place: nothing to change.
+        let compositor = known::global("wl_compositor").unwrap();
+        let surface = request(compositor, "create_surface")
+            .child_interface
+            .unwrap();
+        let attach = request(surface, "attach");
+        let mut nothing = words(&[0, 5, 6]);
+        assert!(renumber(&mut nothing, attach, &mut |_, _| None));
+        assert_eq!(nothing, words(&[0, 5, 6]));
+        // One that cannot be renumbered is said so.
+        let mut buffer = words(&[9, 0, 0]);
+        assert!(!renumber(&mut buffer, attach, &mut |_, makes| makes.then_some(1)));
+
+        // An array and a descriptor are passed over.
+        let shm = known::global("wl_shm").unwrap();
+        let mut pool = words(&[5, 4096]);
+        assert!(renumber(
+            &mut pool,
+            request(shm, "create_pool"),
+            &mut |number, _| { Some(number * 2) }
+        ));
+        assert_eq!(pool, words(&[10, 4096]));
+        let base = known::global("xdg_wm_base").unwrap();
+        let xdg_surface = request(base, "get_xdg_surface").child_interface.unwrap();
+        let toplevel = request(xdg_surface, "get_toplevel")
+            .child_interface
+            .unwrap();
+        let configure = toplevel
+            .events
+            .iter()
+            .find(|event| event.name == "configure")
+            .unwrap();
+        let mut sized = words(&[100, 200, 4, 1]);
+        assert!(renumber(&mut sized, configure, &mut |_, _| None));
+    }
+
+    #[test]
+    fn the_objects_a_message_names_are_found_but_not_one_it_makes() {
+        let compositor = known::global("wl_compositor").unwrap();
+        let surface = request(compositor, "create_surface")
+            .child_interface
+            .unwrap();
+        let attach = request(surface, "attach");
+        assert_eq!(named(&words(&[9, 1, 2]), attach), [9]);
+        assert_eq!(named(&words(&[0, 1, 2]), attach), [0_u32; 0], "no buffer");
+        let get_registry = request(known::display(), "get_registry");
+        assert_eq!(named(&words(&[2]), get_registry), [0_u32; 0]);
+        // Past a string, and a descriptor.
+        let shell = known::global("zwlr_layer_shell_v1").unwrap();
+        let get_layer_surface = request(shell, "get_layer_surface");
+        let mut body = words(&[9, 3, 4, 2]);
+        body.extend(text("panel"));
+        assert_eq!(named(&body, get_layer_surface), [3, 4]);
+        let shm = known::global("wl_shm").unwrap();
+        assert_eq!(
+            named(&words(&[5, 4096]), request(shm, "create_pool")),
+            [0_u32; 0]
+        );
+    }
+
+    #[test]
+    fn a_word_is_put_only_where_there_is_one() {
+        let mut bytes = [0; 6];
+        put(&mut bytes, 0, 7);
+        put(&mut bytes, 4, 9);
+        put(&mut bytes, usize::MAX, 9);
+        assert_eq!(word(&bytes, 0), Some(7));
+        assert_eq!(&bytes[4..], [0, 0]);
     }
 
     #[test]

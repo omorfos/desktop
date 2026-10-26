@@ -4,7 +4,7 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** programs kept by the relay (ADR 61, step 2), at the end of
+**Next:** programs kept by the relay (ADR 61, step 2b), at the end of
 stage 3; then the rest of the relay; then the rest of stage 3, what a
 day's use needs, then what is taken from stage 8 straight after it
 (below), then stage 4.
@@ -761,20 +761,37 @@ what only games and touchpads need last.
       breaks a bound; telling the compositor who each program is, which
       it takes in place of asking the socket; fuzzed by `cargo-fuzz` in
       a nightly CI job of its own. A restart still closes every window.
-- [ ] Known gaps in the relay: it has not been tried on real hardware; a
-      program it lets go for what it sent is closed without the
-      protocol's error, which the compositor would have sent it; it
-      makes its list of what to wait on anew each turn, where epoll
-      would keep one; the holder learns that it has ended only between
-      one compositor and the next, so one that hangs is not noticed; and
-      it is stopped, not handed over, when the holder takes up its own
-      new version, which step 2 has to change for programs to be kept.
-- [ ] Programs kept by the relay (ADR 61, step 2): what `foot` uses made
-      again for a compositor started anew, so that a terminal and what
-      runs in it outlive a restart. A program holding anything the relay
-      cannot yet make again is closed, as before.
+- [ ] Known gaps in the relay: a program it lets go for what it sent is
+      closed without the protocol's error, which the compositor would
+      have sent it; it makes its list of what to wait on anew each turn,
+      where epoll would keep one; and the holder learns that it has ended
+      only between one compositor and the next, so one that hangs is not
+      noticed.
+- [x] Programs kept by the relay, the means (ADR 61, step 2a): a
+      program's connection outliving the compositor; what it has made
+      written down as it is made, and made again for the next compositor
+      under the same numbers; what that one says sifted until it has
+      caught up; the pointer and the keyboard leaving and entering again;
+      the relay handed over when the holder takes up its own new version.
+      For the protocols the tests' client speaks, and tested with two
+      compositors one after the other.
+- [ ] Known gaps in keeping programs, after 2a: only the protocols the
+      tests' client speaks are made again, so `foot` and most programs
+      are still let go (2b); a program bound to a screen the next
+      compositor does not have is let go; a window comes back neither
+      maximized nor full screen, as the program had it, but as the next
+      compositor first says, and the program is told so; the pointer and
+      the keyboard leave and enter again; and none of it has been tried
+      on real hardware, which nothing in 2a would show.
+- [ ] Programs kept by the relay, `foot` (ADR 61, step 2b): the rest of
+      what `foot` speaks made again, a protocol at a time, and the serials
+      a program holds kept for it, so that a terminal and what runs in it
+      outlive a restart. A program holding anything the relay cannot yet
+      make again is closed, as before.
 - [ ] The rest of the relay (ADR 61, step 3): every protocol in the
-      list made again; components kept as programs are; a sandbox's
+      list made again, programs drawn on the graphics card among them;
+      where each window was carried to the next compositor, keyed by the
+      number the relay gives each program; components kept as programs are; a sandbox's
       listener handed to the relay; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the
       others', and its word about the next login goes. Programs written

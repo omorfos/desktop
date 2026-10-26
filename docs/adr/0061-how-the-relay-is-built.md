@@ -151,3 +151,66 @@ shown no more than before.
   gate (ADR 2), and its CI job is the only one on a nightly toolchain.
 - Until step 2, the relay costs a little and gives nothing a user can
   see.
+
+## Step 2: how what a program had is made again
+
+Settled as step 2 was started, and built in two parts: the means, with
+the protocols the tests' client speaks (2a), then the rest of what `foot`
+speaks, a protocol at a time (2b). Programs drawn on the graphics card,
+as GTK's are, come in step 3.
+
+- **A program's connection outlives the compositor.** When the compositor
+  ends, the relay keeps each program's connection and reads nothing more
+  from it, so that what it sends waits, until the holder hands it the
+  next compositor. A program holding an object of a protocol the relay
+  cannot yet make again is let go then, as before; a global it has bound
+  and made nothing of can always be made again, by binding it.
+- **What each program has made is written down as it is made**: for each
+  object living, the request that made it, with its descriptors held,
+  and what has been asked of it since that lasts, as a table for each
+  protocol says: the last of a request that sets something, every one of
+  one that adds to it (a region's), and, for what applies on a commit,
+  what the last commit applied. A message's description says what each
+  argument is but not what it means, so which number is a serial, a name
+  or a size is in those tables, written by hand for each message.
+- **It is made again in the order it was made**, under the same numbers.
+  A compositor, as wayland-backend has it, takes a number for an object
+  only if it is the next past those it has, or one it has freed; a
+  program's have gaps where it destroyed something, so before an object
+  is made again each number below it not yet taken is taken by a sync of
+  the relay's own, which the compositor answers and frees. The relay's
+  syncs take the next number past all of them, which the program cannot
+  take meanwhile, as it is not read until the relay has caught up. What
+  the compositor makes, such as an offer of what is on the clipboard, it
+  makes again itself; the program, which may still hold the compositor
+  before's under the same numbers, and which takes them under the same
+  rule, is given each under the lowest number free to it, and the relay
+  puts each number in the place of the other as messages pass.
+- **Until the new compositor has caught up, what it says is sifted.** The
+  relay ends what it sends again with a `wl_display.sync` of its own,
+  under a number from the top of the program's range; until that is
+  answered, what the compositor says is passed to the program only if the
+  program has not been told it already. Its globals are taken in and
+  named toward the program as they were; its configure of a window is
+  acked by the relay, which then commits what the window last showed, and
+  is passed on only if it differs from what the program last acked, whose
+  own ack of it is then kept from the compositor, as it is acked already.
+- **What was focused leaves, and comes back.** When the compositor ends,
+  the relay tells the program that the pointer and the keyboard have left
+  its surfaces, and the new compositor tells it they entered, with its
+  own serials. Keeping even that from the program needs the serials it
+  holds put in place of the new compositor's, which comes in 2b, where
+  `foot` setting its pointer needs it. Built, the program is also told
+  the new compositor's first configure of its window where it differs
+  from the one it last acked, as the first of a window not yet focused
+  does.
+- **A window comes back as a new one would**: placed by the new
+  compositor, on the workspace in front. Carrying where each was is the
+  compositor's to hand on, through the holder, keyed by a number the
+  relay gives each program and keeps across compositors, which the
+  `program` record carries from now on. That is step 3's.
+- **The relay is handed over when the holder takes up its own new
+  version**, rather than stopped: its connection to the holder, and its
+  process as a line, as the holder cannot know it from anything handed
+  over that a process becoming another program keeps. The new version
+  waits on it by its number.

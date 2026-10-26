@@ -30,6 +30,9 @@ pub struct Program {
     pub uid: u32,
     /// The group it runs as.
     pub gid: u32,
+    /// The number the relay gives the program, which stays the same across
+    /// compositors, where the relay gives one.
+    pub number: Option<u32>,
 }
 
 /// A hand, with the descriptors it says come with it.
@@ -53,7 +56,12 @@ impl Hand {
             Self::Socket => "socket".to_owned(),
             Self::Compositor => "compositor".to_owned(),
             Self::Program(program) => {
-                format!("program {} {} {}", program.pid, program.uid, program.gid)
+                let number = program.number.map(|number| format!(" {number}"));
+                let number = number.unwrap_or_default();
+                format!(
+                    "program {} {} {}{number}",
+                    program.pid, program.uid, program.gid
+                )
             }
         }
     }
@@ -66,14 +74,18 @@ impl Hand {
             Some("socket") => Some(Self::Socket),
             Some("compositor") => Some(Self::Compositor),
             Some("program") => {
-                let mut number = || words.next().and_then(|word| word.parse().ok());
+                let mut numbers = words.map(str::parse::<u32>);
+                let mut number = || numbers.next().and_then(Result::ok);
                 let (pid, uid, gid) = (number(), number(), number());
+                let given = numbers.next().map(Result::ok);
                 let program = Program {
                     pid: pid?,
                     uid: uid?,
                     gid: gid?,
+                    number: given.flatten(),
                 };
-                words.next().is_none().then_some(Self::Program(program))
+                let whole = given.is_none_or(|number| number.is_some()) && numbers.next().is_none();
+                whole.then_some(Self::Program(program))
             }
             _ => None,
         }
@@ -169,14 +181,24 @@ mod tests {
         pid: 4321,
         uid: 1000,
         gid: 100,
+        number: Some(7),
+    });
+
+    /// One from a relay that gave programs no number.
+    const UNNUMBERED: Hand = Hand::Program(Program {
+        pid: 4321,
+        uid: 1000,
+        gid: 100,
+        number: None,
     });
 
     #[test]
     fn each_hand_is_read_as_it_is_written() {
-        for hand in [Hand::Socket, Hand::Compositor, PROGRAM] {
+        for hand in [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED] {
             assert_eq!(Hand::read(&hand.written()), Some(hand));
         }
-        assert_eq!(PROGRAM.written(), "program 4321 1000 100");
+        assert_eq!(PROGRAM.written(), "program 4321 1000 100 7");
+        assert_eq!(UNNUMBERED.written(), "program 4321 1000 100");
     }
 
     #[test]
@@ -188,7 +210,8 @@ mod tests {
             "program 1",
             "program 1 2",
             "program 1 2 x",
-            "program 1 2 3 4",
+            "program 1 2 3 x",
+            "program 1 2 3 4 5",
             "program -1 2 3",
         ] {
             assert_eq!(Hand::read(text), None, "{text:?}");

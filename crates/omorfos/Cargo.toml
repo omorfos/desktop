@@ -133,6 +133,9 @@ omorfos-clipboard = { path = "../omorfos-clipboard" }
 xdg-desktop-portal-omorfos = { path = "../xdg-desktop-portal-omorfos" }
 omorfos-session = { path = "../omorfos-session" }
 omorfos-ask = { path = "../omorfos-ask" }
+# Keeps a program through one compositor and the next, in the tests of the
+# compositor being relayed (ADR 61).
+omorfos-relay = { path = "../omorfos-relay" }
 # Tells, as the components' programs do, the session ending from a failure.
 omorfos-shell = { path = "../omorfos-shell" }
 # Reads back the pictures the screenshot tool saves.

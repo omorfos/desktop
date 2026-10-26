@@ -131,6 +131,7 @@ name = "omorfos-relay"
 version = "0.1.0"
 dependencies = [
  "omorfos-ipc",
+ "rustix",
  "wayland-backend",
  "wayland-protocols",
  "wayland-protocols-misc",

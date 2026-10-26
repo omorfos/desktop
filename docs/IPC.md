@@ -312,8 +312,12 @@ not known is passed over, with its descriptors closed.
 |---|---|---|---|
 | `socket` | the holder | the socket programs connect to | Serve it. |
 | `compositor` | the holder | the relay's end of a connection to a compositor started anew | Hand that compositor the programs that connect from now on. The programs of the one before are let go. |
-| `program PID UID GID` | the relay | the compositor's end of a program's connection | A program has connected, which is the process PID of the user UID and group GID, as its socket said. The compositor takes this as who the program is, and does not ask the connection, which is the relay's own. |
+| `program PID UID GID NUMBER` | the relay | the compositor's end of a program's connection | A program has connected, which is the process PID of the user UID and group GID, as its socket said. The compositor takes this as who the program is, and does not ask the connection, which is the relay's own. NUMBER, which a relay before it did not give, is the relay's for the program, and stays the same when the program is handed to a compositor started anew. |
 
 When the relay's connection to the compositor closes, the compositor steps
 down. When its connection to the holder closes, the relay ends.
+
+Taking up its own new version, the holder hands it the relay too: the
+relay's connection among the descriptors, after the version held, and a
+line `relayed by PID` with what it hands.
 `omorfos_ipc::relay` has the records, and what hands and takes them.

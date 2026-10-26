@@ -156,6 +156,9 @@ pub(crate) struct Session {
     pub(crate) config: TempDir,
     /// The time the compositor is told it is. Tests advance it by hand.
     pub(crate) now: Instant,
+    /// What else is stepped each time the compositor is, such as a relay
+    /// between it and its clients.
+    pub(crate) stepped: Vec<Box<dyn FnMut()>>,
 }
 
 /// What a frame looked like.
@@ -233,6 +236,7 @@ impl Session {
             monitors: Vec::new(),
             config,
             now: Instant::now(),
+            stepped: Vec::new(),
         };
         session.add_output((WIDTH, HEIGHT));
         session
@@ -497,7 +501,13 @@ impl Session {
 
     /// Runs the compositor's side once: handle requests, update, reply.
     pub(crate) fn step(&mut self) {
+        for stepped in &mut self.stepped {
+            stepped();
+        }
         self.inner.dispatch(Some(Duration::ZERO), self.now).unwrap();
+        for stepped in &mut self.stepped {
+            stepped();
+        }
     }
 
     /// Exchanges messages until the compositor has handled everything the
