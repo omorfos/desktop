@@ -6,8 +6,9 @@
 )]
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use omorfos::Roles;
@@ -39,12 +40,25 @@ fn install(path: &Path, marks: &str, version: &str) {
     written(path, &script);
 }
 
-/// Puts `script` at `path`, as a new file in the place of any old one.
+/// Puts `script` at `path`, as a new file in the place of any old one,
+/// written by a process of its own: one written by this process may not
+/// start while another test is starting a program, which holds a copy of
+/// every descriptor of this process for a while, the one it was written
+/// through among them ("Text file busy").
 fn written(path: &Path, script: &str) {
-    let new = path.with_extension("new");
-    fs::write(&new, script).unwrap();
-    fs::set_permissions(&new, fs::Permissions::from_mode(0o755)).unwrap();
-    fs::rename(&new, path).unwrap();
+    let mut writer = Command::new("sh")
+        .args([
+            "-c",
+            "cat > \"$1.new\" && chmod 755 \"$1.new\" && mv \"$1.new\" \"$1\"",
+            "sh",
+        ])
+        .arg(path)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = writer.stdin.take();
+    input.unwrap().write_all(script.as_bytes()).unwrap();
+    assert!(writer.wait().unwrap().success());
 }
 
 /// A session listening where the stand-ins leave their marks, and what
