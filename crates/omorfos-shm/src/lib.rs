@@ -1,18 +1,25 @@
 //! Writes pixels into memory a Wayland client shares with the compositor.
 //!
-//! This is the one place in omorfos that uses `unsafe`, and it is a crate
-//! of its own so that every other crate can go on forbidding it. Smithay
-//! hands a client's shared memory over as a pointer, and Rust has no way
-//! to write through a pointer that is not `unsafe`. Why that was accepted,
-//! and what would let it be taken out again, is in
-//! `docs/adr/0040-one-unsafe-block.md`.
+//! Smithay hands a client's shared memory over only as a pointer, and Rust
+//! has no way to write through a pointer that is not `unsafe`. So nothing
+//! is written through it: the pixels go into the file the memory is mapped
+//! from, which is the same memory. The file is found by where Smithay has
+//! it mapped, and opened again through the descriptor Smithay keeps of it.
+//! Why, and what was given up for it, is in
+//! `docs/adr/0061-written-through-the-file.md`.
 //!
 //! What is offered is safe to call with anything: every row is checked to
-//! lie inside the memory before it is written.
+//! lie inside the memory, and the file to be as long, before it is written.
+
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader};
+use std::os::unix::fs::{FileExt, MetadataExt};
+use std::path::Path;
 
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_shm::Format;
-use smithay::wayland::shm::{BufferData, with_buffer_contents_mut};
+use smithay::reexports::wayland_server::{Resource, Weak};
+use smithay::wayland::shm::{BufferData, with_buffer_contents};
 
 /// The bytes one pixel takes in the formats this writes.
 const PIXEL: usize = 4;
@@ -49,62 +56,186 @@ struct Rows {
     row: usize,
 }
 
-/// Writes a picture into `buffer`, a row at a time from the top.
+/// The files behind the buffers pictures have been written into, kept so
+/// as not to be looked for again for every picture.
 ///
-/// `pixels` holds the rows one after another with nothing between them,
-/// four bytes to a pixel. Returns whether it was written: it is not if
-/// the buffer is not shared memory, is not `width` by `height` pixels of
-/// `format`, does not lie inside the memory it says it is in, or if
-/// `pixels` is not exactly a picture of that size.
-#[must_use]
-pub fn write(buffer: &WlBuffer, format: Format, size: (usize, usize), pixels: &[u8]) -> bool {
-    write_part(buffer, format, size, (0, 0, size.0, size.1), pixels)
+/// A buffer is always in the same pool, and a pool in the same file, even
+/// when it is made larger, so the file found for a buffer is right for as
+/// long as the buffer lasts. They are known by the buffer, never by where
+/// its memory is: once a pool is let go of, another, perhaps of another
+/// program, can be put at the same place, and a picture of the screen
+/// would go to a program that did not ask for it.
+#[derive(Debug, Default)]
+pub struct Files {
+    known: Vec<(Weak<WlBuffer>, File)>,
 }
 
-/// Writes part of a picture into `buffer`: the rectangle `part`, as `(x,
-/// y, width, height)` in pixels from the top left corner of a picture of
-/// `size`, whose pixels are `pixels`, a row at a time from the top.
-///
-/// What else is in the buffer is left as it is. Returns whether it was
-/// written: as [`write()`], and not if the part does not lie inside the
-/// picture or `pixels` is not exactly that part.
-#[must_use]
-pub fn write_part(
-    buffer: &WlBuffer,
-    format: Format,
-    size: (usize, usize),
-    part: (usize, usize, usize, usize),
-    pixels: &[u8],
-) -> bool {
-    let written = with_buffer_contents_mut(buffer, |memory, len, data| {
-        let rows = place(&data, len, format, size);
-        let rows = rows.and_then(|rows| inside(rows, size, part));
-        let rows = rows.filter(|rows| rows.row.checked_mul(part.3) == Some(pixels.len()));
-        rows.is_some_and(|rows| {
-            for (index, row) in pixels.chunks_exact(rows.row).enumerate() {
-                let at = rows.start + index * rows.stride;
-                // TODO: have Smithay do this copy, and forbid `unsafe` here
-                // as everywhere else. See docs/adr/0040-one-unsafe-block.md.
-                #[expect(unsafe_code, reason = "see docs/adr/0040-one-unsafe-block.md")]
-                // SAFETY: `memory` is valid for `len` bytes while this
-                // closure runs, which Smithay promises, and guards against
-                // the client making it shorter meanwhile. `place` has
-                // checked that the picture's last row ends at or before
-                // `len`, and `inside` that the part lies within the
-                // picture, so `at + row.len()` is inside it for every row.
-                // `row` is ours and cannot overlap memory mapped from the
-                // client's file. The client may write at the same time: no
-                // reference to its memory is made, only bytes copied, so
-                // the worst is a wrong picture in a buffer that is the
-                // client's own.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(row.as_ptr(), memory.wrapping_add(at), row.len());
-                }
-            }
-            true
+impl Files {
+    /// Writes a picture into `buffer`, a row at a time from the top.
+    ///
+    /// `pixels` holds the rows one after another with nothing between
+    /// them, four bytes to a pixel. Returns whether it was written: it is
+    /// not if the buffer is not shared memory, is not `width` by `height`
+    /// pixels of `format`, does not lie inside the memory it says it is
+    /// in, or if `pixels` is not exactly a picture of that size; nor if
+    /// the file behind it cannot be written, or has been made shorter
+    /// than the picture.
+    #[must_use]
+    pub fn write(
+        &mut self,
+        buffer: &WlBuffer,
+        format: Format,
+        size: (usize, usize),
+        pixels: &[u8],
+    ) -> bool {
+        self.write_part(buffer, format, size, (0, 0, size.0, size.1), pixels)
+    }
+
+    /// Writes part of a picture into `buffer`: the rectangle `part`, as
+    /// `(x, y, width, height)` in pixels from the top left corner of a
+    /// picture of `size`, whose pixels are `pixels`, a row at a time from
+    /// the top.
+    ///
+    /// What else is in the buffer is left as it is. Returns whether it was
+    /// written: as [`Files::write`], and not if the part does not lie
+    /// inside the picture or `pixels` is not exactly that part.
+    #[must_use]
+    pub fn write_part(
+        &mut self,
+        buffer: &WlBuffer,
+        format: Format,
+        size: (usize, usize),
+        part: (usize, usize, usize, usize),
+        pixels: &[u8],
+    ) -> bool {
+        // Only where the memory is, as a number: it is never read or
+        // written through.
+        let mapped = with_buffer_contents(buffer, |memory, len, data| (memory.addr(), len, data));
+        let placed = mapped.ok().and_then(|(base, len, data)| {
+            let rows = place(&data, len, format, size);
+            let rows = rows.and_then(|rows| inside(rows, size, part));
+            let rows = rows.filter(|rows| rows.row.checked_mul(part.3) == Some(pixels.len()));
+            rows.map(|rows| (base, len, rows))
+        });
+        placed.is_some_and(|(base, len, rows)| {
+            let file = self.file(buffer, base, len);
+            file.is_some_and(|file| written(file, rows, pixels))
         })
-    });
-    written.unwrap_or(false)
+    }
+
+    /// The file behind `buffer`, whose memory is `len` bytes at `base`:
+    /// the one found before, or else the one mapped there now.
+    fn file(&mut self, buffer: &WlBuffer, base: usize, len: usize) -> Option<&File> {
+        // Files of buffers let go of are closed, so that what a program
+        // has let go of is not kept for it.
+        self.known.retain(|(known, _)| known.is_alive());
+        let id = buffer.id();
+        let at = self.known.iter().position(|(known, _)| known.id() == id);
+        let at = at.or_else(|| {
+            file_mapped_at(base, len).map(|file| {
+                self.known.push((buffer.downgrade(), file));
+                self.known.len() - 1
+            })
+        });
+        at.and_then(|at| self.known.get(at)).map(|(_, file)| file)
+    }
+}
+
+/// Writes `pixels` into `file` at `rows`. Nothing, and false, if the file
+/// is shorter than the last of them: the program can have made it shorter
+/// than its memory, and writing would make it longer again.
+fn written(file: &File, rows: Rows, pixels: &[u8]) -> bool {
+    let count = pixels.len() / rows.row;
+    // Inside the memory, as `place` and `inside` have checked, none of
+    // this can overflow.
+    let end = rows.start + rows.stride * (count - 1) + rows.row;
+    let long_enough = file
+        .metadata()
+        .is_ok_and(|meta| u64::try_from(end).is_ok_and(|end| meta.len() >= end));
+    // Rows with nothing between them in the file go in at once.
+    let step = if rows.stride == rows.row {
+        pixels.len()
+    } else {
+        rows.row
+    };
+    long_enough
+        && pixels
+            .chunks_exact(step)
+            .enumerate()
+            .all(|(index, rows_of)| {
+                let at = rows.start + index * rows.stride;
+                u64::try_from(at).is_ok_and(|at| file.write_all_at(rows_of, at).is_ok())
+            })
+}
+
+/// The file mapped, whole and shared, at `base` for at least `len` bytes,
+/// opened again for writing through the descriptor of it that Smithay
+/// keeps open to make its pool larger.
+fn file_mapped_at(base: usize, len: usize) -> Option<File> {
+    let maps = File::open("/proc/self/maps").ok();
+    let lines = maps
+        .into_iter()
+        .flat_map(|maps| BufReader::new(maps).lines().map_while(Result::ok));
+    // The lines are in the order of where they are.
+    let mut before = lines.take_while(|line| start(line).is_none_or(|start| start <= base));
+    let mapped = before.find_map(|line| mapping(&line, base, len));
+    let fds = mapped.and_then(|_| fs::read_dir("/proc/self/fd").ok());
+    mapped.zip(fds).and_then(|(file, fds)| {
+        fds.map_while(Result::ok)
+            .find_map(|fd| opened(&fd.path(), file))
+    })
+}
+
+/// `path`, a descriptor in `/proc/self/fd`, opened again for writing if
+/// it is of `file`, a device and an inode.
+fn opened(path: &Path, file: ((u64, u64), u64)) -> Option<File> {
+    let of = |meta: fs::Metadata| ((major(meta.dev()), minor(meta.dev())), meta.ino()) == file;
+    // Looked at before it is opened, as opening some files does
+    // something; and again after, as the number may have been closed and
+    // given to another file in between, by another thread.
+    let same = fs::metadata(path).is_ok_and(of);
+    let opened = same.then(|| File::options().write(true).open(path).ok());
+    opened
+        .flatten()
+        .filter(|opened| opened.metadata().is_ok_and(of))
+}
+
+/// Where the memory a line of `/proc/self/maps` is about starts.
+fn start(line: &str) -> Option<usize> {
+    let (start, _) = line.split_once('-')?;
+    usize::from_str_radix(start, 16).ok()
+}
+
+/// The device and inode of the file a line of `/proc/self/maps` says is
+/// mapped shared and writable from its start, at `base` for at least
+/// `len` bytes.
+fn mapping(line: &str, base: usize, len: usize) -> Option<((u64, u64), u64)> {
+    let mut fields = line.split_ascii_whitespace();
+    let (start, end) = fields.next()?.split_once('-')?;
+    let start = usize::from_str_radix(start, 16).ok()?;
+    let end = usize::from_str_radix(end, 16).ok()?;
+    let mode = fields.next()?;
+    let shared = mode.starts_with("rw") && mode.ends_with('s');
+    let offset = u64::from_str_radix(fields.next()?, 16).ok()?;
+    let (major, minor) = fields.next()?.split_once(':')?;
+    let device = (
+        u64::from_str_radix(major, 16).ok()?,
+        u64::from_str_radix(minor, 16).ok()?,
+    );
+    let inode = fields.next()?.parse().ok()?;
+    let whole = start == base && end.checked_sub(start).is_some_and(|long| long >= len);
+    (whole && shared && offset == 0 && inode != 0).then_some((device, inode))
+}
+
+/// The major number of a device, taken apart as the kernel puts it
+/// together for `stat`.
+fn major(dev: u64) -> u64 {
+    ((dev & 0x0000_0000_000f_ff00) >> 8) | ((dev & 0xffff_f000_0000_0000) >> 32)
+}
+
+/// The minor number of a device, taken apart the same way.
+fn minor(dev: u64) -> u64 {
+    (dev & 0x0000_0000_0000_00ff) | ((dev & 0x0000_0fff_fff0_0000) >> 12)
 }
 
 /// Where the rows of a part of a picture go, given where the picture's
@@ -197,6 +328,62 @@ mod tests {
         );
         assert_eq!(inside(rows, (8, 4), (1, 1, 0, 1)), None, "nothing across");
         assert_eq!(inside(rows, (8, 4), (1, 1, 1, 0)), None, "nothing down");
+    }
+
+    /// A line of `/proc/self/maps` of 64 KiB shared from a file on device
+    /// `00:01` with inode 2051, at `0x7f00_0000_0000`.
+    const SHARED: &str = "7f0000000000-7f0000010000 rw-s 00000000 00:01 2051 /memfd:shm (deleted)";
+    const BASE: usize = 0x7f00_0000_0000;
+
+    #[test]
+    fn the_file_shared_whole_at_a_place_is_known_by_its_device_and_inode() {
+        assert_eq!(mapping(SHARED, BASE, 0x1_0000), Some(((0, 1), 2051)));
+        assert_eq!(mapping(SHARED, BASE, 16), Some(((0, 1), 2051)), "less");
+        let device = "7f0000000000-7f0000010000 rw-s 00000000 fd:1a 7 /home/a";
+        assert_eq!(mapping(device, BASE, 16), Some(((0xfd, 0x1a), 7)));
+        assert_eq!(start(SHARED), Some(BASE));
+    }
+
+    #[test]
+    fn memory_that_is_not_all_of_a_file_shared_and_writable_where_asked_is_not_it() {
+        let not = |line: &str| assert_eq!(mapping(line, BASE, 16), None, "{line}");
+        assert_eq!(mapping(SHARED, BASE + 4096, 16), None, "elsewhere");
+        assert_eq!(mapping(SHARED, BASE, 0x1_0001), None, "too short");
+        not("7f0000000000-7f0000010000 rw-p 00000000 00:01 2051 /a");
+        not("7f0000000000-7f0000010000 r--s 00000000 00:01 2051 /a");
+        not("7f0000000000-7f0000010000 rw-s 00001000 00:01 2051 /a");
+        not("7f0000000000-7f0000010000 rw-s 00000000 00:00 0");
+        not("7f0000000000-7f0000000000 rw-s 00000000 00:01 2051 /a");
+        not("7f0000010000-7f0000000000 rw-s 00000000 00:01 2051 /a");
+    }
+
+    #[test]
+    fn a_line_that_is_not_as_the_kernel_writes_it_is_of_no_file() {
+        let not = |line: &str| assert_eq!(mapping(line, BASE, 16), None, "{line}");
+        not("");
+        not("7f0000000000");
+        not("x-7f0000010000 rw-s 00000000 00:01 2051");
+        not("7f0000000000-x rw-s 00000000 00:01 2051");
+        not("7f0000000000-7f0000010000");
+        not("7f0000000000-7f0000010000 rw-s");
+        not("7f0000000000-7f0000010000 rw-s x 00:01 2051");
+        not("7f0000000000-7f0000010000 rw-s 00000000");
+        not("7f0000000000-7f0000010000 rw-s 00000000 0001 2051");
+        not("7f0000000000-7f0000010000 rw-s 00000000 x:01 2051");
+        not("7f0000000000-7f0000010000 rw-s 00000000 00:x 2051");
+        not("7f0000000000-7f0000010000 rw-s 00000000 00:01");
+        not("7f0000000000-7f0000010000 rw-s 00000000 00:01 x");
+        assert_eq!(start("7f0000000000"), None);
+        assert_eq!(start("x-7f0000010000"), None);
+    }
+
+    #[test]
+    fn a_device_is_taken_apart_as_the_kernel_puts_it_together() {
+        // `makedev(0xfd, 0x1a)`, and `makedev(0x1234, 0x56789)`, whose
+        // numbers do not fit in the old twelve and eight bits.
+        assert_eq!((major(0xfd1a), minor(0xfd1a)), (0xfd, 0x1a));
+        let large = 0x1000_5672_3489;
+        assert_eq!((major(large), minor(large)), (0x1234, 0x56789));
     }
 
     #[test]

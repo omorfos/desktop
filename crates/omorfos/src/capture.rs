@@ -390,6 +390,8 @@ pub(crate) struct Capture {
     /// A picture being turned into the order of colours a program is
     /// given it in, kept so as not to be made anew for every picture.
     scratch: Vec<u8>,
+    /// The files behind the buffers pictures are written into.
+    files: omorfos_shm::Files,
     /// What a picture of a window by itself was last drawn in, and its
     /// size, kept so as not to be made anew for every picture.
     alone: Option<(Size<i32, Buffer>, Box<dyn Held>)>,
@@ -646,7 +648,8 @@ impl Capture {
                 }
                 let part = (x, y, wide, high);
                 buffer.zip(format).is_some_and(|(buffer, format)| {
-                    omorfos_shm::write_part(buffer, format, size, part, &self.scratch)
+                    self.files
+                        .write_part(buffer, format, size, part, &self.scratch)
                 })
             });
             self.finish(index, written.then_some(damage), clock);
@@ -988,8 +991,9 @@ impl Compositor {
             let boxed = boxed(ours);
             let size = (POINTER as usize, POINTER as usize);
             let buffer = shot.buffer.as_ref();
-            let written = buffer
-                .is_some_and(|buffer| omorfos_shm::write(buffer, Format::Argb8888, size, &boxed));
+            let files = &mut capture.files;
+            let written =
+                buffer.is_some_and(|buffer| files.write(buffer, Format::Argb8888, size, &boxed));
             if !written {
                 shot.frame.failed(FailureReason::BufferConstraints);
                 continue;

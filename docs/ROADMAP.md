@@ -217,8 +217,8 @@ calls for them.
 - [x] Pictures of a screen (`ext-image-copy-capture-v1`), for a program
       with the `capture` role, with a mark on the screen while they are
       taken that is not in them. `omorfos-screenshot` saves one of every
-      screen, and `Print` starts it. The one `unsafe` block in omorfos
-      is here (ADR 40).
+      screen, and `Print` starts it. It is written through the file
+      behind the program's buffer, without `unsafe` (ADR 61).
 - [x] A picture put on the clipboard instead of, or as well as, saved:
       `screenshots.destination`, `--to`, and `Shift+Print`. With it the
       `clipboard` role and `ext-data-control-v1`, since a program
@@ -1033,8 +1033,8 @@ Security:
 - [ ] What a sandbox says its program is (the application's name) kept
       with the connection, for the portals to ask the user by.
 - [ ] Smithay asked for a safe way to write into a buffer a program
-      shares, so that the one `unsafe` block can go (ADR 40). Waits on:
-      Smithay.
+      shares, so that it need not be found through `/proc` (ADR 61).
+      Waits on: Smithay.
 - [ ] A safe way offered to the PipeWire bindings to hold a stream's
       buffer and to give one memory of the caller's own, so that
       `omorfos-pipewire` can go (ADR 41). Wanted soon. Waits on: the

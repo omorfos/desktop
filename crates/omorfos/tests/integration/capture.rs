@@ -2,6 +2,7 @@
 //! the screen shows, and the user is shown that it is happening.
 
 use std::fs::File;
+use std::os::unix::fs::FileExt;
 use std::time::Duration;
 
 use omorfos::{Input, Roles};
@@ -12,7 +13,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_session_v1::ExtImageCopyCaptureSessionV1,
 };
 
-use crate::common::{Client, Event, HEIGHT, Picture, Session, WIDTH};
+use crate::common::{Client, Event, HEIGHT, Picture, Session, WIDTH, mapped, open_on};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
@@ -342,6 +343,96 @@ fn a_buffer_that_is_not_as_asked_fails_the_picture() {
     let (shot, events) = snap(&mut session, &mut camera, &taking);
     assert_eq!(events.last(), Some(&Event::ShotReady));
     assert_eq!(shot.at(10, 10), BACKGROUND);
+}
+
+#[test]
+fn a_picture_is_given_in_memory_a_program_made_as_most_make_it() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+
+    // Not a file in a directory, but memory with no name.
+    let (memory, buffer) = camera.shot_buffer_in_memory((WIDTH, HEIGHT));
+    let frame = ask(&camera, &taking, &buffer);
+    assert_eq!(
+        develop(&mut session, &mut camera).last(),
+        Some(&Event::ShotReady)
+    );
+    frame.destroy();
+    assert_eq!(picture(&memory).at(10, 10), RED);
+    assert_eq!(picture(&memory).at(300, 300), BACKGROUND);
+}
+
+#[test]
+fn a_program_that_makes_its_file_shorter_is_given_no_picture_and_the_file_stays_short() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+
+    // The last row of the buffer is no longer in the file.
+    let (file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let short = u64::try_from(WIDTH * 4 * (HEIGHT - 1)).unwrap();
+    file.set_len(short).unwrap();
+    let frame = ask(&camera, &taking, &buffer);
+    let failed = [Event::ShotFailed(FailureReason::BufferConstraints)];
+    assert_eq!(develop(&mut session, &mut camera)[..], failed);
+    assert_eq!(file.metadata().unwrap().len(), short, "not made longer");
+    frame.destroy();
+}
+
+#[test]
+fn a_picture_goes_into_the_file_of_its_own_buffer_and_one_let_go_of_is_closed() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+
+    let (first, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let frame = ask(&camera, &taking, &buffer);
+    assert_eq!(
+        develop(&mut session, &mut camera).last(),
+        Some(&Event::ShotReady)
+    );
+    frame.destroy();
+    assert_eq!(picture(&first).at(10, 10), RED);
+
+    // The program lets go of the buffer and clears its file. Once the
+    // compositor has let go of its memory, the next buffer's is likely to
+    // be put where the first one's was.
+    buffer.destroy();
+    session.roundtrip(&mut camera);
+    session.eventually(|_| !mapped(&first));
+    let cleared = vec![0; usize::try_from(WIDTH * HEIGHT * 4).unwrap()];
+    first.write_all_at(&cleared, 0).unwrap();
+    let (second, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    session.roundtrip(&mut camera);
+    app.fill(&window.surface, (200, 100), GREEN);
+    session.roundtrip(&mut app);
+    let frame = ask(&camera, &taking, &buffer);
+    assert_eq!(
+        develop(&mut session, &mut camera).last(),
+        Some(&Event::ShotReady)
+    );
+    frame.destroy();
+    assert_eq!(
+        picture(&second).at(10, 10),
+        GREEN,
+        "the picture is in the new buffer"
+    );
+    assert_eq!(picture(&first).at(10, 10), 0, "and not in the old");
+
+    // Nothing of the compositor's is left open on the old file: only the
+    // program's own.
+    session.eventually(|_| open_on(&first) == 1);
 }
 
 #[test]

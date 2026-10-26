@@ -7,6 +7,7 @@
 use std::cell::Cell;
 use std::io::Write;
 use std::os::fd::AsFd;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::rc::Rc;
@@ -1075,12 +1076,35 @@ impl Client {
         (width, height): (i32, i32),
         format: wl_shm::Format,
     ) -> (std::fs::File, wl_buffer::WlBuffer) {
-        let file = tempfile::tempfile().unwrap();
+        self.shot_buffer_in(tempfile::tempfile().unwrap(), (width, height), format)
+    }
+
+    /// The same, in memory made with `memfd_create`, as most programs make
+    /// theirs.
+    pub(crate) fn shot_buffer_in_memory(
+        &self,
+        size: (i32, i32),
+    ) -> (std::fs::File, wl_buffer::WlBuffer) {
+        let flags = rustix::fs::MemfdFlags::CLOEXEC;
+        let memory = rustix::fs::memfd_create("shot", flags).unwrap();
+        self.shot_buffer_in(memory.into(), size, wl_shm::Format::Xrgb8888)
+    }
+
+    /// A buffer to take a picture in, of `format`, in `file`.
+    fn shot_buffer_in(
+        &self,
+        file: std::fs::File,
+        (width, height): (i32, i32),
+        format: wl_shm::Format,
+    ) -> (std::fs::File, wl_buffer::WlBuffer) {
         file.set_len(u64::try_from(width * height * 4).unwrap())
             .unwrap();
         let shm = self.state.shm.as_ref().unwrap();
         let pool = shm.create_pool(file.as_fd(), width * height * 4, &self.handle(), ());
         let buffer = pool.create_buffer(0, width, height, width * 4, format, &self.handle(), ());
+        // The buffer keeps what it needs of the pool, as a program that is
+        // done with the pool lets go of it.
+        pool.destroy();
         (file, buffer)
     }
 
@@ -3022,4 +3046,25 @@ impl Dispatch<keyboard_grab::ZwpInputMethodKeyboardGrabV2, ()> for ClientState {
             state.events.push(Event::GrabbedKey { code: key, pressed });
         }
     }
+}
+
+/// Whether `file` is mapped shared into this process's memory: the
+/// compositor runs in it, so whether the compositor has it mapped.
+pub(crate) fn mapped(file: &std::fs::File) -> bool {
+    let inode = file.metadata().unwrap().ino().to_string();
+    let maps = std::fs::read_to_string("/proc/self/maps").unwrap();
+    maps.lines().any(|line| {
+        let fields: Vec<_> = line.split_ascii_whitespace().collect();
+        fields.get(1).is_some_and(|mode| mode.ends_with('s')) && fields.get(4) == Some(&&*inode)
+    })
+}
+
+/// How many descriptors this process has open on `file`: the compositor
+/// runs in it, so those it has are counted.
+pub(crate) fn open_on(file: &std::fs::File) -> usize {
+    let file = file.metadata().unwrap();
+    let of = |meta: std::fs::Metadata| meta.dev() == file.dev() && meta.ino() == file.ino();
+    let fds = std::fs::read_dir("/proc/self/fd").unwrap();
+    fds.filter(|fd| std::fs::metadata(fd.as_ref().unwrap().path()).is_ok_and(of))
+        .count()
 }

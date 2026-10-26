@@ -35,8 +35,8 @@ whole desktop with a modern look. *omorfos* is Greek for "beautiful".
 
 ## What it holds to
 
-- **Secure.** No `unsafe` in our own code but for one block, kept in a
-  crate of its own; every program, every peer on
+- **Secure.** No `unsafe` in our own code but for the buffers of
+  PipeWire's streams, kept in a crate of their own; every program, every peer on
   the socket and every configuration file is treated as untrusted.
 - **Correct.** Every line is covered by a test, outside the two files
   that need a real screen to run. The compositor is tested through a

@@ -115,11 +115,15 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 
 - **Wrong:** a program's buffer in shared memory is handed over only as a
   pointer, so writing a picture into it, as a screenshot does, needs
-  `unsafe`.
-- **Meanwhile:** the one `unsafe` block, in `omorfos-shm` (ADR 40).
+  `unsafe`, or a roundabout way to its file.
+- **Meanwhile:** `omorfos-shm` finds the file by where it is mapped, in
+  `/proc/self/maps`, and opens again the descriptor of it that Smithay
+  keeps (ADR 61). Its pictures fail if Smithay stops keeping one.
 - **Check:** `grep -n -A3 'pub fn with_buffer_contents_mut' "$S"/src/wayland/shm/mod.rs`.
   In 0.7 its closure is given `*mut u8`, a pointer; it is fixed when there
-  is a way given a `&mut [u8]` or the buffer's file instead.
+  is a way given a `&mut [u8]` or the buffer's file instead. Meanwhile,
+  `grep -n -A3 'struct InnerPool' "$S"/src/wayland/shm/pool.rs` must still
+  show `fd: OwnedFd`; the capture tests fail if it does not.
 
 ### Tearing control is not there
 

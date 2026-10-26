@@ -33,11 +33,10 @@ It is a fresh implementation, not a port: see
 
 ## Priorities, in order
 
-1. **Security.** No `unsafe` in our crates (`forbid`), but for one block
-   in `omorfos-shm` ([ADR 40](docs/adr/0040-one-unsafe-block.md)) and
-   the buffers of PipeWire streams in `omorfos-pipewire`
-   ([ADR 41](docs/adr/0041-pipewire-buffers.md)), both to go as soon as
-   safe ways exist. Treat every Wayland client, IPC peer and config file
+1. **Security.** No `unsafe` in our crates (`forbid`), but for the
+   buffers of PipeWire streams in `omorfos-pipewire`
+   ([ADR 41](docs/adr/0041-pipewire-buffers.md)), to go as soon as a
+   safe way exists. Treat every Wayland client, IPC peer and config file
    as untrusted input.
 2. **Correctness.** 100% coverage, enforced in CI.
 3. **Performance.** No work when nothing changes; no allocation in hot paths.
