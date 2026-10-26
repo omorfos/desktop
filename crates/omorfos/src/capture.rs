@@ -437,6 +437,12 @@ impl Capture {
         Self::default()
     }
 
+    /// Whether a program is taking pictures of a screen or a window, as
+    /// one sharing it does.
+    pub(crate) fn sharing(&self) -> bool {
+        !self.takings.is_empty()
+    }
+
     /// Whether the mark is shown on a screen: a program is taking
     /// pictures of it, or was a moment ago.
     pub(crate) fn marks(&self, output: &Output) -> bool {

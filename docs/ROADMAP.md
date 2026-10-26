@@ -630,15 +630,13 @@ what only games and touchpads need last.
 - [x] What the programs the session starts write kept in the journal, each
       under its name, and not in omorfos's log: those the compositor
       starts, and those the autostart entries list.
-- [ ] New versions taken up without logging in again. The programs that
-      come with omorfos started again when their files change, or when
-      `make install` asks: the clipboard keeper handing what it holds to
-      the new one first, the portal waiting for a screen being shared to
-      stop. The compositor itself cannot be swapped under its windows,
-      whose state is in its memory and which most programs cannot rebuild
-      on another (only Qt 6's reconnect); it could at most start again
-      within the same login, without the login screen, its windows
-      closed, which is to be weighed against simply logging in again.
+- [x] New versions taken up without logging in again (ADR 59). The
+      programs that come with omorfos started again when their files are
+      installed: the clipboard keeper handing what it holds to the new
+      one first, the portal waiting for a screen being shared to stop,
+      the agent for its prompt to go. The compositor itself cannot be
+      swapped under its windows; its new version is said, to be used at
+      the next login.
 - [ ] Buffers in shared memory released as soon as they are drawn,
       which foot asks for ("compositor is not releasing buffers
       immediately"). Waits on: Smithay, where it is to be done, not here. Smithay keeps a

@@ -121,6 +121,7 @@ use crate::standing::Interim;
 use crate::switcher::Switch;
 use crate::tiles::Lines;
 use crate::typing::Typing;
+use crate::versions::Versions;
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -336,6 +337,9 @@ pub struct Compositor {
     pub(crate) store: Store,
     watcher: Option<Watcher>,
     debouncer: Debouncer,
+    /// New versions of the programs that come with omorfos, being taken
+    /// up.
+    updates: Updates,
     pub(crate) bindings: Bindings,
     pub(crate) problems: Vec<String>,
     /// What has happened lately that the user might want to know of and
@@ -517,6 +521,7 @@ impl Compositor {
                     store,
                     watcher,
                     debouncer: Debouncer::new(RELOAD_DELAY),
+                    updates: Updates::default(),
                     bindings: Bindings::new([]),
                     problems: Vec::new(),
                     events: Vec::new(),
@@ -547,9 +552,7 @@ impl Compositor {
                     running: true,
                 };
                 compositor.apply_config(startup_problems);
-                if let Some(watcher) = &compositor.watcher {
-                    compositor.wake_on(watcher);
-                }
+                compositor.wake_on_changes();
                 compositor
             })
     }
@@ -915,6 +918,15 @@ impl Compositor {
         self.events.push((what.to_owned(), now));
     }
 
+    /// Has the event loop woken when the configuration changes, or a new
+    /// version of a program is installed.
+    fn wake_on_changes(&self) {
+        let watcher = self.watcher.as_ref().map(AsFd::as_fd);
+        for source in watcher.into_iter().chain(self.updates.versions.source()) {
+            self.wake_on(source);
+        }
+    }
+
     /// Wakes the event loop whenever `source` has something to read, and
     /// returns what is needed to stop doing so.
     ///
@@ -969,6 +981,8 @@ impl Compositor {
             self.hover.palette.deadline(),
             self.capture.deadline(),
             self.capture.recording.deadline(),
+            self.updates.versions.due(),
+            self.updates.retiring.iter().map(|(_, by)| *by).min(),
             self.interim.deadline(),
             match self.on_demand.ending {
                 Ending::By(by) => Some(by),
@@ -1030,6 +1044,7 @@ impl Compositor {
         self.end(now);
         self.revive(&failed, now);
         self.relock(&ended, now);
+        self.take_up(&ended, now);
         self.serve_ipc();
         self.manage_x11(now);
         self.reveal(now);
@@ -1597,6 +1612,13 @@ impl Compositor {
         self.set_component(Program::Asker, program.into());
     }
 
+    /// Says where the compositor's own program is, for the user to be told
+    /// when a new version of it is installed: unlike the others, it cannot
+    /// be taken up without logging in again.
+    pub fn set_own(&mut self, program: impl Into<PathBuf>) {
+        self.updates.own.0 = Some(program.into());
+    }
+
     /// Says where one of the programs that run for the whole session is,
     /// in place of wherever it was said to be before.
     fn set_component(&mut self, kind: Program, program: PathBuf) {
@@ -1606,6 +1628,8 @@ impl Compositor {
             program,
             process: None,
             restarts: Restarts::default(),
+            newer: false,
+            after: None,
         });
         // The panel goes first, so that it has taken its edge of the screen
         // before anything else is placed.
@@ -1637,6 +1661,13 @@ impl Compositor {
             }
         }
         self.components = components;
+        // From now on, a new version of any of them is taken up.
+        let programs = self
+            .components
+            .iter()
+            .map(|component| component.program.as_path());
+        let own = self.updates.own.0.as_deref();
+        self.updates.versions.follow(programs.chain(own));
         // Each in a scope of its own, where there is what makes one, so
         // that it ends with the session: a program that is not the
         // compositor's client is told of nothing else that does.
@@ -1700,6 +1731,77 @@ impl Compositor {
                     "`{}` keeps stopping, and will not be started again until you log in",
                     component.program.display()
                 ));
+            }
+        }
+        self.components = components;
+    }
+
+    /// Takes up the new versions of the programs that come with omorfos
+    /// that have been installed, by `now`, of those that run for the whole
+    /// session: each is asked to end, and its new version started once it
+    /// has, as it holds names the new one is to have. The keeper of the
+    /// clipboard is the other way round, for the new one to take what the
+    /// old keeps; and what shares a screen, or asks for a secret, is left
+    /// until it no longer does. `ended` are the processes that have just
+    /// ended.
+    ///
+    /// The compositor's own new version is said to the user, once.
+    fn take_up(&mut self, ended: &[u32], now: Instant) {
+        self.updates.versions.hear(now);
+        let settled = self.updates.versions.settled(now);
+        let (own, told) = &mut self.updates.own;
+        if !*told && own.as_ref().is_some_and(|own| settled.contains(own)) {
+            *told = true;
+            self.problems.push(
+                "omorfos has been updated, and the new version is used once you log in again"
+                    .to_owned(),
+            );
+        }
+        let retired = self.updates.retiring.extract_if(.., |(_, by)| *by <= now);
+        let retired = retired.filter_map(|(process, _)| Pid::from_raw(process.cast_signed()));
+        for process in retired {
+            // One that has gone already is nothing to ask.
+            let _ = kill_process(process, Signal::TERM);
+        }
+        let config = Arc::clone(self.store.current());
+        let started = self.autostarted.done;
+        let sharing = self.capture.sharing();
+        let asking = self.sealed().is_some();
+        let mut components = std::mem::take(&mut self.components);
+        for component in &mut components {
+            component.newer |= settled.contains(&component.program);
+            let how = (component.kind.roles(), component.kind == Program::Recorder);
+            let program = component.program.clone();
+            if component
+                .after
+                .take_if(|after| ended.contains(after))
+                .is_some()
+            {
+                component.process = self.launch(program.as_os_str(), &[], how, None);
+            }
+            let busy = match component.kind {
+                Program::Portal => sharing,
+                Program::Asker => asking,
+                _ => false,
+            };
+            let due = component.newer && component.after.is_none() && started && !busy;
+            if !due || !component.kind.wanted(&config.general) {
+                continue;
+            }
+            component.newer = false;
+            // A new version is not held to how often the one before stopped.
+            component.restarts = Restarts::default();
+            match component.process.take() {
+                Some(old) if component.kind == Program::Keeper => {
+                    self.updates.retiring.push((old, now + HANDOVER));
+                    component.process = self.launch(program.as_os_str(), &[], how, None);
+                }
+                Some(old) => {
+                    let old_one = Pid::from_raw(old.cast_signed());
+                    let _ = old_one.map(|old_one| kill_process(old_one, Signal::TERM));
+                    component.after = Some(old);
+                }
+                None => component.process = self.launch(program.as_os_str(), &[], how, None),
             }
         }
         self.components = components;
@@ -3430,6 +3532,40 @@ struct Component {
     /// The number of its process, while it is running.
     process: Option<u32>,
     restarts: Restarts,
+    /// Whether a new version of it has been installed, and is to be taken
+    /// up as soon as it may be.
+    newer: bool,
+    /// The process of the version before, asked to end, which the new one
+    /// is started once it has.
+    after: Option<u32>,
+}
+
+/// How long the keeper of the clipboard that a new version takes the place
+/// of is left running, for the new one to take what it keeps: longer than
+/// a keeper waits for what it reads.
+const HANDOVER: Duration = Duration::from_secs(3);
+
+/// New versions of the programs that come with omorfos, heard of and being
+/// taken up.
+#[derive(Debug)]
+struct Updates {
+    versions: Versions,
+    /// The compositor's own program, which cannot be taken up in the
+    /// session, and whether the user has been told it has a new version.
+    own: (Option<PathBuf>, bool),
+    /// The processes of versions before that are to be asked to end, and
+    /// when.
+    retiring: Vec<(u32, Instant)>,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self {
+            versions: Versions::new(),
+            own: (None, false),
+            retiring: Vec::new(),
+        }
+    }
 }
 
 /// What the pointer is over, and what it is doing with titlebars.

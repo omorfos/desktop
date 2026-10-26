@@ -320,6 +320,10 @@ fn set_components(compositor: &mut Compositor) {
     // Only here, where omorfos is the whole session: nested, the desktop
     // it runs inside answers the portals.
     let own = env::current_exe().ok();
+    // A new version of the compositor itself is said to the user.
+    if let Some(own) = own.as_deref() {
+        compositor.set_own(own);
+    }
     compositor.set_portal(super::portal_program(own.as_deref()));
     // And only here does it lock before the machine sleeps: nested, the
     // machine's sleep is the outer desktop's to lock before.

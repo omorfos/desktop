@@ -1719,6 +1719,19 @@ So a program that complains, as most do now and then, does not fill
 omorfos's log, and what it said is still there after you log out and in
 again. Where there is no journal, they say it where omorfos does.
 
+## Installing a new version
+
+Installing omorfos again, as `make install` or a package does, takes up
+the new versions of the programs that come with it within a second or
+two, without logging in again: the panel, the wallpaper, the
+notifications, the portal, the clipboard keeper and the rest are each
+started again as their new version. What is on the clipboard is handed to
+the new keeper first. The portal waits while a screen is being shared,
+and the agent that asks for passwords while it is asking.
+
+omorfos itself cannot change under its windows: a notification says it
+has been updated, and the new version is used once you log in again.
+
 ## Programs written for X11
 
 Programs that have not been written for Wayland run through `Xwayland`,

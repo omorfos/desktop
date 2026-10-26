@@ -1843,6 +1843,7 @@ name = "omorfos"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
+ "inotify",
  "omorfos-ask",
  "omorfos-clipboard",
  "omorfos-config",

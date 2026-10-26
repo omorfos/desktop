@@ -53,6 +53,7 @@ mod switcher;
 mod taskbar;
 mod tiles;
 mod typing;
+mod versions;
 mod wallpaper;
 mod windows;
 mod x11;
