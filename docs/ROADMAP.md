@@ -64,7 +64,7 @@ decided the day after:
 - **What lets the compositor be started again comes early** (ADR 60):
   the holder at the end of stage 3, since it ends what ADR 59 began and
   makes trying each later change on real hardware a matter of installing
-  it; and the front before stage 5, by when omorfos is lived in.
+  it; and the relay before stage 5, by when omorfos is lived in.
 
 ## 1. Quick wins
 
@@ -721,24 +721,24 @@ what only games and touchpads need last.
 - [ ] Nothing sliding with `reduce_motion`, once `appearance` has it; and
       whether three fingers or four, which is for the review of the
       defaults.
-- [ ] The session outliving the compositor (ADR 60), the holder first: a
-      small program that binds the socket and starts the compositor with
-      it, and again when it ends, with a new version installed meanwhile,
-      or the old one it holds open when the new does not come up; a
-      locked session coming back locked, the X display keeping its
-      number, and what starts with the session started once a login;
-      `omorfos` on the hardware becoming the holder when there is none
-      above it; the holder's own new version taken up in its place,
-      checked first; and an action asking the compositor to step down,
-      for trying a build on real hardware without logging out. Programs
-      close with the compositor, Qt 6's apart, until the front (stage
-      5), so nothing asks for a swap but the user, and ADR 59's word
-      about the next login stands.
+- [ ] The session outliving the compositor (ADR 60), the holder first,
+      `omorfos-hold`: a small program that binds the socket and starts
+      the compositor with it, and again when it ends, with a new version
+      installed meanwhile, or the old one it holds open when the new does
+      not come up; a locked session coming back locked, the X display
+      keeping its number, and what starts with the session started once
+      a login; `omorfos` on the hardware becoming the holder when there
+      is none above it; the holder's own new version taken up in its
+      place, checked first; and an action asking the compositor to step
+      down, for trying a build on real hardware without logging out.
+      Programs close with the compositor, Qt 6's apart, until the relay
+      (stage 5), so nothing asks for a swap but the user, and ADR 59's
+      word about the next login stands.
 - [ ] Every protocol the compositor offers listed in code, each with how
       a program's state in it would be replayed, or that there is none,
       and a test that what is offered is the list; from then on a
       protocol is offered by being added to it with its note, for the
-      front to be built from.
+      relay to be built from.
 
 ## 4. The look
 
@@ -815,14 +815,15 @@ way (ADR 28). The panel that is there today goes when both are done.
 Before either, what lets the compositor be started again under them
 (ADR 60):
 
-- [ ] The front: what programs connect to in the compositor's place,
-      keeping every connection and the protocol's state on it, and
-      connecting each program again to a compositor started anew, so
-      that nothing closes when the compositor ends; fuzzed from the
-      first. Then the compositor's own new version taken up at a quiet
-      moment, as ADR 59 takes up the others', and its word about the
-      next login goes. Programs written for X11 still close with their
-      X server until Smithay can take up a running one (stage 8).
+- [ ] The relay, `omorfos-relay`: what programs connect to in the
+      compositor's place, keeping every connection and the protocol's
+      state on it, and connecting each program again to a compositor
+      started anew, so that nothing closes when the compositor ends;
+      fuzzed from the first. Then the compositor's own new version taken
+      up at a quiet moment, as ADR 59 takes up the others', and its word
+      about the next login goes. Programs written for X11 still close
+      with their X server until Smithay can take up a running one (stage
+      8).
 
 What both need first:
 
@@ -1021,7 +1022,7 @@ Reports and recovery:
 Programs written for X11:
 
 - [ ] Windows written for X11 kept when the compositor is started again
-      (ADR 60): the X server is kept by the front, but Smithay's window
+      (ADR 60): the X server is kept by the relay, but Smithay's window
       manager takes up only windows made after it starts. Waits on:
       Smithay.
 - [ ] Dialogs kept with the window they belong to, and docks, splash

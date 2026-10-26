@@ -50,7 +50,7 @@ was right.
 It is done as three programs in place of one, in the order below, each
 worth having by itself.
 
-### The holder
+### The holder: `omorfos-hold`
 
 A small program, the one the login screen starts. It holds what must not
 be lost, and decides nothing.
@@ -106,7 +106,7 @@ that fails as often, or there is no other, the login screen has the user
 back. A session that keeps nothing up is one to leave, not to loop in.
 
 The holder is written to hold more than one program, the compositor
-today and the front beside it later, so that the front's coming changes
+today and the relay beside it later, so that the relay's coming changes
 what the holder is handed and not what it is. It looks for its own new
 version each time it is about to start a compositor, and takes it up
 first: it checks that the new file starts at all, as a child asked only
@@ -133,9 +133,9 @@ closed, Qt 6's apart. So nothing asks the compositor to step down but
 the user, by an action, for whoever will take that cost: a developer
 with nothing open, who installs a build and tries it without logging
 out. ADR 59's word that the compositor's new version is used at the next
-login stands until the front is there.
+login stands until the relay is there.
 
-### The front
+### The relay: `omorfos-relay`
 
 The program that programs connect to, in the compositor's place: the
 holder hands it the socket. It keeps every connection and the state of
@@ -145,16 +145,16 @@ buffer it holds a descriptor of; what has focus; which serials have been
 used, which are its own, so that a program's do not change under it. To
 the compositor it is one connection per program, so that a role (ADR 37)
 and a sandbox (`security-context-v1`) are still a connection's and no
-other's. When the compositor ends, the front connects each program again
+other's. When the compositor ends, the relay connects each program again
 to the new one, makes its objects anew, hands over its buffers and says
 what had focus. The program is sent nothing it would not have been sent,
 and learns nothing.
 
 Pixels never pass through it: a buffer is memory shared by a descriptor,
-in shared memory or on the card, and the front passes the descriptor.
+in shared memory or on the card, and the relay passes the descriptor.
 Each request and event is read and written once more, a wakeup and tens
 of microseconds against frames of several milliseconds; an idle desktop
-sends no messages, so the front does no work. It lives by the rules the
+sends no messages, so the relay does no work. It lives by the rules the
 IPC socket does (ADR 8): nothing waits, every buffer is bounded, a
 program that breaks a limit is dropped.
 
@@ -170,7 +170,7 @@ Its own new version is taken up as the holder's is: it hands its
 connections, and its state, which is in a form to be handed over already,
 to the new one, and ends.
 
-With the front there, the compositor is swapped under its windows. When
+With the relay there, the compositor is swapped under its windows. When
 its new version is installed it picks a quiet moment itself, as ADR 59
 has the portal and the prompt wait for one, and steps down: no window
 fullscreen, nothing recording or playing (ADR 43), the user still for a
@@ -179,8 +179,8 @@ version goes in regardless and says so. The holder knows nothing of
 moments.
 
 Components are then kept as programs are, their connections being the
-front's, and a compositor started anew takes them as running rather than
-starting them again. How it learns of them is the front's to settle when
+relay's, and a compositor started anew takes them as running rather than
+starting them again. How it learns of them is the relay's to settle when
 it is built.
 
 It is to come before stage 5. By then omorfos is a desktop people live
@@ -189,7 +189,7 @@ in, and one should not lose an afternoon to it.
 ### What follows the two
 
 - **Programs written for X11** share one X server, which is a program
-  like the others and so is kept by the front. But the compositor is its
+  like the others and so is kept by the relay. But the compositor is its
   window manager, and Smithay's window manager takes up only the windows
   made after it starts. Until that is changed, which is asked of it now
   (`docs/UPSTREAM.md`), the X server is started again with the compositor
@@ -202,9 +202,9 @@ in, and one should not lose an afternoon to it.
 - **Programs that come back by themselves.** Qt 6 programs connect
   again today where the socket's name holds. A protocol in which a
   program is given a token as it connects, and connecting again with the
-  token is given back what the front holds for it, would let any toolkit
-  do the same, and make the front something a desktop could do without.
-  omorfos is to propose it once the front has shown what such a thing
+  token is given back what the relay holds for it, would let any toolkit
+  do the same, and make the relay something a desktop could do without.
+  omorfos is to propose it once the relay has shown what such a thing
   must hold. That is where this paves a path, and does not only mend
   omorfos.
 
@@ -241,14 +241,14 @@ in, and one should not lose an afternoon to it.
   compositor runs under it. The compositor is still what starts
   everything else, and `omorfos-session` still speaks to systemd for it
   (ADR 35). ADR 59
-  is amended once the front is there: the compositor's new version is
+  is amended once the relay is there: the compositor's new version is
   taken up like the others', at a quiet moment, and the word about
   logging in again goes.
 - One new program now and one later, each small, each in the packaging
   and `release-please-config.json`. The session entry stays as it is,
-  since `omorfos` becomes the holder where there is none. "The holder"
-  and "the front" are what this ADR calls them; what the programs are
-  named is the build's.
+  since `omorfos` becomes the holder where there is none. The holder is
+  `omorfos-hold` and the relay `omorfos-relay`, each named as the others
+  are, by what it does.
 - With the holder alone, a crash costs the windows, as it does today, but
   not the login: the session is back in a second, locked if it was
   locked, under its name, and a Qt 6 program with it. Components start as
@@ -266,7 +266,7 @@ in, and one should not lose an afternoon to it.
   running where a fix was meant to be: the user is told so, as a problem,
   and not left to think the fix is in.
 - The roadmap is reordered: the holder at the end of stage 3, the list of
-  protocols with it, the front before stage 5, and X11 windows kept and
+  protocols with it, the relay before stage 5, and X11 windows kept and
   the screen kept lit in stage 8, the first waiting on Smithay.
 - How the compositor is given the socket as a descriptor it inherits,
   the spelling of the words, and the bound on a quiet moment are the
