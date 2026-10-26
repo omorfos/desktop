@@ -40,6 +40,7 @@ mod panel;
 mod popups;
 mod portal;
 mod presentation;
+mod protocols;
 mod recording;
 mod reveal;
 mod roles;

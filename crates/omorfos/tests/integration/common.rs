@@ -808,6 +808,8 @@ pub(crate) struct ClientState {
     window_sources: Option<window_sources::ExtForeignToplevelImageCaptureSourceManagerV1>,
     /// The name of everything the compositor offers this client.
     pub(crate) offered: Vec<String>,
+    /// The version of each, in the same order.
+    pub(crate) versions: Vec<u32>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
     inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
     /// The outputs the compositor offers, in the order they appeared.
@@ -1812,6 +1814,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             return;
         };
         state.offered.push(interface.clone());
+        state.versions.push(version);
         match interface.as_str() {
             "ext_output_image_capture_source_manager_v1" => {
                 state.capture_sources = Some(registry.bind(name, version, handle, ()));

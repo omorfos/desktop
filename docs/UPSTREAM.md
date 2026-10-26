@@ -142,6 +142,23 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   the documentation or the code is to change; the cache is worth keeping
   whichever does.
 
+### The version a protocol is offered at cannot be chosen
+
+- **Wrong:** each protocol's state, as `XdgShellState::new`, makes its
+  global at a version written into Smithay, so a compositor offers
+  whatever version its Smithay has. Only `CompositorState` lets one be
+  chosen, by `new` or `new_v6`. A compositor that is to raise a version
+  on purpose, as omorfos is to with its relay (ADR 60), cannot: an
+  update of Smithay raises it.
+- **Meanwhile:** the test of what the compositor offers,
+  `protocols::a_program_is_offered_what_is_listed_at_the_version_listed_and_nothing_else`,
+  fails when an update raises a version, and the update brings the list
+  in `crates/omorfos-ipc/src/protocols.rs` up to date, as the
+  `dependencies` routine says, rather than be held back.
+- **Check:** `grep -rn 'pub fn new[a-z_0-9]*' "$S"/src/wayland | grep -i version`
+  for constructors that take one. As each protocol's does, offer it at
+  the version in the list, and take this entry out once all do.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### No safe way to hold a stream's buffer or give one memory

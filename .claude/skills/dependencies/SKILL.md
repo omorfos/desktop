@@ -82,6 +82,14 @@ longer there. Its changes of interface go through the compositor's tests
 like any other change, and are tried by the maintainer on real hardware
 before they are merged.
 
+One that offers a protocol at another version, or a protocol more, fails
+the test of what the compositor offers, on purpose: the relay knows only
+what `omorfos-ipc`'s list says (ADR 60). Bring the list up to date in the
+same change, the version and the note on how a program's state in it is
+made again, rather than hold the update back: a fix in Smithay is not to
+wait on the relay. The compositor cannot hold the version back itself
+until Smithay lets it be chosen, as `docs/UPSTREAM.md` says.
+
 An update of Smithay, or of the PipeWire bindings, may also mend what
 omorfos works around. Run the checks of what it is in, in
 `docs/UPSTREAM.md`: for each that shows a fault gone, take the workaround

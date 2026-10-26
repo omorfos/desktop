@@ -4,10 +4,9 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** the relay (ADR 60), at the end of stage 3, with the list of
-protocols it is built from first; then the rest of stage 3, what a day's
-use needs, then what is taken from stage 8 straight after it (below), then
-stage 4.
+**Next:** the relay (ADR 60), at the end of stage 3; then the rest of
+stage 3, what a day's use needs, then what is taken from stage 8 straight
+after it (below), then stage 4.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -744,11 +743,15 @@ what only games and touchpads need last.
       holder, is run by no test; a compositor that hangs without ending is
       waited for for ever; and `restart_compositor` has neither a key nor
       an entry in a menu.
-- [ ] Every protocol the compositor offers listed in code, each with how
+- [x] Every protocol the compositor offers listed in code, each with how
       a program's state in it would be replayed, or that there is none,
       and a test that what is offered is the list; from then on a
       protocol is offered by being added to it with its note, for the
       relay to be built from.
+- [ ] Known gaps in the list of protocols: its notes were written before
+      the relay, from what each protocol says, and are a first word that
+      building the relay will correct; nothing reads the list yet but
+      its tests.
 - [ ] The relay, `omorfos-relay`: what programs connect to in the
       compositor's place, keeping every connection and the protocol's
       state on it, and connecting each program again to a compositor

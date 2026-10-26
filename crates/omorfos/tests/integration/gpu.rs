@@ -22,7 +22,7 @@ use crate::windows::{BACKGROUND, GREEN, RED};
 
 /// What the software renderer the tests draw with can draw from the memory
 /// of a card: pictures laid out a row at a time.
-fn drawable() -> [Format; 1] {
+pub(crate) fn drawable() -> [Format; 1] {
     [Format {
         code: Fourcc::Xrgb8888,
         modifier: Modifier::Linear,

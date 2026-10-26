@@ -119,6 +119,11 @@ lists the programs; a new one is added there, and to the packaging.
   be, not on exact pixels. To reproduce CI, put DejaVu's `.ttf` files in a
   directory, name it in a `<dir>` element of a minimal `fonts.conf`, and run
   the tests with `FONTCONFIG_FILE` pointing at that file.
+- **A Wayland protocol is offered by being added to the list** in
+  `crates/omorfos-ipc/src/protocols.rs`, at the version offered, with a
+  note on how a program's state in it is made again when the compositor
+  is started anew, or that there is none ([ADR 60](docs/adr/0060-the-session-outlives-the-compositor.md)).
+  A test fails while what the compositor offers is not that list.
 - **Configuration types validate while deserializing** (`try_from`), so parser
   errors carry a line and column. After changing them, regenerate the JSON
   Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.

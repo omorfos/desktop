@@ -25,6 +25,7 @@
 mod client;
 pub mod hold;
 mod message;
+pub mod protocols;
 
 pub use client::{Client, socket_path, socket_path_from_env};
 pub use message::{

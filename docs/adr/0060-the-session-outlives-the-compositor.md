@@ -330,6 +330,25 @@ of it and the action that asks the compositor to step down,
   on nothing of the compositor's crate.
 - **Any IPC peer may ask the compositor to step down**, as any may ask it to
   quit (ADR 8): a peer is the same user.
+- **The list of protocols is in `omorfos-ipc`**, the crate the omorfos
+  programs share what they agree on through, as the holder's words are:
+  the compositor and the relay both need it, and the relay is to depend
+  on nothing of the compositor's crate, as the holder does not. Each
+  entry is a name, a version and a note, written out rather than taken
+  from Smithay, so that a new version of Smithay offering a protocol at
+  another version fails the test until the list, and with it the relay,
+  has caught up. The compositor would rather choose each version itself,
+  and raise it with the relay on purpose, but Smithay makes most globals
+  at a version of its own; until it lets one be chosen, which is asked of
+  it in `docs/UPSTREAM.md`, the update that raises a version brings the
+  list up to date, so that a fix in Smithay never waits on the relay. The note says what is particular to that protocol; what
+  holds for all of them, objects made again by the requests that made
+  them, a program told only what changed, what is in flight ended as the
+  protocol lets it end, is said once, above the list. The list does not
+  say which programs are shown what: that is the compositor's, which
+  goes on deciding it for each connection, and is tested where roles
+  are. The X server's own protocol, which no other program is shown, is
+  checked against the list from inside the compositor's crate.
 - **The relay comes next**, straight after the holder and the list of
   protocols it is built from, not only before stage 5. Tried on real
   hardware, the holder did what it is for, and showed what it is not: a

@@ -925,3 +925,29 @@ impl XwmHandler for Compositor {
 }
 
 smithay::delegate_xwayland_shell!(Compositor);
+
+#[cfg(test)]
+mod tests {
+    use omorfos_ipc::protocols::{OFFERED, X_SERVER};
+    use smithay::reexports::wayland_server::Display;
+
+    use super::*;
+
+    // No program but the X server is shown it, so it is not among what a
+    // program is offered, which the integration tests check.
+    #[test]
+    fn the_x_servers_own_protocol_is_offered_at_the_version_listed() {
+        let display = Display::<Compositor>::new().unwrap();
+        let handle = display.handle();
+        let x11 = X11::new(&handle);
+        let offered = handle
+            .backend_handle()
+            .global_info(x11.shell.global())
+            .unwrap();
+        let listed = OFFERED
+            .iter()
+            .find(|protocol| protocol.interface == X_SERVER);
+        let listed = listed.map(|protocol| (protocol.interface, protocol.version));
+        assert_eq!(listed, Some((offered.interface.name, offered.version)));
+    }
+}
