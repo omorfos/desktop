@@ -213,8 +213,7 @@ impl Compositor {
         let least = self.windows.last().map(tiles::least).unwrap_or_default();
         self.desktop.set_least(id, least);
         let client = surface.client();
-        let credentials = client.and_then(|client| client.get_credentials(&self.display).ok());
-        let pid = credentials.and_then(|credentials| u32::try_from(credentials.pid).ok());
+        let pid = client.and_then(|client| self.process(&client));
         if self.asked_for(surface, pid, None) {
             self.desktop.activate(id);
         }

@@ -234,6 +234,9 @@ pub struct ClientState {
     /// Whether the client came in through a sandbox, which told the
     /// compositor so itself.
     pub(crate) sandboxed: bool,
+    /// Its process, as the relay said, where it came through the relay,
+    /// whose own the connection is (ADR 61).
+    relayed: Option<u32>,
     /// Which program it is, as the log names it, once it is known; and
     /// where it is said that it was disconnected for breaking the protocol.
     named: OnceLock<String>,
@@ -572,32 +575,66 @@ impl Compositor {
     ///
     /// Returns an error if the connection cannot be registered.
     pub fn insert_client(&mut self, stream: UnixStream, roles: Roles) -> io::Result<Client> {
-        self.insert(stream, roles, false)
+        self.insert(stream, roles, false, None)
     }
 
     /// Accepts a client that connected through a sandbox. It has no role
     /// and is not shown what only a role allows.
     pub(crate) fn insert_sandboxed(&mut self, stream: UnixStream) -> io::Result<Client> {
-        self.insert(stream, Roles::default(), true)
+        self.insert(stream, Roles::default(), true, None)
+    }
+
+    /// Accepts a program the relay connected, `stream` being its connection
+    /// to the compositor, which is the relay's own: who the program is is
+    /// what the relay said, `program`, not what the connection says.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection cannot be taken.
+    pub fn insert_relayed(
+        &mut self,
+        stream: UnixStream,
+        program: omorfos_ipc::relay::Program,
+    ) -> io::Result<Client> {
+        self.insert(stream, Roles::default(), false, Some(program.pid))
     }
 
     /// Accepts a client with `roles`, through a sandbox or not, and notes
-    /// which program it is, for the log to name it by.
-    fn insert(&mut self, stream: UnixStream, roles: Roles, sandboxed: bool) -> io::Result<Client> {
+    /// which program it is, for the log to name it by: its process is
+    /// `relayed`, where the relay said so.
+    fn insert(
+        &mut self,
+        stream: UnixStream,
+        roles: Roles,
+        sandboxed: bool,
+        relayed: Option<u32>,
+    ) -> io::Result<Client> {
         let state = Arc::new(ClientState {
             compositor: CompositorClientState::default(),
             roles,
             sandboxed,
+            relayed,
             named: OnceLock::new(),
             told: self.refused.disconnected.0.clone(),
         });
         let given: Arc<dyn wayland_server::backend::ClientData> = Arc::<ClientState>::clone(&state);
         let inserted = self.display.insert_client(stream, given);
         inserted.inspect(|client| {
-            let pid = client.get_credentials(&self.display).ok();
-            let pid = pid.and_then(|known| u32::try_from(known.pid).ok());
+            let pid = self.process(client);
             let named = format!("{}, process {}", program(pid), pid.unwrap_or_default());
             let _ = state.named.set(named);
+        })
+    }
+
+    /// The process of the program `client` is: as the relay said, where it
+    /// came through the relay, or as its connection says.
+    pub(crate) fn process(&self, client: &Client) -> Option<u32> {
+        let relayed = client
+            .get_data::<ClientState>()
+            .and_then(|state| state.relayed);
+        relayed.or_else(|| {
+            let credentials = client.get_credentials(&self.display).ok();
+            credentials.and_then(|known| u32::try_from(known.pid).ok())
         })
     }
 
@@ -2366,8 +2403,7 @@ impl Compositor {
         let recorders = &self.capture.recording.now;
         let mut said = Vec::new();
         for (client, window) in self.capture.takers(output) {
-            let pid = client.get_credentials(&self.display).ok();
-            let pid = pid.and_then(|known| u32::try_from(known.pid).ok());
+            let pid = self.process(&client);
             let what = if window {
                 "a window on this screen"
             } else {

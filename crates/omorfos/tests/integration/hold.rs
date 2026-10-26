@@ -7,10 +7,8 @@
     reason = "test support code fails the test on any error"
 )]
 
-use std::fs;
 use std::io::Read;
-use std::os::fd::AsFd;
-use std::os::unix::fs::PermissionsExt;
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -18,7 +16,7 @@ use std::time::Duration;
 use omorfos_config::Action;
 use omorfos_ipc::hold::{self, Heard, Told, Word};
 
-use crate::common::{HEIGHT, Session, WIDTH};
+use crate::common::{HEIGHT, Session, WIDTH, runnable};
 
 /// The holder's end of the connection to a compositor it started, with
 /// what has been heard on it so far.
@@ -48,15 +46,20 @@ impl Holder {
 pub(crate) fn hold(session: &mut Session, told: Told) -> (Holder, PathBuf) {
     let path = session.config.path().join("wayland-held");
     let socket = UnixListener::bind(&path).unwrap();
+    let holder = hold_with(session, told, &[socket.as_fd()]);
+    (holder, path)
+}
+
+/// Puts `session` under a holder that tells it `told` and hands it `fds`.
+pub(crate) fn hold_with(session: &mut Session, told: Told, fds: &[BorrowedFd<'_>]) -> Holder {
     let (holder, compositor) = UnixStream::pair().unwrap();
-    hold::give(&holder, &told.written(), &[socket.as_fd()]).unwrap();
+    hold::give(&holder, &told.written(), fds).unwrap();
     session.inner().hold(compositor).unwrap();
     holder.set_nonblocking(true).unwrap();
-    let holder = Holder {
+    Holder {
         connection: holder,
         heard: Heard::default(),
-    };
-    (holder, path)
+    }
 }
 
 /// What the compositor tells the programs it starts `name` is.
@@ -73,8 +76,9 @@ fn stand_in(path: &Path, mark: &str) {
     let script = format!(
         "#!/bin/sh\nprintf x >> \"$(dirname \"$OMORFOS_SOCKET\")/{mark}\"\nexec sleep 30\n"
     );
-    fs::write(path, script).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    // Written by a process of its own, as one written by this one may not
+    // start while another test is starting a program.
+    runnable(path, &script);
 }
 
 #[test]

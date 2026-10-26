@@ -42,6 +42,7 @@ mod portal;
 mod presentation;
 mod protocols;
 mod recording;
+mod relayed;
 mod reveal;
 mod roles;
 mod scaling;

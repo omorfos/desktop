@@ -165,9 +165,9 @@ impl Compositor {
     pub(crate) fn refuse(&mut self, client: Option<&Client>, asked: &str, role: &str) {
         // What a program calls itself is only to tell the user which it
         // was. Nothing is decided by it.
-        let process = client.and_then(|client| client.get_credentials(&self.display).ok());
-        let called = process
-            .and_then(|process| fs::read_to_string(format!("/proc/{}/comm", process.pid)).ok());
+        let process = client.and_then(|client| self.process(client));
+        let called =
+            process.and_then(|process| fs::read_to_string(format!("/proc/{process}/comm")).ok());
         let name = called_by(called.as_deref());
         let said = format!(
             "`{name}` asked to {asked} and was not let; to let it, have omorfos start it with \

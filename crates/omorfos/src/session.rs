@@ -10,12 +10,13 @@
 
 use std::error::Error;
 use std::io;
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{self, Told};
+use omorfos_ipc::relay::{Hand, Received};
 
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
@@ -119,7 +120,12 @@ impl Session {
     /// name comes with it, or if the IPC socket cannot be opened.
     pub fn hold(&mut self, holder: UnixStream) -> Result<(), Box<dyn Error>> {
         let (text, fds) = hold::take(&holder)?;
-        let socket = fds.into_iter().next().map(UnixListener::from);
+        let told = Told::read(&text);
+        let mut fds = fds.into_iter();
+        // Relayed, the connection to the relay comes first, and the socket
+        // after it only for its name: the relay serves it (ADR 61).
+        let relay = told.relayed.then(|| fds.next()).flatten();
+        let socket = fds.next().map(UnixListener::from);
         let socket = socket.ok_or("omorfos-hold handed over no socket to serve")?;
         let address = socket.local_addr().ok();
         let path = address.and_then(|address| address.as_pathname().map(Path::to_owned));
@@ -128,12 +134,26 @@ impl Session {
         socket
             .set_nonblocking(true)
             .and_then(|()| holder.set_nonblocking(true))
-            .and_then(|()| {
-                self.compositor
-                    .take_up_holder(holder, Told::read(&text), &path)
-            })
+            .and_then(|()| self.compositor.take_up_holder(holder, told, &path))
             .map_err(Box::from)
-            .and_then(|()| self.serve_on(socket, Roles::NONE))
+            .and_then(|()| match relay {
+                Some(relay) => self.serve_relay(relay),
+                None => self.serve_on(socket, Roles::NONE),
+            })
+    }
+
+    /// Takes the programs the relay hands over `relay`, each with who it
+    /// is; and, once the relay has gone, steps down, as they have gone with
+    /// it, for the holder to start a relay and a compositor anew.
+    fn serve_relay(&mut self, relay: OwnedFd) -> Result<(), Box<dyn Error>> {
+        let relay = Generic::new(relay, Interest::READ, Mode::Level);
+        self.event_loop
+            .handle()
+            .insert_source(relay, |_, relay, compositor| {
+                Ok(take_relayed(relay.as_fd(), compositor))
+            })
+            .map(drop)
+            .map_err(Box::from)
     }
 
     /// Accepts the clients that connect to `socket`, of whichever kind it
@@ -245,6 +265,31 @@ impl Listening for UnixListener {
         self.accept()
             .map(|(stream, _)| Some(stream))
             .or_else(waiting)
+    }
+}
+
+/// Takes on every program the relay has handed over `relay`; once it has
+/// gone, steps down, and says it is to hear no more of it.
+fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostAction {
+    loop {
+        match omorfos_ipc::relay::receive(relay) {
+            Ok(Some(Received {
+                hand: Some(Hand::Program(program)),
+                fds,
+            })) => {
+                // One that cannot be taken has its connection closed, and
+                // the relay lets the program go.
+                let stream = fds.into_iter().next().map(UnixStream::from);
+                let _ = stream.map(|stream| compositor.insert_relayed(stream, program));
+            }
+            // What is not known is passed over.
+            Ok(Some(_)) => {}
+            Ok(None) => return PostAction::Continue,
+            Err(_) => {
+                compositor.restart_compositor();
+                return PostAction::Remove;
+            }
+        }
     }
 }
 
