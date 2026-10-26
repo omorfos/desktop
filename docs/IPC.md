@@ -284,6 +284,7 @@ compositor before left, and an empty line after them:
 | `locked` | The session was locked. The compositor comes up locked, held by nobody, and starts the locker. |
 | `display N` | The session's X server had the number N, which the next is to have. |
 | `older` | The compositor is a version older than the one installed, which would not come up: the user is told the fix it was to bring is not in. |
+| `relayed` | Programs reach the compositor through the relay (ADR 61). Two descriptors are handed, not one: first the compositor's end of its connection to the relay, which it serves in place of the socket, then the socket, of which it takes the name alone. |
 
 Back along the same connection the compositor says, a line each, as each
 changes:
@@ -293,6 +294,26 @@ changes:
 | `up` | It is serving the socket. One that ends before it said so did not come up. |
 | `locked`, `unlocked` | The session is locked, or no longer. |
 | `display N` | The session's X server has the number N. |
-| `stepping down` | It is about to end, to be started again with the newest version installed. One that ends without having said so, and without failing, has ended the session. |
+| `stepping down` | It is about to end, to be started again with the newest version installed; or, relayed, the relay has ended, and the programs with it. One that ends without having said so, and without failing, has ended the session. |
 
 `omorfos_ipc::hold` has both, and what hands a socket over.
+
+## Between `omorfos-relay`, the holder and the compositor
+
+The relay stands between programs and the compositor (ADR 61). The holder
+starts it with one end of a connection as its standard input, and the
+relay is joined to each compositor by a connection the holder makes and
+hands an end of to each. Neither can be reached by programs. Both carry
+records (`SOCK_SEQPACKET`) rather than a stream: each is one line, without
+its end, and the descriptors with it, and arrives whole and alone. A record
+not known is passed over, with its descriptors closed.
+
+| Record | From | With | Means |
+|---|---|---|---|
+| `socket` | the holder | the socket programs connect to | Serve it. |
+| `compositor` | the holder | the relay's end of a connection to a compositor started anew | Hand that compositor the programs that connect from now on. The programs of the one before are let go. |
+| `program PID UID GID` | the relay | the compositor's end of a program's connection | A program has connected, which is the process PID of the user UID and group GID, as its socket said. The compositor takes this as who the program is, and does not ask the connection, which is the relay's own. |
+
+When the relay's connection to the compositor closes, the compositor steps
+down. When its connection to the holder closes, the relay ends.
+`omorfos_ipc::relay` has the records, and what hands and takes them.

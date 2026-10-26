@@ -2,7 +2,8 @@
 //!
 //! The holder starts the compositor with one end of a connection as what
 //! it reads from. Over it the holder hands, once, the socket programs
-//! connect to and what it has been [`Told`] by the compositors before;
+//! connect to, or the compositor's connection to the relay with it (ADR
+//! 61), and what it has been [`Told`] by the compositors before;
 //! back along it the compositor says [`Word`]s as things change.
 //!
 //! A holder and a compositor of different versions meet whenever either is
@@ -29,6 +30,10 @@ pub const MOST: usize = 8;
 /// What the holder tells a compositor it starts, of the compositors before
 /// it in the same login.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a line of its own, told or not, and none depends on another"
+)]
 pub struct Told {
     /// Another compositor has been started in this login before, which
     /// started what starts with the session: it is not to be started twice.
@@ -42,6 +47,10 @@ pub struct Told {
     /// would not come up: the user is to be told that a fix meant to be
     /// in is not.
     pub older: bool,
+    /// Programs reach the compositor through the relay (ADR 61): what is
+    /// handed with this is the compositor's end of its connection to the
+    /// relay, and then the socket, whose name alone it is to take.
+    pub relayed: bool,
 }
 
 /// What a compositor says to the holder.
@@ -77,6 +86,9 @@ impl Told {
         if self.older {
             text.push_str("older\n");
         }
+        if self.relayed {
+            text.push_str("relayed\n");
+        }
         text.push('\n');
         text
     }
@@ -95,6 +107,10 @@ impl Told {
             },
             "older" => Self {
                 older: true,
+                ..told
+            },
+            "relayed" => Self {
+                relayed: true,
                 ..told
             },
             _ => Self {
@@ -265,12 +281,14 @@ mod tests {
                 locked: true,
                 display: Some(3),
                 older: true,
+                relayed: true,
             },
             Told {
                 again: true,
                 locked: false,
                 display: None,
                 older: false,
+                relayed: false,
             },
         ] {
             let written = told.written();
@@ -288,6 +306,7 @@ mod tests {
             locked: true,
             display: Some(2),
             older: false,
+            relayed: false,
         };
         assert_eq!(told, expected);
     }
