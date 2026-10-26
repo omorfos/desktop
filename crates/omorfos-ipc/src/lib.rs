@@ -23,6 +23,7 @@
 //! ```
 
 mod client;
+pub mod hold;
 mod message;
 
 pub use client::{Client, socket_path, socket_path_from_env};

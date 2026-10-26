@@ -260,3 +260,39 @@ while let Ok(Reply::State(state)) = client.receive() {
 A program with an event loop of its own calls `set_nonblocking(true)`,
 waits for the client's descriptor to be readable, and then calls
 `try_receive` until it returns `None`. The panel does this.
+
+## Between `omorfos-hold` and the compositor
+
+Where omorfos is the whole session, `omorfos-hold` holds it while the
+compositor is started again, after a crash or for a new version (ADR 60).
+It speaks to the compositor over a connection of its own, not over the IPC
+socket, and nothing else may: the compositor takes it, as what it reads
+from, before it starts anything, and puts what it reads from to nothing.
+It is described here because it is the other surface between versions:
+the holder and the compositor are of different versions whenever one of
+them is installed, so each passes over a line it does not know, and lines
+are added, never changed.
+
+The holder starts the compositor as `omorfos --held`, with one end of a Unix
+stream as its standard input. Over it, once, it hands the socket programs
+connect to, as a descriptor (`SCM_RIGHTS`), with lines telling what the
+compositor before left, and an empty line after them:
+
+| Line | Means |
+|---|---|
+| `again` | A compositor has been started in this login before, and started what starts with the session: it is not started again, nor the session announced to D-Bus and systemd again. |
+| `locked` | The session was locked. The compositor comes up locked, held by nobody, and starts the locker. |
+| `display N` | The session's X server had the number N, which the next is to have. |
+| `older` | The compositor is a version older than the one installed, which would not come up: the user is told the fix it was to bring is not in. |
+
+Back along the same connection the compositor says, a line each, as each
+changes:
+
+| Line | Means |
+|---|---|
+| `up` | It is serving the socket. One that ends before it said so did not come up. |
+| `locked`, `unlocked` | The session is locked, or no longer. |
+| `display N` | The session's X server has the number N. |
+| `stepping down` | It is about to end, to be started again with the newest version installed. One that ends without having said so, and without failing, has ended the session. |
+
+`omorfos_ipc::hold` has both, and what hands a socket over.
