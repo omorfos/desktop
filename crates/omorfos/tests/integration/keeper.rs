@@ -23,13 +23,23 @@ const SECRET: &str = "x-kde-passwordManagerHint";
 /// Starts the keeper in a session, over a socket that gives `roles`. It
 /// says why it stopped when it does.
 pub(crate) fn keeper(session: &mut Session, roles: Roles, limits: Limits) -> JoinHandle<String> {
+    keeper_at(session, "wayland-keeper", roles, limits)
+}
+
+/// The same, over a socket called `name`, for there to be more than one.
+fn keeper_at(
+    session: &mut Session,
+    name: &'static str,
+    roles: Roles,
+    limits: Limits,
+) -> JoinHandle<String> {
     let runtime = session.config.path().to_owned();
-    let socket = ListeningSocket::bind_absolute(runtime.join("wayland-keeper")).unwrap();
+    let socket = ListeningSocket::bind_absolute(runtime.join(name)).unwrap();
     session.inner().serve(socket, roles).unwrap();
     std::thread::spawn(move || {
-        let variable = |name: &str| match name {
+        let variable = |variable: &str| match variable {
             "XDG_RUNTIME_DIR" => Some(runtime.clone().into_os_string()),
-            "WAYLAND_DISPLAY" => Some(OsString::from("wayland-keeper")),
+            "WAYLAND_DISPLAY" => Some(OsString::from(name)),
             _ => None,
         };
         said(omorfos_clipboard::start_with(&variable, limits))
@@ -309,6 +319,36 @@ fn what_is_kept_is_forgotten_after_a_while_as_the_configuration_says() {
     }
     assert!(gone, "forgotten");
     end(session, keeper);
+}
+
+#[test]
+fn a_keeper_started_in_the_place_of_another_takes_over_what_it_keeps() {
+    // The first would forget what it keeps in a second, were it still
+    // what is on the clipboard.
+    let soon = Limits {
+        forget: Some(Duration::from_secs(1)),
+        ..Limits::default()
+    };
+    let (mut session, first, mut editor) = kept(soon);
+    copied(&mut session, &mut editor, ("kept", &[TEXT]), |editor| {
+        editor.state.replaced
+    });
+    drop(editor);
+    let second = keeper_at(
+        &mut session,
+        "wayland-keeper-2",
+        Roles::CLIPBOARD,
+        Limits::default(),
+    );
+    // The second takes it from the first, so that it is there however long
+    // the first takes to go; nor do the two take it from each other again.
+    wait(&mut session, 1500);
+    assert_eq!(pasted(&mut session).as_deref(), Some("kept"));
+    drop(session);
+    for keeper in [first, second] {
+        let said = keeper.join().unwrap();
+        assert!(said.starts_with("the session ended"), "{said}");
+    }
 }
 
 #[test]

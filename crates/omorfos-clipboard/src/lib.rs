@@ -178,8 +178,12 @@ pub fn keep(connection: &Connection, limits: Limits) -> Failure {
             continue;
         };
         // What this program offers itself is kept already, and what a
-        // password manager copies is not to be.
-        let mine = kinds.iter().any(|kind| kind == MARK || kind == SECRET);
+        // password manager copies is not to be. What is on the clipboard as
+        // it starts is taken even from a keeper: it is the one it takes the
+        // place of, as a new version does, handing over what it keeps.
+        let found = std::mem::take(&mut state.found);
+        let ours = kinds.iter().any(|kind| kind == MARK) && !found;
+        let mine = ours || kinds.iter().any(|kind| kind == SECRET);
         state.changed = false;
         let read = (!mine).then(|| read(connection, &offer, &kinds, limits));
         offer.destroy();
@@ -277,7 +281,8 @@ fn read(
     // what it can be asked to do, and some forms more than once. The rest
     // are kept in the order they were offered, which says which is best.
     let new = |(at, kind): &(usize, &String)| !kinds[..*at].contains(kind);
-    let data = |(_, kind): &(usize, &String)| !ASKED.contains(&kind.as_str());
+    // Nor is the mark of a keeper data: it is offered again as this one's.
+    let data = |(_, kind): &(usize, &String)| !ASKED.contains(&kind.as_str()) && *kind != MARK;
     let kinds: Vec<&String> = kinds
         .iter()
         .enumerate()
@@ -335,6 +340,11 @@ struct State {
     copied: Option<(ExtDataControlOfferV1, Vec<String>)>,
     /// Whether the clipboard has changed since it was last read.
     changed: bool,
+    /// Whether what was last copied is what was on the clipboard when the
+    /// keeper started.
+    found: bool,
+    /// Whether the clipboard has been heard of at all yet.
+    heard: bool,
     /// How many times something has been kept or let go of, so that what
     /// is forgotten is only ever what was kept last; and held while the
     /// clipboard is set, for the same.
@@ -387,6 +397,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
             device::Event::DataOffer { id } => state.offers.push((id, Vec::new())),
             device::Event::Selection { id } => {
                 state.changed = true;
+                state.found = !std::mem::replace(&mut state.heard, true);
                 state.copied = id.and_then(|offer| state.take(&offer));
             }
             // What is only selected is not kept, and nothing else is
