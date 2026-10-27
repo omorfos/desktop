@@ -435,6 +435,12 @@ pub struct Offer {
     pub whole: Rect,
 }
 
+/// `at` moved right by `by`, as what is drawn on a workspace is while the
+/// workspaces slide.
+const fn moved_across(at: Rect, by: i32) -> Rect {
+    Rect::new(at.origin.offset(by, 0), at.size)
+}
+
 /// The room, in units of layout, left round each window offered in a part
 /// with nothing in it, and between one and the next.
 const OFFER_ROOM: u32 = 24;
@@ -2505,31 +2511,74 @@ impl Desktop {
     }
 
     /// The lines between the parts of the workspace an output is showing,
-    /// if it is showing one that windows share. Outputs are counted in
-    /// the order they were given.
+    /// if it is showing one that windows share, where they are drawn: while
+    /// the workspaces slide, moved across with it, and with them those of
+    /// the one that comes in beside it. Outputs are counted in the order
+    /// they were given.
     #[must_use]
     pub fn lines(&self, output: usize) -> Vec<Line> {
-        let titlebar = self.settings.decoration.titlebar;
-        let cut = self.sets.get(output).zip(self.outputs.get(output));
-        let cut = cut.and_then(|(set, output)| {
-            let shown = &set.workspaces[set.active];
-            Some((shown.solo?, &shown.groups, output.area))
+        let area = self.outputs.get(output).map(|output| output.area);
+        let drawn = self.drawn(output).flat_map(|(workspace, shift)| {
+            let lines = area.map(|area| self.cut(workspace, area));
+            let lines = lines.into_iter().flatten();
+            lines.map(move |line| Line {
+                at: moved_across(line.at, shift),
+                ..line
+            })
         });
-        cut.map_or_else(Vec::new, |(tiling, groups, area)| {
-            tiling.with_room(area, groups, titlebar).lines(area)
-        })
+        drawn.collect()
+    }
+
+    /// The workspaces an output draws: the one it shows, and while the
+    /// workspaces slide the one that comes in beside it, each with how far
+    /// right it is drawn.
+    fn drawn(&self, output: usize) -> impl Iterator<Item = (&Workspace, i32)> {
+        let set = self.sets.get(output);
+        let shown = set.map(|set| (&set.workspaces[set.active], set.slid));
+        let beside = set.and_then(|set| {
+            let (at, shift) = self.beside(output)?;
+            Some((&set.workspaces[at], shift))
+        });
+        shown.into_iter().chain(beside)
+    }
+
+    /// The lines between the parts of `workspace` on an output whose area
+    /// is `area`, if it is one that windows share.
+    fn cut(&self, workspace: &Workspace, area: Rect) -> Vec<Line> {
+        let titlebar = self.settings.decoration.titlebar;
+        let tiling = workspace
+            .solo
+            .map(|tiling| tiling.with_room(area, &workspace.groups, titlebar));
+        tiling.map_or_else(Vec::new, |tiling| tiling.lines(area))
     }
 
     /// The windows offered in each part with nothing in it of the workspace
     /// an output is showing, if it is one that windows share: those of the
     /// desktop it was made from, the one on top first, each where its
-    /// picture is. Outputs are counted in the order they were given.
+    /// picture is. While the workspaces slide they are moved across with
+    /// it, and with them come those of the one beside it. Outputs are
+    /// counted in the order they were given.
     #[must_use]
     pub fn offers(&self, output: usize) -> Vec<Offer> {
         let Some((set, screen)) = self.sets.get(output).zip(self.outputs.get(output)) else {
             return Vec::new();
         };
-        let shown = &set.workspaces[set.active];
+        let drawn = self.drawn(output).flat_map(|(workspace, shift)| {
+            let offers = self.offers_on(set, workspace, screen.area);
+            offers.into_iter().map(move |offer| Offer {
+                at: moved_across(offer.at, shift),
+                title: moved_across(offer.title, shift),
+                whole: moved_across(offer.whole, shift),
+                ..offer
+            })
+        });
+        drawn.collect()
+    }
+
+    /// The windows offered in each part with nothing in it of `shown`, a
+    /// workspace of `set` on an output whose area is `area`, if it is one
+    /// that windows share: see [`Desktop::offers`].
+    fn offers_on(&self, set: &Set, shown: &Workspace, area: Rect) -> Vec<Offer> {
         let Some(tiling) = shown.solo else {
             return Vec::new();
         };
@@ -2550,11 +2599,11 @@ impl Desktop {
                 (group.tabs[group.active].id, size)
             })
             .unzip();
-        let roomy = tiling.with_room(screen.area, &shown.groups, metrics.titlebar);
+        let roomy = tiling.with_room(area, &shown.groups, metrics.titlebar);
         let empty = tiling.slots().filter(|(_, part)| *part == Part::Empty);
         empty
             .flat_map(|(at, _)| {
-                let places = offered(roomy.rect(at, screen.area), &sizes);
+                let places = offered(roomy.rect(at, area), &sizes);
                 windows.iter().zip(places).map(|(window, placed)| Offer {
                     window: *window,
                     at: placed.picture,
@@ -2584,7 +2633,11 @@ impl Desktop {
     /// Nor does it leave a window less room than it says it can be no
     /// smaller than, where there is room for that: the line stops.
     pub fn move_line(&mut self, output: usize, which: usize, point: Option<Point>) {
-        if !self.lines(output).iter().any(|line| line.which == which) {
+        // One of those of the workspace shown, where it is when not slid.
+        let shown = self.sets.get(output).map(|set| &set.workspaces[set.active]);
+        let area = self.outputs.get(output).map(|output| output.area);
+        let lines = shown.zip(area).map(|(shown, area)| self.cut(shown, area));
+        if !lines.is_some_and(|lines| lines.iter().any(|line| line.which == which)) {
             return;
         }
         let area = self.outputs[output].area;
@@ -3984,6 +4037,52 @@ mod tests {
         assert_eq!(part(&desktop, a), (960, 0, 960, 1080));
         assert_eq!(desktop.offers(0), []);
         assert_eq!(desktop.offers(1), [], "nor on an output there is not");
+    }
+
+    #[test]
+    fn the_lines_and_offers_of_a_workspace_windows_share_slide_with_it() {
+        let mut desktop = desktop();
+        let _a = open(&mut desktop, "a");
+        let b = open(&mut desktop, "b");
+        desktop.tile(b, Half::Left);
+        let (lines, offers) = (desktop.lines(0), desktop.offers(0));
+        assert_eq!((lines.len(), offers.len()), (1, 1));
+        let moved = |at: Rect, by: i32| Rect::new(at.origin.offset(by, 0), at.size);
+        let lines_by = |by: i32| {
+            let line = |line: &Line| Line {
+                at: moved(line.at, by),
+                ..*line
+            };
+            lines.iter().map(line).collect::<Vec<_>>()
+        };
+        let offers_by = |by: i32| {
+            let offer = |offer: &Offer| Offer {
+                at: moved(offer.at, by),
+                title: moved(offer.title, by),
+                whole: moved(offer.whole, by),
+                ..*offer
+            };
+            offers.iter().map(offer).collect::<Vec<_>>()
+        };
+
+        desktop.slide(-300);
+        assert_eq!(desktop.lines(0), lines_by(-300), "with the one shown");
+        assert_eq!(desktop.offers(0), offers_by(-300));
+
+        // Coming in beside the desktop it was made from.
+        desktop.slide(0);
+        desktop.switch_workspace(0);
+        assert_eq!((desktop.lines(0), desktop.offers(0)), (vec![], vec![]));
+        desktop.slide(-300);
+        let width = SCREEN.size.width.cast_signed();
+        assert_eq!(
+            desktop.lines(0),
+            lines_by(width - 300),
+            "with the one beside"
+        );
+        assert_eq!(desktop.offers(0), offers_by(width - 300));
+        desktop.slide(0);
+        assert_eq!((desktop.lines(0), desktop.offers(0)), (vec![], vec![]));
     }
 
     #[test]

@@ -380,9 +380,10 @@ impl Compositor {
     }
 
     /// The window offered in a part with nothing in it that is under the
-    /// pointer, if one is.
+    /// pointer, if one is and the workspaces are not sliding.
     pub(crate) fn over_offer(&self) -> Option<WindowId> {
         let point = self.pointer_position();
+        let point = (self.desktop.slid() == 0).then_some(point)?;
         let offers = self.hover.lines.offers.iter();
         let mut under = offers.filter(|offer| offer.whole.contains(point));
         under.next().map(|offer| offer.window)
@@ -582,9 +583,10 @@ impl Compositor {
 
     /// The line the pointer can take hold of where it is: which output's,
     /// which of its lines, and whether it lies across and is dragged up
-    /// and down.
+    /// and down. None is while the workspaces slide.
     pub(crate) fn over_line(&self) -> Option<(usize, usize, bool)> {
         let point = self.pointer_position();
+        let point = (self.desktop.slid() == 0).then_some(point)?;
         let outputs = 0..self.heads.len();
         let mut lines = outputs.flat_map(|output| {
             let lines = self.desktop.lines(output).into_iter();

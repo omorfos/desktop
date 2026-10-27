@@ -417,3 +417,72 @@ fn the_key_past_the_last_slides_in_the_one_it_makes() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     assert_eq!((active(&session), slid(&session)), (4, 640));
 }
+
+/// The colour of the line between windows that share a workspace in the
+/// built-in theme.
+const LINE: u32 = 0xff2c_303a;
+
+/// Four workspaces, and a blue window sharing the first with nothing beside
+/// it, where the red one of the desktop it was made from is offered.
+fn shared() -> (Session, Client) {
+    let mut session = Session::with_workspaces();
+    let mut client = session.connect();
+    session.open(&mut client, "offered", (200, 100), RED);
+    session.open(&mut client, "tiled", (200, 100), BLUE);
+    session
+        .compositor_mut()
+        .perform(&Action::Tile(omorfos_config::Half::Left));
+    session.step();
+    (session, client)
+}
+
+#[test]
+fn the_line_between_windows_that_share_a_workspace_goes_with_it() {
+    let (mut session, _client) = shared();
+    assert_eq!(session.draw().at(320, 300), LINE);
+
+    carry(&mut session, -100.0, 1000);
+    let picture = session.draw();
+    assert_eq!(picture.at(220, 300), LINE, "carried with it");
+    assert_ne!(picture.at(320, 300), LINE, "and not left behind");
+    lift(&mut session, true);
+    session.advance(Duration::from_millis(240));
+
+    // Coming in beside the desktop it was made from.
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.advance(Duration::from_millis(240));
+    assert_ne!(session.draw().at(320, 300), LINE);
+    carry(&mut session, -400.0, 1000);
+    assert_eq!(session.draw().at(560, 300), LINE, "it comes in with it");
+}
+
+#[test]
+fn what_is_between_windows_that_share_a_workspace_is_not_taken_hold_of_as_it_slides() {
+    let (mut session, _client) = shared();
+    let offers = session.compositor().desktop().offers(0);
+    let offer = offers[0].whole;
+    let (x, y) = (offer.origin.x + 10, offer.origin.y + 10);
+    let lines = session.compositor().desktop().lines(0);
+
+    carry(&mut session, -100.0, 1000);
+    let click = |session: &mut Session, from: (i32, i32), to: (i32, i32)| {
+        for (at, pressed) in [(from, true), (to, false)] {
+            let (x, y) = (f64::from(at.0), f64::from(at.1));
+            session.compositor_mut().input(Input::Motion { x, y }, 0);
+            let button = 0x110;
+            session
+                .compositor_mut()
+                .input(Input::Button { button, pressed }, 0);
+            session.step();
+        }
+    };
+    // The line where it is drawn, dragged; and the window offered where it
+    // is drawn, chosen.
+    click(&mut session, (220, 300), (150, 300));
+    click(&mut session, (x - 100, y), (x - 100, y));
+    lift(&mut session, true);
+    session.advance(Duration::from_millis(240));
+
+    assert_eq!(session.compositor().desktop().lines(0), lines);
+    assert_eq!(session.compositor().desktop().offers(0), offers);
+}
