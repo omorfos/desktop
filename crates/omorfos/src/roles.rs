@@ -45,6 +45,18 @@ impl Roles {
     /// dimmed behind it and the keyboard is its alone.
     pub const ASK: Self = Self(1 << 6);
 
+    /// These roles as a number, as the relay carries them (ADR 61).
+    #[must_use]
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    /// The roles the relay carries as `bits`, which a compositor gave.
+    #[must_use]
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
     /// These roles and those as well.
     #[must_use]
     pub const fn with(self, other: Self) -> Self {

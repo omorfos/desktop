@@ -26,8 +26,11 @@ fn it_relays_what_the_holder_hands_it_until_the_holder_goes() {
 
     let _program = UnixStream::connect(&path).unwrap();
     let by = Instant::now() + Duration::from_secs(5);
+    // After the word that every program it kept, none, has been handed.
     let handed = loop {
-        if let Some(handed) = relay::receive(compositor.as_fd()).unwrap() {
+        if let Some(handed) = relay::receive(compositor.as_fd()).unwrap()
+            && handed.hand != Some(Hand::Kept)
+        {
             break handed;
         }
         assert!(Instant::now() < by, "the program was never handed on");

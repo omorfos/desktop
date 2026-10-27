@@ -22,7 +22,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::Duration;
 
-use omorfos_ipc::relay::{self, Hand, Program, Received};
+use omorfos_ipc::relay::{self, Hand, Program, Received, Started};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
 use crate::link::{Ended, Link, Way};
@@ -115,7 +115,7 @@ impl Relay {
                 Err(why) => ended.push((index, why)),
             }
         }
-        let gone = (lost || compositor_ready == Some(true)) && self.compositor_gone(GRACE);
+        let gone = (lost || compositor_ready == Some(true)) && self.compositor_gone(GRACE, log);
         if gone {
             // One that lost it is kept with the rest; one let go alone, by
             // a compositor still there, is not.
@@ -177,8 +177,10 @@ impl Relay {
     }
 
     /// Whether the compositor has gone: there is none, or its connection to
-    /// the relay has closed, or does within `grace`.
-    fn compositor_gone(&self, grace: Duration) -> bool {
+    /// the relay has closed, or does within `grace`. What it hands meanwhile
+    /// is taken, and said on `log` if it cannot be.
+    fn compositor_gone(&mut self, grace: Duration, log: &mut dyn Write) -> bool {
+        let (links, next) = (&mut self.links, &mut self.next);
         self.compositor.as_ref().is_none_or(|compositor| {
             let mut polled = [PollFd::new(compositor, PollFlags::IN)];
             let grace = Timespec::try_from(grace).unwrap_or_default();
@@ -186,7 +188,7 @@ impl Relay {
             let readable = polled
                 .iter()
                 .any(|polled| polled.revents().intersects(READABLE));
-            readable && relay::receive(compositor.as_fd()).is_err()
+            readable && !hear_compositor(compositor.as_fd(), links, next, log)
         })
     }
 
@@ -237,9 +239,50 @@ impl Relay {
                 self.lose_compositor(log);
                 let towards = compositor.as_fd();
                 self.links.retain_mut(|link| rejoin(link, towards, log));
+                // A compositor that cannot be told goes, and is seen to.
+                let _ = relay::send(towards, &Hand::Kept, &[]);
                 self.compositor = Some(compositor);
             }
             _ => {}
+        }
+    }
+}
+
+/// Takes what `compositor` has handed: each part of the session it started
+/// is kept as programs are in `links`, numbered from `next`, and said on
+/// `log` if it cannot be. Returns whether the compositor is still there.
+fn hear_compositor(
+    compositor: BorrowedFd<'_>,
+    links: &mut Vec<Link>,
+    next: &mut u32,
+    log: &mut dyn Write,
+) -> bool {
+    loop {
+        match relay::receive(compositor) {
+            Ok(Some(Received {
+                hand: Some(Hand::Started(started)),
+                fds,
+            })) => {
+                let part = fds.into_iter().next().map(UnixStream::from);
+                let parted = part.map(|part| relayed(part, started, *next, compositor));
+                match parted {
+                    Some(Ok(link)) => {
+                        links.push(link);
+                        *next = next.wrapping_add(1);
+                    }
+                    Some(Err(error)) => {
+                        let _ = writeln!(
+                            log,
+                            "omorfos-relay: a part of the session could not be let in: {error}"
+                        );
+                    }
+                    None => {}
+                }
+            }
+            // What is not known, or not whole, is passed over.
+            Ok(Some(_)) => {}
+            Ok(None) => return true,
+            Err(_) => return false,
         }
     }
 }
@@ -322,12 +365,39 @@ fn link(program: UnixStream, number: u32, compositor: BorrowedFd<'_>) -> io::Res
     })
 }
 
+/// Hands `compositor` a connection for the part of the session it `started`,
+/// whose own is `part`, numbered `number`, with who it is and its roles, and
+/// joins the two.
+fn relayed(
+    part: UnixStream,
+    started: Started,
+    number: u32,
+    compositor: BorrowedFd<'_>,
+) -> io::Result<Link> {
+    let found = rustix::net::sockopt::socket_peercred(&part).map_err(io::Error::from);
+    let made = found.and_then(|found| UnixStream::pair().map(|pair| (found, pair)));
+    made.and_then(|(found, (ours, theirs))| {
+        // Its process is what the compositor said: the connection was made
+        // by the compositor, which started it.
+        let who = Program {
+            pid: started.pid,
+            uid: found.uid.as_raw(),
+            gid: found.gid.as_raw(),
+            number: Some(number),
+        };
+        let hand = Hand::Part(who, started.roles);
+        relay::send(compositor, &hand, &[theirs.as_fd()])
+            .and_then(|()| Link::new(part, who, ours))
+            .map(|link| link.with_roles(started.roles))
+    })
+}
+
 /// Hands `compositor` a connection for the program `link` kept, and makes
 /// what it had again there. Says, on `log` if not, whether it could be.
 fn rejoin(link: &mut Link, compositor: BorrowedFd<'_>, log: &mut dyn Write) -> bool {
     let made = UnixStream::pair();
     let handed = made.and_then(|(ours, theirs)| {
-        relay::send(compositor, &Hand::Program(link.who()), &[theirs.as_fd()]).map(|()| ours)
+        relay::send(compositor, &link.hand(), &[theirs.as_fd()]).map(|()| ours)
     });
     let joined = handed.map_err(Ended::from).and_then(|ours| link.join(ours));
     if joined.is_err() {

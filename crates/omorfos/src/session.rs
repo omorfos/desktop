@@ -146,6 +146,9 @@ impl Session {
     /// is; and, once the relay has gone, steps down, as they have gone with
     /// it, for the holder to start a relay and a compositor anew.
     fn serve_relay(&mut self, relay: OwnedFd) -> Result<(), Box<dyn Error>> {
+        // The keeper of the clipboard is handed to it, to be kept.
+        let parts = relay.try_clone();
+        let _ = parts.map(|parts| self.compositor.relay_parts(parts));
         let relay = Generic::new(relay, Interest::READ, Mode::Level);
         self.event_loop
             .handle()
@@ -282,6 +285,17 @@ fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostActio
                 let stream = fds.into_iter().next().map(UnixStream::from);
                 let _ = stream.map(|stream| compositor.insert_relayed(stream, program));
             }
+            Ok(Some(Received {
+                hand: Some(Hand::Part(program, roles)),
+                fds,
+            })) => {
+                let stream = fds.into_iter().next().map(UnixStream::from);
+                let _ = stream.map(|stream| compositor.insert_part(stream, program, roles));
+            }
+            Ok(Some(Received {
+                hand: Some(Hand::Kept),
+                ..
+            })) => compositor.relay_kept(),
             // What is not known is passed over.
             Ok(Some(_)) => {}
             Ok(None) => return PostAction::Continue,

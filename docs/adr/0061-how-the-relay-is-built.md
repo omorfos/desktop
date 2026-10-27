@@ -350,12 +350,27 @@ compositor taking up its own new version (3e).
   waits for one to be released before it draws again; one shown last
   before the compositor went was never released, and Firefox, waiting for
   it, drew no more. Found as 3b was tried; it was so since step 2.
-- **What was on the clipboard is there again** (3b, to come). The keeper,
-  which holds what was copied once the program it came from may close, is
-  connected through the relay as programs are, with its `clipboard` role,
-  which the next compositor gives the connection the relay hands it, and
-  is not started again; its device and source are made again, and its
-  selection set again through `ext-data-control-v1`, which needs neither
-  focus nor serial. What a program kept holds, the primary selection and
-  what the keeper does not keep, is set again as the program next has the
-  keyboard, unless something else was copied or selected by then.
+- **What was on the clipboard is there again** (3b). The keeper, which
+  holds what was copied once the program it came from may close, is kept
+  as programs are. The compositor starts it as before, and hands the
+  relay its connection, with its process and its roles, which the relay
+  hands back, and again to each compositor after; the next gives it its
+  `clipboard` role on the relay's word, as it takes who a program is on
+  it. ADR 37 has a role come only from a connection the compositor made
+  for a program it started, and so it does: the relay hands back only
+  what a compositor handed it, over a connection no program can reach.
+  The relay says once it has handed every program it kept, and a
+  compositor joined to it starts the keeper only then, and none if one
+  was among them. The keeper's device and sources are made again, and
+  its selection set again once its source is, through
+  `ext-data-control-v1`, which needs neither focus nor serial: the
+  clipboard is there at once. A selection whose source was since told
+  it is held no longer is not set again. Only the keeper is kept so;
+  the rest of what the compositor starts ends with it until 3d.
+- **What a program selected is selected again as it next has the
+  keyboard** (3b): the primary selection, and what the keeper does not
+  keep. Smithay lets a program set either only while it has the
+  keyboard. The next compositor says what is selected as it gives a
+  program the keyboard: if nothing, that is kept from the program and
+  its own is set again; if something else, its source is told it was
+  cancelled, as it would have been.

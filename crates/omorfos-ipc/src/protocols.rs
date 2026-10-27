@@ -40,9 +40,11 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "ext_data_control_manager_v1",
         version: 1,
-        replayed: "As the clipboard's: each device made again for its seat, and what it set as \
-                   the selection set again from its source; what it is offered is passed on only \
-                   if it is not what it was offered last.",
+        replayed: "Each device made again for its seat, and each source with what it offers; \
+                   what a device last set as the selection set again once its source is made, \
+                   unless the source was told it is held no longer. Held by the keeper, which the \
+                   relay keeps with its role, the clipboard is there again at once. What the next \
+                   compositor offers is told, the keeper's own among it.",
     },
     Protocol {
         interface: "ext_foreign_toplevel_image_capture_source_manager_v1",
@@ -97,10 +99,11 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "wl_data_device_manager",
         version: 3,
-        replayed: "Each data device made again for its seat, and a selection the program set \
-                   set again from its source; what it is offered is passed on only if it is not \
-                   what it was offered last. A drag in flight cannot be carried: it is \
-                   cancelled, as a drop on nothing is.",
+        replayed: "Each data device and source made again. A selection the program set, and \
+                   was not told it holds no longer, is set again once the next compositor gives \
+                   the program the keyboard and says there is none, which is kept from it; if it \
+                   says another, the source is told it was cancelled. A drag in flight cannot be \
+                   carried: it is cancelled, as a drop on nothing is.",
     },
     Protocol {
         interface: "wl_output",
@@ -255,9 +258,9 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "zwp_primary_selection_device_manager_v1",
         version: 1,
-        replayed: "As the clipboard's: each device made again for its seat, and a selection the \
-                   program set set again from its source; what it is offered is passed on only \
-                   if it is not what it was offered last.",
+        replayed: "As the clipboard's: each device and source made again, and a selection the \
+                   program set set again once the next compositor gives it the keyboard, unless \
+                   another is held by then.",
     },
     Protocol {
         interface: "zwp_relative_pointer_manager_v1",

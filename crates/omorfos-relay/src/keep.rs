@@ -170,6 +170,13 @@ pub struct Keeping {
     settling: u8,
     /// The program's serials and the compositor's.
     serials: Serials,
+    /// What each of the program's devices for the clipboard or the
+    /// primary selection last set as it, and the compositor has not said
+    /// is it no longer: the source, by the device.
+    selections: HashMap<u32, u32>,
+    /// Of those, the ones to be set again under the next compositor once
+    /// it says there is none, as it does to a program given the keyboard.
+    selecting: HashMap<u32, u32>,
     /// The buffer attached to each surface and not yet committed, by the
     /// surface: none where one was taken away.
     attached: HashMap<u32, u32>,
@@ -219,6 +226,8 @@ impl Default for Keeping {
             framing: HashSet::new(),
             settling: 0,
             serials: Serials::default(),
+            selections: HashMap::new(),
+            selecting: HashMap::new(),
             attached: HashMap::new(),
             held_buffers: HashSet::new(),
             commits: HashMap::new(),
@@ -277,6 +286,19 @@ impl Keeping {
             }
             ("wl_buffer", "destroy") => {
                 self.held_buffers.remove(&header.object);
+            }
+            ("wl_data_device" | "zwp_primary_selection_device_v1", "set_selection") => {
+                let source = wire::word(bytes, HEADER).unwrap_or_default();
+                self.selecting.remove(&header.object);
+                self.selections.remove(&header.object);
+                if source != 0 {
+                    self.selections.insert(header.object, source);
+                }
+            }
+            ("wl_data_source" | "zwp_primary_selection_source_v1", "destroy") => {
+                let gone = |_: &u32, source: &mut u32| *source != header.object;
+                self.selections.retain(gone);
+                self.selecting.retain(gone);
             }
             _ => {}
         }
@@ -546,6 +568,12 @@ impl Keeping {
             ("wl_buffer", 0) => {
                 self.held_buffers.remove(&object);
             }
+            ("wl_data_source", 2) | ("zwp_primary_selection_source_v1", 1) => {
+                self.selections.retain(|_, source| *source != object);
+            }
+            ("wl_data_device", 5) | ("zwp_primary_selection_device_v1", 1) => {
+                return self.selected(read, object, word(0));
+            }
             ("xdg_activation_token_v1", 0) | ("xdg_popup", 1) => {
                 self.given.insert(object);
             }
@@ -559,6 +587,37 @@ impl Keeping {
             }
             _ => {}
         }
+        true
+    }
+
+    /// Takes in that the compositor said, as `read` says, that `offer` is
+    /// what `device` has as the selection: none, where it is 0. What the
+    /// program selected before is selected again if nothing else is, and
+    /// that there is none is kept from it; if something else is, its source
+    /// is told it is the selection no longer. Returns whether it is passed
+    /// on.
+    fn selected(&mut self, read: &Read, device: u32, offer: u32) -> bool {
+        let Some(source) = self.selecting.remove(&device) else {
+            return true;
+        };
+        // The request that sets it and the event that says the source is
+        // the selection no longer, of the clipboard's and the primary
+        // selection's.
+        let (set, cancelled) = match read.interface.name {
+            "wl_data_device" => (1, 2),
+            _ => (0, 1),
+        };
+        if offer == 0 {
+            // With its serial second, which Smithay does not check: the
+            // keyboard is what it asks.
+            let latest = self.serials.latest();
+            self.to_compositor
+                .push(journal::message(device, set, &[source, latest]));
+            return false;
+        }
+        self.selections.remove(&device);
+        self.to_program
+            .push(journal::message(source, cancelled, &[]));
         true
     }
 
@@ -791,6 +850,9 @@ impl Keeping {
             }
             self.orphans.insert(number);
         }
+        // What the program selected is selected again once the next
+        // compositor gives it the keyboard.
+        self.selecting.clone_from(&self.selections);
         // A buffer the compositor held, which the next is not shown, is
         // released, as the one before would have released it.
         let shown = self.journal.buffers_shown();
@@ -1104,6 +1166,91 @@ mod tests {
         }
         let freed = message(DISPLAY, DELETE_ID, &words(&[8]));
         assert_eq!(kept.told(&freed), None, "withheld, as the frame names it");
+    }
+
+    /// A program holding the selection: a data device, 7, on the seat, 5,
+    /// and a source, 8, offering text, set as the selection with serial 9;
+    /// and as the primary selection, the same of 9 and 10.
+    fn selecting() -> (Kept, [(u32, &'static str, u32); 3]) {
+        let globals = [
+            (1, "wl_data_device_manager", 3),
+            (2, "wl_seat", 7),
+            (3, "zwp_primary_selection_device_manager_v1", 1),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 3);
+        }
+        kept.send(&message(4, 1, &words(&[7, 5]))).unwrap();
+        kept.send(&message(4, 0, &words(&[8]))).unwrap();
+        kept.send(&message(8, 0, &text("text/plain"))).unwrap();
+        kept.send(&message(7, 1, &words(&[8, 9]))).unwrap();
+        kept.send(&message(6, 1, &words(&[9, 5]))).unwrap();
+        kept.send(&message(6, 0, &words(&[10]))).unwrap();
+        kept.send(&message(10, 0, &text("text/plain"))).unwrap();
+        kept.send(&message(9, 0, &words(&[10, 9]))).unwrap();
+        (kept, globals)
+    }
+
+    #[test]
+    fn what_a_program_selected_is_selected_again_as_it_has_the_keyboard_and_nothing_else_is() {
+        let (mut kept, globals) = selecting();
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        kept.keeping.to_compositor.clear();
+        // As the program has the keyboard, the next compositor says there is
+        // no selection: kept from the program, which still holds one, and its
+        // own set again.
+        assert_eq!(kept.told(&message(7, 5, &words(&[0]))), None);
+        assert_eq!(kept.told(&message(9, 1, &words(&[0]))), None);
+        let latest = kept.keeping.serials.latest();
+        assert_eq!(
+            bytes(&kept.keeping.to_compositor),
+            [
+                message(7, 1, &words(&[8, latest])),
+                message(9, 0, &words(&[10, latest])),
+            ]
+        );
+        kept.keeping.to_compositor.clear();
+        // Once only.
+        assert!(kept.told(&message(7, 5, &words(&[0]))).is_some());
+        assert!(kept.keeping.to_compositor.is_empty());
+    }
+
+    #[test]
+    fn what_a_program_selected_gives_way_to_what_was_selected_meanwhile() {
+        let (mut kept, globals) = selecting();
+        kept.restarted(&globals);
+        // Something else copied meanwhile, under the next compositor.
+        kept.told(&message(7, 0, &words(&[SERVERS]))).unwrap();
+        let told = kept.told(&message(7, 5, &words(&[SERVERS])));
+        assert_eq!(told, Some(message(7, 5, &words(&[SERVERS]))));
+        kept.told(&message(9, 0, &words(&[SERVERS + 1]))).unwrap();
+        let told = kept.told(&message(9, 1, &words(&[SERVERS + 1])));
+        assert_eq!(told, Some(message(9, 1, &words(&[SERVERS + 1]))));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(8, 2, &[]), message(10, 1, &[])],
+            "each source told it is the selection no longer"
+        );
+    }
+
+    #[test]
+    fn what_was_selected_no_longer_or_set_again_is_not_selected_again() {
+        let (mut kept, globals) = selecting();
+        // The clipboard taken by another; what was selected let go of, and
+        // the primary selection given up.
+        kept.told(&message(8, 2, &[])).unwrap();
+        kept.send(&message(10, 1, &[])).unwrap();
+        kept.send(&message(9, 0, &words(&[0, 9]))).unwrap();
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        kept.keeping.to_compositor.clear();
+        assert!(kept.told(&message(7, 5, &words(&[0]))).is_some());
+        assert!(kept.told(&message(9, 1, &words(&[0]))).is_some());
+        assert!(kept.keeping.to_compositor.is_empty());
     }
 
     #[test]

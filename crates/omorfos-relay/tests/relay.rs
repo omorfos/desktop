@@ -11,7 +11,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use omorfos_ipc::relay::{self, Hand, Program};
+use omorfos_ipc::relay::{self, Hand, Program, Received, Started};
 use omorfos_relay::Relay;
 use tempfile::TempDir;
 
@@ -68,16 +68,24 @@ impl Held {
         }
     }
 
+    /// The next record the relay hands `compositor` with a connection: not
+    /// the word that it has handed every program it kept.
+    fn handed(&mut self, compositor: &OwnedFd) -> Received {
+        let mut handed = None;
+        self.until(|_| {
+            handed = relay::receive(compositor.as_fd()).unwrap();
+            handed
+                .as_ref()
+                .is_some_and(|handed| handed.hand != Some(Hand::Kept))
+        });
+        handed.unwrap()
+    }
+
     /// A program that connects, and the compositor's end of its connection,
     /// with who the relay said it is.
     fn connect(&mut self, compositor: &OwnedFd) -> (UnixStream, UnixStream, Program) {
         let program = UnixStream::connect(&self.socket).unwrap();
-        let mut handed = None;
-        self.until(|_| {
-            handed = relay::receive(compositor.as_fd()).unwrap();
-            handed.is_some()
-        });
-        let handed = handed.unwrap();
+        let handed = self.handed(compositor);
         let who = if let Some(Hand::Program(who)) = handed.hand {
             Some(who)
         } else {
@@ -268,12 +276,7 @@ fn a_compositor_started_anew_is_handed_the_programs_kept_and_their_registries_fi
     drop((compositor, connection));
     held.step();
     let next = held.compositor();
-    let mut handed = None;
-    held.until(|_| {
-        handed = relay::receive(next.as_fd()).unwrap();
-        handed.is_some()
-    });
-    let handed = handed.unwrap();
+    let handed = held.handed(&next);
     assert_eq!(
         handed.hand,
         Some(Hand::Program(who)),
@@ -488,4 +491,73 @@ fn a_program_kept_for_a_compositor_that_has_gone_already_is_let_go_and_said_to_b
         )),
         "{said}"
     );
+}
+
+#[test]
+fn a_compositor_is_told_once_every_program_kept_has_been_handed_to_it() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let first = relay::receive(compositor.as_fd()).unwrap().unwrap();
+    assert_eq!(first.hand, Some(Hand::Kept), "none, at first");
+    let (_program, connection, who) = held.connect(&compositor);
+    drop((compositor, connection));
+    held.step();
+    let next = held.compositor();
+    let handed = relay::receive(next.as_fd()).unwrap().unwrap();
+    assert_eq!(handed.hand, Some(Hand::Program(who)));
+    let then = relay::receive(next.as_fd()).unwrap().unwrap();
+    assert_eq!(then.hand, Some(Hand::Kept), "then that it is all");
+}
+
+#[test]
+fn a_part_the_compositor_started_is_kept_as_programs_are_with_its_roles() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (relays, mut part) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: 16,
+    };
+    relay::send(
+        compositor.as_fd(),
+        &Hand::Started(started),
+        &[relays.as_fd()],
+    )
+    .unwrap();
+    drop(relays);
+    let handed = held.handed(&compositor);
+    let Some(Hand::Part(who, roles)) = handed.hand else {
+        panic!("{:?}", handed.hand);
+    };
+    assert_eq!((who.pid, roles), (started.pid, 16));
+    assert!(who.number.is_some(), "numbered as programs are");
+    // What it says is passed on as a program's is.
+    let mut connection = UnixStream::from(handed.fds.into_iter().next().unwrap());
+    connection.set_nonblocking(true).unwrap();
+    part.write_all(&get_registry()).unwrap();
+    assert_eq!(read(&mut held, &mut connection, 12), get_registry());
+
+    // Kept for the next compositor, which is told its roles again.
+    drop((compositor, connection));
+    held.step();
+    let next = held.compositor();
+    let again = held.handed(&next);
+    assert_eq!(again.hand, Some(Hand::Part(who, 16)));
+}
+
+#[test]
+fn a_part_handed_without_a_connection_or_with_one_that_is_not_is_not_let_in() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let started = Hand::Started(Started { pid: 1, roles: 16 });
+    relay::send(compositor.as_fd(), &started, &[]).unwrap();
+    let file = std::fs::File::open("/dev/null").unwrap();
+    relay::send(compositor.as_fd(), &started, &[file.as_fd()]).unwrap();
+    held.until(|held| !held.said.is_empty());
+    let said = String::from_utf8(held.said.clone()).unwrap();
+    assert!(
+        said.starts_with("omorfos-relay: a part of the session could not be let in:"),
+        "{said}"
+    );
+    assert_eq!(held.relay.programs(), 0);
 }

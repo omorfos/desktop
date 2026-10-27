@@ -45,6 +45,9 @@ const DISPLAY: u32 = 1;
 /// Which of the display's events says a number may be taken again.
 const DELETE_ID: u16 = 1;
 
+/// Which of a source's events for the clipboard says it is held no longer.
+const CANCELLED: u16 = 1;
+
 /// The numbers of the surface's requests the relay sends of its own
 /// accord, and of the one that gives it a buffer, which a window may not
 /// have until the compositor has said how it is to be.
@@ -88,7 +91,10 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         ) => Rule::Pending,
         ("wl_surface", "commit") => Rule::Commit,
         ("wl_region", "add" | "subtract")
-        | ("wl_data_source" | "zwp_primary_selection_source_v1", "offer")
+        | (
+            "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1",
+            "offer",
+        )
         | ("zwp_linux_buffer_params_v1", "add")
         | ("xdg_toplevel_icon_v1", "add_buffer") => Rule::Adding,
         ("wl_shm_pool", "resize")
@@ -102,14 +108,17 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("zxdg_toplevel_decoration_v1", "set_mode" | "unset_mode")
         | ("wp_viewport", "set_source" | "set_destination")
         | ("wl_subsurface", "set_position" | "set_sync" | "set_desync")
-        | ("xdg_toplevel_icon_v1", "set_name") => Rule::Lasting,
+        | ("xdg_toplevel_icon_v1", "set_name")
+        | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection") => {
+            Rule::Lasting
+        }
         _ => Rule::Passing,
     }
 }
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 31] = [
+const KEPT: [&str; 33] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -125,6 +134,8 @@ const KEPT: [&str; 31] = [
     "wl_data_source",
     "zwp_primary_selection_device_v1",
     "zwp_primary_selection_source_v1",
+    "ext_data_control_device_v1",
+    "ext_data_control_source_v1",
     "xdg_surface",
     "xdg_toplevel",
     "xdg_positioner",
@@ -497,7 +508,28 @@ impl Journal {
         {
             self.theirs.insert(made);
         }
+        if read.interface.name == "ext_data_control_source_v1" && header.opcode == CANCELLED {
+            self.unset(header.object);
+        }
         true
+    }
+
+    /// Lets go of what set `source` as what a device for the clipboard
+    /// holds, as something else is held now.
+    fn unset(&mut self, source: u32) {
+        let mut dropped = Vec::new();
+        let devices = self.kept.iter_mut();
+        let devices =
+            devices.filter(|(_, kept)| kept.interface.name == "ext_data_control_device_v1");
+        for (device, kept) in devices {
+            let set = kept
+                .lasting
+                .extract_if(.., |set| set.names.contains(&source));
+            dropped.extend(set.map(|set| (*device, set)));
+        }
+        for (device, set) in dropped {
+            self.unname(device, &set.names);
+        }
     }
 
     /// The numbers the program is now to be told may be taken again, as
@@ -614,7 +646,8 @@ impl Journal {
     ) -> Result<(Vec<Sending>, Vec<u32>), Broken> {
         let mut sending = Vec::new();
         // What is asked of an `xdg_surface`, where its window's edges are,
-        // may be asked only once it has a role, which is made after it.
+        // may be asked only once it has a role, which is made after it; and
+        // what a device for the clipboard is to hold, once what holds it is.
         let mut roled = Vec::new();
         let ordered = self.ordered();
         for (number, kept) in &ordered {
@@ -634,7 +667,10 @@ impl Journal {
                 .iter()
                 .chain(&kept.adding)
                 .map(Message::sending);
-            if kept.interface.name == "xdg_surface" {
+            if matches!(
+                kept.interface.name,
+                "xdg_surface" | "ext_data_control_device_v1"
+            ) {
                 roled.extend(lasting);
             } else {
                 sending.extend(lasting);
@@ -1067,6 +1103,38 @@ mod tests {
     }
 
     #[test]
+    fn what_keeps_the_clipboard_sets_it_again_once_what_it_names_is_made() {
+        let mut program = Program::default();
+        program.bind(1, "wl_seat", 1, 3);
+        program.bind(2, "ext_data_control_manager_v1", 1, 4);
+        program.send(&sent(4, 1, &words(&[5, 3])), &[]);
+        // Two sources set in turn, each offering text.
+        for source in [6, 7] {
+            program.send(&sent(4, 0, &words(&[source])), &[]);
+            program.send(&sent(source, 0, &text("text/plain")), &[]);
+            program.send(&sent(5, 0, &words(&[source])), &[]);
+        }
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let made = opcodes(&sending);
+        let at = |wanted| made.iter().position(|made| *made == wanted).unwrap();
+        assert!(
+            at((7, 0)) < at((5, 0)),
+            "what it names made first: {made:?}"
+        );
+        let set: Vec<&Sending> = sending
+            .iter()
+            .filter(|(bytes, _)| bytes[..8] == sent(5, 0, &words(&[0]))[..8])
+            .collect();
+        assert_eq!(set.len(), 1, "the last, alone");
+        assert_eq!(wire::word(&set[0].0, HEADER), Some(7));
+
+        // Taken over by what another copied, it is not set again.
+        assert!(program.told(&sent(7, 1, &[])));
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        assert!(!opcodes(&sending).contains(&(5, 0)));
+    }
+
+    #[test]
     fn what_undoes_what_was_set_is_made_again_in_the_order_last_made() {
         let mut program = Program::default();
         program.bind(1, "xdg_wm_base", 6, 3);
@@ -1277,6 +1345,8 @@ mod tests {
             Rule::Adding
         );
         assert_eq!(rule("wl_data_source", "set_actions"), Rule::Lasting);
+        let device = "ext_data_control_device_v1";
+        assert_eq!(rule(device, "set_primary_selection"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "set_title"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "move"), Rule::Passing);
         assert_eq!(rule("wp_viewport", "set_destination"), Rule::Lasting);

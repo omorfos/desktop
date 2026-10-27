@@ -17,14 +17,14 @@ use std::time::Duration;
 
 use omorfos::{Input, Roles};
 use omorfos_ipc::hold::{Told, Word};
-use omorfos_ipc::relay::{self, Hand, Program};
+use omorfos_ipc::relay::{self, Hand, Program, Started};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, LayerShape, Session};
+use crate::common::{Client, Event, LayerShape, Session, TEXT};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
@@ -211,6 +211,18 @@ impl Relayed {
     /// Starts a compositor as [`Relayed::compositor`] does, with `prepared`
     /// done to it before it is joined.
     fn compositor_with(&self, prepared: impl FnOnce(&mut Session)) -> (Session, Holder) {
+        let (session, holder, _) = self.compositor_and_end(prepared);
+        (session, holder)
+    }
+
+    /// Starts a compositor as [`Relayed::compositor_with`] does, and keeps
+    /// a copy of its end of its connection to the relay, for a test to hand
+    /// the relay what the compositor would. It is to be dropped before the
+    /// compositor ends, for the relay to see it go.
+    fn compositor_and_end(
+        &self,
+        prepared: impl FnOnce(&mut Session),
+    ) -> (Session, Holder, OwnedFd) {
         let mut session = Session::new();
         prepared(&mut session);
         let (relays, compositor) = relay::pair().unwrap();
@@ -225,7 +237,7 @@ impl Relayed {
         );
         relay::send(self.holder.as_fd(), &Hand::Compositor, &[relays.as_fd()]).unwrap();
         session.stepped.push(self.stepping());
-        (session, holder)
+        (session, holder, compositor)
     }
 
     /// What steps the relay once, without waiting.
@@ -887,4 +899,131 @@ fn a_window_drawn_in_the_memory_of_the_card_is_shown_again_by_the_next_composito
     relayed.kept();
     let (mut second, _holder) = relayed.compositor_with(offered);
     second.eventually(|session| session.draw().at(10, 10) == GREEN);
+}
+
+#[test]
+fn a_part_handed_back_by_the_relay_has_the_roles_its_compositor_gave_it() {
+    let relayed = Relayed::new();
+    let (mut session, _holder, towards) = relayed.compositor_and_end(|_| ());
+    // What the relay does not know, from the compositor, is passed over.
+    relay::send(towards.as_fd(), &Hand::Kept, &[]).unwrap();
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::PANEL.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut panel = session.adopt(ours);
+    let strip = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 20),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let _held = panel.layer(&strip);
+    session.roundtrip(&mut panel);
+    session.roundtrip(&mut panel);
+    let told = panel.take_events();
+    let shown = told
+        .iter()
+        .any(|event| matches!(event, Event::LayerConfigure { .. }));
+    assert!(shown && !told.contains(&Event::LayerClosed), "{told:?}");
+}
+
+#[test]
+fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    // The keeper, connected as the compositor starts it: its connection
+    // handed to the relay, with the role of keeping the clipboard.
+    let directory = tempfile::TempDir::new().unwrap();
+    let listener = UnixListener::bind(directory.path().join("wayland-keeper")).unwrap();
+    let runtime = directory.path().to_owned();
+    let keeper = std::thread::spawn(move || {
+        let variable = |variable: &str| match variable {
+            "XDG_RUNTIME_DIR" => Some(runtime.clone().into_os_string()),
+            "WAYLAND_DISPLAY" => Some("wayland-keeper".into()),
+            _ => None,
+        };
+        let limits = omorfos_clipboard::Limits::default();
+        crate::keeper::said(omorfos_clipboard::start_with(&variable, limits))
+    });
+    let (part, _) = listener.accept().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::CLIPBOARD.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+
+    // A program copies, the keeper takes it, and the program closes.
+    let mut editor = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut editor, "editor", (200, 100), RED);
+    editor.copy_as("kept", &[TEXT]);
+    first.eventually(|session| {
+        session.roundtrip(&mut editor);
+        editor.state.replaced
+    });
+    drop(editor);
+
+    // The compositor ends, and the next has it on the clipboard at once.
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    let pasted = |session: &mut Session| {
+        let mut terminal = session.connect();
+        session.open(&mut terminal, "terminal", (200, 100), BLUE);
+        let pipe = terminal.paste();
+        session.roundtrip(&mut terminal);
+        pipe.map(|mut pipe| {
+            let mut text = String::new();
+            let _ = pipe.read_to_string(&mut text);
+            text
+        })
+    };
+    second.eventually(|session| pasted(session).as_deref() == Some("kept"));
+    drop(second);
+    assert!(!keeper.is_finished() || keeper.join().is_ok());
+}
+
+/// The stand-in for a program that runs for the whole session as the keeper
+/// of `session`, which is started once the compositor has been joined to the
+/// relay, as the backend does.
+fn keeping(session: &mut Session) {
+    let component =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/component");
+    session.compositor_mut().set_keeper(component);
+}
+
+#[test]
+fn the_keeper_is_started_through_the_relay_and_not_again_by_the_next_compositor() {
+    let relayed = Relayed::new();
+    // The stand-in leaves its marks beside the socket for scripts, which a
+    // compositor joined to the relay serves beside the relay's.
+    let beside = relayed.path.parent().unwrap().to_owned();
+    std::fs::write(beside.join("component-does"), "stay").unwrap();
+    let started = || std::fs::read_to_string(beside.join("component-started")).unwrap_or_default();
+    let (mut first, first_holder) = relayed.compositor_with(keeping);
+    first.compositor_mut().autostart();
+    // Once the relay has said it kept nothing, through the relay.
+    let process = || std::fs::read_to_string(beside.join("component-process")).ok();
+    first.eventually(|_| {
+        started() == "x" && process().is_some() && relayed.relay.borrow().programs() == 1
+    });
+    let process = process().unwrap();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor_with(keeping);
+    second.compositor_mut().autostart();
+    for _ in 0..50 {
+        second.step();
+    }
+    assert_eq!(started(), "x", "the one kept is the keeper");
+    assert_eq!(relayed.relay.borrow().programs(), 1);
+    let _ = Command::new("kill").arg(process).status();
 }

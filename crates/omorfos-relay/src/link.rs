@@ -19,7 +19,7 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::rc::Rc;
 
-use omorfos_ipc::relay::Program;
+use omorfos_ipc::relay::{Hand, Program};
 use rustix::io::Errno;
 use rustix::net::{
     RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, ReturnFlags, SendAncillaryBuffer,
@@ -111,6 +111,9 @@ pub struct Link {
     program: UnixStream,
     /// Who the program is, as the compositor is told.
     who: Program,
+    /// The roles the compositor gave it, where it is a part of the session
+    /// it started: none for a program.
+    roles: u8,
     compositor: Option<UnixStream>,
     objects: Objects,
     keeping: Keeping,
@@ -133,6 +136,7 @@ impl Link {
         unwaited.map(|()| Self {
             program,
             who,
+            roles: 0,
             compositor: Some(compositor),
             objects: Objects::default(),
             keeping: Keeping::default(),
@@ -146,6 +150,25 @@ impl Link {
     #[must_use]
     pub const fn who(&self) -> Program {
         self.who
+    }
+
+    /// This link, of a part of the session that the compositor gave
+    /// `roles`.
+    #[must_use]
+    pub const fn with_roles(mut self, roles: u8) -> Self {
+        self.roles = roles;
+        self
+    }
+
+    /// The hand that tells a compositor of the program: as a part of the
+    /// session with its roles, where it has some.
+    #[must_use]
+    pub const fn hand(&self) -> Hand {
+        if self.roles == 0 {
+            Hand::Program(self.who)
+        } else {
+            Hand::Part(self.who, self.roles)
+        }
     }
 
     /// The program's connection.

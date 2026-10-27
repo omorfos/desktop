@@ -125,6 +125,12 @@ impl Serials {
         self.entered = Some(self.latest);
     }
 
+    /// The compositor's last serial, as it has it.
+    #[must_use]
+    pub fn latest(&self) -> u32 {
+        self.latest
+    }
+
     /// The last serial the program has been told, as it has it.
     #[must_use]
     pub fn last(&self) -> u32 {

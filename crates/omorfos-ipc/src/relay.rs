@@ -4,7 +4,10 @@
 //! reads from, and hands it over that connection the socket programs
 //! connect to, then, for each compositor it starts, the relay's end of a
 //! connection to it. Over that one the relay hands the compositor each
-//! program that connects, with who the program is.
+//! program that connects, with who the program is; and the compositor
+//! hands the relay each part of the session it starts with roles that is
+//! to be kept as programs are, which the relay hands back with them, and
+//! again to each compositor after.
 //!
 //! Each connection carries records, not a stream: a [`Hand`] and the
 //! descriptors with it arrive whole and alone. A hand not known is passed
@@ -35,6 +38,16 @@ pub struct Program {
     pub number: Option<u32>,
 }
 
+/// A part of the session the compositor started with roles, to be kept by
+/// the relay as programs are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Started {
+    /// Its process.
+    pub pid: u32,
+    /// The roles it has, as the compositor counts them.
+    pub roles: u8,
+}
+
 /// A hand, with the descriptors it says come with it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hand {
@@ -46,6 +59,16 @@ pub enum Hand {
     /// From the relay: the compositor's end of a program's connection, and
     /// who the program is.
     Program(Program),
+    /// From the compositor: the relay's end of the connection of a part of
+    /// the session it started, with its roles.
+    Started(Started),
+    /// From the relay: the compositor's end of the connection of a part of
+    /// the session, who it is, and the roles the compositor that started it
+    /// gave it.
+    Part(Program, u8),
+    /// From the relay: every program it kept for this compositor has been
+    /// handed over.
+    Kept,
 }
 
 impl Hand {
@@ -55,14 +78,10 @@ impl Hand {
         match self {
             Self::Socket => "socket".to_owned(),
             Self::Compositor => "compositor".to_owned(),
-            Self::Program(program) => {
-                let number = program.number.map(|number| format!(" {number}"));
-                let number = number.unwrap_or_default();
-                format!(
-                    "program {} {} {}{number}",
-                    program.pid, program.uid, program.gid
-                )
-            }
+            Self::Program(program) => format!("program {}", who(program, None)),
+            Self::Started(started) => format!("started {} {}", started.pid, started.roles),
+            Self::Part(program, roles) => format!("part {}", who(program, Some(*roles))),
+            Self::Kept => "kept".to_owned(),
         }
     }
 
@@ -73,23 +92,56 @@ impl Hand {
         match words.next() {
             Some("socket") => Some(Self::Socket),
             Some("compositor") => Some(Self::Compositor),
-            Some("program") => {
+            Some("program") => read_who(words, false).map(|(program, _)| Self::Program(program)),
+            Some("started") => {
                 let mut numbers = words.map(str::parse::<u32>);
-                let mut number = || numbers.next().and_then(Result::ok);
-                let (pid, uid, gid) = (number(), number(), number());
-                let given = numbers.next().map(Result::ok);
-                let program = Program {
-                    pid: pid?,
-                    uid: uid?,
-                    gid: gid?,
-                    number: given.flatten(),
-                };
-                let whole = given.is_none_or(|number| number.is_some()) && numbers.next().is_none();
-                whole.then_some(Self::Program(program))
+                let pid = numbers.next()?.ok()?;
+                let roles = u8::try_from(numbers.next()?.ok()?).ok()?;
+                let whole = numbers.next().is_none();
+                whole.then_some(Self::Started(Started { pid, roles }))
             }
+            Some("part") => {
+                let read = read_who(words, true);
+                read.map(|(program, roles)| Self::Part(program, roles))
+            }
+            Some("kept") => words.next().is_none().then_some(Self::Kept),
             _ => None,
         }
     }
+}
+
+/// Who `program` is as a hand writes it, with `roles` before its number
+/// where there are some.
+fn who(program: &Program, roles: Option<u8>) -> String {
+    let roles = roles.map(|roles| format!(" {roles}")).unwrap_or_default();
+    let number = program.number.map(|number| format!(" {number}"));
+    let number = number.unwrap_or_default();
+    format!(
+        "{} {} {}{roles}{number}",
+        program.pid, program.uid, program.gid
+    )
+}
+
+/// Who a program is, as [`who`] writes it in `words`, and its roles, if it
+/// is written `with_roles`: none otherwise.
+fn read_who<'a>(words: impl Iterator<Item = &'a str>, with_roles: bool) -> Option<(Program, u8)> {
+    let mut numbers = words.map(str::parse::<u32>);
+    let mut number = || numbers.next().and_then(Result::ok);
+    let (pid, uid, gid) = (number()?, number()?, number()?);
+    let roles = if with_roles {
+        u8::try_from(number()?).ok()?
+    } else {
+        0
+    };
+    let given = numbers.next().map(Result::ok);
+    let program = Program {
+        pid,
+        uid,
+        gid,
+        number: given.flatten(),
+    };
+    let whole = given.is_none_or(|number| number.is_some()) && numbers.next().is_none();
+    whole.then_some((program, roles))
 }
 
 /// What came over a connection: a hand, unless it was one not known, and
@@ -192,13 +244,33 @@ mod tests {
         number: None,
     });
 
+    /// A part of the session started with the `clipboard` role, as the
+    /// compositor hands it to the relay, and as the relay hands it on.
+    const STARTED: Hand = Hand::Started(Started {
+        pid: 4321,
+        roles: 16,
+    });
+    const PART: Hand = Hand::Part(
+        Program {
+            pid: 4321,
+            uid: 1000,
+            gid: 100,
+            number: Some(7),
+        },
+        16,
+    );
+
     #[test]
     fn each_hand_is_read_as_it_is_written() {
-        for hand in [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED] {
+        let hands = [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED];
+        for hand in hands.into_iter().chain([STARTED, PART, Hand::Kept]) {
             assert_eq!(Hand::read(&hand.written()), Some(hand));
         }
         assert_eq!(PROGRAM.written(), "program 4321 1000 100 7");
         assert_eq!(UNNUMBERED.written(), "program 4321 1000 100");
+        assert_eq!(STARTED.written(), "started 4321 16");
+        assert_eq!(PART.written(), "part 4321 1000 100 16 7");
+        assert_eq!(Hand::Kept.written(), "kept");
     }
 
     #[test]
@@ -213,6 +285,16 @@ mod tests {
             "program 1 2 3 x",
             "program 1 2 3 4 5",
             "program -1 2 3",
+            "started",
+            "started 1",
+            "started x 1",
+            "started 1 x",
+            "started 1 256",
+            "started 1 2 3",
+            "part 1 2 3",
+            "part 1 2 3 256 4",
+            "part 1 2 3 4 5 6",
+            "kept 1",
         ] {
             assert_eq!(Hand::read(text), None, "{text:?}");
         }
