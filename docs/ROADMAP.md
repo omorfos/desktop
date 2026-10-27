@@ -895,7 +895,14 @@ the first than on the last.
       the dock when minimized, a notification that comes in and goes
       beside others that stay; the panels and the titlebar sliding in
       from the edge they are brought back at on a fullscreen workspace,
-      and out again. All of it off with one setting.
+      and out again; and a window that changes size, by its edge, by the
+      line between parts, by being tiled, maximized or given the room of
+      one that closed, changing it smoothly: its frame and the line
+      gliding with the pointer or easing to where they go, and the
+      window's last picture stretched to the frame until its program has
+      drawn the new size, then faded into it. Programs are still asked a
+      size only once they have drawn the last, so a slow one is not
+      flooded. All of it off with one setting.
 - [ ] To be tried once there are effects: on a shared workspace, the
       windows without focus drawn a little fainter or blurred, so that
       the one with focus stands out. It has to be weighed against the
@@ -1133,7 +1140,8 @@ Programs written for X11:
 Known gaps carried forward:
 
 - [ ] During a resize from the left or top edge, the window's content can
-      lag the frame by a frame or two.
+      lag the frame by a frame or two, until a window that changes size
+      does so smoothly (stage 4, "Movement").
 - [ ] Dragging and dropping between applications works through Smithay's
       defaults and has no test.
 - [ ] The nested backend has not been run by hand since the event loop
