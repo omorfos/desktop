@@ -163,6 +163,26 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   for constructors that take one. As each protocol's does, offer it at
   the version in the list, and take this entry out once all do.
 
+### What has changed can hold empty rectangles
+
+- **Wrong:** `OutputDamageTracker::damage_output` can give rectangles of
+  no width or height. A program may add an empty rectangle to its opaque
+  region, as Firefox 153 does under its toolbars; it is kept as opaque,
+  and each time the regions are compared it is given back as damage, since
+  `Rectangle::overlaps`, and so `intersection`, take an empty rectangle
+  inside another to overlap it. The pixman renderer's `map_texture` then
+  builds a slice from a null pointer when asked to read such a part, which
+  is undefined behaviour.
+- **Meanwhile:** `Capture::due` in `crates/omorfos/src/capture.rs` drops
+  empty rectangles from what has changed before a program is told or
+  anything is read, and takes a change of nothing but them for none.
+- **Check:** `grep -n -A10 'pub fn overlaps' "$S"/src/utils/geometry.rs`
+  for whether an empty rectangle can overlap, and
+  `grep -n 'opaque_regions' "$S"/src/backend/renderer/element/surface.rs`
+  for whether empty opaque rectangles are dropped. Once neither lets one
+  through, take the filter out and run
+  `cargo test -p omorfos --test integration sharing::a_shared_window_that_says_an_empty_part_of_it_is_opaque_goes_on_being_shared`.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### No safe way to hold a stream's buffer or give one memory

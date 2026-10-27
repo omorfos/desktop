@@ -1561,6 +1561,47 @@ fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
 }
 
 #[test]
+fn a_shared_window_that_says_an_empty_part_of_it_is_opaque_goes_on_being_shared() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    // Firefox says so of a line between its toolbars and the page.
+    let opaque = app.region((0, 0, 200, 40));
+    opaque.add(0, 40, 200, 0);
+    opaque.add(0, 41, 200, 59);
+    window.surface.set_opaque_region(Some(&opaque));
+    app.fill(&window.surface, (200, 100), BLUE);
+    session.roundtrip(&mut app);
+    let _ipc = session.listen();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let node = shared_window(
+        &mut session,
+        &daemon,
+        &mut app,
+        "/org/freedesktop/portal/desktop/session/1_1/opaque",
+    );
+    // Only a corner of it changes, and more often than the stream has
+    // buffers, so that each is told what changed in the others.
+    let mut viewer = Viewer::new(&remote);
+    for colour in [GREEN, BLUE, GREEN, BLUE, GREEN, BLUE] {
+        let buffer = app.buffer((200, 100), colour);
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage_buffer(150, 60, 50, 40);
+        window.surface.commit();
+        session.roundtrip(&mut app);
+        session.eventually(|session| {
+            session.draw();
+            app.receive();
+            viewer.turn(node);
+            viewer.pixels() == 200 * 100 && viewer.at(200, (175, 80)) == Some(colour)
+        });
+    }
+}
+
+#[test]
 fn where_a_window_may_be_shared_the_screen_is_shared_from_beside_the_windows() {
     let daemon = Daemon::start();
     let pipewire = Pipewire::start();

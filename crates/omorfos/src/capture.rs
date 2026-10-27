@@ -570,6 +570,16 @@ impl Capture {
             };
             let changed = taking.tracker.damage_output(1, elements).ok();
             let changed = changed.and_then(|(damage, _)| damage.cloned());
+            // What has changed can hold rectangles with nothing in them, as
+            // where a program says an empty part of it is opaque, which
+            // Firefox does. Nothing has changed there: told so, a program
+            // would say it back as what is stale in its buffer, which the
+            // protocol forbids, and nothing is to be read from it.
+            let changed = changed.map(|mut damage| {
+                damage.retain(|part| !part.is_empty());
+                damage
+            });
+            let changed = changed.filter(|damage| !damage.is_empty());
             let damage = if taking.taken {
                 changed
             } else {
