@@ -1099,8 +1099,10 @@ fn pinentry() -> PathBuf {
 /// What every home of GnuPG's here tells its agent. How many times a
 /// passphrase is hashed is said: left to itself, the agent times how many
 /// it can do in a tenth of a second, which on a busy machine is as
-/// unreliable as anything timed.
-const AGENT_CONF: &str = "allow-loopback-pinentry\ns2k-count 65536\n";
+/// unreliable as anything timed. And the agent asks no smart card: with
+/// one plugged in, as a security key may be, GnuPG signs with the card's
+/// key by default, which no home here holds, and asks for no passphrase.
+const AGENT_CONF: &str = "allow-loopback-pinentry\ns2k-count 65536\ndisable-scdaemon\n";
 
 /// A home of GnuPG's of its own, private to the user as GnuPG wants it.
 fn home_of_gnupg() -> tempfile::TempDir {
