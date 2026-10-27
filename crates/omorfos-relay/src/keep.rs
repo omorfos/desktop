@@ -47,6 +47,11 @@ const SETTLING: u8 = 2;
 /// number of times it has been committed.
 const TEXT_DONE: u16 = 5;
 
+/// The requests that ack a configure: a window's `xdg_surface`'s, and a
+/// layer surface's.
+const WINDOW_ACK: u16 = 4;
+const LAYER_ACK: u16 = 6;
+
 /// Numbers that mean something only to one compositor, kept as the
 /// program's for theirs where the two differ.
 #[derive(Debug, Default)]
@@ -99,12 +104,14 @@ struct Global {
     version: u32,
 }
 
-/// A window, as far as its configures go.
+/// A window or a layer surface, as far as its configures go.
 #[derive(Debug, Default)]
 struct Window {
     /// The serials the compositor has sent the program for it, not yet
     /// acked.
     offered: Vec<u32>,
+    /// The size a layer surface was last told it is.
+    size: Option<(u32, u32)>,
 }
 
 /// What has the pointer, the keyboard or a field typed into, as the program
@@ -154,7 +161,7 @@ pub struct Keeping {
     globals: Vec<Global>,
     /// The globals the new compositor offers, as it says them.
     offered: Vec<Global>,
-    /// The windows, by their `xdg_surface`.
+    /// The windows, by their `xdg_surface`, and the layer surfaces.
     windows: HashMap<u32, Window>,
     /// What has the pointer, the keyboard or a field, by the pointer,
     /// keyboard or field.
@@ -308,7 +315,8 @@ impl Keeping {
             self.focus.retain(gone);
             self.held.retain(gone);
         }
-        if read.interface.name == "xdg_surface" && described.name == "ack_configure" {
+        let roled = matches!(read.interface.name, "xdg_surface" | "zwlr_layer_surface_v1");
+        if roled && described.name == "ack_configure" {
             let serial = wire::word(bytes, HEADER).unwrap_or_default();
             let window = self.windows.entry(header.object).or_default();
             if !window.offered.contains(&serial) {
@@ -554,7 +562,10 @@ impl Keeping {
             // has no size and no focus, which a program takes for focus
             // gone. What it says once the window is shown is told.
             ("xdg_toplevel", 0) if catching => return false,
-            ("xdg_surface", 0) => return self.configured(object, word(0)),
+            ("xdg_surface", 0) => return self.configured(object, word(0), None),
+            ("zwlr_layer_surface_v1", 0) => {
+                return self.configured(object, word(0), Some((word(4), word(8))));
+            }
             ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 0) => {
                 self.gestures.insert(object, 2);
             }
@@ -686,21 +697,32 @@ impl Keeping {
         }
     }
 
-    /// Takes in that the compositor has said how the window `xdg_surface`
-    /// is to be, with `serial`. Returns whether it is passed on.
-    fn configured(&mut self, xdg_surface: u32, serial: u32) -> bool {
+    /// Takes in that the compositor has said how the window `role`, its
+    /// `xdg_surface`, or the layer surface `role` that says its `size`, is
+    /// to be, with `serial`. Returns whether it is passed on.
+    fn configured(&mut self, role: u32, serial: u32, size: Option<(u32, u32)>) -> bool {
         let caught_up = self.caught_up();
-        let window = self.windows.entry(xdg_surface).or_default();
+        let window = self.windows.entry(role).or_default();
+        let told = window.size;
+        window.size = size;
         if caught_up {
             window.offered.push(serial);
             return true;
         }
-        // Catching up, the relay acks it and shows what the window showed.
+        // Catching up, the relay acks it and shows what was shown.
         let theirs = self.serials.asked(serial, false);
+        let ack = if size.is_some() {
+            LAYER_ACK
+        } else {
+            WINDOW_ACK
+        };
         self.to_compositor
-            .push(journal::message(xdg_surface, 4, &[theirs]));
-        self.to_compositor.extend(self.journal.shown(xdg_surface));
-        false
+            .push(journal::message(role, ack, &[theirs]));
+        self.to_compositor.extend(self.journal.shown(role));
+        // A layer surface told another size, as its screen may be, is told
+        // so: the relay has acked it already, and the program's ack is kept
+        // from the compositor.
+        size.is_some() && size != told
     }
 
     /// Takes in that the relay's sync `sync` is answered: the registries
@@ -1329,6 +1351,43 @@ mod tests {
         kept.told(&message(7, 2, &words(&[13, 5]))).unwrap();
         assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         assert_eq!(kept.keeping.to_program.len(), 0, "nothing had them");
+    }
+
+    #[test]
+    fn a_layer_surface_is_told_its_size_again_only_where_it_changed() {
+        let globals = [(1, "zwlr_layer_shell_v1", 4), (2, "wl_compositor", 6)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "zwlr_layer_shell_v1", 4, 3);
+        kept.bind(2, "wl_compositor", 6, 4);
+        kept.send(&message(4, 0, &words(&[5]))).unwrap();
+        let mut made = words(&[6, 5, 0, 2]);
+        made.extend(text("panel"));
+        kept.send(&message(3, 0, &made)).unwrap();
+        kept.told(&message(6, 0, &words(&[1, 640, 30]))).unwrap();
+        assert!(kept.send(&message(6, 6, &words(&[1]))).is_some(), "acked");
+
+        kept.restarted(&globals);
+        let same = message(6, 0, &words(&[3, 640, 30]));
+        assert_eq!(kept.told(&same), None, "the same, so not told");
+        let acked = |kept: &Kept| {
+            kept.keeping.to_compositor.iter().any(|(bytes, _)| {
+                let header = wire::header(bytes).unwrap().unwrap();
+                (header.object, header.opcode) == (6, 6)
+            })
+        };
+        assert!(acked(&kept), "acked by the relay");
+
+        kept.restarted(&globals);
+        let told = kept.told(&message(6, 0, &words(&[4, 800, 30])));
+        let told = told.expect("another, so told");
+        assert_eq!(wire::word(&told, HEADER + 4), Some(800));
+        assert!(acked(&kept), "and acked by the relay");
+        let serial = wire::word(&told, HEADER).unwrap();
+        assert_eq!(
+            kept.send(&message(6, 6, &words(&[serial]))),
+            None,
+            "the program's ack kept from the compositor"
+        );
     }
 
     #[test]

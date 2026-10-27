@@ -430,3 +430,24 @@ compositor taking up its own new version (3e).
   once, one for each program Flatpak has running, and one made past that
   is let go, and said to be, as each holds two descriptors and a program
   may make as many as it likes.
+- **A layer surface is made again as a window is** (3d): with its last
+  size, anchor, margins, exclusive zone, keyboard interactivity and layer,
+  on the screen and layer it was made on, committed with nothing shown,
+  and shown as it was once the new compositor has said how it is to be,
+  which the relay answers. Its configure is told to the program only where
+  the size differs from what it was last told, as on a screen of another
+  size; the relay has acked it, and the program's ack is kept from the
+  compositor. A layer surface is put on the screen only by a program with
+  a role, which the compositor starts with a connection of its own, so
+  that is kept as the keeper is: each program the configuration starts
+  with a role, from `autostart` or a key's `spawn`, has its connection
+  handed to the relay, with its roles, and is handed back to each
+  compositor after. One of those is marked as the user's, by a bit beside
+  its roles, which the roles leave free, so that the next compositor does
+  not take one with the role of the clipboard for the keeper and leave the
+  keeper unstarted; the keeper is the one unmarked, as each was handed
+  before there was the mark, so that a keeper kept across the update is
+  still known. A part is not known by the file its process runs, as one
+  that is a script runs its interpreter. The launcher and the locker are
+  not kept: the one speaks to the socket for scripts, as the components
+  do, and the lock is not made again.

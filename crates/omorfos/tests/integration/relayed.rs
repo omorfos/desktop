@@ -1009,7 +1009,11 @@ fn the_keeper_is_started_through_the_relay_and_not_again_by_the_next_compositor(
     let (mut first, first_holder) = relayed.compositor_with(keeping);
     first.compositor_mut().autostart();
     // Once the relay has said it kept nothing, through the relay.
-    let process = || std::fs::read_to_string(beside.join("component-process")).ok();
+    // Made, then written to: read only once it says the process.
+    let process = || {
+        let said = std::fs::read_to_string(beside.join("component-process")).ok();
+        said.filter(|said| !said.is_empty())
+    };
     first.eventually(|_| {
         started() == "x" && process().is_some() && relayed.relay.borrow().programs() == 1
     });
@@ -1215,4 +1219,88 @@ fn past_as_many_sandboxes_as_are_listened_on_one_made_is_let_go() {
     let said = String::from_utf8_lossy(&relayed.said.borrow()).into_owned();
     let let_go = said.matches("a sandbox was let go, as 64 are listened on already");
     assert_eq!(let_go.count(), 1, "{said}");
+}
+
+#[test]
+fn a_panel_kept_by_the_relay_is_on_its_edge_again_after_a_restart() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::PANEL.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut panel = first.adopt(ours);
+    let strip = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let _held = first.open_layer(&mut panel, &strip, (crate::common::WIDTH, 30), BLUE);
+    assert_eq!(first.draw().at(5, 5), BLUE);
+    first.roundtrip(&mut panel);
+    panel.take_events();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(5, 5) == BLUE);
+    // Windows keep clear of it as before, and it is told nothing new.
+    let mut client = second.connect();
+    second.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(second.draw().at(5, 35), RED);
+    second.roundtrip(&mut panel);
+    let told = panel.take_events();
+    let configured = told
+        .iter()
+        .any(|event| matches!(event, Event::LayerConfigure { .. } | Event::LayerClosed));
+    assert!(!configured, "{told:?}");
+}
+
+#[test]
+fn a_program_started_with_a_role_is_kept_and_not_taken_for_the_keeper() {
+    let relayed = Relayed::new();
+    let beside = relayed.path.parent().unwrap().to_owned();
+    std::fs::write(beside.join("component-does"), "stay").unwrap();
+    let started = || std::fs::read_to_string(beside.join("component-started")).unwrap_or_default();
+    // Made, then written to: read only once it says the process.
+    let process = || {
+        let said = std::fs::read_to_string(beside.join("component-process")).ok();
+        said.filter(|said| !said.is_empty())
+    };
+    // The stand-in, started by the configuration with the role the keeper
+    // has.
+    let component =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/component");
+    let config = format!(
+        "autostart:\n  - {{ run: ['{}'], may: [clipboard] }}\n",
+        component.display()
+    );
+    let (mut first, first_holder) = relayed.compositor_with(|session| {
+        session.write_config("config.yaml", &config);
+        let reload = omorfos_config::Action::ReloadConfig;
+        session.compositor_mut().perform(&reload);
+    });
+    first.compositor_mut().autostart();
+    first.eventually(|_| process().is_some() && relayed.relay.borrow().programs() == 1);
+    let users = process().unwrap();
+    std::fs::remove_file(beside.join("component-process")).unwrap();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 1, "kept");
+    let (mut second, _holder) = relayed.compositor_with(keeping);
+    second.compositor_mut().autostart();
+    // The keeper is started, as the one kept is not it.
+    second.eventually(|_| started() == "xx" && process().is_some());
+    let keeper = process().unwrap();
+    for process in [users, keeper] {
+        let _ = Command::new("kill").arg(process).status();
+    }
 }

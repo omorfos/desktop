@@ -625,7 +625,8 @@ impl Compositor {
     /// the compositor that started it gave it, `roles`, as the relay says,
     /// which is to be trusted as what it says of who a program is is. One
     /// with the role of keeping the clipboard is the keeper, which is then
-    /// not started again.
+    /// not started again, unless it is the user's, which the configuration
+    /// started.
     ///
     /// # Errors
     ///
@@ -636,12 +637,13 @@ impl Compositor {
         program: omorfos_ipc::relay::Program,
         roles: u8,
     ) -> io::Result<Client> {
-        let roles = Roles::from_bits(roles);
+        let users = roles & USERS != 0;
+        let roles = Roles::from_bits(roles & !USERS);
         let inserted = self.insert(stream, roles, false, Some(program));
         inserted.inspect(|_| {
             let keeper = self.components.iter_mut();
             let keeper = keeper.filter(|component| {
-                roles.has(Roles::CLIPBOARD) && component.kind == Program::Keeper
+                !users && roles.has(Roles::CLIPBOARD) && component.kind == Program::Keeper
             });
             for keeper in keeper {
                 keeper.process = Some(program.pid);
@@ -670,7 +672,7 @@ impl Compositor {
                 && component.kind.wanted(&config.general)
         });
         for keeper in keeper {
-            let how = (keeper.kind.roles(), false, true);
+            let how = (keeper.kind.roles(), false, Relaying::Own);
             keeper.process = self.launch(keeper.program.as_os_str(), &[], how, None);
         }
         self.components = components;
@@ -1467,7 +1469,11 @@ impl Compositor {
     fn spawn(&mut self, started: &omorfos_config::Started) {
         let roles = Roles::named(&started.may);
         let command = &started.run;
-        self.start(command.program().as_ref(), command.arguments(), roles);
+        let program: &OsStr = command.program().as_ref();
+        let named = omorfos_journal::name(program);
+        // One given a role is kept by the relay as the user's.
+        let how = (roles, false, Relaying::Users);
+        self.launch(program, command.arguments(), how, Some(&named));
     }
 
     /// Starts the program the configuration names to lock the session,
@@ -1586,19 +1592,24 @@ impl Compositor {
     /// given nothing to read.
     fn start(&mut self, program: &OsStr, arguments: &[String], roles: Roles) -> Option<u32> {
         let named = omorfos_journal::name(program);
-        self.launch(program, arguments, (roles, false, false), Some(&named))
+        self.launch(
+            program,
+            arguments,
+            (roles, false, Relaying::No),
+            Some(&named),
+        )
     }
 
     /// Starts a program as [`Compositor::start`] does, and, if it is
     /// `heard`, listens to what it says, as the watcher of what records
     /// says it. One to be `kept` by the relay as programs are, where there
-    /// is one, has its connection handed to the relay, with its roles,
-    /// which hands it back.
+    /// is one, has its connection handed to the relay, with its roles and
+    /// whose it is, which hands it back.
     fn launch(
         &mut self,
         program: &OsStr,
         arguments: &[String],
-        (roles, heard, kept): (Roles, bool, bool),
+        (roles, heard, kept): (Roles, bool, Relaying),
         journalled: Option<&str>,
     ) -> Option<u32> {
         let mut process = std::process::Command::new(program);
@@ -1623,7 +1634,7 @@ impl Compositor {
             .env("XDG_ACTIVATION_TOKEN", &ticket)
             .env("DESKTOP_STARTUP_ID", &ticket);
         let trusted = (roles != Roles::NONE).then(UnixStream::pair);
-        let relayed = kept && self.autostarted.parts.relay.is_some();
+        let relayed = kept != Relaying::No && self.autostarted.parts.relay.is_some();
         let mut relaying = None;
         let handed = trusted.and_then(Result::ok).and_then(|(ours, theirs)| {
             if relayed {
@@ -1643,7 +1654,7 @@ impl Compositor {
                 self.wake_when_exited(&child);
                 let process = child.id();
                 if let Some(ours) = relaying {
-                    self.relay_part(&ours, process, roles);
+                    self.relay_part(&ours, process, roles, kept == Relaying::Users);
                 }
                 if let Some(said) = child.stdout.take() {
                     self.listen_to(said);
@@ -1662,13 +1673,15 @@ impl Compositor {
     }
 
     /// Hands the relay `ours`, the connection of the part of the session
-    /// just started as `process` with `roles`, to be kept as programs are.
-    /// A relay that cannot be told has gone, and the compositor steps down
-    /// with it, for the next to start the part again.
-    fn relay_part(&self, ours: &UnixStream, process: u32, roles: Roles) {
+    /// just started as `process` with `roles`, to be kept as programs are,
+    /// marked as the `users` where the configuration started it. A relay
+    /// that cannot be told has gone, and the compositor steps down with it,
+    /// for the next to start the part again.
+    fn relay_part(&self, ours: &UnixStream, process: u32, roles: Roles, users: bool) {
+        let mark = if users { USERS } else { 0 };
         let started = omorfos_ipc::relay::Started {
             pid: process,
-            roles: roles.bits(),
+            roles: roles.bits() | mark,
         };
         let hand = omorfos_ipc::relay::Hand::Started(started);
         let relay = self.autostarted.parts.relay.as_ref();
@@ -1809,7 +1822,7 @@ impl Compositor {
             if component.kind.wanted(&config.general) && !waits && !running {
                 let program = component.program.as_os_str();
                 let heard = component.kind == Program::Recorder;
-                let how = (component.kind.roles(), heard, component.kind.kept());
+                let how = (component.kind.roles(), heard, component.kind.relaying());
                 component.process = self.launch(program, &[], how, None);
             }
         }
@@ -1835,7 +1848,8 @@ impl Compositor {
             let (program, arguments) = scoped(scoper.as_deref(), run.program(), run.arguments());
             // Known by its own name, whatever starts it.
             let named = omorfos_journal::name(run.program().as_ref());
-            let roles = (Roles::named(&command.may), false, false);
+            // One given a role is kept by the relay as the user's.
+            let roles = (Roles::named(&command.may), false, Relaying::Users);
             self.launch(program.as_ref(), &arguments, roles, Some(&named));
         }
         // Then what the desktop entries in `~/.config/autostart` and the
@@ -1857,7 +1871,7 @@ impl Compositor {
             self.launch(
                 session.as_os_str(),
                 &request,
-                (Roles::NONE, false, false),
+                (Roles::NONE, false, Relaying::No),
                 None,
             );
         }
@@ -1887,7 +1901,7 @@ impl Compositor {
             if component.restarts.allow(now) {
                 let program = component.program.as_os_str();
                 let heard = component.kind == Program::Recorder;
-                let how = (component.kind.roles(), heard, component.kind.kept());
+                let how = (component.kind.roles(), heard, component.kind.relaying());
                 component.process = self.launch(program, &[], how, None);
             } else {
                 self.problems.push(format!(
@@ -1934,7 +1948,7 @@ impl Compositor {
         for component in &mut components {
             component.newer |= settled.contains(&component.program);
             let heard = component.kind == Program::Recorder;
-            let how = (component.kind.roles(), heard, component.kind.kept());
+            let how = (component.kind.roles(), heard, component.kind.relaying());
             let program = component.program.clone();
             if component
                 .after
@@ -3680,6 +3694,15 @@ impl Program {
         matches!(self, Self::Keeper)
     }
 
+    /// How it is kept by the relay, as [`Program::kept`] says.
+    const fn relaying(self) -> Relaying {
+        if self.kept() {
+            Relaying::Own
+        } else {
+            Relaying::No
+        }
+    }
+
     /// What it may do. The program that answers the portals asks the user
     /// over everything, with the keyboard, and takes the picture that is
     /// given.
@@ -3698,6 +3721,25 @@ impl Program {
         }
     }
 }
+
+/// Whether a program the compositor starts is kept by the relay as programs
+/// are, where there is one, and as whose (ADR 61, 3d).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Relaying {
+    /// Not: it ends with the compositor.
+    No,
+    /// As one of the programs that come with omorfos.
+    Own,
+    /// As the user's: one the configuration starts with roles.
+    Users,
+}
+
+/// What the relay is told, beside a part's roles, of one the configuration
+/// started: that it is the user's, which the next compositor is not to take
+/// for one of those that come with omorfos, such as the keeper of the
+/// clipboard. A part without it is one of those, as each was handed before
+/// there was this.
+const USERS: u8 = 1 << 7;
 
 /// A program that comes with omorfos and runs for the whole session.
 #[derive(Debug)]

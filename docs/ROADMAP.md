@@ -828,11 +828,17 @@ what only games and touchpads need last.
       the relay's to listen on, and each program that connects there is
       kept as any other, and handed to each compositor as one inside a
       sandbox.
-- [ ] Known gaps in keeping programs, after 3d's first part: a program holding a buffer
+- [x] Layer surfaces made again after a change of compositor, and the
+      programs the configuration starts with a role kept through it, so
+      that a bar such as waybar stays (ADR 61, step 3d, the second part):
+      each layer surface as it was, told its size again only where it
+      changed; each such program handed to the relay with its roles,
+      marked as the user's, so that none is taken for the keeper.
+- [ ] Known gaps in keeping programs, after 3d's second part: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
-      so is one bound to a screen the next compositor does not have, or
-      holding a pointer lock, a layer surface or anything else no protocol
-      above makes again; a handle exported before is the old compositor's; what the next compositor
+      so is one bound to a screen the next compositor does not have,
+      where a layer surface on it would rather be closed, or one holding
+      a pointer lock or anything else no protocol above makes again; a handle exported before is the old compositor's; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program selected is selected
       again only once it next has the keyboard; a keeper kept from the
@@ -848,9 +854,9 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3d's first part:
-      layer surfaces made again, then the rest of what the compositor
-      starts kept as the keeper is (3d's second and third parts); every
+- [ ] The rest of the relay (ADR 61, step 3), after 3d's second part:
+      the components that come with omorfos kept as the keeper is (3d's
+      third part), each known again by the next compositor; every
       protocol in the list made again; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the
       others', and its word about the next login goes. Programs written

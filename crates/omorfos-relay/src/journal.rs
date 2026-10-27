@@ -109,16 +109,24 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("wp_viewport", "set_source" | "set_destination")
         | ("wl_subsurface", "set_position" | "set_sync" | "set_desync")
         | ("xdg_toplevel_icon_v1", "set_name")
-        | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection") => {
-            Rule::Lasting
-        }
+        | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection")
+        | (
+            "zwlr_layer_surface_v1",
+            "set_size"
+            | "set_anchor"
+            | "set_exclusive_zone"
+            | "set_margin"
+            | "set_keyboard_interactivity"
+            | "set_layer"
+            | "set_exclusive_edge",
+        ) => Rule::Lasting,
         _ => Rule::Passing,
     }
 }
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 33] = [
+const KEPT: [&str; 34] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -152,6 +160,7 @@ const KEPT: [&str; 33] = [
     "zwp_linux_dmabuf_feedback_v1",
     "xdg_toplevel_icon_v1",
     "zxdg_exported_v2",
+    "zwlr_layer_surface_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -642,9 +651,10 @@ impl Journal {
 
     /// The requests that make the rest again, in the order it was made,
     /// with what lasts of each; then each surface committed as it last was,
-    /// but for a window's, which may not show anything until the compositor
-    /// has said how it is to be: those are committed bare, and the windows
-    /// listed, by their `xdg_surface`, for [`Journal::shown`]. A global is
+    /// but for a window's or a layer surface's, which may not show anything
+    /// until the compositor has said how it is to be: those are committed
+    /// bare, and listed, by their `xdg_surface` or layer surface, for
+    /// [`Journal::shown`]. A global is
     /// bound again under the name `rename` gives the one it was bound by.
     ///
     /// # Errors
@@ -730,14 +740,12 @@ impl Journal {
         Ok((sending, awaited))
     }
 
-    /// The requests that show what the window `xdg_surface` last showed,
-    /// once the compositor has said how it is to be and been answered.
+    /// The requests that show what the window or layer surface `role`
+    /// last showed, once the compositor has said how it is to be and been
+    /// answered.
     #[must_use]
-    pub fn shown(&self, xdg_surface: u32) -> Vec<Sending> {
-        let number = self
-            .kept
-            .get(&xdg_surface)
-            .and_then(|kept| kept.made.names.get(1));
+    pub fn shown(&self, role: u32) -> Vec<Sending> {
+        let number = self.kept.get(&role).and_then(|kept| kept.made.names.get(1));
         let kept = number.and_then(|number| self.kept.get(number).map(|kept| (*number, kept)));
         kept.map_or(Vec::new(), |(number, kept)| surface(number, kept))
     }
@@ -803,13 +811,14 @@ impl Journal {
         sending
     }
 
-    /// Each surface that is a living window's, and the window's
-    /// `xdg_surface`.
+    /// Each surface that is a living window's or layer surface's, and what
+    /// gives it that role: the window's `xdg_surface`, or the layer surface.
     fn windows(&self) -> HashMap<u32, u32> {
-        let windows = self
-            .kept
-            .iter()
-            .filter(|(_, kept)| kept.interface.name == "xdg_surface" && kept.gone.is_none());
+        let roled = |kept: &Kept| {
+            let interface = kept.interface.name;
+            matches!(interface, "xdg_surface" | "zwlr_layer_surface_v1") && kept.gone.is_none()
+        };
+        let windows = self.kept.iter().filter(|(_, kept)| roled(kept));
         let windows = windows
             .filter_map(|(number, kept)| kept.made.names.get(1).map(|surface| (*surface, *number)));
         windows.collect()
@@ -1384,6 +1393,11 @@ mod tests {
         let device = "ext_data_control_device_v1";
         assert_eq!(rule(device, "set_primary_selection"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "set_title"), Rule::Lasting);
+        assert_eq!(rule("zwlr_layer_surface_v1", "set_size"), Rule::Lasting);
+        assert_eq!(
+            rule("zwlr_layer_surface_v1", "ack_configure"),
+            Rule::Passing
+        );
         assert_eq!(rule("xdg_toplevel", "move"), Rule::Passing);
         assert_eq!(rule("wp_viewport", "set_destination"), Rule::Lasting);
         assert_eq!(rule("wl_subsurface", "set_desync"), Rule::Lasting);

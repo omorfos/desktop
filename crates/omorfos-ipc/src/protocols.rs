@@ -213,9 +213,10 @@ pub const OFFERED: &[Protocol] = &[
         interface: "zwlr_layer_shell_v1",
         version: 4,
         replayed: "Each layer surface made again on the same screen, layer and namespace, with \
-                   its last size, anchor, margin, exclusive zone and keyboard interactivity; its \
-                   configure is passed on only if it differs. One whose screen has gone is \
-                   closed, as when it is unplugged, and its popups are as xdg_wm_base's.",
+                   its last size, anchor, margin, exclusive zone and keyboard interactivity, and \
+                   shown again once the compositor has said how it is to be, which the relay \
+                   answers; its configure is passed on only if the size differs. Its popups are \
+                   as xdg_wm_base's.",
     },
     Protocol {
         interface: "zwp_idle_inhibit_manager_v1",
