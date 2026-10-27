@@ -27,6 +27,52 @@ impl WindowId {
     }
 }
 
+/// Where and how a window is, for the next compositor to put it back so
+/// when the compositor is started anew (ADR 61, step 3c): as
+/// [`Desktop::kept`] says it and [`Desktop::add_window_kept`] takes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Kept {
+    /// The output whose workspaces it is on, in the order they were given.
+    pub output: usize,
+    /// Which of that output's desktops it is on: for one fullscreen, the
+    /// one it came from.
+    pub desktop: usize,
+    /// Its frame when neither maximized nor fullscreen.
+    pub geometry: Rect,
+    /// Whether it is maximized, fullscreen or minimized.
+    pub states: States,
+    /// How it stands apart from the others.
+    pub standing: Standing,
+    /// How many frames of its workspace are under it.
+    pub under: usize,
+    /// Whether it is the focused frame of its workspace.
+    pub focused: bool,
+}
+
+/// Whether a window kept is maximized, fullscreen on a workspace of its own,
+/// or minimized: see [`Kept`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct States {
+    /// Whether it is maximized.
+    pub maximized: bool,
+    /// Whether it is fullscreen, on a workspace of its own.
+    pub fullscreen: bool,
+    /// Whether it is minimized.
+    pub minimized: bool,
+}
+
+/// Where the session is as a whole, for the next compositor to have it so
+/// (ADR 61, step 3c).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Desk {
+    /// The desktop each output shows, in the order they were given: for one
+    /// showing a workspace made for a fullscreen window, the one that came
+    /// from.
+    pub shown: Vec<usize>,
+    /// The output that has the keyboard.
+    pub current: usize,
+}
+
 /// A window together with where it is, as listed by [`Desktop::windows`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Listed<'a> {
@@ -215,6 +261,10 @@ struct Group {
     fullscreen: bool,
     minimized: bool,
     standing: Standing,
+    /// How many frames of its workspace were under it when it was kept,
+    /// for the frames kept to come back in that order whatever order they
+    /// come back in; none for one opened as new.
+    under: Option<usize>,
 }
 
 impl Group {
@@ -1504,6 +1554,7 @@ impl Desktop {
                 above: effects.above.unwrap_or(false),
                 sticky: effects.sticky.unwrap_or(false),
             },
+            under: None,
         };
         let filled = room.map(|tiling| tiling.filled(group.serial));
         self.push_focused(set, workspace, group);
@@ -1515,6 +1566,118 @@ impl Desktop {
             self.set_fullscreen(id, true);
         }
         id
+    }
+
+    /// Where and how the window `id` is, if there is one, for it to be put
+    /// back so: see [`Kept`].
+    #[must_use]
+    pub fn kept(&self, id: WindowId) -> Option<Kept> {
+        let at = self.locate(id)?;
+        let set = &self.sets[at.set];
+        let workspace = &set.workspaces[at.workspace];
+        let group = &workspace.groups[at.group];
+        // On a workspace made for it, it is on the desktop it came from.
+        let home = workspace
+            .solo
+            .map_or(at.workspace, |tiling| set.place(tiling.origin));
+        let desktops = set.desktops();
+        let desktop = desktops.iter().position(|index| *index == home);
+        Some(Kept {
+            output: at.set,
+            desktop: desktop.unwrap_or_default(),
+            geometry: group.geometry,
+            states: States {
+                maximized: group.maximized,
+                fullscreen: group.fullscreen
+                    && workspace.solo.is_some_and(|tiling| !tiling.shared()),
+                minimized: group.minimized,
+            },
+            standing: group.standing,
+            under: at.group,
+            focused: workspace.focused == Some(group.serial),
+        })
+    }
+
+    /// Puts back a window as [`Desktop::kept`] said it was, its own as
+    /// [`Desktop::add_window`] says: under the frames kept that stood over
+    /// it, and focused on its workspace if it was. The output with the
+    /// keyboard stays as it was: see [`Desktop::set_desk`].
+    pub fn add_window_kept(
+        &mut self,
+        app_id: impl Into<String>,
+        title: impl Into<String>,
+        wants_decoration: bool,
+        kept: &Kept,
+    ) -> WindowId {
+        let (app_id, title) = (app_id.into(), title.into());
+        let effects = resolve(&self.rules, &app_id, &title);
+        let decorated = effects.decorations.unwrap_or(wants_decoration);
+        let set = kept.output.min(self.sets.len() - 1);
+        let workspace = self.reach(set, kept.desktop);
+        let id = WindowId(self.serial());
+        let window = Window {
+            id,
+            app_id,
+            title,
+            decorated,
+            least: Size::default(),
+        };
+        let group = Group {
+            serial: self.serial(),
+            tabs: vec![window],
+            active: 0,
+            geometry: kept.geometry,
+            maximized: kept.states.maximized,
+            fullscreen: false,
+            minimized: kept.states.minimized,
+            standing: kept.standing,
+            under: Some(kept.under),
+        };
+        let serial = group.serial;
+        let on = &mut self.sets[set].workspaces[workspace];
+        // Over each kept that stood under it, and what was opened since.
+        let over = |other: &Group| other.under.is_none_or(|under| under < kept.under);
+        let at = on.groups.iter().take_while(|other| over(other)).count();
+        on.groups.insert(at, group);
+        if kept.focused {
+            on.focused = Some(serial);
+        }
+        on.repair();
+        self.sets[set].settle();
+        if kept.states.fullscreen {
+            self.set_fullscreen(id, true);
+        }
+        id
+    }
+
+    /// Where the session is as a whole: see [`Desk`].
+    #[must_use]
+    pub fn desk(&self) -> Desk {
+        let shown = self.sets.iter().map(|set| {
+            let showing = &set.workspaces[set.active];
+            let home = showing
+                .solo
+                .map_or(set.active, |tiling| set.place(tiling.origin));
+            let desktops = set.desktops();
+            desktops
+                .iter()
+                .position(|index| *index == home)
+                .unwrap_or_default()
+        });
+        Desk {
+            shown: shown.collect(),
+            current: self.current,
+        }
+    }
+
+    /// Has each output show the desktop `desk` says, and the one it says
+    /// have the keyboard, as far as there are those outputs.
+    pub fn set_desk(&mut self, desk: &Desk) {
+        for (set, shown) in desk.shown.iter().enumerate().take(self.sets.len()) {
+            let workspace = self.reach(set, *shown);
+            self.turn(set, workspace);
+        }
+        self.current = desk.current.min(self.sets.len() - 1);
     }
 
     /// Says how a window about to be added should first draw itself, if
@@ -2083,6 +2246,7 @@ impl Desktop {
             fullscreen: false,
             minimized: false,
             standing: Standing::default(),
+            under: None,
         };
         self.push_focused(at.set, at.workspace, group);
     }
@@ -6143,5 +6307,104 @@ mod tests {
         desktop.toggle_above(gone);
         desktop.toggle_sticky(gone);
         assert_eq!(frame(&desktop, id).standing, Standing::default());
+    }
+
+    /// A desktop as [`desktop`] makes one, on which windows are put back
+    /// as `kept` says, each an app named in turn.
+    fn kept_back(kept: &[Kept]) -> (Desktop, Vec<WindowId>) {
+        let mut back = desktop();
+        let ids = kept.iter().enumerate().map(|(index, kept)| {
+            back.add_window_kept(format!("app {index}"), "window", true, kept)
+        });
+        let ids = ids.collect();
+        (back, ids)
+    }
+
+    #[test]
+    fn a_window_kept_comes_back_where_and_as_it_was() {
+        let mut desktop = desktop();
+        let window = open(&mut desktop, "kept");
+        desktop.move_to_workspace(window, 1);
+        let at = Rect::new(Point::new(100, 120), Size::new(640, 480));
+        desktop.set_geometry(window, at);
+        desktop.toggle_above(window);
+        desktop.set_maximized(window, true);
+        let kept = desktop.kept(window).unwrap();
+        assert_eq!((kept.desktop, kept.geometry), (1, at));
+
+        let (mut back, ids) = kept_back(&[kept]);
+        assert_eq!(back.kept(ids[0]), Some(kept));
+        assert_eq!(back.workspace_of(ids[0]), Some(1));
+        back.switch_workspace(1);
+        let shown = frame(&back, ids[0]);
+        assert!(shown.maximized && shown.standing.above);
+        assert_eq!(back.kept(WindowId::from_raw(999)), None);
+    }
+
+    #[test]
+    fn windows_kept_come_back_in_the_order_they_stood_whatever_order_they_come_in() {
+        let mut desktop = desktop();
+        let windows = ["a", "b", "c"].map(|app| open(&mut desktop, app));
+        let kept = windows.map(|window| desktop.kept(window).unwrap());
+        assert_eq!(kept.map(|kept| kept.under), [0, 1, 2]);
+        assert!(kept[2].focused && !kept[0].focused, "the last opened");
+
+        // They come back last first, then the first.
+        let (back, ids) = kept_back(&[kept[2], kept[0], kept[1]]);
+        assert_eq!(stack(&back), [ids[1], ids[2], ids[0]]);
+        assert_eq!(back.focused(), Some(ids[0]), "and the one focused has it");
+    }
+
+    #[test]
+    fn what_was_minimized_or_fullscreen_comes_back_so() {
+        let mut desktop = desktop();
+        let small = open(&mut desktop, "small");
+        let whole = open(&mut desktop, "whole");
+        desktop.minimize(small);
+        desktop.set_fullscreen(whole, true);
+        let kept = [small, whole].map(|window| desktop.kept(window).unwrap());
+        assert!(kept[0].states.minimized && kept[1].states.fullscreen);
+        assert_eq!(kept[1].desktop, 0, "the desktop it came from");
+
+        let (back, ids) = kept_back(&kept);
+        let states = |id: WindowId| back.kept(id).map(|kept| kept.states);
+        assert_eq!(states(ids[0]).map(|states| states.minimized), Some(true));
+        assert_eq!(states(ids[1]).map(|states| states.fullscreen), Some(true));
+    }
+
+    #[test]
+    fn what_each_output_shows_and_which_has_the_keyboard_comes_back() {
+        let mut desktop = desktop();
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
+        desktop.turn_to(Point::new(2000, 10));
+        desktop.switch_workspace(2);
+        let desk = desktop.desk();
+        assert_eq!(
+            desk,
+            Desk {
+                shown: vec![0, 2],
+                current: 1
+            }
+        );
+
+        let mut back = Desktop::new(Settings::default(), 3);
+        back.set_outputs(vec![SCREEN, SECOND_SCREEN]);
+        back.set_desk(&desk);
+        assert_eq!(back.desk(), desk);
+        // What names more than there is is held to what there is.
+        back.set_desk(&Desk {
+            shown: vec![9, 9, 9],
+            current: 7,
+        });
+        assert_eq!(back.desk().current, 1);
+
+        // Showing a workspace made for a window, it shows the desktop that
+        // came from.
+        let mut desktop = Desktop::new(Settings::default(), 3);
+        desktop.set_outputs(vec![SCREEN]);
+        desktop.switch_workspace(1);
+        let video = open(&mut desktop, "video");
+        desktop.set_fullscreen(video, true);
+        assert_eq!(desktop.desk().shown, [1]);
     }
 }

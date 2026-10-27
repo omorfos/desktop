@@ -189,9 +189,8 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "xdg_toplevel_icon_manager_v1",
         version: 1,
-        replayed: "Each icon made again from its name and the buffers held. That a window was \
-                   given it is not yet set again: the window shows its application's icon until \
-                   the program gives it one.",
+        replayed: "Each icon made again from its name and the buffers held, and given again to \
+                   the window it was given, as the window's own, once it is made.",
     },
     Protocol {
         interface: "xdg_wm_base",

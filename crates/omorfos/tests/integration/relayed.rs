@@ -1027,3 +1027,55 @@ fn the_keeper_is_started_through_the_relay_and_not_again_by_the_next_compositor(
     assert_eq!(relayed.relay.borrow().programs(), 1);
     let _ = Command::new("kill").arg(process).status();
 }
+
+/// What the compositor of `session` says the session is, over its socket
+/// for scripts.
+fn state(session: &mut Session) -> omorfos_ipc::State {
+    let environment = session.compositor().session_environment();
+    let mut socket = environment.into_iter();
+    let (_, ipc) = socket.find(|(name, _)| *name == "OMORFOS_SOCKET").unwrap();
+    let mut peer = omorfos_ipc::Client::connect(std::path::Path::new(&ipc)).unwrap();
+    match session.ask(&mut peer, &omorfos_ipc::Request::State) {
+        omorfos_ipc::Reply::State(state) => state,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_window_comes_back_where_and_as_it_was_and_the_session_as_it_was() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "kept", (200, 100), RED);
+    // On the second desktop, shown, and kept above the rest.
+    let second_desktop = omorfos_config::WorkspaceNumber::clamped(2);
+    for action in [
+        omorfos_config::Action::MoveToWorkspace(second_desktop),
+        omorfos_config::Action::Workspace(second_desktop),
+        omorfos_config::Action::KeepAbove,
+    ] {
+        first.compositor_mut().perform(&action);
+    }
+    first.step();
+    let before = state(&mut first);
+    let window = |state: &omorfos_ipc::State| {
+        let window = state.windows.first();
+        window.map(|window| (window.workspace, window.standing, window.focused))
+    };
+    let shown = |state: &omorfos_ipc::State| {
+        let shown = state.workspaces.iter().filter(|workspace| workspace.active);
+        shown
+            .map(|workspace| workspace.number)
+            .collect::<Vec<u32>>()
+    };
+    assert_eq!(shown(&before), [2]);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| !state(session).windows.is_empty());
+    let after = state(&mut second);
+    assert_eq!(window(&after), window(&before));
+    assert_eq!(shown(&after), [2], "the desktop it showed");
+}

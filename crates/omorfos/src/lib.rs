@@ -28,6 +28,7 @@ mod holding;
 mod icons;
 mod input;
 mod ipc;
+mod kept;
 mod lock;
 mod outputs;
 mod paint;

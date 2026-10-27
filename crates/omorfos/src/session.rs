@@ -296,6 +296,19 @@ fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostActio
                 hand: Some(Hand::Kept),
                 ..
             })) => compositor.relay_kept(),
+            Ok(Some(Received {
+                hand:
+                    Some(Hand::Placed {
+                        number,
+                        toplevel,
+                        place,
+                    }),
+                ..
+            })) => compositor.kept_place(number, toplevel, place),
+            Ok(Some(Received {
+                hand: Some(Hand::Desk(desk)),
+                ..
+            })) => compositor.relay_desk(&desk),
             // What is not known is passed over.
             Ok(Some(_)) => {}
             Ok(None) => return PostAction::Continue,

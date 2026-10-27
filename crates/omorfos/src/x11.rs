@@ -704,6 +704,7 @@ impl Compositor {
             surface: surface.clone(),
             role: Role::X11(x11),
             listed,
+            kept_by: None,
         });
         // How small it said it can be before it was shown.
         let least = self.windows.last().map(tiles::least).unwrap_or_default();

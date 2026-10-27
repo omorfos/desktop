@@ -217,6 +217,11 @@ impl Message {
         let sized = wire::word(&self.bytes, 4).unwrap_or_default();
         u16::try_from(sized & 0xffff).unwrap_or(u16::MAX)
     }
+
+    /// The object it is to.
+    fn object(&self) -> u32 {
+        wire::word(&self.bytes, 0).unwrap_or_default()
+    }
 }
 
 /// A message to `object`, the `opcode`th of its, of `arguments`.
@@ -385,8 +390,14 @@ impl Journal {
             self.kept.insert(made, kept);
             return;
         }
-        let object = header.object;
-        let rule = rule(read.interface.name, described.name);
+        let mut object = header.object;
+        let mut rule = rule(read.interface.name, described.name);
+        if (read.interface.name, described.name) == ("xdg_toplevel_icon_manager_v1", "set_icon") {
+            // What gives a window its icon is the window's to keep, each
+            // its own, though it is asked of the manager.
+            object = wire::word(bytes, HEADER).unwrap_or_default();
+            rule = Rule::Lasting;
+        }
         if read.interface.name == "wl_subsurface"
             && matches!(read.opcode, PLACE_ABOVE | PLACE_BELOW)
         {
@@ -662,18 +673,20 @@ impl Journal {
                 wire::put(&mut bytes, HEADER, name);
             }
             sending.push((bytes, fds));
-            let lasting = kept
-                .lasting
-                .iter()
-                .chain(&kept.adding)
-                .map(Message::sending);
-            if matches!(
+            let lasting = kept.lasting.iter().chain(&kept.adding);
+            let deferred = matches!(
                 kept.interface.name,
                 "xdg_surface" | "ext_data_control_device_v1"
-            ) {
-                roled.extend(lasting);
-            } else {
-                sending.extend(lasting);
+            );
+            for message in lasting {
+                // What is asked of another for it, its icon given it, may
+                // name what is made after it.
+                let elsewhere = message.object() != *number;
+                if deferred || elsewhere {
+                    roled.push(message.sending());
+                } else {
+                    sending.push(message.sending());
+                }
             }
         }
         sending.extend(roled);
@@ -879,8 +892,10 @@ fn surface(number: u32, kept: &Kept) -> Vec<Sending> {
 /// that sets something and one that unsets it, are made again in the order
 /// they were last made.
 fn replace(kept: &mut Vec<Message>, message: Message) -> Option<Message> {
-    let opcode = message.opcode();
-    let same = kept.iter().position(|kept| kept.opcode() == opcode);
+    let request = (message.object(), message.opcode());
+    let same = kept
+        .iter()
+        .position(|kept| (kept.object(), kept.opcode()) == request);
     let replaced = same.map(|at| kept.remove(at));
     kept.push(message);
     replaced
@@ -1132,6 +1147,27 @@ mod tests {
         assert!(program.told(&sent(7, 1, &[])));
         let (sending, _) = replayed(&program.journal, &Some).unwrap();
         assert!(!opcodes(&sending).contains(&(5, 0)));
+    }
+
+    #[test]
+    fn a_windows_icon_is_given_it_again_once_the_icon_is_made() {
+        let mut program = Program::default();
+        program.bind(1, "xdg_wm_base", 6, 3);
+        program.bind(2, "wl_compositor", 6, 4);
+        program.bind(3, "xdg_toplevel_icon_manager_v1", 1, 5);
+        // A window, 8, with a parent, and an icon made after it, 9.
+        program.send(&sent(4, 0, &words(&[6])), &[]);
+        program.send(&sent(3, 2, &words(&[7, 6])), &[]);
+        program.send(&sent(7, 1, &words(&[8])), &[]);
+        program.send(&sent(8, 1, &words(&[0])), &[]);
+        program.send(&sent(5, 1, &words(&[9])), &[]);
+        program.send(&sent(9, 1, &text("terminal")), &[]);
+        program.send(&sent(5, 2, &words(&[8, 9])), &[]);
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let made = opcodes(&sending);
+        let at = |wanted| made.iter().position(|made| *made == wanted).unwrap();
+        assert!(at((9, 1)) < at((5, 2)), "the icon made first: {made:?}");
+        assert!(made.contains(&(8, 1)), "and what else the window had");
     }
 
     #[test]

@@ -561,3 +561,79 @@ fn a_part_handed_without_a_connection_or_with_one_that_is_not_is_not_let_in() {
     );
     assert_eq!(held.relay.programs(), 0);
 }
+
+/// `wl_registry.global`, the global named `name` offered as `interface`.
+fn global(name: u32, interface: &str, version: u32) -> Vec<u8> {
+    let mut bound = bind(name, interface, version, 0);
+    // A bind is the global as offered, and the number it is bound as.
+    bound.truncate(bound.len() - 4);
+    let size = u32::try_from(bound.len()).unwrap();
+    bound[4..8].copy_from_slice(&(size << 16).to_ne_bytes());
+    bound
+}
+
+#[test]
+fn where_a_programs_windows_were_is_handed_back_with_it_and_the_session_first() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (mut program, mut connection, who) = held.connect(&compositor);
+    program.set_nonblocking(true).unwrap();
+    program.write_all(&get_registry()).unwrap();
+    read(&mut held, &mut connection, 12);
+    let mut offered = global(1, "xdg_wm_base", 6);
+    offered.extend(global(2, "wl_compositor", 6));
+    connection.write_all(&offered).unwrap();
+    read(&mut held, &mut program, offered.len());
+    // A window: the shell and compositor bound as 3 and 4, its surface 5,
+    // made a window's, 6, and a toplevel, 7.
+    let mut made = bind(1, "xdg_wm_base", 6, 3);
+    made.extend(bind(2, "wl_compositor", 6, 4));
+    made.extend(message(4, 0, &[5]));
+    made.extend(message(3, 2, &[6, 5]));
+    made.extend(message(6, 1, &[7]));
+    program.write_all(&made).unwrap();
+    read(&mut held, &mut connection, made.len());
+
+    let number = who.number.unwrap();
+    let placed = |toplevel: u32, place: &str| Hand::Placed {
+        number,
+        toplevel,
+        place: place.to_owned(),
+    };
+    let desk = Hand::Desk("the session".to_owned());
+    for hand in [
+        placed(7, "before"),
+        placed(7, "here"),
+        placed(5, "no window"),
+        desk.clone(),
+    ] {
+        relay::send(compositor.as_fd(), &hand, &[]).unwrap();
+    }
+    // Of another program than any there is, it is kept by none.
+    let other = Hand::Placed {
+        number: number + 1,
+        toplevel: 7,
+        place: "nowhere".to_owned(),
+    };
+    relay::send(compositor.as_fd(), &other, &[]).unwrap();
+    held.step();
+    drop((compositor, connection));
+    held.step();
+
+    let next = held.compositor();
+    let mut hands = Vec::new();
+    held.until(|_| {
+        let received = relay::receive(next.as_fd()).unwrap();
+        hands.extend(received.map(|received| received.hand));
+        hands.last() == Some(&Some(Hand::Kept))
+    });
+    assert_eq!(
+        hands,
+        [
+            Some(desk),
+            Some(Hand::Program(who)),
+            Some(placed(7, "here")),
+            Some(Hand::Kept)
+        ]
+    );
+}

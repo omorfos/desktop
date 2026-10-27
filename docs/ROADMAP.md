@@ -812,21 +812,24 @@ what only games and touchpads need last.
       and not started again; its selection set again at once through
       `ext-data-control-v1`; what a program selected set again as it next
       has the keyboard, unless something else is selected by then.
-- [ ] Known gaps in keeping programs, after 3b: a program holding a buffer
+- [x] A window back where and as it was after a change of compositor (ADR
+      61, step 3c, the first part): each window's output, desktop, place,
+      size and states, stacking and focus, and which desktop each output
+      shows, which has the keyboard and where the pointer is, kept by the
+      relay as the compositor tells it and handed back to the next; a
+      window's icon given it again.
+- [ ] Known gaps in keeping programs, after 3c's first part: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have, or
       holding a pointer lock, a layer surface or anything else no protocol
-      above makes again; a window's icon is made again but not given to the
-      window again; a handle exported before is the old compositor's; what the next compositor
+      above makes again; a handle exported before is the old compositor's; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program selected is selected
       again only once it next has the keyboard; a keeper kept from the
       compositor before is not the next's child, and is not started again
-      if it stops; a window comes back neither maximized
-      nor full screen, as the program had it, but as the next compositor
-      first says, and the program is told so; a field leaves and enters
-      again, and so does the pointer where the window under it comes back
-      elsewhere, until windows come back where they were (3c); a part
+      if it stops; a window that shared a workspace or a frame with others
+      comes back alone on its desktop, until tiles and tab groups are put
+      back (3c's second part); a field leaves and enters again; a part
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
       the compositor offers none yet; a global the next compositor offers
@@ -834,11 +837,9 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3b: every protocol in
-      the list made again;
-      where each window was carried to the next compositor, keyed by the
-      number the relay gives each program, and where the pointer was, which
-      now comes back in the top left corner (3c); the rest of what the
+- [ ] The rest of the relay (ADR 61, step 3), after 3c's first part: every
+      protocol in the list made again; tiles and tab groups as they were
+      (3c's second part); the rest of what the
       compositor starts kept as the keeper is (3d); a sandbox's
       listener handed to the relay; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the

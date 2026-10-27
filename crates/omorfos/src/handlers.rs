@@ -194,20 +194,28 @@ impl Compositor {
         // one is.
         let parent = toplevel.parent();
         let parent = parent.and_then(|parent| self.window_id(&parent));
-        let id = self.desktop.add_window_of(
-            parent,
-            app_id,
-            title,
-            size,
-            self.pointer_position(),
-            wants_decoration,
-        );
+        // One kept through a change of compositor comes back where it was.
+        let kept_by = crate::kept::key(&toplevel);
+        let id = match self.kept_window(kept_by) {
+            Some(kept) => self
+                .desktop
+                .add_window_kept(app_id, title, wants_decoration, &kept),
+            None => self.desktop.add_window_of(
+                parent,
+                app_id,
+                title,
+                size,
+                self.pointer_position(),
+                wants_decoration,
+            ),
+        };
         self.windows.push(Mapped {
             id,
             window,
             surface: surface.clone(),
             role: Role::Xdg(toplevel),
             listed,
+            kept_by,
         });
         // How small it said it can be before it was shown.
         let least = self.windows.last().map(tiles::least).unwrap_or_default();

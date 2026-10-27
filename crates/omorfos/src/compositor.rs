@@ -109,6 +109,7 @@ use crate::icons::WindowIcons;
 use crate::input::Drag;
 use crate::input::Focused;
 use crate::ipc::Server;
+use crate::kept::Parts;
 use crate::lock::{Awake, Lock, Presence};
 use crate::outputs::{Aside, Head};
 use crate::paint::{self, Motion, Text};
@@ -234,9 +235,10 @@ pub struct ClientState {
     /// Whether the client came in through a sandbox, which told the
     /// compositor so itself.
     pub(crate) sandboxed: bool,
-    /// Its process, as the relay said, where it came through the relay,
-    /// whose own the connection is (ADR 61).
-    relayed: Option<u32>,
+    /// Who it is, as the relay said, where it came through the relay,
+    /// whose own the connection is (ADR 61): its process, and the number
+    /// the relay gave it, which the relay keeps across compositors.
+    pub(crate) relayed: Option<omorfos_ipc::relay::Program>,
     /// Which program it is, as the log names it, once it is known; and
     /// where it is said that it was disconnected for breaking the protocol.
     named: OnceLock<String>,
@@ -274,6 +276,10 @@ pub(crate) struct Mapped {
     pub(crate) role: Role,
     /// The window's entry in the list offered to taskbars.
     pub(crate) listed: ForeignToplevelHandle,
+    /// What the relay keeps where it is by, for a window of a program it
+    /// keeps (ADR 61, 3c): the number it gave the program, and the
+    /// program's number for the window's toplevel.
+    pub(crate) kept_by: Option<(u32, u32)>,
 }
 
 /// The compositor, minus the event loop and the screen.
@@ -391,7 +397,7 @@ pub struct Compositor {
     pub(crate) asked: Asked,
     /// Whether the programs to start with the session have been, and
     /// what starts them in a scope of their own.
-    autostarted: Autostarted,
+    pub(crate) autostarted: Autostarted,
     /// The programs that come with omorfos and run for the whole session,
     /// once a backend has said where each is: the panel first.
     components: Vec<Component>,
@@ -596,7 +602,7 @@ impl Compositor {
         stream: UnixStream,
         program: omorfos_ipc::relay::Program,
     ) -> io::Result<Client> {
-        self.insert(stream, Roles::default(), false, Some(program.pid))
+        self.insert(stream, Roles::default(), false, Some(program))
     }
 
     /// Accepts a part of the session the relay kept, as
@@ -616,7 +622,7 @@ impl Compositor {
         roles: u8,
     ) -> io::Result<Client> {
         let roles = Roles::from_bits(roles);
-        let inserted = self.insert(stream, roles, false, Some(program.pid));
+        let inserted = self.insert(stream, roles, false, Some(program));
         inserted.inspect(|_| {
             let keeper = self.components.iter_mut();
             let keeper = keeper.filter(|component| {
@@ -663,7 +669,7 @@ impl Compositor {
         stream: UnixStream,
         roles: Roles,
         sandboxed: bool,
-        relayed: Option<u32>,
+        relayed: Option<omorfos_ipc::relay::Program>,
     ) -> io::Result<Client> {
         let state = Arc::new(ClientState {
             compositor: CompositorClientState::default(),
@@ -688,6 +694,7 @@ impl Compositor {
         let relayed = client
             .get_data::<ClientState>()
             .and_then(|state| state.relayed);
+        let relayed = relayed.map(|program| program.pid);
         relayed.or_else(|| {
             let credentials = client.get_credentials(&self.display).ok();
             credentials.and_then(|known| u32::try_from(known.pid).ok())
@@ -1159,6 +1166,7 @@ impl Compositor {
         self.popups.cleanup();
         self.publish_ipc(now);
         self.tell_holder();
+        self.tell_relay();
     }
 
     // --- Configuration -------------------------------------------------------
@@ -3571,22 +3579,14 @@ const ENDING: Duration = Duration::from_secs(2);
 /// Whether the programs to start with the session have been, what starts
 /// them in a scope of their own, and where what they write is kept.
 #[derive(Debug, Default)]
-struct Autostarted {
+pub(crate) struct Autostarted {
     done: bool,
-    /// What is handed to the relay to be kept as programs are.
-    parts: Parts,
+    /// What is handed to the relay to be kept as programs are, and what it
+    /// hands back.
+    pub(crate) parts: Parts,
     scoper: Option<PathBuf>,
     /// Where the journal takes what programs write, once known.
     journal: Option<PathBuf>,
-}
-
-/// What is handed to the relay to be kept as programs are (ADR 61).
-#[derive(Debug, Default)]
-struct Parts {
-    /// The connection to the relay, where the compositor is relayed.
-    relay: Option<OwnedFd>,
-    /// Whether the relay has handed over every program it kept.
-    kept: bool,
 }
 
 /// The program and arguments that start `program` with `arguments`: by

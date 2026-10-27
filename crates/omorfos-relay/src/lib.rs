@@ -50,6 +50,9 @@ pub struct Relay {
     links: Vec<Link>,
     /// The number the next program is given.
     next: u32,
+    /// Where the session is as a whole, as the compositor last said, for the
+    /// next compositor.
+    desk: Option<String>,
 }
 
 impl Relay {
@@ -62,6 +65,7 @@ impl Relay {
             compositor: None,
             links: Vec::new(),
             next: 1,
+            desk: None,
         }
     }
 
@@ -180,7 +184,11 @@ impl Relay {
     /// the relay has closed, or does within `grace`. What it hands meanwhile
     /// is taken, and said on `log` if it cannot be.
     fn compositor_gone(&mut self, grace: Duration, log: &mut dyn Write) -> bool {
-        let (links, next) = (&mut self.links, &mut self.next);
+        let kept = Kept {
+            links: &mut self.links,
+            next: &mut self.next,
+            desk: &mut self.desk,
+        };
         self.compositor.as_ref().is_none_or(|compositor| {
             let mut polled = [PollFd::new(compositor, PollFlags::IN)];
             let grace = Timespec::try_from(grace).unwrap_or_default();
@@ -188,7 +196,7 @@ impl Relay {
             let readable = polled
                 .iter()
                 .any(|polled| polled.revents().intersects(READABLE));
-            readable && !hear_compositor(compositor.as_fd(), links, next, log)
+            readable && !hear_compositor(compositor.as_fd(), kept, log)
         })
     }
 
@@ -238,6 +246,10 @@ impl Relay {
                 // another only then.
                 self.lose_compositor(log);
                 let towards = compositor.as_fd();
+                // Where the session was first, then each program, and where
+                // its windows were.
+                let desk = self.desk.clone().map(Hand::Desk);
+                let _ = desk.map(|desk| relay::send(towards, &desk, &[]));
                 self.links.retain_mut(|link| rejoin(link, towards, log));
                 // A compositor that cannot be told goes, and is seen to.
                 let _ = relay::send(towards, &Hand::Kept, &[]);
@@ -248,15 +260,22 @@ impl Relay {
     }
 }
 
-/// Takes what `compositor` has handed: each part of the session it started
-/// is kept as programs are in `links`, numbered from `next`, and said on
-/// `log` if it cannot be. Returns whether the compositor is still there.
-fn hear_compositor(
-    compositor: BorrowedFd<'_>,
-    links: &mut Vec<Link>,
-    next: &mut u32,
-    log: &mut dyn Write,
-) -> bool {
+/// What the relay keeps that the compositor hands it.
+struct Kept<'a> {
+    /// Every program's link.
+    links: &'a mut Vec<Link>,
+    /// The number the next program is given.
+    next: &'a mut u32,
+    /// Where the session is as a whole.
+    desk: &'a mut Option<String>,
+}
+
+/// Takes what `compositor` has handed into what the relay keeps, `kept`:
+/// each part of the session it started is kept as programs are, and said on
+/// `log` if it cannot be; where a window or the session is, kept for the
+/// next. Returns whether the compositor is still there.
+fn hear_compositor(compositor: BorrowedFd<'_>, kept: Kept<'_>, log: &mut dyn Write) -> bool {
+    let Kept { links, next, desk } = kept;
     loop {
         match relay::receive(compositor) {
             Ok(Some(Received {
@@ -279,6 +298,23 @@ fn hear_compositor(
                     None => {}
                 }
             }
+            Ok(Some(Received {
+                hand:
+                    Some(Hand::Placed {
+                        number,
+                        toplevel,
+                        place,
+                    }),
+                ..
+            })) => {
+                let mut program = links.iter_mut();
+                let program = program.find(|link| link.who().number == Some(number));
+                let _ = program.map(|link| link.place(toplevel, place));
+            }
+            Ok(Some(Received {
+                hand: Some(Hand::Desk(said)),
+                ..
+            })) => *desk = Some(said),
             // What is not known, or not whole, is passed over.
             Ok(Some(_)) => {}
             Ok(None) => return true,
@@ -400,6 +436,10 @@ fn rejoin(link: &mut Link, compositor: BorrowedFd<'_>, log: &mut dyn Write) -> b
         relay::send(compositor, &link.hand(), &[theirs.as_fd()]).map(|()| ours)
     });
     let joined = handed.map_err(Ended::from).and_then(|ours| link.join(ours));
+    // Where its windows were, once it is there.
+    for placed in link.placed() {
+        let _ = relay::send(compositor, &placed, &[]);
+    }
     if joined.is_err() {
         let _ = writeln!(
             log,

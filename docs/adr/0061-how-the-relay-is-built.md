@@ -250,9 +250,10 @@ as GTK's are, come in step 3.
   program that did not come back on real hardware says why.
 - **A window comes back as a new one would**: placed by the new
   compositor, on the workspace in front. Carrying where each was is the
-  compositor's to hand on, through the holder, keyed by a number the
-  relay gives each program and keeps across compositors, which the
-  `program` record carries from now on. That is step 3's.
+  compositor's to hand on, keyed by a number the relay gives each program
+  and keeps across compositors, which the `program` record carries from
+  now on. That is step 3's; it was to be through the holder, and is
+  through the relay (3c).
 - **The relay is handed over when the holder takes up its own new
   version**, rather than stopped: its connection to the holder, and its
   process as a line, as the holder cannot know it from anything handed
@@ -302,8 +303,8 @@ compositor taking up its own new version (3e).
   fault, which Firefox ends on.
 - **A window's icon is made again but not given to the window again** (3a):
   the request that gives it names the window and is made of the manager,
-  where what lasts is kept for the object a request is made of. Until 3c the
-  window shows its application's icon after a restart.
+  where what lasts is kept for the object a request is made of. Since 3c it
+  is the window's to keep, as below.
 - **A window exported is told the new compositor's handle** (3a), which the
   program takes as its own; one it passed on before is the old one's, and
   refused, as a stale handle is.
@@ -374,3 +375,27 @@ compositor taking up its own new version (3e).
   program the keyboard: if nothing, that is kept from the program and
   its own is set again; if something else, its source is told it was
   cancelled, as it would have been.
+- **A window comes back where and as it was** (3c), in two parts: first
+  each window alone, then the tiles and tab groups windows share. The
+  compositor tells the relay, as it changes, where each window of a
+  program the relay keeps is: the output, by name, the desktop of that
+  output, the frame's place and size, whether it is maximized,
+  fullscreen, minimized, rolled up, kept above or on every workspace, how
+  many frames of its workspace are under it, and whether it has the
+  focus there; and where the session is: which desktop each output
+  shows, which has the keyboard, and where the pointer is. The relay keeps
+  each as text it does not read, a window's under its program's number
+  and the program's number for its toplevel, which it keeps across
+  compositors, and lets one go once the toplevel is. To the next
+  compositor it hands where the session was first, then each program,
+  with where its windows were; the compositor puts each window back as it
+  is shown again, under the frames that stood over it whatever order they
+  come back in, and only the one focused takes the focus. The relay, not
+  the holder, carries it: it keeps the programs, survives the compositor
+  ending however it ends, and has no record's size to fit in, where the
+  holder keeps as little as ADR 60 says. An output not there is taken to
+  be the one with the keyboard. Until the second part, a window that
+  shared a workspace or a frame comes back alone on its desktop.
+- **A window's icon is given it again** (3c): what gives it is kept as
+  the window's own, each window its own, and made again once everything
+  else is, as the icon may have been made after the window.

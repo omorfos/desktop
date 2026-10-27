@@ -12,7 +12,7 @@
 //! is so held to what the compositor does with a program that does not
 //! read (ADR 45).
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -114,6 +114,9 @@ pub struct Link {
     /// The roles the compositor gave it, where it is a part of the session
     /// it started: none for a program.
     roles: u8,
+    /// Where each of its windows is, as the compositor last said, by the
+    /// program's number for the window's toplevel.
+    places: BTreeMap<u32, String>,
     compositor: Option<UnixStream>,
     objects: Objects,
     keeping: Keeping,
@@ -137,6 +140,7 @@ impl Link {
             program,
             who,
             roles: 0,
+            places: BTreeMap::new(),
             compositor: Some(compositor),
             objects: Objects::default(),
             keeping: Keeping::default(),
@@ -158,6 +162,32 @@ impl Link {
     pub const fn with_roles(mut self, roles: u8) -> Self {
         self.roles = roles;
         self
+    }
+
+    /// Keeps where the window whose toplevel is the program's `toplevel` is,
+    /// as the compositor says it, `place`, for the next compositor.
+    pub fn place(&mut self, toplevel: u32, place: String) {
+        self.places.insert(toplevel, place);
+    }
+
+    /// The hands that tell a compositor where each of the program's windows
+    /// was, of those it still has: what was said of one it no longer has is
+    /// let go.
+    pub fn placed(&mut self) -> Vec<Hand> {
+        let objects = &self.objects;
+        let window = |toplevel: &u32, _: &mut String| {
+            objects
+                .living(*toplevel)
+                .is_some_and(|interface| interface.name == "xdg_toplevel")
+        };
+        self.places.retain(window);
+        let number = self.who.number.unwrap_or_default();
+        let hand = |(toplevel, place): (&u32, &String)| Hand::Placed {
+            number,
+            toplevel: *toplevel,
+            place: place.clone(),
+        };
+        self.places.iter().map(hand).collect()
     }
 
     /// The hand that tells a compositor of the program: as a part of the

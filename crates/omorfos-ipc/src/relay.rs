@@ -49,7 +49,7 @@ pub struct Started {
 }
 
 /// A hand, with the descriptors it says come with it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Hand {
     /// From the holder: the socket programs connect to.
     Socket,
@@ -69,6 +69,22 @@ pub enum Hand {
     /// From the relay: every program it kept for this compositor has been
     /// handed over.
     Kept,
+    /// From the compositor: where a window of the program the relay
+    /// numbered `number` is, its toplevel being the program's object
+    /// `toplevel`, as the compositor says it, which the relay keeps for the
+    /// next; and from the relay, handed back to it after the program.
+    Placed {
+        /// The number the relay gave the program.
+        number: u32,
+        /// The program's number for the window's toplevel.
+        toplevel: u32,
+        /// Where it is, as the compositor says it, to the end of the line.
+        place: String,
+    },
+    /// From the compositor: where the session is as a whole, as it says it,
+    /// which the relay keeps for the next; and from the relay, handed back
+    /// to it first.
+    Desk(String),
 }
 
 impl Hand {
@@ -82,6 +98,12 @@ impl Hand {
             Self::Started(started) => format!("started {} {}", started.pid, started.roles),
             Self::Part(program, roles) => format!("part {}", who(program, Some(*roles))),
             Self::Kept => "kept".to_owned(),
+            Self::Placed {
+                number,
+                toplevel,
+                place,
+            } => format!("placed {number} {toplevel} {place}"),
+            Self::Desk(desk) => format!("desk {desk}"),
         }
     }
 
@@ -105,6 +127,20 @@ impl Hand {
                 read.map(|(program, roles)| Self::Part(program, roles))
             }
             Some("kept") => words.next().is_none().then_some(Self::Kept),
+            Some("placed") => {
+                let mut said = text.splitn(4, ' ').skip(1);
+                let number = said.next()?.parse().ok()?;
+                let toplevel = said.next()?.parse().ok()?;
+                let place = said.next()?.to_owned();
+                Some(Self::Placed {
+                    number,
+                    toplevel,
+                    place,
+                })
+            }
+            Some("desk") => text
+                .split_once(' ')
+                .map(|(_, desk)| Self::Desk(desk.to_owned())),
             _ => None,
         }
     }
@@ -260,12 +296,29 @@ mod tests {
         16,
     );
 
+    /// Where a window of the program numbered 7, its toplevel 12, is, and
+    /// where the session is, as the compositor says them.
+    fn placed() -> Hand {
+        Hand::Placed {
+            number: 7,
+            toplevel: 12,
+            place: "1 10 20 640 480 m 0 eDP-1".to_owned(),
+        }
+    }
+
+    fn desk() -> Hand {
+        Hand::Desk("400 300 eDP-1 eDP-1:0".to_owned())
+    }
+
     #[test]
     fn each_hand_is_read_as_it_is_written() {
         let hands = [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED];
-        for hand in hands.into_iter().chain([STARTED, PART, Hand::Kept]) {
-            assert_eq!(Hand::read(&hand.written()), Some(hand));
+        let hands = hands.into_iter().chain([STARTED, PART, Hand::Kept]);
+        for hand in hands.chain([placed(), desk()]) {
+            assert_eq!(Hand::read(&hand.written()), Some(hand.clone()));
         }
+        assert_eq!(placed().written(), "placed 7 12 1 10 20 640 480 m 0 eDP-1");
+        assert_eq!(desk().written(), "desk 400 300 eDP-1 eDP-1:0");
         assert_eq!(PROGRAM.written(), "program 4321 1000 100 7");
         assert_eq!(UNNUMBERED.written(), "program 4321 1000 100");
         assert_eq!(STARTED.written(), "started 4321 16");
@@ -295,6 +348,12 @@ mod tests {
             "part 1 2 3 256 4",
             "part 1 2 3 4 5 6",
             "kept 1",
+            "placed",
+            "placed 1",
+            "placed x 2 3",
+            "placed 1 x 3",
+            "placed 1 2",
+            "desk",
         ] {
             assert_eq!(Hand::read(text), None, "{text:?}");
         }
