@@ -1588,18 +1588,32 @@ impl Client {
         xdg_popup::XdgPopup,
         xdg_positioner::XdgPositioner,
     ) {
+        let surface = self.surface();
+        let (popup, positioner) = self.popup_on(&surface, parent, position, size);
+        (surface, popup, positioner)
+    }
+
+    /// Creates a popup on `parent` in `surface`, which may have been one
+    /// before, as a toolkit shows a menu again, and makes its initial
+    /// commit. Returns the popup and the positioner used.
+    pub(crate) fn popup_on(
+        &self,
+        surface: &wl_surface::WlSurface,
+        parent: &Toplevel,
+        position: (i32, i32),
+        size: (i32, i32),
+    ) -> (xdg_popup::XdgPopup, xdg_positioner::XdgPositioner) {
         let wm_base = self.state.wm_base.as_ref().unwrap();
         let positioner = wm_base.create_positioner(&self.handle(), ());
         positioner.set_size(size.0, size.1);
         positioner.set_anchor_rect(position.0, position.1, 1, 1);
         positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
         positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
-        let surface = self.surface();
-        let xdg_surface = wm_base.get_xdg_surface(&surface, &self.handle(), ());
+        let xdg_surface = wm_base.get_xdg_surface(surface, &self.handle(), ());
         let popup =
             xdg_surface.get_popup(Some(&parent.xdg_surface), &positioner, &self.handle(), ());
         surface.commit();
-        (surface, popup, positioner)
+        (popup, positioner)
     }
 
     /// Creates a popup on a layer-shell surface, such as a panel's menu,
@@ -1653,14 +1667,19 @@ impl Client {
 
     /// Asks for an activation token: the right to hand focus to a window.
     /// `from_input` ties it to the last thing the user did in this client.
-    /// The token arrives in [`ClientState::token`].
-    pub(crate) fn request_token(&self, from_input: bool) {
+    /// The token arrives in [`ClientState::token`]; what asked for it is
+    /// returned, to be let go of.
+    pub(crate) fn request_token(
+        &self,
+        from_input: bool,
+    ) -> xdg_activation_token_v1::XdgActivationTokenV1 {
         let activation = self.state.activation.as_ref().unwrap();
         let token = activation.get_activation_token(&self.handle(), ());
         if from_input {
             token.set_serial(self.state.serial, self.seat());
         }
         token.commit();
+        token
     }
 
     /// Asks for `surface`'s window to be focused, presenting `token`.

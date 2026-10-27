@@ -608,3 +608,246 @@ fn a_window_that_said_where_its_edges_are_is_shown_again_by_them() {
     second.roundtrip(&mut client);
     relayed.kept();
 }
+
+#[test]
+fn a_program_with_a_menu_open_is_kept_and_told_the_menu_is_done() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut client, "app", (200, 100), RED);
+    let (surface, popup, _positioner) = client.popup(&window, (10, 20), (50, 30));
+    first.roundtrip(&mut client);
+    client.fill(&surface, (50, 30), GREEN);
+    first.roundtrip(&mut client);
+    client.take_events();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    assert!(
+        client.take_events().contains(&Event::PopupDone),
+        "the menu is over, as the compositor before closed it"
+    );
+
+    // Put away and shown again in the same surface, as a toolkit does, it
+    // is a menu of the next compositor's.
+    surface.attach(None, 0, 0);
+    surface.commit();
+    popup.destroy();
+    let (_popup, _positioner) = client.popup_on(&surface, &window, (10, 20), (50, 30));
+    second.roundtrip(&mut client);
+    assert!(
+        client
+            .take_events()
+            .iter()
+            .any(|event| matches!(event, Event::PopupConfigure { .. })),
+        "configured as a menu"
+    );
+    client.fill(&surface, (50, 30), BLUE);
+    second.roundtrip(&mut client);
+    assert_eq!(client.error(), None);
+    second.eventually(|session| session.draw().at(15, 25) == BLUE);
+}
+
+#[test]
+fn a_program_told_of_a_swipe_under_way_is_kept_and_told_it_was_cancelled() {
+    use omorfos::{Gesture, Input};
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    let _gestures = client.gestures();
+    first
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
+    first.roundtrip(&mut client);
+    let begun = Gesture::SwipeBegin { fingers: 4 };
+    first.compositor_mut().input(Input::Gesture(begun), 0);
+    first.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Gesture(begun)));
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    let told = client.take_events();
+    assert!(
+        told.contains(&Event::Gesture(Gesture::SwipeEnd { cancelled: true })),
+        "{told:?}"
+    );
+
+    // Gestures go on being told.
+    second
+        .compositor_mut()
+        .input(Input::Motion { x: 60.0, y: 50.0 }, 0);
+    let pinch = Gesture::PinchBegin { fingers: 2 };
+    second.compositor_mut().input(Input::Gesture(pinch), 0);
+    second.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Gesture(pinch)));
+}
+
+#[test]
+fn a_program_waiting_to_hear_a_picture_was_shown_is_kept_and_told_it_was_not() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut client, "app", (200, 100), RED);
+    let _feedback = client.feedback(&window.surface);
+    client.fill(&window.surface, (200, 100), GREEN);
+    first.roundtrip(&mut client);
+    client.take_events();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == GREEN);
+    second.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Discarded));
+    assert_eq!(client.error(), None);
+}
+
+#[test]
+fn a_program_holding_a_token_to_hand_focus_on_is_kept() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    let token = client.request_token(false);
+    first.roundtrip(&mut client);
+    assert!(client.state.token.take().is_some());
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    // Let go of, it is the relay's to answer for.
+    token.destroy();
+    second.roundtrip(&mut client);
+    let _next = client.request_token(false);
+    second.roundtrip(&mut client);
+    assert!(
+        client.state.token.is_some(),
+        "the next compositor gives one"
+    );
+    assert_eq!(client.error(), None);
+}
+
+#[test]
+fn a_program_that_keeps_the_screen_awake_gives_its_window_an_icon_and_shares_it_is_kept() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut client, "app", (200, 100), RED);
+    let _inhibitor = client.inhibit_idle(&window.surface);
+    let (_icons, icon) = client.icon();
+    icon.set_name("utilities-terminal".to_owned());
+    let _exported = client.export(&window);
+    first.roundtrip(&mut client);
+    assert!(client.state.exported.take().is_some());
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    assert!(
+        client.state.exported.is_some(),
+        "told the next compositor's handle"
+    );
+    assert_eq!(client.error(), None);
+}
+
+#[test]
+fn a_program_holding_a_buffer_in_the_memory_of_the_card_is_kept() {
+    use smithay::backend::allocator::{Fourcc, Modifier};
+    let relayed = Relayed::new();
+    let offered = |session: &mut Session| {
+        session
+            .compositor_mut()
+            .offer_gpu_buffers(0, crate::gpu::drawable())
+            .unwrap();
+    };
+    let (mut first, first_holder) = relayed.compositor_with(offered);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    let memory = tempfile::tempfile().unwrap();
+    memory.set_len(16 * 16 * 4).unwrap();
+    let format = (Fourcc::Xrgb8888 as u32, u64::from(Modifier::Linear));
+    let buffer = client.gpu_buffer(memory.as_fd(), ((16, 16), 64), format);
+    first.roundtrip(&mut client);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor_with(offered);
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    assert!(!client.take_events().contains(&Event::GpuBufferFailed));
+    buffer.destroy();
+    second.roundtrip(&mut client);
+    assert_eq!(client.error(), None);
+}
+
+#[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
+fn a_window_drawn_in_the_memory_of_the_card_is_shown_again_by_the_next_compositor() {
+    use smithay::backend::allocator::Fourcc;
+    use smithay::reexports::gbm;
+    let (card, number) = crate::common::graphics_card();
+    let relayed = Relayed::new();
+    let offered = |session: &mut Session| {
+        session
+            .compositor_mut()
+            .offer_gpu_buffers(number, crate::gpu::drawable())
+            .unwrap();
+    };
+    let (mut first, first_holder) = relayed.compositor_with(offered);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = client.toplevel("drawn", "drawn on the card");
+    first.roundtrip(&mut client);
+    let device = gbm::Device::new(card).unwrap();
+    let flags = gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING;
+    let mut picture = device
+        .create_buffer_object::<()>(64, 32, gbm::Format::Xrgb8888, flags)
+        .unwrap();
+    picture
+        .map_mut(0, 0, 64, 32, |mapped| {
+            let row = mapped.stride() as usize;
+            for line in mapped.buffer_mut().chunks_mut(row) {
+                for pixel in line[..64 * 4].as_chunks_mut::<4>().0 {
+                    *pixel = GREEN.to_le_bytes();
+                }
+            }
+        })
+        .unwrap();
+    let file = picture.fd().unwrap();
+    let format = (Fourcc::Xrgb8888 as u32, u64::from(picture.modifier()));
+    let buffer = client.gpu_buffer(file.as_fd(), ((64, 32), picture.stride()), format);
+    window.surface.attach(Some(&buffer), 0, 0);
+    window.surface.damage_buffer(0, 0, 64, 32);
+    window.surface.commit();
+    first.roundtrip(&mut client);
+    first.roundtrip(&mut client);
+    assert_eq!(first.draw().at(10, 10), GREEN);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor_with(offered);
+    second.eventually(|session| session.draw().at(10, 10) == GREEN);
+}

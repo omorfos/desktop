@@ -1,7 +1,10 @@
 //! Keeping a program through a change of compositor (ADR 61, step 2).
 //!
 //! When the compositor ends, the program waits, told only that the pointer,
-//! the keyboard and any field typed into have left its surfaces. When the next is joined, what
+//! the keyboard and any field typed into have left its surfaces, that a
+//! gesture under way was cancelled, and that what lasts only a moment has
+//! ended: a popup dismissed, a token given, a picture discarded, which the
+//! relay answers for from then on. When the next is joined, what
 //! the program had is made again in two parts, each ended by a sync of the
 //! relay's own: its registries, so that the new compositor's globals are
 //! known, then the rest, as [`Journal`] kept it. Until the second is
@@ -30,6 +33,9 @@ use crate::wire::{self, Broken, HEADER, Header};
 /// The display, which every connection starts with.
 const DISPLAY: u32 = 1;
 
+/// Which of the display's events says a number may be taken again.
+const DELETE_ID: u16 = 1;
+
 /// Which of a field's events ends what is typed into it for now, with the
 /// number of times it has been committed.
 const TEXT_DONE: u16 = 5;
@@ -53,6 +59,13 @@ impl Renumbered {
     /// The program's number for the compositor's `number`.
     fn ours(&self, number: u32) -> u32 {
         self.ours.get(&number).copied().unwrap_or(number)
+    }
+
+    /// The program's number for the compositor's `number`, if it is kept
+    /// as theirs: not if the program's number of that name is another's.
+    fn known(&self, number: u32) -> Option<u32> {
+        let ours = self.ours(number);
+        (self.theirs(ours) == number).then_some(ours)
     }
 
     /// Keeps that the program's `ours` is the compositor's `theirs`.
@@ -146,6 +159,14 @@ pub struct Keeping {
     /// What the program was last told of how something is, by the object and
     /// the event that said it.
     described: HashMap<(u32, u16), Vec<u8>>,
+    /// The gestures under way, each with the event that says it has ended.
+    gestures: HashMap<u32, u16>,
+    /// The tokens to hand focus on that the program has been given, and the
+    /// menus it has been told are over.
+    given: HashSet<u32>,
+    /// The highest of the program's numbers when the compositor went: what
+    /// the program may take next may be any up to it.
+    highest: u32,
     /// The numbers the new compositor has taken as what the program had is
     /// made again.
     numbering: Numbering,
@@ -175,6 +196,9 @@ impl Default for Keeping {
             focus: HashMap::new(),
             commits: HashMap::new(),
             described: HashMap::new(),
+            gestures: HashMap::new(),
+            given: HashSet::new(),
+            highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
             private: HashSet::new(),
@@ -205,6 +229,8 @@ impl Keeping {
             // What was told of what had the number before is not of this.
             self.described.retain(|(object, _), _| *object != made);
             self.commits.remove(&made);
+            self.gestures.remove(&made);
+            self.given.remove(&made);
             if interface.name == "xdg_toplevel" {
                 self.toplevels.insert(made, header.object);
                 self.windows.entry(header.object).or_default();
@@ -231,6 +257,12 @@ impl Keeping {
         if self.orphans.contains(&header.object) {
             if read.ends {
                 self.orphans.remove(&header.object);
+                // One of the program's own numbers no compositor has is the
+                // relay's to free.
+                if header.object < SERVERS {
+                    let freed = journal::message(DISPLAY, DELETE_ID, &[header.object]);
+                    self.to_program.push(freed);
+                }
             }
             return false;
         }
@@ -245,8 +277,7 @@ impl Keeping {
         let body = bytes.get_mut(HEADER..).unwrap_or_default();
         wire::renumber(body, described, &mut |number, _| {
             let ours = number >= SERVERS;
-            (!(ours && orphans.contains(&number)))
-                .then(|| if ours { servers.theirs(number) } else { number })
+            (!orphans.contains(&number)).then(|| if ours { servers.theirs(number) } else { number })
         })
     }
 
@@ -351,17 +382,32 @@ impl Keeping {
                 }
                 return None;
             }
-            let ours = self.name_for(name);
-            self.names.set(ours, name);
-            self.globals.push(Global {
-                name: ours,
-                ..global
+            // Told to each registry the program has, as a library it
+            // draws with makes one of its own: the same global, by the
+            // same name, unless the one it was is gone and its name taken.
+            let globals = &self.globals;
+            let known = self.names.known(name);
+            let same = known.filter(|ours| globals.iter().any(|known| known.name == *ours));
+            let ours = same.unwrap_or_else(|| {
+                if let Some(gone) = known {
+                    self.names.forget(gone);
+                }
+                let ours = self.name_for(name);
+                // Its name may have been another's, taken away.
+                self.names.forget(ours);
+                self.names.set(ours, name);
+                self.globals.push(Global {
+                    name: ours,
+                    ..global
+                });
+                ours
             });
             wire::put(bytes, HEADER, ours);
         } else {
+            // Each registry is told, so the name is kept until a new
+            // global takes it, on either side.
             let ours = self.names.ours(name);
             self.globals.retain(|global| global.name != ours);
-            self.names.forget(ours);
             wire::put(bytes, HEADER, ours);
             if self.phase != Phase::Live {
                 return None;
@@ -413,6 +459,19 @@ impl Keeping {
                 window.told = Some(body.to_vec());
             }
             ("xdg_surface", 0) => return self.configured(object, word(0)),
+            ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 0) => {
+                self.gestures.insert(object, 2);
+            }
+            ("zwp_pointer_gesture_hold_v1", 0) => {
+                self.gestures.insert(object, 1);
+            }
+            ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 2)
+            | ("zwp_pointer_gesture_hold_v1", 1) => {
+                self.gestures.remove(&object);
+            }
+            ("xdg_activation_token_v1", 0) | ("xdg_popup", 1) => {
+                self.given.insert(object);
+            }
             ("wl_shm", 0) | ("wl_seat" | "wl_output" | "zxdg_output_v1", _) => return !catching,
             (interface, opcode) if let Some(changes) = describes(interface, opcode) => {
                 // Told again as it was, while the relay catches up or of
@@ -479,7 +538,8 @@ impl Keeping {
                     .any(|global| global.name == ours)
                     .then(|| names.theirs(ours))
             };
-            let (sending, _) = self.journal.replay(&rename, &mut self.numbering)?;
+            let (mut sending, _) = self.journal.replay(&rename, &mut self.numbering)?;
+            self.numbering.fill_to(&mut sending, self.highest);
             self.private.extend(self.numbering.fillers.drain(..));
             self.to_compositor.extend(sending);
             self.sync();
@@ -561,6 +621,34 @@ impl Keeping {
         let unkept = self.journal.unkept();
         if !unkept.is_empty() {
             return Err(unkept);
+        }
+        self.highest = objects.highest();
+        // What lasts only a moment ends with the compositor, as it would have
+        // told the program, and the relay answers for it from now on.
+        for (number, interface) in self.journal.end_lost() {
+            let untold = !self.given.remove(&number);
+            match interface {
+                "xdg_popup" if untold => self.to_program.push(journal::message(number, 1, &[])),
+                "xdg_activation_token_v1" if untold => {
+                    // A token no compositor will take.
+                    self.to_program.push(journal::said(number, 0, ""));
+                }
+                "wp_presentation_feedback" => {
+                    self.to_program.push(journal::message(number, 2, &[]));
+                    self.to_program
+                        .push(journal::message(DISPLAY, DELETE_ID, &[number]));
+                    continue;
+                }
+                _ => {}
+            }
+            self.orphans.insert(number);
+        }
+        let mut gestures: Vec<(u32, u16)> = self.gestures.drain().collect();
+        gestures.sort_unstable();
+        for (gesture, ended) in gestures {
+            // Its serial and time, then that it was cancelled.
+            let cancelled = journal::message(gesture, ended, &[0, 0, 1]);
+            self.to_program.push(cancelled);
         }
         let made = objects
             .each_living()
@@ -719,10 +807,155 @@ mod tests {
 
     /// A registry's event that offers a global.
     fn global(name: u32, interface: &str, version: u32) -> Vec<u8> {
+        announced(2, name, interface, version)
+    }
+
+    /// The event of `registry` that offers a global.
+    fn announced(registry: u32, name: u32, interface: &str, version: u32) -> Vec<u8> {
         let mut body = words(&[name]);
         body.extend(text(interface));
         body.extend(words(&[version]));
-        message(2, 0, &body)
+        message(registry, 0, &body)
+    }
+
+    #[test]
+    fn a_global_told_to_another_registry_is_named_there_as_it_is_to_the_first() {
+        let globals = [(1, "wl_compositor", 6), (2, "zwp_linux_dmabuf_v1", 5)];
+        let mut kept = Kept::registered(&globals);
+        // A second registry, as the library a program draws with makes.
+        kept.send(&message(1, 1, &words(&[3]))).unwrap();
+        for (name, interface, version) in globals {
+            let told = announced(3, name, interface, version);
+            assert_eq!(kept.told(&told), Some(told.clone()));
+        }
+        let mut bind = words(&[2]);
+        bind.extend(text("zwp_linux_dmabuf_v1"));
+        bind.extend(words(&[5, 4]));
+        kept.send(&message(3, 0, &bind)).unwrap();
+
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert!(kept.keeping.live(), "kept, bound as it was");
+    }
+
+    #[test]
+    fn a_global_under_a_name_the_compositor_gave_another_is_new_to_the_program() {
+        let mut kept = Kept::registered(&[(1, "wl_compositor", 6)]);
+        kept.send(&message(1, 1, &words(&[3]))).unwrap();
+        kept.told(&announced(3, 1, "wl_compositor", 6)).unwrap();
+        kept.restarted(&[(7, "wl_compositor", 6)]);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        // The program's 1 is the compositor's 7, so its 1 is another.
+        for registry in [2, 3] {
+            let told = kept.told(&announced(registry, 1, "wl_seat", 7));
+            assert_eq!(told, Some(announced(registry, 2, "wl_seat", 7)));
+        }
+        // Its 7 taken away, and given to a screen.
+        for registry in [2, 3] {
+            kept.told(&message(registry, 1, &words(&[7]))).unwrap();
+        }
+        let told = kept.told(&announced(2, 7, "wl_output", 4));
+        assert_eq!(told, Some(announced(2, 7, "wl_output", 4)));
+        let removed = kept.told(&message(2, 1, &words(&[7])));
+        assert_eq!(removed, Some(message(2, 1, &words(&[7]))));
+    }
+
+    #[test]
+    fn a_name_the_program_had_for_a_global_taken_away_is_the_compositors_for_the_next() {
+        let mut kept = Kept::registered(&[(1, "wl_output", 4)]);
+        kept.restarted(&[(7, "wl_output", 4)]);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        let removed = kept.told(&message(2, 1, &words(&[7])));
+        assert_eq!(removed, Some(message(2, 1, &words(&[1]))));
+        // The compositor's 1 is new, and the program's 1 is no longer its 7.
+        let told = kept.told(&announced(2, 1, "wl_seat", 7));
+        assert_eq!(told, Some(announced(2, 1, "wl_seat", 7)));
+        let bound = kept.bind(1, "wl_seat", 7, 3);
+        assert_eq!(wire::word(&bound, HEADER), Some(1));
+    }
+
+    #[test]
+    fn a_number_freed_before_the_compositor_went_and_made_again_is_freed_once() {
+        let mut kept = Kept::registered(&[(1, "wl_compositor", 6)]);
+        kept.bind(1, "wl_compositor", 6, 3);
+        // A surface, given a region as where it takes input, and the region
+        // destroyed: its number is the program's again only once nothing
+        // kept names it.
+        kept.send(&message(3, 0, &words(&[4]))).unwrap();
+        kept.send(&message(3, 1, &words(&[5]))).unwrap();
+        kept.send(&message(4, 5, &words(&[5]))).unwrap();
+        kept.send(&message(5, 0, &[])).unwrap();
+        let freed = message(DISPLAY, DELETE_ID, &words(&[5]));
+        assert_eq!(kept.told(&freed), None, "withheld");
+
+        kept.restarted(&[(1, "wl_compositor", 6)]);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert!(kept.keeping.live());
+        // The region, made again and destroyed again by the relay, is no
+        // longer named once the surface is gone; the next compositor frees
+        // its number.
+        kept.send(&message(4, 0, &[])).unwrap();
+        let told = kept.keeping.journal.freed().len() + usize::from(kept.told(&freed).is_some());
+        assert_eq!(told, 1, "the program told its number is free once");
+    }
+
+    #[test]
+    fn a_menus_surface_shown_again_with_nothing_is_kept_while_its_frame_is_awaited() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "xdg_wm_base", 6),
+            (3, "wp_single_pixel_buffer_manager_v1", 1),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 3);
+        }
+        // A window, on 7, and a menu on it, on 8, showing a buffer twice
+        // and waiting for its next frame.
+        for surface in [7, 8] {
+            kept.send(&message(4, 0, &words(&[surface]))).unwrap();
+        }
+        kept.send(&message(5, 2, &words(&[9, 7]))).unwrap();
+        kept.send(&message(9, 1, &words(&[10]))).unwrap();
+        kept.send(&message(5, 1, &words(&[11]))).unwrap();
+        kept.send(&message(5, 2, &words(&[12, 8]))).unwrap();
+        kept.send(&message(12, 2, &words(&[13, 9, 11]))).unwrap();
+        kept.send(&message(6, 1, &words(&[14, 0, 0, 0, 0])))
+            .unwrap();
+        for _ in 0..2 {
+            kept.send(&message(8, 1, &words(&[14, 0, 0]))).unwrap();
+            kept.send(&message(8, 6, &[])).unwrap();
+        }
+        kept.send(&message(8, 3, &words(&[15]))).unwrap();
+
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        // Told the menu is done, the program destroys it, and its surface.
+        for menu in [13, 12, 8] {
+            kept.send(&message(menu, 0, &[]));
+        }
+        let freed = message(DISPLAY, DELETE_ID, &words(&[8]));
+        assert_eq!(kept.told(&freed), None, "withheld, as the frame names it");
+    }
+
+    #[test]
+    fn a_global_taken_away_is_told_to_each_registry_by_the_programs_name_for_it() {
+        let mut kept = Kept::registered(&[(1, "wl_compositor", 6)]);
+        kept.send(&message(1, 1, &words(&[3]))).unwrap();
+        kept.told(&announced(3, 1, "wl_compositor", 6)).unwrap();
+        // The next compositor calls it 7; the program, 1.
+        kept.restarted(&[(7, "wl_compositor", 6)]);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        for registry in [2, 3] {
+            let removed = kept.told(&message(registry, 1, &words(&[7])));
+            assert_eq!(removed, Some(message(registry, 1, &words(&[1]))));
+        }
     }
 
     #[test]
@@ -1203,13 +1436,153 @@ mod tests {
 
     #[test]
     fn a_program_holding_what_cannot_be_made_again_is_not_kept() {
-        let mut kept = Kept::registered(&[(1, "zwp_linux_dmabuf_v1", 3)]);
-        kept.bind(1, "zwp_linux_dmabuf_v1", 3, 3);
-        // What a buffer on the graphics card is to be made of.
+        let mut kept = Kept::registered(&[(1, "ext_session_lock_manager_v1", 1)]);
+        kept.bind(1, "ext_session_lock_manager_v1", 1, 3);
+        // The session locked.
         kept.send(&message(3, 1, &words(&[4]))).unwrap();
         assert_eq!(
             kept.keeping.lost(&kept.objects),
-            Err(vec!["zwp_linux_buffer_params_v1"])
+            Err(vec!["ext_session_lock_v1"])
         );
+    }
+
+    /// The bytes of what is sent.
+    fn bytes(sending: &[Sending]) -> Vec<Vec<u8>> {
+        sending.iter().map(|(bytes, _)| bytes.clone()).collect()
+    }
+
+    /// The headers of what is sent, each its object and opcode.
+    fn headers(sending: &[Sending]) -> Vec<(u32, u16)> {
+        let header = |bytes: &[u8]| wire::header(bytes).unwrap().unwrap();
+        let sent = sending.iter().map(|(bytes, _)| header(bytes));
+        sent.map(|header| (header.object, header.opcode)).collect()
+    }
+
+    #[test]
+    fn what_lasts_only_a_moment_is_told_it_has_ended_and_is_the_relays_to_answer_for() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "xdg_wm_base", 6),
+            (3, "xdg_activation_v1", 1),
+            (4, "wp_presentation", 2),
+            (5, "wp_single_pixel_buffer_manager_v1", 1),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 2);
+        }
+        // A window, 8, and two menus on it, 9 and 10, of which the second
+        // has been told it is over.
+        for surface in [8, 9, 10] {
+            kept.send(&message(3, 0, &words(&[surface]))).unwrap();
+        }
+        kept.send(&message(4, 2, &words(&[11, 8]))).unwrap();
+        kept.send(&message(11, 1, &words(&[12]))).unwrap();
+        kept.send(&message(4, 1, &words(&[13]))).unwrap();
+        for (xdg_surface, surface, popup) in [(14, 9, 15), (16, 10, 17)] {
+            kept.send(&message(4, 2, &words(&[xdg_surface, surface])))
+                .unwrap();
+            kept.send(&message(xdg_surface, 2, &words(&[popup, 11, 13])))
+                .unwrap();
+        }
+        // The first shows a buffer, and is to show it again.
+        kept.send(&message(7, 1, &words(&[18, 0, 0, 0, 0])))
+            .unwrap();
+        kept.send(&message(9, 1, &words(&[18, 0, 0]))).unwrap();
+        kept.send(&message(9, 6, &[])).unwrap();
+        kept.send(&message(9, 1, &words(&[18, 0, 0]))).unwrap();
+        // Two tokens, of which only the first has been given, and word
+        // asked for of the window's next picture.
+        kept.send(&message(5, 1, &words(&[19]))).unwrap();
+        kept.send(&message(5, 1, &words(&[20]))).unwrap();
+        kept.send(&message(6, 1, &words(&[8, 21]))).unwrap();
+        kept.told(&message(19, 0, &text("given"))).unwrap();
+        kept.told(&message(17, 1, &[])).unwrap();
+
+        kept.restarted(&globals);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[
+                journal::message(15, 1, &[]),
+                journal::said(20, 0, ""),
+                journal::message(21, 2, &[]),
+                journal::message(DISPLAY, DELETE_ID, &[21]),
+            ]),
+            "the menu not yet over is, the token not yet given is given one \
+             no compositor takes, and the picture was not shown"
+        );
+        let made = headers(&kept.keeping.to_compositor);
+        let ended = [14, 15, 16, 17, 19, 20, 21];
+        assert!(
+            !made.iter().any(|(object, _)| ended.contains(object)),
+            "none of it made again: {made:?}"
+        );
+        assert!(!made.contains(&(9, 1)), "nor shown in a menu's surface");
+        assert!(made.contains(&(8, 6)), "the window's is");
+        assert!(kept.keeping.numbering.top >= 21, "and its numbers taken");
+
+        // Asked of, or named, it is not passed on; let go of, the relay
+        // frees its number.
+        kept.send(&message(4, 2, &words(&[22, 10]))).unwrap();
+        assert_eq!(kept.send(&message(22, 2, &words(&[23, 16, 13]))), None);
+        assert_eq!(kept.send(&message(15, 0, &[])), None);
+        assert_eq!(kept.send(&message(19, 4, &[])), None);
+        assert_eq!(
+            bytes(&kept.keeping.to_program[4..]),
+            bytes(&[
+                journal::message(DISPLAY, DELETE_ID, &[15]),
+                journal::message(DISPLAY, DELETE_ID, &[19]),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_gesture_under_way_as_the_compositor_goes_is_told_it_was_cancelled() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "wl_seat", 9),
+            (3, "zwp_pointer_gestures_v1", 3),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 2);
+        }
+        kept.send(&message(3, 0, &words(&[6]))).unwrap();
+        kept.send(&message(4, 0, &words(&[7]))).unwrap();
+        // A swipe, a pinch and fingers held still.
+        for (opcode, gesture) in [(0, 8), (1, 9), (3, 10)] {
+            kept.send(&message(5, opcode, &words(&[gesture, 7])))
+                .unwrap();
+        }
+        for gesture in [8, 9, 10] {
+            kept.told(&message(gesture, 0, &words(&[1, 2, 6, 3])))
+                .unwrap();
+        }
+        kept.told(&message(9, 2, &words(&[3, 4, 0]))).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[
+                journal::message(8, 2, &[0, 0, 1]),
+                journal::message(10, 1, &[0, 0, 1]),
+            ]),
+            "the pinch was over"
+        );
+    }
+
+    #[test]
+    fn a_buffer_on_the_card_the_compositor_made_cannot_be_made_again_while_held() {
+        let mut kept = Kept::registered(&[(1, "zwp_linux_dmabuf_v1", 3)]);
+        kept.bind(1, "zwp_linux_dmabuf_v1", 3, 3);
+        kept.send(&message(3, 1, &words(&[4]))).unwrap();
+        kept.send(&message(4, 2, &words(&[16, 16, 0x3432_5258, 0])))
+            .unwrap();
+        kept.told(&message(4, 0, &words(&[SERVERS]))).unwrap();
+        assert_eq!(
+            kept.keeping.lost(&kept.objects),
+            Err(vec![journal::MADE_BY_THE_COMPOSITOR])
+        );
+        kept.send(&message(SERVERS, 0, &[])).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()), "let go of");
     }
 }

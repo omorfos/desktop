@@ -181,6 +181,13 @@ impl Objects {
         self.known.get(&number).is_none_or(|object| object.gone)
     }
 
+    /// The highest of the program's own numbers it holds, gone or not.
+    #[must_use]
+    pub fn highest(&self) -> u32 {
+        let ours = self.known.keys().filter(|number| **number < SERVERS);
+        ours.max().copied().unwrap_or(DISPLAY)
+    }
+
     /// What each object living is, in no order.
     pub fn each_living(&self) -> impl Iterator<Item = (u32, &'static Interface)> + '_ {
         let living = self.known.iter().filter(|(_, object)| !object.gone);

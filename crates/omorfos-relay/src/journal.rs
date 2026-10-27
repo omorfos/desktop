@@ -16,6 +16,11 @@
 //! by `wl_display.delete_id`, until nothing kept names it any more, so that
 //! the program cannot take it for something else meanwhile.
 //!
+//! What lasts only a moment, a popup, a token to hand focus on or word of a
+//! picture being shown, is not made again: it is let go of as the
+//! compositor goes ([`Journal::end_lost`]), and a popup's surface made again
+//! showing nothing.
+//!
 //! A surface's parts (`wl_subsurface`) are stacked as they last were, and
 //! each surface is committed after its parts, so that what a part shows,
 //! which it shows only once the surface it is part of is committed, is
@@ -83,7 +88,9 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         ) => Rule::Pending,
         ("wl_surface", "commit") => Rule::Commit,
         ("wl_region", "add" | "subtract")
-        | ("wl_data_source" | "zwp_primary_selection_source_v1", "offer") => Rule::Adding,
+        | ("wl_data_source" | "zwp_primary_selection_source_v1", "offer")
+        | ("zwp_linux_buffer_params_v1", "add")
+        | ("xdg_toplevel_icon_v1", "add_buffer") => Rule::Adding,
         ("wl_shm_pool", "resize")
         | ("wl_data_source", "set_actions")
         | ("xdg_surface", "set_window_geometry")
@@ -94,14 +101,15 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("xdg_positioner", _)
         | ("zxdg_toplevel_decoration_v1", "set_mode" | "unset_mode")
         | ("wp_viewport", "set_source" | "set_destination")
-        | ("wl_subsurface", "set_position" | "set_sync" | "set_desync") => Rule::Lasting,
+        | ("wl_subsurface", "set_position" | "set_sync" | "set_desync")
+        | ("xdg_toplevel_icon_v1", "set_name") => Rule::Lasting,
         _ => Rule::Passing,
     }
 }
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 23] = [
+const KEPT: [&str; 31] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -125,12 +133,39 @@ const KEPT: [&str; 23] = [
     "wp_fractional_scale_v1",
     "zxdg_output_v1",
     "zwp_text_input_v3",
+    "zwp_pointer_gesture_swipe_v1",
+    "zwp_pointer_gesture_pinch_v1",
+    "zwp_pointer_gesture_hold_v1",
+    "zwp_idle_inhibitor_v1",
+    "zwp_linux_buffer_params_v1",
+    "zwp_linux_dmabuf_feedback_v1",
+    "xdg_toplevel_icon_v1",
+    "zxdg_exported_v2",
 ];
 
-/// Whether an object of `interface` can be made again.
+/// The interfaces of what lasts only a moment, which is not made again: a
+/// menu, a token to hand focus on, and word of a picture being shown. When
+/// the compositor goes, the program is told it has ended, as that
+/// compositor would have told it.
+const ENDED: [&str; 3] = [
+    "xdg_popup",
+    "xdg_activation_token_v1",
+    "wp_presentation_feedback",
+];
+
+/// What a program holds that the relay says cannot be made again when the
+/// compositor made it: a buffer on the graphics card made by
+/// `zwp_linux_buffer_params_v1.create`, which only a request can make
+/// again, and not under the compositor's number.
+pub const MADE_BY_THE_COMPOSITOR: &str = "wl_buffer of zwp_linux_buffer_params_v1.create";
+
+/// Whether an object of `interface` can be made again, or be let end when
+/// the compositor goes.
 #[must_use]
 pub fn keeps(interface: &str) -> bool {
-    KEPT.contains(&interface) || crate::known::global(interface).is_some()
+    KEPT.contains(&interface)
+        || ENDED.contains(&interface)
+        || crate::known::global(interface).is_some()
 }
 
 /// A request kept, its descriptors held open.
@@ -183,6 +218,21 @@ pub fn message(object: u32, opcode: u16, arguments: &[u32]) -> Sending {
     (bytes, Vec::new())
 }
 
+/// A message to `object`, the `opcode`th of its, of one argument, `text`.
+#[must_use]
+pub fn said(object: u32, opcode: u16, text: &str) -> Sending {
+    let mut string = text.as_bytes().to_vec();
+    string.push(0);
+    let length = u32::try_from(string.len()).unwrap_or(u32::MAX);
+    string.resize(string.len().next_multiple_of(4), 0);
+    let size = u32::try_from(HEADER + 4 + string.len()).unwrap_or(u32::MAX);
+    let mut bytes = object.to_ne_bytes().to_vec();
+    bytes.extend((size << 16 | u32::from(opcode)).to_ne_bytes());
+    bytes.extend(length.to_ne_bytes());
+    bytes.extend(string);
+    (bytes, Vec::new())
+}
+
 /// The numbers a compositor has taken for the program's objects, as they are
 /// made again.
 ///
@@ -218,6 +268,15 @@ impl Numbering {
             self.fillers.push(filler);
         }
         self.top = self.top.max(made);
+    }
+
+    /// Takes, with syncs, each number up to `last` not yet taken, so that
+    /// the program may take any of them for something new, as the
+    /// compositor takes only the next number or one it has freed.
+    pub fn fill_to(&mut self, sending: &mut Vec<Sending>, last: u32) {
+        let top = self.top.max(last);
+        self.fill(sending, last.saturating_add(1));
+        self.top = top;
     }
 
     /// The next number not taken, taken for a sync of the relay's own.
@@ -277,6 +336,9 @@ pub struct Journal {
     /// bottom, the surface itself among them. A part destroyed may still be
     /// in it; it is passed over.
     stacks: HashMap<u32, Vec<u32>>,
+    /// The buffers on the graphics card the compositor made, which cannot
+    /// be made again, while the program holds them.
+    theirs: HashSet<u32>,
 }
 
 impl Journal {
@@ -321,6 +383,7 @@ impl Journal {
             self.place(object, sibling, read.opcode == PLACE_ABOVE);
         }
         if read.ends {
+            self.theirs.remove(&object);
             let message = Message::kept(bytes, fds, described);
             self.ended(object, message);
         } else if rule != Rule::Passing {
@@ -428,6 +491,12 @@ impl Journal {
             kept.and_modify(|kept| kept.gone = None);
             self.end(header.object);
         }
+        if let Some((made, _, _)) = read
+            .made
+            .filter(|_| read.interface.name == "zwp_linux_buffer_params_v1")
+        {
+            self.theirs.insert(made);
+        }
         true
     }
 
@@ -448,7 +517,57 @@ impl Journal {
                 unkept.push(interface);
             }
         }
+        if !self.theirs.is_empty() {
+            unkept.push(MADE_BY_THE_COMPOSITOR);
+        }
         unkept
+    }
+
+    /// Lets go of what lasts only a moment, which is not made again, as the
+    /// compositor goes: each menu, with its `xdg_surface`, whose surface is
+    /// then made again showing nothing, so that it can be made a menu
+    /// again; each token to hand focus on; and each word of a picture being
+    /// shown. Returns each, and what it is, in the order made.
+    ///
+    /// A number withheld is withheld no longer: what had it is made again,
+    /// and destroyed again, and the next compositor frees it then.
+    pub fn end_lost(&mut self) -> Vec<(u32, &'static str)> {
+        self.withheld.clear();
+        let mut ended = Vec::new();
+        for (number, kept) in self.ordered() {
+            let interface = kept.interface.name;
+            if ENDED.contains(&interface) {
+                ended.push((number, interface));
+            }
+            if interface == "xdg_popup" {
+                // Made by a request to its `xdg_surface`, which names its
+                // surface.
+                let roled = kept.made.names.first().copied().unwrap_or_default();
+                ended.push((roled, "xdg_surface"));
+            }
+        }
+        for (number, interface) in &ended {
+            let kept = self.kept.remove(number);
+            for names in kept.iter().flat_map(Kept::names) {
+                self.unname(*number, &names);
+            }
+            let surface = kept
+                .filter(|_| *interface == "xdg_surface")
+                .and_then(|kept| kept.made.names.get(1).copied());
+            let kept = surface.and_then(|surface| Some(surface).zip(self.kept.get_mut(&surface)));
+            if let Some((surface, kept)) = kept {
+                let shown = |message: &mut Message| message.opcode() == ATTACH;
+                let committed = kept.committed.extract_if(.., shown);
+                let unattached: Vec<Message> = committed
+                    .chain(kept.pending.extract_if(.., shown))
+                    .collect();
+                // The surface's own, which do not count it as named.
+                for message in unattached {
+                    self.unname(surface, &message.names);
+                }
+            }
+        }
+        ended
     }
 
     /// The requests that make the program's registries again, in the order
@@ -1114,18 +1233,21 @@ mod tests {
     #[test]
     fn a_program_holding_what_cannot_be_made_again_cannot_be_kept() {
         let mut program = surfaced();
-        program.bind(2, "zwp_linux_dmabuf_v1", 3, 5);
+        program.bind(2, "ext_session_lock_manager_v1", 1, 5);
         assert_eq!(program.journal.unkept(), [""; 0], "a global bound");
         program.send(&sent(5, 1, &words(&[6])), &[]);
         program.send(&sent(5, 1, &words(&[7])), &[]);
-        program.bind(3, "wp_presentation", 2, 8);
-        program.send(&sent(8, 1, &words(&[4, 9])), &[]);
+        program.bind(3, "zxdg_importer_v2", 1, 8);
+        let mut imported = words(&[9]);
+        imported.extend(text("handle"));
+        program.send(&sent(8, 1, &imported), &[]);
         assert_eq!(
             program.journal.unkept(),
-            ["zwp_linux_buffer_params_v1", "wp_presentation_feedback"],
+            ["ext_session_lock_v1", "zxdg_imported_v2"],
             "each once, in the order made"
         );
-        assert!(keeps("wl_seat") && keeps("xdg_toplevel") && !keeps("xdg_popup"));
+        assert!(keeps("wl_seat") && keeps("xdg_toplevel") && keeps("xdg_popup"));
+        assert!(!keeps("ext_session_lock_v1"));
     }
 
     #[test]
@@ -1133,6 +1255,9 @@ mod tests {
         assert_eq!(rule("wl_surface", "attach"), Rule::Pending);
         assert_eq!(rule("wl_surface", "commit"), Rule::Commit);
         assert_eq!(rule("wl_region", "subtract"), Rule::Adding);
+        assert_eq!(rule("zwp_linux_buffer_params_v1", "add"), Rule::Adding);
+        assert_eq!(rule("xdg_toplevel_icon_v1", "add_buffer"), Rule::Adding);
+        assert_eq!(rule("xdg_toplevel_icon_v1", "set_name"), Rule::Lasting);
         assert_eq!(
             rule("zwp_primary_selection_source_v1", "offer"),
             Rule::Adding

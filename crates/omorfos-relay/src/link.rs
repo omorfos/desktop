@@ -199,8 +199,8 @@ impl Link {
         // be without waiting.
         match (open, way) {
             (true, _) => passed,
-            (false, Way::Down) if !self.errored => Err(Ended::Lost),
-            (false, _) => Err(Ended::Closed),
+            (false, Way::Down) => Err(self.compositor_closed()),
+            (false, Way::Up) => Err(Ended::Closed),
         }
     }
 
@@ -248,8 +248,8 @@ impl Link {
         self.keeping.join();
         self.flush_keeping();
         unwaited
-            .and_then(|()| self.give_out(Way::Up))
             .map_err(Ended::from)
+            .and_then(|()| self.give_out(Way::Up))
     }
 
     /// Reads each whole message waiting `way`, keeps what it makes and
@@ -265,7 +265,7 @@ impl Link {
         }
         self.flush_keeping();
         self.give_out(Way::Up)?;
-        self.give_out(Way::Down).map_err(Ended::from)
+        self.give_out(Way::Down)
     }
 
     /// Passes on what the program has sent, while it is live.
@@ -331,7 +331,12 @@ impl Link {
     /// Puts what the relay is to tell the program of its own accord to be
     /// written, in its place among what the compositor says.
     fn tell_program(&mut self) {
-        for told in self.keeping.to_program.drain(..) {
+        let told = std::mem::take(&mut self.keeping.to_program);
+        for told in told {
+            // Read as the program's, so that what the relay ends or frees of
+            // its own accord is ended or freed in the table too.
+            let header = wire::header(&told.0).ok().flatten();
+            let _ = header.map(|header| self.objects.event(&told.0, header));
             self.down.push(told);
         }
     }
@@ -346,14 +351,28 @@ impl Link {
     }
 
     /// Writes what is waiting to go `way`, as much as is taken now.
-    fn give_out(&mut self, way: Way) -> io::Result<()> {
+    fn give_out(&mut self, way: Way) -> Result<(), Ended> {
         match way {
             Way::Up => {
                 let up = &mut self.up;
                 let compositor = self.compositor.as_ref();
-                compositor.map_or(Ok(()), |compositor| give_out(compositor, up))
+                let written = compositor.map_or(Ok(()), |compositor| give_out(compositor, up));
+                // Written to as it goes, as a program that is busy is, the
+                // compositor gone is found here before it is read.
+                written.map_err(|_| self.compositor_closed())
             }
-            Way::Down => give_out(&self.program, &mut self.down),
+            Way::Down => give_out(&self.program, &mut self.down).map_err(Ended::from),
+        }
+    }
+
+    /// Why the link ends with the compositor's side closed: it has gone,
+    /// or let the program go, unless it said the program did what it may
+    /// not.
+    fn compositor_closed(&self) -> Ended {
+        if self.errored {
+            Ended::Closed
+        } else {
+            Ended::Lost
         }
     }
 
@@ -575,13 +594,13 @@ mod tests {
         let (mut link, program, _compositor) = linked();
         let mut sent = get_registry();
         let mut body = words(&[1]);
-        body.extend(text("zwp_linux_dmabuf_v1"));
-        body.extend(words(&[3, 3]));
+        body.extend(text("ext_session_lock_manager_v1"));
+        body.extend(words(&[1, 3]));
         sent.extend(message(2, 0, &body));
         sent.extend(message(3, 1, &words(&[4])));
         send(&program, &sent, &[]);
         link.read(Way::Up).unwrap();
-        assert_eq!(link.lose(), Err(vec!["zwp_linux_buffer_params_v1"]));
+        assert_eq!(link.lose(), Err(vec!["ext_session_lock_v1"]));
         assert!(link.compositor().is_some(), "not left waiting");
     }
 
@@ -865,8 +884,17 @@ mod tests {
     }
 
     #[test]
-    fn a_compositor_gone_cannot_be_written_to() {
+    fn a_compositor_gone_as_it_is_written_to_is_lost_unless_it_said_the_program_erred() {
         let (mut link, program, compositor) = linked();
+        drop(compositor);
+        send(&program, &get_registry(), &[]);
+        assert_eq!(link.read(Way::Up), Err(Ended::Lost), "the program kept");
+
+        let (mut link, program, compositor) = linked();
+        let mut error = words(&[1, 0]);
+        error.extend(text("no"));
+        send(&compositor, &message(1, 0, &error), &[]);
+        link.read(Way::Down).unwrap();
         drop(compositor);
         send(&program, &get_registry(), &[]);
         assert_eq!(link.read(Way::Up), Err(Ended::Closed));

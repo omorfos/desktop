@@ -170,6 +170,9 @@ as GTK's are, come in step 3.
   connection closes, with no error said, waits up to half a second for
   the compositor to be seen gone before it is taken to have been let go
   by a compositor that goes on, which omorfos does only with an error.
+  A program that is busy, as one playing a video is, is as likely to find
+  the compositor gone by a request that cannot be written to it, which is
+  taken the same way; taken for the program's own end, it let Firefox go.
 - **What each program has made is written down as it is made**: for each
   object living, the request that made it, with its descriptors held,
   and what has been asked of it since that lasts, as a table for each
@@ -200,6 +203,15 @@ as GTK's are, come in step 3.
   acked by the relay, which then commits what the window last showed, and
   is passed on only if it differs from what the program last acked, whose
   own ack of it is then kept from the compositor, as it is acked already.
+- **A global has one name for the program, however many registries it
+  has.** A library a program draws with, as Mesa's EGL, makes a registry
+  of its own, and each global is told to it by the name the program's
+  first registry was told. A global taken away is told so on each, by
+  that name, which stays the program's for it until a new global takes
+  that name or the compositor's for it. Named anew for each registry, the program
+  had more names than the next compositor had globals, and every program
+  that draws with the card was let go, as ghostty and Firefox ESR were
+  when 3a was first tried.
 - **What was focused leaves, and comes back.** When the compositor ends,
   the relay tells the program that the pointer, the keyboard and any field
   typed into have left its surfaces, and the new compositor tells it they
@@ -244,3 +256,51 @@ as GTK's are, come in step 3.
   process as a line, as the holder cannot know it from anything handed
   over that a process becoming another program keeps. The new version
   waits on it by its number.
+
+## Step 3: the rest of what programs make
+
+Settled as step 3 was started, and built in parts, the programs most used
+first: those drawn with GTK and the browsers (3a); what was on the
+clipboard, and the serials a program holds (3b); a window back where and
+as it was (3c); components and programs in a sandbox (3d); and the
+compositor taking up its own new version (3e).
+
+- **What lasts only a moment ends with the compositor** (3a): a popup, a
+  token to hand focus on, and word asked of a picture being shown. Each is
+  told it has ended as that compositor would have told it: the popup that it
+  is dismissed, the token not yet given a token no compositor takes, the
+  word that the picture was discarded. None is made again; from then on the
+  relay answers for each, keeping what is asked of it from the compositor and
+  freeing its number when the program lets it go. A popup's surface is made
+  again showing nothing, so that a toolkit may make it a popup again, which
+  a surface that has shown something may not become.
+- **A gesture under way is told it was cancelled** (3a), as one may be, and
+  the gesture objects are made again.
+- **Buffers on the graphics card are made again from the descriptors the
+  relay holds** (3a), as Mesa makes them, by `create_immed`. One the
+  compositor made, by `create`, has the compositor's number, under which a
+  program cannot make it again; its program is let go, and the log says so.
+  Mesa does not make them so.
+- **Every number a program may take next is free to the next compositor**
+  (3a). What is not made again leaves numbers above the highest that is, and
+  a program may take any number it has been told is free, where a compositor
+  takes only the next or one it has freed; the relay takes every number up
+  to the program's highest with syncs of its own, which the compositor frees.
+- **What the relay tells a program of its own accord is read into the table
+  of its objects** (3a), as what the compositor tells it is, so that a
+  number it frees can be taken again.
+- **A program is told a number is free once** (3a). The compositor's word
+  that the number of something destroyed is free is withheld while
+  something kept still names it, as it is made again with that, and the
+  relay frees the number once nothing does. When the compositor goes,
+  nothing is withheld any longer: the next compositor makes it again,
+  destroys it again and frees its number itself. Told twice, as of a
+  menu's region at first, a program's Wayland library takes it for a
+  fault, which Firefox ends on.
+- **A window's icon is made again but not given to the window again** (3a):
+  the request that gives it names the window and is made of the manager,
+  where what lasts is kept for the object a request is made of. Until 3c the
+  window shows its application's icon after a restart.
+- **A window exported is told the new compositor's handle** (3a), which the
+  program takes as its own; one it passed on before is the old one's, and
+  refused, as a stale handle is.

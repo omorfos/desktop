@@ -745,6 +745,13 @@ what only games and touchpads need last.
       holder, is run by no test; a compositor that hangs without ending is
       waited for for ever; and `restart_compositor` has neither a key nor
       an entry in a menu.
+- [ ] The compositor ending when its virtual terminal is left: on real
+      hardware, switched to another, it drew to screens it no longer held
+      ("cannot draw on eDP-1 … Permission denied") and then ended as
+      failed, saying nothing more, so the holder started it again; it is
+      to wait until the terminal is shown again. First the holder is to
+      say how a compositor ended, its exit code or the signal that ended
+      it, where it now says only that it failed.
 - [x] Every protocol the compositor offers listed in code, each with how
       a program's state in it would be replayed, or that there is none,
       and a test that what is offered is the list; from then on a
@@ -785,10 +792,19 @@ what only games and touchpads need last.
       parts, stacked and committed as they were. What says how something
       is is not told again as it was. A program let go is named, with
       everything it held that cannot be made again.
-- [ ] Known gaps in keeping programs, after 2b: a program holding a
-      popup, a picture's presentation feedback, an activation token, a
-      touchpad gesture or a buffer on the graphics card is still let go, and so is one bound to
-      a screen the next compositor does not have; what the next compositor
+- [x] Programs kept by the relay, GTK's and the browsers' (ADR 61, step
+      3a): buffers on the graphics card made again from the descriptors
+      held, touchpad gestures, idle inhibitors, window icons and exported
+      windows; popups, tokens to hand focus on and word of a picture shown
+      ended as the compositor goes, as it would have ended them, and the
+      relay answering for each after; a gesture under way told it was
+      cancelled.
+- [ ] Known gaps in keeping programs, after 3a: a program holding a buffer
+      on the graphics card the compositor made, by `create`, is let go, and
+      so is one bound to a screen the next compositor does not have, or
+      holding a pointer lock, a layer surface or anything else no protocol
+      above makes again; a window's icon is made again but not given to the
+      window again; a handle exported before is the old compositor's; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program put on
       the clipboard or the primary selection is no longer there, as
@@ -799,10 +815,13 @@ what only games and touchpads need last.
       could be put in place of the new compositor's (step 3); a part
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
-      the compositor offers none yet; and none of it has been tried on
-      real hardware.
-- [ ] The rest of the relay (ADR 61, step 3): every protocol in the
-      list made again, programs drawn on the graphics card among them;
+      the compositor offers none yet; a global the next compositor offers
+      once the relay's registries are answered, while it makes the rest
+      again, is not told to the program, and is taken for one of the
+      compositor after's; and on real hardware only `foot`, ghostty and
+      Firefox ESR have been seen kept.
+- [ ] The rest of the relay (ADR 61, step 3), after 3a: every protocol in
+      the list made again;
       where each window was carried to the next compositor, keyed by the
       number the relay gives each program; components kept as programs are; a sandbox's
       listener handed to the relay; then the compositor's own new

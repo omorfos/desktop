@@ -178,15 +178,17 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "xdg_activation_v1",
         version: 1,
-        replayed: "A token is the old compositor's and cannot be carried: one used after the new \
-                   compositor is up is refused, as a stale one is, and the window it was for is \
-                   not brought to the front.",
+        replayed: "A token cannot be carried. One asked for and not yet given is given one no \
+                   compositor takes; one given is the old compositor's, and used after the new \
+                   compositor is up it is refused, as a stale one is, and the window it was for \
+                   is not brought to the front.",
     },
     Protocol {
         interface: "xdg_toplevel_icon_manager_v1",
         version: 1,
-        replayed: "Each window's icon made again from its name and the buffers held, and set \
-                   again; the sizes asked for are passed on only if they changed.",
+        replayed: "Each icon made again from its name and the buffers held. That a window was \
+                   given it is not yet set again: the window shows its application's icon until \
+                   the program gives it one.",
     },
     Protocol {
         interface: "xdg_wm_base",
@@ -195,8 +197,9 @@ pub const OFFERED: &[Protocol] = &[
                    greatest size; the new compositor's first configure is acked by the relay and \
                    passed on only if it differs from the one last acked. A popup cannot be \
                    carried, as its grab was given for input that is past: it is dismissed, as \
-                   when the user clicks elsewhere. The compositor's pings are answered by the \
-                   program, through the relay, as before.",
+                   when the user clicks elsewhere, and its surface is made again showing \
+                   nothing, so that it can be made a popup again. The compositor's pings are \
+                   answered by the program, through the relay, as before.",
     },
     Protocol {
         interface: "xwayland_shell_v1",
@@ -230,10 +233,11 @@ pub const OFFERED: &[Protocol] = &[
         interface: "zwp_linux_dmabuf_v1",
         version: 5,
         replayed: "Offered once the backend says which card can be drawn from. Each buffer made \
-                   again from the descriptors held, with its planes, size, format and modifier; \
-                   the feedback is passed on only if it changed. A buffer the new compositor \
-                   cannot take, in a format it no longer offers, cannot be carried: its surface \
-                   shows nothing until the program draws again.",
+                   by create_immed made again from the descriptors held, with its planes, size, \
+                   format and modifier; one the compositor made, by create, cannot yet be, and \
+                   its program is let go. The new compositor's feedback is passed on. A buffer \
+                   it cannot take, in a format it no longer offers, cannot be carried: its \
+                   surface shows nothing until the program draws again.",
     },
     Protocol {
         interface: "zwp_pointer_constraints_v1",
@@ -283,9 +287,9 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "zxdg_exporter_v2",
         version: 1,
-        replayed: "Each window exported made again. The handle is the new compositor's: the relay \
-                   puts the one the program was given in its place, here and where another \
-                   program imports it, so that a handle passed on keeps working.",
+        replayed: "Each window exported made again, and the program told the new compositor's \
+                   handle. One it passed on before is the old compositor's, and refused where \
+                   another program imports it, as a stale one is.",
     },
     Protocol {
         interface: "zxdg_importer_v2",
