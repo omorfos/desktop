@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use omorfos_config::{Color, Config, Edges, Line, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Arrangement, Offer, WindowId};
+use omorfos_core::{Arrangement, Home, Offer, WindowId};
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -603,6 +603,62 @@ impl Compositor {
             );
             grip.contains(point)
                 .then_some((output, line.which, line.across))
+        })
+    }
+
+    /// Moves the line being dragged to where it is wanted, once every
+    /// window that fills a part has drawn itself the size it was last
+    /// asked to be. So the line, and the frames either side of it, are
+    /// never more than a step ahead of what the windows draw, however
+    /// quickly the pointer goes.
+    pub(crate) fn catch_line_up(&mut self) {
+        let Some(Drag::Line {
+            line,
+            across,
+            wanted: Some(to),
+        }) = self.drag
+        else {
+            return;
+        };
+        if !self.tiles_drawn() {
+            return;
+        }
+        self.drag = Some(Drag::Line {
+            line,
+            across,
+            wanted: None,
+        });
+        self.move_line(line, Some(to));
+    }
+
+    /// Puts a line let go where it was let go, whether or not the windows
+    /// have caught up with it: one that never does cannot hold it back.
+    pub(crate) fn let_go_line(&mut self, drag: Drag) {
+        if let Drag::Line {
+            line,
+            wanted: Some(to),
+            ..
+        } = drag
+        {
+            self.move_line(line, Some(to));
+        }
+    }
+
+    /// Whether every window that fills a part of a workspace has drawn
+    /// itself the size it was last asked to be. A program written for X11
+    /// is not waited for: it is not asked in a way that is answered.
+    fn tiles_drawn(&self) -> bool {
+        let frames = self.desktop.frames();
+        let mut tiles = frames.filter(|frame| frame.fullscreen && frame.home == Home::Shared);
+        tiles.all(|frame| {
+            let mapped = self.mapped(frame.window().id);
+            mapped.is_none_or(|mapped| match &mapped.role {
+                Role::Xdg(toplevel) => {
+                    let asked = toplevel.with_pending_state(|state| state.size);
+                    toplevel.current_state().size == asked
+                }
+                Role::X11(_) => true,
+            })
         })
     }
 

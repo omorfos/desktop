@@ -228,8 +228,13 @@ pub(crate) enum Drag {
     /// to change places with what is there.
     Tile { window: WindowId },
     /// Moving a line between windows that share a workspace: which
-    /// output's and which of its lines, which lies `across` or runs down.
-    Line { line: (usize, usize), across: bool },
+    /// output's and which of its lines, which lies `across` or runs down,
+    /// and where it is `wanted` while it waits for the windows to catch up.
+    Line {
+        line: (usize, usize),
+        across: bool,
+        wanted: Option<DomainPoint>,
+    },
 }
 
 /// What a press asks for, before checking that the frame allows it.
@@ -525,7 +530,15 @@ impl Compositor {
                     self.desktop.set_geometry(window, resized);
                 }
                 Drag::Tab { .. } | Drag::Tile { .. } => {}
-                Drag::Line { line, .. } => self.move_line(line, Some(position)),
+                Drag::Line { line, across, .. } => {
+                    let wanted = Some(position);
+                    self.drag = Some(Drag::Line {
+                        line,
+                        across,
+                        wanted,
+                    });
+                    self.catch_line_up();
+                }
             }
             // The drag has the pointer; no window sees it meanwhile.
             self.move_pointer(None, time);
@@ -855,7 +868,11 @@ impl Compositor {
                 self.move_line((output, which), None);
             } else {
                 let line = (output, which);
-                self.drag = Some(Drag::Line { line, across });
+                self.drag = Some(Drag::Line {
+                    line,
+                    across,
+                    wanted: None,
+                });
             }
             self.move_pointer(None, time);
         }
@@ -908,6 +925,7 @@ impl Compositor {
                 // A frame let go against an edge of the screen is put in
                 // the part of a workspace that was shown for it.
                 self.drop_at_edge();
+                self.let_go_line(drag);
                 self.drag = None;
                 self.drop_tab(drag);
             }

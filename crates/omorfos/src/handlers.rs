@@ -111,6 +111,9 @@ impl CompositorHandler for Compositor {
             if asked.is_some() && acknowledged == asked && asked != Some(actual) {
                 self.desktop.set_client_size(mapped.id, actual);
             }
+            // A line dragged ahead of the windows goes on once they have
+            // drawn themselves.
+            self.catch_line_up();
         }
 
         self.map_if_ready(surface);

@@ -31,11 +31,22 @@ fn shared(half: Half) -> (Session, Client) {
     session.compositor_mut().set_cursor_themes(themes);
     session.compositor_mut().show_pointer();
     let mut client = session.connect();
-    session.open(&mut client, "first", (200, 100), RED);
+    let first = session.open(&mut client, "first", (200, 100), RED);
     session.compositor_mut().perform(&Action::Tile(half));
-    session.open(&mut client, "second", (200, 100), BLUE);
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    drawn(&mut session, &mut client, &[&first, &second]);
     session.step();
     (session, client)
+}
+
+/// Has each of `windows` draw itself as it was last asked to, as a program
+/// does once it has been told its size.
+fn drawn(session: &mut Session, client: &mut Client, windows: &[&Toplevel]) {
+    session.roundtrip(client);
+    for window in windows {
+        window.surface.commit();
+    }
+    session.roundtrip(client);
 }
 
 fn point(session: &mut Session, x: i32, y: i32) {
@@ -144,6 +155,37 @@ fn dragging_the_line_gives_one_window_more_room_and_the_other_less() {
 }
 
 #[test]
+fn a_line_dragged_waits_for_the_windows_to_draw_themselves_their_new_size() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let first = session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    let windows = [&first, &second];
+    drawn(&mut session, &mut client, &windows);
+    let width = |session: &Session| parts(session)[0].2;
+
+    point(&mut session, 321, 300);
+    button(&mut session, LEFT, true, 0);
+    point(&mut session, 400, 300);
+    assert_eq!(width(&session), 400, "at once, while they have caught up");
+
+    // Carried on before they have drawn that, it waits for them.
+    session.roundtrip(&mut client);
+    point(&mut session, 450, 300);
+    assert_eq!(width(&session), 400, "held back");
+    drawn(&mut session, &mut client, &windows);
+    assert_eq!(width(&session), 450, "and goes on once they have");
+
+    // Let go before they catch up, it is where it was let go.
+    point(&mut session, 500, 300);
+    session.roundtrip(&mut client);
+    point(&mut session, 520, 300);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(width(&session), 520);
+}
+
+#[test]
 fn the_line_stops_where_a_window_says_it_can_be_no_smaller() {
     let mut session = Session::new();
     let mut client = session.connect();
@@ -161,6 +203,7 @@ fn the_line_stops_where_a_window_says_it_can_be_no_smaller() {
     button(&mut session, LEFT, true, 0);
     point(&mut session, 100, 300);
     assert_eq!(parts(&session)[0], (0, 0, 250, 480), "the first's least");
+    drawn(&mut session, &mut client, &[&first, &second]);
     point(&mut session, 600, 300);
     assert_eq!(parts(&session)[0], (0, 0, 340, 480), "the second's least");
     button(&mut session, LEFT, false, 0);

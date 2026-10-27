@@ -325,6 +325,8 @@ nothing over it, as fullscreen means.
 There is a line wherever two parts meet: drag it to give one more room
 and the other less, down to a sixth of the screen or to the least a
 window says it can be, and double-click it to put it back in the middle.
+Dragged, it keeps pace with the windows, going on as they have drawn
+themselves the size it gave them, and is let go where the pointer is.
 The theme draws it as `tile-line`, in a window's border colour unless
 told otherwise. When a window closes or leaves, the one beside it has
 its room. A window that opens when every part is taken opens on the
