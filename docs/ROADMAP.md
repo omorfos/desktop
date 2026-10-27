@@ -799,7 +799,15 @@ what only games and touchpads need last.
       ended as the compositor goes, as it would have ended them, and the
       relay answering for each after; a gesture under way told it was
       cancelled.
-- [ ] Known gaps in keeping programs, after 3a: a program holding a buffer
+- [x] Serials kept to their meaning through a change of compositor (ADR
+      61, step 3b): the next compositor's told past every serial the
+      program has, and taken back as they are asked with, one before's
+      asked with as the next's that stands for it; the pointer and the
+      keyboard, back where they were, not said to have left, but where a
+      menu ends with the compositor; what the next first says of a window
+      answered by the relay alone; a buffer the compositor held released
+      as it goes, unless the next is shown it.
+- [ ] Known gaps in keeping programs, after 3b's serials: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have, or
       holding a pointer lock, a layer surface or anything else no protocol
@@ -810,9 +818,9 @@ what only games and touchpads need last.
       the clipboard or the primary selection is no longer there, as
       setting it is not made again; a window comes back neither maximized
       nor full screen, as the program had it, but as the next compositor
-      first says, and the program is told so; the pointer, the keyboard
-      and a field leave and enter again, where the serials a program holds
-      could be put in place of the new compositor's (step 3); a part
+      first says, and the program is told so; a field leaves and enters
+      again, and so does the pointer where the window under it comes back
+      elsewhere, until windows come back where they were (3c); a part
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
       the compositor offers none yet; a global the next compositor offers
@@ -820,10 +828,12 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3a: every protocol in
-      the list made again;
+- [ ] The rest of the relay (ADR 61, step 3), after 3b's serials: what was
+      on the clipboard there again, with the keeper kept as programs are
+      (3b); every protocol in the list made again;
       where each window was carried to the next compositor, keyed by the
-      number the relay gives each program; components kept as programs are; a sandbox's
+      number the relay gives each program, and where the pointer was, which
+      now comes back in the top left corner (3c); components kept as programs are; a sandbox's
       listener handed to the relay; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the
       others', and its word about the next login goes. Programs written

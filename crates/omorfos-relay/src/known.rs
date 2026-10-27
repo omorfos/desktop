@@ -57,6 +57,12 @@ pub(crate) fn global(name: &str) -> Option<&'static Interface> {
         .find(|interface| interface.name == name)
 }
 
+/// Every global the compositor offers.
+#[cfg(test)]
+pub(crate) fn globals() -> impl Iterator<Item = &'static Interface> {
+    GLOBALS.iter().map(|interface| interface())
+}
+
 /// Every global the compositor offers, as `omorfos-ipc`'s list says.
 const GLOBALS: [fn() -> &'static Interface; 38] = [
     ext_data_control_manager_v1::ExtDataControlManagerV1::interface,

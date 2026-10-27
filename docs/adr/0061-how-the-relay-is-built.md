@@ -220,10 +220,12 @@ as GTK's are, come in step 3.
   enables its field again. Keeping the leave and the enter from the
   program would need every serial it holds put in place of the new
   compositor's, both ways, in every request that carries one; that was
-  meant for 2b, and is left to step 3, as it spares only a flicker of
-  focus and `foot` comes back without it. The program is also told the
-  new compositor's first configure of its window where it differs from
-  the one it last acked, as the first of a window not yet focused does.
+  meant for 2b, and was left to step 3, as it spares only a flicker of
+  focus and `foot` comes back without it. Since 3b only a field is told
+  it left, as below. The program was also told the
+  new compositor's first configure of its window where it differed from
+  the one it last acked, as the first of a window not yet focused does;
+  since 3b it is not, as below.
 - **A field's count of its commits is the program's** (2b). The
   compositor's `done` to a field carries how many times the field has
   been committed, and the program sets aside what is typed for an older
@@ -260,8 +262,9 @@ as GTK's are, come in step 3.
 ## Step 3: the rest of what programs make
 
 Settled as step 3 was started, and built in parts, the programs most used
-first: those drawn with GTK and the browsers (3a); what was on the
-clipboard, and the serials a program holds (3b); a window back where and
+first: those drawn with GTK and the browsers (3a); the serials a program
+holds, and what was on the clipboard, with the clipboard keeper kept as
+programs are, brought forward from 3d for it (3b); a window back where and
 as it was (3c); components and programs in a sandbox (3d); and the
 compositor taking up its own new version (3e).
 
@@ -304,3 +307,55 @@ compositor taking up its own new version (3e).
 - **A window exported is told the new compositor's handle** (3a), which the
   program takes as its own; one it passed on before is the old one's, and
   refused, as a stale handle is.
+- **Serials keep their meaning** (3b). Each compositor counts its serials
+  from its own start, so the next's would go back under a program and mean
+  nothing to it of the one before's. Until the first change of compositor
+  they pass as they are; from then on the next compositor's are told past
+  every serial the program has been told, by adding one offset to each,
+  and taken back as they are asked with. A serial of a compositor before
+  is asked with as the next one's that stands for it: for the pointer's
+  cursor, which Smithay sets only under the serial of the pointer's last
+  enter, that enter's; for anything else, which Smithay does not check,
+  the last. Which argument is a serial is a table written by hand, as a
+  description says only that it is a number, and some arguments called a
+  serial count something of the program's own: a field's `done`, which
+  the relay already counts, and an input method's `commit`. A test
+  checks each entry against the protocol's description.
+- **The pointer and keyboard are not said to have left if they come back**
+  (3b). When the compositor ends they are held, as the program still has
+  them; if the next gives them back to the same surface, the pointer at
+  the same place and no key held, its enter is kept from the program, and
+  the pointer's frame with it. Back elsewhere, the program is told they
+  left and then entered; not back once the relay has caught up and the
+  compositor has had a turn more, which it gives a window shown again the
+  keyboard and the pointer in, they left. Two syncs of the relay's own
+  measure that turn, the second answered after it; the program waits to
+  be read until then, as a sync of the relay's takes a number the program
+  may take next. A destroyed surface has nothing to be said to have left,
+  and what had it is forgotten. Where a menu is ended as the compositor
+  goes, the pointer and keyboard are told they left at once, as a menu
+  ends as focus moves: Firefox, told only that its menu was dismissed,
+  took the next click for the one that closes it, and opened no other.
+  A field is still told
+  it left and entered: it has no serial, and is enabled again by the
+  program as it enters, which a field kept from the enter would not be.
+- **What the next compositor first says of a window is the relay's to
+  answer** (3b). It is said of a window not yet shown again, with no size
+  and no focus; told it, Firefox took its window for one that had lost
+  focus, which with the keyboard's enter kept from it it did not take
+  back. The relay acks it, as it did, and shows the window as it was;
+  what the compositor says once the window is shown is told.
+- **A buffer the compositor held is released as it goes** (3b), unless
+  the next is shown it again. A program drawing with two buffers in turn
+  waits for one to be released before it draws again; one shown last
+  before the compositor went was never released, and Firefox, waiting for
+  it, drew no more. Found as 3b was tried; it was so since step 2.
+- **What was on the clipboard is there again** (3b, to come). The keeper,
+  which holds what was copied once the program it came from may close, is
+  connected through the relay as programs are, with its `clipboard` role,
+  which the next compositor gives the connection the relay hands it, and
+  is not started again; its device and source are made again, and its
+  selection set again through `ext-data-control-v1`, which needs neither
+  focus nor serial. What a program kept holds, the primary selection and
+  what the keeper does not keep, is set again as the program next has the
+  keyboard, unless something else was copied or selected by then.

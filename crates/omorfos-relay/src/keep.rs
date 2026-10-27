@@ -28,6 +28,7 @@ use wayland_backend::protocol::MessageDesc;
 
 use crate::journal::{self, Journal, Numbering, Sending};
 use crate::objects::{Objects, Read, SERVERS};
+use crate::serials::{self, Serials};
 use crate::wire::{self, Broken, HEADER, Header};
 
 /// The display, which every connection starts with.
@@ -35,6 +36,12 @@ const DISPLAY: u32 = 1;
 
 /// Which of the display's events says a number may be taken again.
 const DELETE_ID: u16 = 1;
+
+/// How many of the relay's syncs follow one another once it has caught up
+/// before what is held is taken to have left: the compositor gives a window
+/// the keyboard and the pointer in the turn after it is shown again, and the
+/// second is answered after that turn.
+const SETTLING: u8 = 2;
 
 /// Which of a field's events ends what is typed into it for now, with the
 /// number of times it has been committed.
@@ -98,12 +105,6 @@ struct Window {
     /// The serials the compositor has sent the program for it, not yet
     /// acked.
     offered: Vec<u32>,
-    /// What the compositor last said the window is to be, and what the
-    /// program last acked: the arguments of a toplevel's configure.
-    told: Option<Vec<u8>>,
-    acked: Option<Vec<u8>>,
-    /// A toplevel's configure held while the relay catches up.
-    held: Option<Sending>,
 }
 
 /// What has the pointer, the keyboard or a field typed into, as the program
@@ -113,6 +114,8 @@ struct Focus {
     surface: u32,
     /// The serial it was told it with, but for a field's, which has none.
     serial: Option<u32>,
+    /// Where on the surface a pointer is, as the program was last told.
+    at: Option<(u32, u32)>,
     /// Which event says it has left.
     leave: u16,
     /// Whether a frame ends what a pointer says, as from version 5.
@@ -130,6 +133,10 @@ enum Phase {
     Registering,
     /// Making the rest again.
     Making,
+    /// Caught up, waiting a turn of the compositor's to see what it gives
+    /// back, while the program waits to be read: the relay's syncs take
+    /// numbers it may take next.
+    Settling,
 }
 
 /// Keeping a program through a change of compositor.
@@ -147,12 +154,27 @@ pub struct Keeping {
     globals: Vec<Global>,
     /// The globals the new compositor offers, as it says them.
     offered: Vec<Global>,
-    /// The windows, by their `xdg_surface`, and each toplevel's.
+    /// The windows, by their `xdg_surface`.
     windows: HashMap<u32, Window>,
-    toplevels: HashMap<u32, u32>,
     /// What has the pointer, the keyboard or a field, by the pointer,
     /// keyboard or field.
     focus: HashMap<u32, Focus>,
+    /// What the pointer or the keyboard had as the compositor went, which
+    /// the program is not told it left unless the next does not give it
+    /// back.
+    held: HashMap<u32, Focus>,
+    /// The pointers whose next frame ends an enter kept from the program.
+    framing: HashSet<u32>,
+    /// How many syncs of the relay's own are still to be answered before
+    /// what is held and not given back is taken to have left.
+    settling: u8,
+    /// The program's serials and the compositor's.
+    serials: Serials,
+    /// The buffer attached to each surface and not yet committed, by the
+    /// surface: none where one was taken away.
+    attached: HashMap<u32, u32>,
+    /// The buffers shown and not yet released, which the compositor holds.
+    held_buffers: HashSet<u32>,
     /// How many times each field has been committed: as the program counts,
     /// and as the compositor does, which counts from when it made it.
     commits: HashMap<u32, (u32, u32)>,
@@ -192,8 +214,13 @@ impl Default for Keeping {
             globals: Vec::new(),
             offered: Vec::new(),
             windows: HashMap::new(),
-            toplevels: HashMap::new(),
             focus: HashMap::new(),
+            held: HashMap::new(),
+            framing: HashSet::new(),
+            settling: 0,
+            serials: Serials::default(),
+            attached: HashMap::new(),
+            held_buffers: HashSet::new(),
             commits: HashMap::new(),
             described: HashMap::new(),
             gestures: HashMap::new(),
@@ -216,6 +243,12 @@ impl Keeping {
         self.phase == Phase::Live
     }
 
+    /// Whether what the compositor says is taken as it is, as it is once
+    /// the relay has caught up with it.
+    fn caught_up(&self) -> bool {
+        matches!(self.phase, Phase::Live | Phase::Settling)
+    }
+
     /// Takes in the request `bytes`, `described`, which `read` says the
     /// program sent; changes in it what means something only to the
     /// compositor before. Returns whether it is to be passed on.
@@ -225,16 +258,33 @@ impl Keeping {
             opcode: read.opcode,
             size: bytes.len(),
         };
-        if let Some((made, interface, _)) = read.made {
+        if let Some((made, _, _)) = read.made {
             // What was told of what had the number before is not of this.
             self.described.retain(|(object, _), _| *object != made);
             self.commits.remove(&made);
             self.gestures.remove(&made);
             self.given.remove(&made);
-            if interface.name == "xdg_toplevel" {
-                self.toplevels.insert(made, header.object);
-                self.windows.entry(header.object).or_default();
+        }
+        match (read.interface.name, described.name) {
+            ("wl_surface", "attach") => {
+                let buffer = wire::word(bytes, HEADER).unwrap_or_default();
+                self.attached.insert(header.object, buffer);
             }
+            ("wl_surface", "commit") => {
+                let shown = self.attached.remove(&header.object);
+                self.held_buffers
+                    .extend(shown.filter(|buffer| *buffer != 0));
+            }
+            ("wl_buffer", "destroy") => {
+                self.held_buffers.remove(&header.object);
+            }
+            _ => {}
+        }
+        if read.ends && read.interface.name == "wl_surface" {
+            // A surface gone has nothing to be said to have left.
+            let gone = |_: &u32, focus: &mut Focus| focus.surface != header.object;
+            self.focus.retain(gone);
+            self.held.retain(gone);
         }
         if read.interface.name == "xdg_surface" && described.name == "ack_configure" {
             let serial = wire::word(bytes, HEADER).unwrap_or_default();
@@ -244,7 +294,6 @@ impl Keeping {
                 return false;
             }
             window.offered.retain(|offered| *offered > serial);
-            window.acked.clone_from(&window.told);
         }
         if read.interface.name == "zwp_text_input_v3" && described.name == "commit" {
             let commits = self.commits.entry(header.object).or_default();
@@ -253,6 +302,13 @@ impl Keeping {
         if read.interface.name == "wl_registry" && described.name == "bind" {
             let name = wire::word(bytes, HEADER).unwrap_or_default();
             wire::put(bytes, HEADER, self.names.theirs(name));
+        }
+        let interface = read.interface.name;
+        if let Some(at) = serials::carried(&serials::REQUESTS, interface, described.name) {
+            // The pointer's cursor is set under its last enter's serial.
+            let pointer = matches!(interface, "wl_pointer" | "wp_cursor_shape_device_v1");
+            let ours = wire::word(bytes, HEADER + at).unwrap_or_default();
+            wire::put(bytes, HEADER + at, self.serials.asked(ours, pointer));
         }
         if self.orphans.contains(&header.object) {
             if read.ends {
@@ -354,6 +410,15 @@ impl Keeping {
             })
         };
         let _ = described.map(renumber);
+        let name = described
+            .map(|described| described.name)
+            .unwrap_or_default();
+        let at =
+            interface.and_then(|interface| serials::carried(&serials::EVENTS, interface, name));
+        if let Some(at) = at {
+            let theirs = wire::word(bytes, HEADER + at).unwrap_or_default();
+            wire::put(bytes, HEADER + at, self.serials.told(theirs));
+        }
         Ok(Some(Header { object, ..header }))
     }
 
@@ -376,7 +441,7 @@ impl Keeping {
                 interface,
                 version,
             };
-            if self.phase != Phase::Live {
+            if !self.caught_up() {
                 if !self.offered.contains(&global) {
                     self.offered.push(global);
                 }
@@ -409,7 +474,7 @@ impl Keeping {
             let ours = self.names.ours(name);
             self.globals.retain(|global| global.name != ours);
             wire::put(bytes, HEADER, ours);
-            if self.phase != Phase::Live {
+            if !self.caught_up() {
                 return None;
             }
         }
@@ -441,23 +506,32 @@ impl Keeping {
         let object = header.map(|header| header.object).unwrap_or_default();
         let body = bytes.get(HEADER..).unwrap_or_default();
         let word = |at| wire::word(body, at).unwrap_or_default();
-        let catching = self.phase != Phase::Live;
+        let catching = !self.caught_up();
         match (read.interface.name, read.opcode) {
-            ("wl_pointer", 0) => self.focused(object, word(4), Some(word(0)), 1, read),
-            ("wl_keyboard", 1) => self.focused(object, word(4), Some(word(0)), 2, read),
-            ("zwp_text_input_v3", 0) => self.focused(object, word(0), None, 1, read),
+            ("wl_pointer", 0) => {
+                self.serials.entered();
+                let at = Some((word(8), word(12)));
+                return self.entered(object, word(4), Some(word(0)), at, true, read);
+            }
+            ("wl_pointer", 2) => {
+                let moved = self.focus.get_mut(&object);
+                let _ = moved.map(|focus| focus.at = Some((word(4), word(8))));
+            }
+            ("wl_pointer", 5) if self.framing.remove(&object) => return false,
+            ("wl_keyboard", 1) => {
+                // A key held as it enters is the program's to be told of.
+                let clear = word(8) == 0;
+                return self.entered(object, word(4), Some(word(0)), None, clear, read);
+            }
+            ("zwp_text_input_v3", 0) => self.focused(object, word(0), None, None, read),
             ("wl_pointer" | "zwp_text_input_v3", 1) | ("wl_keyboard", 2) => {
                 self.focus.remove(&object);
             }
-            ("xdg_toplevel", 0) => {
-                let window = self.toplevels.get(&object).copied().unwrap_or_default();
-                let window = self.windows.entry(window).or_default();
-                if catching {
-                    window.held = Some((bytes.to_vec(), Vec::new()));
-                    return false;
-                }
-                window.told = Some(body.to_vec());
-            }
+            // What the next compositor first says of a window, before it is
+            // shown again, is the relay's to answer: a window not yet shown
+            // has no size and no focus, which a program takes for focus
+            // gone. What it says once the window is shown is told.
+            ("xdg_toplevel", 0) if catching => return false,
             ("xdg_surface", 0) => return self.configured(object, word(0)),
             ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 0) => {
                 self.gestures.insert(object, 2);
@@ -468,6 +542,9 @@ impl Keeping {
             ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 2)
             | ("zwp_pointer_gesture_hold_v1", 1) => {
                 self.gestures.remove(&object);
+            }
+            ("wl_buffer", 0) => {
+                self.held_buffers.remove(&object);
             }
             ("xdg_activation_token_v1", 0) | ("xdg_popup", 1) => {
                 self.given.insert(object);
@@ -485,42 +562,85 @@ impl Keeping {
         true
     }
 
+    /// Takes in that `device`, a pointer or keyboard, entered `surface`
+    /// with `serial`, at `at` and with nothing held if `clear`, as `read`
+    /// says. Where it had that surface as the compositor went, there and
+    /// with nothing held, the enter is kept from the program; where it had
+    /// another, the program is told it left that first. Returns whether
+    /// the enter is passed on.
+    fn entered(
+        &mut self,
+        device: u32,
+        surface: u32,
+        serial: Option<u32>,
+        at: Option<(u32, u32)>,
+        clear: bool,
+        read: &Read,
+    ) -> bool {
+        if let Some(held) = self.held.remove(&device) {
+            if held.surface == surface && held.at == at && clear {
+                // Its frame, which ends the enter, goes with it.
+                if held.framed {
+                    self.framing.insert(device);
+                }
+                self.focus.insert(device, held);
+                return false;
+            }
+            self.left(device, held);
+        }
+        self.focused(device, surface, serial, at, read);
+        true
+    }
+
     /// Keeps that `surface` has `device`'s focus, as `read`'s enter says,
-    /// with `serial`; `leave` is the event that says it has left.
-    fn focused(&mut self, device: u32, surface: u32, serial: Option<u32>, leave: u16, read: &Read) {
-        let framed = read.interface.name == "wl_pointer" && read.interface.version >= 5;
+    /// with `serial`, and at `at`.
+    fn focused(
+        &mut self,
+        device: u32,
+        surface: u32,
+        serial: Option<u32>,
+        at: Option<(u32, u32)>,
+        read: &Read,
+    ) {
+        let interface = read.interface.name;
+        let framed = interface == "wl_pointer" && read.interface.version >= 5;
+        let leave = if interface == "wl_keyboard" { 2 } else { 1 };
         let focus = Focus {
             surface,
             serial,
+            at,
             leave,
             framed,
         };
         self.focus.insert(device, focus);
     }
 
+    /// Tells the program that `device` has left what `focus` says it had,
+    /// under the last serial it was told, if it says one.
+    fn left(&mut self, device: u32, focus: Focus) {
+        let serial = focus.serial.map(|_| self.serials.last());
+        let arguments: Vec<u32> = serial.into_iter().chain([focus.surface]).collect();
+        self.to_program
+            .push(journal::message(device, focus.leave, &arguments));
+        if focus.framed {
+            self.to_program.push(journal::message(device, 5, &[]));
+        }
+    }
+
     /// Takes in that the compositor has said how the window `xdg_surface`
     /// is to be, with `serial`. Returns whether it is passed on.
     fn configured(&mut self, xdg_surface: u32, serial: u32) -> bool {
+        let caught_up = self.caught_up();
         let window = self.windows.entry(xdg_surface).or_default();
-        if self.phase == Phase::Live {
+        if caught_up {
             window.offered.push(serial);
             return true;
         }
-        // Catching up, the relay acks it and shows what the window showed;
-        // the program is told only if the window is to be other than it last
-        // acked, and its ack is then kept from the compositor.
+        // Catching up, the relay acks it and shows what the window showed.
+        let theirs = self.serials.asked(serial, false);
         self.to_compositor
-            .push(journal::message(xdg_surface, 4, &[serial]));
+            .push(journal::message(xdg_surface, 4, &[theirs]));
         self.to_compositor.extend(self.journal.shown(xdg_surface));
-        let held = window.held.take();
-        let other = held
-            .as_ref()
-            .map(|(held, _)| held.get(HEADER..).unwrap_or_default().to_vec());
-        if other.is_some() && other != window.acked {
-            window.told = other;
-            self.to_program.extend(held);
-            return true;
-        }
         false
     }
 
@@ -544,12 +664,36 @@ impl Keeping {
             self.to_compositor.extend(sending);
             self.sync();
             self.phase = Phase::Making;
-        } else {
+        } else if self.phase == Phase::Making {
             // The rest made again, as the last sync is answered.
             self.to_compositor.extend(self.journal.gone());
             self.phase = Phase::Live;
+            if !self.held.is_empty() {
+                self.phase = Phase::Settling;
+                self.settling = SETTLING;
+                self.sync();
+            }
+        } else {
+            self.settle();
         }
         Ok(())
+    }
+
+    /// Takes in that one of the relay's syncs after it caught up is
+    /// answered: after the last, what the next compositor has not given
+    /// back has left.
+    fn settle(&mut self) {
+        self.settling = self.settling.saturating_sub(1);
+        if self.settling > 0 {
+            self.sync();
+            return;
+        }
+        let mut held: Vec<(u32, Focus)> = self.held.drain().collect();
+        held.sort_by_key(|(device, _)| *device);
+        for (device, focus) in held {
+            self.left(device, focus);
+        }
+        self.phase = Phase::Live;
     }
 
     /// Names the new compositor's globals as the program knows them, tells
@@ -625,10 +769,14 @@ impl Keeping {
         self.highest = objects.highest();
         // What lasts only a moment ends with the compositor, as it would have
         // told the program, and the relay answers for it from now on.
+        let mut menu = false;
         for (number, interface) in self.journal.end_lost() {
             let untold = !self.given.remove(&number);
             match interface {
-                "xdg_popup" if untold => self.to_program.push(journal::message(number, 1, &[])),
+                "xdg_popup" if untold => {
+                    self.to_program.push(journal::message(number, 1, &[]));
+                    menu = true;
+                }
                 "xdg_activation_token_v1" if untold => {
                     // A token no compositor will take.
                     self.to_program.push(journal::said(number, 0, ""));
@@ -642,6 +790,15 @@ impl Keeping {
                 _ => {}
             }
             self.orphans.insert(number);
+        }
+        // A buffer the compositor held, which the next is not shown, is
+        // released, as the one before would have released it.
+        let shown = self.journal.buffers_shown();
+        let mut released: Vec<u32> = self.held_buffers.difference(&shown).copied().collect();
+        released.sort_unstable();
+        self.held_buffers.retain(|buffer| shown.contains(buffer));
+        for buffer in released {
+            self.to_program.push(journal::message(buffer, 0, &[]));
         }
         let mut gestures: Vec<(u32, u16)> = self.gestures.drain().collect();
         gestures.sort_unstable();
@@ -659,16 +816,21 @@ impl Keeping {
         self.offered.clear();
         for window in self.windows.values_mut() {
             window.offered.clear();
-            window.held = None;
         }
+        // The pointer and keyboard are held, to be kept from the program
+        // if the next compositor gives them back; a field is told it left,
+        // to be enabled again as it enters. With a menu ended, they are
+        // told they left, as a menu ends as focus moves: a program may take
+        // a menu ended alone for one still up, and the click after it for
+        // the one that closes it.
         let mut focus: Vec<(u32, Focus)> = self.focus.drain().collect();
         focus.sort_by_key(|(device, _)| *device);
+        self.framing.clear();
         for (device, focus) in focus {
-            let arguments: Vec<u32> = focus.serial.into_iter().chain([focus.surface]).collect();
-            let leave = journal::message(device, focus.leave, &arguments);
-            self.to_program.push(leave);
-            if focus.framed {
-                self.to_program.push(journal::message(device, 5, &[]));
+            if focus.serial.is_some() && !menu {
+                self.held.insert(device, focus);
+            } else {
+                self.left(device, focus);
             }
         }
         // The next compositor counts each field's commits from none.
@@ -682,6 +844,7 @@ impl Keeping {
     /// Joins the program to a new compositor: its registries are made again
     /// first.
     pub fn join(&mut self) {
+        self.serials.joined();
         self.numbering = Numbering::default();
         self.private.clear();
         let registries = self.journal.registries(&mut self.numbering);
@@ -1202,7 +1365,7 @@ mod tests {
     }
 
     #[test]
-    fn a_window_the_next_compositor_would_have_otherwise_is_told_so() {
+    fn what_the_next_compositor_first_says_of_a_window_is_answered_by_the_relay_alone() {
         let mut kept = Kept::registered(&[(1, "xdg_wm_base", 6), (2, "wl_compositor", 6)]);
         kept.bind(1, "xdg_wm_base", 6, 3);
         kept.bind(2, "wl_compositor", 6, 4);
@@ -1213,20 +1376,28 @@ mod tests {
         kept.told(&message(6, 0, &words(&[1]))).unwrap();
         kept.send(&message(6, 4, &words(&[1]))).unwrap();
 
+        // Of a window not yet shown again, with no size and no focus: the
+        // program, which would take it for focus gone, is not told.
         kept.restarted(&[(1, "xdg_wm_base", 6), (2, "wl_compositor", 6)]);
-        let other = message(7, 0, &words(&[300, 200, 0]));
-        assert_eq!(kept.told(&other), None, "held");
-        let configure = message(6, 0, &words(&[3]));
-        assert_eq!(kept.told(&configure), Some(configure.clone()), "told");
-        let told: Vec<&Vec<u8>> = kept
-            .keeping
-            .to_program
-            .iter()
-            .map(|(bytes, _)| bytes)
-            .collect();
-        assert_eq!(told, [&other], "with what it is to be, first");
-        // Acked by the relay, the program's ack is not sent again.
-        assert_eq!(kept.send(&message(6, 4, &words(&[3]))), None);
+        assert_eq!(kept.told(&message(7, 0, &words(&[0, 0, 0]))), None);
+        assert_eq!(kept.told(&message(6, 0, &words(&[3]))), None);
+        let acked = message(6, 4, &words(&[3]));
+        assert!(
+            bytes(&kept.keeping.to_compositor).contains(&acked),
+            "as its own"
+        );
+        assert!(kept.keeping.to_program.is_empty());
+
+        // Shown, what the compositor says of it is told, past the serial the
+        // program acked, and its ack taken back.
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        let shown = message(7, 0, &words(&[300, 200, 0]));
+        assert_eq!(kept.told(&shown), Some(shown));
+        let told = kept.told(&message(6, 0, &words(&[4])));
+        assert_eq!(told, Some(message(6, 0, &words(&[6]))));
+        let ack = kept.send(&message(6, 4, &words(&[6])));
+        assert_eq!(ack, Some(message(6, 4, &words(&[4]))));
     }
 
     #[test]
@@ -1255,31 +1426,178 @@ mod tests {
         );
     }
 
-    #[test]
-    fn what_has_the_pointer_and_keyboard_is_told_they_left_as_the_compositor_goes() {
-        let mut kept = Kept::registered(&[(1, "wl_seat", 7), (2, "wl_compositor", 6)]);
-        kept.bind(1, "wl_seat", 7, 3);
-        kept.bind(2, "wl_compositor", 6, 4);
+    /// A program holding a pointer, 5, and a keyboard, 6, on the seat, with
+    /// both in its surface 7: the pointer entered at (1, 2) and moved to
+    /// (3, 4), with serial 10, the keyboard with 11.
+    fn focused() -> (Kept, [(u32, &'static str, u32); 2]) {
+        let globals = [(1, "wl_compositor", 6), (2, "wl_seat", 7)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "wl_compositor", 6, 3);
+        kept.bind(2, "wl_seat", 7, 4);
         kept.send(&message(4, 0, &words(&[5]))).unwrap();
-        kept.send(&message(3, 0, &words(&[6]))).unwrap();
-        kept.send(&message(3, 1, &words(&[7]))).unwrap();
-        kept.told(&message(6, 0, &words(&[10, 5, 0, 0]))).unwrap();
-        kept.told(&message(7, 1, &words(&[11, 5, 0]))).unwrap();
-        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
-        let told: Vec<&Vec<u8>> = kept
-            .keeping
-            .to_program
-            .iter()
-            .map(|(bytes, _)| bytes)
-            .collect();
+        kept.send(&message(4, 1, &words(&[6]))).unwrap();
+        kept.send(&message(3, 0, &words(&[7]))).unwrap();
+        kept.told(&message(5, 0, &words(&[10, 7, 1, 2]))).unwrap();
+        kept.told(&message(5, 5, &[])).unwrap();
+        kept.told(&message(5, 2, &words(&[0, 3, 4]))).unwrap();
+        kept.told(&message(6, 1, &words(&[11, 7, 0]))).unwrap();
+        (kept, globals)
+    }
+
+    #[test]
+    fn the_pointer_and_keyboard_back_where_they_were_are_not_told_they_left() {
+        let (mut kept, globals) = focused();
+        kept.restarted(&globals);
+        assert!(
+            kept.keeping.to_program.is_empty(),
+            "nothing told as it goes"
+        );
+        let entered = message(5, 0, &words(&[3, 7, 3, 4]));
+        assert_eq!(kept.told(&entered), None);
+        assert_eq!(kept.told(&message(5, 5, &[])), None, "nor the frame of it");
+        assert_eq!(kept.told(&message(6, 1, &words(&[4, 7, 0]))), None);
+        // The cursor, set under the enter the program knows, is set under
+        // the next compositor's.
+        let cursor = kept.send(&message(5, 0, &words(&[10, 0, 0, 0])));
+        assert_eq!(cursor, Some(message(5, 0, &words(&[3, 0, 0, 0]))));
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert!(kept.keeping.live());
+        assert!(kept.keeping.to_program.is_empty(), "nothing left");
+    }
+
+    #[test]
+    fn the_pointer_back_elsewhere_and_a_keyboard_not_back_are_told_they_left() {
+        let (mut kept, globals) = focused();
+        kept.restarted(&globals);
+        // Back over the surface, at another place on it: the program is told
+        // it left, under the last serial it was told, and then entered.
+        let entered = kept.told(&message(5, 0, &words(&[3, 7, 0, 0])));
+        assert_eq!(entered, Some(message(5, 0, &words(&[15, 7, 0, 0]))));
         assert_eq!(
-            told,
+            bytes(&kept.keeping.to_program),
+            [message(5, 1, &words(&[15, 7])), message(5, 5, &[])]
+        );
+        kept.keeping.to_program.clear();
+        assert!(kept.told(&message(5, 5, &[])).is_some(), "its own frame");
+        // The keyboard is not back by the time the relay has caught up, nor
+        // a turn of the compositor's after, while the program waits to be
+        // read, as the relay's syncs take numbers it may take next.
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        for _ in 0..SETTLING {
+            assert!(kept.keeping.to_program.is_empty(), "not yet");
+            assert!(!kept.keeping.live(), "not read meanwhile");
+            let sync = *kept.keeping.syncs.first().unwrap();
+            kept.answer(sync);
+        }
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(6, 2, &words(&[15, 7]))]
+        );
+        assert!(kept.keeping.live());
+    }
+
+    #[test]
+    fn a_buffer_the_compositor_held_that_is_not_shown_again_is_released_as_it_goes() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "wp_single_pixel_buffer_manager_v1", 1),
+        ];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "wl_compositor", 6, 3);
+        kept.bind(2, "wp_single_pixel_buffer_manager_v1", 1, 4);
+        kept.send(&message(3, 0, &words(&[5]))).unwrap();
+        // Shown one after another: the first released, the second still held
+        // as the third is shown, and the fourth attached but not committed.
+        for buffer in [6, 7, 8, 9] {
+            kept.send(&message(4, 1, &words(&[buffer, 0, 0, 0, 0])))
+                .unwrap();
+        }
+        for buffer in [6, 7, 8] {
+            kept.send(&message(5, 1, &words(&[buffer, 0, 0]))).unwrap();
+            kept.send(&message(5, 6, &[])).unwrap();
+        }
+        kept.send(&message(5, 1, &words(&[9, 0, 0]))).unwrap();
+        kept.told(&message(6, 0, &[])).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(7, 0, &[])],
+            "the one held, which the next compositor will not have"
+        );
+    }
+
+    #[test]
+    fn a_program_whose_menu_ends_with_the_compositor_is_told_its_focus_left_too() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "wl_seat", 7),
+            (3, "xdg_wm_base", 6),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 2);
+        }
+        // A window on 6, with the pointer and keyboard, and a menu on it.
+        kept.send(&message(3, 0, &words(&[6]))).unwrap();
+        kept.send(&message(3, 0, &words(&[7]))).unwrap();
+        kept.send(&message(4, 0, &words(&[8]))).unwrap();
+        kept.send(&message(4, 1, &words(&[9]))).unwrap();
+        kept.send(&message(5, 2, &words(&[10, 6]))).unwrap();
+        kept.send(&message(10, 1, &words(&[11]))).unwrap();
+        kept.send(&message(5, 1, &words(&[12]))).unwrap();
+        kept.send(&message(5, 2, &words(&[13, 7]))).unwrap();
+        kept.send(&message(13, 2, &words(&[14, 10, 12]))).unwrap();
+        kept.told(&message(8, 0, &words(&[20, 6, 0, 0]))).unwrap();
+        kept.told(&message(9, 1, &words(&[21, 6, 0]))).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        // As a menu ends as focus moves: a program may take a menu ended
+        // alone for one still up.
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
             [
-                &message(6, 1, &words(&[10, 5])),
-                &message(6, 5, &[]),
-                &message(7, 2, &words(&[11, 5])),
-            ],
-            "the pointer left, its frame, then the keyboard"
+                message(14, 1, &[]),
+                message(8, 1, &words(&[21, 6])),
+                message(8, 5, &[]),
+                message(9, 2, &words(&[21, 6])),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_surface_destroyed_with_the_pointer_and_keyboard_on_it_is_not_said_to_be_left() {
+        let (mut kept, globals) = focused();
+        kept.send(&message(7, 0, &[])).unwrap();
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert!(kept.keeping.live(), "nothing held");
+        assert!(kept.keeping.to_program.is_empty(), "nor told");
+    }
+
+    #[test]
+    fn a_serial_after_a_restart_is_told_past_those_before_and_asked_as_the_compositors() {
+        let globals = [(1, "xdg_wm_base", 6)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "xdg_wm_base", 6, 3);
+        let pinged = |serial| message(3, 0, &words(&[serial]));
+        let answered = |serial| message(3, 3, &words(&[serial]));
+        assert_eq!(
+            kept.told(&pinged(500)),
+            Some(pinged(500)),
+            "as it is, before"
+        );
+        assert_eq!(kept.send(&answered(500)), Some(answered(500)));
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert_eq!(kept.told(&pinged(3)), Some(pinged(504)));
+        assert_eq!(kept.send(&answered(504)), Some(answered(3)));
+        assert_eq!(
+            kept.send(&answered(500)),
+            Some(answered(3)),
+            "the one before's"
         );
     }
 
@@ -1507,9 +1825,11 @@ mod tests {
                 journal::said(20, 0, ""),
                 journal::message(21, 2, &[]),
                 journal::message(DISPLAY, DELETE_ID, &[21]),
+                journal::message(18, 0, &[]),
             ]),
             "the menu not yet over is, the token not yet given is given one \
-             no compositor takes, and the picture was not shown"
+             no compositor takes, the picture was not shown, and the menu's \
+             buffer, shown no more, is released"
         );
         let made = headers(&kept.keeping.to_compositor);
         let ended = [14, 15, 16, 17, 19, 20, 21];
@@ -1528,7 +1848,7 @@ mod tests {
         assert_eq!(kept.send(&message(15, 0, &[])), None);
         assert_eq!(kept.send(&message(19, 4, &[])), None);
         assert_eq!(
-            bytes(&kept.keeping.to_program[4..]),
+            bytes(&kept.keeping.to_program[5..]),
             bytes(&[
                 journal::message(DISPLAY, DELETE_ID, &[15]),
                 journal::message(DISPLAY, DELETE_ID, &[19]),

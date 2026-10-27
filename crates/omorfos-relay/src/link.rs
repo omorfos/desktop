@@ -739,9 +739,7 @@ mod tests {
         assert_eq!(link.read(Way::Down), Err(Ended::Lost));
         received(&program);
         assert_eq!(link.lose(), Ok(()));
-        let mut left = message(4, 1, &words(&[10, 9]));
-        left.extend(message(4, 5, &[]));
-        assert_eq!(received(&program).0, left, "told it left, and the frame");
+        assert!(received(&program).0.is_empty(), "held, as it may come back");
 
         // The next makes the registry again, offers the seat under another
         // name and a shm the program has not been told of, and answers the
@@ -779,6 +777,19 @@ mod tests {
             remade,
             "bound by its new name, and the rest made"
         );
+        // Caught up, and a turn of the compositor's after, with the pointer
+        // not back: it left.
+        send(&next, &message(5, 0, &words(&[0])), &[]);
+        link.read(Way::Down).unwrap();
+        for _ in 0..2 {
+            let (sync, _) = received(&next);
+            let sync = wire::word(&sync, HEADER).unwrap();
+            send(&next, &message(sync, 0, &words(&[0])), &[]);
+            link.read(Way::Down).unwrap();
+        }
+        let mut left = message(4, 1, &words(&[10, 9]));
+        left.extend(message(4, 5, &[]));
+        assert_eq!(received(&program).0, left, "told it left, and the frame");
     }
 
     #[test]

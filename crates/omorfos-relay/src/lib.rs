@@ -13,6 +13,7 @@ pub mod keep;
 mod known;
 pub mod link;
 pub mod objects;
+pub mod serials;
 pub mod wire;
 
 use std::io::{self, Write};

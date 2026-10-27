@@ -15,7 +15,7 @@ use std::process::{Child, Command};
 use std::rc::Rc;
 use std::time::Duration;
 
-use omorfos::Roles;
+use omorfos::{Input, Roles};
 use omorfos_ipc::hold::{Told, Word};
 use omorfos_ipc::relay::{self, Hand, Program};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
@@ -275,19 +275,56 @@ fn a_window_kept_by_the_relay_is_shown_by_the_next_compositor_as_it_was() {
     let (mut second, _holder) = relayed.compositor();
     second.eventually(|session| session.draw().at(10, 10) == RED);
 
-    // The program goes on as it did, none the wiser.
+    // The program goes on as it did, none the wiser: the keyboard and the
+    // pointer, back where they were, are not said to have left.
     second.roundtrip(&mut client);
     let told = client.take_events();
-    assert_eq!(
-        told[..2],
-        [Event::KeyboardLeave, Event::PointerLeave],
-        "told only that what it had left it, and came back: {told:?}"
-    );
-    assert!(told.contains(&Event::KeyboardEnter), "{told:?}");
+    let focus = |event: &Event| {
+        matches!(
+            event,
+            Event::KeyboardLeave
+                | Event::KeyboardEnter
+                | Event::PointerLeave
+                | Event::PointerEnter { .. }
+        )
+    };
+    assert!(!told.iter().any(focus), "{told:?}");
     client.fill(&window.surface, (200, 100), GREEN);
     second.roundtrip(&mut client);
     second.roundtrip(&mut client);
     assert_eq!(second.draw().at(10, 10), GREEN);
+}
+
+#[test]
+fn the_pointers_shape_is_named_under_the_enter_the_program_knows() {
+    let relayed = Relayed::new();
+    // The pointer over where the window is, in each compositor.
+    let hovering = |session: &mut Session| {
+        theme(session);
+        let over = Input::Motion { x: 50.0, y: 50.0 };
+        session.compositor_mut().input(over, 0);
+    };
+    let (mut first, first_holder) = relayed.compositor_with(hovering);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    first.roundtrip(&mut client);
+    client.take_events();
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor_with(hovering);
+    second.eventually(|session| session.draw().at(100, 80) == RED);
+    second.roundtrip(&mut client);
+    let pointer = |event: &Event| matches!(event, Event::PointerLeave | Event::PointerEnter { .. });
+    let told = client.take_events();
+    assert!(
+        !told.iter().any(pointer),
+        "it keeps the enter it knows: {told:?}"
+    );
+
+    client.set_cursor_shape(Shape::Text);
+    second.roundtrip(&mut client);
+    assert_eq!(color_at(&mut second, 50, 50), BLUE);
 }
 
 /// A program with a window, kept through the end of `first`, and the

@@ -570,6 +570,20 @@ impl Journal {
         ended
     }
 
+    /// The buffers the next compositor is shown again, each surface's that
+    /// it last committed.
+    #[must_use]
+    pub fn buffers_shown(&self) -> HashSet<u32> {
+        let surfaces = self.kept.values();
+        let surfaces = surfaces.filter(|kept| kept.interface.name == "wl_surface");
+        let committed = surfaces
+            .filter(|kept| kept.gone.is_none())
+            .flat_map(|kept| &kept.committed);
+        let attached = committed.filter(|message| message.opcode() == ATTACH);
+        let buffers = attached.filter_map(|message| wire::word(&message.bytes, HEADER));
+        buffers.filter(|buffer| *buffer != 0).collect()
+    }
+
     /// The requests that make the program's registries again, in the order
     /// they were made.
     pub fn registries(&self, numbering: &mut Numbering) -> Vec<Sending> {
