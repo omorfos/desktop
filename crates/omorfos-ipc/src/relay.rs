@@ -66,6 +66,11 @@ pub enum Hand {
     /// the session, who it is, and the roles the compositor that started it
     /// gave it.
     Part(Program, u8),
+    /// From the relay: the compositor's end of the connection of a program
+    /// that connected through a sandbox, and who the program is. It is
+    /// inside the sandbox, as one that connected there to the compositor
+    /// would be.
+    Sandboxed(Program),
     /// From the relay: every program it kept for this compositor has been
     /// handed over.
     Kept,
@@ -97,6 +102,7 @@ impl Hand {
             Self::Program(program) => format!("program {}", who(program, None)),
             Self::Started(started) => format!("started {} {}", started.pid, started.roles),
             Self::Part(program, roles) => format!("part {}", who(program, Some(*roles))),
+            Self::Sandboxed(program) => format!("sandboxed {}", who(program, None)),
             Self::Kept => "kept".to_owned(),
             Self::Placed {
                 number,
@@ -125,6 +131,9 @@ impl Hand {
             Some("part") => {
                 let read = read_who(words, true);
                 read.map(|(program, roles)| Self::Part(program, roles))
+            }
+            Some("sandboxed") => {
+                read_who(words, false).map(|(program, _)| Self::Sandboxed(program))
             }
             Some("kept") => words.next().is_none().then_some(Self::Kept),
             Some("placed") => {
@@ -296,6 +305,14 @@ mod tests {
         16,
     );
 
+    /// The program numbered 7, which connected through a sandbox.
+    const SANDBOXED: Hand = Hand::Sandboxed(Program {
+        pid: 4321,
+        uid: 1000,
+        gid: 100,
+        number: Some(7),
+    });
+
     /// Where a window of the program numbered 7, its toplevel 12, is, and
     /// where the session is, as the compositor says them.
     fn placed() -> Hand {
@@ -313,7 +330,9 @@ mod tests {
     #[test]
     fn each_hand_is_read_as_it_is_written() {
         let hands = [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED];
-        let hands = hands.into_iter().chain([STARTED, PART, Hand::Kept]);
+        let hands = hands
+            .into_iter()
+            .chain([STARTED, PART, SANDBOXED, Hand::Kept]);
         for hand in hands.chain([placed(), desk()]) {
             assert_eq!(Hand::read(&hand.written()), Some(hand.clone()));
         }
@@ -323,6 +342,7 @@ mod tests {
         assert_eq!(UNNUMBERED.written(), "program 4321 1000 100");
         assert_eq!(STARTED.written(), "started 4321 16");
         assert_eq!(PART.written(), "part 4321 1000 100 16 7");
+        assert_eq!(SANDBOXED.written(), "sandboxed 4321 1000 100 7");
         assert_eq!(Hand::Kept.written(), "kept");
     }
 
@@ -348,6 +368,8 @@ mod tests {
             "part 1 2 3 256 4",
             "part 1 2 3 4 5 6",
             "kept 1",
+            "sandboxed",
+            "sandboxed 1 2 3 4 5",
             "placed",
             "placed 1",
             "placed x 2 3",

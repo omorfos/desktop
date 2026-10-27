@@ -266,7 +266,8 @@ Settled as step 3 was started, and built in parts, the programs most used
 first: those drawn with GTK and the browsers (3a); the serials a program
 holds, and what was on the clipboard, with the clipboard keeper kept as
 programs are, brought forward from 3d for it (3b); a window back where and
-as it was (3c); components and programs in a sandbox (3d); and the
+as it was (3c); programs in a sandbox, then layer surfaces, then the
+components the compositor starts (3d, in that order); and the
 compositor taking up its own new version (3e).
 
 - **What lasts only a moment ends with the compositor** (3a): a popup, a
@@ -410,3 +411,22 @@ compositor taking up its own new version (3e).
 - **A window's icon is given it again** (3c): what gives it is kept as
   the window's own, each window its own, and made again once everything
   else is, as the icon may have been made after the window.
+- **A sandbox is the relay's** (3d): what a program such as Flatpak hands
+  over to make one, the socket it listens on and the descriptor whose
+  closing ends it, is kept by the relay, which answers for the sandbox
+  being made and listens on the socket itself; the compositor is never
+  told of it. Each program that connects there is relayed like any
+  other, numbered and kept through a change of compositor, and handed to
+  each compositor by a hand of its own, `sandboxed`, as one inside a
+  sandbox, so that it is shown no more than it was. A compositor takes
+  for a new object only the next number or one it has freed, so the
+  number of the sandbox being made is taken up there by a sync of the
+  relay's, whose answers are kept from the program, and the relay frees
+  it when the program destroys the sandbox. What a sandbox says it is,
+  its engine, program and instance, is not kept, as the compositor takes
+  nothing from it; the portals asking the user by the program's name will
+  need it carried in that hand. Once the sandbox ends, nothing more comes
+  in that way, and what came in stays. At most 64 are listened on at
+  once, one for each program Flatpak has running, and one made past that
+  is let go, and said to be, as each holds two descriptors and a program
+  may make as many as it likes.

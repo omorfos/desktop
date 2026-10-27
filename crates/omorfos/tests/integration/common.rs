@@ -1156,12 +1156,19 @@ impl Client {
     pub(crate) fn sandbox(&self, path: &Path) -> UnixStream {
         let listener = UnixListener::bind(path).unwrap();
         let (ours, theirs) = UnixStream::pair().unwrap();
+        self.sandbox_of(&listener, &theirs);
+        ours
+    }
+
+    /// Makes a sandbox as Flatpak does, listening on `listener`, that ends
+    /// when the other end of `closing` closes.
+    pub(crate) fn sandbox_of(&self, listener: &UnixListener, closing: &UnixStream) {
         let manager = self.state.sandboxes.as_ref().unwrap();
-        let context = manager.create_listener(listener.as_fd(), theirs.as_fd(), &self.handle(), ());
+        let context =
+            manager.create_listener(listener.as_fd(), closing.as_fd(), &self.handle(), ());
         context.set_sandbox_engine("org.flatpak".to_owned());
         context.set_app_id("org.example.App".to_owned());
         context.commit();
-        ours
     }
 
     /// Returns the events received so far and forgets them.

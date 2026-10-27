@@ -286,6 +286,13 @@ fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostActio
                 let _ = stream.map(|stream| compositor.insert_relayed(stream, program));
             }
             Ok(Some(Received {
+                hand: Some(Hand::Sandboxed(program)),
+                fds,
+            })) => {
+                let stream = fds.into_iter().next().map(UnixStream::from);
+                let _ = stream.map(|stream| compositor.insert_relayed_sandboxed(stream, program));
+            }
+            Ok(Some(Received {
                 hand: Some(Hand::Part(program, roles)),
                 fds,
             })) => {

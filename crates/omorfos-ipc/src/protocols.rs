@@ -163,10 +163,10 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "wp_security_context_manager_v1",
         version: 1,
-        replayed: "The socket a sandbox handed over is the relay's to listen on, and each program \
-                   that connects through it is connected to the compositor as one inside that \
-                   sandbox, with its engine, app id and instance, so that it is shown no more \
-                   than before.",
+        replayed: "The socket a sandbox handed over is the relay's to listen on, and the \
+                   compositor is never told of the sandbox; each program that connects through \
+                   it is kept as any other, and connected to each compositor as one inside a \
+                   sandbox, so that it is shown no more than before.",
     },
     Protocol {
         interface: "wp_single_pixel_buffer_manager_v1",

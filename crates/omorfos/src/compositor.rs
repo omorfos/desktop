@@ -605,6 +605,21 @@ impl Compositor {
         self.insert(stream, Roles::default(), false, Some(program))
     }
 
+    /// Accepts a program the relay connected through a sandbox, as
+    /// [`Compositor::insert_relayed`] accepts a program: inside the
+    /// sandbox, with no role, and not shown what only a role allows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection cannot be taken.
+    pub fn insert_relayed_sandboxed(
+        &mut self,
+        stream: UnixStream,
+        program: omorfos_ipc::relay::Program,
+    ) -> io::Result<Client> {
+        self.insert(stream, Roles::default(), true, Some(program))
+    }
+
     /// Accepts a part of the session the relay kept, as
     /// [`Compositor::insert_relayed`] accepts a program: with the roles
     /// the compositor that started it gave it, `roles`, as the relay says,

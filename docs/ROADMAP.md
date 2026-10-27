@@ -823,7 +823,12 @@ what only games and touchpads need last.
       joins it again among its tabs in their order, the one shown shown;
       one that shared a workspace has its part again, the workspace cut
       as it was and shown if it was.
-- [ ] Known gaps in keeping programs, after step 3c: a program holding a buffer
+- [x] Programs in a sandbox kept through a change of compositor (ADR
+      61, step 3d, the first part): the socket a sandbox hands over is
+      the relay's to listen on, and each program that connects there is
+      kept as any other, and handed to each compositor as one inside a
+      sandbox.
+- [ ] Known gaps in keeping programs, after 3d's first part: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have, or
       holding a pointer lock, a layer surface or anything else no protocol
@@ -843,10 +848,10 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3c: every
-      protocol in the list made again; the rest of what the
-      compositor starts kept as the keeper is (3d); a sandbox's
-      listener handed to the relay; then the compositor's own new
+- [ ] The rest of the relay (ADR 61, step 3), after 3d's first part:
+      layer surfaces made again, then the rest of what the compositor
+      starts kept as the keeper is (3d's second and third parts); every
+      protocol in the list made again; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the
       others', and its word about the next login goes. Programs written
       for X11 still close with their X server until Smithay can take up
@@ -1079,7 +1084,9 @@ Security:
 - [x] Sandboxed programs recognised and held to less
       (`security-context-v1`): done in stage 3.
 - [ ] What a sandbox says its program is (the application's name) kept
-      with the connection, for the portals to ask the user by.
+      with the connection, for the portals to ask the user by, and
+      carried by the relay in its `sandboxed` hand, which keeps only
+      that the program is inside one (ADR 61, 3d).
 - [ ] Smithay asked for a safe way to write into a buffer a program
       shares, so that it need not be found through `/proc` (ADR 61).
       Waits on: Smithay.

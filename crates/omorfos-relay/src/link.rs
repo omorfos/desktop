@@ -29,6 +29,7 @@ use rustix::net::{
 use crate::journal::{self, Sending};
 use crate::keep::Keeping;
 use crate::objects::Objects;
+use crate::sandbox::{Sandbox, Sandboxes};
 use crate::wire::{self, Broken, HEADER, LONGEST};
 
 /// How much of what is read is kept until it is passed on.
@@ -114,6 +115,10 @@ pub struct Link {
     /// The roles the compositor gave it, where it is a part of the session
     /// it started: none for a program.
     roles: u8,
+    /// Whether it connected through a sandbox, and is inside it.
+    sandboxed: bool,
+    /// The sandboxes it makes, which the relay answers for.
+    sandboxes: Sandboxes,
     /// Where each of its windows is, as the compositor last said, by the
     /// program's number for the window's toplevel.
     places: BTreeMap<u32, String>,
@@ -140,6 +145,8 @@ impl Link {
             program,
             who,
             roles: 0,
+            sandboxed: false,
+            sandboxes: Sandboxes::default(),
             places: BTreeMap::new(),
             compositor: Some(compositor),
             objects: Objects::default(),
@@ -162,6 +169,19 @@ impl Link {
     pub const fn with_roles(mut self, roles: u8) -> Self {
         self.roles = roles;
         self
+    }
+
+    /// This link, of a program that connected through a sandbox.
+    #[must_use]
+    pub const fn in_sandbox(mut self) -> Self {
+        self.sandboxed = true;
+        self
+    }
+
+    /// The sandboxes the program has made since they were last taken, for
+    /// the relay to listen on.
+    pub fn sandboxes(&mut self) -> Vec<Sandbox> {
+        self.sandboxes.made()
     }
 
     /// Keeps where the window whose toplevel is the program's `toplevel` is,
@@ -190,11 +210,14 @@ impl Link {
         self.places.iter().map(hand).collect()
     }
 
-    /// The hand that tells a compositor of the program: as a part of the
-    /// session with its roles, where it has some.
+    /// The hand that tells a compositor of the program: as one inside a
+    /// sandbox, where it connected through one, or as a part of the session
+    /// with its roles, where it has some.
     #[must_use]
     pub const fn hand(&self) -> Hand {
-        if self.roles == 0 {
+        if self.sandboxed {
+            Hand::Sandboxed(self.who)
+        } else if self.roles == 0 {
             Hand::Program(self.who)
         } else {
             Hand::Part(self.who, self.roles)
@@ -337,13 +360,31 @@ impl Link {
             }
             let fds: Vec<Rc<OwnedFd>> = self.up.read_fds.drain(..read.fds).map(Rc::new).collect();
             let described = &read.interface.requests[usize::from(read.opcode)];
+            self.up.read.drain(..header.size);
+            if self
+                .sandboxes
+                .request(header.object, &read, described, &fds)
+            {
+                // The sandbox no compositor knows of is made there as one of
+                // the relay's syncs, so that its number is taken, and is the
+                // relay's to free.
+                if let Some((made, ..)) = read.made {
+                    let standing = self.keeping.stand_in(made);
+                    self.up.push(standing);
+                }
+                if read.ends {
+                    let freed = journal::message(DISPLAY, DELETE_ID, &[header.object]);
+                    self.keeping.to_program.push(freed);
+                    self.tell_program();
+                }
+                continue;
+            }
             self.keeping
                 .journal
                 .request(header, &message, &fds, &read, described);
             if self.keeping.request(&read, &mut message, described) {
                 self.up.push((message, fds));
             }
-            self.up.read.drain(..header.size);
         }
         Ok(())
     }
@@ -588,6 +629,77 @@ mod tests {
         body.extend(text("wl_shm"));
         body.extend(words(&[1, 3]));
         message(2, 0, &body)
+    }
+
+    #[test]
+    fn a_sandbox_is_the_relays_to_listen_on_and_the_compositor_never_told_of_it() {
+        use std::os::linux::net::SocketAddrExt as _;
+        use std::os::unix::net::{SocketAddr, UnixListener};
+
+        let (mut link, program, compositor) = linked();
+        let name = format!("omorfos-relay-sandbox-{}", std::process::id());
+        let address = SocketAddr::from_abstract_name(name.as_bytes()).unwrap();
+        let listener = UnixListener::bind_addr(&address).unwrap();
+        let (open, closing) = UnixStream::pair().unwrap();
+        let mut sent = get_registry();
+        let mut bind = words(&[1]);
+        bind.extend(text("wp_security_context_manager_v1"));
+        bind.extend(words(&[1, 3]));
+        sent.extend(message(2, 0, &bind));
+        send(&program, &sent, &[]);
+        link.read(Way::Up).unwrap();
+        let _ = received(&compositor);
+
+        // Made as Flatpak makes one: what it is, then committed, then
+        // destroyed; what is asked of it once it is made is passed over.
+        let mut sent = message(3, 1, &words(&[4]));
+        sent.extend(message(4, 2, &text("org.example.App")));
+        sent.extend(message(4, 4, &[]));
+        sent.extend(message(4, 2, &text("org.example.Other")));
+        sent.extend(message(4, 4, &[]));
+        sent.extend(message(4, 0, &[]));
+        sent.extend(message(1, 0, &words(&[5])));
+        send(&program, &sent, &[listener.as_fd(), closing.as_fd()]);
+        drop(closing);
+        link.read(Way::Up).unwrap();
+        let mut expected = message(1, 0, &words(&[4]));
+        expected.extend(message(1, 0, &words(&[5])));
+        assert_eq!(
+            received(&compositor),
+            (expected, 0),
+            "its number taken by a sync of the relay's, and nothing more said"
+        );
+        assert_eq!(
+            received(&program).0,
+            message(1, 1, &words(&[4])),
+            "its number freed by the relay"
+        );
+        // What the compositor says of the sync is kept from the program.
+        let mut said = message(4, 0, &words(&[0]));
+        said.extend(message(1, 1, &words(&[4])));
+        send(&compositor, &said, &[]);
+        link.read(Way::Down).unwrap();
+        assert_eq!(received(&program).0, Vec::<u8>::new());
+
+        let mut sandboxes = link.sandboxes();
+        assert_eq!(sandboxes.len(), 1, "made once");
+        assert!(link.sandboxes().is_empty(), "and taken once");
+        let sandbox = sandboxes.remove(0);
+        assert_eq!(sandbox.waiting().count(), 0, "listened on without waiting");
+        let inside = UnixStream::connect_addr(&address).unwrap();
+        assert_eq!(sandbox.waiting().count(), 1);
+        drop(inside);
+        drop(open);
+        let flags = rustix::event::PollFlags::IN;
+        let mut polled = [rustix::event::PollFd::from_borrowed_fd(
+            sandbox.closing(),
+            flags,
+        )];
+        rustix::event::poll(&mut polled, None).unwrap();
+        assert!(
+            !polled[0].revents().is_empty(),
+            "ended once its end is closed"
+        );
     }
 
     #[test]

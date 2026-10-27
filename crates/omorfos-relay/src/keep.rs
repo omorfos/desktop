@@ -802,6 +802,16 @@ impl Keeping {
         }
     }
 
+    /// A sync of the relay's own under the program's number `number`, for
+    /// what the relay answers for itself and the compositor is never told
+    /// of. A compositor takes for a new object only the next number or one
+    /// it has freed, so the number is taken up there all the same, and what
+    /// the compositor says of it is kept from the program.
+    pub fn stand_in(&mut self, number: u32) -> Sending {
+        self.private.insert(number);
+        journal::message(DISPLAY, 0, &[number])
+    }
+
     /// Sends a sync of the relay's own, to know when the compositor has
     /// caught up with what was sent before it.
     fn sync(&mut self) {

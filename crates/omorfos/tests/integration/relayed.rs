@@ -1156,3 +1156,63 @@ fn windows_that_shared_a_frame_share_it_again_in_their_order() {
     assert_eq!(tabs(&second), before, "in their order, the one shown shown");
     assert_eq!(second.draw().at(100, 60), RED);
 }
+
+#[test]
+fn a_program_in_a_sandbox_is_kept_and_stays_in_it() {
+    let relayed = Relayed::new();
+    let directory = tempfile::TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    let (mut first, first_holder) = relayed.compositor();
+    // Flatpak makes the sandbox through the relay, and goes.
+    let mut flatpak = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let open = flatpak.sandbox(&path);
+    first.roundtrip(&mut flatpak);
+    drop(flatpak);
+    let shown = |client: &Client, name: &str| client.state.offered.iter().any(|it| it == name);
+    let inside = |session: &mut Session| {
+        let client = session.adopt(UnixStream::connect(&path).unwrap());
+        let withheld = crate::roles::WITHHELD
+            .iter()
+            .all(|name| !shown(&client, name));
+        assert!(withheld, "in the sandbox");
+        assert!(shown(&client, "xdg_wm_base"));
+        client
+    };
+    let mut app = inside(&mut first);
+    first.open(&mut app, "app", (200, 100), GREEN);
+    assert_eq!(first.draw().at(10, 10), GREEN);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == GREEN);
+    // Still in it, as the next compositor offers it nothing more, and what
+    // comes in that way still is.
+    second.roundtrip(&mut app);
+    let withheld = crate::roles::WITHHELD.iter().all(|name| !shown(&app, name));
+    assert!(withheld, "still in the sandbox");
+    let _other = inside(&mut second);
+
+    // When the sandbox ends, nothing more can come in that way.
+    drop(open);
+    second.eventually(|_| UnixStream::connect(&path).is_err());
+}
+
+#[test]
+fn past_as_many_sandboxes_as_are_listened_on_one_made_is_let_go() {
+    let relayed = Relayed::new();
+    let directory = tempfile::TempDir::new().unwrap();
+    let listener = UnixListener::bind(directory.path().join("sandbox")).unwrap();
+    let (_open, closing) = UnixStream::pair().unwrap();
+    let (mut first, _holder) = relayed.compositor();
+    let mut flatpak = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    for _ in 0..=64 {
+        flatpak.sandbox_of(&listener, &closing);
+    }
+    first.roundtrip(&mut flatpak);
+    first.step();
+    let said = String::from_utf8_lossy(&relayed.said.borrow()).into_owned();
+    let let_go = said.matches("a sandbox was let go, as 64 are listened on already");
+    assert_eq!(let_go.count(), 1, "{said}");
+}
