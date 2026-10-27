@@ -47,6 +47,39 @@ pub struct Kept {
     pub under: usize,
     /// Whether it is the focused frame of its workspace.
     pub focused: bool,
+    /// The frame it shares with other windows as a tab, if it does.
+    pub tab: Option<Tab>,
+    /// The part it fills of a workspace windows share, if it does.
+    pub tile: Option<Tile>,
+}
+
+/// The frame a window kept shares with others as a tab: see [`Kept`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tab {
+    /// What the frame was known by where the window was kept.
+    pub frame: u64,
+    /// Where it is among the frame's tabs.
+    pub at: usize,
+    /// Whether it is the tab the frame shows.
+    pub shown: bool,
+}
+
+/// The part a window kept fills of a workspace windows share, and how that
+/// workspace was cut: see [`Kept`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tile {
+    /// What the workspace was known by where the window was kept.
+    pub workspace: u64,
+    /// Whether its two sides are one above the other.
+    pub stacked: bool,
+    /// How much of it the first side has, then how much of each side its
+    /// first part has, each out of 65536.
+    pub splits: [u32; 3],
+    /// Which of its four places are parts, in the order they are read in:
+    /// down the first side, then down the second.
+    pub parts: [bool; 4],
+    /// Which of those places the window fills.
+    pub at: usize,
 }
 
 /// Whether a window kept is maximized, fullscreen on a workspace of its own,
@@ -69,6 +102,9 @@ pub struct Desk {
     /// showing a workspace made for a fullscreen window, the one that came
     /// from.
     pub shown: Vec<usize>,
+    /// The workspace made for windows to share each output shows, if one
+    /// does, by what it was known by.
+    pub made: Vec<Option<u64>>,
     /// The output that has the keyboard.
     pub current: usize,
 }
@@ -724,6 +760,45 @@ impl Tiling {
         })
     }
 
+    /// How it is cut, and which part `frame` fills, for a window kept to
+    /// fill it again where this is made again from what it was known by,
+    /// `workspace`.
+    fn kept_as(self, workspace: WorkspaceId, frame: u64) -> Option<Tile> {
+        let (side, place) = self.at(frame)?;
+        let mut parts = [false; 4];
+        for ((_, part), there) in self.slots().zip(&mut parts) {
+            *there = part != Part::None;
+        }
+        Some(Tile {
+            workspace: workspace.0,
+            stacked: self.stacked,
+            splits: [self.split, self.sides[0].split, self.sides[1].split],
+            parts,
+            at: side * 2 + place,
+        })
+    }
+
+    /// A workspace cut as `tile` says, from `origin`, with nothing in its
+    /// parts.
+    fn of(tile: &Tile, origin: WorkspaceId) -> Self {
+        let part = |there: bool| if there { Part::Empty } else { Part::None };
+        Self {
+            origin,
+            stacked: tile.stacked,
+            split: tile.splits[0].min(WHOLE),
+            sides: [
+                Side {
+                    split: tile.splits[1].min(WHOLE),
+                    parts: [part(tile.parts[0]), part(tile.parts[1])],
+                },
+                Side {
+                    split: tile.splits[2].min(WHOLE),
+                    parts: [part(tile.parts[2]), part(tile.parts[3])],
+                },
+            ],
+        }
+    }
+
     /// Whether it is cut into more than one part.
     fn shared(self) -> bool {
         self.slots().filter(|(_, part)| *part != Part::None).count() > 1
@@ -1297,6 +1372,23 @@ pub struct Desktop {
     /// How many of each output's workspaces are always there.
     kept: usize,
     next_serial: u64,
+    /// What has been made again of what windows kept shared.
+    restoring: Restoring,
+}
+
+/// What has been made again of what windows kept through a change of
+/// compositor shared, for each that comes back after to share it again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Restoring {
+    /// Each frame made again, by what it was known by where it was kept.
+    frames: std::collections::HashMap<u64, u64>,
+    /// Where each window made again is among its frame's tabs.
+    tabs: std::collections::HashMap<WindowId, usize>,
+    /// Each workspace made again for windows, by what it was known by.
+    workspaces: std::collections::HashMap<u64, WorkspaceId>,
+    /// The output that showed each workspace for windows, by what it was
+    /// known by, for it to be shown again once it is made.
+    shown: std::collections::HashMap<u64, usize>,
 }
 
 impl Desktop {
@@ -1317,6 +1409,7 @@ impl Desktop {
             primary: 0,
             kept: workspaces.clamp(1, Self::MOST_WORKSPACES),
             next_serial: 0,
+            restoring: Restoring::default(),
         };
         let first = desktop.set();
         desktop.sets.push(first);
@@ -1595,6 +1688,15 @@ impl Desktop {
             standing: group.standing,
             under: at.group,
             focused: workspace.focused == Some(group.serial),
+            tab: (group.tabs.len() > 1).then_some(Tab {
+                frame: group.serial,
+                at: at.tab,
+                shown: group.active == at.tab,
+            }),
+            tile: workspace
+                .solo
+                .filter(|tiling| tiling.shared())
+                .and_then(|tiling| tiling.kept_as(workspace.id, group.serial)),
         })
     }
 
@@ -1612,8 +1714,6 @@ impl Desktop {
         let (app_id, title) = (app_id.into(), title.into());
         let effects = resolve(&self.rules, &app_id, &title);
         let decorated = effects.decorations.unwrap_or(wants_decoration);
-        let set = kept.output.min(self.sets.len() - 1);
-        let workspace = self.reach(set, kept.desktop);
         let id = WindowId(self.serial());
         let window = Window {
             id,
@@ -1622,18 +1722,53 @@ impl Desktop {
             decorated,
             least: Size::default(),
         };
+        // A tab of a frame made again already joins it, in its order.
+        let restoring = &mut self.restoring;
+        let frames = &restoring.frames;
+        let frame = kept
+            .tab
+            .and_then(|tab| frames.get(&tab.frame).map(|frame| (tab, *frame)));
+        let groups = self.sets.iter_mut().flat_map(|set| &mut set.workspaces);
+        let mut groups = groups.flat_map(|workspace| &mut workspace.groups);
+        let joined = frame.and_then(|(tab, frame)| {
+            let group = groups.find(|group| group.serial == frame);
+            group.map(|group| (tab, group))
+        });
+        if let Some((tab, group)) = joined {
+            let order = &restoring.tabs;
+            let before = |other: &&Window| order.get(&other.id).is_none_or(|other| *other < tab.at);
+            let place = group.tabs.iter().take_while(before).count();
+            group.tabs.insert(place, window);
+            group.active = if tab.shown {
+                place
+            } else {
+                group.active + usize::from(place <= group.active)
+            };
+            restoring.tabs.insert(id, tab.at);
+            return id;
+        }
+        let set = kept.output.min(self.sets.len() - 1);
+        let serial = self.serial();
+        if let Some(tab) = kept.tab {
+            self.restoring.frames.insert(tab.frame, serial);
+            self.restoring.tabs.insert(id, tab.at);
+        }
+        let tiled = kept
+            .tile
+            .and_then(|tile| self.tiled_again(set, kept.desktop, &tile, serial));
+        let workspace = tiled.unwrap_or_else(|| self.reach(set, kept.desktop));
         let group = Group {
-            serial: self.serial(),
+            serial,
             tabs: vec![window],
             active: 0,
             geometry: kept.geometry,
             maximized: kept.states.maximized,
-            fullscreen: false,
+            // A frame that fills a part is fullscreen on its workspace.
+            fullscreen: tiled.is_some(),
             minimized: kept.states.minimized,
             standing: kept.standing,
             under: Some(kept.under),
         };
-        let serial = group.serial;
         let on = &mut self.sets[set].workspaces[workspace];
         // Over each kept that stood under it, and what was opened since.
         let over = |other: &Group| other.under.is_none_or(|under| under < kept.under);
@@ -1650,6 +1785,48 @@ impl Desktop {
         id
     }
 
+    /// The workspace of `set` a frame kept, `frame`, fills a part of, as
+    /// `tile` says, made again from the desktop `desktop` if it is the first
+    /// to come back to it, and shown if it was; the frame is put in that
+    /// part. None if that part is not there to fill, as where another
+    /// frame has it, and the frame goes back to the desktop.
+    fn tiled_again(
+        &mut self,
+        set: usize,
+        desktop: usize,
+        tile: &Tile,
+        frame: u64,
+    ) -> Option<usize> {
+        let made = self.restoring.workspaces.get(&tile.workspace);
+        let known = |workspace: &Workspace| Some(&workspace.id) == made;
+        let found = self.sets[set].workspaces.iter().position(known);
+        let workspace = found.unwrap_or_else(|| {
+            let origin = self.reach(set, desktop);
+            let made = WorkspaceId(self.serial());
+            let set = &mut self.sets[set];
+            let mut workspace = Workspace::new(made, false);
+            workspace.solo = Some(Tiling::of(tile, set.workspaces[origin].id));
+            set.workspaces.insert(origin + 1, workspace);
+            set.active += usize::from(set.active > origin);
+            self.restoring.workspaces.insert(tile.workspace, made);
+            origin + 1
+        });
+        let showing = self.restoring.shown.get(&tile.workspace) == Some(&set);
+        let set = &mut self.sets[set];
+        let on = &mut set.workspaces[workspace];
+        let room = on.solo.and_then(|tiling| tiling.slots().nth(tile.at));
+        room.filter(|(_, part)| *part == Part::Empty)?;
+        let filled = |at: (usize, usize), part: Part| {
+            let here = at.0 * 2 + at.1 == tile.at;
+            if here { Part::Tile(frame) } else { part }
+        };
+        on.solo = on.solo.map(|tiling| tiling.with(filled));
+        if showing {
+            set.active = workspace;
+        }
+        Some(workspace)
+    }
+
     /// Where the session is as a whole: see [`Desk`].
     #[must_use]
     pub fn desk(&self) -> Desk {
@@ -1664,18 +1841,29 @@ impl Desktop {
                 .position(|index| *index == home)
                 .unwrap_or_default()
         });
+        let made = self.sets.iter().map(|set| {
+            let showing = &set.workspaces[set.active];
+            let shared = showing.solo.is_some_and(Tiling::shared);
+            shared.then_some(showing.id.0)
+        });
         Desk {
             shown: shown.collect(),
+            made: made.collect(),
             current: self.current,
         }
     }
 
     /// Has each output show the desktop `desk` says, and the one it says
-    /// have the keyboard, as far as there are those outputs.
+    /// have the keyboard, as far as there are those outputs; and a
+    /// workspace for windows it says one showed, once it is made again.
     pub fn set_desk(&mut self, desk: &Desk) {
         for (set, shown) in desk.shown.iter().enumerate().take(self.sets.len()) {
             let workspace = self.reach(set, *shown);
             self.turn(set, workspace);
+        }
+        let made = desk.made.iter().enumerate().take(self.sets.len());
+        for (set, made) in made {
+            let _ = made.map(|made| self.restoring.shown.insert(made, set));
         }
         self.current = desk.current.min(self.sets.len() - 1);
     }
@@ -6383,6 +6571,7 @@ mod tests {
             desk,
             Desk {
                 shown: vec![0, 2],
+                made: vec![None, None],
                 current: 1
             }
         );
@@ -6394,6 +6583,7 @@ mod tests {
         // What names more than there is is held to what there is.
         back.set_desk(&Desk {
             shown: vec![9, 9, 9],
+            made: vec![Some(5), Some(6), Some(7)],
             current: 7,
         });
         assert_eq!(back.desk().current, 1);
@@ -6406,5 +6596,122 @@ mod tests {
         let video = open(&mut desktop, "video");
         desktop.set_fullscreen(video, true);
         assert_eq!(desktop.desk().shown, [1]);
+    }
+
+    #[test]
+    fn windows_kept_that_shared_a_frame_share_it_again_in_their_order() {
+        let mut desktop = desktop();
+        let [a, b, c] = ["a", "b", "c"].map(|app| open(&mut desktop, app));
+        desktop.attach(b, a);
+        desktop.attach(c, a);
+        desktop.previous_tab(c);
+        let kept = [a, b, c].map(|window| desktop.kept(window).unwrap());
+        assert!(kept.iter().all(|kept| kept.tab.is_some()));
+
+        // They come back last first: c, a, then b.
+        let (back, ids) = kept_back(&[kept[2], kept[0], kept[1]]);
+        let frames: Vec<Frame<'_>> = back.frames().collect();
+        assert_eq!(frames.len(), 1, "one frame");
+        let tabs: Vec<WindowId> = frames[0].tabs.iter().map(|window| window.id).collect();
+        assert_eq!(tabs, [ids[1], ids[2], ids[0]], "in their order");
+        assert_eq!(frames[0].window().id, ids[2], "showing the one it showed");
+    }
+
+    #[test]
+    fn a_tab_kept_whose_frame_has_since_closed_has_a_frame_of_its_own() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "a");
+        let b = open(&mut desktop, "b");
+        desktop.attach(b, a);
+        let kept = [a, b].map(|window| desktop.kept(window).unwrap());
+
+        let (mut back, ids) = kept_back(&kept[..1]);
+        back.remove_window(ids[0]);
+        let again = back.add_window_kept("tab", "tab", true, &kept[1]);
+        let frames: Vec<Frame<'_>> = back.frames().collect();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].window().id, again);
+    }
+
+    #[test]
+    fn windows_kept_that_shared_a_workspace_share_it_again_as_it_was_cut() {
+        let mut desktop = desktop();
+        let tiles = quarters(&mut desktop);
+        desktop.move_line(0, 0, Some(Point::new(700, 300)));
+        let lines = desktop.lines(0);
+        let parts = tiles.map(|tile| part(&desktop, tile));
+        let kept = tiles.map(|tile| desktop.kept(tile).unwrap());
+        assert!(kept.iter().all(|kept| kept.tile.is_some()));
+        let desk = desktop.desk();
+
+        // Shown as it was, once there is something to show.
+        let mut back = Desktop::new(Settings::default(), 3);
+        back.set_outputs(vec![SCREEN]);
+        back.set_desk(&desk);
+        let order = [3, 1, 0, 2];
+        let ids = order.map(|at| back.add_window_kept("tile", "tile", true, &kept[at]));
+        assert_eq!(back.lines(0), lines, "cut as it was");
+        for (id, at) in ids.into_iter().zip(order) {
+            assert_eq!(part(&back, id), parts[at], "each where it was");
+        }
+        assert_eq!(back.desk().shown, desk.shown);
+    }
+
+    #[test]
+    fn windows_kept_that_shared_a_workspace_in_halves_share_it_again_in_halves() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "a");
+        desktop.tile(a, Half::Left);
+        let b = open(&mut desktop, "b");
+        let lines = desktop.lines(0);
+        let kept = [a, b].map(|tile| desktop.kept(tile).unwrap());
+        let parts = kept.map(|kept| kept.tile.unwrap().parts);
+        assert_eq!(parts, [[true, false, true, false]; 2], "one part a side");
+
+        let mut back = Desktop::new(Settings::default(), 3);
+        back.set_outputs(vec![SCREEN]);
+        back.set_desk(&desktop.desk());
+        let ids = [kept[1], kept[0]].map(|kept| back.add_window_kept("tile", "tile", true, &kept));
+        assert_eq!(back.lines(0), lines, "cut as it was");
+        assert_eq!(part(&back, ids[1]), part(&desktop, a));
+        assert_eq!(part(&back, ids[0]), part(&desktop, b));
+    }
+
+    #[test]
+    fn a_window_over_windows_that_share_a_workspace_is_kept_in_no_part() {
+        let mut desktop = desktop();
+        let tiles = quarters(&mut desktop);
+        let dialog = open_of(&mut desktop, tiles[0]);
+        let shared = desktop.workspace_of(tiles[0]);
+        assert_eq!(desktop.workspace_of(dialog), shared, "over them");
+        let kept = desktop.kept(dialog).unwrap();
+        assert_eq!(kept.tile, None);
+    }
+
+    #[test]
+    fn a_window_kept_to_a_part_another_has_comes_back_to_the_desktop() {
+        let mut desktop = desktop();
+        let tiles = quarters(&mut desktop);
+        let kept = desktop.kept(tiles[0]).unwrap();
+
+        let (back, ids) = kept_back(&[kept, kept]);
+        assert!(back.kept(ids[0]).unwrap().tile.is_some());
+        let second = back.kept(ids[1]).unwrap();
+        assert_eq!(second.tile, None, "not in a part");
+        assert!(!second.states.fullscreen);
+        assert_eq!(back.workspace_of(ids[1]), Some(0), "on the desktop");
+    }
+
+    #[test]
+    fn a_window_kept_to_a_workspace_since_gone_makes_it_again() {
+        let mut desktop = desktop();
+        let tiles = quarters(&mut desktop);
+        let kept = tiles.map(|tile| desktop.kept(tile).unwrap());
+
+        let (mut back, ids) = kept_back(&kept[..1]);
+        back.remove_window(ids[0]);
+        let again = back.add_window_kept("tile", "tile", true, &kept[1]);
+        let tile = back.kept(again).unwrap().tile.unwrap();
+        assert_eq!(tile.at, kept[1].tile.unwrap().at, "in the part it had");
     }
 }

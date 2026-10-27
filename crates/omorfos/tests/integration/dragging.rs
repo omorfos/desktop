@@ -9,7 +9,7 @@ use crate::windows::{BLUE, RED};
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
-const MIDDLE: u32 = 0x112;
+pub(crate) const MIDDLE: u32 = 0x112;
 
 fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
     Rect::new(Point::new(x, y), Size::new(width, height))
@@ -46,7 +46,7 @@ fn release(session: &mut Session, button: u32) {
 }
 
 /// Presses `button` at `from`, moves to `to` and lets go.
-fn drag(session: &mut Session, button: u32, from: (i32, i32), to: (i32, i32)) {
+pub(crate) fn drag(session: &mut Session, button: u32, from: (i32, i32), to: (i32, i32)) {
     move_to(session, from.0, from.1);
     press(session, button);
     move_to(session, to.0, to.1);

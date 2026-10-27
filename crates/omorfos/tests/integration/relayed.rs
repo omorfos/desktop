@@ -1079,3 +1079,80 @@ fn a_window_comes_back_where_and_as_it_was_and_the_session_as_it_was() {
     assert_eq!(window(&after), window(&before));
     assert_eq!(shown(&after), [2], "the desktop it showed");
 }
+
+#[test]
+fn windows_that_shared_a_workspace_share_it_again_as_it_was_cut() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "left", (200, 100), RED);
+    first
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Tile(omorfos_config::Half::Left));
+    first.open(&mut client, "right", (200, 100), BLUE);
+    first.step();
+    let parts = |session: &Session| {
+        let frames = session.compositor().desktop().frames();
+        let part = |frame: omorfos_core::Frame<'_>| (frame.window().app_id.clone(), frame.geometry);
+        let mut parts: Vec<_> = frames.map(part).collect();
+        parts.sort_by_key(|(app, _)| app.clone());
+        parts
+    };
+    let before = parts(&first);
+    assert_eq!(before.len(), 2, "both shown, sharing the workspace");
+    let lines = first.compositor().desktop().lines(0);
+    assert_eq!(lines.len(), 1);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| parts(session).len() == 2);
+    assert_eq!(parts(&second), before, "each in the part it had");
+    assert_eq!(
+        second.compositor().desktop().lines(0),
+        lines,
+        "cut as it was"
+    );
+}
+
+#[test]
+fn windows_that_shared_a_frame_share_it_again_in_their_order() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open_decorated(&mut client, "editor", (200, 100), RED);
+    first.open_decorated(&mut client, "terminal", (200, 100), BLUE);
+    // The terminal's tab carried to the editor's titlebar, and the editor
+    // shown again.
+    crate::dragging::drag(&mut first, crate::dragging::MIDDLE, (100, 40), (100, 10));
+    first.roundtrip(&mut client);
+    first
+        .compositor_mut()
+        .perform(&omorfos_config::Action::PreviousTab);
+    first.roundtrip(&mut client);
+    let tabs = |session: &Session| {
+        let frames = session.compositor().desktop().frames();
+        let tabs = |frame: omorfos_core::Frame<'_>| {
+            let apps = frame.tabs.iter().map(|tab| tab.app_id.clone());
+            (apps.collect::<Vec<_>>(), frame.window().app_id.clone())
+        };
+        frames.map(tabs).collect::<Vec<_>>()
+    };
+    let before = tabs(&first);
+    assert_eq!(before.len(), 1, "one frame");
+    assert_eq!(before[0].0.len(), 2, "with both");
+    assert_eq!(before[0].1, "editor");
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| {
+        tabs(session)
+            .first()
+            .is_some_and(|(apps, _)| apps.len() == 2)
+    });
+    assert_eq!(tabs(&second), before, "in their order, the one shown shown");
+    assert_eq!(second.draw().at(100, 60), RED);
+}

@@ -394,8 +394,19 @@ compositor taking up its own new version (3e).
   the holder, carries it: it keeps the programs, survives the compositor
   ending however it ends, and has no record's size to fit in, where the
   holder keeps as little as ADR 60 says. An output not there is taken to
-  be the one with the keyboard. Until the second part, a window that
-  shared a workspace or a frame comes back alone on its desktop.
+  be the one with the keyboard. In the second part, a window that shares
+  a frame says what the frame is known by, where it is among the tabs and
+  whether it is the one shown; one that shares a workspace says what the
+  workspace is known by, how it is cut and which part it fills; and
+  where the session is says which such workspace each output shows. What
+  each is known by is the compositor's before: the next keeps, while
+  windows come back, what it has made for each, so the first of a frame
+  or a workspace to come back makes it again and the rest join it, in
+  whatever order they come. A part another window has already, or one
+  the workspace does not have, sends the window to its desktop alone.
+  The place begins `v2`, and one without, written before, is read as a
+  window of neither, so that windows kept across the update still come
+  back.
 - **A window's icon is given it again** (3c): what gives it is kept as
   the window's own, each window its own, and made again once everything
   else is, as the icon may have been made after the window.

@@ -818,7 +818,12 @@ what only games and touchpads need last.
       shows, which has the keyboard and where the pointer is, kept by the
       relay as the compositor tells it and handed back to the next; a
       window's icon given it again.
-- [ ] Known gaps in keeping programs, after 3c's first part: a program holding a buffer
+- [x] Tiles and tab groups as they were after a change of compositor
+      (ADR 61, step 3c, the second part): a window that shared a frame
+      joins it again among its tabs in their order, the one shown shown;
+      one that shared a workspace has its part again, the workspace cut
+      as it was and shown if it was.
+- [ ] Known gaps in keeping programs, after step 3c: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have, or
       holding a pointer lock, a layer surface or anything else no protocol
@@ -827,9 +832,10 @@ what only games and touchpads need last.
       program even where it changed; what a program selected is selected
       again only once it next has the keyboard; a keeper kept from the
       compositor before is not the next's child, and is not started again
-      if it stops; a window that shared a workspace or a frame with others
-      comes back alone on its desktop, until tiles and tab groups are put
-      back (3c's second part); a field leaves and enters again; a part
+      if it stops; the part of a window that did not come back, as one
+      of a program written for X11, is left with nothing in it, and a
+      workspace made for windows to share is shown only once the first
+      of them is back; a field leaves and enters again; a part
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
       the compositor offers none yet; a global the next compositor offers
@@ -837,9 +843,8 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3c's first part: every
-      protocol in the list made again; tiles and tab groups as they were
-      (3c's second part); the rest of what the
+- [ ] The rest of the relay (ADR 61, step 3), after 3c: every
+      protocol in the list made again; the rest of what the
       compositor starts kept as the keeper is (3d); a sandbox's
       listener handed to the relay; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the

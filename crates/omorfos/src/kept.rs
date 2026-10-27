@@ -6,13 +6,15 @@
 //! form is the compositor's alone. Outputs are named, as their order may
 //! differ in the next compositor; a name with a space in it cannot be
 //! written, and what names it is not read, so that window comes back as a
-//! new one would.
+//! new one would. A window's place begins `v2` from when it says the tab
+//! and the part it has; one without is read as it was first written, by a
+//! compositor before, as one of neither.
 
 use std::collections::HashMap;
 use std::os::fd::{AsFd, OwnedFd};
 
 use omorfos_core::geometry::{Point, Rect, Size};
-use omorfos_core::{Desk, Kept, Standing, States};
+use omorfos_core::{Desk, Kept, Standing, States, Tab, Tile};
 use omorfos_ipc::relay::{self, Hand};
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::shell::xdg::ToplevelSurface;
@@ -63,14 +65,16 @@ impl Compositor {
             pointer,
         } = said;
         let mut desk = self.desktop.desk();
+        // What this compositor has made is not what the relay names.
+        desk.made.fill(None);
         let named = |name: &str| {
             self.heads
                 .iter()
                 .position(|head| head.output.name() == name)
         };
-        for (name, workspace) in shown {
-            let at = named(name).and_then(|at| desk.shown.get_mut(at));
-            let _ = at.map(|at| *at = workspace);
+        for (name, workspace, made) in shown {
+            let at = named(name).filter(|at| *at < desk.shown.len());
+            let _ = at.map(|at| (desk.shown[at], desk.made[at]) = (workspace, made));
         }
         desk.current = named(current).unwrap_or(desk.current);
         self.desktop.set_desk(&desk);
@@ -159,9 +163,9 @@ pub(crate) fn key(toplevel: &ToplevelSurface) -> Option<(u32, u32)> {
     number.map(|number| (number, toplevel.xdg_toplevel().id().protocol_id()))
 }
 
-/// The letters that say a kept window's states and standing, in the order
-/// written; `-` for none.
-const FLAGS: [char; 7] = ['m', 'f', 'n', 's', 'a', 'k', 'c'];
+/// The letters that say a kept window's states and standing, and whether it
+/// is the tab its frame shows, in the order written; `-` for none.
+const FLAGS: [char; 8] = ['m', 'f', 'n', 's', 'a', 'k', 'c', 't'];
 
 /// How the relay keeps where `kept` is, it being on the output named
 /// `output`.
@@ -174,6 +178,7 @@ pub(crate) fn place(kept: &Kept, output: &str) -> String {
         kept.standing.above,
         kept.standing.sticky,
         kept.focused,
+        kept.tab.is_some_and(|tab| tab.shown),
     ];
     let flags: String = FLAGS
         .iter()
@@ -187,23 +192,93 @@ pub(crate) fn place(kept: &Kept, output: &str) -> String {
         flags
     };
     let Rect { origin, size } = kept.geometry;
+    let tab = kept
+        .tab
+        .map_or_else(|| "-".to_owned(), |tab| format!("{}:{}", tab.frame, tab.at));
+    let tile = kept.tile.map_or_else(|| "-".to_owned(), |tile| cut(&tile));
     format!(
-        "{} {} {} {} {} {flags} {} {output}",
+        "v2 {} {} {} {} {} {flags} {} {tab} {tile} {output}",
         kept.desktop, origin.x, origin.y, size.width, size.height, kept.under
     )
+}
+
+/// How the relay keeps the part a window fills and how its workspace is
+/// cut: what the workspace is known by, the part, `s` if its sides are one
+/// above the other, its three splits, and which places are parts.
+fn cut(tile: &Tile) -> String {
+    let [first, second, third] = tile.splits;
+    let stacked = if tile.stacked { "s" } else { "-" };
+    let parts: String = tile
+        .parts
+        .iter()
+        .map(|part| if *part { '1' } else { '0' })
+        .collect();
+    format!(
+        "{}:{}:{stacked}:{first}:{second}:{third}:{parts}",
+        tile.workspace, tile.at
+    )
+}
+
+/// The part a window fills, as [`cut`] wrote it.
+fn read_cut(text: &str) -> Option<Tile> {
+    let mut words = text.split(':');
+    let workspace = words.next().and_then(|word| word.parse().ok())?;
+    let at = words.next()?.parse().ok().filter(|at| *at < 4)?;
+    let stacked = words.next()? == "s";
+    let mut split = || words.next()?.parse().ok();
+    let splits = [split()?, split()?, split()?];
+    let parts = words.next()?.as_bytes();
+    let parts: [u8; 4] = parts.try_into().ok()?;
+    Some(Tile {
+        workspace,
+        stacked,
+        splits,
+        parts: parts.map(|part| part == b'1'),
+        at,
+    })
+}
+
+/// The frame a window shares as a tab, as [`place`] wrote it, it being the
+/// one shown if `shown`.
+fn read_tab(text: &str, shown: bool) -> Option<Tab> {
+    let (frame, at) = text.split_once(':')?;
+    Some(Tab {
+        frame: frame.parse().ok()?,
+        at: at.parse().ok()?,
+        shown,
+    })
 }
 
 /// Where a window is, as [`place`] wrote it, and the name of its output;
 /// the output it says is the first, to be found by that name.
 pub(crate) fn read_place(text: &str) -> Option<(Kept, String)> {
-    let mut words = text.splitn(8, ' ');
+    let (second, text) = text
+        .strip_prefix("v2 ")
+        .map_or((false, text), |text| (true, text));
+    let mut words = text.splitn(if second { 10 } else { 8 }, ' ');
     let mut number = || words.next()?.parse::<i64>().ok();
     let (desktop, x, y) = (number()?, number()?, number()?);
     let (width, height) = (number()?, number()?);
     let flags = words.next()?;
     let under = words.next()?.parse().ok()?;
-    let output = words.next()?;
     let set = |flag: char| flags.contains(flag);
+    let (tab, tile) = if second {
+        let (tab, tile) = (words.next()?, words.next()?);
+        let tab = if tab == "-" {
+            None
+        } else {
+            Some(read_tab(tab, set('t'))?)
+        };
+        let tile = if tile == "-" {
+            None
+        } else {
+            Some(read_cut(tile)?)
+        };
+        (tab, tile)
+    } else {
+        (None, None)
+    };
+    let output = words.next()?;
     let geometry = Rect::new(
         Point::new(i32::try_from(x).ok()?, i32::try_from(y).ok()?),
         Size::new(u32::try_from(width).ok()?, u32::try_from(height).ok()?),
@@ -224,6 +299,8 @@ pub(crate) fn read_place(text: &str) -> Option<(Kept, String)> {
         },
         under,
         focused: set('c'),
+        tab,
+        tile,
     };
     Some((kept, output.to_owned()))
 }
@@ -232,9 +309,12 @@ pub(crate) fn read_place(text: &str) -> Option<(Kept, String)> {
 /// counts named by `names`, and where the pointer is, `pointer`.
 pub(crate) fn desk(desk: &Desk, pointer: (i32, i32), names: &[String]) -> String {
     let current = names.get(desk.current).map_or("", String::as_str);
-    let shown = names.iter().zip(&desk.shown);
+    let shown = names.iter().zip(desk.shown.iter().zip(&desk.made));
     let shown: Vec<String> = shown
-        .map(|(name, shown)| format!("{name}:{shown}"))
+        .map(|(name, (shown, made))| match made {
+            Some(made) => format!("{name}:{shown}/{made}"),
+            None => format!("{name}:{shown}"),
+        })
         .collect();
     format!("{} {} {current} {}", pointer.0, pointer.1, shown.join(" "))
 }
@@ -242,8 +322,9 @@ pub(crate) fn desk(desk: &Desk, pointer: (i32, i32), names: &[String]) -> String
 /// Where the session is, as [`desk`] wrote it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Said<'a> {
-    /// The desktop each output shows, by its name.
-    pub(crate) shown: Vec<(&'a str, usize)>,
+    /// The desktop each output shows, by its name, and the workspace made
+    /// for windows to share it shows, if it does.
+    pub(crate) shown: Vec<(&'a str, usize, Option<u64>)>,
     /// The name of the output with the keyboard.
     pub(crate) current: &'a str,
     /// Where the pointer is.
@@ -258,9 +339,13 @@ pub(crate) fn read_desk(text: &str) -> Option<Said<'_>> {
     let current = words.next()?;
     let shown = words.filter(|word| !word.is_empty()).map(|word| {
         let (name, shown) = word.rsplit_once(':')?;
-        Some((name, shown.parse().ok()?))
+        let (shown, made) = match shown.split_once('/') {
+            Some((shown, made)) => (shown, Some(made.parse().ok()?)),
+            None => (shown, None),
+        };
+        Some((name, shown.parse().ok()?, made))
     });
-    let shown: Option<Vec<(&str, usize)>> = shown.collect();
+    let shown: Option<Vec<(&str, usize, Option<u64>)>> = shown.collect();
     Some(Said {
         shown: shown?,
         current,
@@ -289,13 +374,15 @@ mod tests {
             },
             under: 3,
             focused: true,
+            tab: None,
+            tile: None,
         }
     }
 
     #[test]
     fn where_a_window_is_is_read_as_it_is_written() {
         let written = place(&kept(), "DP-1");
-        assert_eq!(written, "2 -10 20 640 480 mnac 3 DP-1");
+        assert_eq!(written, "v2 2 -10 20 640 480 mnac 3 - - DP-1");
         assert_eq!(read_place(&written), Some((kept(), "DP-1".to_owned())));
         let plain = Kept {
             states: States::default(),
@@ -304,8 +391,52 @@ mod tests {
             ..kept()
         };
         let written = place(&plain, "eDP-1");
-        assert_eq!(written, "2 -10 20 640 480 - 3 eDP-1");
+        assert_eq!(written, "v2 2 -10 20 640 480 - 3 - - eDP-1");
         assert_eq!(read_place(&written), Some((plain, "eDP-1".to_owned())));
+    }
+
+    #[test]
+    fn the_tab_and_the_part_a_window_has_are_read_as_they_are_written() {
+        let shared = Kept {
+            tab: Some(Tab {
+                frame: 12,
+                at: 1,
+                shown: true,
+            }),
+            tile: Some(Tile {
+                workspace: 7,
+                stacked: true,
+                splits: [30_000, 32_768, 65_536],
+                parts: [true, true, false, true],
+                at: 3,
+            }),
+            ..kept()
+        };
+        let written = place(&shared, "DP-1");
+        assert_eq!(
+            written,
+            "v2 2 -10 20 640 480 mnact 3 12:1 7:3:s:30000:32768:65536:1101 DP-1"
+        );
+        assert_eq!(read_place(&written), Some((shared, "DP-1".to_owned())));
+        let hidden = Kept {
+            tab: shared.tab.map(|tab| Tab {
+                shown: false,
+                ..tab
+            }),
+            tile: shared.tile.map(|tile| Tile {
+                stacked: false,
+                ..tile
+            }),
+            ..shared
+        };
+        let written = place(&hidden, "DP-1");
+        assert_eq!(read_place(&written), Some((hidden, "DP-1".to_owned())));
+    }
+
+    #[test]
+    fn a_place_written_before_tabs_and_parts_were_is_read_as_neither() {
+        let read = read_place("2 -10 20 640 480 mnac 3 DP 1");
+        assert_eq!(read, Some((kept(), "DP 1".to_owned())));
     }
 
     #[test]
@@ -327,6 +458,23 @@ mod tests {
             "0 9999999999 0 1 1 - 0 a",
             "0 0 0 -1 1 - 0 a",
             "0 0 0 1 1 - x a",
+            "v2 0 0 0 1 1 - 0 - -",
+            "v2 0 0 0 1 1 - 0 -",
+            "v2 0 0 0 1 1 - 0",
+            "v2 0 0 0 1 1 - 0 1 - a",
+            "v2 0 0 0 1 1 - 0 x:1 - a",
+            "v2 0 0 0 1 1 - 0 1:x - a",
+            "v2 0 0 0 1 1 - 0 - 1 a",
+            "v2 0 0 0 1 1 - 0 - x:0:-:1:1:1:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:x:-:1:1:1:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:4:-:1:1:1:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:0 a",
+            "v2 0 0 0 1 1 - 0 - 1:0:- a",
+            "v2 0 0 0 1 1 - 0 - 1:0:-:x:1:1:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:0:-:1:x:1:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:0:-:1:1:x:1111 a",
+            "v2 0 0 0 1 1 - 0 - 1:0:-:1:1:1 a",
+            "v2 0 0 0 1 1 - 0 - 1:0:-:1:1:1:111 a",
         ] {
             assert_eq!(read_place(text), None, "{text:?}");
         }
@@ -337,13 +485,14 @@ mod tests {
         let names = ["eDP-1".to_owned(), "DP-1".to_owned()];
         let shown = Desk {
             shown: vec![0, 2],
+            made: vec![None, Some(9)],
             current: 1,
         };
         let written = desk(&shown, (400, -3), &names);
-        assert_eq!(written, "400 -3 DP-1 eDP-1:0 DP-1:2");
+        assert_eq!(written, "400 -3 DP-1 eDP-1:0 DP-1:2/9");
         let read = read_desk(&written);
         let said = Said {
-            shown: vec![("eDP-1", 0), ("DP-1", 2)],
+            shown: vec![("eDP-1", 0, None), ("DP-1", 2, Some(9))],
             current: "DP-1",
             pointer: (400, -3),
         };
@@ -352,6 +501,7 @@ mod tests {
         let alone = desk(
             &Desk {
                 shown: vec![0],
+                made: vec![None],
                 current: 0,
             },
             (0, 0),
@@ -363,7 +513,8 @@ mod tests {
             pointer: (0, 0),
         };
         assert_eq!(read_desk(&alone), Some(nothing));
-        for text in ["", "1", "1 2", "x 2 a", "1 x a", "1 2 a b", "1 2 a b:x"] {
+        let bad = ["", "1", "1 2", "x 2 a", "1 x a", "1 2 a b", "1 2 a b:x"];
+        for text in bad.into_iter().chain(["1 2 a b:1/x", "1 2 a b:x/1"]) {
             assert_eq!(read_desk(text), None, "{text:?}");
         }
     }
