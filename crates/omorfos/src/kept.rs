@@ -21,6 +21,7 @@ use omorfos_core::geometry::{Point, Rect, Size};
 use omorfos_core::{Desk, Kept, Standing, States, Tab, Tile};
 use omorfos_ipc::relay::{self, Hand};
 use smithay::reexports::wayland_server::Resource;
+use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::compositor::{ClientState, Compositor};
@@ -165,6 +166,30 @@ impl Compositor {
             *told_desk = now;
         }
     }
+}
+
+/// Tells the relay, over `relay` where the compositor is relayed, that the
+/// window kept by `window`, if it is relayed, is listed as `listed` says,
+/// so that a program that listed it under the compositor before is told of
+/// it once (ADR 61, step 3e). Each program it lists it for reads of it only
+/// once this has been sent, as what the compositor says is sent at the end
+/// of each turn.
+pub(crate) fn listed(
+    relay: Option<&OwnedFd>,
+    listed: &ForeignToplevelHandle,
+    window: Option<(u32, u32)>,
+) {
+    let identifier = listed.identifier();
+    let hand = Hand::Listed { identifier, window };
+    // A relay that cannot be told has gone, and the compositor with it.
+    let _ = relay.map(|relay| relay::send(relay.as_fd(), &hand, &[]));
+}
+
+/// Tells the relay, over `relay` where the compositor is relayed, that the
+/// window `listed` was is listed no longer.
+pub(crate) fn unlisted(relay: Option<&OwnedFd>, listed: &ForeignToplevelHandle) {
+    let hand = Hand::Unlisted(listed.identifier());
+    let _ = relay.map(|relay| relay::send(relay.as_fd(), &hand, &[]));
 }
 
 /// What a window is kept by: the number the relay gave its program, and

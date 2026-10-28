@@ -7,7 +7,8 @@
 //! program that connects, with who the program is; and the compositor
 //! hands the relay each part of the session it starts with roles that is
 //! to be kept as programs are, which the relay hands back with them, and
-//! again to each compositor after.
+//! again to each compositor after; where each window of a program is; and
+//! which window it lists by each identifier.
 //!
 //! Each connection carries records, not a stream: a [`Hand`] and the
 //! descriptors with it arrive whole and alone. A hand not known is passed
@@ -90,6 +91,20 @@ pub enum Hand {
     /// which the relay keeps for the next; and from the relay, handed back
     /// to it first.
     Desk(String),
+    /// From the compositor: a window it lists for the programs that may
+    /// see the list of windows, by the identifier it gives it there, which
+    /// has no space in it; and, where the window's program is the relay's,
+    /// the number the relay gave that program and the program's number for
+    /// the window's toplevel. Handed before the programs are told of it.
+    Listed {
+        /// The window's identifier in the list.
+        identifier: String,
+        /// The program's number and its toplevel's, where it is relayed.
+        window: Option<(u32, u32)>,
+    },
+    /// From the compositor: the window it listed by this identifier is
+    /// listed no longer.
+    Unlisted(String),
 }
 
 impl Hand {
@@ -110,6 +125,11 @@ impl Hand {
                 place,
             } => format!("placed {number} {toplevel} {place}"),
             Self::Desk(desk) => format!("desk {desk}"),
+            Self::Listed { identifier, window } => match window {
+                Some((number, toplevel)) => format!("listed {identifier} {number} {toplevel}"),
+                None => format!("listed {identifier}"),
+            },
+            Self::Unlisted(identifier) => format!("unlisted {identifier}"),
         }
     }
 
@@ -150,6 +170,24 @@ impl Hand {
             Some("desk") => text
                 .split_once(' ')
                 .map(|(_, desk)| Self::Desk(desk.to_owned())),
+            Some("listed") => {
+                let identifier = words.next().filter(|identifier| !identifier.is_empty())?;
+                let mut numbers = words.map(str::parse::<u32>);
+                let window = match (numbers.next(), numbers.next()) {
+                    (None, _) => None,
+                    (Some(number), Some(toplevel)) => Some((number.ok()?, toplevel.ok()?)),
+                    (Some(_), None) => return None,
+                };
+                numbers.next().is_none().then(|| Self::Listed {
+                    identifier: identifier.to_owned(),
+                    window,
+                })
+            }
+            Some("unlisted") => {
+                let identifier = words.next().filter(|identifier| !identifier.is_empty())?;
+                let whole = words.next().is_none();
+                whole.then(|| Self::Unlisted(identifier.to_owned()))
+            }
             _ => None,
         }
     }
@@ -327,15 +365,33 @@ mod tests {
         Hand::Desk("400 300 eDP-1 eDP-1:0".to_owned())
     }
 
+    /// A window of the program numbered 7, its toplevel 12, listed, one of
+    /// a program not relayed listed, and the first listed no longer.
+    fn listed() -> [Hand; 3] {
+        [
+            Hand::Listed {
+                identifier: "aB3".to_owned(),
+                window: Some((7, 12)),
+            },
+            Hand::Listed {
+                identifier: "cD4".to_owned(),
+                window: None,
+            },
+            Hand::Unlisted("aB3".to_owned()),
+        ]
+    }
+
     #[test]
     fn each_hand_is_read_as_it_is_written() {
         let hands = [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED];
         let hands = hands
             .into_iter()
             .chain([STARTED, PART, SANDBOXED, Hand::Kept]);
-        for hand in hands.chain([placed(), desk()]) {
+        for hand in hands.chain([placed(), desk()]).chain(listed()) {
             assert_eq!(Hand::read(&hand.written()), Some(hand.clone()));
         }
+        let written = listed().map(|hand| hand.written());
+        assert_eq!(written, ["listed aB3 7 12", "listed cD4", "unlisted aB3"]);
         assert_eq!(placed().written(), "placed 7 12 1 10 20 640 480 m 0 eDP-1");
         assert_eq!(desk().written(), "desk 400 300 eDP-1 eDP-1:0");
         assert_eq!(PROGRAM.written(), "program 4321 1000 100 7");
@@ -376,6 +432,14 @@ mod tests {
             "placed 1 x 3",
             "placed 1 2",
             "desk",
+            "listed",
+            "listed  7 12",
+            "listed aB3 7",
+            "listed aB3 x 12",
+            "listed aB3 7 x",
+            "listed aB3 7 12 13",
+            "unlisted",
+            "unlisted aB3 7",
         ] {
             assert_eq!(Hand::read(text), None, "{text:?}");
         }

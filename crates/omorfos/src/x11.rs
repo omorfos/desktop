@@ -693,6 +693,7 @@ impl Compositor {
         let size = omorfos_core::geometry::Size::new(size.w.unsigned_abs(), size.h.unsigned_abs());
         let (app_id, title) = (x11.class(), x11.title());
         let listed = self.foreign_toplevels.new_toplevel::<Self>(&title, &app_id);
+        crate::kept::listed(self.autostarted.parts.relay.as_ref(), &listed, None);
         // A window that does not draw its own titlebar is given ours.
         let decorated = !x11.is_decorated();
         let at = self.pointer_position();

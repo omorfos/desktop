@@ -861,7 +861,10 @@ what only games and touchpads need last.
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
       the compositor offers none yet; a virtual keyboard's modifiers are
-      not said again, as its keymap has to come first; a global the next compositor offers
+      not said again, as its keymap has to come first; a window in a list keeps the identifier the first
+      compositor gave it, where one listing windows anew, and IPC, are given the next's; a window
+      kept that the next compositor never lists leaves its handle open, and each window listed
+      after it held back for a moment; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
@@ -877,13 +880,15 @@ what only games and touchpads need last.
       is back as the compositor goes and away again once the next has
       counted its timeout; and each virtual keyboard made again with its
       keymap.
-- [ ] Windows known to another program by a handle (3e, the third
-      part): the list of windows (`ext-foreign-toplevel-list`), whose
-      handles the next compositor makes under its own numbers and which
-      the program would be told twice, matched to those it has; and a
-      window imported (`xdg-foreign`), whose handle is the compositor
-      before's, which needs the exporter's made again first and the old
-      handle known by the new.
+- [x] The list of windows made again (3e, the third part, first half):
+      each window in a program's list (`ext-foreign-toplevel-list`)
+      that is kept matched to the one the next compositor lists, by the
+      window the compositor hands the relay each identifier is, and
+      told only what changed of it; one not kept told it has closed.
+- [ ] A window imported made again (3e, the third part, second half,
+      `xdg-foreign`): its handle is the compositor before's, so the
+      exporter's has to be made again first and the old handle known by
+      the new, across programs.
 - [ ] Input methods made again (3e, the fourth part), with their
       keyboard grab and popups, as fcitx5 and IBus make them.
 - [ ] Capturing the screen or a window made again (3e, the fifth part):

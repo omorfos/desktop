@@ -17,6 +17,7 @@ pub mod sandbox;
 pub mod serials;
 pub mod wire;
 
+use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -62,6 +63,9 @@ pub struct Relay {
     /// Where the session is as a whole, as the compositor last said, for the
     /// next compositor.
     desk: Option<String>,
+    /// The windows the compositor lists, by the identifier it gives each:
+    /// which it is, where it is relayed.
+    listed: BTreeMap<String, Option<(u32, u32)>>,
 }
 
 impl Relay {
@@ -76,6 +80,7 @@ impl Relay {
             links: Vec::new(),
             next: 1,
             desk: None,
+            listed: BTreeMap::new(),
         }
     }
 
@@ -109,6 +114,9 @@ impl Relay {
         let readable =
             |ready: Option<PollFlags>| ready.is_some_and(|ready| ready.intersects(READABLE));
         let compositor_ready = self.compositor.as_ref().map(|_| readable(ready.next()));
+        // What the compositor hands is taken first: which window it lists by
+        // each identifier is what a program's list may wait on.
+        let went = compositor_ready == Some(true) && !self.hear(log);
         let socket_ready = compositor_ready
             .and(self.socket.as_ref())
             .map(|_| readable(ready.next()));
@@ -140,7 +148,7 @@ impl Relay {
                 Err(why) => ended.push((index, why)),
             }
         }
-        let gone = (lost || compositor_ready == Some(true)) && self.compositor_gone(GRACE, log);
+        let gone = went || (lost && self.compositor_gone(GRACE, log));
         if gone {
             // One that lost it is kept with the rest; one let go alone, by
             // a compositor still there, is not.
@@ -238,26 +246,35 @@ impl Relay {
     /// the relay has closed, or does within `grace`. What it hands meanwhile
     /// is taken, and said on `log` if it cannot be.
     fn compositor_gone(&mut self, grace: Duration, log: &mut dyn Write) -> bool {
+        let readable = self.compositor.as_ref().is_none_or(|compositor| {
+            let mut polled = [PollFd::new(compositor, PollFlags::IN)];
+            let grace = Timespec::try_from(grace).unwrap_or_default();
+            let _ = poll(&mut polled, Some(&grace));
+            polled
+                .iter()
+                .any(|polled| polled.revents().intersects(READABLE))
+        });
+        readable && !self.hear(log)
+    }
+
+    /// Takes what the compositor has handed. Returns whether it is still
+    /// there: not if there is none.
+    fn hear(&mut self, log: &mut dyn Write) -> bool {
         let kept = Kept {
             links: &mut self.links,
             next: &mut self.next,
             desk: &mut self.desk,
+            listed: &mut self.listed,
         };
-        self.compositor.as_ref().is_none_or(|compositor| {
-            let mut polled = [PollFd::new(compositor, PollFlags::IN)];
-            let grace = Timespec::try_from(grace).unwrap_or_default();
-            let _ = poll(&mut polled, Some(&grace));
-            let readable = polled
-                .iter()
-                .any(|polled| polled.revents().intersects(READABLE));
-            readable && !hear_compositor(compositor.as_fd(), kept, log)
-        })
+        let compositor = self.compositor.as_ref();
+        compositor.is_some_and(|compositor| hear_compositor(compositor.as_fd(), kept, log))
     }
 
     /// Takes in that the compositor has gone: each program that can be kept
     /// waits for the next; the rest are let go, and said on `log` to be.
     fn lose_compositor(&mut self, log: &mut dyn Write) {
         self.compositor = None;
+        let mut losing = Vec::new();
         self.links.retain_mut(|link| {
             let lost = link.compositor().is_some().then(|| link.lose());
             if let Some(Err(unkept)) = &lost {
@@ -268,8 +285,21 @@ impl Relay {
                     unkept.join(", ")
                 );
             }
-            !matches!(lost, Some(Err(_)))
+            let kept = !matches!(lost, Some(Err(_)));
+            if kept {
+                losing.push(lost.is_some());
+            }
+            kept
         });
+        // A window listed is listed again by the next compositor where it is
+        // kept, and closed where it is not.
+        let kept: HashSet<(u32, u32)> = self.links.iter().flat_map(Link::windows).collect();
+        for (link, losing) in self.links.iter_mut().zip(losing) {
+            if losing {
+                link.unlist(&self.listed, &kept);
+            }
+        }
+        self.listed.clear();
     }
 
     /// Takes what the holder has handed. Returns whether the holder is
@@ -322,6 +352,8 @@ struct Kept<'a> {
     next: &'a mut u32,
     /// Where the session is as a whole.
     desk: &'a mut Option<String>,
+    /// The windows the compositor lists.
+    listed: &'a mut BTreeMap<String, Option<(u32, u32)>>,
 }
 
 /// Takes what `compositor` has handed into what the relay keeps, `kept`:
@@ -329,7 +361,12 @@ struct Kept<'a> {
 /// `log` if it cannot be; where a window or the session is, kept for the
 /// next. Returns whether the compositor is still there.
 fn hear_compositor(compositor: BorrowedFd<'_>, kept: Kept<'_>, log: &mut dyn Write) -> bool {
-    let Kept { links, next, desk } = kept;
+    let Kept {
+        links,
+        next,
+        desk,
+        listed,
+    } = kept;
     loop {
         match relay::receive(compositor) {
             Ok(Some(Received {
@@ -369,6 +406,24 @@ fn hear_compositor(compositor: BorrowedFd<'_>, kept: Kept<'_>, log: &mut dyn Wri
                 hand: Some(Hand::Desk(said)),
                 ..
             })) => *desk = Some(said),
+            Ok(Some(Received {
+                hand: Some(Hand::Listed { identifier, window }),
+                ..
+            })) => {
+                for link in links.iter_mut() {
+                    link.listed(&identifier, window);
+                }
+                listed.insert(identifier, window);
+            }
+            Ok(Some(Received {
+                hand: Some(Hand::Unlisted(identifier)),
+                ..
+            })) => {
+                for link in links.iter_mut() {
+                    link.unlisted(&identifier);
+                }
+                listed.remove(&identifier);
+            }
             // What is not known, or not whole, is passed over.
             Ok(Some(_)) => {}
             Ok(None) => return true,
@@ -531,9 +586,15 @@ fn serve(link: &mut Link, program: PollFlags, compositor: Option<PollFlags>) -> 
     if program.intersects(gone) && !link.reads(Way::Up) {
         return Err(Ended::Closed);
     }
+    // What the compositor said and was held back is read again as if it had
+    // just come.
     let ways = [
         (Some(program), Way::Up, Way::Down),
-        (compositor, Way::Down, Way::Up),
+        (
+            compositor.map(|ready| ready | link.again()),
+            Way::Down,
+            Way::Up,
+        ),
     ];
     for (ready, from, to) in ways {
         let Some(ready) = ready else {

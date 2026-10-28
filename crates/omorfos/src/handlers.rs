@@ -199,6 +199,7 @@ impl Compositor {
         let parent = parent.and_then(|parent| self.window_id(&parent));
         // One kept through a change of compositor comes back where it was.
         let kept_by = crate::kept::key(&toplevel);
+        crate::kept::listed(self.autostarted.parts.relay.as_ref(), &listed, kept_by);
         let id = match self.kept_window(kept_by) {
             Some(kept) => self
                 .desktop
@@ -234,11 +235,13 @@ impl Compositor {
     pub(crate) fn remove_window(&mut self, id: WindowId) {
         self.desktop.remove_window(id);
         self.forget_use(id);
+        let relay = self.autostarted.parts.relay.as_ref();
         self.windows.retain(|mapped| {
             let keep = mapped.id != id;
             if !keep {
                 self.space.unmap_elem(&mapped.window);
                 self.foreign_toplevels.remove_toplevel(&mapped.listed);
+                crate::kept::unlisted(relay, &mapped.listed);
             }
             keep
         });

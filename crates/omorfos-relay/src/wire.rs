@@ -195,6 +195,15 @@ pub fn word(bytes: &[u8], at: usize) -> Option<u32> {
     bytes.try_into().ok().map(u32::from_ne_bytes)
 }
 
+/// The text of the string at `at` in `body`, without the nothing it ends
+/// with: none where there is no string there.
+#[must_use]
+pub fn text(body: &[u8], at: usize) -> &[u8] {
+    let sized = sized(body, at).map(|(bytes, _)| bytes);
+    let text = sized.and_then(|bytes| string(bytes, AllowNull::Yes));
+    text.unwrap_or_default()
+}
+
 /// The bytes of the string or array at `at`, and where the next argument
 /// starts.
 fn sized(body: &[u8], at: usize) -> Result<(&[u8], usize), Broken> {
@@ -519,5 +528,16 @@ pub(crate) mod tests {
         );
         assert_eq!(word(&[1, 0, 0], 0), None);
         assert_eq!(word(&[], usize::MAX), None);
+    }
+
+    #[test]
+    fn the_text_of_a_string_is_read_without_its_end_and_none_where_there_is_none() {
+        let mut body = 7_u32.to_ne_bytes().to_vec();
+        body.extend(b"listed\0\0");
+        assert_eq!(super::text(&body, 0), b"listed");
+        let mut unended = 2_u32.to_ne_bytes().to_vec();
+        unended.extend(b"ab\0\0");
+        assert_eq!(super::text(&unended, 0), b"");
+        assert_eq!(super::text(&9_u32.to_ne_bytes(), 0), b"");
     }
 }

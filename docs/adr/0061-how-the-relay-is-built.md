@@ -510,3 +510,22 @@ and fails while that is other than what 3e still has to come.
   again: the journal keeps the last of each request in the order each was
   last sent, so a keymap sent again after the modifiers would be sent
   after them, and they would be refused.
+- **A window listed is the one the program has listed** (3e). The list
+  of windows (`ext-foreign-toplevel-list`) gives each window an
+  identifier, which Smithay draws at random, and an object the
+  compositor makes, so the next compositor lists every window anew,
+  under numbers and identifiers of its own, and nothing in what it
+  says names the window's surface. The compositor hands the relay,
+  beside the list, which window it lists by each identifier, by the
+  program's number and its toplevel's, before the programs are told
+  of it. As the compositor goes, a window in a program's list that is
+  kept is awaited from the next, and the program is told the rest have
+  closed. A window the next lists is held back from a program awaiting
+  one until the relay knows which it is, from the hand, which may come
+  before or after: the one awaited is the program's own under the next
+  compositor's number, and the program is told only what changed of
+  it; another is new, and told as it was said. What the compositor
+  hands is read before what it says to programs, so that the hand is
+  most often there first. The identifier the program knows stays the
+  first compositor's; one listing windows anew, as a portal picking a
+  window does, is told the next's, and so is anyone asking over IPC.

@@ -28,6 +28,7 @@ use crate::common::{Client, Event, LayerShape, Session, TEXT, key};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
 use crate::holding::{nudge, pointed};
+use crate::taskbar::{entry, listing};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 /// Puts `session` under a holder that has it served by a relay; returns the
@@ -896,6 +897,54 @@ fn a_program_typing_with_a_keyboard_of_its_own_types_with_it_through_the_next() 
         pressed: true,
     };
     assert!(told.contains(&typed), "{told:?}");
+}
+
+#[test]
+fn a_taskbar_kept_hears_of_a_window_kept_once_and_that_one_not_kept_has_closed() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    // A taskbar, as the compositor starts it, with the role to list windows.
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::PANEL.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut taskbar = first.adopt(ours);
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut app, "kept", (200, 100), RED);
+    // One not through the relay, which goes with the compositor.
+    let mut alone = first.connect();
+    first.open(&mut alone, "alone", (100, 100), GREEN);
+    first.roundtrip(&mut taskbar);
+    let both = [entry("kept", "kept window"), entry("alone", "alone window")];
+    assert_eq!(listing(&taskbar), both);
+
+    drop((first, first_holder, alone));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut taskbar);
+    assert_eq!(listing(&taskbar), [entry("kept", "kept window")]);
+    assert_eq!(taskbar.state.taskbar.len(), 2, "told of each once");
+
+    // What the window says is told under the handle the taskbar has, and a
+    // window new to it is new.
+    window.role.set_title("renamed".to_owned());
+    second.roundtrip(&mut app);
+    let mut more = second.connect();
+    second.open(&mut more, "new", (100, 100), BLUE);
+    second.roundtrip(&mut taskbar);
+    let now = [entry("kept", "renamed"), entry("new", "new window")];
+    assert_eq!(listing(&taskbar), now);
+    window.role.destroy();
+    second.roundtrip(&mut app);
+    second.roundtrip(&mut taskbar);
+    assert_eq!(listing(&taskbar), [entry("new", "new window")]);
+    assert_eq!(taskbar.error(), None);
 }
 
 #[test]

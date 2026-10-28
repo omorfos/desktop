@@ -12,7 +12,7 @@
 //! is so held to what the compositor does with a program that does not
 //! read (ADR 45).
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -20,6 +20,7 @@ use std::os::unix::net::UnixStream;
 use std::rc::Rc;
 
 use omorfos_ipc::relay::{Hand, Program};
+use rustix::event::PollFlags;
 use rustix::io::Errno;
 use rustix::net::{
     RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, ReturnFlags, SendAncillaryBuffer,
@@ -127,6 +128,9 @@ pub struct Link {
     keeping: Keeping,
     /// Whether the compositor has said the program did what it may not.
     errored: bool,
+    /// Whether what the compositor said is to be read again, once it is
+    /// known what it is.
+    again: bool,
     up: Passing,
     down: Passing,
 }
@@ -152,6 +156,7 @@ impl Link {
             objects: Objects::default(),
             keeping: Keeping::default(),
             errored: false,
+            again: false,
             up: Passing::default(),
             down: Passing::default(),
         })
@@ -208,6 +213,56 @@ impl Link {
             place: place.clone(),
         };
         self.places.iter().map(hand).collect()
+    }
+
+    /// Each of the program's windows, by the number it was given and its own
+    /// number for the window's toplevel, as the compositor knows it.
+    pub fn windows(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
+        let number = self.who.number;
+        let toplevels = self.objects.each_living();
+        let toplevels = toplevels.filter(|(_, interface)| interface.name == "xdg_toplevel");
+        toplevels.filter_map(move |(toplevel, _)| number.map(|number| (number, toplevel)))
+    }
+
+    /// Takes in which window the compositor that has gone listed by each
+    /// identifier, `listed`, and which of those are kept, `kept`: those in
+    /// the program's lists of windows are awaited from the next compositor,
+    /// and the program is told the rest have closed.
+    pub fn unlist(
+        &mut self,
+        listed: &BTreeMap<String, Option<(u32, u32)>>,
+        kept: &HashSet<(u32, u32)>,
+    ) {
+        self.keeping.unlist(listed, kept);
+        self.tell_program();
+        let _ = self.give_out(Way::Down);
+    }
+
+    /// Takes in that the compositor lists, by `identifier`, the window
+    /// `window`, where it is relayed: what it said of it and held back is
+    /// read again, if it is known now what it is.
+    pub fn listed(&mut self, identifier: &str, window: Option<(u32, u32)>) {
+        self.keeping.listed(identifier.as_bytes(), window);
+        let again = std::mem::take(&mut self.keeping.again);
+        self.again |= !again.is_empty();
+        self.down.read.splice(..0, again);
+    }
+
+    /// Takes in that the compositor lists the window it identified by
+    /// `identifier` no longer.
+    pub fn unlisted(&mut self, identifier: &str) {
+        self.keeping.unlisted(identifier.as_bytes());
+    }
+
+    /// What the compositor said and was held back, as it is waited on: to
+    /// be read as if it had just come, once it is known what it is.
+    #[must_use]
+    pub const fn again(&self) -> PollFlags {
+        if self.again {
+            PollFlags::IN
+        } else {
+            PollFlags::empty()
+        }
     }
 
     /// The hand that tells a compositor of the program: as one inside a
@@ -268,6 +323,9 @@ impl Link {
             Way::Up => Some(&self.program),
             Way::Down => self.compositor.as_ref(),
         };
+        if way == Way::Down {
+            self.again = false;
+        }
         let passing = passing_mut(&mut self.up, &mut self.down, way);
         let open = from.map_or(Ok(true), |from| take_in(from, passing))?;
         let passed = self.pass(way);
@@ -399,6 +457,9 @@ impl Link {
             let mut message = self.down.read[..header.size].to_vec();
             self.down.read.drain(..header.size);
             let header = self.keeping.before(&self.objects, header, &mut message)?;
+            // What was held back and is known now is read next.
+            let again = std::mem::take(&mut self.keeping.again);
+            self.down.read.splice(..0, again);
             // What the relay is to tell the program as the compositor caught
             // up, globals new to it among them, goes before what follows.
             self.tell_program();
@@ -559,6 +620,7 @@ mod tests {
     use std::os::fd::AsRawFd;
 
     use super::*;
+    use crate::objects::SERVERS;
     use crate::wire::tests::{message, text, words};
 
     /// Who the tests' programs are.
@@ -690,7 +752,7 @@ mod tests {
         assert_eq!(sandbox.waiting().count(), 1);
         drop(inside);
         drop(open);
-        let flags = rustix::event::PollFlags::IN;
+        let flags = PollFlags::IN;
         let mut polled = [rustix::event::PollFd::from_borrowed_fd(
             sandbox.closing(),
             flags,
@@ -955,6 +1017,57 @@ mod tests {
         let mut left = message(4, 1, &words(&[10, 9]));
         left.extend(message(4, 5, &[]));
         assert_eq!(received(&program).0, left, "told it left, and the frame");
+    }
+
+    #[test]
+    fn a_window_listed_before_the_relay_knows_which_it_is_is_read_again_once_it_does() {
+        let (mut link, program, compositor) = linked();
+        send(&program, &get_registry(), &[]);
+        link.read(Way::Up).unwrap();
+        let mut list = words(&[1]);
+        list.extend(text("ext_foreign_toplevel_list_v1"));
+        list.extend(words(&[1]));
+        send(&compositor, &message(2, 0, &list), &[]);
+        link.read(Way::Down).unwrap();
+        let mut bind = words(&[1]);
+        bind.extend(text("ext_foreign_toplevel_list_v1"));
+        bind.extend(words(&[1, 3]));
+        send(&program, &message(2, 0, &bind), &[]);
+        link.read(Way::Up).unwrap();
+        // A window listed, which is kept through the compositor going.
+        let mut listing = message(3, 0, &words(&[SERVERS]));
+        listing.extend(message(SERVERS, 4, &text("a")));
+        send(&compositor, &listing, &[]);
+        link.read(Way::Down).unwrap();
+        drop(compositor);
+        let _ = link.read(Way::Down);
+        assert_eq!(link.lose(), Ok(()));
+        let listed = BTreeMap::from([("a".to_owned(), Some((4, 9)))]);
+        link.unlist(&listed, &HashSet::from([(4, 9)]));
+        received(&program);
+
+        // The next lists another before it says which window that is.
+        let (towards, next) = UnixStream::pair().unwrap();
+        next.set_nonblocking(true).unwrap();
+        link.join(towards).unwrap();
+        let mut said = message(2, 0, &list);
+        // The relay's sync answered, and its number freed for the list.
+        said.extend(message(3, 0, &words(&[0])));
+        said.extend(message(1, 1, &words(&[3])));
+        said.extend(message(3, 0, &words(&[SERVERS + 5])));
+        said.extend(message(SERVERS + 5, 4, &text("b")));
+        send(&next, &said, &[]);
+        link.read(Way::Down).unwrap();
+        assert!(received(&program).0.is_empty(), "held back");
+        assert_eq!(link.again(), PollFlags::empty());
+        link.listed("b", None);
+        assert_eq!(link.again(), PollFlags::IN, "to be read again");
+        link.read(Way::Down).unwrap();
+        assert_eq!(link.again(), PollFlags::empty());
+        let mut told = message(3, 0, &words(&[SERVERS + 5]));
+        told.extend(message(SERVERS + 5, 4, &text("b")));
+        assert_eq!(received(&program).0, told, "new to the program");
+        link.unlisted("b");
     }
 
     #[test]

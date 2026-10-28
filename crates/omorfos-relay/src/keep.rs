@@ -6,12 +6,14 @@
 //! that a user it was told is away is back, as the next compositor counts
 //! from when it starts, and that what lasts only a moment has ended: a popup dismissed, a token
 //! given, a picture discarded, which the relay answers for from then on. A
-//! pointer held once only that has been held is over too. When the next is joined, what
+//! pointer held once only that has been held is over too, and a window in
+//! its lists of windows that is not kept has closed. When the next is joined, what
 //! the program had is made again in two parts, each ended by a sync of the
 //! relay's own: its registries, so that the new compositor's globals are
 //! known, then the rest, as [`Journal`] kept it. Until the second is
 //! answered, what the compositor says is sifted: what the program knows
-//! already is kept from it.
+//! already is kept from it. A window the next compositor lists that the
+//! program has listed is the one it has, once the relay knows which it is.
 //!
 //! Some numbers mean something only to one compositor, and the relay puts
 //! the program's in their place and theirs in the program's: the names of
@@ -24,7 +26,7 @@
 //! program told the pointer has come back names its shape again with the
 //! new compositor's serial, as it would to any compositor.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use wayland_backend::protocol::MessageDesc;
 
@@ -52,6 +54,15 @@ const TEXT_DONE: u16 = 5;
 /// The lifetime of a lock or confinement of the pointer that ends once it is
 /// let go of.
 const ONESHOT: u32 = 1;
+
+/// The events of a window in a list of windows: that it has closed, that
+/// what has been said of it is whole, what it is called, what program it
+/// is of, and its identifier.
+const CLOSED: u16 = 0;
+const LISTED_DONE: u16 = 1;
+const TITLE: u16 = 2;
+const APP_ID: u16 = 3;
+const IDENTIFIER: u16 = 4;
 
 /// The requests that ack a configure: a window's `xdg_surface`'s, and a
 /// layer surface's.
@@ -147,6 +158,33 @@ struct Constraint {
     was: bool,
 }
 
+/// A window in a list of windows the program has (`ext-foreign-toplevel-list`).
+#[derive(Debug, Default)]
+struct Listing {
+    /// The list it is in.
+    list: u32,
+    /// Its identifier, as the compositor gives it now.
+    identifier: Vec<u8>,
+    /// What the program was last told it is called, and what program it is
+    /// of.
+    title: Vec<u8>,
+    app_id: Vec<u8>,
+}
+
+/// A window the next compositor lists that is kept from the program until
+/// it is known whether the program has it listed already.
+#[derive(Debug)]
+struct Holding {
+    /// The compositor's number for it.
+    theirs: u32,
+    /// The list it is in.
+    list: u32,
+    /// Its identifier, once said.
+    identifier: Option<Vec<u8>>,
+    /// What the compositor has said of it, from the event that lists it.
+    said: Vec<Vec<u8>>,
+}
+
 /// Where the relay is with a program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -222,6 +260,28 @@ pub struct Keeping {
     /// The tokens to hand focus on that the program has been given, and the
     /// menus it has been told are over.
     given: HashSet<u32>,
+    /// The windows in the program's lists of windows, by its number for
+    /// each.
+    listings: HashMap<u32, Listing>,
+    /// Of those, the ones kept through a change of compositor, by their
+    /// list and the window they are, the program's number and its own for
+    /// the window's toplevel, until the next compositor lists that window.
+    awaiting: HashMap<(u32, (u32, u32)), u32>,
+    /// Of those, the ones the next compositor has listed, until what it
+    /// says of each is whole: whether anything new has been told of it.
+    relisted: HashMap<u32, bool>,
+    /// While some are awaited, the window the next compositor lists by each
+    /// identifier, where it is relayed.
+    known: HashMap<Vec<u8>, Option<(u32, u32)>>,
+    /// The windows the next compositor lists that are held back meanwhile,
+    /// in the order listed.
+    holding: Vec<Holding>,
+    /// The compositor's numbers for those let through, which are not held
+    /// back again as they are read again.
+    unheld: HashSet<u32>,
+    /// What the compositor said that was held back, to be read again in its
+    /// place.
+    pub again: Vec<u8>,
     /// The highest of the program's numbers when the compositor went: what
     /// the program may take next may be any up to it.
     highest: u32,
@@ -265,6 +325,13 @@ impl Default for Keeping {
             constraints: HashMap::new(),
             away: HashSet::new(),
             given: HashSet::new(),
+            listings: HashMap::new(),
+            awaiting: HashMap::new(),
+            relisted: HashMap::new(),
+            known: HashMap::new(),
+            holding: Vec::new(),
+            unheld: HashSet::new(),
+            again: Vec::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
@@ -394,6 +461,9 @@ impl Keeping {
         if read.ends {
             self.constraints.remove(&object);
             self.away.remove(&object);
+            self.listings.remove(&object);
+            self.relisted.remove(&object);
+            self.awaiting.retain(|_, handle| *handle != object);
         }
         let Some((made, interface, _)) = read.made else {
             return;
@@ -448,6 +518,9 @@ impl Keeping {
             if self.private.remove(&deleted) {
                 return Ok(None);
             }
+        }
+        if self.hold(objects, header, bytes) {
+            return Ok(None);
         }
         let object = if header.object >= SERVERS {
             self.servers.ours(header.object)
@@ -630,6 +703,16 @@ impl Keeping {
             ("wl_buffer", 0) => {
                 self.held_buffers.remove(&object);
             }
+            ("ext_foreign_toplevel_list_v1", 0) => {
+                let listing = Listing {
+                    list: object,
+                    ..Listing::default()
+                };
+                self.listings.insert(word(0), listing);
+            }
+            ("ext_foreign_toplevel_handle_v1", opcode) => {
+                return self.listing(object, opcode, body);
+            }
             ("ext_idle_notification_v1", 0) => {
                 self.away.insert(object);
             }
@@ -694,6 +777,156 @@ impl Keeping {
         self.to_program
             .push(journal::message(source, cancelled, &[]));
         true
+    }
+
+    /// Takes in the event `opcode`, with `body`, to `handle`, a window in a
+    /// list of the program's. Returns whether it is passed on: not what is
+    /// said again of one the next compositor has listed, where it has not
+    /// changed, nor that it is whole where nothing has.
+    fn listing(&mut self, handle: u32, opcode: u16, body: &[u8]) -> bool {
+        let Some(listing) = self.listings.get_mut(&handle) else {
+            return true;
+        };
+        let said = match opcode {
+            CLOSED => {
+                self.listings.remove(&handle);
+                self.relisted.remove(&handle);
+                return true;
+            }
+            LISTED_DONE => return self.relisted.remove(&handle).unwrap_or(true),
+            TITLE => &mut listing.title,
+            APP_ID => &mut listing.app_id,
+            _ => {
+                listing.identifier = wire::text(body, 0).to_vec();
+                return true;
+            }
+        };
+        let same = said.as_slice() == body;
+        body.clone_into(said);
+        let relisted = self.relisted.get_mut(&handle);
+        let Some(told) = relisted else {
+            return true;
+        };
+        *told |= !same;
+        !same
+    }
+
+    /// Takes in the event `bytes`, of `header`, if it lists a window anew
+    /// while a window the program had listed under the compositor before is
+    /// still to be listed again, or is of one listed so: holds it back until
+    /// the window it is, is known. Returns whether it is held.
+    fn hold(&mut self, objects: &Objects, header: Header, bytes: &[u8]) -> bool {
+        let mut holding = self.holding.iter_mut();
+        if let Some(held) = holding.find(|held| held.theirs == header.object) {
+            if header.opcode == IDENTIFIER && held.said.len() == 1 {
+                let body = bytes.get(HEADER..).unwrap_or_default();
+                held.identifier = Some(wire::text(body, 0).to_vec());
+            }
+            held.said.push(bytes.to_vec());
+            self.resolve();
+            return true;
+        }
+        let list = objects.living(header.object);
+        let lists = list.is_some_and(|list| list.name == "ext_foreign_toplevel_list_v1");
+        if !lists || header.opcode != 0 || self.awaiting.is_empty() {
+            return false;
+        }
+        let theirs = wire::word(bytes, HEADER).unwrap_or_default();
+        if self.unheld.remove(&theirs) {
+            return false;
+        }
+        self.holding.push(Holding {
+            theirs,
+            list: header.object,
+            identifier: None,
+            said: vec![bytes.to_vec()],
+        });
+        true
+    }
+
+    /// Takes in that the compositor lists, by `identifier`, the window
+    /// `window`, where it is relayed: if the program has that window
+    /// listed from before, the window held back as that identifier is the
+    /// one it has.
+    pub fn listed(&mut self, identifier: &[u8], window: Option<(u32, u32)>) {
+        if !self.awaiting.is_empty() {
+            self.known.insert(identifier.to_vec(), window);
+            self.resolve();
+        }
+    }
+
+    /// Takes in that the compositor lists the window it identified by
+    /// `identifier` no longer.
+    pub fn unlisted(&mut self, identifier: &[u8]) {
+        self.known.remove(identifier);
+    }
+
+    /// Lets go of each window held back that is known now: one the program
+    /// has listed from before is the one it has, and it is told only what
+    /// follows of it; another is new, and told as the compositor said it.
+    fn resolve(&mut self) {
+        let mut holding = std::mem::take(&mut self.holding);
+        let known = &self.known;
+        // One that says something before its identifier is not known by it.
+        let window = |held: &Holding| match &held.identifier {
+            Some(identifier) => known.get(identifier).copied(),
+            None => (held.said.len() > 1).then_some(None),
+        };
+        for held in holding.extract_if(.., |held| window(held).is_some()) {
+            let window = window(&held).flatten();
+            let had = window.and_then(|window| self.awaiting.remove(&(held.list, window)));
+            let Some(had) = had else {
+                self.unheld.insert(held.theirs);
+                self.again.extend(held.said.into_iter().flatten());
+                continue;
+            };
+            // The program's own is the next compositor's: neither the event
+            // that lists it nor its identifier is told again.
+            self.servers.set(had, held.theirs);
+            self.orphans.remove(&had);
+            self.relisted.insert(had, false);
+            let listing = self.listings.get_mut(&had);
+            let identifier = held.identifier.unwrap_or_default();
+            let _ = listing.map(|listing| listing.identifier = identifier);
+            self.again.extend(held.said.into_iter().skip(2).flatten());
+        }
+        self.holding = holding;
+        if self.awaiting.is_empty() {
+            self.known.clear();
+        }
+    }
+
+    /// Takes in which window the compositor that has gone listed by each
+    /// identifier, `listed`, where it is relayed, and which of those are
+    /// kept, `kept`: each window in the program's lists that is kept is
+    /// awaited from the next compositor, and the program is told the rest
+    /// have closed.
+    pub fn unlist(
+        &mut self,
+        listed: &BTreeMap<String, Option<(u32, u32)>>,
+        kept: &HashSet<(u32, u32)>,
+    ) {
+        let mut listings: Vec<(&u32, &Listing)> = self.listings.iter().collect();
+        listings.sort_unstable_by_key(|(handle, _)| **handle);
+        let mut closed = Vec::new();
+        for (handle, listing) in listings {
+            let identifier = std::str::from_utf8(&listing.identifier).ok();
+            let window = identifier.and_then(|identifier| listed.get(identifier));
+            let window = window
+                .copied()
+                .flatten()
+                .filter(|window| kept.contains(window));
+            match window {
+                Some(window) => {
+                    self.awaiting.insert((listing.list, window), *handle);
+                }
+                None => closed.push(*handle),
+            }
+        }
+        for handle in closed {
+            self.listings.remove(&handle);
+            self.to_program.push(journal::message(handle, CLOSED, &[]));
+        }
     }
 
     /// Takes in that `device`, a pointer or keyboard, entered `surface`
@@ -1023,6 +1256,12 @@ impl Keeping {
         for commits in self.commits.values_mut() {
             commits.1 = 0;
         }
+        // What the compositor said and was held back is not to be said.
+        self.holding.clear();
+        self.unheld.clear();
+        self.relisted.clear();
+        self.awaiting.clear();
+        self.known.clear();
         self.phase = Phase::Waiting;
         Ok(())
     }
@@ -1144,6 +1383,18 @@ mod tests {
                 assert_eq!(self.told(&global(*name, interface, *version)), None);
             }
             self.answer(sync);
+        }
+
+        /// Reads again what was held back and is known now, as the link
+        /// does; returns each as the program is told it, if it is.
+        fn again(&mut self) -> Vec<Option<Vec<u8>>> {
+            let mut again = std::mem::take(&mut self.keeping.again);
+            let mut told = Vec::new();
+            while let Some(header) = wire::header(&again).unwrap() {
+                let message: Vec<u8> = again.drain(..header.size).collect();
+                told.push(self.told(&message));
+            }
+            told
         }
 
         /// Answers the sync `sync`, as the compositor does: done, then its
@@ -2261,6 +2512,111 @@ mod tests {
             bytes(&kept.keeping.to_program),
             bytes(&[journal::message(5, 1, &[])])
         );
+    }
+
+    /// The event of the list of windows `list` that lists one as `handle`.
+    fn toplevel(list: u32, handle: u32) -> Vec<u8> {
+        message(list, 0, &words(&[handle]))
+    }
+
+    /// The event `opcode` of the window `handle` in a list, saying `said`.
+    fn saying(handle: u32, opcode: u16, said: &str) -> Vec<u8> {
+        message(handle, opcode, &text(said))
+    }
+
+    #[test]
+    fn a_window_listed_and_kept_is_the_one_the_program_has_once_the_next_compositor_lists_it() {
+        let globals = [(1, "ext_foreign_toplevel_list_v1", 1)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "ext_foreign_toplevel_list_v1", 1, 3);
+        // Kept and said the same, let go of meanwhile, not relayed, kept and
+        // said anew, and let go of at once.
+        let (same, gone, alone, anew, dropped) =
+            (SERVERS, SERVERS + 1, SERVERS + 2, SERVERS + 3, SERVERS + 4);
+        let listing = [
+            (same, "a"),
+            (gone, "b"),
+            (alone, "c"),
+            (anew, "d"),
+            (dropped, "e"),
+        ];
+        for (handle, identifier) in listing {
+            kept.told(&toplevel(3, handle)).unwrap();
+            kept.told(&saying(handle, IDENTIFIER, identifier)).unwrap();
+            kept.told(&saying(handle, TITLE, "one")).unwrap();
+            kept.told(&message(handle, LISTED_DONE, &[])).unwrap();
+        }
+        // One the program lets go of as the compositor says more of it.
+        kept.send(&message(dropped, 0, &[])).unwrap();
+        kept.told(&saying(dropped, TITLE, "two")).unwrap();
+
+        // The windows of a, b and d are kept; c's is not relayed.
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        let listed = BTreeMap::from([
+            ("a".to_owned(), Some((7, 20))),
+            ("b".to_owned(), Some((7, 21))),
+            ("c".to_owned(), None),
+            ("d".to_owned(), Some((7, 23))),
+        ]);
+        let windows = HashSet::from([(7, 20), (7, 21), (7, 23)]);
+        kept.keeping.unlist(&listed, &windows);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[journal::message(alone, CLOSED, &[])])
+        );
+        // b's is let go of while the compositor is away.
+        assert_eq!(kept.send(&message(gone, 0, &[])), None);
+        kept.keeping.join();
+        let sync = *kept.keeping.syncs.first().unwrap();
+        assert_eq!(
+            kept.told(&global(1, "ext_foreign_toplevel_list_v1", 1)),
+            None
+        );
+        kept.answer(sync);
+
+        // b's window, known before it is listed, is new to the program, as
+        // is one that says something before its identifier.
+        kept.keeping.listed(b"b2", Some((7, 21)));
+        let theirs = SERVERS + 10;
+        assert_eq!(kept.told(&toplevel(3, theirs)), None);
+        assert_eq!(kept.told(&saying(theirs, IDENTIFIER, "b2")), None);
+        let told = kept.again();
+        assert!(told.iter().all(Option::is_some), "{told:?}");
+        assert_eq!(kept.told(&toplevel(3, theirs + 1)), None);
+        assert_eq!(kept.told(&saying(theirs + 1, TITLE, "new")), None);
+        let told = kept.again();
+        assert!(told.iter().all(Option::is_some), "{told:?}");
+
+        // a's, known only once said, is the one it has, told nothing new.
+        assert_eq!(kept.told(&toplevel(3, theirs + 2)), None);
+        assert_eq!(kept.told(&saying(theirs + 2, IDENTIFIER, "a2")), None);
+        assert_eq!(kept.told(&saying(theirs + 2, TITLE, "one")), None);
+        kept.keeping.listed(b"a2", Some((7, 20)));
+        kept.keeping.unlisted(b"gone");
+        assert_eq!(kept.again(), [None], "the title it has");
+        assert_eq!(kept.told(&message(theirs + 2, LISTED_DONE, &[])), None);
+
+        // d's, known as it is said, is told what changed, under its number.
+        kept.keeping.listed(b"d2", Some((7, 23)));
+        assert_eq!(kept.told(&toplevel(3, theirs + 3)), None);
+        assert_eq!(kept.told(&saying(theirs + 3, IDENTIFIER, "d2")), None);
+        assert_eq!(kept.again(), []);
+        let retitled = kept.told(&saying(theirs + 3, TITLE, "two"));
+        assert_eq!(retitled, Some(saying(anew, TITLE, "two")));
+        let done = kept.told(&message(theirs + 3, LISTED_DONE, &[]));
+        assert_eq!(done, Some(message(anew, LISTED_DONE, &[])));
+        assert_eq!(
+            kept.send(&message(anew, 0, &[])),
+            Some(message(theirs + 3, 0, &[]))
+        );
+
+        // None is awaited now, and one listed is told as it is said, and
+        // that it has closed.
+        assert!(kept.told(&toplevel(3, theirs + 4)).is_some());
+        assert!(kept.keeping.known.is_empty());
+        assert!(kept.told(&saying(theirs + 4, APP_ID, "x")).is_some());
+        assert!(kept.told(&message(theirs + 4, CLOSED, &[])).is_some());
+        assert_eq!(kept.keeping.listings.len(), 3, "the same, the new two");
     }
 
     #[test]

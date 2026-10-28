@@ -4,13 +4,13 @@ use crate::common::{Client, Session};
 use crate::windows::{BLUE, RED};
 
 /// What a taskbar would show: each open window's application and title.
-fn listing(taskbar: &Client) -> Vec<(String, String)> {
+pub(crate) fn listing(taskbar: &Client) -> Vec<(String, String)> {
     let open = taskbar.state.taskbar.iter().filter(|task| !task.closed);
     open.map(|task| (task.app_id.clone(), task.title.clone()))
         .collect()
 }
 
-fn entry(app_id: &str, title: &str) -> (String, String) {
+pub(crate) fn entry(app_id: &str, title: &str) -> (String, String) {
     (app_id.to_owned(), title.to_owned())
 }
 
