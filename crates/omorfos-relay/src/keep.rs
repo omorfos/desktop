@@ -14,6 +14,11 @@
 //! answered, what the compositor says is sifted: what the program knows
 //! already is kept from it. A window the next compositor lists that the
 //! program has listed is the one it has, once the relay knows which it is.
+//! A window of another program's that it imported by the handle the
+//! compositor before shared it by is imported again by the one the next
+//! shares it by, once that is known: the import made again by the old
+//! handle, which the next compositor refuses, is destroyed first, and that
+//! it was refused is kept from the program.
 //!
 //! Some numbers mean something only to one compositor, and the relay puts
 //! the program's in their place and theirs in the program's: the names of
@@ -63,6 +68,18 @@ const LISTED_DONE: u16 = 1;
 const TITLE: u16 = 2;
 const APP_ID: u16 = 3;
 const IDENTIFIER: u16 = 4;
+
+/// The event of a window shared with other programs (`xdg-foreign`) that
+/// says the handle it is shared by, and the importer's request that imports
+/// one by its handle.
+const HANDLE: u16 = 0;
+const IMPORT: u16 = 1;
+
+/// The event of a window imported that says it is gone, and its requests
+/// that destroy it and make a window of the program's belong to it.
+const IMPORT_GONE: u16 = 0;
+const UNIMPORT: u16 = 0;
+const PARENT_OF: u16 = 1;
 
 /// The requests that ack a configure: a window's `xdg_surface`'s, and a
 /// layer surface's.
@@ -185,6 +202,33 @@ struct Holding {
     said: Vec<Vec<u8>>,
 }
 
+/// A window of another program's that the program imported
+/// (`xdg-foreign`).
+#[derive(Debug)]
+struct Import {
+    /// What it was imported through.
+    importer: u32,
+    /// The handle it was imported by, or the one its window has been shared
+    /// by since.
+    handle: Vec<u8>,
+    /// The window of the program's made to belong to it, if any.
+    child: Option<u32>,
+    renewal: Renewal,
+}
+
+/// Where a window imported is in being imported again under the next
+/// compositor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Renewal {
+    /// As the program imported it: its window not kept, or imported again.
+    Done,
+    /// Its window kept, until the next compositor shares it.
+    Awaited,
+    /// Shared anew before it was made again, to be imported again once it
+    /// is.
+    Known,
+}
+
 /// Where the relay is with a program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -282,6 +326,16 @@ pub struct Keeping {
     /// What the compositor said that was held back, to be read again in its
     /// place.
     pub again: Vec<u8>,
+    /// The handle each window the program shares is shared by, as it was
+    /// told it, by its number for what shares it.
+    exports: HashMap<u32, Vec<u8>>,
+    /// Each handle a window the program shares was shared by under the
+    /// compositor before, with the one the next shares it by, for every
+    /// program that imported it to import it again by.
+    pub renamed: Vec<(Vec<u8>, Vec<u8>)>,
+    /// The windows of other programs' the program imported, by its number
+    /// for each.
+    imports: HashMap<u32, Import>,
     /// The highest of the program's numbers when the compositor went: what
     /// the program may take next may be any up to it.
     highest: u32,
@@ -332,6 +386,9 @@ impl Default for Keeping {
             holding: Vec::new(),
             unheld: HashSet::new(),
             again: Vec::new(),
+            exports: HashMap::new(),
+            renamed: Vec::new(),
+            imports: HashMap::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
@@ -392,7 +449,7 @@ impl Keeping {
                 self.selections.retain(gone);
                 self.selecting.retain(gone);
             }
-            _ => {}
+            (interface, request) => self.importing(header.object, interface, request, bytes),
         }
         if read.ends && read.interface.name == "wl_surface" {
             // A surface gone has nothing to be said to have left.
@@ -464,6 +521,12 @@ impl Keeping {
             self.listings.remove(&object);
             self.relisted.remove(&object);
             self.awaiting.retain(|_, handle| *handle != object);
+            self.exports.remove(&object);
+            self.imports.remove(&object);
+            // A window gone belongs to none imported any longer.
+            for import in self.imports.values_mut() {
+                import.child = import.child.filter(|child| *child != object);
+            }
         }
         let Some((made, interface, _)) = read.made else {
             return;
@@ -485,6 +548,30 @@ impl Keeping {
                 was: false,
             };
             self.constraints.insert(made, constraint);
+        }
+    }
+
+    /// Takes in the request `bytes`, `request` of `interface`, to `object`,
+    /// as far as it imports a window of another program's or makes one of
+    /// the program's belong to it.
+    fn importing(&mut self, object: u32, interface: &str, request: &str, bytes: &[u8]) {
+        let body = bytes.get(HEADER..).unwrap_or_default();
+        match (interface, request) {
+            ("zxdg_importer_v2", "import_toplevel") => {
+                let import = Import {
+                    importer: object,
+                    handle: wire::text(body, 4).to_vec(),
+                    child: None,
+                    renewal: Renewal::Done,
+                };
+                let imported = wire::word(body, 0).unwrap_or_default();
+                self.imports.insert(imported, import);
+            }
+            ("zxdg_imported_v2", "set_parent_of") => {
+                let import = self.imports.get_mut(&object);
+                let _ = import.map(|import| import.child = wire::word(body, 0));
+            }
+            _ => {}
         }
     }
 
@@ -713,6 +800,13 @@ impl Keeping {
             ("ext_foreign_toplevel_handle_v1", opcode) => {
                 return self.listing(object, opcode, body);
             }
+            ("zxdg_exported_v2", HANDLE) => self.shared(object, wire::text(body, 0)),
+            ("zxdg_imported_v2", IMPORT_GONE) => {
+                // Refused by the handle of the compositor before, it is
+                // imported again once its window is shared anew.
+                let import = self.imports.get(&object);
+                return import.is_none_or(|import| import.renewal != Renewal::Awaited);
+            }
             ("ext_idle_notification_v1", 0) => {
                 self.away.insert(object);
             }
@@ -929,6 +1023,75 @@ impl Keeping {
         }
     }
 
+    /// Takes in that the window the program shares as `exported` is shared
+    /// by `handle`: where it was shared by another, under the compositor
+    /// before, every program that imported it by that is to import it again
+    /// by this.
+    fn shared(&mut self, exported: u32, handle: &[u8]) {
+        let before = self.exports.insert(exported, handle.to_vec());
+        let renamed = before.map(|before| (before, handle.to_vec()));
+        self.renamed.extend(renamed);
+    }
+
+    /// The handles the windows the program shares are shared by, as it was
+    /// told them.
+    pub fn exports(&self) -> impl Iterator<Item = &[u8]> {
+        self.exports.values().map(Vec::as_slice)
+    }
+
+    /// Takes in the handles the compositor that has gone shared the windows
+    /// that are kept by, `kept`: each window the program imported by one is
+    /// awaited, to be imported again once the next compositor shares it.
+    pub fn unimport(&mut self, kept: &HashSet<Vec<u8>>) {
+        for import in self.imports.values_mut() {
+            import.renewal = if kept.contains(&import.handle) {
+                Renewal::Awaited
+            } else {
+                Renewal::Done
+            };
+        }
+    }
+
+    /// Takes in that the window the compositor that has gone shared by
+    /// `before` is shared by `now`: each the program imported by `before`,
+    /// and awaits, is imported again by `now` once it is made again.
+    pub fn exported(&mut self, before: &[u8], now: &[u8]) {
+        for import in self.imports.values_mut() {
+            if import.renewal == Renewal::Awaited && import.handle == before {
+                now.clone_into(&mut import.handle);
+                import.renewal = Renewal::Known;
+            }
+        }
+        if matches!(self.phase, Phase::Making | Phase::Settling | Phase::Live) {
+            self.reimport();
+        }
+    }
+
+    /// Imports again each window shared anew, as the program last made it.
+    /// What was imported by the handle before, which the compositor refused,
+    /// is destroyed first, and the number that frees is the relay's to keep
+    /// from the program, as the program has it still.
+    fn reimport(&mut self) {
+        let known = self.imports.iter_mut();
+        let mut known: Vec<(&u32, &mut Import)> = known
+            .filter(|(_, import)| import.renewal == Renewal::Known)
+            .collect();
+        known.sort_unstable_by_key(|(imported, _)| **imported);
+        for (imported, import) in known {
+            import.renewal = Renewal::Done;
+            self.private.insert(*imported);
+            let (importer, handle) = (import.importer, &import.handle);
+            let again = journal::said_after(importer, IMPORT, &[*imported], handle);
+            self.to_compositor
+                .push(journal::message(*imported, UNIMPORT, &[]));
+            self.to_compositor.push(again);
+            let parent = import
+                .child
+                .map(|child| journal::message(*imported, PARENT_OF, &[child]));
+            self.to_compositor.extend(parent);
+        }
+    }
+
     /// Takes in that `device`, a pointer or keyboard, entered `surface`
     /// with `serial`, at `at` and with nothing held if `clear`, as `read`
     /// says. Where it had that surface as the compositor went, there and
@@ -1040,6 +1203,7 @@ impl Keeping {
             self.numbering.fill_to(&mut sending, self.highest);
             self.private.extend(self.numbering.fillers.drain(..));
             self.to_compositor.extend(sending);
+            self.reimport();
             self.sync();
             self.phase = Phase::Making;
         } else if self.phase == Phase::Making {
@@ -1262,6 +1426,7 @@ impl Keeping {
         self.relisted.clear();
         self.awaiting.clear();
         self.known.clear();
+        self.renamed.clear();
         self.phase = Phase::Waiting;
         Ok(())
     }
@@ -2617,6 +2782,88 @@ mod tests {
         assert!(kept.told(&saying(theirs + 4, APP_ID, "x")).is_some());
         assert!(kept.told(&message(theirs + 4, CLOSED, &[])).is_some());
         assert_eq!(kept.keeping.listings.len(), 3, "the same, the new two");
+    }
+
+    /// The importer 4's request that imports, as `imported`, the window
+    /// shared by `handle`.
+    fn import(imported: u32, handle: &str) -> Vec<u8> {
+        let mut body = words(&[imported]);
+        body.extend(text(handle));
+        message(4, IMPORT, &body)
+    }
+
+    #[test]
+    fn a_window_imported_by_a_handle_of_the_compositor_before_is_imported_again_by_the_next() {
+        let globals = [
+            (1, "zxdg_exporter_v2", 1),
+            (2, "zxdg_importer_v2", 1),
+            (3, "wl_compositor", 6),
+        ];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "zxdg_exporter_v2", 1, 3);
+        kept.bind(2, "zxdg_importer_v2", 1, 4);
+        kept.bind(3, "wl_compositor", 6, 5);
+        for surface in [6, 7, 8] {
+            kept.send(&message(5, 0, &words(&[surface]))).unwrap();
+        }
+        // A window of its own shared, which it imports too; another
+        // program's kept, whose dialog is let go of; and one not kept.
+        kept.send(&message(3, 1, &words(&[9, 6]))).unwrap();
+        kept.told(&message(9, HANDLE, &text("h1"))).unwrap();
+        for (imported, handle) in [(10, "h1"), (11, "h3"), (12, "x")] {
+            kept.send(&import(imported, handle)).unwrap();
+        }
+        kept.send(&message(10, PARENT_OF, &words(&[7]))).unwrap();
+        kept.send(&message(11, PARENT_OF, &words(&[8]))).unwrap();
+        kept.send(&message(8, 0, &[])).unwrap();
+        assert_eq!(kept.keeping.exports().collect::<Vec<_>>(), [b"h1"]);
+
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        kept.keeping
+            .unimport(&HashSet::from([b"h1".to_vec(), b"h3".to_vec()]));
+        kept.keeping.join();
+        let sync = *kept.keeping.syncs.first().unwrap();
+        for (name, interface, version) in globals {
+            assert_eq!(kept.told(&global(name, interface, version)), None);
+        }
+        // Its own is shared anew before it is made again, and imported again
+        // as soon as it is, with its dialog; a handle not imported is
+        // nothing to it.
+        kept.keeping.exported(b"h1", b"h2");
+        kept.keeping.exported(b"h0", b"h9");
+        kept.keeping.to_compositor.clear();
+        kept.answer(sync);
+        let sent = bytes(&kept.keeping.to_compositor);
+        let again = [
+            journal::message(10, UNIMPORT, &[]),
+            journal::said_after(4, IMPORT, &[10], b"h2"),
+            journal::message(10, PARENT_OF, &[7]),
+        ];
+        assert_eq!(sent[sent.len() - 4..sent.len() - 1], bytes(&again));
+        // What the next compositor says of each made again by the old
+        // handle is kept from the program, but of the one not kept.
+        assert_eq!(kept.told(&message(10, IMPORT_GONE, &[])), None);
+        assert_eq!(kept.told(&message(11, IMPORT_GONE, &[])), None);
+        assert!(kept.told(&message(12, IMPORT_GONE, &[])).is_some());
+        assert!(kept.told(&message(9, HANDLE, &text("h2"))).is_some());
+        assert_eq!(kept.keeping.renamed, [(b"h1".to_vec(), b"h2".to_vec())]);
+
+        // The other program's, shared anew once it was made again, is
+        // imported again at once, without the dialog it no longer has.
+        kept.keeping.to_compositor.clear();
+        kept.keeping.exported(b"h3", b"h4");
+        let again = [
+            journal::message(11, UNIMPORT, &[]),
+            journal::said_after(4, IMPORT, &[11], b"h4"),
+        ];
+        assert_eq!(bytes(&kept.keeping.to_compositor), bytes(&again));
+        // The numbers the relay's destroying frees are kept from the program,
+        // which frees them itself as it destroys what it has.
+        assert_eq!(kept.told(&message(1, DELETE_ID, &words(&[10]))), None);
+        assert_eq!(kept.told(&message(1, DELETE_ID, &words(&[11]))), None);
+        assert!(kept.send(&message(10, UNIMPORT, &[])).is_some());
+        assert!(kept.told(&message(1, DELETE_ID, &words(&[10]))).is_some());
+        assert_eq!(kept.keeping.imports.len(), 2);
     }
 
     #[test]

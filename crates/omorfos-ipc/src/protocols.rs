@@ -294,15 +294,16 @@ pub const OFFERED: &[Protocol] = &[
         interface: "zxdg_exporter_v2",
         version: 1,
         replayed: "Each window exported made again, and the program told the new compositor's \
-                   handle. One it passed on before is the old compositor's, and refused where \
-                   another program imports it, as a stale one is.",
+                   handle. A program kept that imported it by the old one imports it again by \
+                   the new; one that imports it by the old one only after is refused, as by a \
+                   stale one.",
     },
     Protocol {
         interface: "zxdg_importer_v2",
         version: 1,
-        replayed: "Each window imported made again by its handle, as the exporter's note says, \
-                   and its child set again; one whose window has gone is destroyed, as when the \
-                   window closes.",
+        replayed: "Each window imported made again, by the handle the next compositor shares \
+                   its window by once the program sharing it is made again, and the window made \
+                   to belong to it set again; one whose window was not kept is told it is gone.",
     },
     Protocol {
         interface: "zxdg_output_manager_v1",

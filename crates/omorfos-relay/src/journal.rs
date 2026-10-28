@@ -131,7 +131,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 40] = [
+const KEPT: [&str; 41] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -165,6 +165,7 @@ const KEPT: [&str; 40] = [
     "zwp_linux_dmabuf_feedback_v1",
     "xdg_toplevel_icon_v1",
     "zxdg_exported_v2",
+    "zxdg_imported_v2",
     "zwlr_layer_surface_v1",
     "wp_alpha_modifier_surface_v1",
     "zwp_relative_pointer_v1",
@@ -257,13 +258,22 @@ pub fn message(object: u32, opcode: u16, arguments: &[u32]) -> Sending {
 /// A message to `object`, the `opcode`th of its, of one argument, `text`.
 #[must_use]
 pub fn said(object: u32, opcode: u16, text: &str) -> Sending {
-    let mut string = text.as_bytes().to_vec();
+    said_after(object, opcode, &[], text.as_bytes())
+}
+
+/// A message to `object`, the `opcode`th of its, of `arguments` and then
+/// `text`.
+#[must_use]
+pub fn said_after(object: u32, opcode: u16, arguments: &[u32], text: &[u8]) -> Sending {
+    let mut string = text.to_vec();
     string.push(0);
     let length = u32::try_from(string.len()).unwrap_or(u32::MAX);
     string.resize(string.len().next_multiple_of(4), 0);
-    let size = u32::try_from(HEADER + 4 + string.len()).unwrap_or(u32::MAX);
+    let size = HEADER + 4 * arguments.len() + 4 + string.len();
+    let size = u32::try_from(size).unwrap_or(u32::MAX);
     let mut bytes = object.to_ne_bytes().to_vec();
     bytes.extend((size << 16 | u32::from(opcode)).to_ne_bytes());
+    bytes.extend(arguments.iter().flat_map(|argument| argument.to_ne_bytes()));
     bytes.extend(length.to_ne_bytes());
     bytes.extend(string);
     (bytes, Vec::new())
@@ -1395,13 +1405,12 @@ mod tests {
         assert_eq!(program.journal.unkept(), [""; 0], "a global bound");
         program.send(&sent(5, 1, &words(&[6])), &[]);
         program.send(&sent(5, 1, &words(&[7])), &[]);
-        program.bind(3, "zxdg_importer_v2", 1, 8);
-        let mut imported = words(&[9]);
-        imported.extend(text("handle"));
-        program.send(&sent(8, 1, &imported), &[]);
+        program.bind(3, "wl_seat", 9, 8);
+        program.bind(4, "zwp_input_method_manager_v2", 1, 9);
+        program.send(&sent(9, 0, &words(&[8, 10])), &[]);
         assert_eq!(
             program.journal.unkept(),
-            ["ext_session_lock_v1", "zxdg_imported_v2"],
+            ["ext_session_lock_v1", "zwp_input_method_v2"],
             "each once, in the order made"
         );
         assert!(keeps("wl_seat") && keeps("xdg_toplevel") && keeps("xdg_popup"));
@@ -1482,7 +1491,6 @@ mod tests {
             "zwp_input_method_keyboard_grab_v2",
             "zwp_input_method_v2",
             "zwp_input_popup_surface_v2",
-            "zxdg_imported_v2",
         ];
         let mut made = Vec::new();
         for global in crate::known::globals() {

@@ -714,6 +714,8 @@ pub(crate) enum Event {
     },
     /// What a surface committed was never shown.
     Discarded,
+    /// A window of another program's imported is not there, or no longer.
+    ImportGone,
     /// The pointer moved by this much, and by this much as the device
     /// measured it, at a time in millionths of a second.
     RelativeMotion {
@@ -2574,7 +2576,6 @@ delegate_noop!(ClientState: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1)
 delegate_noop!(ClientState: ignore wl_shm::WlShm);
 delegate_noop!(ClientState: zxdg_exporter_v2::ZxdgExporterV2);
 delegate_noop!(ClientState: zxdg_importer_v2::ZxdgImporterV2);
-delegate_noop!(ClientState: ignore zxdg_imported_v2::ZxdgImportedV2);
 
 delegate_noop!(ClientState: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
 delegate_noop!(ClientState: zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
@@ -2778,6 +2779,20 @@ impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ()> for ClientState {
     ) {
         if let zxdg_exported_v2::Event::Handle { handle } = event {
             state.exported = Some(handle);
+        }
+    }
+}
+impl Dispatch<zxdg_imported_v2::ZxdgImportedV2, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_imported_v2::ZxdgImportedV2,
+        event: zxdg_imported_v2::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if matches!(event, zxdg_imported_v2::Event::Destroyed) {
+            state.events.push(Event::ImportGone);
         }
     }
 }

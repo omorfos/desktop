@@ -845,7 +845,9 @@ what only games and touchpads need last.
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have,
       where a layer surface on it would rather be closed, or one holding
-      anything else no protocol above makes again; a handle exported before is the old compositor's; what the next compositor
+      anything else no protocol above makes again; a handle exported before and passed on is the
+      old compositor's to a program importing by it only after, and a window imported again
+      belongs to no window for a moment first; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program selected is selected
       again only once it next has the keyboard; a component kept from the
@@ -885,10 +887,11 @@ what only games and touchpads need last.
       that is kept matched to the one the next compositor lists, by the
       window the compositor hands the relay each identifier is, and
       told only what changed of it; one not kept told it has closed.
-- [ ] A window imported made again (3e, the third part, second half,
-      `xdg-foreign`): its handle is the compositor before's, so the
-      exporter's has to be made again first and the old handle known by
-      the new, across programs.
+- [x] A window imported made again (3e, the third part, second half,
+      `xdg-foreign`): one imported by the handle of a window kept is
+      imported again by the handle the next compositor shares it by,
+      once the program sharing it is made again, with the window made to
+      belong to it; one whose window was not kept told it is gone.
 - [ ] Input methods made again (3e, the fourth part), with their
       keyboard grab and popups, as fcitx5 and IBus make them.
 - [ ] Capturing the screen or a window made again (3e, the fifth part):

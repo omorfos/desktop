@@ -254,6 +254,35 @@ impl Link {
         self.keeping.unlisted(identifier.as_bytes());
     }
 
+    /// The handles the program's windows are shared by, as it was told
+    /// them.
+    pub fn exports(&self) -> impl Iterator<Item = &[u8]> {
+        self.keeping.exports()
+    }
+
+    /// Takes in the handles the compositor that has gone shared the windows
+    /// that are kept by, `kept`: each window the program imported by one is
+    /// imported again once the next compositor shares it.
+    pub fn unimport(&mut self, kept: &HashSet<Vec<u8>>) {
+        self.keeping.unimport(kept);
+    }
+
+    /// The handles the program's windows were shared by under the
+    /// compositor before, each with the one the next shares it by, since
+    /// they were last taken.
+    pub fn renamed(&mut self) -> Vec<(Vec<u8>, Vec<u8>)> {
+        std::mem::take(&mut self.keeping.renamed)
+    }
+
+    /// Takes in that the window the compositor before shared by `before` is
+    /// shared by `now`: what the program imported by `before` is imported
+    /// again by `now`.
+    pub fn exported(&mut self, before: &[u8], now: &[u8]) {
+        self.keeping.exported(before, now);
+        self.flush_keeping();
+        let _ = self.give_out(Way::Up);
+    }
+
     /// What the compositor said and was held back, as it is waited on: to
     /// be read as if it had just come, once it is known what it is.
     #[must_use]

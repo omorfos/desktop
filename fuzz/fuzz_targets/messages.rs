@@ -1,6 +1,7 @@
 //! What a program and the compositor send, read as the relay reads it: a
 //! byte saying which of the two sent a message, then the message, again
-//! and again, the compositor now and then ending and another being joined.
+//! and again, the compositor now and then ending and another being joined,
+//! and what the program imported of its own windows imported again.
 //! Nothing it is given may make the relay panic, loop or grow without
 //! bound; a message it cannot read ends the connection.
 
@@ -21,6 +22,10 @@ fuzz_target!(|data: &[u8]| {
             if keeping.lost(&objects).is_err() {
                 break;
             }
+            // Each window it shares is kept, and what it imported by one is
+            // imported again once it is shared anew.
+            let shared = keeping.exports().map(<[u8]>::to_vec).collect();
+            keeping.unimport(&shared);
             keeping.join();
             rest = bytes;
             continue;
@@ -37,6 +42,9 @@ fuzz_target!(|data: &[u8]| {
         };
         if read.is_none() {
             break;
+        }
+        for (before, now) in std::mem::take(&mut keeping.renamed) {
+            keeping.exported(&before, &now);
         }
         keeping.to_compositor.clear();
         keeping.to_program.clear();

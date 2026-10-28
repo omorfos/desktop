@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use omorfos::{Input, Roles};
+use omorfos_config::Action;
 use omorfos_ipc::hold::{Told, Word};
 use omorfos_ipc::relay::{self, Hand, Program, Started};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
@@ -1025,6 +1026,74 @@ fn a_program_that_keeps_the_screen_awake_gives_its_window_an_icon_and_shares_it_
 }
 
 #[test]
+fn a_dialog_of_another_programs_window_belongs_to_it_again_once_both_are_kept() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut player = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut player, "player", (200, 100), RED);
+    first.compositor_mut().perform(&Action::Fullscreen);
+    let _shared = player.export(&window);
+    first.roundtrip(&mut player);
+    let handle = player.state.exported.take().unwrap();
+    // A portal, through the relay too, makes its dialog belong to the window,
+    // and shows it only once the compositor has been started anew.
+    let mut portal = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let dialog = portal.toplevel_uncommitted("portal", "choose a file");
+    let _imported = portal.import_parent_of(&handle, &dialog);
+    dialog.surface.commit();
+    first.roundtrip(&mut portal);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut player);
+    assert!(
+        player.state.exported.is_some(),
+        "told the next compositor's handle"
+    );
+    second.roundtrip(&mut portal);
+    portal.fill(&dialog.surface, (100, 50), BLUE);
+    second.roundtrip(&mut portal);
+    second.roundtrip(&mut portal);
+    let desktop = second.compositor().desktop();
+    let shown = (desktop.active_workspace(), desktop.frames().count());
+    assert_eq!(shown, (1, 2), "with it, over its fullscreen window");
+    assert!(!portal.take_events().contains(&Event::ImportGone));
+    assert_eq!(portal.error(), None);
+}
+
+#[test]
+fn a_window_imported_from_a_program_not_kept_is_gone_once_the_compositor_is_started_anew() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    // Shared by a program not through the relay, which goes with the
+    // compositor.
+    let mut alone = first.connect();
+    let window = first.open(&mut alone, "alone", (200, 100), RED);
+    let _shared = alone.export(&window);
+    first.roundtrip(&mut alone);
+    let handle = alone.state.exported.take().unwrap();
+    let mut portal = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let dialog = first.open(&mut portal, "portal", (100, 50), BLUE);
+    let _imported = portal.import_parent_of(&handle, &dialog);
+    first.roundtrip(&mut portal);
+    assert!(!portal.take_events().contains(&Event::ImportGone));
+
+    drop((first, first_holder, alone));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.compositor().desktop().frames().count() == 1);
+    second.roundtrip(&mut portal);
+    assert!(portal.take_events().contains(&Event::ImportGone));
+    assert_eq!(portal.error(), None);
+}
+
+#[test]
 fn a_program_holding_a_buffer_in_the_memory_of_the_card_is_kept() {
     use smithay::backend::allocator::{Fourcc, Modifier};
     let relayed = Relayed::new();
@@ -1259,9 +1328,9 @@ fn a_window_comes_back_where_and_as_it_was_and_the_session_as_it_was() {
     // On the second desktop, shown, and kept above the rest.
     let second_desktop = omorfos_config::WorkspaceNumber::clamped(2);
     for action in [
-        omorfos_config::Action::MoveToWorkspace(second_desktop),
-        omorfos_config::Action::Workspace(second_desktop),
-        omorfos_config::Action::KeepAbove,
+        Action::MoveToWorkspace(second_desktop),
+        Action::Workspace(second_desktop),
+        Action::KeepAbove,
     ] {
         first.compositor_mut().perform(&action);
     }
@@ -1297,7 +1366,7 @@ fn windows_that_shared_a_workspace_share_it_again_as_it_was_cut() {
     first.open(&mut client, "left", (200, 100), RED);
     first
         .compositor_mut()
-        .perform(&omorfos_config::Action::Tile(omorfos_config::Half::Left));
+        .perform(&Action::Tile(omorfos_config::Half::Left));
     first.open(&mut client, "right", (200, 100), BLUE);
     first.step();
     let parts = |session: &Session| {
@@ -1336,9 +1405,7 @@ fn windows_that_shared_a_frame_share_it_again_in_their_order() {
     // shown again.
     crate::dragging::drag(&mut first, crate::dragging::MIDDLE, (100, 40), (100, 10));
     first.roundtrip(&mut client);
-    first
-        .compositor_mut()
-        .perform(&omorfos_config::Action::PreviousTab);
+    first.compositor_mut().perform(&Action::PreviousTab);
     first.roundtrip(&mut client);
     let tabs = |session: &Session| {
         let frames = session.compositor().desktop().frames();
@@ -1488,7 +1555,7 @@ fn a_program_started_with_a_role_is_kept_and_not_taken_for_the_keeper() {
     );
     let (mut first, first_holder) = relayed.compositor_with(|session| {
         session.write_config("config.yaml", &config);
-        let reload = omorfos_config::Action::ReloadConfig;
+        let reload = Action::ReloadConfig;
         session.compositor_mut().perform(&reload);
     });
     first.compositor_mut().autostart();

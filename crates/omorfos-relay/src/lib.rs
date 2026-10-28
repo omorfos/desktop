@@ -158,6 +158,14 @@ impl Relay {
         if gone {
             self.lose_compositor(log);
         } else {
+            // A window shared anew is imported again by each program that
+            // imported it.
+            let renamed: Vec<_> = self.links.iter_mut().flat_map(Link::renamed).collect();
+            for (before, now) in renamed {
+                for link in &mut self.links {
+                    link.exported(&before, &now);
+                }
+            }
             let (links, next) = (&mut self.links, &mut self.next);
             let compositor = self.compositor.as_ref().map(AsFd::as_fd);
             let socket = self.socket.as_ref().filter(|_| socket_ready == Some(true));
@@ -292,11 +300,15 @@ impl Relay {
             kept
         });
         // A window listed is listed again by the next compositor where it is
-        // kept, and closed where it is not.
+        // kept, and closed where it is not; one imported is imported again
+        // once the next shares it, where it is kept.
         let kept: HashSet<(u32, u32)> = self.links.iter().flat_map(Link::windows).collect();
+        let shared = self.links.iter().flat_map(Link::exports);
+        let shared: HashSet<Vec<u8>> = shared.map(<[u8]>::to_vec).collect();
         for (link, losing) in self.links.iter_mut().zip(losing) {
             if losing {
                 link.unlist(&self.listed, &kept);
+                link.unimport(&shared);
             }
         }
         self.listed.clear();

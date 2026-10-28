@@ -314,7 +314,8 @@ and fails while that is other than what 3e still has to come.
   is the window's to keep, as below.
 - **A window exported is told the new compositor's handle** (3a), which the
   program takes as its own; one it passed on before is the old one's, and
-  refused, as a stale handle is.
+  refused where it is imported by only after, as a stale handle is. What
+  was imported by it before is imported again (3e).
 - **Serials keep their meaning** (3b). Each compositor counts its serials
   from its own start, so the next's would go back under a program and mean
   nothing to it of the one before's. Until the first change of compositor
@@ -529,3 +530,26 @@ and fails while that is other than what 3e still has to come.
   most often there first. The identifier the program knows stays the
   first compositor's; one listing windows anew, as a portal picking a
   window does, is told the next's, and so is anyone asking over IPC.
+- **A window imported is imported again by the next compositor's handle**
+  (3e). A program shares a window with another (`xdg-foreign`) by a
+  handle Smithay draws at random, which the other imports it by, as a
+  portal does to make its dialog belong to the window it is for. The
+  next compositor shares the window made again by a handle of its own,
+  which the program sharing it is told, as it is since 3a, and knows
+  nothing of the old one. As the compositor goes, each window imported by
+  the handle of a window that is kept is awaited; the import is made
+  again as the rest is, by the old handle, and the next compositor's
+  answer that it is gone is kept from the program. Once the window is
+  shared anew, the relay, which reads both handles from the program
+  sharing it, tells every program, and each awaiting it imports it again
+  by the new handle, under the number the program has, with the window
+  made to belong to it: the import refused is destroyed first, and the
+  number that frees is kept from the program, which still has it. No
+  program waits for another, so two that import each other's windows
+  are made again as any are; the cost is a moment in which the dialog
+  belongs to no window, which matters only to one first shown then. A
+  window imported whose window was not kept is told it is gone, as the
+  next compositor says; one whose window is kept and never shared anew,
+  as when its program is let go as it is made again, is left as Smithay
+  leaves one whose window has gone, untold. A handle passed on before,
+  and imported by only after, is the old compositor's, and refused.
