@@ -22,7 +22,7 @@ fn point(session: &mut Session, client: &mut Client, x: f64, y: f64) {
 
 /// Moves the pointer by a distance, as a mouse does, and returns what the
 /// client was told of it.
-fn nudge(session: &mut Session, client: &mut Client, dx: f64, dy: f64) -> Vec<Event> {
+pub(crate) fn nudge(session: &mut Session, client: &mut Client, dx: f64, dy: f64) -> Vec<Event> {
     let moved = Input::MotionBy {
         dx,
         dy,
@@ -35,7 +35,7 @@ fn nudge(session: &mut Session, client: &mut Client, dx: f64, dy: f64) -> Vec<Ev
 }
 
 /// Where the client was last told the pointer is on its surface.
-fn pointed(events: &[Event]) -> Option<(f64, f64)> {
+pub(crate) fn pointed(events: &[Event]) -> Option<(f64, f64)> {
     events.iter().rev().find_map(|event| match event {
         Event::PointerMotion { x, y } => Some((*x, *y)),
         _ => None,

@@ -1451,6 +1451,18 @@ impl Client {
         constraints.lock_pointer(surface, pointer, region, lifetime, &self.handle(), ())
     }
 
+    /// Asks for the pointer to be held in place while it is over `surface`,
+    /// once only: let go of, it is not held again.
+    pub(crate) fn lock_pointer_once(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> zwp_locked_pointer_v1::ZwpLockedPointerV1 {
+        let constraints = self.state.constraints.as_ref().unwrap();
+        let pointer = self.state.pointer.as_ref().unwrap();
+        let lifetime = zwp_pointer_constraints_v1::Lifetime::Oneshot;
+        constraints.lock_pointer(surface, pointer, None, lifetime, &self.handle(), ())
+    }
+
     /// Asks for the pointer to be kept within `surface`, or `region` of it,
     /// once it is over it, until what is returned is destroyed.
     pub(crate) fn confine_pointer(

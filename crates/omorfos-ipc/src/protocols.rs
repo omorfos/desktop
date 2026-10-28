@@ -245,9 +245,11 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "zwp_pointer_constraints_v1",
         version: 1,
-        replayed: "Each lock or confinement made again with its region and lifetime. One active \
-                   at that moment is said to be inactive and active again, as when focus leaves \
-                   and comes back; one that was for once only ends then, as it would.",
+        replayed: "Each lock or confinement made again with its region, cursor hint and \
+                   lifetime. One active at that moment is said to be inactive, as when focus \
+                   leaves, and active again once the next compositor gives the surface back the \
+                   pointer. One for once only that has been active is over then, as it would \
+                   be: it is not made again, and the relay answers for it after.",
     },
     Protocol {
         interface: "zwp_pointer_gestures_v1",

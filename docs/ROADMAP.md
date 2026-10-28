@@ -845,7 +845,7 @@ what only games and touchpads need last.
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have,
       where a layer surface on it would rather be closed, or one holding
-      a pointer lock or anything else no protocol above makes again; a handle exported before is the old compositor's; what the next compositor
+      anything else no protocol above makes again; a handle exported before is the old compositor's; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program selected is selected
       again only once it next has the keyboard; a component kept from the
@@ -865,12 +865,33 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3d: every protocol
-      in the list made again; then the compositor's own new
-      version taken up at a quiet moment, as ADR 59 takes up the
-      others', and its word about the next login goes. Programs written
-      for X11 still close with their X server until Smithay can take up
-      a running one (stage 8).
+- [x] The pointer held made again after a change of compositor (ADR 61,
+      step 3e, the first part): each lock and confinement made again,
+      one held let go of as the compositor goes and held again by the
+      next, one held once only and held already over; and each relative
+      pointer made again.
+- [ ] What tells a program the user is idle, and the keyboards programs
+      type with, made again (3e, the second part): `ext-idle-notify`,
+      told idle once, and `virtual-keyboard`, with its keymap.
+- [ ] Windows known to another program by a handle (3e, the third
+      part): the list of windows (`ext-foreign-toplevel-list`), whose
+      handles the next compositor makes under its own numbers and which
+      the program would be told twice, matched to those it has; and a
+      window imported (`xdg-foreign`), whose handle is the compositor
+      before's, which needs the exporter's made again first and the old
+      handle known by the new.
+- [ ] Input methods made again (3e, the fourth part), with their
+      keyboard grab and popups, as fcitx5 and IBus make them.
+- [ ] Capturing the screen or a window made again (3e, the fifth part):
+      the sources, the sessions and a frame under way, failed.
+- [ ] The lock made again (3e, the sixth part), with the holder's word
+      on whether the session is locked: whether a locker kept is the
+      next compositor's locker, or one is started anew, settled first.
+- [ ] The compositor's own new version taken up at a quiet moment (ADR
+      61, step 3f), as ADR 59 takes up the others', and its word about
+      the next login goes. Programs written for X11 still close with
+      their X server until Smithay can take up a running one (stage 8);
+      `wl_touch` is made again once the compositor offers touch.
 
 ## 4. The look
 

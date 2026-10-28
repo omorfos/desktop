@@ -19,7 +19,8 @@
 //! What lasts only a moment, a popup, a token to hand focus on or word of a
 //! picture being shown, is not made again: it is let go of as the
 //! compositor goes ([`Journal::end_lost`]), and a popup's surface made again
-//! showing nothing.
+//! showing nothing. So is a pointer held once only that has been held, as
+//! it is over.
 //!
 //! A surface's parts (`wl_subsurface`) are stacked as they last were, and
 //! each surface is committed after its parts, so that what a part shows,
@@ -111,6 +112,8 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("xdg_toplevel_icon_v1", "set_name")
         | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection")
         | ("wp_alpha_modifier_surface_v1", "set_multiplier")
+        | ("zwp_locked_pointer_v1", "set_cursor_position_hint" | "set_region")
+        | ("zwp_confined_pointer_v1", "set_region")
         | (
             "zwlr_layer_surface_v1",
             "set_size"
@@ -127,7 +130,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 35] = [
+const KEPT: [&str; 38] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -163,6 +166,9 @@ const KEPT: [&str; 35] = [
     "zxdg_exported_v2",
     "zwlr_layer_surface_v1",
     "wp_alpha_modifier_surface_v1",
+    "zwp_relative_pointer_v1",
+    "zwp_locked_pointer_v1",
+    "zwp_confined_pointer_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -581,16 +587,17 @@ impl Journal {
     /// compositor goes: each menu, with its `xdg_surface`, whose surface is
     /// then made again showing nothing, so that it can be made a menu
     /// again; each token to hand focus on; and each word of a picture being
-    /// shown. Returns each, and what it is, in the order made.
+    /// shown; and each of `spent`, a pointer held once only that is over.
+    /// Returns each, and what it is, in the order made.
     ///
     /// A number withheld is withheld no longer: what had it is made again,
     /// and destroyed again, and the next compositor frees it then.
-    pub fn end_lost(&mut self) -> Vec<(u32, &'static str)> {
+    pub fn end_lost(&mut self, spent: &HashSet<u32>) -> Vec<(u32, &'static str)> {
         self.withheld.clear();
         let mut ended = Vec::new();
         for (number, kept) in self.ordered() {
             let interface = kept.interface.name;
-            if ENDED.contains(&interface) {
+            if ENDED.contains(&interface) || spent.contains(&number) {
                 ended.push((number, interface));
             }
             if interface == "xdg_popup" {
@@ -1420,6 +1427,11 @@ mod tests {
             Rule::Lasting
         );
         assert!(keeps("wp_alpha_modifier_surface_v1"));
+        let locked = "zwp_locked_pointer_v1";
+        assert_eq!(rule(locked, "set_cursor_position_hint"), Rule::Lasting);
+        assert_eq!(rule(locked, "set_region"), Rule::Lasting);
+        assert_eq!(rule("zwp_confined_pointer_v1", "set_region"), Rule::Lasting);
+        assert!(keeps("zwp_relative_pointer_v1") && keeps(locked));
         assert_eq!(
             rule("zwlr_layer_surface_v1", "ack_configure"),
             Rule::Passing
@@ -1428,6 +1440,56 @@ mod tests {
         assert_eq!(rule("wp_viewport", "set_destination"), Rule::Lasting);
         assert_eq!(rule("wl_subsurface", "set_desync"), Rule::Lasting);
         assert_eq!(rule("wl_subsurface", "place_above"), Rule::Passing);
+    }
+
+    /// What a program can make with `interface`, and with what that makes,
+    /// each once, added to `made`.
+    fn makeable(interface: &'static Interface, made: &mut Vec<&'static str>) {
+        let children = interface
+            .requests
+            .iter()
+            .filter_map(|request| request.child_interface);
+        for child in children {
+            if !made.contains(&child.name) {
+                made.push(child.name);
+                makeable(child, made);
+            }
+        }
+    }
+
+    #[test]
+    fn of_what_a_program_can_make_only_what_is_still_to_come_is_not_kept() {
+        // Not the relay's to make again: what the X server makes, which ends
+        // with the compositor (ADR 60), and a sandbox, which the relay
+        // answers for itself.
+        let answered = ["xwayland_surface_v1", "wp_security_context_v1"];
+        // What the rest of step 3 makes again (ADR 61). A protocol added
+        // to the list is made again as it is added.
+        let to_come = [
+            "ext_idle_notification_v1",
+            "ext_image_capture_source_v1",
+            "ext_image_copy_capture_cursor_session_v1",
+            "ext_image_copy_capture_frame_v1",
+            "ext_image_copy_capture_session_v1",
+            "ext_session_lock_surface_v1",
+            "ext_session_lock_v1",
+            "wl_touch",
+            "zwp_input_method_keyboard_grab_v2",
+            "zwp_input_method_v2",
+            "zwp_input_popup_surface_v2",
+            "zwp_virtual_keyboard_v1",
+            "zxdg_imported_v2",
+        ];
+        let mut made = Vec::new();
+        for global in crate::known::globals() {
+            makeable(global, &mut made);
+        }
+        let mut unkept: Vec<&str> = made
+            .into_iter()
+            .filter(|interface| !keeps(interface) && !answered.contains(interface))
+            .collect();
+        unkept.sort_unstable();
+        assert_eq!(unkept, to_come);
     }
 
     #[test]

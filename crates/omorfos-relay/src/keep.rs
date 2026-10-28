@@ -2,9 +2,10 @@
 //!
 //! When the compositor ends, the program waits, told only that the pointer,
 //! the keyboard and any field typed into have left its surfaces, that a
-//! gesture under way was cancelled, and that what lasts only a moment has
-//! ended: a popup dismissed, a token given, a picture discarded, which the
-//! relay answers for from then on. When the next is joined, what
+//! gesture under way was cancelled, that the pointer it held is let go of,
+//! and that what lasts only a moment has ended: a popup dismissed, a token
+//! given, a picture discarded, which the relay answers for from then on. A
+//! pointer held once only that has been held is over too. When the next is joined, what
 //! the program had is made again in two parts, each ended by a sync of the
 //! relay's own: its registries, so that the new compositor's globals are
 //! known, then the rest, as [`Journal`] kept it. Until the second is
@@ -46,6 +47,10 @@ const SETTLING: u8 = 2;
 /// Which of a field's events ends what is typed into it for now, with the
 /// number of times it has been committed.
 const TEXT_DONE: u16 = 5;
+
+/// The lifetime of a lock or confinement of the pointer that ends once it is
+/// let go of.
+const ONESHOT: u32 = 1;
 
 /// The requests that ack a configure: a window's `xdg_surface`'s, and a
 /// layer surface's.
@@ -129,6 +134,18 @@ struct Focus {
     framed: bool,
 }
 
+/// The pointer held in place, or kept within a surface, as the program
+/// asked and was told.
+#[derive(Debug, Clone, Copy)]
+struct Constraint {
+    /// Held once only: once let go of, it is over.
+    once: bool,
+    /// Whether it is held now.
+    held: bool,
+    /// Whether it has been held.
+    was: bool,
+}
+
 /// Where the relay is with a program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -197,6 +214,8 @@ pub struct Keeping {
     described: HashMap<(u32, u16), Vec<u8>>,
     /// The gestures under way, each with the event that says it has ended.
     gestures: HashMap<u32, u16>,
+    /// The pointer's locks and confinements, by their own number.
+    constraints: HashMap<u32, Constraint>,
     /// The tokens to hand focus on that the program has been given, and the
     /// menus it has been told are over.
     given: HashSet<u32>,
@@ -240,6 +259,7 @@ impl Default for Keeping {
             commits: HashMap::new(),
             described: HashMap::new(),
             gestures: HashMap::new(),
+            constraints: HashMap::new(),
             given: HashSet::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
@@ -281,6 +301,7 @@ impl Keeping {
             self.gestures.remove(&made);
             self.given.remove(&made);
         }
+        self.constraining(read, header.object, bytes);
         match (read.interface.name, described.name) {
             ("wl_surface", "attach") => {
                 let buffer = wire::word(bytes, HEADER).unwrap_or_default();
@@ -365,6 +386,32 @@ impl Keeping {
             let ours = number >= SERVERS;
             (!orphans.contains(&number)).then(|| if ours { servers.theirs(number) } else { number })
         })
+    }
+
+    /// Takes in the request `bytes` to `object`, which `read` says it is,
+    /// as far as the pointer's locks and confinements go: one made is
+    /// kept, as held once only or for as long as it lasts, and one
+    /// destroyed, or whose number is taken by another, is forgotten.
+    fn constraining(&mut self, read: &Read, object: u32, bytes: &[u8]) {
+        if read.ends {
+            self.constraints.remove(&object);
+        }
+        let Some((made, interface, _)) = read.made else {
+            return;
+        };
+        self.constraints.remove(&made);
+        if matches!(
+            interface.name,
+            "zwp_locked_pointer_v1" | "zwp_confined_pointer_v1"
+        ) {
+            let lifetime = wire::word(bytes, HEADER + 16).unwrap_or_default();
+            let constraint = Constraint {
+                once: lifetime == ONESHOT,
+                held: false,
+                was: false,
+            };
+            self.constraints.insert(made, constraint);
+        }
     }
 
     /// Takes in the event `bytes`, of `header`, before it is read as the
@@ -578,6 +625,13 @@ impl Keeping {
             }
             ("wl_buffer", 0) => {
                 self.held_buffers.remove(&object);
+            }
+            ("zwp_locked_pointer_v1" | "zwp_confined_pointer_v1", opcode) => {
+                let constraint = self.constraints.get_mut(&object);
+                let _ = constraint.map(|constraint| {
+                    constraint.held = opcode == 0;
+                    constraint.was |= constraint.held;
+                });
             }
             ("wl_data_source", 2) | ("zwp_primary_selection_source_v1", 1) => {
                 self.selections.retain(|_, source| *source != object);
@@ -860,8 +914,28 @@ impl Keeping {
         self.highest = objects.highest();
         // What lasts only a moment ends with the compositor, as it would have
         // told the program, and the relay answers for it from now on.
+        // A pointer held is let go of, as when focus leaves, and held again
+        // once the next compositor gives it back, as it would be then; but
+        // one held once only is over.
+        let mut constraints: Vec<(u32, Constraint)> = self.constraints.drain().collect();
+        constraints.sort_unstable_by_key(|(number, _)| *number);
+        let mut spent = HashSet::new();
+        for (number, constraint) in constraints {
+            if constraint.held {
+                self.to_program.push(journal::message(number, 1, &[]));
+            }
+            if constraint.once && constraint.was {
+                spent.insert(number);
+            } else {
+                let constraint = Constraint {
+                    held: false,
+                    ..constraint
+                };
+                self.constraints.insert(number, constraint);
+            }
+        }
         let mut menu = false;
-        for (number, interface) in self.journal.end_lost() {
+        for (number, interface) in self.journal.end_lost(&spent) {
             let untold = !self.given.remove(&number);
             match interface {
                 "xdg_popup" if untold => {
@@ -2103,6 +2177,47 @@ mod tests {
                 journal::message(10, 1, &[0, 0, 1]),
             ]),
             "the pinch was over"
+        );
+    }
+
+    #[test]
+    fn a_pointer_held_is_let_go_of_as_the_compositor_goes_and_one_held_once_is_over() {
+        let globals = [
+            (1, "wl_compositor", 6),
+            (2, "wl_seat", 9),
+            (3, "zwp_pointer_constraints_v1", 1),
+        ];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 2);
+        }
+        kept.send(&message(3, 0, &words(&[6]))).unwrap();
+        kept.send(&message(4, 0, &words(&[7]))).unwrap();
+        // Kept within the surface for as long as it lasts, and held: once
+        // and not yet, once and let go of, and once and held now.
+        for (opcode, made, lifetime) in [(2, 8, 2), (1, 9, 1), (2, 10, 1), (1, 11, 1)] {
+            kept.send(&message(5, opcode, &words(&[made, 6, 7, 0, lifetime])))
+                .unwrap();
+        }
+        for told in [(8, 0), (10, 0), (10, 1), (11, 0)] {
+            kept.told(&message(told.0, told.1, &[])).unwrap();
+        }
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[journal::message(8, 1, &[]), journal::message(11, 1, &[])]),
+            "those held let go of"
+        );
+        let orphans = &kept.keeping.orphans;
+        assert!(orphans.contains(&10) && orphans.contains(&11), "over");
+        assert!(!orphans.contains(&8) && !orphans.contains(&9));
+
+        // One over is the relay's to let go of.
+        kept.keeping.to_program.clear();
+        assert_eq!(kept.send(&message(10, 0, &[])), None);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[journal::message(DISPLAY, DELETE_ID, &[10])])
         );
     }
 

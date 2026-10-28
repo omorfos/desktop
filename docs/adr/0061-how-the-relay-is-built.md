@@ -267,8 +267,14 @@ first: those drawn with GTK and the browsers (3a); the serials a program
 holds, and what was on the clipboard, with the clipboard keeper kept as
 programs are, brought forward from 3d for it (3b); a window back where and
 as it was (3c); programs in a sandbox, then layer surfaces, then the
-components the compositor starts (3d, in that order); and the
-compositor taking up its own new version (3e).
+components the compositor starts (3d, in that order); every other
+protocol in the list made again (3e), the pointer held first, as games
+hold it, then what tells a program the user is idle and the keyboards
+programs type with, then windows known to another program by a handle,
+then input methods, then capturing the screen, then the lock; and the
+compositor taking up its own new version (3f). A test lists what a
+program can make with what is offered that the relay cannot make again,
+and fails while that is other than what 3e still has to come.
 
 - **What lasts only a moment ends with the compositor** (3a): a popup, a
   token to hand focus on, and word asked of a picture being shown. Each is
@@ -476,3 +482,16 @@ compositor taking up its own new version (3e).
   a change of compositor would not be known to the next as one it showed;
   nor are the watcher of what records and the program that watches over
   the session, which are not Wayland programs.
+- **A pointer held is let go of as the compositor goes, and held again by
+  the next** (3e): each lock and confinement is made again with its
+  region, where the pointer is to be left, and its lifetime, and one held
+  at that moment is told it is let go of, as when focus leaves; the next
+  compositor holds it again as it gives the surface back the pointer and
+  the keyboard, and says so. The relay does not keep that from the
+  program, as it keeps the enter of the pointer, for what the program
+  does when let go of, showing the pointer, is what it should do while
+  no compositor has the pointer. One held once only that has been held is
+  over, as the compositor before would have had it: it is not made
+  again, and the relay answers for it after and frees its number, so
+  that the program may ask anew. How far the pointer moves is told again
+  once each relative pointer is made again for its pointer.
