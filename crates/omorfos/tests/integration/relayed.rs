@@ -1026,6 +1026,35 @@ fn a_program_that_keeps_the_screen_awake_gives_its_window_an_icon_and_shares_it_
 }
 
 #[test]
+fn a_window_given_an_icon_drawn_in_buffers_made_after_it_is_kept() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut client, "app", (200, 100), RED);
+    // As Qt gives one: the icon made, then what it is drawn in, and both
+    // destroyed once it is given, the icon first.
+    let (icons, icon) = client.icon();
+    let buffer = client.buffer((32, 32), BLUE);
+    icon.add_buffer(&buffer, 1);
+    icons.set_icon(&window.role, Some(&icon));
+    icon.destroy();
+    buffer.destroy();
+    window.surface.commit();
+    first.roundtrip(&mut client);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    second.roundtrip(&mut client);
+    relayed.kept();
+    assert_eq!(client.error(), None);
+}
+
+#[test]
 fn a_dialog_of_another_programs_window_belongs_to_it_again_once_both_are_kept() {
     let relayed = Relayed::new();
     let (mut first, first_holder) = relayed.compositor();

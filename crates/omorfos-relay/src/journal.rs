@@ -342,8 +342,10 @@ struct Kept {
     /// The request that made it, and whether that bound a global.
     made: Message,
     bound: bool,
-    /// The request that destroyed it, if it is gone but still named.
+    /// The request that destroyed it, if it is gone but still named, and
+    /// when, among what the program destroyed.
     gone: Option<Message>,
+    ended: u64,
     /// The last of each request that sets something lasting.
     lasting: Vec<Message>,
     /// Each request that added to it, in order.
@@ -373,6 +375,7 @@ impl Kept {
 pub struct Journal {
     kept: HashMap<u32, Kept>,
     made: u64,
+    ended: u64,
     /// Numbers the compositor has said may be taken again, which the
     /// program has not been told, as something kept still names them.
     withheld: HashSet<u32>,
@@ -411,6 +414,7 @@ impl Journal {
                 made: message,
                 bound: read.interface.name == "wl_registry",
                 gone: None,
+                ended: 0,
                 lasting: Vec::new(),
                 adding: Vec::new(),
                 pending: Vec::new(),
@@ -520,7 +524,9 @@ impl Journal {
         let Some(kept) = self.kept.get_mut(&object) else {
             return;
         };
+        self.ended += 1;
         kept.gone = Some(message);
+        kept.ended = self.ended;
         self.name(object, &names);
         self.end(object);
     }
@@ -692,6 +698,9 @@ impl Journal {
         // may be asked only once it has a role, which is made after it; and
         // what a device for the clipboard is to hold, once what holds it is.
         let mut roled = Vec::new();
+        // What is asked of one that names what was made after it, a buffer
+        // added to an icon, once all is made, and before the icon is given.
+        let mut later = Vec::new();
         let ordered = self.ordered();
         for (number, kept) in &ordered {
             if kept.interface.name == "wl_registry" {
@@ -714,13 +723,20 @@ impl Journal {
                 // What is asked of another for it, its icon given it, may
                 // name what is made after it.
                 let elsewhere = message.object() != *number;
+                let made_after = |named: &u32| {
+                    let other = self.kept.get(named);
+                    other.is_some_and(|other| other.order > kept.order)
+                };
                 if deferred || elsewhere {
                     roled.push(message.sending());
+                } else if message.names.iter().any(made_after) {
+                    later.push(message.sending());
                 } else {
                     sending.push(message.sending());
                 }
             }
         }
+        sending.extend(later);
         sending.extend(roled);
         let parts = self.parts();
         sending.extend(self.stacking(&parts));
@@ -773,7 +789,7 @@ impl Journal {
     }
 
     /// The requests that destroy again what was made again only as
-    /// something else named it, last made first.
+    /// something else named it, in the order the program destroyed them.
     #[must_use]
     pub fn gone(&self) -> Vec<Sending> {
         let mut gone: Vec<&Kept> = self
@@ -781,7 +797,7 @@ impl Journal {
             .values()
             .filter(|kept| kept.gone.is_some())
             .collect();
-        gone.sort_by_key(|kept| std::cmp::Reverse(kept.order));
+        gone.sort_by_key(|kept| kept.ended);
         let gone = gone.into_iter().filter_map(|kept| kept.gone.as_ref());
         gone.map(Message::sending).collect()
     }
@@ -1218,6 +1234,36 @@ mod tests {
         let at = |wanted| made.iter().position(|made| *made == wanted).unwrap();
         assert!(at((9, 1)) < at((5, 2)), "the icon made first: {made:?}");
         assert!(made.contains(&(8, 1)), "and what else the window had");
+    }
+
+    #[test]
+    fn buffers_made_after_an_icon_are_made_again_before_they_are_added_to_it_and_outlive_it() {
+        let mut program = Program::default();
+        program.bind(1, "xdg_wm_base", 6, 3);
+        program.bind(2, "wl_compositor", 6, 4);
+        program.bind(3, "xdg_toplevel_icon_manager_v1", 1, 5);
+        program.send(&sent(4, 0, &words(&[6])), &[]);
+        program.send(&sent(3, 2, &words(&[7, 6])), &[]);
+        program.send(&sent(7, 1, &words(&[8])), &[]);
+        // An icon, 9, then a buffer for it, 11, as Qt makes them; given the
+        // window, then all destroyed, the icon first.
+        program.send(&sent(5, 1, &words(&[9])), &[]);
+        program.send(&sent(9, 1, &text("telegram")), &[]);
+        pooled(&mut program, 10);
+        buffered(&mut program, 10, 11);
+        program.send(&sent(9, 2, &words(&[11, 1])), &[]);
+        program.send(&sent(5, 2, &words(&[8, 9])), &[]);
+        program.send(&sent(9, 0, &[]), &[]);
+        program.send(&sent(10, 1, &[]), &[]);
+        program.send(&sent(11, 0, &[]), &[]);
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let made = opcodes(&sending);
+        let at = |wanted| made.iter().position(|made| *made == wanted).unwrap();
+        assert!(at((10, 0)) < at((9, 2)), "the buffer made first: {made:?}");
+        assert!(at((9, 2)) < at((5, 2)), "then added, then given: {made:?}");
+        // A buffer is not to be destroyed while an icon holds it.
+        let gone = opcodes(&program.journal.gone());
+        assert_eq!(gone, [(9, 0), (10, 1), (11, 0)]);
     }
 
     #[test]
