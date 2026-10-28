@@ -12,10 +12,10 @@ use crate::common::{Client, Event, Session, runnable};
 use crate::windows::{BLUE, RED};
 
 /// The time without input after which the client asks to be told.
-const AWAY: u32 = 40;
+pub(crate) const AWAY: u32 = 40;
 
 /// Whether `client` is told the user is away within `wait`.
-fn idles_within(session: &mut Session, client: &mut Client, wait: Duration) -> bool {
+pub(crate) fn idles_within(session: &mut Session, client: &mut Client, wait: Duration) -> bool {
     let deadline = Instant::now() + wait;
     while Instant::now() < deadline {
         session.roundtrip(client);
@@ -27,7 +27,7 @@ fn idles_within(session: &mut Session, client: &mut Client, wait: Duration) -> b
     false
 }
 
-const SOON: Duration = Duration::from_secs(10);
+pub(crate) const SOON: Duration = Duration::from_secs(10);
 const A_WHILE: Duration = Duration::from_millis(250);
 
 /// A session with a window.

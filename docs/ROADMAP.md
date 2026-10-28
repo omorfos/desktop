@@ -860,7 +860,8 @@ what only games and touchpads need last.
       of them is back; a field leaves and enters again; a part
       placed is taken to be stacked at once, where the compositor stacks
       it as its surface is next committed; touch is not made again, as
-      the compositor offers none yet; a global the next compositor offers
+      the compositor offers none yet; a virtual keyboard's modifiers are
+      not said again, as its keymap has to come first; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
@@ -870,9 +871,12 @@ what only games and touchpads need last.
       one held let go of as the compositor goes and held again by the
       next, one held once only and held already over; and each relative
       pointer made again.
-- [ ] What tells a program the user is idle, and the keyboards programs
-      type with, made again (3e, the second part): `ext-idle-notify`,
-      told idle once, and `virtual-keyboard`, with its keymap.
+- [x] What tells a program the user is idle, and the keyboards programs
+      type with, made again (3e, the second part): each notification of
+      the user being away made again, one that had said so told the user
+      is back as the compositor goes and away again once the next has
+      counted its timeout; and each virtual keyboard made again with its
+      keymap.
 - [ ] Windows known to another program by a handle (3e, the third
       part): the list of windows (`ext-foreign-toplevel-list`), whose
       handles the next compositor makes under its own numbers and which

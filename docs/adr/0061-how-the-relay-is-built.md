@@ -495,3 +495,18 @@ and fails while that is other than what 3e still has to come.
   again, and the relay answers for it after and frees its number, so
   that the program may ask anew. How far the pointer moves is told again
   once each relative pointer is made again for its pointer.
+- **A user said to be away is said to be back as the compositor goes**
+  (3e): each notification of the user being away is made again with its
+  timeout, which the next compositor counts from when it starts. One that
+  had said the user is away is told they are back, as the next compositor
+  would not say so if they came back before its timeout, and a program
+  such as swayidle would leave the screen off while the user types; it
+  says they are away again once the timeout has passed. Keeping that from
+  the program instead would need the relay to see the user's input, which
+  only the compositor does.
+- **A keyboard a program types with is made again with its keymap**
+  (3e), from the descriptor the relay holds, as a key sent before a
+  keymap is refused. Which modifiers it last said are held is not sent
+  again: the journal keeps the last of each request in the order each was
+  last sent, so a keymap sent again after the modifiers would be sent
+  after them, and they would be refused.

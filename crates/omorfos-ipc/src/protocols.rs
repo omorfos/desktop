@@ -64,8 +64,9 @@ pub const OFFERED: &[Protocol] = &[
         interface: "ext_idle_notifier_v1",
         version: 2,
         replayed: "Each notification made again with its timeout, which counts again from then. \
-                   A program told the user is idle is not told they came back by a notification \
-                   made anew, only when they do.",
+                   A program told the user is idle is told they are back as the compositor goes: \
+                   the next would not say so if they came back before it said they are idle, \
+                   which it says again once the timeout has passed.",
     },
     Protocol {
         interface: "ext_image_copy_capture_manager_v1",

@@ -114,6 +114,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("wp_alpha_modifier_surface_v1", "set_multiplier")
         | ("zwp_locked_pointer_v1", "set_cursor_position_hint" | "set_region")
         | ("zwp_confined_pointer_v1", "set_region")
+        | ("zwp_virtual_keyboard_v1", "keymap")
         | (
             "zwlr_layer_surface_v1",
             "set_size"
@@ -130,7 +131,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 38] = [
+const KEPT: [&str; 40] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -169,6 +170,8 @@ const KEPT: [&str; 38] = [
     "zwp_relative_pointer_v1",
     "zwp_locked_pointer_v1",
     "zwp_confined_pointer_v1",
+    "ext_idle_notification_v1",
+    "zwp_virtual_keyboard_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -1432,6 +1435,9 @@ mod tests {
         assert_eq!(rule(locked, "set_region"), Rule::Lasting);
         assert_eq!(rule("zwp_confined_pointer_v1", "set_region"), Rule::Lasting);
         assert!(keeps("zwp_relative_pointer_v1") && keeps(locked));
+        assert_eq!(rule("zwp_virtual_keyboard_v1", "keymap"), Rule::Lasting);
+        assert_eq!(rule("zwp_virtual_keyboard_v1", "key"), Rule::Passing);
+        assert!(keeps("ext_idle_notification_v1") && keeps("zwp_virtual_keyboard_v1"));
         assert_eq!(
             rule("zwlr_layer_surface_v1", "ack_configure"),
             Rule::Passing
@@ -1466,7 +1472,6 @@ mod tests {
         // What the rest of step 3 makes again (ADR 61). A protocol added
         // to the list is made again as it is added.
         let to_come = [
-            "ext_idle_notification_v1",
             "ext_image_capture_source_v1",
             "ext_image_copy_capture_cursor_session_v1",
             "ext_image_copy_capture_frame_v1",
@@ -1477,7 +1482,6 @@ mod tests {
             "zwp_input_method_keyboard_grab_v2",
             "zwp_input_method_v2",
             "zwp_input_popup_surface_v2",
-            "zwp_virtual_keyboard_v1",
             "zxdg_imported_v2",
         ];
         let mut made = Vec::new();

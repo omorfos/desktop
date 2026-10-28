@@ -24,7 +24,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, LayerShape, Session, TEXT};
+use crate::common::{Client, Event, LayerShape, Session, TEXT, key};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
 use crate::holding::{nudge, pointed};
@@ -823,6 +823,79 @@ fn a_program_that_held_the_pointer_once_is_not_held_again_and_may_ask_anew() {
     second.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::PointerLocked));
     assert_eq!(client.error(), None);
+}
+
+#[test]
+fn a_program_told_the_user_is_away_is_told_they_are_back_and_away_again_by_the_next() {
+    use crate::idle::{AWAY, SOON, idles_within};
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    first.roundtrip(&mut client);
+    client.watch_idle(AWAY);
+    assert!(idles_within(&mut first, &mut client, SOON));
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    // The next compositor counts from when it started, so the program is
+    // not left thinking the user away while they may be back.
+    let told = client.take_events();
+    let back = told.iter().position(|event| *event == Event::Back);
+    assert!(back.is_some(), "{told:?}");
+    let after = &told[back.unwrap()..];
+    // Said already, on a machine slow to draw.
+    let again = after.contains(&Event::Idle) || idles_within(&mut second, &mut client, SOON);
+    assert!(again, "away again");
+    assert_eq!(client.error(), None);
+}
+
+#[test]
+fn a_program_typing_with_a_keyboard_of_its_own_types_with_it_through_the_next() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    // A program with the role to type, as the compositor starts it.
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::INPUT.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut typist = first.adopt(ours);
+    let keyboard = typist.virtual_keyboard();
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut app, "app", (200, 100), RED);
+    first.roundtrip(&mut typist);
+    assert_eq!(typist.error(), None);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut app);
+    app.take_events();
+
+    // Its keymap is the next compositor's too.
+    let a = key::A.raw() - 8;
+    keyboard.key(0, a, 1);
+    keyboard.key(0, a, 0);
+    second.roundtrip(&mut typist);
+    second.roundtrip(&mut app);
+    assert_eq!(typist.error(), None);
+    let told = app.take_events();
+    let typed = Event::Key {
+        code: a,
+        pressed: true,
+    };
+    assert!(told.contains(&typed), "{told:?}");
 }
 
 #[test]

@@ -3,7 +3,8 @@
 //! When the compositor ends, the program waits, told only that the pointer,
 //! the keyboard and any field typed into have left its surfaces, that a
 //! gesture under way was cancelled, that the pointer it held is let go of,
-//! and that what lasts only a moment has ended: a popup dismissed, a token
+//! that a user it was told is away is back, as the next compositor counts
+//! from when it starts, and that what lasts only a moment has ended: a popup dismissed, a token
 //! given, a picture discarded, which the relay answers for from then on. A
 //! pointer held once only that has been held is over too. When the next is joined, what
 //! the program had is made again in two parts, each ended by a sync of the
@@ -216,6 +217,8 @@ pub struct Keeping {
     gestures: HashMap<u32, u16>,
     /// The pointer's locks and confinements, by their own number.
     constraints: HashMap<u32, Constraint>,
+    /// What watches for the user being away, that has been told they are.
+    away: HashSet<u32>,
     /// The tokens to hand focus on that the program has been given, and the
     /// menus it has been told are over.
     given: HashSet<u32>,
@@ -260,6 +263,7 @@ impl Default for Keeping {
             described: HashMap::new(),
             gestures: HashMap::new(),
             constraints: HashMap::new(),
+            away: HashSet::new(),
             given: HashSet::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
@@ -294,14 +298,7 @@ impl Keeping {
             opcode: read.opcode,
             size: bytes.len(),
         };
-        if let Some((made, _, _)) = read.made {
-            // What was told of what had the number before is not of this.
-            self.described.retain(|(object, _), _| *object != made);
-            self.commits.remove(&made);
-            self.gestures.remove(&made);
-            self.given.remove(&made);
-        }
-        self.constraining(read, header.object, bytes);
+        self.made_or_ended(read, header.object, bytes);
         match (read.interface.name, described.name) {
             ("wl_surface", "attach") => {
                 let buffer = wire::word(bytes, HEADER).unwrap_or_default();
@@ -389,17 +386,24 @@ impl Keeping {
     }
 
     /// Takes in the request `bytes` to `object`, which `read` says it is,
-    /// as far as the pointer's locks and confinements go: one made is
-    /// kept, as held once only or for as long as it lasts, and one
-    /// destroyed, or whose number is taken by another, is forgotten.
-    fn constraining(&mut self, read: &Read, object: u32, bytes: &[u8]) {
+    /// as far as it makes or destroys something: what was told of what had
+    /// a number before is not of what has it now, and a lock or
+    /// confinement of the pointer made is kept, as held once only or for
+    /// as long as it lasts.
+    fn made_or_ended(&mut self, read: &Read, object: u32, bytes: &[u8]) {
         if read.ends {
             self.constraints.remove(&object);
+            self.away.remove(&object);
         }
         let Some((made, interface, _)) = read.made else {
             return;
         };
+        self.described.retain(|(object, _), _| *object != made);
+        self.commits.remove(&made);
+        self.gestures.remove(&made);
+        self.given.remove(&made);
         self.constraints.remove(&made);
+        self.away.remove(&made);
         if matches!(
             interface.name,
             "zwp_locked_pointer_v1" | "zwp_confined_pointer_v1"
@@ -625,6 +629,12 @@ impl Keeping {
             }
             ("wl_buffer", 0) => {
                 self.held_buffers.remove(&object);
+            }
+            ("ext_idle_notification_v1", 0) => {
+                self.away.insert(object);
+            }
+            ("ext_idle_notification_v1", _) => {
+                self.away.remove(&object);
             }
             ("zwp_locked_pointer_v1" | "zwp_confined_pointer_v1", opcode) => {
                 let constraint = self.constraints.get_mut(&object);
@@ -933,6 +943,14 @@ impl Keeping {
                 };
                 self.constraints.insert(number, constraint);
             }
+        }
+        // The next compositor counts how long the user has been away from
+        // when it starts, and would not say they are back if they come back
+        // before it says they are away.
+        let mut away: Vec<u32> = self.away.drain().collect();
+        away.sort_unstable();
+        for watching in away {
+            self.to_program.push(journal::message(watching, 1, &[]));
         }
         let mut menu = false;
         for (number, interface) in self.journal.end_lost(&spent) {
@@ -2218,6 +2236,30 @@ mod tests {
         assert_eq!(
             bytes(&kept.keeping.to_program),
             bytes(&[journal::message(DISPLAY, DELETE_ID, &[10])])
+        );
+    }
+
+    #[test]
+    fn a_program_told_the_user_is_away_is_told_they_are_back_as_the_compositor_goes() {
+        let globals = [(1, "wl_seat", 9), (2, "ext_idle_notifier_v1", 2)];
+        let mut kept = Kept::registered(&globals);
+        for (name, interface, version) in globals {
+            kept.bind(name, interface, version, name + 2);
+        }
+        // Told away; told away and back; told away and destroyed; and not
+        // told yet, of input alone.
+        for (opcode, made) in [(1, 5), (1, 6), (1, 7), (2, 8)] {
+            kept.send(&message(4, opcode, &words(&[made, 40, 3])))
+                .unwrap();
+        }
+        for told in [(5, 0), (6, 0), (6, 1), (7, 0)] {
+            kept.told(&message(told.0, told.1, &[])).unwrap();
+        }
+        kept.send(&message(7, 0, &[])).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            bytes(&[journal::message(5, 1, &[])])
         );
     }
 
