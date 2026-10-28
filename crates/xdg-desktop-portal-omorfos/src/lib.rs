@@ -24,7 +24,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
@@ -114,7 +114,9 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
 /// Tells the compositor whose socket is at `socket` what programs ask the
 /// session to be kept from, over a connection kept for it, so that if this
 /// ends, so does what it held. One that could not be told is tried again
-/// the next time there is something to tell.
+/// the next time there is something to tell; and while something is held,
+/// the connection is looked at now and then, so that a compositor started
+/// anew under the relay is told as soon as it is there (ADR 61).
 ///
 /// It is told on a thread of its own, so that a program that asks over the
 /// bus is answered at once, whatever the compositor is doing.
@@ -122,7 +124,29 @@ fn keeper(socket: Option<PathBuf>) -> Keep {
     let (tell, told) = channel::<(bool, bool)>();
     std::thread::spawn(move || {
         let mut kept: Option<omorfos_ipc::Client> = None;
-        for (idle, sleep) in told {
+        let mut held = (false, false);
+        loop {
+            let heard = if held == (false, false) {
+                told.recv().map_err(|_| RecvTimeoutError::Disconnected)
+            } else {
+                told.recv_timeout(omorfos_ipc::AGAIN)
+            };
+            let asked = match heard {
+                Ok(asked) => asked,
+                // Nothing new: told again only once the compositor has
+                // gone, and another may be there.
+                Err(RecvTimeoutError::Timeout) => {
+                    kept = kept.take().filter(still_there);
+                    if kept.is_some() {
+                        continue;
+                    }
+                    held
+                }
+                // The portal has gone, and nothing more is to be told.
+                Err(RecvTimeoutError::Disconnected) => return,
+            };
+            held = asked;
+            let (idle, sleep) = asked;
             let asked = omorfos_ipc::Request::Hold { idle, sleep };
             let connected = |socket: &Path| omorfos_ipc::Client::connect(socket).ok();
             let client = kept
@@ -138,6 +162,14 @@ fn keeper(socket: Option<PathBuf>) -> Keep {
         // Nobody is told once the thread has gone, which it never does.
         let _ = tell.send((idle, sleep));
     })
+}
+
+/// Whether the compositor at the other end of `client` is still there: it
+/// says nothing it was not asked, so what can be read is its having gone.
+fn still_there(client: &omorfos_ipc::Client) -> bool {
+    let mut polled = [PollFd::new(client, PollFlags::IN)];
+    let _ = poll(&mut polled, Some(&Timespec::default()));
+    polled[0].revents().is_empty()
 }
 
 /// An address for a file, as one is given to an application: anything in
@@ -913,6 +945,54 @@ mod tests {
                 listener,
             }
         }
+    }
+
+    #[test]
+    fn what_is_held_is_asked_again_of_a_compositor_started_anew() {
+        use std::io::{BufRead, BufReader};
+
+        let folder = tempfile::TempDir::new().unwrap();
+        let path = folder.path().join("omorfos.sock");
+        let held = |idle, sleep| omorfos_ipc::encode(&omorfos_ipc::Request::Hold { idle, sleep });
+        // A compositor at `path` that answers what it is asked, once one
+        // connects, as it is waited for no longer than a while.
+        let answered = |compositor: &mut std::os::unix::net::UnixStream| {
+            let mut asked = String::new();
+            BufReader::new(&*compositor).read_line(&mut asked).unwrap();
+            let done = omorfos_ipc::encode(&omorfos_ipc::Reply::Done);
+            compositor.write_all(done.as_bytes()).unwrap();
+            asked
+        };
+        let connected = |listening: &UnixListener| {
+            listening.set_nonblocking(true).unwrap();
+            let waited = (0..500).find_map(|_| {
+                thread::sleep(Duration::from_millis(10));
+                listening.accept().ok()
+            });
+            let (compositor, _) = waited.unwrap();
+            compositor.set_nonblocking(false).unwrap();
+            compositor
+        };
+        let listening = UnixListener::bind(&path).unwrap();
+        let mut keep = keeper(Some(path.clone()));
+        keep(true, false);
+        let mut compositor = connected(&listening);
+        assert_eq!(answered(&mut compositor), held(true, false));
+        // Looked at while it is there, and left alone.
+        thread::sleep(omorfos_ipc::AGAIN * 3);
+
+        // The compositor goes, and the next comes: it is asked again what
+        // is held, without anything new having been asked.
+        drop((compositor, listening));
+        fs::remove_file(&path).unwrap();
+        let listening = UnixListener::bind(&path).unwrap();
+        let mut compositor = connected(&listening);
+        assert_eq!(answered(&mut compositor), held(true, false));
+
+        // Let go, it is told so, over the same connection.
+        keep(false, false);
+        assert_eq!(answered(&mut compositor), held(false, false));
+        drop(keep);
     }
 
     #[test]

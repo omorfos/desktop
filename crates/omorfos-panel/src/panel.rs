@@ -12,7 +12,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Store, Theme, Watcher};
-use omorfos_ipc::{Client as Ipc, Reply, Request, State};
+use omorfos_ipc::{Client as Ipc, Reply, Request, State, Steady};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -46,7 +46,7 @@ pub struct Panel {
     queue: EventQueue<Shell>,
     shell: Shell,
     /// The compositor's news of the session.
-    news: Ipc,
+    news: Steady,
     /// Tells when the theme may have changed. Absent when the configuration
     /// directory cannot be watched, such as when there is none.
     watcher: Option<Watcher>,
@@ -58,26 +58,30 @@ impl Panel {
     ///
     /// `news` and `commands` are two connections to the compositor's own
     /// socket. The first is given over to hearing of the session, and what
-    /// clicks ask for goes down the second.
+    /// clicks ask for goes down the second. Each is made again at `socket`
+    /// once it closes, where that is given, as the compositor is started
+    /// anew under the relay; otherwise its closing is the end of the panel.
     ///
     /// # Errors
     ///
     /// Returns an error if any of the connections cannot be used.
     pub fn new(
         wayland: UnixStream,
-        mut news: Ipc,
-        commands: Ipc,
+        (news, commands): (Ipc, Ipc),
         config: &Path,
+        socket: Option<&Path>,
     ) -> Result<Self, Failure> {
-        let subscribed = news.send(&Request::Subscribe);
-        let prepared = subscribed
-            .and_then(|()| news.set_nonblocking(true))
-            .and_then(|()| commands.set_nonblocking(true));
-        let connection = prepared.map_err(Failure::from).and_then(|()| {
+        let steady =
+            |client, first| Steady::new(client, first, socket.map(Path::to_owned), Duration::ZERO);
+        let news = steady(news, Some(Request::Subscribe));
+        let both = news.and_then(|news| steady(commands, None).map(|commands| (news, commands)));
+        let connection = both.map_err(Failure::from).and_then(|both| {
             let connection = Connection::from_socket(wayland);
-            connection.map_err(Failure::from)
+            connection
+                .map(|connection| (connection, both))
+                .map_err(Failure::from)
         });
-        connection.map(|connection| {
+        connection.map(|(connection, (news, commands))| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
             Self {
@@ -128,7 +132,10 @@ impl Panel {
                 return failure;
             }
             let drawn = self.deadline().map(|due| due.saturating_sub(now));
-            let soonest = [Some(changes), drawn].into_iter().flatten().min();
+            // While the compositor is away, until it is tried again.
+            let again = [self.news.until(now), self.shell.commands.until(now)];
+            let soonest = [Some(changes), drawn].into_iter().chain(again);
+            let soonest = soonest.flatten().min();
             self.wait(soonest.unwrap_or(changes));
         }
     }
@@ -150,11 +157,10 @@ impl Panel {
     /// configuration changes, or `longest` has passed.
     fn wait(&self, longest: Duration) {
         let readable = PollFlags::IN;
-        let mut sources = vec![
-            PollFd::new(&self.connection, readable),
-            PollFd::new(&self.news, readable),
-            PollFd::new(&self.shell.commands, readable),
-        ];
+        let mut sources = vec![PollFd::new(&self.connection, readable)];
+        let steady = [self.news.waited(), self.shell.commands.waited()];
+        let steady = steady.into_iter().flatten();
+        sources.extend(steady.map(|steady| PollFd::from_borrowed_fd(steady, readable)));
         let watcher = self.watcher.iter();
         sources.extend(watcher.map(|watcher| PollFd::new(watcher, readable)));
         // A wait that is interrupted is a wake-up like any other, and
@@ -178,12 +184,11 @@ impl Panel {
     /// if it changed.
     fn learn(&mut self) -> io::Result<()> {
         let shell = &mut self.shell;
-        let mut news = std::iter::from_fn(|| self.news.try_receive().transpose());
-        let heard = news.try_for_each(|reply| reply.map(|reply| shell.told(reply)));
+        let now = shell.now;
+        let heard = self.news.hear(now, |reply| shell.told(reply));
         // The answers to what clicks asked for. A window that had gone by
         // the time it was asked for is nothing to do anything about.
-        let mut answers = std::iter::from_fn(|| shell.commands.try_receive().transpose());
-        let answered = answers.try_for_each(|answer| answer.map(drop));
+        let answered = shell.commands.hear(now, drop);
         let sent = mem::replace(&mut shell.sent, Ok(()));
         let watcher = self.watcher.as_mut();
         let changed = watcher.map_or(Ok(false), Watcher::drain);
@@ -206,7 +211,9 @@ pub(crate) fn run(wayland: &Path, socket: &Path, config: &Path) -> Failure {
     });
     let panel = streams
         .map_err(Failure::from)
-        .and_then(|(wayland, news, commands)| Panel::new(wayland, news, commands, config));
+        .and_then(|(wayland, news, commands)| {
+            Panel::new(wayland, (news, commands), config, Some(socket))
+        });
     match panel {
         Ok(mut panel) => panel.serve(),
         Err(failure) => failure,
@@ -232,7 +239,7 @@ struct Shell {
     store: Store,
     text: Text,
     /// Where what clicks ask for is sent.
-    commands: Ipc,
+    commands: Steady,
     /// Whether everything asked for so far could be sent.
     sent: io::Result<()>,
     /// How long the panel has been running, as of this turn.
@@ -320,7 +327,7 @@ struct Tools<'a> {
 }
 
 impl Shell {
-    fn new(store: Store, commands: Ipc) -> Self {
+    fn new(store: Store, commands: Steady) -> Self {
         Self {
             compositor: None,
             shm: None,
@@ -402,7 +409,8 @@ impl Shell {
             let mut bars = faces.filter_map(|face| face.shown.as_ref());
             bars.find_map(|(bar, _)| bar.click(whole(along)))
         });
-        let sent = request.map_or(Ok(()), |request| self.commands.send(&request));
+        let now = self.now;
+        let sent = request.map_or(Ok(()), |request| self.commands.send(&request, now));
         self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
     }
 

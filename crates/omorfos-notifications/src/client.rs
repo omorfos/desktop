@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use omorfos_config::{Store, Watcher};
 use omorfos_icons::Icons;
-use omorfos_ipc::{Client as Ipc, Reply, Request};
+use omorfos_ipc::{Client as Ipc, Reply, Request, Steady};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -48,7 +48,7 @@ pub struct Notifier {
     /// Where the compositor says what is wrong with the session, which is
     /// shown among the notifications. Absent outside a session that has
     /// it, where the compositor shows that itself.
-    news: Option<Ipc>,
+    news: Option<Steady>,
     /// Tells when the theme may have changed. Absent when the configuration
     /// directory cannot be watched, such as when there is none.
     watcher: Option<Watcher>,
@@ -61,8 +61,10 @@ impl Notifier {
     ///
     /// `news` is a connection to the compositor's own socket, on which it
     /// is asked to say what is wrong with the session, so that it can be
-    /// shown among the notifications. Without one, or if it cannot be
-    /// asked, the compositor goes on showing that itself.
+    /// shown among the notifications, made again at `socket` once it
+    /// closes, where that is given, as the compositor is started anew under
+    /// the relay. Without one, or if it cannot be asked, the compositor
+    /// goes on showing that itself.
     ///
     /// # Errors
     ///
@@ -70,15 +72,13 @@ impl Notifier {
     pub fn new(
         wayland: UnixStream,
         bus: Bus,
-        news: Option<Ipc>,
+        (news, socket): (Option<Ipc>, Option<&Path>),
         config: &Path,
         icons: Icons,
     ) -> Result<Self, Failure> {
-        let news = news.and_then(|mut news| {
-            let asked = news.set_nonblocking(true);
-            let asked = asked.and_then(|()| news.send(&Request::ShowProblems));
-            asked.ok().map(|()| news)
-        });
+        let socket = socket.map(Path::to_owned);
+        let asked = Some(Request::ShowProblems);
+        let news = news.and_then(|news| Steady::new(news, asked, socket, Duration::ZERO).ok());
         let connection = Connection::from_socket(wayland);
         connection.map_err(Failure::from).map(|connection| {
             let queue = connection.new_event_queue();
@@ -128,8 +128,7 @@ impl Notifier {
     fn learn(&mut self, now: Duration) -> Result<(), Failure> {
         let shell = &mut self.shell;
         let heard = self.news.as_mut().map_or(Ok(()), |news| {
-            let mut said = std::iter::from_fn(|| news.try_receive().transpose());
-            said.try_for_each(|reply| reply.map(|reply| shell.told(&reply, now)))
+            news.hear(now, |reply| shell.told(&reply, now))
         });
         heard.map_err(Failure::from)
     }
@@ -159,9 +158,12 @@ impl Notifier {
             ];
             let watcher = self.watcher.iter();
             sources.extend(watcher.map(|watcher| PollFd::new(watcher, PollFlags::IN)));
-            let news = self.news.iter();
-            sources.extend(news.map(|news| PollFd::new(news, PollFlags::IN)));
+            let news = self.news.iter().filter_map(Steady::waited);
+            sources.extend(news.map(|news| PollFd::from_borrowed_fd(news, PollFlags::IN)));
             let longest = self.deadline().map(|deadline| deadline.saturating_sub(now));
+            // While the compositor is away, until it is tried again.
+            let again = self.news.as_ref().and_then(|news| news.until(now));
+            let longest = longest.into_iter().chain(again).min();
             let longest = longest.and_then(|longest| Timespec::try_from(longest).ok());
             // A wait that is interrupted is a wake-up like any other, and
             // anything worse shows in the turn that follows.
@@ -233,8 +235,8 @@ pub(crate) fn run(
     // A session without the compositor's own socket shows what is wrong
     // itself.
     let news = socket.and_then(|socket| Ipc::connect(socket).ok());
-    let notifier =
-        joined.and_then(|(wayland, bus)| Notifier::new(wayland, bus, news, config, icons));
+    let notifier = joined
+        .and_then(|(wayland, bus)| Notifier::new(wayland, bus, (news, socket), config, icons));
     match notifier {
         Ok(mut notifier) => notifier.serve(),
         Err(failure) => failure,

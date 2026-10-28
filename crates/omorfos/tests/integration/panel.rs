@@ -58,7 +58,7 @@ fn panel_on(session: &mut Session, news: Ipc, commands: Ipc, config: &Path) -> P
         .compositor_mut()
         .insert_client(ours, omorfos::Roles::ALL)
         .unwrap();
-    Panel::new(theirs, news, commands, config).unwrap()
+    Panel::new(theirs, (news, commands), config, None).unwrap()
 }
 
 /// A panel in the session, as it runs in use.
@@ -580,6 +580,63 @@ fn the_panel_gives_up_when_it_cannot_ask_for_what_was_clicked() {
         session.step();
         panel.turn(TIME, Duration::ZERO).is_err()
     });
+}
+
+#[test]
+fn the_panel_hears_the_news_again_once_the_compositors_socket_is_back() {
+    use std::os::unix::net::UnixListener;
+
+    let mut session = Session::with_workspaces();
+    let directory = tempfile::TempDir::new().unwrap();
+    let path = directory.path().join("omorfos.sock");
+    let listening = UnixListener::bind(&path).unwrap();
+    let (ours, theirs) = UnixStream::pair().unwrap();
+    session
+        .compositor_mut()
+        .insert_client(ours, omorfos::Roles::ALL)
+        .unwrap();
+    let both = (Ipc::connect(&path).unwrap(), Ipc::connect(&path).unwrap());
+    let config = session.config.path().to_owned();
+    let mut panel = Panel::new(theirs, both, &config, Some(&path)).unwrap();
+    let turn = |session: &mut Session, panel: &mut Panel, now: Duration| {
+        for _ in 0..20 {
+            panel.turn(TIME, now).unwrap();
+            session.step();
+        }
+    };
+    let (news, _) = listening.accept().unwrap();
+    let (commands, _) = listening.accept().unwrap();
+    turn(&mut session, &mut panel, Duration::ZERO);
+
+    // The compositor's socket goes, as the compositor is started anew: the
+    // panel goes on, and is not told anything meanwhile.
+    drop((news, commands, listening));
+    std::fs::remove_file(&path).unwrap();
+    turn(&mut session, &mut panel, Duration::ZERO);
+
+    // Once it is back the panel asks for the news again, and shows it.
+    let listening = UnixListener::bind(&path).unwrap();
+    turn(&mut session, &mut panel, omorfos_ipc::AGAIN);
+    let (mut news, _) = listening.accept().unwrap();
+    let mut asked = String::new();
+    BufReader::new(&news).read_line(&mut asked).unwrap();
+    assert_eq!(asked, encode(&Request::Subscribe));
+    let state = State {
+        workspaces: vec![Workspace {
+            output: "test-0".to_owned(),
+            number: 3,
+            name: "three".to_owned(),
+            active: true,
+            id: 0,
+            kept: true,
+            windows: Vec::new(),
+            room: false,
+        }],
+        ..State::default()
+    };
+    news.write_all(said(&state).as_bytes()).unwrap();
+    turn(&mut session, &mut panel, omorfos_ipc::AGAIN);
+    assert_eq!(session.draw().at(3, HEIGHT - 1), accent());
 }
 
 #[test]
