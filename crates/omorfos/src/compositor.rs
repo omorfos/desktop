@@ -23,6 +23,7 @@ use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Showing,
     Standing, WindowId, WorkspaceId,
 };
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
 use smithay::backend::allocator::Format;
 use smithay::backend::allocator::Fourcc;
@@ -624,9 +625,12 @@ impl Compositor {
     /// [`Compositor::insert_relayed`] accepts a program: with the roles
     /// the compositor that started it gave it, `roles`, as the relay says,
     /// which is to be trusted as what it says of who a program is is. One
-    /// with the role of keeping the clipboard is the keeper, which is then
-    /// not started again, unless it is the user's, which the configuration
-    /// started.
+    /// of the programs that come with omorfos is known by what the
+    /// compositor before called it, which the relay handed back first, or
+    /// where it did not say, as the keeper by its role, as each was handed
+    /// before they were called anything; it is then not started again, and
+    /// is watched over as if this had started it. One the configuration
+    /// started is the user's, and none of these.
     ///
     /// # Errors
     ///
@@ -640,15 +644,42 @@ impl Compositor {
         let users = roles & USERS != 0;
         let roles = Roles::from_bits(roles & !USERS);
         let inserted = self.insert(stream, roles, false, Some(program));
+        let known = self.autostarted.parts.known.get(&program.pid).cloned();
+        let keeper = roles
+            .has(Roles::CLIPBOARD)
+            .then(|| Program::Keeper.called());
+        let called = known.as_deref().or(keeper.flatten()).filter(|_| !users);
         inserted.inspect(|_| {
-            let keeper = self.components.iter_mut();
-            let keeper = keeper.filter(|component| {
-                !users && roles.has(Roles::CLIPBOARD) && component.kind == Program::Keeper
-            });
-            for keeper in keeper {
-                keeper.process = Some(program.pid);
+            let mut components = self.components.iter_mut();
+            let found = components.find(|component| component.kind.called() == called);
+            if let Some(component) = found.filter(|_| called.is_some()) {
+                component.process = Some(program.pid);
+                self.adopt(program.pid);
             }
         })
+    }
+
+    /// Watches over `process`, a part of the session a compositor before
+    /// started, which is not this one's child, for when it ends.
+    fn adopt(&mut self, process: u32) {
+        let pid = Pid::from_raw(process.cast_signed());
+        let opened = pid.and_then(|pid| pidfd_open(pid, PidfdFlags::empty()).ok());
+        // Woken once, as when a child exits.
+        let woken = opened.as_ref().and_then(|opened| opened.try_clone().ok());
+        let exited = |_, _: &mut _, _: &mut Self| Ok(PostAction::Remove);
+        let _ = woken
+            .map(|woken| Generic::new(woken, Interest::READ, Trigger::Level))
+            .and_then(|woken| self.event_loop.insert_source(woken, exited).ok());
+        // One that has ended already is found to have at once.
+        self.autostarted.parts.adopted.push((process, opened));
+    }
+
+    /// What each part of the session the relay keeps is called, as the
+    /// next compositor is to know it by, and its process.
+    pub(crate) fn kept_parts(&self) -> Vec<(&'static str, u32)> {
+        let kept = self.components.iter();
+        let kept = kept.filter_map(|component| component.kind.called().zip(component.process));
+        kept.collect()
     }
 
     /// Hands the relay, over `relay`, what is to be kept as programs are:
@@ -657,8 +688,9 @@ impl Compositor {
         self.autostarted.parts.relay = Some(relay);
     }
 
-    /// Takes in that the relay has handed over every program it kept: the
-    /// keeper is started now, unless one was among them.
+    /// Takes in that the relay has handed over every program it kept: each
+    /// part of the session it keeps is started now, unless it was among
+    /// them.
     pub fn relay_kept(&mut self) {
         self.autostarted.parts.kept = true;
         if !self.autostarted.done {
@@ -666,14 +698,14 @@ impl Compositor {
         }
         let config = Arc::clone(self.store.current());
         let mut components = std::mem::take(&mut self.components);
-        let keeper = components.iter_mut().filter(|component| {
-            component.kind == Program::Keeper
+        let missing = components.iter_mut().filter(|component| {
+            component.kind.kept()
                 && component.process.is_none()
                 && component.kind.wanted(&config.general)
         });
-        for keeper in keeper {
-            let how = (keeper.kind.roles(), false, Relaying::Own);
-            keeper.process = self.launch(keeper.program.as_os_str(), &[], how, None);
+        for part in missing {
+            let how = (part.kind.roles(), false, Relaying::Own);
+            part.process = self.launch(part.program.as_os_str(), &[], how, None);
         }
         self.components = components;
     }
@@ -1161,6 +1193,15 @@ impl Compositor {
             }
             exited.is_none()
         });
+        // So are the parts kept from a compositor before, which are not its
+        // children: how each ended cannot be known, and is taken to have
+        // been a failure.
+        let adopted = &mut self.autostarted.parts.adopted;
+        let gone = adopted.extract_if(.., |(_, opened)| opened.as_ref().is_none_or(has_ended));
+        for (process, _) in gone {
+            failed.push(process);
+            ended.push(process);
+        }
         self.forget_ended();
         self.end(now);
         self.revive(&failed, now);
@@ -3688,14 +3729,20 @@ impl Program {
     }
 
     /// Whether it is kept by the relay as programs are, where there is one,
-    /// rather than ending with the compositor: what keeps the clipboard, so
-    /// that what was copied outlives a restart (ADR 61, 3b).
-    const fn kept(self) -> bool {
-        matches!(self, Self::Keeper)
+    /// rather than ending with the compositor: see [`KEPT`].
+    fn kept(self) -> bool {
+        self.called().is_some()
+    }
+
+    /// What it is called to the next compositor, if it is kept by the
+    /// relay.
+    fn called(self) -> Option<&'static str> {
+        let kept = KEPT.iter().find(|(kind, _)| *kind == self);
+        kept.map(|(_, called)| *called)
     }
 
     /// How it is kept by the relay, as [`Program::kept`] says.
-    const fn relaying(self) -> Relaying {
+    fn relaying(self) -> Relaying {
         if self.kept() {
             Relaying::Own
         } else {
@@ -3722,6 +3769,23 @@ impl Program {
     }
 }
 
+/// The programs that come with omorfos and run for the whole session that
+/// are kept by the relay as programs are, where there is one, rather than
+/// ending with the compositor, and what each is called to the next, which
+/// knows it again by that (ADR 61, 3b and 3d): those on the screen, so that
+/// none is seen to go and come back, and what keeps the clipboard, so that
+/// what was copied outlives a restart. Not what asks for a secret, as a
+/// prompt kept through a change of compositor would not be known to the
+/// next as one it had shown; nor those not connected to it as a Wayland
+/// program is.
+const KEPT: [(Program, &str); 5] = [
+    (Program::Panel, "panel"),
+    (Program::Wallpaper, "wallpaper"),
+    (Program::Notifier, "notifier"),
+    (Program::Portal, "portal"),
+    (Program::Keeper, "keeper"),
+];
+
 /// Whether a program the compositor starts is kept by the relay as programs
 /// are, where there is one, and as whose (ADR 61, 3d).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3732,6 +3796,14 @@ enum Relaying {
     Own,
     /// As the user's: one the configuration starts with roles.
     Users,
+}
+
+/// Whether the process `opened` stands for has ended: what stands for it is
+/// readable from then on.
+fn has_ended(opened: &OwnedFd) -> bool {
+    let mut polled = [PollFd::new(opened, PollFlags::IN)];
+    let _ = poll(&mut polled, Some(&Timespec::default()));
+    !polled[0].revents().is_empty()
 }
 
 /// What the relay is told, beside a part's roles, of one the configuration

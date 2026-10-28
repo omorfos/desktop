@@ -13,6 +13,10 @@
 use std::collections::HashMap;
 use std::os::fd::{AsFd, OwnedFd};
 
+/// The parts of the session kept by the relay, as the desk names each: what
+/// it is called, and its process.
+type Named<'a> = Vec<(&'a str, u32)>;
+
 use omorfos_core::geometry::{Point, Rect, Size};
 use omorfos_core::{Desk, Kept, Standing, States, Tab, Tile};
 use omorfos_ipc::relay::{self, Hand};
@@ -35,8 +39,16 @@ pub(crate) struct Parts {
     places: HashMap<(u32, u32), String>,
     /// Where the relay has been told each window is, by the same.
     told: HashMap<(u32, u32), Kept>,
-    /// Where the relay has been told the session is, and the pointer.
-    desk: Option<(Desk, (i32, i32))>,
+    /// Where the relay has been told the session is, the pointer, and the
+    /// parts of it kept by the relay.
+    desk: Option<(Desk, (i32, i32), Named<'static>)>,
+    /// What each part kept by the relay was called by the compositor before,
+    /// by its process, as the relay handed it back.
+    pub(crate) known: HashMap<u32, String>,
+    /// The parts kept from a compositor before, which are not this one's
+    /// children, each with what says when it has ended, where it could be
+    /// had.
+    pub(crate) adopted: Vec<(u32, Option<OwnedFd>)>,
 }
 
 impl Compositor {
@@ -63,7 +75,12 @@ impl Compositor {
             shown,
             current,
             pointer,
+            parts,
         } = said;
+        let known = parts
+            .into_iter()
+            .map(|(called, process)| (process, called.to_owned()));
+        self.autostarted.parts.known = known.collect();
         let mut desk = self.desktop.desk();
         // What this compositor has made is not what the relay names.
         desk.made.fill(None);
@@ -102,6 +119,7 @@ impl Compositor {
     /// where the session is, as far as either changed since it was last
     /// told.
     pub(crate) fn tell_relay(&mut self) {
+        let parts = self.kept_parts();
         let Parts {
             relay,
             told,
@@ -136,12 +154,12 @@ impl Compositor {
         // Truncation is meant: a pixel's worth matters to nobody here.
         #[expect(clippy::cast_possible_truncation, reason = "a position on a screen")]
         let pointer = (at.x as i32, at.y as i32);
-        let now = Some((shown, pointer));
+        let now = Some((shown, pointer, parts));
         if *told_desk != now {
             let names: Vec<String> = self.heads.iter().map(|head| head.output.name()).collect();
             let said = now
                 .as_ref()
-                .map(|(shown, pointer)| desk(shown, *pointer, &names));
+                .map(|(shown, pointer, parts)| desk(shown, *pointer, &names, parts));
             let hand = said.map(Hand::Desk);
             let _ = hand.map(|hand| relay::send(relay.as_fd(), &hand, &[]));
             *told_desk = now;
@@ -306,8 +324,15 @@ pub(crate) fn read_place(text: &str) -> Option<(Kept, String)> {
 }
 
 /// How the relay keeps where the session is: `desk`, with the outputs it
-/// counts named by `names`, and where the pointer is, `pointer`.
-pub(crate) fn desk(desk: &Desk, pointer: (i32, i32), names: &[String]) -> String {
+/// counts named by `names`, where the pointer is, `pointer`, and the parts
+/// of the session it keeps, `parts`. It begins `d2` from when it says the
+/// parts; one without, written before, is read as saying none.
+pub(crate) fn desk(
+    desk: &Desk,
+    pointer: (i32, i32),
+    names: &[String],
+    parts: &[(&str, u32)],
+) -> String {
     let current = names.get(desk.current).map_or("", String::as_str);
     let shown = names.iter().zip(desk.shown.iter().zip(&desk.made));
     let shown: Vec<String> = shown
@@ -316,7 +341,21 @@ pub(crate) fn desk(desk: &Desk, pointer: (i32, i32), names: &[String]) -> String
             None => format!("{name}:{shown}"),
         })
         .collect();
-    format!("{} {} {current} {}", pointer.0, pointer.1, shown.join(" "))
+    let parts: Vec<String> = parts
+        .iter()
+        .map(|(called, process)| format!("{called}:{process}"))
+        .collect();
+    let parts = if parts.is_empty() {
+        "-".to_owned()
+    } else {
+        parts.join(",")
+    };
+    format!(
+        "d2 {} {} {current} {parts} {}",
+        pointer.0,
+        pointer.1,
+        shown.join(" ")
+    )
 }
 
 /// Where the session is, as [`desk`] wrote it.
@@ -329,14 +368,24 @@ pub(crate) struct Said<'a> {
     pub(crate) current: &'a str,
     /// Where the pointer is.
     pub(crate) pointer: (i32, i32),
+    /// The parts of the session the relay keeps.
+    pub(crate) parts: Named<'a>,
 }
 
 /// Where the session is, as [`desk`] wrote it.
 pub(crate) fn read_desk(text: &str) -> Option<Said<'_>> {
+    let (second, text) = text
+        .strip_prefix("d2 ")
+        .map_or((false, text), |text| (true, text));
     let mut words = text.split(' ');
     let x = words.next().and_then(|word| word.parse().ok())?;
     let y = words.next().and_then(|word| word.parse().ok())?;
     let current = words.next()?;
+    let parts = if second {
+        read_parts(words.next()?)?
+    } else {
+        Vec::new()
+    };
     let shown = words.filter(|word| !word.is_empty()).map(|word| {
         let (name, shown) = word.rsplit_once(':')?;
         let (shown, made) = match shown.split_once('/') {
@@ -350,7 +399,20 @@ pub(crate) fn read_desk(text: &str) -> Option<Said<'_>> {
         shown: shown?,
         current,
         pointer: (x, y),
+        parts,
     })
+}
+
+/// The parts of the session the relay keeps, as [`desk`] wrote them.
+fn read_parts(text: &str) -> Option<Named<'_>> {
+    if text == "-" {
+        return Some(Vec::new());
+    }
+    let parts = text.split(',').map(|part| {
+        let (called, process) = part.split_once(':')?;
+        Some((called, process.parse().ok()?))
+    });
+    parts.collect()
 }
 
 #[cfg(test)]
@@ -488,16 +550,22 @@ mod tests {
             made: vec![None, Some(9)],
             current: 1,
         };
-        let written = desk(&shown, (400, -3), &names);
-        assert_eq!(written, "400 -3 DP-1 eDP-1:0 DP-1:2/9");
+        let parts = [("panel", 12), ("keeper", 34)];
+        let written = desk(&shown, (400, -3), &names, &parts);
+        assert_eq!(
+            written,
+            "d2 400 -3 DP-1 panel:12,keeper:34 eDP-1:0 DP-1:2/9"
+        );
         let read = read_desk(&written);
         let said = Said {
             shown: vec![("eDP-1", 0, None), ("DP-1", 2, Some(9))],
             current: "DP-1",
             pointer: (400, -3),
+            parts: parts.to_vec(),
         };
         assert_eq!(read, Some(said));
-        // With no output, there is nothing to name.
+        // With no output, there is nothing to name, and with no part kept,
+        // none.
         let alone = desk(
             &Desk {
                 shown: vec![0],
@@ -506,16 +574,36 @@ mod tests {
             },
             (0, 0),
             &[],
+            &[],
         );
         let nothing = Said {
             shown: Vec::new(),
             current: "",
             pointer: (0, 0),
+            parts: Vec::new(),
         };
         assert_eq!(read_desk(&alone), Some(nothing));
         let bad = ["", "1", "1 2", "x 2 a", "1 x a", "1 2 a b", "1 2 a b:x"];
-        for text in bad.into_iter().chain(["1 2 a b:1/x", "1 2 a b:x/1"]) {
+        let bad = bad.into_iter().chain(["1 2 a b:1/x", "1 2 a b:x/1"]);
+        let parts = [
+            "d2 1 2 a",
+            "d2 1 2 a panel",
+            "d2 1 2 a panel:x",
+            "d2 1 2 a -,panel:1",
+        ];
+        for text in bad.chain(parts) {
             assert_eq!(read_desk(text), None, "{text:?}");
         }
+    }
+
+    #[test]
+    fn where_the_session_was_written_before_parts_were_is_read_as_naming_none() {
+        let said = Said {
+            shown: vec![("eDP-1", 1, None)],
+            current: "eDP-1",
+            pointer: (4, 5),
+            parts: Vec::new(),
+        };
+        assert_eq!(read_desk("4 5 eDP-1 eDP-1:1"), Some(said));
     }
 }

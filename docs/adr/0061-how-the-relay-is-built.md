@@ -451,3 +451,28 @@ compositor taking up its own new version (3e).
   that is a script runs its interpreter. The launcher and the locker are
   not kept: the one speaks to the socket for scripts, as the components
   do, and the lock is not made again.
+- **The components that come with omorfos are kept as the keeper is**
+  (3d): the panel, the wallpaper, the notifications and the portal. Each
+  is known again by the next compositor by its process, which the desk
+  record names beside what it is, as it is said to the relay whenever a
+  component is started; the relay hands the desk back before any part, so
+  each part is known as it comes. Not by a new hand, nor a word added to
+  `started`: the relay outlives each compositor it is updated with, and
+  one that does not know a hand lets it go with its descriptor, so the
+  component would lose its connection as it was started. A desk written
+  before names none, so the keeper is still known by its role where the
+  desk does not name it, until no relay holds one handed before. A
+  component kept is not the next compositor's child: it is watched by a
+  descriptor that says when its process has ended, which cannot say how,
+  so its end is taken for a failure and it is started again as one that
+  crashed, as often as that is allowed. Each that speaks to the socket for
+  scripts makes its connection again once the next compositor is serving
+  it, at the same place, asking again what it asked first, its news or
+  what is wrong; the portal, which holds the session from going idle or
+  to sleep for programs, asks that again as soon as the compositor is
+  back, looking at its connection now and then while it holds something.
+  The wallpaper's see-through surface is made again with its last
+  multiplier. What asks for a secret is not kept, as a prompt kept through
+  a change of compositor would not be known to the next as one it showed;
+  nor are the watcher of what records and the program that watches over
+  the session, which are not Wayland programs.

@@ -834,16 +834,27 @@ what only games and touchpads need last.
       each layer surface as it was, told its size again only where it
       changed; each such program handed to the relay with its roles,
       marked as the user's, so that none is taken for the keeper.
-- [ ] Known gaps in keeping programs, after 3d's second part: a program holding a buffer
+- [x] The components that come with omorfos kept through a change of
+      compositor (ADR 61, step 3d, the third part): the panel, the
+      wallpaper, the notifications and the portal kept as the keeper is,
+      each known again by the next compositor by the process the desk
+      record names, not started again, and watched over as if it had
+      started it; each made to speak to the script socket again once the
+      compositor is back, and the portal to ask again what it holds.
+- [ ] Known gaps in keeping programs, after step 3d: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
       so is one bound to a screen the next compositor does not have,
       where a layer surface on it would rather be closed, or one holding
       a pointer lock or anything else no protocol above makes again; a handle exported before is the old compositor's; what the next compositor
       says of a screen while the relay catches up is kept from the
       program even where it changed; what a program selected is selected
-      again only once it next has the keyboard; a keeper kept from the
-      compositor before is not the next's child, and is not started again
-      if it stops; the part of a window that did not come back, as one
+      again only once it next has the keyboard; a component kept from the
+      compositor before that stops is taken to have failed, as how it
+      ended cannot be known, and counted against how often it may; the
+      prompt for a secret ends with the compositor, and is started again;
+      the keeper is known by its role where the desk record names no
+      parts, which is to go once no relay still holds one handed before
+      they were named; the part of a window that did not come back, as one
       of a program written for X11, is left with nothing in it, and a
       workspace made for windows to share is shown only once the first
       of them is back; a field leaves and enters again; a part
@@ -854,10 +865,8 @@ what only games and touchpads need last.
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
       Firefox ESR have been seen kept.
-- [ ] The rest of the relay (ADR 61, step 3), after 3d's second part:
-      the components that come with omorfos kept as the keeper is (3d's
-      third part), each known again by the next compositor; every
-      protocol in the list made again; then the compositor's own new
+- [ ] The rest of the relay (ADR 61, step 3), after 3d: every protocol
+      in the list made again; then the compositor's own new
       version taken up at a quiet moment, as ADR 59 takes up the
       others', and its word about the next login goes. Programs written
       for X11 still close with their X server until Smithay can take up

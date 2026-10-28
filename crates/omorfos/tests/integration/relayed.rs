@@ -1304,3 +1304,47 @@ fn a_program_started_with_a_role_is_kept_and_not_taken_for_the_keeper() {
         let _ = Command::new("kill").arg(process).status();
     }
 }
+
+/// The stand-in for a program that runs for the whole session as the panel
+/// of `session`.
+fn panelled(session: &mut Session) {
+    let component =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/component");
+    session.compositor_mut().set_panel(component);
+}
+
+#[test]
+fn a_component_kept_is_known_again_and_started_again_if_it_stops() {
+    let relayed = Relayed::new();
+    let beside = relayed.path.parent().unwrap().to_owned();
+    std::fs::write(beside.join("component-does"), "stay").unwrap();
+    let started = || std::fs::read_to_string(beside.join("component-started")).unwrap_or_default();
+    // Made, then written to: read only once it says the process.
+    let process = || {
+        let said = std::fs::read_to_string(beside.join("component-process")).ok();
+        said.filter(|said| !said.is_empty())
+    };
+    let (mut first, first_holder) = relayed.compositor_with(panelled);
+    first.compositor_mut().autostart();
+    first.eventually(|_| process().is_some() && relayed.relay.borrow().programs() == 1);
+    let kept = process().unwrap();
+    // Said to the relay as the panel, once there is something to say.
+    first.step();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor_with(panelled);
+    second.compositor_mut().autostart();
+    for _ in 0..50 {
+        second.step();
+    }
+    assert_eq!(started(), "x", "known again, and not started again");
+
+    // It stops, as one that crashed does: it is started again, as one the
+    // compositor started itself would be.
+    std::fs::remove_file(beside.join("component-process")).unwrap();
+    let _ = Command::new("kill").arg(&kept).status();
+    second.eventually(|_| started() == "xx" && process().is_some());
+    let _ = Command::new("kill").arg(process().unwrap()).status();
+}
