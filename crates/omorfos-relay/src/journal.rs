@@ -131,7 +131,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 41] = [
+const KEPT: [&str; 44] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -173,6 +173,9 @@ const KEPT: [&str; 41] = [
     "zwp_confined_pointer_v1",
     "ext_idle_notification_v1",
     "zwp_virtual_keyboard_v1",
+    "zwp_input_method_v2",
+    "zwp_input_method_keyboard_grab_v2",
+    "zwp_input_popup_surface_v2",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -1451,12 +1454,12 @@ mod tests {
         assert_eq!(program.journal.unkept(), [""; 0], "a global bound");
         program.send(&sent(5, 1, &words(&[6])), &[]);
         program.send(&sent(5, 1, &words(&[7])), &[]);
-        program.bind(3, "wl_seat", 9, 8);
-        program.bind(4, "zwp_input_method_manager_v2", 1, 9);
-        program.send(&sent(9, 0, &words(&[8, 10])), &[]);
+        // The surface shown while locked, on a screen bound as 8.
+        program.bind(3, "wl_output", 4, 8);
+        program.send(&sent(6, 1, &words(&[9, 4, 8])), &[]);
         assert_eq!(
             program.journal.unkept(),
-            ["ext_session_lock_v1", "zwp_input_method_v2"],
+            ["ext_session_lock_v1", "ext_session_lock_surface_v1"],
             "each once, in the order made"
         );
         assert!(keeps("wl_seat") && keeps("xdg_toplevel") && keeps("xdg_popup"));
@@ -1534,9 +1537,6 @@ mod tests {
             "ext_session_lock_surface_v1",
             "ext_session_lock_v1",
             "wl_touch",
-            "zwp_input_method_keyboard_grab_v2",
-            "zwp_input_method_v2",
-            "zwp_input_popup_surface_v2",
         ];
         let mut made = Vec::new();
         for global in crate::known::globals() {

@@ -229,9 +229,12 @@ pub const OFFERED: &[Protocol] = &[
         interface: "zwp_input_method_manager_v2",
         version: 1,
         replayed: "The input method made again for its seat, with its keyboard grab and popup \
-                   surfaces, and told what the text field it was in has, as when one is \
-                   entered. Text it was composing at that moment cannot be carried: it is let \
-                   go, as when the field loses the keyboard.",
+                   surfaces. One typing in a field is told it is not as the compositor goes, \
+                   as when the field loses the keyboard, and a key held in its grab is let go \
+                   of: what it was composing cannot be carried. The field entered again and \
+                   enabled, it is typed in again. The count it commits with, of what it has \
+                   been told is whole, is the relay's to keep in step. One told another is the \
+                   input method is not made again.",
     },
     Protocol {
         interface: "zwp_linux_dmabuf_v1",

@@ -20,6 +20,7 @@ use omorfos_config::Action;
 use omorfos_ipc::hold::{Told, Word};
 use omorfos_ipc::relay::{self, Hand, Program, Started};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::ZwpTextInputV3;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
@@ -898,6 +899,109 @@ fn a_program_typing_with_a_keyboard_of_its_own_types_with_it_through_the_next() 
         pressed: true,
     };
     assert!(told.contains(&typed), "{told:?}");
+}
+
+/// Whether anything blue is on the screen.
+fn blue_shown(session: &mut Session) -> bool {
+    use crate::common::{HEIGHT, WIDTH};
+    let picture = session.draw();
+    (0..HEIGHT).any(|y| (0..WIDTH).any(|x| picture.at(x, y) == BLUE))
+}
+
+#[test]
+fn an_input_method_types_through_the_next_compositor_in_the_field_it_typed_in() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    // An input method, as the compositor starts one with the role.
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::INPUT.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut typist = first.adopt(ours);
+    let method = typist.input_method();
+    first.roundtrip(&mut typist);
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let field = app.text_input();
+    first.open(&mut app, "app", (200, 100), RED);
+    // Typing in the field, with its popup beside it and every key taken,
+    // one held as the compositor goes.
+    let typing_in = |field: &ZwpTextInputV3| {
+        field.enable();
+        field.set_cursor_rectangle(10, 10, 2, 16);
+        field.commit();
+    };
+    typing_in(&field);
+    first.roundtrip(&mut app);
+    let popup = typist.input_popup(&method);
+    typist.fill(&popup, (40, 20), BLUE);
+    let _grab = typist.grab_keyboard(&method);
+    first.roundtrip(&mut typist);
+    first.roundtrip(&mut typist);
+    assert!(blue_shown(&mut first), "its popup shown");
+    let held = Input::Key {
+        code: key::A,
+        pressed: true,
+    };
+    first.compositor_mut().input(held, 0);
+    first.roundtrip(&mut typist);
+    typist.take_events();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut typist);
+    let a = key::A.raw() - 8;
+    let told = typist.take_events();
+    let let_go = Event::GrabbedKey {
+        code: a,
+        pressed: false,
+    };
+    assert!(
+        told.starts_with(&[Event::TypingOff, Event::TypingDone, let_go]),
+        "{told:?}"
+    );
+
+    // Back in the field, the program enables it again, as on any enter, and
+    // what is typed goes into it.
+    second.eventually(|session| {
+        session.roundtrip(&mut app);
+        app.state.events.contains(&Event::TextEnter)
+    });
+    typing_in(&field);
+    second.eventually(|session| {
+        session.roundtrip(&mut app);
+        session.roundtrip(&mut typist);
+        typist.state.events.contains(&Event::TypingOn)
+    });
+    assert!(blue_shown(&mut second), "its popup shown again");
+    typist.type_text(&method, "日本");
+    second.roundtrip(&mut typist);
+    second.roundtrip(&mut app);
+    let typed = app.take_events();
+    assert!(
+        typed.contains(&Event::TextCommitted("日本".to_owned())),
+        "{typed:?}"
+    );
+    assert!(
+        typed.contains(&Event::TextDone(2)),
+        "as the field counts its commits, not discarded: {typed:?}"
+    );
+    // Every key is taken still.
+    second.compositor_mut().input(held, 0);
+    second.roundtrip(&mut typist);
+    let pressed = Event::GrabbedKey {
+        code: a,
+        pressed: true,
+    };
+    assert!(typist.take_events().contains(&pressed));
+    assert_eq!(typist.error(), None);
+    assert_eq!(app.error(), None);
 }
 
 #[test]

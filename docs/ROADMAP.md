@@ -866,7 +866,8 @@ what only games and touchpads need last.
       not said again, as its keymap has to come first; a window in a list keeps the identifier the first
       compositor gave it, where one listing windows anew, and IPC, are given the next's; a window
       kept that the next compositor never lists leaves its handle open, and each window listed
-      after it held back for a moment; a global the next compositor offers
+      after it held back for a moment; what an input method was composing as the compositor
+      goes is lost, as when the field loses the keyboard; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
@@ -892,8 +893,12 @@ what only games and touchpads need last.
       imported again by the handle the next compositor shares it by,
       once the program sharing it is made again, with the window made to
       belong to it; one whose window was not kept told it is gone.
-- [ ] Input methods made again (3e, the fourth part), with their
-      keyboard grab and popups, as fcitx5 and IBus make them.
+- [x] Input methods made again (3e, the fourth part), with their
+      keyboard grab and popups, as fcitx5 and IBus make them: one typing
+      in a field told it is not as the compositor goes, with a key held in
+      its grab let go of, and typing in it again once the field is enabled
+      again; what it commits counted as the next compositor counts; one
+      told another is the input method not made again.
 - [ ] Capturing the screen or a window made again (3e, the fifth part):
       the sources, the sessions and a frame under way, failed.
 - [ ] The lock made again (3e, the sixth part), with the holder's word

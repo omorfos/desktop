@@ -553,3 +553,22 @@ and fails while that is other than what 3e still has to come.
   as when its program is let go as it is made again, is left as Smithay
   leaves one whose window has gone, untold. A handle passed on before,
   and imported by only after, is the old compositor's, and refused.
+- **An input method typing as the compositor goes is let go of the
+  field** (3e). An input method is made again for its seat, with its
+  keyboard grab and the surfaces of its popups. One typing in a field as
+  the compositor goes is told it is not, and that what it was told is
+  whole, as when the field loses the keyboard: what it was composing
+  cannot be carried, as the next compositor knows nothing of it. Each key
+  held in its grab is let go of, with no serial, as no compositor will
+  say so. fcitx5 and IBus let go of the grab then, and take it again once
+  the next compositor says they are typing, which it does once the field,
+  entered again, is enabled by its program, as on any enter. The field is
+  entered again whichever program is made again first, as Smithay enters
+  the field that has the keyboard as an input method is made. An input
+  method commits what it typed with how many times it has been told what
+  it was told is whole, which Smithay checks against its own count,
+  discarding what does not match; the relay counts as the program does
+  and as the compositor does, the next from when it made the input method
+  again, and puts the compositor's count in each commit. One told another
+  is the input method is over, as a pointer held once only is: not made
+  again, nor what it made, and the relay answers for each.

@@ -4,32 +4,36 @@
 //! the keyboard and any field typed into have left its surfaces, that a
 //! gesture under way was cancelled, that the pointer it held is let go of,
 //! that a user it was told is away is back, as the next compositor counts
-//! from when it starts, and that what lasts only a moment has ended: a popup dismissed, a token
-//! given, a picture discarded, which the relay answers for from then on. A
-//! pointer held once only that has been held is over too, and a window in
-//! its lists of windows that is not kept has closed. When the next is joined, what
-//! the program had is made again in two parts, each ended by a sync of the
-//! relay's own: its registries, so that the new compositor's globals are
-//! known, then the rest, as [`Journal`] kept it. Until the second is
-//! answered, what the compositor says is sifted: what the program knows
-//! already is kept from it. A window the next compositor lists that the
-//! program has listed is the one it has, once the relay knows which it is.
-//! A window of another program's that it imported by the handle the
-//! compositor before shared it by is imported again by the one the next
-//! shares it by, once that is known: the import made again by the old
-//! handle, which the next compositor refuses, is destroyed first, and that
-//! it was refused is kept from the program.
+//! from when it starts, that an input method typing in a field is no longer,
+//! with any key held in its keyboard grab let go of, and that what lasts
+//! only a moment has ended: a popup dismissed, a token given, a picture
+//! discarded, which the relay answers for from then on. A pointer held once
+//! only that has been held is over too, and so is an input method told
+//! another is the one; and a window in its lists of windows that is not kept
+//! has closed. When the next is joined, what the program had is made again
+//! in two parts, each ended by a sync of the relay's own: its registries, so
+//! that the new compositor's globals are known, then the rest, as
+//! [`Journal`] kept it. Until the second is answered, what the compositor
+//! says is sifted: what the program knows already is kept from it. A window
+//! the next compositor lists that the program has listed is the one it has,
+//! once the relay knows which it is. A window of another program's that it
+//! imported by the handle the compositor before shared it by is imported
+//! again by the one the next shares it by, once that is known: the import
+//! made again by the old handle, which the next compositor refuses, is
+//! destroyed first, and that it was refused is kept from the program.
 //!
 //! Some numbers mean something only to one compositor, and the relay puts
 //! the program's in their place and theirs in the program's: the names of
 //! globals, and the numbers of the objects a compositor makes, which a new
 //! one takes from where the one before did while the program may still hold
-//! some of those. Of serials it changes only a field's, which counts the
-//! field's commits: the new compositor counts from when it made the field
-//! again. The rest it does not change: a window's configure acked by the
-//! relay is not acked again, nor one the compositor before sent, and a
-//! program told the pointer has come back names its shape again with the
-//! new compositor's serial, as it would to any compositor.
+//! some of those. Of serials it changes only those that are counts: a
+//! field's, which counts the field's commits, and what an input method
+//! commits with, which counts what it has been told is whole; the new
+//! compositor counts each from when it made it again. The rest it does not
+//! change: a window's configure acked by the relay is not acked again, nor
+//! one the compositor before sent, and a program told the pointer has come
+//! back names its shape again with the new compositor's serial, as it would
+//! to any compositor.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -59,6 +63,15 @@ const TEXT_DONE: u16 = 5;
 /// The lifetime of a lock or confinement of the pointer that ends once it is
 /// let go of.
 const ONESHOT: u32 = 1;
+
+/// The events of an input method that say it is typing in a field, that it
+/// is not, that what it has been told is whole, and that another is the
+/// one; and its keyboard grab's that says a key was pressed or let go of.
+const ACTIVATE: u16 = 0;
+const DEACTIVATE: u16 = 1;
+const TYPING_DONE: u16 = 5;
+const UNAVAILABLE: u16 = 6;
+const GRABBED_KEY: u16 = 1;
 
 /// The events of a window in a list of windows: that it has closed, that
 /// what has been said of it is whole, what it is called, what program it
@@ -173,6 +186,17 @@ struct Constraint {
     held: bool,
     /// Whether it has been held.
     was: bool,
+}
+
+/// An input method of the program's, as it was told.
+#[derive(Debug, Default, Clone, Copy)]
+struct Method {
+    /// How many times it has been told what it was told is whole: as the
+    /// program counts, and as the compositor does, which counts from when
+    /// it made it.
+    done: (u32, u32),
+    /// Whether it is typing in a field.
+    active: bool,
 }
 
 /// A window in a list of windows the program has (`ext-foreign-toplevel-list`).
@@ -336,6 +360,13 @@ pub struct Keeping {
     /// The windows of other programs' the program imported, by its number
     /// for each.
     imports: HashMap<u32, Import>,
+    /// The program's input methods, by its number for each.
+    methods: HashMap<u32, Method>,
+    /// The keys held, as each keyboard grab of an input method was told.
+    grabbed: HashMap<u32, HashSet<u32>>,
+    /// The input methods told another is the one, and what each made, which
+    /// are to go: not made again.
+    refused: HashSet<u32>,
     /// The highest of the program's numbers when the compositor went: what
     /// the program may take next may be any up to it.
     highest: u32,
@@ -389,6 +420,9 @@ impl Default for Keeping {
             exports: HashMap::new(),
             renamed: Vec::new(),
             imports: HashMap::new(),
+            methods: HashMap::new(),
+            grabbed: HashMap::new(),
+            refused: HashSet::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
@@ -449,6 +483,7 @@ impl Keeping {
                 self.selections.retain(gone);
                 self.selecting.retain(gone);
             }
+            ("zwp_input_method_v2", "commit") => self.committing(header.object, bytes),
             (interface, request) => self.importing(header.object, interface, request, bytes),
         }
         if read.ends && read.interface.name == "wl_surface" {
@@ -523,6 +558,9 @@ impl Keeping {
             self.awaiting.retain(|_, handle| *handle != object);
             self.exports.remove(&object);
             self.imports.remove(&object);
+            self.methods.remove(&object);
+            self.grabbed.remove(&object);
+            self.refused.remove(&object);
             // A window gone belongs to none imported any longer.
             for import in self.imports.values_mut() {
                 import.child = import.child.filter(|child| *child != object);
@@ -537,6 +575,12 @@ impl Keeping {
         self.given.remove(&made);
         self.constraints.remove(&made);
         self.away.remove(&made);
+        self.methods.remove(&made);
+        self.grabbed.remove(&made);
+        // What an input method refused makes goes with it.
+        if self.refused.contains(&object) {
+            self.refused.insert(made);
+        }
         if matches!(
             interface.name,
             "zwp_locked_pointer_v1" | "zwp_confined_pointer_v1"
@@ -573,6 +617,16 @@ impl Keeping {
             }
             _ => {}
         }
+    }
+
+    /// Puts in `bytes`, the input method `method`'s commit, how many times
+    /// it has been told what it was told is whole as the compositor counts,
+    /// for as the program counts.
+    fn committing(&self, method: u32, bytes: &mut [u8]) {
+        let done = self.methods.get(&method).map(|method| method.done);
+        let (said, heard) = done.unwrap_or_default();
+        let serial = wire::word(bytes, HEADER).unwrap_or_default();
+        wire::put(bytes, HEADER, serial.wrapping_sub(said.wrapping_sub(heard)));
     }
 
     /// Takes in the event `bytes`, of `header`, before it is read as the
@@ -807,6 +861,9 @@ impl Keeping {
                 let import = self.imports.get(&object);
                 return import.is_none_or(|import| import.renewal != Renewal::Awaited);
             }
+            ("zwp_input_method_v2" | "zwp_input_method_keyboard_grab_v2", opcode) => {
+                self.typing(object, read.interface.name, opcode, body);
+            }
             ("ext_idle_notification_v1", 0) => {
                 self.away.insert(object);
             }
@@ -840,6 +897,69 @@ impl Keeping {
             _ => {}
         }
         true
+    }
+
+    /// Takes in the event `opcode`, with `body`, to `object`, of `interface`:
+    /// an input method's, as far as it says whether it is typing in a field,
+    /// that what it has been told is whole, or that another is the one; or
+    /// its keyboard grab's, as far as it says which keys are held.
+    fn typing(&mut self, object: u32, interface: &str, opcode: u16, body: &[u8]) {
+        let word = |at| wire::word(body, at).unwrap_or_default();
+        match (interface, opcode) {
+            ("zwp_input_method_keyboard_grab_v2", GRABBED_KEY) => {
+                let held = self.grabbed.entry(object).or_default();
+                let (key, pressed) = (word(8), word(12) != 0);
+                if pressed {
+                    held.insert(key);
+                } else {
+                    held.remove(&key);
+                }
+            }
+            ("zwp_input_method_v2", ACTIVATE | DEACTIVATE) => {
+                self.methods.entry(object).or_default().active = opcode == ACTIVATE;
+            }
+            ("zwp_input_method_v2", TYPING_DONE) => {
+                let method = self.methods.entry(object).or_default();
+                method.done = (method.done.0.wrapping_add(1), method.done.1.wrapping_add(1));
+            }
+            ("zwp_input_method_v2", UNAVAILABLE) => {
+                self.refused.insert(object);
+            }
+            _ => {}
+        }
+    }
+
+    /// Lets each input method typing in a field go of it, as the compositor
+    /// goes, as when the field loses the keyboard: what it was composing
+    /// cannot be carried. A key held in its keyboard grab is let go of, as
+    /// no compositor will say so. The next compositor counts what it tells
+    /// each from none.
+    fn let_go_of_typing(&mut self) {
+        let mut typing = Vec::new();
+        for (number, method) in &mut self.methods {
+            if method.active {
+                method.active = false;
+                method.done.0 = method.done.0.wrapping_add(1);
+                typing.push(*number);
+            }
+            method.done.1 = 0;
+        }
+        typing.sort_unstable();
+        for method in typing {
+            self.to_program
+                .push(journal::message(method, DEACTIVATE, &[]));
+            self.to_program
+                .push(journal::message(method, TYPING_DONE, &[]));
+        }
+        let held = self.grabbed.drain();
+        let held = held.flat_map(|(grab, keys)| keys.into_iter().map(move |key| (grab, key)));
+        let mut held: Vec<(u32, u32)> = held.collect();
+        held.sort_unstable();
+        for (grab, key) in held {
+            // With no serial and no time, as a gesture cancelled is told.
+            let let_go = journal::message(grab, GRABBED_KEY, &[0, 0, key, 0]);
+            self.to_program.push(let_go);
+        }
     }
 
     /// Takes in that the compositor said, as `read` says, that `offer` is
@@ -1349,6 +1469,10 @@ impl Keeping {
         for watching in away {
             self.to_program.push(journal::message(watching, 1, &[]));
         }
+        self.let_go_of_typing();
+        // An input method told another is the one is to go, and is not
+        // made again, nor what it made; the relay answers for each.
+        spent.extend(self.refused.drain());
         let mut menu = false;
         for (number, interface) in self.journal.end_lost(&spent) {
             let untold = !self.given.remove(&number);
@@ -2439,6 +2563,114 @@ mod tests {
         kept.send(&message(6, 1, &words(&[8, 4]))).unwrap();
         kept.send(&message(8, 7, &[])).unwrap();
         assert_eq!(kept.told(&done(1)), Some(done(1)));
+    }
+
+    /// The globals an input method binds: a seat as 3, and what input
+    /// methods are asked for by as 4.
+    const TYPING: [(u32, &str, u32); 2] =
+        [(1, "wl_seat", 7), (2, "zwp_input_method_manager_v2", 1)];
+
+    #[test]
+    fn an_input_method_typing_as_the_compositor_goes_is_let_go_of_and_counts_on() {
+        let mut kept = Kept::registered(&TYPING);
+        kept.bind(1, "wl_seat", 7, 3);
+        kept.bind(2, "zwp_input_method_manager_v2", 1, 4);
+        kept.send(&message(4, 0, &words(&[3, 5]))).unwrap();
+        let done = message(5, 5, &[]);
+        let commit = |serial| message(5, 3, &words(&[serial]));
+        assert!(
+            kept.told(&message(5, 0, &[])).is_some(),
+            "typing in a field"
+        );
+        assert_eq!(kept.told(&done), Some(done.clone()));
+        assert_eq!(kept.send(&commit(1)), Some(commit(1)), "counted alike");
+        // Its keyboard grabbed, two keys pressed and one let go of.
+        kept.send(&message(5, 5, &words(&[6]))).unwrap();
+        let key = |key, pressed| message(6, 1, &words(&[9, 0, key, pressed]));
+        // Its modifiers, and what kind of text the field takes, said too.
+        let modifiers = message(6, 2, &words(&[9, 0, 0, 0, 0]));
+        let content = message(5, 4, &words(&[0, 0]));
+        for told in [key(30, 1), key(31, 1), key(31, 0), modifiers, content] {
+            assert!(kept.told(&told).is_some());
+        }
+
+        kept.restarted(&TYPING);
+        let told: Vec<Vec<u8>> = kept
+            .keeping
+            .to_program
+            .drain(..)
+            .map(|(bytes, _)| bytes)
+            .collect();
+        assert_eq!(
+            told,
+            [
+                message(5, 1, &[]),
+                done.clone(),
+                message(6, 1, &words(&[0, 0, 30, 0]))
+            ],
+            "out of the field, and the key held let go of"
+        );
+        // Typing in it again under the next compositor, which counts anew.
+        kept.told(&message(5, 0, &[])).unwrap();
+        assert_eq!(kept.told(&done), Some(done));
+        assert_eq!(
+            kept.send(&commit(3)),
+            Some(commit(1)),
+            "as the compositor counts"
+        );
+        for told in [key(30, 1), key(30, 0)] {
+            assert!(kept.told(&told).is_some());
+        }
+
+        // Not typing, and nothing held, as the next goes: nothing to say.
+        kept.told(&message(5, 1, &[])).unwrap();
+        kept.told(&message(5, 5, &[])).unwrap();
+        kept.restarted(&TYPING);
+        assert!(
+            kept.keeping.to_program.is_empty(),
+            "{:?}",
+            kept.keeping.to_program
+        );
+    }
+
+    #[test]
+    fn an_input_method_refused_is_not_made_again_nor_what_it_made() {
+        let mut kept = Kept::registered(&TYPING);
+        kept.bind(1, "wl_seat", 7, 3);
+        kept.bind(2, "zwp_input_method_manager_v2", 1, 4);
+        kept.send(&message(4, 0, &words(&[3, 5]))).unwrap();
+        assert!(
+            kept.told(&message(5, 6, &[])).is_some(),
+            "told another is the one"
+        );
+        kept.send(&message(5, 5, &words(&[6]))).unwrap();
+
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        kept.keeping.join();
+        let made: Vec<(u32, u16)> = kept
+            .keeping
+            .to_compositor
+            .iter()
+            .map(|(bytes, _)| wire::header(bytes).unwrap().unwrap())
+            .map(|header| (header.object, header.opcode))
+            .collect();
+        assert!(
+            !made.contains(&(4, 0)) && !made.contains(&(5, 5)),
+            "{made:?}"
+        );
+        // Let go of, its numbers are the relay's to free.
+        assert_eq!(kept.send(&message(6, 0, &[])), None);
+        assert_eq!(kept.send(&message(5, 6, &[])), None);
+        let freed: Vec<Vec<u8>> = kept
+            .keeping
+            .to_program
+            .drain(..)
+            .map(|(bytes, _)| bytes)
+            .collect();
+        assert_eq!(
+            freed,
+            [message(1, 1, &words(&[6])), message(1, 1, &words(&[5]))]
+        );
     }
 
     #[test]
