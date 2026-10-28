@@ -110,6 +110,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("wl_subsurface", "set_position" | "set_sync" | "set_desync")
         | ("xdg_toplevel_icon_v1", "set_name")
         | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection")
+        | ("wp_alpha_modifier_surface_v1", "set_multiplier")
         | (
             "zwlr_layer_surface_v1",
             "set_size"
@@ -126,7 +127,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 34] = [
+const KEPT: [&str; 35] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -161,6 +162,7 @@ const KEPT: [&str; 34] = [
     "xdg_toplevel_icon_v1",
     "zxdg_exported_v2",
     "zwlr_layer_surface_v1",
+    "wp_alpha_modifier_surface_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -1159,6 +1161,25 @@ mod tests {
     }
 
     #[test]
+    fn a_surface_is_as_see_through_again_as_it_was_last_made() {
+        let mut program = Program::default();
+        program.bind(1, "wl_compositor", 6, 3);
+        program.bind(2, "wp_alpha_modifier_v1", 1, 4);
+        program.send(&sent(3, 0, &words(&[5])), &[]);
+        program.send(&sent(4, 1, &words(&[6, 5])), &[]);
+        program.send(&sent(6, 1, &words(&[100])), &[]);
+        program.send(&sent(6, 1, &words(&[200])), &[]);
+        assert!(program.journal.unkept().is_empty(), "kept");
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let set: Vec<Option<u32>> = sending
+            .iter()
+            .filter(|(bytes, _)| bytes[..8] == sent(6, 1, &words(&[0]))[..8])
+            .map(|(bytes, _)| wire::word(bytes, HEADER))
+            .collect();
+        assert_eq!(set, [Some(200)], "the last, alone");
+    }
+
+    #[test]
     fn a_windows_icon_is_given_it_again_once_the_icon_is_made() {
         let mut program = Program::default();
         program.bind(1, "xdg_wm_base", 6, 3);
@@ -1394,6 +1415,11 @@ mod tests {
         assert_eq!(rule(device, "set_primary_selection"), Rule::Lasting);
         assert_eq!(rule("xdg_toplevel", "set_title"), Rule::Lasting);
         assert_eq!(rule("zwlr_layer_surface_v1", "set_size"), Rule::Lasting);
+        assert_eq!(
+            rule("wp_alpha_modifier_surface_v1", "set_multiplier"),
+            Rule::Lasting
+        );
+        assert!(keeps("wp_alpha_modifier_surface_v1"));
         assert_eq!(
             rule("zwlr_layer_surface_v1", "ack_configure"),
             Rule::Passing
