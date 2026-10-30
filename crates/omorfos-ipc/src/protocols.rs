@@ -49,9 +49,11 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "ext_foreign_toplevel_image_capture_source_manager_v1",
         version: 1,
-        replayed: "Each source made again for the same window, by its handle in the list of \
-                   windows; one whose window has gone stops the sessions on it, as when the \
-                   window closes.",
+        replayed: "Not made again: the next compositor could not be told which window a source \
+                   is of, as the handle it was named by is most often let go of at once. Each \
+                   session on one, and each following the pointer over it, is told it has \
+                   stopped as the compositor goes, as when the window closes, and a picture \
+                   asked for that it failed; the relay answers for each from then on.",
     },
     Protocol {
         interface: "ext_foreign_toplevel_list_v1",
@@ -71,15 +73,18 @@ pub const OFFERED: &[Protocol] = &[
     Protocol {
         interface: "ext_image_copy_capture_manager_v1",
         version: 1,
-        replayed: "Each session made again on its source, its buffer constraints passed on only \
-                   if they changed. A frame being captured at that moment cannot be carried: it \
-                   is failed, as a frame may fail, and the program asks for another.",
+        replayed: "Each session made again on its source, and each following the pointer with \
+                   its pointer, which is told it left as the compositor goes. What a buffer has \
+                   to be is passed on only if the next compositor says otherwise. A picture \
+                   asked for at that moment cannot be carried: it is failed, as a picture may \
+                   fail, and the program asks for another; one made and not yet asked for is \
+                   made again with its buffer.",
     },
     Protocol {
         interface: "ext_output_image_capture_source_manager_v1",
         version: 1,
         replayed: "Each source made again for the same screen; one whose screen has gone stops \
-                   the sessions on it, as when it is unplugged.",
+                   the sessions on it, as the next compositor says, as when it is unplugged.",
     },
     Protocol {
         interface: "ext_session_lock_manager_v1",

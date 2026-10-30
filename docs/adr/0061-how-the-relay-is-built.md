@@ -572,3 +572,24 @@ and fails while that is other than what 3e still has to come.
   again, and puts the compositor's count in each commit. One told another
   is the input method is over, as a pointer held once only is: not made
   again, nor what it made, and the relay answers for each.
+- **Pictures of a screen go on, and of a window stop** (3e). A source of
+  a screen is made again for the screen the program bound, and each
+  session on it, and each following the pointer, with it; one whose
+  screen has gone is stopped by the next compositor, as when it is
+  unplugged. A picture asked for as the compositor goes cannot be
+  carried, as the next would take it of its own screen with damage of
+  its own: it is told it failed, as a picture may, and the program asks
+  for another, under the next compositor. One made and not yet asked for
+  is made again with its buffer and what is stale in it. Each following
+  the pointer is told it left, and the next says it came back. What a
+  buffer has to be the next compositor says again, which a program may
+  take as the screen having changed: the first it says is held back
+  until it is whole, and passed on, all of it, only if it is not what
+  the program was told. A source of a window cannot be made again by
+  the relay alone: it names the window by its handle in a list of
+  windows, which the portal lets go of as soon as the source is made,
+  and the next compositor would know the window by another. What takes
+  pictures of a window is told it stopped, as when the window closes,
+  and a picture of it asked for that it failed; none of it is made
+  again, and the relay answers for each. Making it again, by a list of
+  the relay's own, is left for later.

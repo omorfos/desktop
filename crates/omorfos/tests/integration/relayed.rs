@@ -19,6 +19,7 @@ use omorfos::{Input, Roles};
 use omorfos_config::Action;
 use omorfos_ipc::hold::{Told, Word};
 use omorfos_ipc::relay::{self, Hand, Program, Started};
+use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_frame_v1::FailureReason;
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::ZwpTextInputV3;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
@@ -26,7 +27,8 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, LayerShape, Session, TEXT, key};
+use crate::capture::{ask, develop};
+use crate::common::{Client, Event, HEIGHT, LayerShape, Session, TEXT, WIDTH, key};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
 use crate::holding::{nudge, pointed};
@@ -903,7 +905,6 @@ fn a_program_typing_with_a_keyboard_of_its_own_types_with_it_through_the_next() 
 
 /// Whether anything blue is on the screen.
 fn blue_shown(session: &mut Session) -> bool {
-    use crate::common::{HEIGHT, WIDTH};
     let picture = session.draw();
     (0..HEIGHT).any(|y| (0..WIDTH).any(|x| picture.at(x, y) == BLUE))
 }
@@ -1001,6 +1002,105 @@ fn an_input_method_types_through_the_next_compositor_in_the_field_it_typed_in() 
     };
     assert!(typist.take_events().contains(&pressed));
     assert_eq!(typist.error(), None);
+    assert_eq!(app.error(), None);
+}
+
+/// The pointer shown, over the first screen at 300, 200.
+fn pointing(session: &mut Session) {
+    session.compositor_mut().show_pointer();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 300.0, y: 200.0 }, 0);
+}
+
+#[test]
+fn pictures_of_a_screen_go_on_through_the_next_compositor_and_of_a_window_stop() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(pointing);
+    // What shares the screen, as the compositor starts it, with the role to
+    // take pictures and to list windows.
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::CAPTURE.with(Roles::PANEL).bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut camera = first.adopt(ours);
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut app, "app", (200, 100), RED);
+    first.roundtrip(&mut camera);
+    // Pictures of the screen, one taken and the next asked for, which waits
+    // for something to change; another made but not yet asked for; the
+    // pointer followed; and pictures of the window.
+    let taking = camera.capture(0, false);
+    let waiting = camera.capture(0, false);
+    let (_cursor, _pointer) = camera.capture_pointer(0);
+    let window = camera.capture_window("app");
+    first.roundtrip(&mut camera);
+    let (file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let taken = ask(&camera, &taking, &buffer);
+    let told = develop(&mut first, &mut camera);
+    assert!(told.contains(&Event::PointerAt(300, 200)), "{told:?}");
+    taken.destroy();
+    let under_way = ask(&camera, &taking, &buffer);
+    let (later_file, later_buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+    let later = camera.shot(&waiting);
+    later.attach_buffer(&later_buffer);
+    later.damage_buffer(0, 0, WIDTH, HEIGHT);
+    let told = develop(&mut first, &mut camera);
+    assert!(!told.contains(&Event::ShotReady), "{told:?}");
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
+    // The picture asked for is told it failed, as one may, and the pointer
+    // that it left; the pictures of the window stop, as when it closes.
+    camera.receive();
+    let told = camera.take_events();
+    assert!(
+        told.contains(&Event::ShotFailed(FailureReason::Unknown)),
+        "{told:?}"
+    );
+    assert!(told.contains(&Event::PointerLeft), "{told:?}");
+    assert!(told.contains(&Event::CaptureStopped), "{told:?}");
+    under_way.destroy();
+    window.destroy();
+
+    let (mut second, _holder) = relayed.compositor_with(pointing);
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut camera);
+    second.step();
+    second.roundtrip(&mut camera);
+    // What a buffer has to be is as it was, and is not told again; the
+    // pointer is back where it was.
+    let told = camera.take_events();
+    assert!(
+        !told.iter().any(|event| matches!(
+            event,
+            Event::CaptureSize(..) | Event::CaptureFormat(_) | Event::CaptureKnown
+        )),
+        "{told:?}"
+    );
+    assert!(told.contains(&Event::PointerEntered), "{told:?}");
+    assert!(told.contains(&Event::PointerAt(300, 200)), "{told:?}");
+    // The picture made before is taken once asked for, and the next of the
+    // screen once asked for anew, each of all of it.
+    later.capture();
+    let told = develop(&mut second, &mut camera);
+    assert!(told.contains(&Event::ShotReady), "{told:?}");
+    let again = ask(&camera, &taking, &buffer);
+    let told = develop(&mut second, &mut camera);
+    assert!(told.contains(&Event::ShotReady), "{told:?}");
+    again.destroy();
+    later.destroy();
+    for file in [&file, &later_file] {
+        let picture = crate::common::Picture::read(file, WIDTH);
+        assert_eq!(picture.at(10, 10), RED);
+        assert_eq!(picture.at(300, 300), BACKGROUND);
+    }
+    assert_eq!(camera.error(), None);
     assert_eq!(app.error(), None);
 }
 
@@ -1645,7 +1745,7 @@ fn a_panel_kept_by_the_relay_is_on_its_edge_again_after_a_restart() {
         exclusive_zone: 30,
         keyboard: KeyboardInteractivity::None,
     };
-    let _held = first.open_layer(&mut panel, &strip, (crate::common::WIDTH, 30), BLUE);
+    let _held = first.open_layer(&mut panel, &strip, (WIDTH, 30), BLUE);
     assert_eq!(first.draw().at(5, 5), BLUE);
     first.roundtrip(&mut panel);
     panel.take_events();

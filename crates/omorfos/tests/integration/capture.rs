@@ -31,7 +31,11 @@ fn camera(session: &mut Session) -> Client {
 }
 
 /// Asks for a picture in `buffer`, without waiting for it.
-fn ask(client: &Client, taking: &Taking, buffer: &WlBuffer) -> ExtImageCopyCaptureFrameV1 {
+pub(crate) fn ask(
+    client: &Client,
+    taking: &Taking,
+    buffer: &WlBuffer,
+) -> ExtImageCopyCaptureFrameV1 {
     let frame = client.shot(taking);
     frame.attach_buffer(buffer);
     frame.damage_buffer(0, 0, WIDTH, HEIGHT);
@@ -41,7 +45,7 @@ fn ask(client: &Client, taking: &Taking, buffer: &WlBuffer) -> ExtImageCopyCaptu
 
 /// What came of a picture asked for: the events about it, once the
 /// screen has been drawn.
-fn develop(session: &mut Session, client: &mut Client) -> Vec<Event> {
+pub(crate) fn develop(session: &mut Session, client: &mut Client) -> Vec<Event> {
     session.roundtrip(client);
     session.draw();
     session.roundtrip(client);

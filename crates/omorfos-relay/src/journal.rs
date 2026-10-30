@@ -97,7 +97,8 @@ pub fn rule(interface: &str, request: &str) -> Rule {
             "offer",
         )
         | ("zwp_linux_buffer_params_v1", "add")
-        | ("xdg_toplevel_icon_v1", "add_buffer") => Rule::Adding,
+        | ("xdg_toplevel_icon_v1", "add_buffer")
+        | ("ext_image_copy_capture_frame_v1", "damage_buffer") => Rule::Adding,
         ("wl_shm_pool", "resize")
         | ("wl_data_source", "set_actions")
         | ("xdg_surface", "set_window_geometry")
@@ -115,6 +116,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("zwp_locked_pointer_v1", "set_cursor_position_hint" | "set_region")
         | ("zwp_confined_pointer_v1", "set_region")
         | ("zwp_virtual_keyboard_v1", "keymap")
+        | ("ext_image_copy_capture_frame_v1", "attach_buffer")
         | (
             "zwlr_layer_surface_v1",
             "set_size"
@@ -131,7 +133,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 44] = [
+const KEPT: [&str; 48] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -176,6 +178,10 @@ const KEPT: [&str; 44] = [
     "zwp_input_method_v2",
     "zwp_input_method_keyboard_grab_v2",
     "zwp_input_popup_surface_v2",
+    "ext_image_capture_source_v1",
+    "ext_image_copy_capture_session_v1",
+    "ext_image_copy_capture_cursor_session_v1",
+    "ext_image_copy_capture_frame_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -1496,6 +1502,10 @@ mod tests {
         assert_eq!(rule("zwp_virtual_keyboard_v1", "keymap"), Rule::Lasting);
         assert_eq!(rule("zwp_virtual_keyboard_v1", "key"), Rule::Passing);
         assert!(keeps("ext_idle_notification_v1") && keeps("zwp_virtual_keyboard_v1"));
+        let frame = "ext_image_copy_capture_frame_v1";
+        assert_eq!(rule(frame, "attach_buffer"), Rule::Lasting);
+        assert_eq!(rule(frame, "damage_buffer"), Rule::Adding);
+        assert_eq!(rule(frame, "capture"), Rule::Passing);
         assert_eq!(
             rule("zwlr_layer_surface_v1", "ack_configure"),
             Rule::Passing
@@ -1530,10 +1540,6 @@ mod tests {
         // What the rest of step 3 makes again (ADR 61). A protocol added
         // to the list is made again as it is added.
         let to_come = [
-            "ext_image_capture_source_v1",
-            "ext_image_copy_capture_cursor_session_v1",
-            "ext_image_copy_capture_frame_v1",
-            "ext_image_copy_capture_session_v1",
             "ext_session_lock_surface_v1",
             "ext_session_lock_v1",
             "wl_touch",

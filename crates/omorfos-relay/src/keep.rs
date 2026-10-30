@@ -1,25 +1,27 @@
 //! Keeping a program through a change of compositor (ADR 61, step 2).
 //!
-//! When the compositor ends, the program waits, told only that the pointer,
-//! the keyboard and any field typed into have left its surfaces, that a
-//! gesture under way was cancelled, that the pointer it held is let go of,
-//! that a user it was told is away is back, as the next compositor counts
-//! from when it starts, that an input method typing in a field is no longer,
-//! with any key held in its keyboard grab let go of, and that what lasts
-//! only a moment has ended: a popup dismissed, a token given, a picture
-//! discarded, which the relay answers for from then on. A pointer held once
-//! only that has been held is over too, and so is an input method told
-//! another is the one; and a window in its lists of windows that is not kept
-//! has closed. When the next is joined, what the program had is made again
-//! in two parts, each ended by a sync of the relay's own: its registries, so
-//! that the new compositor's globals are known, then the rest, as
-//! [`Journal`] kept it. Until the second is answered, what the compositor
-//! says is sifted: what the program knows already is kept from it. A window
-//! the next compositor lists that the program has listed is the one it has,
-//! once the relay knows which it is. A window of another program's that it
-//! imported by the handle the compositor before shared it by is imported
-//! again by the one the next shares it by, once that is known: the import
-//! made again by the old handle, which the next compositor refuses, is
+//! When the compositor ends, the program waits, told only that the pointer, the
+//! keyboard and any field typed into have left its surfaces, that a gesture
+//! under way was cancelled, that the pointer it held is let go of, that a user
+//! it was told is away is back, as the next compositor counts from when it
+//! starts, that an input method typing in a field is no longer, with any key
+//! held in its keyboard grab let go of, that a picture it asked for has failed
+//! and the pointer it follows has left, that what it takes pictures of a window
+//! through has stopped, and that what lasts only a moment has ended: a popup
+//! dismissed, a token given, a picture discarded, which the relay answers for
+//! from then on. A pointer held once only that has been held is over too, and
+//! so is an input method told another is the one; and a window in its lists of
+//! windows that is not kept has closed. When the next is joined, what the
+//! program had is made again in two parts, each ended by a sync of the relay's
+//! own: its registries, so that the new compositor's globals are known, then
+//! the rest, as [`Journal`] kept it. Until the second is answered, what the
+//! compositor says is sifted: what the program knows already is kept from it.
+//! What a buffer has to be for its pictures is told again only if it is not as
+//! it was. A window the next compositor lists that the program has listed is
+//! the one it has, once the relay knows which it is. A window of another
+//! program's that it imported by the handle the compositor before shared it by
+//! is imported again by the one the next shares it by, once that is known: the
+//! import made again by the old handle, which the next compositor refuses, is
 //! destroyed first, and that it was refused is kept from the program.
 //!
 //! Some numbers mean something only to one compositor, and the relay puts
@@ -81,6 +83,25 @@ const LISTED_DONE: u16 = 1;
 const TITLE: u16 = 2;
 const APP_ID: u16 = 3;
 const IDENTIFIER: u16 = 4;
+
+/// The events of a session of pictures (`ext-image-copy-capture`) that say
+/// what a buffer has to be is whole, and that no more will be taken.
+const CONSTRAINED: u16 = 4;
+const STOPPED: u16 = 5;
+
+/// The events of a picture that say it is taken and that it failed, with
+/// why: for no reason given, or as what it was of has gone; and its request
+/// that asks for it.
+const SHOT_READY: u16 = 3;
+const SHOT_FAILED: u16 = 4;
+const UNKNOWN: u32 = 0;
+const GONE: u32 = 2;
+const CAPTURE: u16 = 3;
+
+/// The events of what follows the pointer that say it came over what it
+/// follows, and that it left.
+const POINTER_IN: u16 = 0;
+const POINTER_OUT: u16 = 1;
 
 /// The event of a window shared with other programs (`xdg-foreign`) that
 /// says the handle it is shared by, and the importer's request that imports
@@ -197,6 +218,31 @@ struct Method {
     done: (u32, u32),
     /// Whether it is typing in a field.
     active: bool,
+}
+
+/// Where a picture of the program's is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shot {
+    /// Made, and not yet asked for.
+    Made,
+    /// Asked for, and neither taken nor failed.
+    Asked,
+    /// Taken, or failed.
+    Told,
+}
+
+/// What a buffer has to be for a session's pictures, as the compositor
+/// says it, ending with that it is whole.
+#[derive(Debug, Default)]
+struct Constraints {
+    /// What the program was last told.
+    told: Vec<Vec<u8>>,
+    /// What the compositor has said since.
+    coming: Vec<Vec<u8>>,
+    /// Whether what comes is held back until it is whole, and passed on
+    /// only if it is not as the program was told: the first the next
+    /// compositor says.
+    sifting: bool,
 }
 
 /// A window in a list of windows the program has (`ext-foreign-toplevel-list`).
@@ -367,6 +413,19 @@ pub struct Keeping {
     /// The input methods told another is the one, and what each made, which
     /// are to go: not made again.
     refused: HashSet<u32>,
+    /// The program's pictures, by its number for each.
+    shots: HashMap<u32, Shot>,
+    /// What a buffer has to be for each of the program's sessions of
+    /// pictures, by its number for each.
+    taking: HashMap<u32, Constraints>,
+    /// Whether the pointer is over what each of the program's that follow
+    /// it follows, by its number for each.
+    following: HashMap<u32, bool>,
+    /// What the program takes pictures of a window through, by its number
+    /// for each, with what each is: the source, and each session, picture
+    /// and follower of the pointer made of it. They stop as the compositor
+    /// goes.
+    of_windows: HashMap<u32, &'static str>,
     /// The highest of the program's numbers when the compositor went: what
     /// the program may take next may be any up to it.
     highest: u32,
@@ -423,6 +482,10 @@ impl Default for Keeping {
             methods: HashMap::new(),
             grabbed: HashMap::new(),
             refused: HashSet::new(),
+            shots: HashMap::new(),
+            taking: HashMap::new(),
+            following: HashMap::new(),
+            of_windows: HashMap::new(),
             highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
@@ -550,6 +613,7 @@ impl Keeping {
     /// confinement of the pointer made is kept, as held once only or for
     /// as long as it lasts.
     fn made_or_ended(&mut self, read: &Read, object: u32, bytes: &[u8]) {
+        self.picturing(read, object, bytes);
         if read.ends {
             self.constraints.remove(&object);
             self.away.remove(&object);
@@ -561,6 +625,10 @@ impl Keeping {
             self.methods.remove(&object);
             self.grabbed.remove(&object);
             self.refused.remove(&object);
+            self.shots.remove(&object);
+            self.taking.remove(&object);
+            self.following.remove(&object);
+            self.of_windows.remove(&object);
             // A window gone belongs to none imported any longer.
             for import in self.imports.values_mut() {
                 import.child = import.child.filter(|child| *child != object);
@@ -592,6 +660,40 @@ impl Keeping {
                 was: false,
             };
             self.constraints.insert(made, constraint);
+        }
+    }
+
+    /// Takes in the request `bytes` to `object`, which `read` says it is, as
+    /// far as it makes what pictures are taken through, a picture, or asks
+    /// for one: what is made of a window, or of what was, is a window's.
+    fn picturing(&mut self, read: &Read, object: u32, bytes: &[u8]) {
+        if read.interface.name == "ext_image_copy_capture_frame_v1" && read.opcode == CAPTURE {
+            let _ = self.shots.get_mut(&object).map(|shot| *shot = Shot::Asked);
+        }
+        let Some((made, interface, _)) = read.made else {
+            return;
+        };
+        self.shots.remove(&made);
+        self.taking.remove(&made);
+        self.following.remove(&made);
+        self.of_windows.remove(&made);
+        match interface.name {
+            "ext_image_copy_capture_frame_v1" => {
+                self.shots.insert(made, Shot::Made);
+            }
+            "ext_image_copy_capture_cursor_session_v1" => {
+                self.following.insert(made, false);
+            }
+            _ => {}
+        }
+        let source = wire::word(bytes, HEADER + 4).unwrap_or_default();
+        let window = match read.interface.name {
+            "ext_foreign_toplevel_image_capture_source_manager_v1" => true,
+            "ext_image_copy_capture_manager_v1" => self.of_windows.contains_key(&source),
+            _ => self.of_windows.contains_key(&object),
+        };
+        if window {
+            self.of_windows.insert(made, interface.name);
         }
     }
 
@@ -864,6 +966,9 @@ impl Keeping {
             ("zwp_input_method_v2" | "zwp_input_method_keyboard_grab_v2", opcode) => {
                 self.typing(object, read.interface.name, opcode, body);
             }
+            (interface, opcode) if interface.starts_with("ext_image_copy_capture") => {
+                return self.pictured(object, interface, opcode, bytes);
+            }
             ("ext_idle_notification_v1", 0) => {
                 self.away.insert(object);
             }
@@ -926,6 +1031,94 @@ impl Keeping {
                 self.refused.insert(object);
             }
             _ => {}
+        }
+    }
+
+    /// Takes in the event `bytes`, `opcode` of `interface`, to `object`, as
+    /// far as it says a picture is taken or failed, what a buffer has to be
+    /// for a session's, or that the pointer came over what is followed or
+    /// left it. Returns whether it is passed on.
+    fn pictured(&mut self, object: u32, interface: &str, opcode: u16, bytes: &[u8]) -> bool {
+        match (interface, opcode) {
+            ("ext_image_copy_capture_frame_v1", SHOT_READY | SHOT_FAILED) => {
+                let _ = self.shots.get_mut(&object).map(|shot| *shot = Shot::Told);
+            }
+            ("ext_image_copy_capture_cursor_session_v1", POINTER_IN | POINTER_OUT) => {
+                self.following.insert(object, opcode == POINTER_IN);
+            }
+            ("ext_image_copy_capture_session_v1", opcode) if opcode <= CONSTRAINED => {
+                return self.constrained(object, opcode, bytes);
+            }
+            _ => {}
+        }
+        true
+    }
+
+    /// Takes in the event `bytes`, `opcode`, of the session `session`, that
+    /// says what a buffer has to be for its pictures, or that that is whole.
+    /// The first the next compositor says is held back until it is whole,
+    /// and passed on only if it is not as the program was told, for a
+    /// program may take it as the screen changed. Returns whether it is
+    /// passed on.
+    fn constrained(&mut self, session: u32, opcode: u16, bytes: &[u8]) -> bool {
+        let constraints = self.taking.entry(session).or_default();
+        if opcode != CONSTRAINED {
+            constraints.coming.push(bytes.to_vec());
+            return !constraints.sifting;
+        }
+        let coming = std::mem::take(&mut constraints.coming);
+        let sifted = std::mem::take(&mut constraints.sifting);
+        let same = coming == constraints.told;
+        if sifted && !same {
+            let held = coming.iter().map(|said| (said.clone(), Vec::new()));
+            self.to_program.extend(held);
+        }
+        constraints.told = coming;
+        !(sifted && same)
+    }
+
+    /// Lets go of what the program takes pictures through, as the compositor
+    /// goes. What it takes pictures of a window through is told it has
+    /// stopped, as when the window closes, as the next compositor could not
+    /// be told which window it is, and goes into `spent`. A picture asked
+    /// for is told it failed, as one may, for the program to ask for
+    /// another; it and every picture told of go into `spent` too, and the
+    /// rest is made again. A pointer followed is told it left. What a
+    /// buffer has to be is told again only if it changed.
+    fn let_go_of_pictures(&mut self, spent: &mut HashSet<u32>) {
+        let mut windows: Vec<(u32, &str)> = self.of_windows.drain().collect();
+        windows.sort_unstable();
+        for (number, interface) in windows {
+            if interface == "ext_image_copy_capture_session_v1" {
+                self.to_program.push(journal::message(number, STOPPED, &[]));
+            }
+            spent.insert(number);
+        }
+        let mut shots: Vec<(u32, Shot)> = self.shots.iter().map(|(n, s)| (*n, *s)).collect();
+        shots.sort_unstable_by_key(|(number, _)| *number);
+        for (frame, shot) in shots {
+            let window = spent.contains(&frame);
+            if shot == Shot::Asked {
+                let why = if window { GONE } else { UNKNOWN };
+                self.to_program
+                    .push(journal::message(frame, SHOT_FAILED, &[why]));
+            }
+            if shot != Shot::Made || window {
+                self.shots.remove(&frame);
+                spent.insert(frame);
+            }
+        }
+        let mut following: Vec<(&u32, &mut bool)> = self.following.iter_mut().collect();
+        following.sort_unstable_by_key(|(number, _)| **number);
+        for (number, over) in following {
+            if std::mem::take(over) {
+                self.to_program
+                    .push(journal::message(*number, POINTER_OUT, &[]));
+            }
+        }
+        for constraints in self.taking.values_mut() {
+            constraints.coming.clear();
+            constraints.sifting = true;
         }
     }
 
@@ -1473,6 +1666,7 @@ impl Keeping {
         // An input method told another is the one is to go, and is not
         // made again, nor what it made; the relay answers for each.
         spent.extend(self.refused.drain());
+        self.let_go_of_pictures(&mut spent);
         let mut menu = false;
         for (number, interface) in self.journal.end_lost(&spent) {
             let untold = !self.given.remove(&number);
@@ -2631,6 +2825,187 @@ mod tests {
             "{:?}",
             kept.keeping.to_program
         );
+    }
+
+    /// The globals a program taking pictures binds: a screen as 3, what
+    /// makes sources of screens as 4 and of windows as 5, what takes
+    /// pictures as 6, a list of windows as 7, what makes buffers as 8, and
+    /// a seat as 9.
+    const PICTURING: [(u32, &str, u32); 7] = [
+        (1, "wl_output", 4),
+        (2, "ext_output_image_capture_source_manager_v1", 1),
+        (3, "ext_foreign_toplevel_image_capture_source_manager_v1", 1),
+        (4, "ext_image_copy_capture_manager_v1", 1),
+        (5, "ext_foreign_toplevel_list_v1", 1),
+        (6, "wp_single_pixel_buffer_manager_v1", 1),
+        (7, "wl_seat", 7),
+    ];
+
+    /// A program that has bound each of [`PICTURING`].
+    fn picturing() -> Kept {
+        let mut kept = Kept::registered(&PICTURING);
+        for (number, (name, interface, version)) in (3..).zip(PICTURING) {
+            kept.bind(name, interface, version, number);
+        }
+        kept
+    }
+
+    /// Makes a buffer as `buffer`.
+    fn buffer(kept: &mut Kept, buffer: u32) {
+        kept.send(&message(8, 1, &words(&[buffer, 0, 0, 0, 0])))
+            .unwrap();
+    }
+
+    /// Makes `frame` of `session`, to be taken in the buffer `buffer`, and
+    /// asks for it if `asked`.
+    fn shot(kept: &mut Kept, (session, frame, buffer): (u32, u32, u32), asked: bool) {
+        kept.send(&message(session, 0, &words(&[frame]))).unwrap();
+        kept.send(&message(frame, 1, &words(&[buffer]))).unwrap();
+        kept.send(&message(frame, 2, &words(&[0, 0, 1, 1])))
+            .unwrap();
+        if asked {
+            kept.send(&message(frame, CAPTURE, &[])).unwrap();
+        }
+    }
+
+    /// What the relay sent the compositor, by object and opcode.
+    fn sent(kept: &Kept) -> Vec<(u32, u16)> {
+        headers(&kept.keeping.to_compositor)
+    }
+
+    #[test]
+    fn a_picture_of_a_screen_asked_for_as_the_compositor_goes_fails_and_one_not_is_made_again() {
+        let mut kept = picturing();
+        // The screen's source, and three sessions on it, each with a
+        // picture: asked for, made, and taken.
+        kept.send(&message(4, 0, &words(&[10, 3]))).unwrap();
+        for session in [11, 12, 13] {
+            kept.send(&message(6, 0, &words(&[session, 10, 0])))
+                .unwrap();
+        }
+        // The pointer followed, over the screen, then moving.
+        kept.send(&message(9, 0, &words(&[14]))).unwrap();
+        kept.send(&message(6, 1, &words(&[15, 10, 14]))).unwrap();
+        for told in [
+            message(15, POINTER_IN, &[]),
+            message(15, 2, &words(&[1, 2])),
+        ] {
+            assert!(kept.told(&told).is_some());
+        }
+        buffer(&mut kept, 16);
+        shot(&mut kept, (11, 17, 16), true);
+        shot(&mut kept, (12, 18, 16), false);
+        shot(&mut kept, (13, 19, 16), true);
+        for told in [
+            message(17, 1, &words(&[0, 0, 1, 1])),
+            message(19, SHOT_READY, &[]),
+        ] {
+            assert!(kept.told(&told).is_some());
+        }
+
+        kept.restarted(&PICTURING);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [
+                message(17, SHOT_FAILED, &words(&[UNKNOWN])),
+                message(15, POINTER_OUT, &[])
+            ],
+            "the picture asked for failed, and the pointer left"
+        );
+        kept.keeping.to_program.clear();
+        let made = sent(&kept);
+        for again in [(6, 0), (6, 1), (12, 0), (18, 1), (18, 2)] {
+            assert!(made.contains(&again), "{again:?} in {made:?}");
+        }
+        assert!(
+            !made.contains(&(11, 0)) && !made.contains(&(13, 0)),
+            "{made:?}"
+        );
+        // Those not made again are the relay's to free.
+        assert_eq!(kept.send(&message(17, 0, &[])), None);
+        assert_eq!(kept.send(&message(19, 0, &[])), None);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(1, 1, &words(&[17])), message(1, 1, &words(&[19]))]
+        );
+    }
+
+    #[test]
+    fn what_takes_pictures_of_a_window_stops_as_the_compositor_goes_and_is_not_made_again() {
+        let mut kept = picturing();
+        let window = SERVERS;
+        kept.told(&toplevel(7, window)).unwrap();
+        kept.send(&message(5, 0, &words(&[10, window]))).unwrap();
+        kept.send(&message(6, 0, &words(&[11, 10, 0]))).unwrap();
+        // The pointer followed over the window, with pictures of it.
+        kept.send(&message(9, 0, &words(&[12]))).unwrap();
+        kept.send(&message(6, 1, &words(&[13, 10, 12]))).unwrap();
+        kept.send(&message(13, 1, &words(&[14]))).unwrap();
+        buffer(&mut kept, 15);
+        shot(&mut kept, (11, 16, 15), true);
+        shot(&mut kept, (14, 17, 15), false);
+
+        kept.restarted(&PICTURING);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [
+                message(11, STOPPED, &[]),
+                message(14, STOPPED, &[]),
+                message(16, SHOT_FAILED, &words(&[GONE]))
+            ],
+            "as when the window closes"
+        );
+        kept.keeping.to_program.clear();
+        let made = sent(&kept);
+        for unmade in [(5, 0), (6, 0), (6, 1), (13, 1), (11, 0), (14, 0)] {
+            assert!(!made.contains(&unmade), "{unmade:?} in {made:?}");
+        }
+        assert_eq!(kept.send(&message(11, 1, &[])), None);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(1, 1, &words(&[11]))]
+        );
+    }
+
+    #[test]
+    fn what_a_buffer_has_to_be_is_told_again_only_if_the_next_compositor_says_otherwise() {
+        let mut kept = picturing();
+        kept.send(&message(4, 0, &words(&[10, 3]))).unwrap();
+        for session in [11, 12] {
+            kept.send(&message(6, 0, &words(&[session, 10, 0])))
+                .unwrap();
+        }
+        let batch = |session, width| {
+            [
+                message(session, 0, &words(&[width, 50])),
+                message(session, 1, &words(&[1])),
+                message(session, CONSTRAINED, &[]),
+            ]
+        };
+        for told in batch(11, 100).into_iter().chain(batch(12, 100)) {
+            assert_eq!(kept.told(&told), Some(told.clone()), "told as said");
+        }
+
+        kept.restarted(&PICTURING);
+        for told in batch(11, 100) {
+            assert_eq!(kept.told(&told), None, "the same, not told again");
+        }
+        let [size, format, done] = batch(12, 200);
+        assert_eq!(kept.told(&size), None, "held until it is whole");
+        assert_eq!(kept.told(&format), None);
+        assert_eq!(kept.told(&done), Some(done.clone()));
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [size, format],
+            "told before the end of it"
+        );
+        // Said again after that, it is told as it is said.
+        kept.keeping.to_program.clear();
+        for told in batch(11, 300) {
+            assert_eq!(kept.told(&told), Some(told.clone()));
+        }
+        let stopped = message(11, STOPPED, &[]);
+        assert_eq!(kept.told(&stopped), Some(stopped.clone()));
     }
 
     #[test]

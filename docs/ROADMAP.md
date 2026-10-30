@@ -869,7 +869,11 @@ what only games and touchpads need last.
       compositor gave it, where one listing windows anew, and IPC, are given the next's; a window
       kept that the next compositor never lists leaves its handle open, and each window listed
       after it held back for a moment; what an input method was composing as the compositor
-      goes is lost, as when the field loses the keyboard; a global the next compositor offers
+      goes is lost, as when the field loses the keyboard; pictures of a window stop as the
+      compositor goes, as when the window closes, and a call sharing one stops sharing it, where
+      pictures of a screen go on; a program sharing the screen that holds the X server for it,
+      as Firefox does, closes as the share ends, its X server having gone with the compositor
+      before; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
@@ -901,8 +905,23 @@ what only games and touchpads need last.
       its grab let go of, and typing in it again once the field is enabled
       again; what it commits counted as the next compositor counts; one
       told another is the input method not made again.
-- [ ] Capturing the screen or a window made again (3e, the fifth part):
-      the sources, the sessions and a frame under way, failed.
+- [x] Capturing the screen made again (3e, the fifth part): each source
+      of a screen, session and follower of the pointer made again, the
+      follower told the pointer left as the compositor goes; a picture
+      asked for told it failed, and one not yet asked for made again with
+      its buffer; what a buffer has to be told again only if the next
+      compositor says otherwise. What takes pictures of a window is told
+      it stopped, as when the window closes. The portal asks again for a
+      picture of the pointer that failed, which it did not, so that the
+      pointer beside a screen shared stopped changing its look after the
+      session was locked.
+- [ ] Pictures of a window made again after a change of compositor:
+      the relay making, on the program's connection, a list of windows of
+      its own under numbers the program cannot take meanwhile, finding the
+      window by the identifiers it knows from the list of windows (3e, the
+      third part), making the source of it, and letting the list go. The
+      portal lets go of the window's handle as soon as the source is made,
+      so nothing of the program's names the window by then.
 - [ ] The lock made again (3e, the sixth part), with the holder's word
       on whether the session is locked: whether a locker kept is the
       next compositor's locker, or one is started anew, settled first.
