@@ -186,7 +186,10 @@ as GTK's are, come in step 3.
   only if it is the next past those it has, or one it has freed; a
   program's have gaps where it destroyed something, so before an object
   is made again each number below it not yet taken is taken by a sync of
-  the relay's own, which the compositor answers and frees. The relay's
+  the relay's own, which the compositor answers and frees. So is each
+  past the last made again up to the highest the program has ever taken:
+  libwayland takes a freed number again, the last freed first, so the
+  program may next take one above every number it still holds. The relay's
   syncs take the next number past all of them, which the program cannot
   take meanwhile, as it is not read until the relay has caught up. What
   the compositor makes, such as an offer of what is on the clipboard, it

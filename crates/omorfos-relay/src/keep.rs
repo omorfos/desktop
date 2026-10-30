@@ -3108,6 +3108,38 @@ mod tests {
     }
 
     #[test]
+    fn every_number_a_program_has_taken_is_taken_by_the_next_compositor_freed_or_not() {
+        let globals = [(1, "wl_compositor", 6)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "wl_compositor", 6, 3);
+        // Surfaces 4 to 7, the last three destroyed and their numbers freed:
+        // the program may take any of them next, as libwayland takes the
+        // last freed first.
+        for surface in 4..=7 {
+            kept.send(&message(3, 0, &words(&[surface]))).unwrap();
+        }
+        for surface in 5..=7 {
+            kept.send(&message(surface, 0, &[])).unwrap();
+            kept.told(&message(DISPLAY, DELETE_ID, &words(&[surface])))
+                .unwrap();
+        }
+
+        kept.restarted(&globals);
+        let synced = kept.keeping.to_compositor.iter().filter_map(|(bytes, _)| {
+            let header = wire::header(bytes).unwrap().unwrap();
+            let sync = (header.object, header.opcode) == (DISPLAY, 0);
+            sync.then(|| wire::word(bytes, HEADER).unwrap())
+        });
+        let synced: Vec<u32> = synced.collect();
+        for freed in 5..=7 {
+            assert!(
+                synced.contains(&freed),
+                "{freed} taken, and freed, by the next compositor: {synced:?}"
+            );
+        }
+    }
+
+    #[test]
     fn what_lasts_only_a_moment_is_told_it_has_ended_and_is_the_relays_to_answer_for() {
         let globals = [
             (1, "wl_compositor", 6),

@@ -57,6 +57,10 @@ pub struct Read {
 #[derive(Debug)]
 pub struct Objects {
     known: HashMap<u32, Object>,
+    /// The highest of the program's own numbers it has taken. One freed is
+    /// the program's to take again in any order, libwayland's last freed
+    /// first, so a number above every one it holds may be taken next.
+    highest: u32,
 }
 
 impl Default for Objects {
@@ -68,6 +72,7 @@ impl Default for Objects {
         };
         Self {
             known: HashMap::from([(DISPLAY, display)]),
+            highest: DISPLAY,
         }
     }
 }
@@ -181,11 +186,11 @@ impl Objects {
         self.known.get(&number).is_none_or(|object| object.gone)
     }
 
-    /// The highest of the program's own numbers it holds, gone or not.
+    /// The highest of the program's own numbers it has taken, held or
+    /// freed.
     #[must_use]
-    pub fn highest(&self) -> u32 {
-        let ours = self.known.keys().filter(|number| **number < SERVERS);
-        ours.max().copied().unwrap_or(DISPLAY)
+    pub const fn highest(&self) -> u32 {
+        self.highest
     }
 
     /// What each object living is, in no order.
@@ -253,6 +258,9 @@ impl Objects {
             gone: false,
         };
         self.known.insert(number, object);
+        if number < SERVERS {
+            self.highest = self.highest.max(number);
+        }
         Ok(())
     }
 
