@@ -1067,6 +1067,58 @@ fn a_screen_shared_while_the_session_is_locked_is_shown_again_once_it_is_not() {
     assert!(session.compositor().captured(&session.output()));
 }
 
+#[test]
+fn the_pointer_beside_a_screen_shared_while_the_session_is_locked_looks_as_it_does_after() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, BLUE), ("text", 8, GREEN)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    let over = |x: f64, y: f64| Input::Motion { x, y };
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let called = "/org/freedesktop/portal/desktop/session/1_1/unlocked";
+    let (_peer, node) = sharing_with(&mut session, &daemon, called, BESIDE);
+    session.compositor_mut().input(over(300.0, 200.0), 0);
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.seen().pointer == Some(((300, 200), (1, 1), BLUE))
+    });
+
+    // The picture of the pointer asked for while it is locked fails.
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+    session.draw();
+    session.send_frames(Duration::from_millis(16));
+    session.roundtrip(&mut locker);
+    assert!(locker.take_events().contains(&Event::Locked));
+    wait(&mut session, Duration::from_millis(100), || {
+        viewer.turn(node);
+    });
+    lock.unlock_and_destroy();
+    session.roundtrip(&mut locker);
+
+    // Once it is not, the pointer looking different is told.
+    session.compositor_mut().input(over(50.0, 50.0), 0);
+    session.roundtrip(&mut app);
+    app.set_cursor_shape(Shape::Text);
+    session.roundtrip(&mut app);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        viewer.seen().pointer == Some(((50, 50), (1, 1), GREEN))
+    });
+}
+
 /// Starts sharing in a session already made, has the user answer with a
 /// key, and returns the answer.
 fn shared(

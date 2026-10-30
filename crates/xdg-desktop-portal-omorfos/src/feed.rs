@@ -63,8 +63,10 @@ struct Followed {
     tip: (i32, i32),
     /// How large its pictures are, once said.
     size: Option<(u32, u32)>,
-    /// Whether the picture of it asked for has been taken.
+    /// Whether the picture of it asked for has been taken, or could not
+    /// be, as while the session is locked.
     ready: bool,
+    failed: bool,
 }
 
 /// What the compositor has said about the pictures being taken.
@@ -469,6 +471,12 @@ impl Feed {
     /// Only one is asked for at a time: the one before has been put where
     /// it was to go.
     pub fn ask(&mut self, memory: &Memory, layout: Option<u64>) {
+        // A picture of the pointer that could not be taken is asked for
+        // again with the next of the screen, not at once: while the session
+        // is locked, each would fail as soon as it was asked for.
+        if mem::take(&mut self.watching.followed.failed) {
+            self.point();
+        }
         if let Some(region) = self.region.as_mut() {
             // A region is cut from a picture of all the screen, put in
             // memory of this program's own, which nothing else is put in:
@@ -839,6 +847,7 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, Of> for Watching {
             // gone comes with the session saying it has stopped.
             frame::Event::Failed { .. } => {
                 watching.lost |= current;
+                watching.followed.failed |= *of == Of::Pointer;
                 frame.destroy();
             }
             _ => {}
