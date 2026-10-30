@@ -263,6 +263,25 @@ impl Relayed {
             .step(Some(Duration::ZERO), &mut *self.said.borrow_mut());
     }
 
+    /// Steps the relay alone until `client` has been told what `wanted`
+    /// looks for, and returns all it was told. The relay sees the
+    /// compositor go only once every copy of its end has closed, which a
+    /// test starting a program meanwhile holds for a moment.
+    #[track_caller]
+    fn told(&self, client: &mut Client, wanted: impl Fn(&[Event]) -> bool) -> Vec<Event> {
+        let mut told = Vec::new();
+        for _ in 0..5000 {
+            self.step();
+            client.receive();
+            told.extend(client.take_events());
+            if wanted(&told) {
+                return told;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        unreachable!("never told: {told:?}");
+    }
+
     /// Checks that the one program connected was kept, and if not, says
     /// what the relay said of it.
     fn kept(&self) {
@@ -1052,13 +1071,10 @@ fn pictures_of_a_screen_go_on_through_the_next_compositor_and_of_a_window_stop()
     assert!(!told.contains(&Event::ShotReady), "{told:?}");
 
     drop((first, first_holder));
-    relayed.step();
-    relayed.step();
-    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
     // The picture asked for is told it failed, as one may, and the pointer
     // that it left; the pictures of the window stop, as when it closes.
-    camera.receive();
-    let told = camera.take_events();
+    let told = relayed.told(&mut camera, |told| told.contains(&Event::CaptureStopped));
+    assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
     assert!(
         told.contains(&Event::ShotFailed(FailureReason::Unknown)),
         "{told:?}"
