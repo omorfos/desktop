@@ -10,6 +10,7 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Instant;
 
 use omorfos_ipc::hold::{Told, Word};
 
@@ -25,6 +26,11 @@ const NOT_HELD: &str = "the compositor cannot be started again here: nothing wou
 const OLDER: &str = "omorfos was updated, but the new version would not start, so the one \
      before it is running: whatever the update was to fix is not fixed yet";
 
+/// What the user is told by a compositor started for its new version, which
+/// the one before took up though the session was in use.
+const UPDATED: &str = "omorfos has been updated to its new version, which waited as long as it \
+     may for a moment the session was not in use";
+
 /// The holder, as the compositor knows it.
 #[derive(Debug)]
 pub(crate) struct Holder {
@@ -34,8 +40,9 @@ pub(crate) struct Holder {
     /// What the holder knows, from having been told it or from what it
     /// told.
     said: Said,
-    /// Whether the compositor is ending to be started again.
-    stepping_down: bool,
+    /// Whether the compositor is ending to be started again, and if so
+    /// whether as its new version though the session is in use.
+    stepping_down: Option<bool>,
 }
 
 /// What the holder knows of the session.
@@ -44,7 +51,7 @@ struct Said {
     up: bool,
     locked: bool,
     display: Option<u32>,
-    stepping_down: bool,
+    stepping_down: Option<bool>,
 }
 
 impl Said {
@@ -58,8 +65,13 @@ impl Said {
         };
         let locked = (now.locked != self.locked).then_some(lock);
         let display = now.display.filter(|_| now.display != self.display);
-        let stepping = (now.stepping_down && !self.stepping_down).then_some(Word::SteppingDown);
-        [up, locked, display.map(Word::Display), stepping]
+        let stepping = now.stepping_down.filter(|_| self.stepping_down.is_none());
+        // Said first, for a holder that does not know it to step down still.
+        let updated = stepping
+            .filter(|regardless| *regardless)
+            .map(|_| Word::Updated);
+        let stepping = stepping.map(|_| Word::SteppingDown);
+        [up, locked, display.map(Word::Display), updated, stepping]
             .into_iter()
             .flatten()
     }
@@ -86,13 +98,13 @@ impl Compositor {
                 up: false,
                 locked: told.locked,
                 display: told.display,
-                stepping_down: false,
+                stepping_down: None,
             };
             self.holder = Some(Holder {
                 connection,
                 told,
                 said,
-                stepping_down: false,
+                stepping_down: None,
             });
             if told.older {
                 self.problems.push(OLDER.to_owned());
@@ -123,7 +135,7 @@ impl Compositor {
     #[must_use]
     pub fn stepping_down(&self) -> bool {
         let holder = self.holder.as_ref();
-        holder.is_some_and(|holder| holder.stepping_down)
+        holder.is_some_and(|holder| holder.stepping_down.is_some())
     }
 
     /// The number the holder says the session's X server had, which the
@@ -137,12 +149,28 @@ impl Compositor {
     /// session's, which goes on. With no holder there is nothing to start
     /// it again, and it is refused.
     pub(crate) fn restart_compositor(&mut self) {
+        self.step_down(false);
+    }
+
+    /// Ends the compositor to be started again by the holder, as its new
+    /// version where one is installed, telling it the next is to say so if
+    /// that is `regardless` of the session being in use.
+    pub(crate) fn step_down(&mut self, regardless: bool) {
         match self.holder.as_mut() {
             Some(holder) => {
-                holder.stepping_down = true;
+                holder.stepping_down = Some(regardless);
                 self.running = false;
             }
             None => self.refused.say(NOT_HELD),
+        }
+    }
+
+    /// Says, as of `now`, that the compositor before took up this new
+    /// version though the session was in use, if the holder said so, once.
+    pub(crate) fn say_if_updated(&mut self, now: Instant) {
+        let holder = self.holder.as_mut();
+        if holder.is_some_and(|holder| std::mem::take(&mut holder.told.updated)) {
+            self.happened(UPDATED, now);
         }
     }
 

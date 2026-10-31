@@ -362,3 +362,10 @@ of it and the action that asks the compositor to step down,
   compositor started again closed every window but Qt 6's, a terminal and
   what ran in it among them. Nothing else on the roadmap spares the user
   as much.
+- **A swap is now made, not only asked for** (ADR 61, 3f): with the relay
+  keeping the programs, the compositor steps down for its own new version
+  at a quiet moment, as this record has it, and ADR 59's word about the
+  next login stays only where nothing keeps them. The bound on a quiet
+  moment is an hour, set by `update.wait`; and a program written for X11,
+  which would still close with its X server, holds the swap back for as
+  long as it has a window, past the bound.

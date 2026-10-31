@@ -285,6 +285,7 @@ compositor before left, and an empty line after them:
 | `display N` | The session's X server had the number N, which the next is to have. |
 | `older` | The compositor is a version older than the one installed, which would not come up: the user is told the fix it was to bring is not in. |
 | `relayed` | Programs reach the compositor through the relay (ADR 61). Two descriptors are handed, not one: first the compositor's end of its connection to the relay, which it serves in place of the socket, then the socket, of which it takes the name alone. |
+| `updated` | The compositor before stepped down for this new version though the session was in use, having waited as long as it may for a moment it was not: the user is told so, once. Told to the next compositor alone. |
 
 Back along the same connection the compositor says, a line each, as each
 changes:
@@ -295,6 +296,7 @@ changes:
 | `locked`, `unlocked` | The session is locked, or no longer. |
 | `display N` | The session's X server has the number N. |
 | `stepping down` | It is about to end, to be started again with the newest version installed; or, relayed, the relay has ended, and the programs with it. One that ends without having said so, and without failing, has ended the session. |
+| `updated` | It is stepping down for its new version though the session is in use: the next is to say so. Said just before `stepping down`, which a holder that does not know this line still acts on. |
 
 `omorfos_ipc::hold` has both, and what hands a socket over.
 

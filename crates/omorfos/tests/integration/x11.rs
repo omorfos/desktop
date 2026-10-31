@@ -9,6 +9,7 @@
 )]
 
 use std::io::Read;
+use std::os::fd::AsFd;
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +19,7 @@ use std::time::Duration;
 use omorfos::Input;
 use omorfos_config::{Action, Half};
 use omorfos_core::geometry::Rect;
+use omorfos_ipc::relay::{self, Hand};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event as Told;
 use x11rb::protocol::xproto::{
@@ -28,6 +30,8 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use crate::common::{Client, HEIGHT, Session, WIDTH, key};
+use crate::relayed::relayed;
+use crate::versions::updated;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
@@ -1400,4 +1404,28 @@ fn the_first_compositor_under_a_holder_tells_it_the_number_its_x_server_took() {
         said.contains(&omorfos_ipc::hold::Word::Display(number)),
         "{said:?}"
     );
+}
+
+#[test]
+fn the_compositors_new_version_waits_for_the_windows_of_programs_written_for_x11_to_close() {
+    let (mut session, program) = session();
+    let window = open(&mut session, &program, "game", (200, 100), BLUE);
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    let _own = updated(&mut session);
+    session.advance(Duration::from_secs(10));
+    assert!(
+        !session.compositor().stepping_down(),
+        "the game would close with its X server"
+    );
+    let waits = |session: &Session| {
+        let problems = session.compositor().problems();
+        let waits = problems.iter().filter(|problem| problem.contains("X11"));
+        waits.count()
+    };
+    assert_eq!(waits(&session), 1);
+    session.advance(Duration::from_secs(10));
+    assert_eq!(waits(&session), 1, "said once");
+    show(&mut session, &program, window, false);
+    session.eventually(|session| session.compositor().stepping_down());
 }

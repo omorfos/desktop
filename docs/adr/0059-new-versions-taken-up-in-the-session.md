@@ -58,6 +58,13 @@ left off.
 **The compositor's own new version is said**, once: that it is used once
 the user logs in again. It is not started again in the session.
 
+*Amended:* once the relay keeps the programs through a change of
+compositor (ADR 60, ADR 61), the compositor's own new version is taken up
+too, at a moment the session is not in use, and regardless after an hour,
+which the configuration sets; it waits however long while a program
+written for X11 has a window. Where nothing keeps the programs, it is
+still said to be used once the user logs in again.
+
 Programs started on demand, the launcher and the locker, need nothing:
 each is started anew every time it is wanted, and is the new version from
 then on.

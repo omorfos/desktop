@@ -931,11 +931,26 @@ what only games and touchpads need last.
       locked; the next compositor starts a locker only if none came back,
       or the one kept has not locked the session again within five
       seconds.
-- [ ] The compositor's own new version taken up at a quiet moment (ADR
+- [x] The compositor's own new version taken up at a quiet moment (ADR
       61, step 3f), as ADR 59 takes up the others', and its word about
-      the next login goes. Programs written for X11 still close with
-      their X server until Smithay can take up a running one (stage 8);
-      `wl_touch` is made again once the compositor offers touch.
+      the next login said only where nothing keeps the programs: once the
+      relay has handed over all it kept, with nothing fullscreen, nothing
+      recording, playing or keeping the session awake, the sealed prompt
+      and the launcher closed, and no input for five seconds; after an
+      hour regardless (`update.wait`), the next compositor saying so; and
+      never while a program written for X11 has a window, as it would
+      close with its X server, which the user is told, nor while the
+      screens are off, which the next would turn on.
+- [ ] Known gaps in taking up the compositor's own new version: a program
+      written for X11 with no window open, as one in the tray, still
+      closes as it is taken up, until Smithay can take up a running X
+      server (stage 8); so does any program the relay lets go (known gaps
+      after step 3d), unasked; sound played by a program that neither
+      keeps the session awake nor asks it not to sleep is not heard as
+      playing; the new version is not checked before the old steps down,
+      and one that does not come up is replaced by the one held, as after
+      a crash; and on real hardware it has not yet been tried. `wl_touch`
+      is made again once the compositor offers touch.
 
 ## 4. The look
 

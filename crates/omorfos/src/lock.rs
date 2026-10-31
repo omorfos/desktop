@@ -381,6 +381,11 @@ impl Compositor {
         self.presence.screens == Screens::On
     }
 
+    /// When the user was last known to be there, if they have been.
+    pub(crate) const fn last_active(&self) -> Option<Instant> {
+        self.presence.last_active
+    }
+
     /// When the screens are due to go off: the configured time after the
     /// user was last there, if a time is configured.
     pub(crate) fn screens_off_at(&self) -> Option<Instant> {

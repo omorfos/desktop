@@ -749,6 +749,19 @@
       },
       "type": "object"
     },
+    "Update": {
+      "additionalProperties": false,
+      "description": "omorfos's own new version, once it is installed. It is taken up at a\nmoment the session is not in use, its windows staying as they were:\nnothing fullscreen, nothing recording or playing, and no input for a\nfew seconds.",
+      "properties": {
+        "wait": {
+          "description": "How many seconds it waits for such a moment, after which it is\ntaken up regardless. 0 waits however long, and the most is a week.\nIt is never taken up while a window of a program written for X11\nis open, as that program would close.",
+          "maximum": 604800,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Wallpaper": {
       "additionalProperties": false,
       "description": "The wallpaper that comes with omorfos: a picture or a colour on each\nscreen, behind everything else.\n\nWithout a picture or a colour the theme's `desktop` part is all there\nis behind the windows.",
@@ -933,6 +946,10 @@
     "touchpad": {
       "$ref": "#/$defs/Touchpad",
       "description": "Touchpad behaviour."
+    },
+    "update": {
+      "$ref": "#/$defs/Update",
+      "description": "omorfos's own new version, once it is installed."
     },
     "wallpaper": {
       "$ref": "#/$defs/Wallpaper",

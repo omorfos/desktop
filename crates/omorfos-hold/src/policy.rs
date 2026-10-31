@@ -113,6 +113,8 @@ impl Policy {
             older: which == Which::Held,
             ..self.told
         };
+        // Said by the one it is told to, and by no other after it.
+        self.told.updated = false;
         self.started = true;
         self.which = which;
         self.up = false;
@@ -128,6 +130,7 @@ impl Policy {
             Word::Unlocked => self.told.locked = false,
             Word::Display(display) => self.told.display = Some(display),
             Word::SteppingDown => self.stepping_down = true,
+            Word::Updated => self.told.updated = true,
         }
     }
 
@@ -255,6 +258,19 @@ mod tests {
         policy.starting(Which::Installed);
         policy.heard(Word::SteppingDown);
         assert_eq!(policy.ended(true, at(1), true), started);
+    }
+
+    #[test]
+    fn one_updated_while_in_use_has_the_next_say_so_and_only_the_next() {
+        let mut policy = Policy::default();
+        policy.starting(Which::Installed);
+        policy.heard(Word::Up);
+        policy.heard(Word::Updated);
+        policy.heard(Word::SteppingDown);
+        // Carried over by a new version of the holder, taken up between.
+        let mut policy = Policy::resumed(policy.told());
+        assert!(policy.starting(Which::Installed).updated);
+        assert!(!policy.starting(Which::Installed).updated, "said once");
     }
 
     #[test]

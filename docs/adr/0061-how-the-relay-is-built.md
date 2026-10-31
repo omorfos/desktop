@@ -623,3 +623,26 @@ and fails while that is other than what 3e still has to come.
   kept as the user's, and its lock made again too; the next compositor
   does not know it for the locker, and may start its own beside it, the
   second of them to ask for the lock being refused.
+- **The compositor takes up its own new version at a quiet moment**
+  (3f), settled as 3f was started, as ADR 60 has it: heard of as ADR 59
+  hears of the others', and taken up by its stepping down to be started
+  again, as `restart_compositor` does. A quiet moment is one with nothing
+  fullscreen, nothing recording or sharing a screen, nothing keeping the
+  session awake or from sleeping, as what plays does, the sealed prompt
+  and the launcher closed, which go with the compositor, and no input for
+  five seconds. Only once the relay has handed over all it kept, and only
+  under the relay; where nothing keeps the programs, the user is still
+  told the new version is used once they log in again. After an hour,
+  which `update.wait` sets, and 0 makes for ever, it is taken up
+  regardless, and the next compositor says so: the compositor says
+  `updated` to the holder before `stepping down`, which a holder that does
+  not know the word still acts on, and the holder tells it to the next
+  compositor alone, carried through its own new version taken up between.
+  A window of a program written for X11 holds it back however long, as
+  the program would close with its X server; the user is told it waits
+  for them, or for the next login. So do the screens being off, as the
+  next compositor would turn them on, as at night after an install no one
+  watched; the wait then starts again once the user is back, so that it
+  is not taken up regardless at the first key. Otherwise the wait is from
+  when the new version was first heard of, so that installing again does
+  not put it off.

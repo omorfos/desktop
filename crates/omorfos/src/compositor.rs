@@ -124,7 +124,7 @@ use crate::standing::Interim;
 use crate::switcher::Switch;
 use crate::tiles::Lines;
 use crate::typing::Typing;
-use crate::versions::Versions;
+use crate::versions::{InUse, Own, Versions};
 use crate::x11::{Focus, Placed, Role, X11};
 
 /// What the desktop calls itself to programs that behave differently from
@@ -1148,6 +1148,7 @@ impl Compositor {
             self.capture.recording.deadline(),
             self.updates.versions.due(),
             self.updates.retiring.iter().map(|(_, by)| *by).min(),
+            self.updates.next,
             self.interim.deadline(),
             match self.on_demand.ending {
                 Ending::By(by) => Some(by),
@@ -1228,6 +1229,7 @@ impl Compositor {
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
+        self.take_up_own(now);
         self.time_screens(now);
         // With the screens off a lock is shown without drawing, and is
         // said to be before the state is.
@@ -1852,11 +1854,12 @@ impl Compositor {
         self.set_component(Program::Asker, program.into());
     }
 
-    /// Says where the compositor's own program is, for the user to be told
-    /// when a new version of it is installed: unlike the others, it cannot
-    /// be taken up without logging in again.
+    /// Says where the compositor's own program is, for its new version to
+    /// be taken up once it is installed, at a moment the session is not in
+    /// use, where the relay keeps the programs through it; and for the user
+    /// to be told it is used once they log in again where nothing does.
     pub fn set_own(&mut self, program: impl Into<PathBuf>) {
-        self.updates.own.0 = Some(program.into());
+        self.updates.own = Some(program.into());
     }
 
     /// Says where one of the programs that run for the whole session is,
@@ -1912,7 +1915,7 @@ impl Compositor {
             .components
             .iter()
             .map(|component| component.program.as_path());
-        let own = self.updates.own.0.as_deref();
+        let own = self.updates.own.as_deref();
         self.updates.versions.follow(programs.chain(own));
         // A compositor started again in the same login leaves alone what
         // the first started, which may well be running still.
@@ -1993,6 +1996,68 @@ impl Compositor {
         self.components = components;
     }
 
+    /// Takes up the compositor's own new version, if one has been heard of,
+    /// by stepping down to be started again as it: where the relay keeps
+    /// the programs through it, once it has handed over all it kept, at a
+    /// moment the session is not in use, or regardless once it has waited
+    /// as long as the configuration lets it; but never while a program
+    /// written for X11, which would close, has a window, nor while the
+    /// screens are off, which the next would turn on. Where nothing
+    /// keeps the programs they would close, and the user is told it is used
+    /// once they log in again (ADR 60).
+    fn take_up_own(&mut self, now: Instant) {
+        self.say_if_updated(now);
+        let updates = &mut self.updates;
+        updates.next = None;
+        let Some(since) = updates.newer else {
+            return;
+        };
+        let parts = &self.autostarted.parts;
+        if parts.relay.is_none() {
+            if !std::mem::replace(&mut updates.told, true) {
+                self.problems.push(LOG_IN_AGAIN.to_owned());
+            }
+            return;
+        }
+        if !parts.kept || self.stepping_down() {
+            return;
+        }
+        let recorded = [
+            Recorded::Microphone,
+            Recorded::Sound,
+            Recorded::Camera,
+            Recorded::Screen,
+        ];
+        let in_use = InUse {
+            fullscreen: self.desktop.frames().any(|frame| frame.fullscreen),
+            recording: self.capture.recording.any(&recorded) || self.capture.sharing(),
+            playing: self.presence.kept_awake || self.kept_from().sleep,
+            open: self.sealed().is_some() || self.on_demand.launcher.1.is_some(),
+            input: self.last_active(),
+            x11: (self.windows.iter()).any(|mapped| matches!(mapped.role, Role::X11(_))),
+            dark: !self.screens_on(),
+        };
+        // The user back, it waits as long again, so as not to be taken up
+        // regardless at the first key.
+        let since = if in_use.dark { now } else { since };
+        self.updates.newer = Some(since);
+        let wait = self.config().general.update.wait.get();
+        let wait = (wait > 0).then(|| Duration::from_secs(u64::from(wait)));
+        self.updates.next = in_use.next(since, wait, now);
+        match in_use.own(since, wait, now) {
+            Own::Waits => {}
+            Own::WaitsForX11 => {
+                if !std::mem::replace(&mut self.updates.told, true) {
+                    self.problems.push(WAITS_FOR_X11.to_owned());
+                }
+            }
+            Own::TakenUp { regardless } => {
+                self.updates.newer = None;
+                self.step_down(regardless);
+            }
+        }
+    }
+
     /// Takes up the new versions of the programs that come with omorfos
     /// that have been installed, by `now`, of those that run for the whole
     /// session: each is asked to end, and its new version started once it
@@ -2002,17 +2067,14 @@ impl Compositor {
     /// until it no longer does. `ended` are the processes that have just
     /// ended.
     ///
-    /// The compositor's own new version is said to the user, once.
+    /// The compositor's own new version is noted, from when it was first
+    /// heard of, for [`Compositor::take_up_own`].
     fn take_up(&mut self, ended: &[u32], now: Instant) {
         self.updates.versions.hear(now);
         let settled = self.updates.versions.settled(now);
-        let (own, told) = &mut self.updates.own;
-        if !*told && own.as_ref().is_some_and(|own| settled.contains(own)) {
-            *told = true;
-            self.problems.push(
-                "omorfos has been updated, and the new version is used once you log in again"
-                    .to_owned(),
-            );
+        let own = self.updates.own.as_ref();
+        if own.is_some_and(|own| settled.contains(own)) {
+            self.updates.newer.get_or_insert(now);
         }
         let retired = self.updates.retiring.extract_if(.., |(_, by)| *by <= now);
         let retired = retired.filter_map(|(process, _)| Pid::from_raw(process.cast_signed()));
@@ -3885,14 +3947,33 @@ struct Component {
 /// a keeper waits for what it reads.
 const HANDOVER: Duration = Duration::from_secs(3);
 
+/// What the user is told of the compositor's own new version where nothing
+/// keeps the programs through its being taken up.
+const LOG_IN_AGAIN: &str =
+    "omorfos has been updated, and the new version is used once you log in again";
+
+/// What the user is told of it while a program written for X11 has a
+/// window, which would close as it is taken up.
+const WAITS_FOR_X11: &str = "omorfos has been updated, and the new version is taken up once \
+     the programs written for X11 have closed, or once you log in again";
+
 /// New versions of the programs that come with omorfos, heard of and being
 /// taken up.
 #[derive(Debug)]
 struct Updates {
     versions: Versions,
-    /// The compositor's own program, which cannot be taken up in the
-    /// session, and whether the user has been told it has a new version.
-    own: (Option<PathBuf>, bool),
+    /// The compositor's own program, taken up by its stepping down where
+    /// the relay keeps its programs.
+    own: Option<PathBuf>,
+    /// When its new version was first heard of, or the screens were last
+    /// off since, while it is yet to be taken up.
+    newer: Option<Instant>,
+    /// Whether the user has been told it waits: for them to log in again,
+    /// where nothing keeps the programs, or for the programs written for
+    /// X11 to close.
+    told: bool,
+    /// When what is to become of it may next change by the time alone.
+    next: Option<Instant>,
     /// The processes of versions before that are to be asked to end, and
     /// when.
     retiring: Vec<(u32, Instant)>,
@@ -3902,7 +3983,10 @@ impl Default for Updates {
     fn default() -> Self {
         Self {
             versions: Versions::new(),
-            own: (None, false),
+            own: None,
+            newer: None,
+            told: false,
+            next: None,
             retiring: Vec::new(),
         }
     }

@@ -51,6 +51,10 @@ pub struct Told {
     /// handed with this is the compositor's end of its connection to the
     /// relay, and then the socket, whose name alone it is to take.
     pub relayed: bool,
+    /// The compositor before stepped down for its new version, this one,
+    /// though the session was in use, having waited as long as it may for a
+    /// moment it was not: the user is to be told why it blinked.
+    pub updated: bool,
 }
 
 /// What a compositor says to the holder.
@@ -66,6 +70,10 @@ pub enum Word {
     Display(u32),
     /// It is about to end, to be started again, as a new version is.
     SteppingDown,
+    /// It is stepping down for its new version though the session is in
+    /// use: the next is to say so. Said before [`Word::SteppingDown`], which
+    /// a holder that does not know this word still acts on.
+    Updated,
 }
 
 impl Told {
@@ -88,6 +96,9 @@ impl Told {
         }
         if self.relayed {
             text.push_str("relayed\n");
+        }
+        if self.updated {
+            text.push_str("updated\n");
         }
         text.push('\n');
         text
@@ -113,6 +124,10 @@ impl Told {
                 relayed: true,
                 ..told
             },
+            "updated" => Self {
+                updated: true,
+                ..told
+            },
             _ => Self {
                 display: number(line, "display ").or(told.display),
                 ..told
@@ -131,6 +146,7 @@ impl Word {
             Self::Unlocked => "unlocked\n".to_owned(),
             Self::Display(display) => format!("display {display}\n"),
             Self::SteppingDown => "stepping down\n".to_owned(),
+            Self::Updated => "updated\n".to_owned(),
         }
     }
 
@@ -142,6 +158,7 @@ impl Word {
             "locked" => Some(Self::Locked),
             "unlocked" => Some(Self::Unlocked),
             "stepping down" => Some(Self::SteppingDown),
+            "updated" => Some(Self::Updated),
             _ => number(line, "display ").map(Self::Display),
         }
     }
@@ -282,6 +299,7 @@ mod tests {
                 display: Some(3),
                 older: true,
                 relayed: true,
+                updated: true,
             },
             Told {
                 again: true,
@@ -289,6 +307,7 @@ mod tests {
                 display: None,
                 older: false,
                 relayed: false,
+                updated: false,
             },
         ] {
             let written = told.written();
@@ -307,6 +326,7 @@ mod tests {
             display: Some(2),
             older: false,
             relayed: false,
+            updated: false,
         };
         assert_eq!(told, expected);
     }
@@ -320,6 +340,7 @@ mod tests {
             Word::Display(0),
             Word::Display(12),
             Word::SteppingDown,
+            Word::Updated,
         ];
         for word in words {
             let line = word.line();

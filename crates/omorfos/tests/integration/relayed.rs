@@ -38,7 +38,7 @@ use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 /// Puts `session` under a holder that has it served by a relay; returns the
 /// holder, the relay's end of its connection to the compositor, where the
 /// socket is, and the socket.
-fn relayed(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
+pub(crate) fn relayed(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
     let path = session.config.path().join("wayland-relayed");
     let socket = UnixListener::bind(&path).unwrap();
     let (relays, compositor) = relay::pair().unwrap();

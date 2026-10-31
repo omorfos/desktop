@@ -7,19 +7,24 @@
 
 use std::fs;
 use std::io::Write;
+use std::os::fd::AsFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use omorfos::Roles;
+use omorfos::{Input, Roles};
+use omorfos_ipc::hold::{Told, Word};
+use omorfos_ipc::relay::{self, Hand};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
 use crate::common::{LayerShape, Session};
-use crate::windows::GREEN;
+use crate::hold::hold;
+use crate::relayed::relayed;
+use crate::windows::{GREEN, RED};
 
 /// Installs at `path`, as installing does, by putting a new file in the
 /// place of the old, a program that stands in for one that runs for the
@@ -239,4 +244,114 @@ fn a_new_version_of_the_compositor_itself_is_said_to_need_logging_in_again() {
     written(&own, "three");
     session.advance(Duration::from_secs(2));
     assert_eq!(said(&session), 1);
+}
+
+/// Has the compositor of `session` hear of its own program, at a place of
+/// its own, and then of its new version; returns where it is.
+pub(crate) fn updated(session: &mut Session) -> (tempfile::TempDir, PathBuf) {
+    let (place, own) = place("omorfos");
+    written(&own, "one");
+    session.compositor_mut().set_own(&own);
+    session.compositor_mut().autostart();
+    written(&own, "two");
+    // Heard of as the compositor next looks, and settled a second on.
+    session.advance(Duration::from_secs(2));
+    session.advance(Duration::from_secs(2));
+    (place, own)
+}
+
+#[test]
+fn under_a_relay_the_compositors_new_version_is_taken_up_once_the_user_is_still_a_while() {
+    let mut session = Session::new();
+    let (mut holder, relays, _, _socket) = relayed(&mut session);
+    let _own = updated(&mut session);
+    session.advance(Duration::from_secs(10));
+    assert!(
+        !session.compositor().stepping_down(),
+        "not before the relay has handed over all it kept"
+    );
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    session.eventually(|session| session.compositor().stepping_down());
+    session.step();
+    let said = holder.said();
+    assert!(said.contains(&Word::SteppingDown), "{said:?}");
+    assert!(!said.contains(&Word::Updated), "the session was not in use");
+    let problems = session.compositor().problems();
+    assert!(
+        !problems.iter().any(|problem| problem.contains("log in")),
+        "{problems:?}"
+    );
+}
+
+#[test]
+fn a_fullscreen_window_holds_the_compositors_new_version_back_until_it_has_waited_its_time() {
+    let (mut session, _) = session(&[("config.yaml", "update:\n  wait: 30\n")]);
+    let (mut holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "player", (200, 100), RED);
+    window.role.set_fullscreen(None);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let _own = updated(&mut session);
+    session.advance(Duration::from_secs(20));
+    assert!(
+        !session.compositor().stepping_down(),
+        "a film is being watched"
+    );
+    session.advance(Duration::from_secs(10));
+    assert!(
+        session.compositor().stepping_down(),
+        "as long as it may wait"
+    );
+    session.step();
+    let said = holder.said();
+    let at = |word| said.iter().position(|said| *said == word);
+    assert!(
+        at(Word::Updated) < at(Word::SteppingDown) && at(Word::Updated).is_some(),
+        "the next is to say so, which a holder that does not know the word passes over: {said:?}"
+    );
+}
+
+#[test]
+fn a_compositor_started_for_its_new_version_taken_up_regardless_says_so() {
+    let mut session = Session::new();
+    let told = Told {
+        updated: true,
+        ..Told::default()
+    };
+    let (_holder, _) = hold(&mut session, told);
+    session.step();
+    let said = |session: &Session| {
+        let events = session.compositor().events();
+        events.filter(|event| event.contains("updated")).count()
+    };
+    assert_eq!(said(&session), 1);
+    session.step();
+    assert_eq!(said(&session), 1, "once");
+}
+
+#[test]
+fn the_compositors_new_version_waits_while_the_screens_are_off_for_the_user_to_be_back() {
+    let config = "idle: { screen_off: 10 }\nupdate: { wait: 30 }\n";
+    let (mut session, _) = session(&[("config.yaml", config)]);
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    // Away, as at night, while it is installed.
+    session.step();
+    session.advance(Duration::from_secs(11));
+    assert!(!session.compositor().screens_on());
+    let _own = updated(&mut session);
+    session.advance(Duration::from_secs(60));
+    assert!(
+        !session.compositor().stepping_down(),
+        "the next would turn the screens on"
+    );
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 10.0, y: 10.0 }, 0);
+    session.step();
+    assert!(!session.compositor().stepping_down(), "the user is back");
+    session.advance(Duration::from_secs(5));
+    assert!(session.compositor().stepping_down());
 }

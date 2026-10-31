@@ -54,6 +54,8 @@ pub struct General {
     pub portals: Portals,
     /// Programs written for X11.
     pub xwayland: Xwayland,
+    /// omorfos's own new version, once it is installed.
+    pub update: Update,
     /// The program that locks the session, and its arguments, such as
     /// `[swaylock, -f]`. The `lock` action starts it, and it alone is let
     /// lock. Without one there is nothing to lock with.
@@ -112,6 +114,29 @@ impl Default for Xwayland {
         Self {
             enabled: true,
             scaling: X11Scaling::default(),
+        }
+    }
+}
+
+/// omorfos's own new version, once it is installed. It is taken up at a
+/// moment the session is not in use, its windows staying as they were:
+/// nothing fullscreen, nothing recording or playing, and no input for a
+/// few seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Update {
+    /// How many seconds it waits for such a moment, after which it is
+    /// taken up regardless. 0 waits however long, and the most is a week.
+    /// It is never taken up while a window of a program written for X11
+    /// is open, as that program would close.
+    pub wait: Bounded<0, 604_800>,
+}
+
+impl Default for Update {
+    fn default() -> Self {
+        Self {
+            wait: Bounded::clamped(3600),
         }
     }
 }
@@ -986,6 +1011,18 @@ mod tests {
             parse("clipboard: { forget: 86401 }").is_err(),
             "more than a day"
         );
+    }
+
+    #[test]
+    fn the_compositors_new_version_waits_an_hour_for_a_quiet_moment_unless_told_otherwise() {
+        assert_eq!(General::default().update.wait.get(), 3600);
+        let general = parse("update: { wait: 0 }").unwrap();
+        assert_eq!(general.update.wait.get(), 0, "for ever");
+        assert!(
+            parse("update: { wait: 604801 }").is_err(),
+            "more than a week"
+        );
+        assert!(parse("update: { now: true }").is_err());
     }
 
     #[test]
