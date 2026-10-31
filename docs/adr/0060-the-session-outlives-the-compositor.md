@@ -70,7 +70,8 @@ be lost, and decides nothing.
 - **Whether the session is locked, and which X display it has.** Two
   words, said by the compositor as they change. A compositor started
   while the session was locked comes up locked, and starts the locker
-  before anything else is shown: a crash never unlocks. It asks for the
+  before anything else is shown, or under the relay takes up the one the
+  relay kept (ADR 61): a crash never unlocks. It asks for the
   X display number the session had, waiting for it as ADR 27 does when
   the X server is started again, so that `DISPLAY` stays right wherever
   it was told.

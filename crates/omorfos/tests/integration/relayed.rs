@@ -229,12 +229,22 @@ impl Relayed {
         &self,
         prepared: impl FnOnce(&mut Session),
     ) -> (Session, Holder, OwnedFd) {
+        self.compositor_told(Told::default(), prepared)
+    }
+
+    /// Starts a compositor as [`Relayed::compositor_and_end`] does, the
+    /// holder having been `told` what it tells it, beside that it is relayed.
+    fn compositor_told(
+        &self,
+        told: Told,
+        prepared: impl FnOnce(&mut Session),
+    ) -> (Session, Holder, OwnedFd) {
         let mut session = Session::new();
         prepared(&mut session);
         let (relays, compositor) = relay::pair().unwrap();
         let told = Told {
             relayed: true,
-            ..Told::default()
+            ..told
         };
         let holder = hold_with(
             &mut session,
@@ -1868,4 +1878,163 @@ fn a_component_kept_is_known_again_and_started_again_if_it_stops() {
     let _ = Command::new("kill").arg(&kept).status();
     second.eventually(|_| started() == "xx" && process().is_some());
     let _ = Command::new("kill").arg(process().unwrap()).status();
+}
+
+/// What the holder tells a compositor started while the session was locked.
+fn locked() -> Told {
+    Told {
+        locked: true,
+        ..Told::default()
+    }
+}
+
+#[test]
+fn a_locker_kept_locks_the_session_again_with_the_next_compositor_as_it_was() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    // A locker, as the compositor starts one with the role, which a process
+    // of its own stands for.
+    let mut process = Command::new("sleep").arg("1000").spawn().unwrap();
+    let (part, ours) = UnixStream::pair().unwrap();
+    let handed = Started {
+        pid: process.id(),
+        roles: Roles::LOCK.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(handed), &[part.as_fd()]).unwrap();
+    drop(part);
+    let mut locker = first.adopt(ours);
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    first.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    first.roundtrip(&mut locker);
+    first.draw();
+    first.send_frames(Duration::from_millis(16));
+    first.roundtrip(&mut locker);
+    assert!(locker.take_events().contains(&Event::Locked));
+    // Said to the relay as the locker, last, as the compositor says the one
+    // it started.
+    first.step();
+    let desk = format!("d2 0 0 test-0 locker:{}", process.id());
+    relay::send(towards.as_fd(), &Hand::Desk(desk), &[]).unwrap();
+    drop(towards);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder, _) = relayed.compositor_told(locked(), locking);
+    second.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == GREEN);
+    // Said to be locked once the locker would be told so.
+    second.eventually(|session| {
+        session.send_frames(Duration::from_millis(16));
+        state(session).locked
+    });
+    second.roundtrip(&mut locker);
+    assert_eq!(
+        locker.take_events(),
+        [],
+        "told neither that it is locked nor how large to be: it goes on as it was"
+    );
+    // Locked again by it, it is not taken to be stuck: not ended, which it
+    // would be at once, and given a moment to.
+    second.advance(Duration::from_secs(6));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(
+        process.try_wait().unwrap().is_none(),
+        "the locker kept runs on"
+    );
+
+    // Unlocked by it, as by the locker that locked it.
+    lock.unlock_and_destroy();
+    second.roundtrip(&mut locker);
+    assert!(!second.compositor().is_locked());
+    assert_eq!(locker.error(), None);
+    let _ = process.kill();
+    let _ = process.wait();
+}
+
+/// The locker in use is the stand-in for a program that runs on.
+fn locking(session: &mut Session) {
+    let component =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/component");
+    let config = format!("locker: ['{}']\n", component.display());
+    std::fs::write(session.config.path().join("config.yaml"), config).unwrap();
+    session.compositor_mut().reload_config();
+}
+
+/// How many times the stand-in has been started beside `relayed`'s socket.
+fn started(relayed: &Relayed) -> String {
+    let beside = relayed.path.parent().unwrap();
+    std::fs::read_to_string(beside.join("component-started")).unwrap_or_default()
+}
+
+/// Which process the stand-in last started beside `relayed`'s socket is,
+/// once it has said. Made, then written to: read only once it says.
+fn running(relayed: &Relayed) -> Option<String> {
+    let beside = relayed.path.parent().unwrap();
+    let said = std::fs::read_to_string(beside.join("component-process")).ok();
+    said.filter(|said| !said.is_empty())
+}
+
+/// A compositor that came up locked and started the stand-in as its
+/// locker, which locks nothing, followed by the next, come up locked too:
+/// the next, and the stand-in's process.
+fn locker_kept(relayed: &Relayed) -> (Session, Holder, String) {
+    let beside = relayed.path.parent().unwrap();
+    std::fs::write(beside.join("component-does"), "stay").unwrap();
+    // Come up locked, it starts the locker once the relay has kept none,
+    // through the relay.
+    let (mut first, first_holder, _) = relayed.compositor_told(locked(), locking);
+    assert!(first.compositor().is_locked());
+    first.eventually(|_| running(relayed).is_some() && relayed.relay.borrow().programs() == 1);
+    let kept = running(relayed).unwrap();
+    // Said to the relay as the locker, once there is something to say.
+    first.step();
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, holder, _) = relayed.compositor_told(locked(), locking);
+    for _ in 0..50 {
+        second.step();
+    }
+    assert_eq!(started(relayed), "x", "known again, and not started again");
+    assert!(second.compositor().is_locked());
+    std::fs::remove_file(beside.join("component-process")).unwrap();
+    (second, holder, kept)
+}
+
+#[test]
+fn the_locker_kept_through_the_relay_is_started_again_only_once_it_stops() {
+    let relayed = Relayed::new();
+    let (mut second, _holder, kept) = locker_kept(&relayed);
+    // It stops, as one that crashed does: it is started again, as one the
+    // compositor started itself would be, the session being locked.
+    let _ = Command::new("kill").arg(&kept).status();
+    second.eventually(|_| started(&relayed) == "xx" && running(&relayed).is_some());
+    let _ = Command::new("kill")
+        .arg(running(&relayed).unwrap())
+        .status();
+}
+
+#[test]
+fn the_locker_kept_that_does_not_lock_again_in_time_is_ended_and_another_started() {
+    let relayed = Relayed::new();
+    let (mut second, _holder, kept) = locker_kept(&relayed);
+    second.advance(Duration::from_secs(4));
+    assert_eq!(started(&relayed), "x", "given time");
+    second.advance(Duration::from_secs(1));
+    second.eventually(|_| started(&relayed) == "xx" && running(&relayed).is_some());
+    // Ended: gone, or waiting for the test, which started it, to hear so.
+    let stat = std::path::Path::new("/proc").join(&kept).join("stat");
+    let ended = || {
+        let stat = std::fs::read_to_string(&stat).unwrap_or_default();
+        stat.rsplit(") ")
+            .next()
+            .is_none_or(|state| state.starts_with('Z'))
+    };
+    second.eventually(|_| ended());
+    let _ = Command::new("kill")
+        .arg(running(&relayed).unwrap())
+        .status();
 }

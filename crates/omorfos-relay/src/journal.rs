@@ -133,7 +133,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 48] = [
+const KEPT: [&str; 50] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -182,6 +182,8 @@ const KEPT: [&str; 48] = [
     "ext_image_copy_capture_session_v1",
     "ext_image_copy_capture_cursor_session_v1",
     "ext_image_copy_capture_frame_v1",
+    "ext_session_lock_v1",
+    "ext_session_lock_surface_v1",
 ];
 
 /// The interfaces of what lasts only a moment, which is not made again: a
@@ -688,10 +690,11 @@ impl Journal {
 
     /// The requests that make the rest again, in the order it was made,
     /// with what lasts of each; then each surface committed as it last was,
-    /// but for a window's or a layer surface's, which may not show anything
-    /// until the compositor has said how it is to be: those are committed
-    /// bare, and listed, by their `xdg_surface` or layer surface, for
-    /// [`Journal::shown`]. A global is
+    /// but for a window's, a layer surface's or a lock surface's, which may
+    /// not show anything until the compositor has said how it is to be:
+    /// those are committed bare, a lock surface's not at all, as it may not
+    /// be committed before then, and listed, by their `xdg_surface`, layer
+    /// surface or lock surface, for [`Journal::shown`]. A global is
     /// bound again under the name `rename` gives the one it was bound by.
     ///
     /// # Errors
@@ -769,7 +772,12 @@ impl Journal {
         };
         surfaces.sort_by_key(|(number, _)| std::cmp::Reverse(depth(*number)));
         for (number, kept) in surfaces {
+            let locking = |role: &u32| {
+                let kept = self.kept.get(role);
+                kept.is_some_and(|kept| kept.interface.name == "ext_session_lock_surface_v1")
+            };
             match windows.get(number) {
+                Some(window) if locking(window) => awaited.push(*window),
                 Some(window) => {
                     let bare = kept
                         .committed
@@ -787,14 +795,22 @@ impl Journal {
         Ok((sending, awaited))
     }
 
-    /// The requests that show what the window or layer surface `role`
-    /// last showed, once the compositor has said how it is to be and been
-    /// answered.
+    /// The requests that show what the window, layer surface or lock
+    /// surface `role` last showed, once the compositor has said how it is
+    /// to be and been answered.
     #[must_use]
     pub fn shown(&self, role: u32) -> Vec<Sending> {
         let number = self.kept.get(&role).and_then(|kept| kept.made.names.get(1));
         let kept = number.and_then(|number| self.kept.get(number).map(|kept| (*number, kept)));
         kept.map_or(Vec::new(), |(number, kept)| surface(number, kept))
+    }
+
+    /// What is kept that was made by a request to `object`.
+    #[must_use]
+    pub fn made_by(&self, object: u32) -> Vec<u32> {
+        let made = self.kept.iter();
+        let made = made.filter(|(_, kept)| kept.made.names.first() == Some(&object));
+        made.map(|(number, _)| *number).collect()
     }
 
     /// The requests that destroy again what was made again only as
@@ -858,12 +874,18 @@ impl Journal {
         sending
     }
 
-    /// Each surface that is a living window's or layer surface's, and what
-    /// gives it that role: the window's `xdg_surface`, or the layer surface.
+    /// Each surface that is a living window's, layer surface's or lock
+    /// surface's, and what gives it that role: the window's `xdg_surface`,
+    /// the layer surface, or the lock surface.
     fn windows(&self) -> HashMap<u32, u32> {
         let roled = |kept: &Kept| {
             let interface = kept.interface.name;
-            matches!(interface, "xdg_surface" | "zwlr_layer_surface_v1") && kept.gone.is_none()
+            let roles = [
+                "xdg_surface",
+                "zwlr_layer_surface_v1",
+                "ext_session_lock_surface_v1",
+            ];
+            roles.contains(&interface) && kept.gone.is_none()
         };
         let windows = self.kept.iter().filter(|(_, kept)| roled(kept));
         let windows = windows
@@ -1456,20 +1478,15 @@ mod tests {
     #[test]
     fn a_program_holding_what_cannot_be_made_again_cannot_be_kept() {
         let mut program = surfaced();
-        program.bind(2, "ext_session_lock_manager_v1", 1, 5);
+        program.bind(2, "wl_seat", 7, 5);
         assert_eq!(program.journal.unkept(), [""; 0], "a global bound");
-        program.send(&sent(5, 1, &words(&[6])), &[]);
-        program.send(&sent(5, 1, &words(&[7])), &[]);
-        // The surface shown while locked, on a screen bound as 8.
-        program.bind(3, "wl_output", 4, 8);
-        program.send(&sent(6, 1, &words(&[9, 4, 8])), &[]);
-        assert_eq!(
-            program.journal.unkept(),
-            ["ext_session_lock_v1", "ext_session_lock_surface_v1"],
-            "each once, in the order made"
-        );
+        // Touch, which no compositor offers yet, asked for twice.
+        program.send(&sent(5, 2, &words(&[6])), &[]);
+        program.send(&sent(5, 2, &words(&[7])), &[]);
+        assert_eq!(program.journal.unkept(), ["wl_touch"], "once");
         assert!(keeps("wl_seat") && keeps("xdg_toplevel") && keeps("xdg_popup"));
-        assert!(!keeps("ext_session_lock_v1"));
+        assert!(keeps("ext_session_lock_v1") && keeps("ext_session_lock_surface_v1"));
+        assert!(!keeps("wl_touch"));
     }
 
     #[test]
@@ -1539,11 +1556,7 @@ mod tests {
         let answered = ["xwayland_surface_v1", "wp_security_context_v1"];
         // What the rest of step 3 makes again (ADR 61). A protocol added
         // to the list is made again as it is added.
-        let to_come = [
-            "ext_session_lock_surface_v1",
-            "ext_session_lock_v1",
-            "wl_touch",
-        ];
+        let to_come = ["wl_touch"];
         let mut made = Vec::new();
         for global in crate::known::globals() {
             makeable(global, &mut made);

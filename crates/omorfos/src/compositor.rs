@@ -629,8 +629,9 @@ impl Compositor {
     /// compositor before called it, which the relay handed back first, or
     /// where it did not say, as the keeper by its role, as each was handed
     /// before they were called anything; it is then not started again, and
-    /// is watched over as if this had started it. One the configuration
-    /// started is the user's, and none of these.
+    /// is watched over as if this had started it. So is the locker, by what
+    /// it was called. One the configuration started is the user's, and none
+    /// of these.
     ///
     /// # Errors
     ///
@@ -650,6 +651,11 @@ impl Compositor {
             .then(|| Program::Keeper.called());
         let called = known.as_deref().or(keeper.flatten()).filter(|_| !users);
         inserted.inspect(|_| {
+            if called == Some(LOCKER) {
+                self.on_demand.locker.0 = Some(program.pid);
+                self.adopt(program.pid);
+                return;
+            }
             let mut components = self.components.iter_mut();
             let found = components.find(|component| component.kind.called() == called);
             if let Some(component) = found.filter(|_| called.is_some()) {
@@ -675,11 +681,13 @@ impl Compositor {
     }
 
     /// What each part of the session the relay keeps is called, as the
-    /// next compositor is to know it by, and its process.
+    /// next compositor is to know it by, and its process: the locker among
+    /// them, while it runs.
     pub(crate) fn kept_parts(&self) -> Vec<(&'static str, u32)> {
         let kept = self.components.iter();
         let kept = kept.filter_map(|component| component.kind.called().zip(component.process));
-        kept.collect()
+        let locker = self.on_demand.locker.0.map(|process| (LOCKER, process));
+        kept.chain(locker).collect()
     }
 
     /// Hands the relay, over `relay`, what is to be kept as programs are:
@@ -690,9 +698,13 @@ impl Compositor {
 
     /// Takes in that the relay has handed over every program it kept: each
     /// part of the session it keeps is started now, unless it was among
-    /// them.
+    /// them, and so is the locker, if the session came up locked with none
+    /// to lock it again.
     pub fn relay_kept(&mut self) {
         self.autostarted.parts.kept = true;
+        if self.is_held_by_none() && self.on_demand.locker.0.is_none() {
+            self.start_locker();
+        }
         if !self.autostarted.done {
             return;
         }
@@ -1206,6 +1218,7 @@ impl Compositor {
         self.end(now);
         self.revive(&failed, now);
         self.relock(&ended, now);
+        self.await_kept_locker(now);
         self.take_up(&ended, now);
         self.serve_ipc();
         self.manage_x11(now);
@@ -1526,11 +1539,37 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         match &config.general.locker {
             Some(locker) => {
-                let started =
-                    self.start(locker.program().as_ref(), locker.arguments(), Roles::LOCK);
+                // Kept by the relay as programs are, where there is one, so
+                // that a lock outlives the compositor (ADR 61).
+                let program: &OsStr = locker.program().as_ref();
+                let named = omorfos_journal::name(program);
+                let how = (Roles::LOCK, false, Relaying::Own);
+                let started = self.launch(program, locker.arguments(), how, Some(&named));
                 self.on_demand.locker.0 = started;
             }
             None => self.refused.say(NO_LOCKER),
+        }
+    }
+
+    /// Starts the locker anew, ending the one a compositor before started,
+    /// which the relay kept, if that has not locked the session again within
+    /// [`RELOCKING`] of `now`: the session would stay black.
+    fn await_kept_locker(&mut self, now: Instant) {
+        let adopted = &self.autostarted.parts.adopted;
+        let kept = self.on_demand.locker.0.filter(|locker| {
+            let mut adopted = adopted.iter();
+            adopted.any(|(adopted, _)| adopted == locker)
+        });
+        let Some(kept) = kept.filter(|_| self.is_held_by_none()) else {
+            self.on_demand.relocking = None;
+            return;
+        };
+        let since = *self.on_demand.relocking.get_or_insert(now);
+        if now.saturating_duration_since(since) >= RELOCKING {
+            let kept = Pid::from_raw(kept.cast_signed());
+            let _ = kept.map(|kept| kill_process(kept, Signal::TERM));
+            self.on_demand.relocking = None;
+            self.start_locker();
         }
     }
 
@@ -3624,6 +3663,9 @@ struct OnDemand {
     /// The locker last started, while it runs, and when it was started
     /// again after ending with the session still locked.
     locker: (Option<u32>, Restarts),
+    /// Since when the locker a compositor before started, which the relay
+    /// kept, has been waited for to lock the session again.
+    relocking: Option<Instant>,
     /// Whether the session is to end, and the programs started in it are
     /// being waited for.
     ending: Ending,
@@ -3686,6 +3728,14 @@ pub(crate) fn scoped(
     all.extend_from_slice(arguments);
     (scoper.to_string_lossy().into_owned(), all)
 }
+
+/// What the locker is called to the next compositor, where the relay
+/// keeps it.
+const LOCKER: &str = "locker";
+
+/// How long the locker a compositor before started, which the relay kept, is
+/// given to lock the session again, before it is taken to be stuck.
+const RELOCKING: Duration = Duration::from_secs(5);
 
 /// What is said when the session is to be locked and nothing is set to
 /// lock it with.

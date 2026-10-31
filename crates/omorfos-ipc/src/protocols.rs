@@ -90,9 +90,11 @@ pub const OFFERED: &[Protocol] = &[
         interface: "ext_session_lock_manager_v1",
         version: 1,
         replayed: "The lock made again, with a lock surface on each screen, which a compositor \
-                   started locked takes as its locker coming back. Whether the session is locked \
-                   is the holder's word, not the relay's: a locker that does not come back leaves \
-                   it locked, with a new locker started.",
+                   started locked takes as its locker coming back; the locker is not told again \
+                   that the session is locked, and a lock surface told another size is its to \
+                   draw anew. Whether the session is locked is the holder's word, not the \
+                   relay's: a locker that does not come back, or has not locked it again within \
+                   five seconds, leaves it locked, with a new locker started.",
     },
     Protocol {
         interface: "wl_compositor",

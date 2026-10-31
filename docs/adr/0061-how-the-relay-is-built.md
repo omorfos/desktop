@@ -458,9 +458,9 @@ and fails while that is other than what 3e still has to come.
   keeper unstarted; the keeper is the one unmarked, as each was handed
   before there was the mark, so that a keeper kept across the update is
   still known. A part is not known by the file its process runs, as one
-  that is a script runs its interpreter. The launcher and the locker are
-  not kept: the one speaks to the socket for scripts, as the components
-  do, and the lock is not made again.
+  that is a script runs its interpreter. The launcher is not kept, as it
+  speaks to the socket for scripts, as the components do; the locker is,
+  from 3e, as they are.
 - **The components that come with omorfos are kept as the keeper is**
   (3d): the panel, the wallpaper, the notifications and the portal. Each
   is known again by the next compositor by its process, which the desk
@@ -596,3 +596,30 @@ and fails while that is other than what 3e still has to come.
   and a picture of it asked for that it failed; none of it is made
   again, and the relay answers for each. Making it again, by a list of
   the relay's own, is left for later.
+- **A locked session is locked again by the locker it had** (3e), settled
+  as the last part of 3e was started: the locker kept, rather than one
+  started anew, so that what was typed into it and how it looked go on,
+  where starting one anew, as the session did before, would have been
+  simpler. The locker the compositor starts is handed to the relay as the
+  components are, and called `locker` in the desk, so that the next
+  compositor knows it for its locker and watches over it as it does them.
+  Its lock is made again, and each lock surface with it, on the screen it
+  was on; the next compositor, come up locked as the holder said (ADR 60),
+  gives the lock nobody holds to the first program with the role to lock
+  that asks for it, which is that one. The locker is not told again that
+  the session is locked. A lock surface may not be committed before its
+  first configure is acked, so it is not committed at all as it is made
+  again: told the size it was, the relay acks it and shows what was
+  shown; told another, as on a screen of another size, it is the
+  locker's to ack and draw for, as what was shown would be refused at
+  that size. A lock told it is over, refused as a second locker is, is
+  not made again, nor what it made. Under a relay the compositor starts
+  a locker only once the relay has handed over all it kept, and only if
+  the locker was not among it; one kept that has not locked the session
+  again within five seconds is taken to be stuck, ended, and another
+  started. Whether the session is locked stays the holder's word: a
+  locker that does not come back leaves it locked, and the next
+  compositor starts one. A program a key starts with the role to lock is
+  kept as the user's, and its lock made again too; the next compositor
+  does not know it for the locker, and may start its own beside it, the
+  second of them to ask for the lock being refused.

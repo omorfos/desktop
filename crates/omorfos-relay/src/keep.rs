@@ -10,14 +10,16 @@
 //! through has stopped, and that what lasts only a moment has ended: a popup
 //! dismissed, a token given, a picture discarded, which the relay answers for
 //! from then on. A pointer held once only that has been held is over too, and
-//! so is an input method told another is the one; and a window in its lists of
-//! windows that is not kept has closed. When the next is joined, what the
+//! so is an input method told another is the one, and a lock told it is over;
+//! and a window in its lists of windows that is not kept has closed. When the next is joined, what the
 //! program had is made again in two parts, each ended by a sync of the relay's
 //! own: its registries, so that the new compositor's globals are known, then
 //! the rest, as [`Journal`] kept it. Until the second is answered, what the
 //! compositor says is sifted: what the program knows already is kept from it.
 //! What a buffer has to be for its pictures is told again only if it is not as
-//! it was. A window the next compositor lists that the program has listed is
+//! it was. A locker is not told again that the session is locked, and a lock
+//! surface told the size it was is shown as it was by the relay; one told
+//! another is the locker's to draw anew, as what it showed is of another size. A window the next compositor lists that the program has listed is
 //! the one it has, once the relay knows which it is. A window of another
 //! program's that it imported by the handle the compositor before shared it by
 //! is imported again by the one the next shares it by, once that is known: the
@@ -115,10 +117,15 @@ const IMPORT_GONE: u16 = 0;
 const UNIMPORT: u16 = 0;
 const PARENT_OF: u16 = 1;
 
-/// The requests that ack a configure: a window's `xdg_surface`'s, and a
-/// layer surface's.
+/// The requests that ack a configure: a window's `xdg_surface`'s, a layer
+/// surface's, and a lock surface's.
 const WINDOW_ACK: u16 = 4;
 const LAYER_ACK: u16 = 6;
+const LOCK_ACK: u16 = 1;
+
+/// The event of a lock that says the session is locked; its other says the
+/// lock was refused or is over.
+const LOCKED: u16 = 0;
 
 /// Numbers that mean something only to one compositor, kept as the
 /// program's for theirs where the two differ.
@@ -410,9 +417,11 @@ pub struct Keeping {
     methods: HashMap<u32, Method>,
     /// The keys held, as each keyboard grab of an input method was told.
     grabbed: HashMap<u32, HashSet<u32>>,
-    /// The input methods told another is the one, and what each made, which
-    /// are to go: not made again.
+    /// The input methods told another is the one, and the locks told they
+    /// are over, and what each made, which are to go: not made again.
     refused: HashSet<u32>,
+    /// The locks the program has been told have locked the session.
+    locked: HashSet<u32>,
     /// The program's pictures, by its number for each.
     shots: HashMap<u32, Shot>,
     /// What a buffer has to be for each of the program's sessions of
@@ -482,6 +491,7 @@ impl Default for Keeping {
             methods: HashMap::new(),
             grabbed: HashMap::new(),
             refused: HashSet::new(),
+            locked: HashSet::new(),
             shots: HashMap::new(),
             taking: HashMap::new(),
             following: HashMap::new(),
@@ -555,7 +565,10 @@ impl Keeping {
             self.focus.retain(gone);
             self.held.retain(gone);
         }
-        let roled = matches!(read.interface.name, "xdg_surface" | "zwlr_layer_surface_v1");
+        let roled = matches!(
+            read.interface.name,
+            "xdg_surface" | "zwlr_layer_surface_v1" | "ext_session_lock_surface_v1"
+        );
         if roled && described.name == "ack_configure" {
             let serial = wire::word(bytes, HEADER).unwrap_or_default();
             let window = self.windows.entry(header.object).or_default();
@@ -625,6 +638,7 @@ impl Keeping {
             self.methods.remove(&object);
             self.grabbed.remove(&object);
             self.refused.remove(&object);
+            self.locked.remove(&object);
             self.shots.remove(&object);
             self.taking.remove(&object);
             self.following.remove(&object);
@@ -645,7 +659,8 @@ impl Keeping {
         self.away.remove(&made);
         self.methods.remove(&made);
         self.grabbed.remove(&made);
-        // What an input method refused makes goes with it.
+        self.locked.remove(&made);
+        // What an input method or a lock refused makes goes with it.
         if self.refused.contains(&object) {
             self.refused.insert(made);
         }
@@ -929,10 +944,16 @@ impl Keeping {
             // has no size and no focus, which a program takes for focus
             // gone. What it says once the window is shown is told.
             ("xdg_toplevel", 0) if catching => return false,
-            ("xdg_surface", 0) => return self.configured(object, word(0), None),
+            ("xdg_surface", 0) => return self.configured(object, word(0), None, WINDOW_ACK),
             ("zwlr_layer_surface_v1", 0) => {
-                return self.configured(object, word(0), Some((word(4), word(8))));
+                let size = Some((word(4), word(8)));
+                return self.configured(object, word(0), size, LAYER_ACK);
             }
+            ("ext_session_lock_surface_v1", 0) => {
+                let size = Some((word(4), word(8)));
+                return self.configured(object, word(0), size, LOCK_ACK);
+            }
+            ("ext_session_lock_v1", opcode) => return self.locking(object, opcode),
             ("zwp_pointer_gesture_swipe_v1" | "zwp_pointer_gesture_pinch_v1", 0) => {
                 self.gestures.insert(object, 2);
             }
@@ -1120,6 +1141,22 @@ impl Keeping {
             constraints.coming.clear();
             constraints.sifting = true;
         }
+    }
+
+    /// Takes in the event `opcode` to the lock `object`; returns whether it
+    /// is passed on.
+    fn locking(&mut self, object: u32, opcode: u16) -> bool {
+        // Told once that the session is locked, the locker is not told again
+        // as the next compositor locks it with the lock made again.
+        if opcode == LOCKED {
+            return self.locked.insert(object);
+        }
+        // Else over, or refused, as a second locker is: the next compositor
+        // would refuse it as well, and the program has been told.
+        let made = self.journal.made_by(object);
+        self.refused.insert(object);
+        self.refused.extend(made);
+        true
     }
 
     /// Lets each input method typing in a field go of it, as the compositor
@@ -1471,24 +1508,23 @@ impl Keeping {
     }
 
     /// Takes in that the compositor has said how the window `role`, its
-    /// `xdg_surface`, or the layer surface `role` that says its `size`, is
-    /// to be, with `serial`. Returns whether it is passed on.
-    fn configured(&mut self, role: u32, serial: u32, size: Option<(u32, u32)>) -> bool {
+    /// `xdg_surface`, or the layer surface or lock surface `role` that says
+    /// its `size`, is to be, with `serial`, which `ack` acks. Returns whether
+    /// it is passed on.
+    fn configured(&mut self, role: u32, serial: u32, size: Option<(u32, u32)>, ack: u16) -> bool {
         let caught_up = self.caught_up();
         let window = self.windows.entry(role).or_default();
         let told = window.size;
         window.size = size;
-        if caught_up {
+        // What a lock surface showed may be shown only at the size it was
+        // drawn for: told another, it is the locker's to ack and draw anew.
+        let drawn_anew = ack == LOCK_ACK && size != told;
+        if caught_up || drawn_anew {
             window.offered.push(serial);
             return true;
         }
         // Catching up, the relay acks it and shows what was shown.
         let theirs = self.serials.asked(serial, false);
-        let ack = if size.is_some() {
-            LAYER_ACK
-        } else {
-            WINDOW_ACK
-        };
         self.to_compositor
             .push(journal::message(role, ack, &[theirs]));
         self.to_compositor.extend(self.journal.shown(role));
@@ -3048,6 +3084,127 @@ mod tests {
         );
     }
 
+    /// The globals a locker binds: what locks the session as 3, what makes
+    /// surfaces as 4, and a screen as 5.
+    const LOCKING: [(u32, &str, u32); 3] = [
+        (1, "ext_session_lock_manager_v1", 1),
+        (2, "wl_compositor", 6),
+        (3, "wl_output", 4),
+    ];
+
+    /// A locker with the session locked by 7, asked with the surface 6
+    /// shown on the screen as the lock surface 8, which is to be 640 by 480,
+    /// as was said with the serial 1.
+    fn locking() -> Kept {
+        let mut kept = Kept::registered(&LOCKING);
+        kept.bind(1, "ext_session_lock_manager_v1", 1, 3);
+        kept.bind(2, "wl_compositor", 6, 4);
+        kept.bind(3, "wl_output", 4, 5);
+        kept.send(&message(4, 0, &words(&[6]))).unwrap();
+        kept.send(&message(3, 1, &words(&[7]))).unwrap();
+        kept.send(&message(7, 1, &words(&[8, 6, 5]))).unwrap();
+        kept.told(&message(8, 0, &words(&[1, 640, 480]))).unwrap();
+        kept.send(&message(8, 1, &words(&[1]))).unwrap();
+        kept.send(&message(6, 6, &[])).unwrap();
+        kept
+    }
+
+    /// What has been sent to the compositor, by the object each is to and
+    /// which request it is.
+    fn asked(kept: &Kept) -> Vec<(u32, u16)> {
+        let headers = kept.keeping.to_compositor.iter();
+        let headers = headers.map(|(bytes, _)| wire::header(bytes).unwrap().unwrap());
+        headers
+            .map(|header| (header.object, header.opcode))
+            .collect()
+    }
+
+    #[test]
+    fn a_lock_is_made_again_and_its_locker_not_told_again_that_the_session_is_locked() {
+        let mut kept = locking();
+        assert!(kept.told(&message(7, 0, &[])).is_some(), "locked");
+
+        kept.restarted(&LOCKING);
+        let made = asked(&kept);
+        assert!(made.contains(&(3, 1)) && made.contains(&(7, 1)), "{made:?}");
+        assert!(
+            !made.contains(&(6, 6)),
+            "not committed before its first configure is acked: {made:?}"
+        );
+        // Told the size it was, the relay acks it, and shows what was shown.
+        let same = message(8, 0, &words(&[3, 640, 480]));
+        assert_eq!(kept.told(&same), None, "the same, so not told");
+        let made = asked(&kept);
+        let acked = made.iter().position(|asked| *asked == (8, 1));
+        let shown = made.iter().position(|asked| *asked == (6, 6));
+        assert!(acked.is_some() && shown > acked, "{made:?}");
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert_eq!(kept.told(&message(7, 0, &[])), None, "locked already");
+        assert!(kept.keeping.to_program.is_empty());
+        assert!(kept.send(&message(7, 2, &[])).is_some(), "unlocked");
+    }
+
+    #[test]
+    fn a_lock_not_yet_said_to_be_locked_is_told_so_by_the_next_compositor() {
+        let mut kept = locking();
+        kept.restarted(&LOCKING);
+        assert_eq!(kept.told(&message(8, 0, &words(&[3, 640, 480]))), None);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        let locked = message(7, 0, &[]);
+        assert_eq!(kept.told(&locked), Some(locked));
+    }
+
+    #[test]
+    fn a_lock_surface_told_another_size_is_the_lockers_to_ack_and_draw_again() {
+        let mut kept = locking();
+        kept.told(&message(7, 0, &[])).unwrap();
+        kept.restarted(&LOCKING);
+        let told = kept.told(&message(8, 0, &words(&[3, 800, 600])));
+        let told = told.expect("another, so told");
+        assert_eq!(wire::word(&told, HEADER + 4), Some(800));
+        let made = asked(&kept);
+        assert!(
+            !made.contains(&(8, 1)) && !made.contains(&(6, 6)),
+            "what was shown is of another size, so neither acked nor shown by the relay: {made:?}"
+        );
+        let serial = wire::word(&told, HEADER).unwrap();
+        assert!(
+            kept.send(&message(8, 1, &words(&[serial]))).is_some(),
+            "acked by the locker"
+        );
+    }
+
+    #[test]
+    fn a_lock_refused_is_not_made_again_nor_what_it_made() {
+        let mut kept = locking();
+        assert!(kept.told(&message(7, 1, &[])).is_some(), "refused");
+        // A second surface asked for, before the locker heard.
+        kept.send(&message(4, 0, &words(&[9]))).unwrap();
+        kept.send(&message(7, 1, &words(&[10, 9, 5]))).unwrap();
+
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        kept.keeping.join();
+        let made = asked(&kept);
+        assert!(
+            !made.contains(&(3, 1)) && !made.contains(&(7, 1)),
+            "{made:?}"
+        );
+        // Let go of, their numbers are the relay's to free.
+        for gone in [10, 8, 7] {
+            assert_eq!(kept.send(&message(gone, 0, &[])), None);
+        }
+        let freed: Vec<Vec<u8>> = kept
+            .keeping
+            .to_program
+            .drain(..)
+            .map(|(bytes, _)| bytes)
+            .collect();
+        let deleted = |number| message(1, 1, &words(&[number]));
+        assert_eq!(freed, [deleted(10), deleted(8), deleted(7)]);
+    }
+
     #[test]
     fn how_large_a_screen_is_told_again_as_the_relay_catches_up_is_kept_from_the_program() {
         let globals = [(1, "wl_output", 4), (2, "zxdg_output_manager_v1", 3)];
@@ -3085,14 +3242,11 @@ mod tests {
 
     #[test]
     fn a_program_holding_what_cannot_be_made_again_is_not_kept() {
-        let mut kept = Kept::registered(&[(1, "ext_session_lock_manager_v1", 1)]);
-        kept.bind(1, "ext_session_lock_manager_v1", 1, 3);
-        // The session locked.
-        kept.send(&message(3, 1, &words(&[4]))).unwrap();
-        assert_eq!(
-            kept.keeping.lost(&kept.objects),
-            Err(vec!["ext_session_lock_v1"])
-        );
+        let mut kept = Kept::registered(&[(1, "wl_seat", 7)]);
+        kept.bind(1, "wl_seat", 7, 3);
+        // Touch, which no compositor offers yet.
+        kept.send(&message(3, 2, &words(&[4]))).unwrap();
+        assert_eq!(kept.keeping.lost(&kept.objects), Err(vec!["wl_touch"]));
     }
 
     /// The bytes of what is sent.

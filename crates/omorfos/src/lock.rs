@@ -166,6 +166,14 @@ impl Compositor {
         self.lock.is_some()
     }
 
+    /// Whether the session is locked with nobody holding the lock, as a
+    /// compositor started again while it was locked comes up, and as a
+    /// locker that ended leaves it.
+    pub(crate) fn is_held_by_none(&self) -> bool {
+        let lock = self.lock.as_ref();
+        lock.is_some_and(|lock| lock.by.as_ref().is_none_or(|by| !by.is_alive()))
+    }
+
     /// Whether the session is locked and the locker has been told so: a
     /// frame with nothing of the session in it has been shown on every
     /// output. Until then what was on the screen may still be.

@@ -871,8 +871,10 @@ what only games and touchpads need last.
       after it held back for a moment; what an input method was composing as the compositor
       goes is lost, as when the field loses the keyboard; pictures of a window stop as the
       compositor goes, as when the window closes, and a call sharing one stops sharing it, where
-      pictures of a screen go on; a program sharing the screen that holds the X server for it,
-      as Firefox does, closes as the share ends, its X server having gone with the compositor
+      pictures of a screen go on; a program a key starts with the role to lock that holds the
+      lock is made again, but the next compositor, not knowing it for the locker, may start its
+      own beside it, the second to lock being refused; a program sharing the screen that holds
+      the X server for it, as Firefox does, closes as the share ends, its X server having gone with the compositor
       before; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
@@ -922,9 +924,13 @@ what only games and touchpads need last.
       third part), making the source of it, and letting the list go. The
       portal lets go of the window's handle as soon as the source is made,
       so nothing of the program's names the window by then.
-- [ ] The lock made again (3e, the sixth part), with the holder's word
-      on whether the session is locked: whether a locker kept is the
-      next compositor's locker, or one is started anew, settled first.
+- [x] The lock made again (3e, the sixth part), with the holder's word
+      on whether the session is locked: the locker kept by the relay as
+      the components are, rather than one started anew, its lock and lock
+      surfaces made again, and it not told again that the session is
+      locked; the next compositor starts a locker only if none came back,
+      or the one kept has not locked the session again within five
+      seconds.
 - [ ] The compositor's own new version taken up at a quiet moment (ADR
       61, step 3f), as ADR 59 takes up the others', and its word about
       the next login goes. Programs written for X11 still close with

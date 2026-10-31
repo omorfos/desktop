@@ -246,10 +246,10 @@ fn when_the_compositor_goes_a_program_holding_what_cannot_be_made_again_is_let_g
     let mut held = Held::new();
     let compositor = held.compositor();
     let (mut program, mut connection, _) = held.connect(&compositor);
-    // The session locked.
+    // Touch, which no compositor offers yet.
     let mut sent = get_registry();
-    sent.extend(bind(1, "ext_session_lock_manager_v1", 1, 3));
-    sent.extend(message(3, 1, &[4]));
+    sent.extend(bind(1, "wl_seat", 7, 3));
+    sent.extend(message(3, 2, &[4]));
     program.write_all(&sent).unwrap();
     read(&mut held, &mut connection, sent.len());
     drop((compositor, connection));
@@ -259,7 +259,7 @@ fn when_the_compositor_goes_a_program_holding_what_cannot_be_made_again_is_let_g
     let said = String::from_utf8_lossy(&held.said);
     assert!(
         said.contains(&format!(
-            "{} was let go, as it held ext_session_lock_v1, which cannot be made again",
+            "{} was let go, as it held wl_touch, which cannot be made again",
             named()
         )),
         "{said}"

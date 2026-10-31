@@ -850,13 +850,14 @@ mod tests {
         let (mut link, program, _compositor) = linked();
         let mut sent = get_registry();
         let mut body = words(&[1]);
-        body.extend(text("ext_session_lock_manager_v1"));
-        body.extend(words(&[1, 3]));
+        body.extend(text("wl_seat"));
+        body.extend(words(&[7, 3]));
         sent.extend(message(2, 0, &body));
-        sent.extend(message(3, 1, &words(&[4])));
+        // Touch, which no compositor offers yet.
+        sent.extend(message(3, 2, &words(&[4])));
         send(&program, &sent, &[]);
         link.read(Way::Up).unwrap();
-        assert_eq!(link.lose(), Err(vec!["ext_session_lock_v1"]));
+        assert_eq!(link.lose(), Err(vec!["wl_touch"]));
         assert!(link.compositor().is_some(), "not left waiting");
     }
 

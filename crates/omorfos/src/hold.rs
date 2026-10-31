@@ -98,10 +98,14 @@ impl Compositor {
                 self.problems.push(OLDER.to_owned());
             }
             // A session that was locked is locked before anything of it
-            // could be drawn, and the locker started to unlock it.
+            // could be drawn, and the locker started to unlock it: under a
+            // relay, once it has handed over what it kept, unless the
+            // locker was among it.
             if told.locked {
                 self.come_up_locked();
-                self.start_locker();
+                if !told.relayed {
+                    self.start_locker();
+                }
             }
         })
     }
