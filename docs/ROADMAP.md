@@ -995,11 +995,14 @@ what only games and touchpads need last.
       change, how long the session stood still, from the compositor before
       stepping down, or ending, until the next shows the session: what is
       left is to read it on real hardware and decide.
-- [ ] Changes of compositor tried with real programs, kept in the tree and
-      run by hand or nightly, where the probes so far were thrown away:
-      `foot`, Firefox, a GTK and a Qt program, a program in a Flatpak, and
-      the components, through several changes one after another, each
-      checked to be kept and to draw again.
+- [x] Changes of compositor tried with real programs, kept in the tree and
+      run by hand (`real.rs`, `docs/TESTING.md`), where the probes so far
+      were thrown away: foot, Firefox ESR, a GTK program and a Qt program in
+      a Flatpak, through three changes one after another, each checked to
+      be kept, running, and drawing again at a new size.
+- [ ] The same for the components, which the compositor starts with their
+      roles, and nightly: the tests need the programs installed, which the
+      runners of CI do not have.
 - [ ] A routine for real hardware in `docs/TESTING.md`: a change of
       compositor with one screen, with two, with one on a cable, locked,
       with a video playing and with a window of a program written for X11

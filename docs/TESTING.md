@@ -174,6 +174,31 @@ wanting. The `rest` tier measures it as CI does, without them:
 cargo coverage --locked
 ```
 
+### Real programs
+
+`real.rs` starts real programs through the relay, as a user would, and
+starts the compositor anew under each three times, checking each time that
+the relay kept it, that it is still running, and that it draws again: as
+the next compositor makes its window as large as the screen, a corner the
+window did not reach shows the program's own pixels, which only a program
+that drew again at the new size can put there. The scripted client cannot
+show what these do, as each program speaks the protocol in its own way.
+They run foot, Firefox ESR, a GTK program (`zenity`) and a Qt program in a
+Flatpak (Telegram), each on a D-Bus of its own and drawing in memory, and
+pass over one that is not installed, saying so. They are `#[ignore]`d, as
+they need the programs and depend on how each behaves; run them by hand
+after a change to the relay or to how the compositor is started anew:
+
+```sh
+cargo test -p omorfos --all-features --locked --test integration -- --ignored real::
+```
+
+Each program writes what it says to a file of the test's, which a failure
+shows. Telegram is given a place of its own inside its own data, which is
+all of the user's its sandbox lets it have, so that the user's account is
+not touched, and the test removes it after. Every process started with the
+test's socket is stopped at the end, whatever started it.
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X

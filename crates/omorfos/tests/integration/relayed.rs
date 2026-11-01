@@ -190,19 +190,19 @@ fn relayed_with_no_socket_beside_it_is_not_held() {
 }
 
 /// A relay, as the tests step it, and the holder's end of its connection.
-struct Relayed {
-    relay: Rc<RefCell<omorfos_relay::Relay>>,
+pub(crate) struct Relayed {
+    pub(crate) relay: Rc<RefCell<omorfos_relay::Relay>>,
     /// What the relay has said, of programs let go.
-    said: Rc<RefCell<Vec<u8>>>,
+    pub(crate) said: Rc<RefCell<Vec<u8>>>,
     holder: OwnedFd,
     socket: UnixListener,
-    path: PathBuf,
+    pub(crate) path: PathBuf,
     _directory: tempfile::TempDir,
 }
 
 impl Relayed {
     /// A relay handed a socket of its own.
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let directory = tempfile::TempDir::new().unwrap();
         let path = directory.path().join("wayland-kept");
         let socket = UnixListener::bind(&path).unwrap();
@@ -225,7 +225,7 @@ impl Relayed {
 
     /// Starts a compositor as [`Relayed::compositor`] does, with `prepared`
     /// done to it before it is joined.
-    fn compositor_with(&self, prepared: impl FnOnce(&mut Session)) -> (Session, Holder) {
+    pub(crate) fn compositor_with(&self, prepared: impl FnOnce(&mut Session)) -> (Session, Holder) {
         let (session, holder, _) = self.compositor_and_end(prepared);
         (session, holder)
     }
@@ -276,7 +276,7 @@ impl Relayed {
     }
 
     /// Steps the relay alone, as it is with no compositor.
-    fn step(&self) {
+    pub(crate) fn step(&self) {
         self.relay
             .borrow_mut()
             .step(Some(Duration::ZERO), &mut *self.said.borrow_mut());

@@ -272,6 +272,18 @@ impl Session {
         self.inner.compositor_mut().resize_output(&output, size);
     }
 
+    /// Changes the size of the first output, in pixels, and of the picture
+    /// it is drawn in, which [`Session::resize_output`] leaves as it was.
+    pub(crate) fn resize_screen(&mut self, size: (i32, i32)) {
+        self.resize_output(size);
+        let monitor = &mut self.monitors[0];
+        let width = usize::try_from(size.0).unwrap();
+        let height = usize::try_from(size.1).unwrap();
+        monitor.image = Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap();
+        monitor.tracker = OutputDamageTracker::from_output(&monitor.output);
+        monitor.size = size;
+    }
+
     /// Says what scale suits the first output.
     pub(crate) fn suggest_scale(&mut self, scale: omorfos::Scale) {
         let output = self.output();
