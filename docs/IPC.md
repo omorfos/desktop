@@ -299,6 +299,7 @@ changes:
 | `display N` | The session's X server has the number N. |
 | `stepping down` | It is about to end, to be started again with the newest version installed; or, relayed, the relay has ended, and the programs with it. One that ends without having said so, and without failing, has ended the session. |
 | `updated` | It is stepping down for its new version though the session is in use: the next is to say so. Said just before `stepping down`, which a holder that does not know this line still acts on. |
+| `shown` | The session is shown: at once, or, started anew under a relay, once what the relay kept is back (ADR 62). Said once. The holder says on its log how long the session stood still, from when the compositor before stepped down, or ended, until this. |
 | `showing` | Said as it ends, stepping down, with its graphics card handed with the line (`SCM_RIGHTS`), on which what the screens show was drawn: the holder keeps it open and hands it to the next compositor, telling it `showing`. A holder that does not know this line closes the card, and the screens go dark, as they did before. |
 
 `omorfos_ipc::hold` has both, and what hands a socket over.

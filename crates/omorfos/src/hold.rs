@@ -75,6 +75,8 @@ pub(crate) struct Holder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Said {
     up: bool,
+    /// Whether the session has been shown.
+    shown: bool,
     locked: bool,
     display: Option<u32>,
     stepping_down: Option<bool>,
@@ -84,6 +86,7 @@ impl Said {
     /// The words that tell one who knows `self` what is now so.
     fn words_for(self, now: Self) -> impl Iterator<Item = Word> {
         let up = (now.up && !self.up).then_some(Word::Up);
+        let shown = (now.shown && !self.shown).then_some(Word::Shown);
         let lock = if now.locked {
             Word::Locked
         } else {
@@ -97,9 +100,16 @@ impl Said {
             .filter(|regardless| *regardless)
             .map(|_| Word::Updated);
         let stepping = stepping.map(|_| Word::SteppingDown);
-        [up, locked, display.map(Word::Display), updated, stepping]
-            .into_iter()
-            .flatten()
+        [
+            up,
+            shown,
+            locked,
+            display.map(Word::Display),
+            updated,
+            stepping,
+        ]
+        .into_iter()
+        .flatten()
     }
 }
 
@@ -131,6 +141,7 @@ impl Compositor {
             } = told;
             let said = Said {
                 up: false,
+                shown: false,
                 locked: told.locked,
                 display: told.display,
                 stepping_down: None,
@@ -293,11 +304,13 @@ impl Compositor {
     pub(crate) fn tell_holder(&mut self) {
         let locked = self.is_locked();
         let display = self.x11_number();
+        let shown = self.showing();
         let Some(holder) = self.holder.as_mut() else {
             return;
         };
         let now = Said {
             up: true,
+            shown,
             locked,
             display,
             stepping_down: holder.stepping_down,

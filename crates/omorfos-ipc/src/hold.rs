@@ -90,6 +90,10 @@ pub enum Word {
     /// what it drew off the screens with it. A holder that does not know
     /// this word closes the card, and the screens go dark, as before.
     Showing,
+    /// The session is shown: at once, or, started anew under a relay, once
+    /// what the relay kept is back (ADR 62). Said once, for the holder to
+    /// say how long a change of compositor stood still.
+    Shown,
 }
 
 impl Told {
@@ -178,6 +182,7 @@ impl Word {
             Self::SteppingDown => "stepping down\n".to_owned(),
             Self::Updated => "updated\n".to_owned(),
             Self::Showing => "showing\n".to_owned(),
+            Self::Shown => "shown\n".to_owned(),
         }
     }
 
@@ -191,6 +196,7 @@ impl Word {
             "stepping down" => Some(Self::SteppingDown),
             "updated" => Some(Self::Updated),
             "showing" => Some(Self::Showing),
+            "shown" => Some(Self::Shown),
             _ => number(line, "display ").map(Self::Display),
         }
     }
@@ -423,6 +429,7 @@ mod tests {
             Word::SteppingDown,
             Word::Updated,
             Word::Showing,
+            Word::Shown,
         ];
         for word in words {
             let line = word.line();

@@ -120,3 +120,17 @@ fn the_picture_before_covers_the_screen_at_the_scale_it_is_given_after() {
     assert_eq!(first.at(20, 300), RED);
     assert_eq!(first.at(WIDTH - 20, 300), BLUE, "not made larger");
 }
+
+#[test]
+fn the_holder_is_told_the_session_is_shown_once_what_was_kept_is_back() {
+    use omorfos_ipc::hold::Word;
+
+    let mut session = Session::new();
+    let (mut holder, relays, _path, _socket) = unready(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    session.step();
+    assert_eq!(holder.said(), [Word::Up], "not yet shown");
+    relay::send(relays.as_fd(), &Hand::Ready, &[]).unwrap();
+    session.step();
+    assert_eq!(holder.said(), [Word::Shown]);
+}

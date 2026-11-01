@@ -1387,7 +1387,10 @@ fn started_again_under_a_holder_the_x_server_has_the_number_the_session_had() {
     open(&mut session, &program, "xapp", (100, 100), 0x00ff_0000);
     assert_eq!(display(&session).as_deref(), Some(expected.as_str()));
     // The holder knew the number already.
-    assert_eq!(holder.said(), [omorfos_ipc::hold::Word::Up]);
+    assert_eq!(
+        holder.said(),
+        [omorfos_ipc::hold::Word::Up, omorfos_ipc::hold::Word::Shown]
+    );
 }
 
 #[test]

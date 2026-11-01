@@ -98,7 +98,7 @@ fn a_compositor_under_a_holder_serves_the_socket_it_is_handed_and_says_it_is_up(
     let mut session = Session::new();
     let (mut holder, path) = hold(&mut session, &Told::default());
     session.step();
-    assert_eq!(holder.said(), [Word::Up]);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown]);
     assert!(!session.compositor().started_again());
 
     // Programs are told the socket's name, and find the session there.
@@ -150,7 +150,7 @@ fn the_holder_hears_when_the_session_is_locked_and_unlocked() {
     let mut session = Session::new();
     let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
-    assert_eq!(holder.said(), [Word::Up]);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown]);
 
     let (mut locker, lock, _surface) = crate::lock::lock(&mut session);
     assert_eq!(holder.said(), [Word::Locked]);
@@ -174,7 +174,7 @@ fn told_the_session_was_locked_it_comes_up_locked_and_starts_its_locker() {
     session.eventually(|_| mark.exists());
     session.step();
     // The holder knew already.
-    assert_eq!(holder.said(), [Word::Up]);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown]);
 
     // The locker it started takes the lock that nobody held, and lets it
     // go as any locker does.
@@ -223,7 +223,7 @@ fn restarting_the_compositor_under_a_holder_says_so_and_ends_without_asking_prog
     let mut session = Session::new();
     let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
-    assert_eq!(holder.said(), [Word::Up]);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown]);
     // A program of the user's, which ending the session would ask to end,
     // and which says so if it is.
     let script = "trap 'printf x > \"$(dirname \"$OMORFOS_SOCKET\")/asked\"; exit' TERM; \
@@ -252,7 +252,7 @@ fn stepping_down_it_hands_the_holder_the_card_the_screens_show_and_not_before() 
     session.compositor_mut().hand_screens(card.as_fd());
     let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
-    assert_eq!(holder.said(), [Word::Up]);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown]);
     session.compositor_mut().hand_screens(card.as_fd());
     assert_eq!(holder.handed(), (vec![], 0), "not stepping down");
 

@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use omorfos_ipc::hold::{self, Heard, Told};
+use omorfos_ipc::hold::{self, Heard, Told, Word};
 use omorfos_ipc::relay::{self, Hand};
 use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
 use smithay::backend::session::libseat::LibSeatSessionNotifier;
@@ -74,6 +74,11 @@ pub struct Hold {
     pub(crate) watching: Option<RegistrationToken>,
     /// Whether the compositor running has ended, as far as has been heard.
     ended: bool,
+    /// When the compositor before stepped down, or ended, until the next
+    /// says the session is shown, for how long that took to be said.
+    stood: Option<Instant>,
+    /// What is to be said on the log, as the holder next can.
+    logged: Vec<String>,
 }
 
 /// The relay running, as far as the holder is concerned.
@@ -133,6 +138,8 @@ impl Hold {
             notifier: None,
             watching: None,
             ended: false,
+            stood: None,
+            logged: Vec::new(),
         }
     }
 
@@ -199,6 +206,31 @@ impl Hold {
         }
     }
 
+    /// Takes in `word`, said by the compositor running: as the policy does,
+    /// and, as the session is shown after a change of compositor, how long
+    /// it stood still, from when the compositor before stepped down or
+    /// ended, to be said.
+    fn heard(&mut self, word: Word) {
+        match word {
+            Word::SteppingDown => self.stood = Some(Instant::now()),
+            Word::Shown => {
+                let stood = self.stood.take().map(|since| since.elapsed().as_millis());
+                self.logged.extend(stood.map(|stood| {
+                    format!("omorfos-hold: the session stood still for {stood} ms between one compositor and the next")
+                }));
+            }
+            _ => {}
+        }
+        self.policy.heard(word);
+    }
+
+    /// Says on `log` what is to be said there.
+    fn say(&mut self, log: &mut dyn Write) {
+        for said in self.logged.drain(..) {
+            let _ = writeln!(log, "{said}");
+        }
+    }
+
     /// Takes in that the seat kept is the session's to use, or not.
     pub(crate) fn seat_changed(&mut self, active: bool) {
         let seating = self.seating.as_mut();
@@ -215,7 +247,7 @@ impl Hold {
     ) -> Next {
         let told = self.policy.starting(which);
         let failed = match self.start(which, &told, log, &event_loop.handle()) {
-            Ok(running) => self.hear(event_loop, running),
+            Ok(running) => self.hear(event_loop, running, log),
             Err(error) => {
                 let _ = writeln!(log, "omorfos-hold: cannot start the compositor: {error}");
                 true
@@ -317,7 +349,12 @@ impl Hold {
     /// ends, answering what it asks of the seat meanwhile; closes what was
     /// opened for it, and keeps its file if it came up. Returns whether it
     /// failed.
-    fn hear(&mut self, event_loop: &mut EventLoop<'static, Self>, running: Running) -> bool {
+    fn hear(
+        &mut self,
+        event_loop: &mut EventLoop<'static, Self>,
+        running: Running,
+        log: &mut dyn Write,
+    ) -> bool {
         let Running {
             mut child,
             connection,
@@ -340,7 +377,7 @@ impl Hold {
                 holding.card = Some(card);
             }
             for word in heard.hear(&bytes[..read]) {
-                holding.policy.heard(word);
+                holding.heard(word);
             }
             Ok(PostAction::Continue)
         });
@@ -352,8 +389,13 @@ impl Hold {
             })
         });
         self.ended = words.is_err();
-        while !self.ended && event_loop.dispatch(None, self).is_ok() {}
+        while !self.ended && event_loop.dispatch(None, self).is_ok() {
+            self.say(log);
+        }
+        self.say(log);
         self.ended = false;
+        // One that ended without stepping down stood still from then.
+        self.stood = self.stood.or_else(|| Some(Instant::now()));
         let tokens = [words.ok(), asking.and_then(Result::ok)];
         for token in tokens.into_iter().flatten() {
             handle.remove(token);
@@ -503,11 +545,11 @@ mod tests {
         let (ours, theirs) = UnixStream::pair().unwrap();
         let (card, _other) = UnixStream::pair().unwrap();
         (&ours).write_all(b"up\n").unwrap();
-        hold::give(&ours, &hold::Word::Showing.line(), &[card.as_fd()]).unwrap();
-        hold::give(&ours, &hold::Word::SteppingDown.line(), &[]).unwrap();
+        hold::give(&ours, &Word::Showing.line(), &[card.as_fd()]).unwrap();
+        hold::give(&ours, &Word::SteppingDown.line(), &[]).unwrap();
         drop(ours);
         assert!(
-            !held.hear(&mut event_loop, running(theirs, None)),
+            !held.hear(&mut event_loop, running(theirs, None), &mut Vec::new()),
             "stepped down"
         );
         assert!(held.card.is_some(), "kept open");
@@ -519,14 +561,14 @@ mod tests {
         let starting = held.policy.starting(Which::Installed);
         let next = held.start(Which::Installed, &starting, &mut log, &handle);
         assert!(held.card.is_none(), "the holder keeps it no longer");
-        held.hear(&mut event_loop, next.unwrap());
+        held.hear(&mut event_loop, next.unwrap(), &mut Vec::new());
         assert_eq!(fs_told(&told), "showing\n");
 
         // The one after, handed none, is told nothing of it.
         std::fs::remove_file(&told).unwrap();
         let starting = held.policy.starting(Which::Installed);
         let after = held.start(Which::Installed, &starting, &mut log, &handle);
-        held.hear(&mut event_loop, after.unwrap());
+        held.hear(&mut event_loop, after.unwrap(), &mut Vec::new());
         assert_eq!(fs_told(&told), "again\n");
     }
 
@@ -541,7 +583,7 @@ mod tests {
         telling(&held.compositor, &told);
         let starting = held.policy.starting(Which::Installed);
         let next = held.start(Which::Installed, &starting, &mut log, &handle);
-        held.hear(&mut event_loop, next.unwrap());
+        held.hear(&mut event_loop, next.unwrap(), &mut Vec::new());
         assert_eq!(fs_told(&told), "seat seat9\n");
 
         // The version held takes its own, and the holder keeps it no more.
@@ -550,7 +592,7 @@ mod tests {
         held.held = Some(File::open(held.compositor.clone()).unwrap());
         let starting = held.policy.starting(Which::Held);
         let older = held.start(Which::Held, &starting, &mut log, &handle);
-        held.hear(&mut event_loop, older.unwrap());
+        held.hear(&mut event_loop, older.unwrap(), &mut Vec::new());
         assert_eq!(fs_told(&told), "again\nolder\n");
         assert!(held.seating.is_none());
     }
@@ -568,7 +610,11 @@ mod tests {
         writeln!(&mut &theirs, "open /dev/dri/card0").unwrap();
         held.seat_changed(false);
         drop(ours);
-        held.hear(&mut event_loop, running(words, Some(reading)));
+        held.hear(
+            &mut event_loop,
+            running(words, Some(reading)),
+            &mut Vec::new(),
+        );
         assert_eq!(*asked.borrow(), ["open /dev/dri/card0", "close"]);
         assert!(held.card.is_some(), "its picture kept");
         theirs.set_nonblocking(true).unwrap();
@@ -587,8 +633,51 @@ mod tests {
         held.seating = None;
         held.seat_changed(true);
         drop(ours);
-        held.hear(&mut event_loop, running(words, Some(reading)));
+        held.hear(
+            &mut event_loop,
+            running(words, Some(reading)),
+            &mut Vec::new(),
+        );
         assert_eq!(asked.borrow().len(), 2);
+    }
+
+    /// A compositor that says `said` and ends, heard by `held`, whose log
+    /// is `log`.
+    fn heard(
+        held: &mut Hold,
+        event_loop: &mut EventLoop<'static, Hold>,
+        said: &str,
+        log: &mut Vec<u8>,
+    ) {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        (&ours).write_all(said.as_bytes()).unwrap();
+        drop(ours);
+        held.hear(event_loop, running(theirs, None), log);
+    }
+
+    #[test]
+    fn how_long_the_session_stood_still_between_two_compositors_is_said() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let mut held = hold(runtime.path());
+        let mut event_loop = EventLoop::try_new().unwrap();
+        let mut log = Vec::new();
+        // The first shows the session with nothing before it.
+        heard(&mut held, &mut event_loop, "up\nshown\n", &mut log);
+        assert_eq!(log, b"", "nothing stood still");
+        heard(&mut held, &mut event_loop, "stepping down\n", &mut log);
+        heard(&mut held, &mut event_loop, "up\nshown\n", &mut log);
+        let said = String::from_utf8(std::mem::take(&mut log)).unwrap();
+        let stood = said.strip_prefix("omorfos-hold: the session stood still for ");
+        let stood =
+            stood.and_then(|stood| stood.strip_suffix(" ms between one compositor and the next\n"));
+        assert!(
+            stood.is_some_and(|stood| stood.parse::<u128>().is_ok()),
+            "{said}"
+        );
+        // One that ended without stepping down, as one that crashed does.
+        heard(&mut held, &mut event_loop, "up\n", &mut log);
+        heard(&mut held, &mut event_loop, "shown\n", &mut log);
+        assert_eq!(String::from_utf8(log).unwrap().lines().count(), 1);
     }
 
     #[test]

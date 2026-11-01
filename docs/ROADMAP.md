@@ -991,7 +991,10 @@ what only games and touchpads need last.
 - [ ] Blue and green, once the three steps are tried: the time a change of
       compositor still stands still measured, and whether a compositor
       caught up beside the one going is worth the relay feeding both (ADR
-      62, "Alternatives").
+      62, "Alternatives"). The holder now says on its log, after each
+      change, how long the session stood still, from the compositor before
+      stepping down, or ending, until the next shows the session: what is
+      left is to read it on real hardware and decide.
 - [ ] Changes of compositor tried with real programs, kept in the tree and
       run by hand or nightly, where the probes so far were thrown away:
       `foot`, Firefox, a GTK and a Qt program, a program in a Flatpak, and
