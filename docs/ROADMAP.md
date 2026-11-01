@@ -974,15 +974,19 @@ what only games and touchpads need last.
 - [ ] A change of compositor unseen, the third step: the picture before,
       read from the card as each screen shows it, drawn over the session's
       first frames and faded out.
-- [ ] The session never out of anyone's control (ADR 62, "No one in control
-      of the session"): `omorfos-hold` takes control of the session from
-      logind once, and keeps it while compositors come and go, opening the
-      cards and input devices for each and taking them back as it ends and
-      as the user leaves for another virtual terminal; the compositor takes
-      its seat from the holder through Smithay's `Session` trait. With it
-      the virtual terminal is never put back into text between two
-      compositors, and the console never shows. A decision of its own, in
-      a new ADR.
+- [x] The session never out of anyone's control (ADR 63): `omorfos-hold`
+      takes the seat once, through libseat, and keeps it while compositors
+      come and go, opening the cards and input devices for each and closing
+      them as it ends, keeping the first card open for its picture; the
+      compositor takes its devices from the holder through Smithay's
+      `Session` trait, and its own seat where the holder keeps none. With it
+      the virtual terminal is not put back into text between two
+      compositors. Not yet tried on real hardware.
+- [ ] The holder taking up its own new version only where it is another:
+      installing always puts a new file in place of the old, and the holder,
+      which lets the seat go to take up a new version, shows the console
+      then, once each installation, which a file the same as the one
+      running need not.
 - [ ] Blue and green, once the three steps are tried: the time a change of
       compositor still stands still measured, and whether a compositor
       caught up beside the one going is worth the relay feeding both (ADR

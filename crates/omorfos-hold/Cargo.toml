@@ -19,6 +19,11 @@ omorfos-ipc = { path = "../omorfos-ipc" }
 # process (`process`), as a version of the holder that takes up another's
 # has it as a child but no handle to it.
 rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "std"] }
+# Already in the tree, as the compositor's. Its libseat session alone: the
+# holder keeps the seat while compositors come and go (ADR 63), and Smithay
+# owns the descriptors libseat gives out, which the holder has no `unsafe`
+# to close. Its event loop waits on the seat and on the compositor at once.
+smithay = { version = "0.7.0", default-features = false, features = ["backend_session_libseat"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

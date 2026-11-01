@@ -84,7 +84,7 @@ fn taking(back: bool, err: &mut dyn Write) -> ExitCode {
         }
     };
     match renew::take(&text, fds) {
-        Ok((mut hold, which)) => ended(hold.run_from(which, err)),
+        Ok((hold, which)) => ended(hold.seated().run_from(which, err)),
         Err((text, fds)) if !back => {
             let said = "cannot take what the version before handed over; going back to it";
             let _ = writeln!(err, "omorfos-hold: {said}");

@@ -12,6 +12,8 @@
 mod exec;
 mod policy;
 pub mod renew;
+mod seat;
+mod seating;
 mod socket;
 
 use std::fs::File;
@@ -22,11 +24,18 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{self, Heard, Told};
 use omorfos_ipc::relay::{self, Hand};
 use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
+use smithay::backend::session::libseat::LibSeatSessionNotifier;
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::{
+    EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
+};
+
+use crate::seating::Seating;
 
 pub use exec::give_back;
 pub use policy::{Next, Policy, Which};
@@ -56,6 +65,15 @@ pub struct Hold {
     /// stepped down, open, so that the screens go on showing what it drew
     /// until the next draws, which it is handed to (ADR 62).
     pub(crate) card: Option<OwnedFd>,
+    /// The seat, where the holder keeps it for the compositors (ADR 63).
+    pub(crate) seating: Option<Seating>,
+    /// What says the seat is paused or active again, until there is a loop
+    /// to hear it on.
+    pub(crate) notifier: Option<LibSeatSessionNotifier>,
+    /// What says so, once heard on the loop.
+    pub(crate) watching: Option<RegistrationToken>,
+    /// Whether the compositor running has ended, as far as has been heard.
+    ended: bool,
 }
 
 /// The relay running, as far as the holder is concerned.
@@ -91,6 +109,9 @@ struct Running {
     child: Child,
     connection: UnixStream,
     file: File,
+    /// The holder's end of the connection the compositor asks for the
+    /// seat's devices over, where the holder keeps the seat.
+    asking: Option<UnixStream>,
 }
 
 impl Hold {
@@ -108,6 +129,10 @@ impl Hold {
             relay: None,
             relay_started: false,
             card: None,
+            seating: None,
+            notifier: None,
+            watching: None,
+            ended: false,
         }
     }
 
@@ -135,11 +160,25 @@ impl Hold {
 
     /// Runs as [`Hold::run`] does, starting the compositor from `which`
     /// file first, as another version of the holder said to.
-    pub fn run_from(&mut self, mut which: Which, log: &mut dyn Write) -> bool {
+    pub fn run_from(&mut self, which: Which, log: &mut dyn Write) -> bool {
+        let event_loop = EventLoop::try_new();
+        event_loop.map_or(true, |mut event_loop| {
+            self.run_in(&mut event_loop, which, log)
+        })
+    }
+
+    /// Runs as [`Hold::run_from`] does, waiting on `event_loop`.
+    fn run_in(
+        &mut self,
+        event_loop: &mut EventLoop<'static, Self>,
+        mut which: Which,
+        log: &mut dyn Write,
+    ) -> bool {
+        seat::watch(self, &event_loop.handle());
         loop {
-            match self.once(which, log) {
+            match self.once(event_loop, which, log) {
                 Next::Start { which: next, after } => {
-                    std::thread::sleep(after);
+                    self.wait(event_loop, after);
                     which = next;
                     // Between one compositor and the next, nothing on the
                     // screen is the holder's, and its own new version is
@@ -151,12 +190,32 @@ impl Hold {
         }
     }
 
-    /// Starts the compositor from `which` file, hears it until it ends,
-    /// and says what is next.
-    fn once(&mut self, which: Which, log: &mut dyn Write) -> Next {
+    /// Waits for `after` to pass, answering the seat meanwhile.
+    fn wait(&mut self, event_loop: &mut EventLoop<'static, Self>, after: Duration) {
+        let until = Instant::now() + after;
+        let mut left = after;
+        while !left.is_zero() && event_loop.dispatch(left, self).is_ok() {
+            left = until.saturating_duration_since(Instant::now());
+        }
+    }
+
+    /// Takes in that the seat kept is the session's to use, or not.
+    pub(crate) fn seat_changed(&mut self, active: bool) {
+        let seating = self.seating.as_mut();
+        let _ = seating.map(|seating| seating.changed(active));
+    }
+
+    /// Starts the compositor from `which` file, hears it on `event_loop`
+    /// until it ends, and says what is next.
+    fn once(
+        &mut self,
+        event_loop: &mut EventLoop<'static, Self>,
+        which: Which,
+        log: &mut dyn Write,
+    ) -> Next {
         let told = self.policy.starting(which);
-        let failed = match self.start(which, told, log) {
-            Ok(running) => self.hear(running),
+        let failed = match self.start(which, &told, log, &event_loop.handle()) {
+            Ok(running) => self.hear(event_loop, running),
             Err(error) => {
                 let _ = writeln!(log, "omorfos-hold: cannot start the compositor: {error}");
                 true
@@ -179,9 +238,16 @@ impl Hold {
     }
 
     /// Starts the compositor from `which` file, handing it the socket, or
-    /// its connection to the relay and the socket's name, and telling it
-    /// `told`.
-    fn start(&mut self, which: Which, told: Told, log: &mut dyn Write) -> io::Result<Running> {
+    /// its connection to the relay and the socket's name, and a connection
+    /// to ask for the seat over, and telling it `told`; letting the seat
+    /// go, on `handle`, first, where it is to take its own.
+    fn start(
+        &mut self,
+        which: Which,
+        told: &Told,
+        log: &mut dyn Write,
+        handle: &LoopHandle<'static, Self>,
+    ) -> io::Result<Running> {
         let file = match which {
             Which::Installed => File::open(&self.compositor),
             Which::Held => {
@@ -194,15 +260,23 @@ impl Hold {
         if which == Which::Held {
             self.relay_program = None;
             self.stop_relay();
+            self.seating = None;
+            seat::unwatch(self.watching.take(), handle);
         }
         let relayed = self.relay_connection(log);
         // The compositor has the card from then on, and the holder keeps it
         // no longer.
         let card = self.card.take();
+        // Where it cannot be handed a connection for the seat, the
+        // compositor takes its own, which it cannot while the holder has it.
+        let seated = self.seating.as_mut().map(Seating::link);
+        let seated = seated.and_then(Result::ok);
+        let seat = seated.as_ref().and(self.seating.as_ref());
         let told = Told {
             relayed: relayed.is_some(),
             showing: card.is_some(),
-            ..told
+            seat: seat.map(Seating::name),
+            ..*told
         };
         // Started from the file held, by the holder's own name for it,
         // which stays good however the file installed is replaced.
@@ -226,35 +300,71 @@ impl Hold {
             // heard to have ended.
             let fds = relayed.iter().map(AsFd::as_fd).chain([self.socket.as_fd()]);
             let fds = fds.chain(card.as_ref().map(AsFd::as_fd));
+            // Last, for a compositor that does not know it to pass it over.
+            let fds = fds.chain(seated.as_ref().map(|(theirs, _)| theirs.as_fd()));
             let fds: Vec<BorrowedFd<'_>> = fds.collect();
             let _ = hold::give(&connection, &told.written(), &fds);
             Running {
                 child,
                 connection,
                 file,
+                asking: seated.map(|(_, reading)| reading),
             }
         })
     }
 
-    /// Hears what the compositor running says until it ends, and keeps its
-    /// file if it came up. Returns whether it failed.
-    fn hear(&mut self, mut running: Running) -> bool {
+    /// Hears what the compositor running says on `event_loop` until it
+    /// ends, answering what it asks of the seat meanwhile; closes what was
+    /// opened for it, and keeps its file if it came up. Returns whether it
+    /// failed.
+    fn hear(&mut self, event_loop: &mut EventLoop<'static, Self>, running: Running) -> bool {
+        let Running {
+            mut child,
+            connection,
+            file,
+            asking,
+        } = running;
+        let handle = event_loop.handle();
         let mut heard = Heard::default();
-        let mut bytes = [0; 256];
         // The connection closes when the compositor ends: nothing it starts
         // has it.
-        while let Ok((read @ 1.., handed)) = hold::read(&running.connection, &mut bytes) {
+        let words = Generic::new(connection, Interest::READ, Mode::Level);
+        let words = handle.insert_source(words, move |_, connection, holding: &mut Self| {
+            let mut bytes = [0; 256];
+            let Ok((read @ 1.., handed)) = hold::read(connection, &mut bytes) else {
+                holding.ended = true;
+                return Ok(PostAction::Remove);
+            };
             // What a compositor hands with what it says is its card alone.
             if let Some(card) = handed.into_iter().next() {
-                self.card = Some(card);
+                holding.card = Some(card);
             }
             for word in heard.hear(&bytes[..read]) {
-                self.policy.heard(word);
+                holding.policy.heard(word);
             }
+            Ok(PostAction::Continue)
+        });
+        let asking = asking.map(|asking| Generic::new(asking, Interest::READ, Mode::Level));
+        let asking = asking.map(|asking| {
+            handle.insert_source(asking, |_, from, holding: &mut Self| {
+                let seating = holding.seating.as_mut();
+                Ok(seating.map_or(PostAction::Remove, |seating| seating.asked(from)))
+            })
+        });
+        self.ended = words.is_err();
+        while !self.ended && event_loop.dispatch(None, self).is_ok() {}
+        self.ended = false;
+        let tokens = [words.ok(), asking.and_then(Result::ok)];
+        for token in tokens.into_iter().flatten() {
+            handle.remove(token);
         }
-        let status = running.child.wait();
+        // Closed, the next may open it; the card stays open, for what the
+        // compositor drew to stay on the screens.
+        let card = self.seating.as_mut().and_then(Seating::ended);
+        self.card = self.card.take().or(card);
+        let status = child.wait();
         if self.policy.is_up() {
-            self.held = Some(running.file);
+            self.held = Some(file);
         }
         status.map_or(true, |status| !status.success())
     }
@@ -333,7 +443,7 @@ impl Hold {
 pub fn hold(runtime: &Path, own: PathBuf, log: &mut dyn Write) -> io::Result<bool> {
     let socket = Socket::bind(runtime)?;
     let compositor = own.with_file_name("omorfos");
-    let mut hold = Hold::new(socket, compositor, Policy::default());
+    let mut hold = Hold::new(socket, compositor, Policy::default()).seated();
     hold.relay_program = relay_beside(&own);
     Ok(hold.renewed_from(own).run(log))
 }
@@ -355,48 +465,140 @@ impl Drop for Hold {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use omorfos_ipc::seat::Seated;
+
     use super::*;
     use crate::renew::tests::{hold, program};
+    use crate::seating::tests::{Fake, Log};
+
+    /// A stand-in compositor at `program` that writes what it was told to
+    /// `told`, and ends.
+    fn telling(program_at: &Path, told: &Path) {
+        let script = format!(
+            "#!/bin/sh\nwhile read -r line && [ -n \"$line\" ]; do echo \"$line\" >> '{}'; done\n",
+            told.display()
+        );
+        program(program_at, &script);
+    }
+
+    /// A compositor that has started, with the holder's ends of what it
+    /// says over and, where the holder keeps the seat, what it asks over.
+    fn running(connection: UnixStream, asking: Option<UnixStream>) -> Running {
+        Running {
+            child: Command::new("true").spawn().unwrap(),
+            connection,
+            file: File::open("/proc/self/exe").unwrap(),
+            asking,
+        }
+    }
 
     #[test]
     fn the_card_a_compositor_hands_as_it_ends_goes_to_the_next_alone() {
         let runtime = tempfile::TempDir::new().unwrap();
         let mut held = hold(runtime.path());
+        let mut event_loop = EventLoop::try_new().unwrap();
         // A compositor stepping down, with what it drew on its card.
         let (ours, theirs) = UnixStream::pair().unwrap();
         let (card, _other) = UnixStream::pair().unwrap();
-        let ended = Running {
-            child: Command::new("true").spawn().unwrap(),
-            connection: theirs,
-            file: File::open("/proc/self/exe").unwrap(),
-        };
         (&ours).write_all(b"up\n").unwrap();
         hold::give(&ours, &hold::Word::Showing.line(), &[card.as_fd()]).unwrap();
         hold::give(&ours, &hold::Word::SteppingDown.line(), &[]).unwrap();
         drop(ours);
-        assert!(!held.hear(ended), "stepped down");
+        assert!(
+            !held.hear(&mut event_loop, running(theirs, None)),
+            "stepped down"
+        );
         assert!(held.card.is_some(), "kept open");
 
         // The next is told so, and handed the card after the socket.
         let told = runtime.path().join("told");
-        let script = format!(
-            "#!/bin/sh\nwhile read -r line && [ -n \"$line\" ]; do echo \"$line\" >> '{}'; done\n",
-            told.display()
-        );
-        program(&held.compositor, &script);
-        let mut log = Vec::new();
+        telling(&held.compositor, &told);
+        let (mut log, handle) = (Vec::new(), event_loop.handle());
         let starting = held.policy.starting(Which::Installed);
-        let next = held.start(Which::Installed, starting, &mut log).unwrap();
+        let next = held.start(Which::Installed, &starting, &mut log, &handle);
         assert!(held.card.is_none(), "the holder keeps it no longer");
-        held.hear(next);
+        held.hear(&mut event_loop, next.unwrap());
         assert_eq!(fs_told(&told), "showing\n");
 
         // The one after, handed none, is told nothing of it.
         std::fs::remove_file(&told).unwrap();
         let starting = held.policy.starting(Which::Installed);
-        let after = held.start(Which::Installed, starting, &mut log).unwrap();
-        held.hear(after);
+        let after = held.start(Which::Installed, &starting, &mut log, &handle);
+        held.hear(&mut event_loop, after.unwrap());
         assert_eq!(fs_told(&told), "again\n");
+    }
+
+    #[test]
+    fn a_compositor_takes_the_seat_kept_but_not_one_from_before_that_may_not_know_it() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let mut held = hold(runtime.path());
+        held.seating = Some(Seating::new(Box::new(Fake(Log::default())), true));
+        let mut event_loop = EventLoop::try_new().unwrap();
+        let (mut log, handle) = (Vec::new(), event_loop.handle());
+        let told = runtime.path().join("told");
+        telling(&held.compositor, &told);
+        let starting = held.policy.starting(Which::Installed);
+        let next = held.start(Which::Installed, &starting, &mut log, &handle);
+        held.hear(&mut event_loop, next.unwrap());
+        assert_eq!(fs_told(&told), "seat seat9\n");
+
+        // The version held takes its own, and the holder keeps it no more.
+        std::fs::remove_file(&told).unwrap();
+        program(&runtime.path().join("held"), "#!/bin/sh\nexit 0\n");
+        held.held = Some(File::open(held.compositor.clone()).unwrap());
+        let starting = held.policy.starting(Which::Held);
+        let older = held.start(Which::Held, &starting, &mut log, &handle);
+        held.hear(&mut event_loop, older.unwrap());
+        assert_eq!(fs_told(&told), "again\nolder\n");
+        assert!(held.seating.is_none());
+    }
+
+    #[test]
+    fn what_a_compositor_asks_of_the_seat_is_answered_and_closed_as_it_ends() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let mut held = hold(runtime.path());
+        let asked = Log::default();
+        let mut seating = Seating::new(Box::new(Fake(Rc::clone(&asked))), true);
+        let (theirs, reading) = seating.link().unwrap();
+        held.seating = Some(seating);
+        let mut event_loop = EventLoop::try_new().unwrap();
+        let (ours, words) = UnixStream::pair().unwrap();
+        writeln!(&mut &theirs, "open /dev/dri/card0").unwrap();
+        held.seat_changed(false);
+        drop(ours);
+        held.hear(&mut event_loop, running(words, Some(reading)));
+        assert_eq!(*asked.borrow(), ["open /dev/dri/card0", "close"]);
+        assert!(held.card.is_some(), "its picture kept");
+        theirs.set_nonblocking(true).unwrap();
+        let (mut said, mut fds, mut bytes) = (String::new(), 0, [0; 64]);
+        while let Ok((read @ 1.., handed)) = hold::read(&theirs, &mut bytes) {
+            said.push_str(&String::from_utf8_lossy(&bytes[..read]));
+            fds += handed.len();
+        }
+        let expected = [Seated::Active, Seated::Paused, Seated::Opened(0)].map(Seated::line);
+        assert_eq!((said, fds), (expected.concat(), 1));
+
+        // Asked of after the seat has gone, it has nothing to answer with.
+        let (ours, words) = UnixStream::pair().unwrap();
+        let (theirs, reading) = UnixStream::pair().unwrap();
+        writeln!(&mut &theirs, "open /dev/dri/card0").unwrap();
+        held.seating = None;
+        held.seat_changed(true);
+        drop(ours);
+        held.hear(&mut event_loop, running(words, Some(reading)));
+        assert_eq!(asked.borrow().len(), 2);
+    }
+
+    #[test]
+    fn between_two_compositors_the_seat_is_answered_while_the_holder_waits() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let mut held = hold(runtime.path());
+        let mut event_loop = EventLoop::try_new().unwrap();
+        let begun = Instant::now();
+        held.wait(&mut event_loop, Duration::from_millis(30));
+        assert!(begun.elapsed() >= Duration::from_millis(30));
     }
 
     /// What a stand-in wrote it was told, nothing if it was told nothing.

@@ -13,12 +13,15 @@ use std::process::{Command, Output, Stdio};
 
 /// The holder at `program`, with nothing of the test's environment but
 /// what tells an instrumented build where to record coverage, and the
-/// runtime directory `runtime`.
+/// runtime directory `runtime`, keeping a seat of libseat's that controls
+/// nothing.
 fn holder(program: &Path, runtime: Option<&Path>) -> Command {
     let mut command = Command::new(program);
     command.env_clear();
     command.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
     command.envs(runtime.map(|runtime| ("XDG_RUNTIME_DIR", runtime)));
+    // Never the seat of the session the tests run in.
+    command.env("LIBSEAT_BACKEND", "noop");
     command
 }
 
@@ -125,7 +128,11 @@ fn it_holds_the_session_for_the_compositor_beside_it_until_that_ends() {
     compositor(place.path(), "printf 'up\\n' >&0; exit 0");
     let output = holder(&program, Some(place.path())).output().unwrap();
     assert!(output.status.success(), "{}", said(&output));
-    assert_eq!(fs::read_to_string(place.path().join("told")).unwrap(), ";");
+    // The seat it keeps is the compositor's to take.
+    assert_eq!(
+        fs::read_to_string(place.path().join("told")).unwrap(),
+        "seat seat0,;"
+    );
     assert!(
         !place.path().join("wayland-1").exists(),
         "the name is given back"
@@ -144,7 +151,7 @@ fn programs_reach_the_compositor_through_the_relay_beside_it() {
     assert!(output.status.success(), "{}", said(&output));
     assert_eq!(
         fs::read_to_string(place.path().join("told")).unwrap(),
-        "relayed,;"
+        "relayed,seat seat0,;"
     );
 }
 
@@ -173,7 +180,13 @@ fn its_own_new_version_takes_its_place_between_one_compositor_and_the_next() {
     let output = holder(&program, Some(place.path())).output().unwrap();
     assert!(output.status.success(), "{}", said(&output));
     let told = fs::read_to_string(place.path().join("told")).unwrap();
-    assert_eq!(told, ";again,locked,;", "{}", said(&output));
+    // Its new version takes the seat again for the next.
+    assert_eq!(
+        told,
+        "seat seat0,;again,locked,seat seat0,;",
+        "{}",
+        said(&output)
+    );
     // It is the same process, which the login screen watches, all along.
     let parents = fs::read_to_string(place.path().join("parents")).unwrap();
     let parents: Vec<&str> = parents.split_terminator(';').collect();
