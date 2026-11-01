@@ -1000,9 +1000,11 @@ what only games and touchpads need last.
       were thrown away: foot, Firefox ESR, a GTK program and a Qt program in
       a Flatpak, through three changes one after another, each checked to
       be kept, running, and drawing again at a new size.
+- [x] Real programs in CI: foot and the GTK program on every push, from
+      Ubuntu's archive, and Firefox ESR, from Mozilla's repository, and
+      Telegram, from Flathub, with them every night.
 - [ ] The same for the components, which the compositor starts with their
-      roles, and nightly: the tests need the programs installed, which the
-      runners of CI do not have.
+      roles.
 - [ ] A routine for real hardware in `docs/TESTING.md`: a change of
       compositor with one screen, with two, with one on a cable, locked,
       with a video playing and with a window of a program written for X11

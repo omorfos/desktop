@@ -130,6 +130,9 @@ To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
 which needs `libEGL`; `setpriv` (`util-linux`), which stops a test's
 own bus and PipeWire with the test however it ends; `pam_wrapper` (`libpam-wrapper`), which the lock
 screen's tests ask PAM through; and the DejaVu fonts to draw as CI does.
+The tests of real programs kept through a change of compositor, run by
+hand and in CI, try those of `foot`, `zenity`, Firefox ESR and Telegram (a
+Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 
 ## Documentation
 

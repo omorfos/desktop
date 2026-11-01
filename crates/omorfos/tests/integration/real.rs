@@ -5,8 +5,9 @@
 //! program is kept and draws again for the next. They need the programs
 //! installed, run for seconds each, and depend on how each program behaves,
 //! so they are not among the tests every change runs: they are run by hand,
-//! as `docs/TESTING.md` says, and a program that is not installed is passed
-//! over, said to be.
+//! and in CI, as `docs/TESTING.md` says, and a program that is not
+//! installed is passed over, said to be, unless `OMORFOS_REAL` is
+//! `required`.
 #![expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
@@ -41,6 +42,17 @@ const SCREEN: (i32, i32) = (1920, 1200);
 /// Where on the screen no program's first window reaches, and a window as
 /// large as the screen does: its bottom right.
 const CORNER: (i32, i32) = (SCREEN.0 - 20, SCREEN.1 - 20);
+
+/// Says that `what` is not installed, and is not tried: or, where
+/// `OMORFOS_REAL` is `required`, as in CI, which installs each, fails.
+fn missing(what: &str) {
+    let required = std::env::var_os("OMORFOS_REAL").is_some_and(|real| real == "required");
+    assert!(
+        !required,
+        "{what} is not installed, and every program is required"
+    );
+    let _ = writeln!(stderr(), "{what} is not installed, and is not tried");
+}
 
 /// Whether `program` is installed, where `PATH` finds it.
 fn installed(program: &str) -> bool {
@@ -164,7 +176,7 @@ fn draws(session: &mut Session, peer: &mut Client, which: &str, said: &dyn Fn() 
 /// as the next tells it to be as large as the screen.
 fn kept_through_changes(program: &str, script: &str) {
     if !installed(program) {
-        let _ = writeln!(stderr(), "{program} is not installed, and is not tried");
+        missing(program);
         return;
     }
     let home = tempfile::TempDir::new().unwrap();
@@ -257,10 +269,7 @@ fn a_qt_program_in_a_flatpak_is_kept_through_changes_of_compositor() {
     if installed {
         kept_through_changes("flatpak", &script);
     } else {
-        let _ = writeln!(
-            stderr(),
-            "org.telegram.desktop is not installed, and is not tried"
-        );
+        missing("org.telegram.desktop");
     }
     let _ = fs::remove_dir_all(kept);
 }

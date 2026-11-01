@@ -193,6 +193,12 @@ after a change to the relay or to how the compositor is started anew:
 cargo test -p omorfos --all-features --locked --test integration -- --ignored real::
 ```
 
+CI runs foot and the GTK program on every push, from Ubuntu's own
+archive, and all four every night, Firefox ESR from Mozilla's repository,
+its key checked against the fingerprint Mozilla publishes, and Telegram
+from Flathub. There `OMORFOS_REAL` is `required`, and a program that is
+not installed fails its test rather than being passed over.
+
 Each program writes what it says to a file of the test's, which a failure
 shows. Telegram is given a place of its own inside its own data, which is
 all of the user's its sandbox lets it have, so that the user's account is

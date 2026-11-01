@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg foot zenity
       # `libegl1` is for Xwayland, which aborts as it starts without it and
       # does not depend on it. Then where X servers put their sockets, which
       # a session that has never run one does not have.
@@ -49,6 +49,14 @@ jobs:
       # `cargo coverage` is an alias defined in .cargo/config.toml.
       - name: Unit and integration tests with the coverage gate
         run: cargo coverage --locked
+      # Real programs kept through changes of compositor (docs/TESTING.md,
+      # "Real programs"), from the build the coverage gate made: foot and a
+      # GTK program here, from Ubuntu's archive, and the rest every night,
+      # as they come from Mozilla and Flathub. Each is required to be there.
+      - name: Real programs through changes of compositor
+        env:
+          OMORFOS_REAL: required
+        run: cargo llvm-cov --no-report --workspace --all-features --locked --test integration -- --ignored real::foot real::a_gtk
       # How much room was left, for the next time it runs short.
       - name: Room left on the disk
         if: ${{ !cancelled() }}

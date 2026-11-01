@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       # As the Test workflow has it.
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg foot zenity flatpak
       - name: Make room for X servers
         run: sudo mkdir -p -m 1777 /tmp/.X11-unix
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -72,6 +72,39 @@ jobs:
           echo "$failures of $RUNS runs failed"
           echo "tests=$failures of $RUNS runs failed" >> "$GITHUB_STEP_SUMMARY"
           test "$failures" -eq 0
+      # Firefox ESR from Mozilla's own repository, its key checked against
+      # the fingerprint Mozilla publishes before it is trusted; Telegram,
+      # a Qt program, from Flathub. Ubuntu's own Firefox is a snap.
+      - name: Install the real programs
+        if: ${{ !cancelled() }}
+        run: |
+          curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg -o mozilla.gpg
+          fingerprint=$(gpg --show-keys --with-colons mozilla.gpg | awk -F: '/^fpr/ {print $10; exit}')
+          test "$fingerprint" = 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3
+          sudo install -D -m 0644 mozilla.gpg /etc/apt/keyrings/packages.mozilla.org.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.gpg] https://packages.mozilla.org/apt mozilla main" \
+            | sudo tee /etc/apt/sources.list.d/mozilla.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends firefox-esr
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.telegram.desktop
+          # Ubuntu keeps sandboxes such as Flatpak's from namespaces of their
+          # own unless a profile of AppArmor's lets them.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # Real programs kept through changes of compositor, every one of them
+      # (docs/TESTING.md, "Real programs"), from the build above.
+      - name: Real programs through changes of compositor
+        if: ${{ !cancelled() }}
+        env:
+          OMORFOS_REAL: required
+        run: |
+          mkdir -p failed
+          if ! cargo test --workspace --all-features --locked --test integration -- --ignored real:: > run.log 2>&1; then
+            echo "::error::a real program was not kept through changes of compositor"
+            grep -E "^test .* FAILED$|panicked at" -A3 run.log | head -60
+            mv run.log failed/real.log
+            exit 1
+          fi
       # The coverage gate builds everything again, instrumented, beside the
       # build the tests above ran from, and the two together are more than
       # an amd64 runner has room for: every coverage run failed for want of
