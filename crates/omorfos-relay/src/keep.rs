@@ -649,6 +649,11 @@ impl Keeping {
             self.methods.remove(&object);
             self.grabbed.remove(&object);
             self.pressed.remove(&object);
+            // A pointer, keyboard or field gone has nothing to be said to
+            // have left.
+            self.focus.remove(&object);
+            self.held.remove(&object);
+            self.framing.remove(&object);
             self.refused.remove(&object);
             self.locked.remove(&object);
             self.shots.remove(&object);
@@ -2771,6 +2776,18 @@ mod tests {
     fn a_surface_destroyed_with_the_pointer_and_keyboard_on_it_is_not_said_to_be_left() {
         let (mut kept, globals) = focused();
         kept.send(&message(7, 0, &[])).unwrap();
+        kept.restarted(&globals);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        assert!(kept.keeping.live(), "nothing held");
+        assert!(kept.keeping.to_program.is_empty(), "nor told");
+    }
+
+    #[test]
+    fn a_pointer_and_keyboard_released_with_a_surface_entered_are_not_said_to_leave_it() {
+        let (mut kept, globals) = focused();
+        kept.send(&message(5, 1, &[])).unwrap();
+        kept.send(&message(6, 0, &[])).unwrap();
         kept.restarted(&globals);
         let sync = *kept.keeping.syncs.first().unwrap();
         kept.answer(sync);

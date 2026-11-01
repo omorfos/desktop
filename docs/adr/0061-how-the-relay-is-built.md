@@ -344,7 +344,8 @@ and fails while that is other than what 3e still has to come.
   measure that turn, the second answered after it; the program waits to
   be read until then, as a sync of the relay's takes a number the program
   may take next. A destroyed surface has nothing to be said to have left,
-  and what had it is forgotten. Where a menu is ended as the compositor
+  and what had it is forgotten; nor has a pointer, keyboard or field the
+  program destroyed anything to be said to have left. Where a menu is ended as the compositor
   goes, the pointer and keyboard are told they left at once, as a menu
   ends as focus moves: Firefox, told only that its menu was dismissed,
   took the next click for the one that closes it, and opened no other.
