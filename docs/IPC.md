@@ -287,6 +287,7 @@ compositor before left, and an empty line after them:
 | `relayed` | Programs reach the compositor through the relay (ADR 61). Two descriptors are handed, not one: first the compositor's end of its connection to the relay, which it serves in place of the socket, then the socket, of which it takes the name alone. |
 | `updated` | The compositor before stepped down for this new version though the session was in use, having waited as long as it may for a moment it was not: the user is told so, once. Told to the next compositor alone. |
 | `showing` | The screens show what the compositor before drew (ADR 62). One descriptor more is handed, after the socket: its graphics card, open. The compositor takes the screens as they are and keeps the card open until each shows what it draws; closed, it takes what it shows with it. |
+| `seat NAME` | The holder keeps the seat called NAME (ADR 63). One descriptor more is handed, last: the compositor's end of a connection to ask for the seat's devices over, as below. The compositor takes the seat from it, not from libseat, which would refuse it, the holder having it. |
 
 Back along the same connection the compositor says, a line each, as each
 changes:
@@ -301,6 +302,26 @@ changes:
 | `showing` | Said as it ends, stepping down, with its graphics card handed with the line (`SCM_RIGHTS`), on which what the screens show was drawn: the holder keeps it open and hands it to the next compositor, telling it `showing`. A holder that does not know this line closes the card, and the screens go dark, as they did before. |
 
 `omorfos_ipc::hold` has both, and what hands a socket over.
+
+Over the connection for the seat, the compositor asks, a line each:
+
+| Line | Means |
+|---|---|
+| `open PATH` | Open the device at PATH, a path from the root, as libseat would. |
+| `close N` | Close the device opened as N. |
+| `switch N` | Show the virtual terminal N. |
+
+and the holder says, a line each:
+
+| Line | Means |
+|---|---|
+| `opened N` | The device asked for is open, as N, and handed with this line (`SCM_RIGHTS`). Each `open` is answered, in turn, with this or `refused`. |
+| `refused E` | The device asked for could not be opened, for the error number E. |
+| `paused` | The seat is not the session's to use, as the user is at another virtual terminal: what was opened is not to be used until `active`. |
+| `active` | The seat is the session's to use. The first line the holder says is this or `paused`, and the compositor opens nothing until it is active. |
+
+As the compositor ends, the holder closes everything it opened for it.
+`omorfos_ipc::seat` has both.
 
 ## Between `omorfos-relay`, the holder and the compositor
 

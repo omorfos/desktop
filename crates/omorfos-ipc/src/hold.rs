@@ -29,7 +29,7 @@ pub const MOST: usize = 8;
 
 /// What the holder tells a compositor it starts, of the compositors before
 /// it in the same login.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "each is a line of its own, told or not, and none depends on another"
@@ -60,6 +60,11 @@ pub struct Told {
     /// showing it (ADR 62): the compositor takes the screens as they are,
     /// and lets the card go once each shows what it draws.
     pub showing: bool,
+    /// The holder keeps the seat, which has this name, and hands the
+    /// compositor, last, its end of a connection to ask for its devices
+    /// over (ADR 63): the compositor takes the seat from it, not from
+    /// libseat.
+    pub seat: Option<String>,
 }
 
 /// What a compositor says to the holder.
@@ -114,6 +119,9 @@ impl Told {
         if self.showing {
             text.push_str("showing\n");
         }
+        if let Some(seat) = &self.seat {
+            let _ = writeln!(text, "seat {seat}");
+        }
         text.push('\n');
         text
     }
@@ -146,10 +154,14 @@ impl Told {
                 showing: true,
                 ..told
             },
-            _ => Self {
-                display: number(line, "display ").or(told.display),
-                ..told
-            },
+            _ => {
+                let seat = line.strip_prefix("seat ").filter(|seat| named(seat));
+                Self {
+                    display: number(line, "display ").or(told.display),
+                    seat: seat.map(str::to_owned).or(told.seat),
+                    ..told
+                }
+            }
         })
     }
 }
@@ -182,6 +194,12 @@ impl Word {
             _ => number(line, "display ").map(Self::Display),
         }
     }
+}
+
+/// Whether `seat` may be the name of a seat: something, and nothing that
+/// would end or split the line it is told on.
+fn named(seat: &str) -> bool {
+    !seat.is_empty() && !seat.contains(char::is_whitespace)
 }
 
 /// The number `line` gives after `before`, if it is one.
@@ -254,11 +272,31 @@ pub fn take(from: &UnixStream) -> io::Result<(String, Vec<OwnedFd>)> {
 ///
 /// Returns an error if the connection cannot be read.
 pub fn read(from: &UnixStream, bytes: &mut [u8]) -> io::Result<(usize, Vec<OwnedFd>)> {
+    receive(from, bytes, RecvFlags::CMSG_CLOEXEC)
+}
+
+/// Reads as [`read`] does, but only what has come already.
+///
+/// # Errors
+///
+/// Returns an error if the connection cannot be read, as when nothing has
+/// come ([`io::ErrorKind::WouldBlock`]).
+pub fn read_now(from: &UnixStream, bytes: &mut [u8]) -> io::Result<(usize, Vec<OwnedFd>)> {
+    receive(from, bytes, RecvFlags::CMSG_CLOEXEC | RecvFlags::DONTWAIT)
+}
+
+/// Reads what comes over `from` into `bytes`, as `flags` say, with the
+/// descriptors handed with it.
+fn receive(
+    from: &UnixStream,
+    bytes: &mut [u8],
+    flags: RecvFlags,
+) -> io::Result<(usize, Vec<OwnedFd>)> {
     let mut space =
         [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(MOST), ScmCredentials(1))];
     let mut control = RecvAncillaryBuffer::new(&mut space);
     let chunks = &mut [IoSliceMut::new(bytes)];
-    let got = recvmsg(from, chunks, &mut control, RecvFlags::CMSG_CLOEXEC)?;
+    let got = recvmsg(from, chunks, &mut control, flags)?;
     // Whatever else comes with it, such as who sent it, is not asked for.
     let mut fds = Vec::new();
     for message in control.drain() {
@@ -291,7 +329,14 @@ pub struct Heard {
 impl Heard {
     /// The words `bytes` end, after what was heard before them.
     pub fn hear(&mut self, bytes: &[u8]) -> Vec<Word> {
-        let mut words = Vec::new();
+        let lines = self.lines(bytes);
+        lines.iter().filter_map(|line| Word::read(line)).collect()
+    }
+
+    /// The lines `bytes` end, after what was heard before them, but for
+    /// those too long to be any word.
+    pub fn lines(&mut self, bytes: &[u8]) -> Vec<String> {
+        let mut lines = Vec::new();
         for line in bytes.split_inclusive(|byte| *byte == b'\n') {
             let (line, ends) = match line.split_last() {
                 Some((b'\n', line)) => (line, true),
@@ -304,14 +349,11 @@ impl Heard {
             self.skipping = skipping && !ends;
             if ends {
                 let whole = std::mem::take(&mut self.partial);
-                let word = String::from_utf8(whole).ok();
-                let word = word
-                    .and_then(|word| Word::read(&word))
-                    .filter(|_| !skipping);
-                words.extend(word);
+                let line = String::from_utf8(whole).ok();
+                lines.extend(line.filter(|_| !skipping));
             }
         }
-        words
+        lines
     }
 }
 
@@ -333,6 +375,7 @@ mod tests {
                 relayed: true,
                 updated: true,
                 showing: true,
+                seat: Some("seat0".to_owned()),
             },
             Told {
                 again: true,
@@ -342,6 +385,7 @@ mod tests {
                 relayed: false,
                 updated: false,
                 showing: false,
+                seat: None,
             },
         ] {
             let written = told.written();
@@ -353,7 +397,8 @@ mod tests {
 
     #[test]
     fn what_a_holder_does_not_know_it_was_told_is_passed_over() {
-        let told = Told::read("again\nsomething new\ndisplay x\ndisplay 2\nlocked\n\n");
+        let told =
+            Told::read("again\nsomething new\ndisplay x\ndisplay 2\nseat \nseat a b\nlocked\n\n");
         let expected = Told {
             again: true,
             locked: true,
@@ -362,8 +407,9 @@ mod tests {
             relayed: false,
             updated: false,
             showing: false,
+            seat: None,
         };
-        assert_eq!(told, expected);
+        assert_eq!(told, expected, "no seat has no name, or two");
     }
 
     #[test]
@@ -442,6 +488,13 @@ mod tests {
         give(&ours, &Word::Showing.line(), &[card.as_fd()]).unwrap();
         let (got, fds) = read(&theirs, &mut bytes).unwrap();
         assert_eq!((&bytes[..got], fds.len()), (&b"showing\n"[..], 1));
+        assert_eq!(
+            read_now(&theirs, &mut bytes).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock,
+            "nothing yet, and not waited for"
+        );
+        io::Write::write_all(&mut &ours, b"up\n").unwrap();
+        assert_eq!(read_now(&theirs, &mut bytes).unwrap().0, 3);
         drop(ours);
         assert_eq!(read(&theirs, &mut bytes).unwrap().0, 0, "closed");
     }

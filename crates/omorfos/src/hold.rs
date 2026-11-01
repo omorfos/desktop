@@ -123,6 +123,12 @@ impl Compositor {
         let ipc = omorfos_ipc::socket_path(None, Some(directory.as_os_str()), Some(name));
         let listened = ipc.into_iter().try_for_each(|path| self.listen_ipc(path));
         listened.map(|()| {
+            let Told {
+                relayed,
+                locked,
+                older,
+                ..
+            } = told;
             let said = Said {
                 up: false,
                 locked: told.locked,
@@ -137,23 +143,23 @@ impl Compositor {
                 // A session shown before the relay has made again what it
                 // kept would be shown without it, the panel and the
                 // wallpaper missing for a moment, as a blink.
-                showing: if told.relayed {
+                showing: if relayed {
                     Showing::Waiting
                 } else {
                     Showing::Shown
                 },
                 before: card,
             });
-            if told.older {
+            if older {
                 self.problems.push(OLDER.to_owned());
             }
             // A session that was locked is locked before anything of it
             // could be drawn, and the locker started to unlock it: under a
             // relay, once it has handed over what it kept, unless the
             // locker was among it.
-            if told.locked {
+            if locked {
                 self.come_up_locked();
-                if !told.relayed {
+                if !relayed {
                     self.start_locker();
                 }
             }

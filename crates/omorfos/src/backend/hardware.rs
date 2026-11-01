@@ -20,6 +20,7 @@ use std::io::{self, Write, stderr};
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -38,11 +39,12 @@ use smithay::backend::renderer::multigpu::GpuManager;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::{Bind, ImportDma};
 use smithay::backend::session::libseat::{LibSeatSession, LibSeatSessionNotifier};
-use smithay::backend::session::{Event as SeatEvent, Session as Seat};
+use smithay::backend::session::{AsErrno, Event as SeatEvent, Session as Seat};
 use smithay::backend::udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu};
 use smithay::output::Output;
+use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
-use smithay::reexports::calloop::{LoopHandle, channel};
+use smithay::reexports::calloop::{Interest, LoopHandle, Mode as Level, PostAction, channel};
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc,
 };
@@ -55,7 +57,7 @@ use super::winit::{
     wallpaper,
 };
 use crate::cli::Start;
-use crate::{Compositor, Feedback, Scale, Session};
+use crate::{Compositor, Feedback, Handed, HeldSeat, Scale, Session};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
 /// several is also its only way to a GPU renderer without `unsafe`.
@@ -64,7 +66,7 @@ type Gpus = GpuManager<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>;
 /// The machine: its graphics card, the screens plugged into it, and its
 /// input devices.
 struct Hardware {
-    seat: LibSeatSession,
+    seat: Taken,
     card: DrmDevice,
     gbm: GbmDevice<DrmDeviceFd>,
     gpus: Gpus,
@@ -149,13 +151,14 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     .ok_or("cannot find the configuration directory: set HOME or XDG_CONFIG_HOME")?;
     let holder = holder(start)?;
 
-    let (mut seat, seat_events) = take_seat()?;
-    let seat_name = seat.seat();
     let mut session = Session::new(config_directory)?;
-    let heard = wait_for_seat(&mut session, &seat, seat_events)?;
-
-    match holder {
-        Some(holder) => session.hold(holder)?,
+    // The seat is the holder's to give, where it keeps it (ADR 63).
+    let mut handed = holder.map(Handed::take).transpose()?;
+    let held = handed.as_mut().and_then(Handed::seat);
+    let (mut seat, heard) = take_seat(&mut session, held)?;
+    let seat_name = seat.seat();
+    match handed {
+        Some(handed) => session.take_up(handed)?,
         None => listen(&mut session)?,
     }
     // Taken as they are, where they show what the compositor before drew.
@@ -190,7 +193,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
 
     // The keyboard, mice and touchpads.
     let mut devices =
-        Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(seat.clone().into());
+        Libinput::new_with_udev::<LibinputSessionInterface<Taken>>(seat.clone().into());
     devices
         .udev_assign_seat(&seat_name)
         .map_err(|()| "cannot find the keyboard and mouse")?;
@@ -274,16 +277,130 @@ fn keep_screens(hardware: Rc<RefCell<Hardware>>, compositor: &Compositor) {
     std::mem::forget(hardware);
 }
 
-/// Takes the seat: the screens and input devices of the virtual terminal it
-/// was started at.
-fn take_seat() -> Result<(LibSeatSession, LibSeatSessionNotifier), String> {
-    LibSeatSession::new().map_err(|error| {
+/// The seat, as the compositor took it: from libseat, or from the holder,
+/// which keeps it while compositors come and go (ADR 63).
+#[derive(Debug, Clone)]
+enum Taken {
+    Own(LibSeatSession),
+    Held(HeldSeat),
+}
+
+/// Why the seat did not do what it was asked, as an error number if it
+/// says one.
+#[derive(Debug)]
+struct Refused(Option<i32>);
+
+impl AsErrno for Refused {
+    fn as_errno(&self) -> Option<i32> {
+        self.0
+    }
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Some(error) => io::Error::from_raw_os_error(error).fmt(formatter),
+            None => formatter.write_str("the seat would not"),
+        }
+    }
+}
+
+/// What `error` says, as the seat's.
+fn refused(error: &impl AsErrno) -> Refused {
+    Refused(error.as_errno())
+}
+
+impl Seat for Taken {
+    type Error = Refused;
+
+    fn open(&mut self, path: &Path, flags: OFlags) -> Result<OwnedFd, Refused> {
+        match self {
+            Self::Own(seat) => seat.open(path, flags).map_err(|error| refused(&error)),
+            Self::Held(seat) => seat.open(path, flags).map_err(|error| refused(&error)),
+        }
+    }
+
+    fn close(&mut self, device: OwnedFd) -> Result<(), Refused> {
+        match self {
+            Self::Own(seat) => seat.close(device).map_err(|error| refused(&error)),
+            Self::Held(seat) => seat.close(device).map_err(|error| refused(&error)),
+        }
+    }
+
+    fn change_vt(&mut self, terminal: i32) -> Result<(), Refused> {
+        match self {
+            Self::Own(seat) => seat.change_vt(terminal).map_err(|error| refused(&error)),
+            Self::Held(seat) => seat.change_vt(terminal).map_err(|error| refused(&error)),
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        match self {
+            Self::Own(seat) => seat.is_active(),
+            Self::Held(seat) => seat.is_active(),
+        }
+    }
+
+    fn seat(&self) -> String {
+        match self {
+            Self::Own(seat) => seat.seat(),
+            Self::Held(seat) => seat.seat(),
+        }
+    }
+}
+
+/// Takes the seat: from the holder, where it keeps one, `held`, and else
+/// the screens and input devices of the virtual terminal the compositor
+/// was started at. Returns it, with what it says, as [`wait_for_seat`]
+/// does.
+fn take_seat(
+    session: &mut Session,
+    held: Option<HeldSeat>,
+) -> Result<(Taken, channel::Channel<SeatEvent>), Box<dyn Error>> {
+    if let Some(seat) = held {
+        let heard = hear_held_seat(session, &seat)?;
+        return Ok((Taken::Held(seat), heard));
+    }
+    let (seat, events) = LibSeatSession::new().map_err(|error| {
         format!(
             "cannot take control of the screen and keyboard: {error}. Start omorfos from a \
              text console (a virtual terminal such as Ctrl+Alt+F3), logged in directly and \
              not over SSH, or from inside another desktop to run it in a window"
         )
-    })
+    })?;
+    let heard = wait_for_seat(session, &seat, events)?;
+    Ok((Taken::Own(seat), heard))
+}
+
+/// Keeps what the holder says of the seat it keeps, as [`wait_for_seat`]
+/// keeps what libseat says; and waits until the seat is the session's to
+/// use, as it does.
+fn hear_held_seat(
+    session: &Session,
+    seat: &HeldSeat,
+) -> Result<channel::Channel<SeatEvent>, Box<dyn Error>> {
+    seat.wait_until_active()?;
+    let (said, heard) = channel::channel();
+    let listening = seat.clone();
+    let connection = Generic::new(seat.connection()?, Interest::READ, Level::Level);
+    session.handle().insert_source(connection, move |_, _, _| {
+        let changes = listening.changes();
+        for active in changes.iter().flatten() {
+            let event = if *active {
+                SeatEvent::ActivateSession
+            } else {
+                SeatEvent::PauseSession
+            };
+            let _ = said.send(event);
+        }
+        // The holder gone, the session goes with it.
+        Ok(if changes.is_ok() {
+            PostAction::Continue
+        } else {
+            PostAction::Remove
+        })
+    })?;
+    Ok(heard)
 }
 
 /// Keeps what the seat says, `events`, to be handled once there are screens
@@ -632,7 +749,7 @@ type Card = (
 
 /// Opens the seat's graphics card: with every screen turned off, unless it
 /// is to `keep` what they show.
-fn open_card(seat: &mut LibSeatSession, keep: bool) -> Result<Card, Box<dyn Error>> {
+fn open_card(seat: &mut Taken, keep: bool) -> Result<Card, Box<dyn Error>> {
     let seat_name = seat.seat();
     let path = primary_gpu(&seat_name)
         .ok()

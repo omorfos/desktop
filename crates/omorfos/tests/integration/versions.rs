@@ -320,7 +320,7 @@ fn a_compositor_started_for_its_new_version_taken_up_regardless_says_so() {
         updated: true,
         ..Told::default()
     };
-    let (_holder, _) = hold(&mut session, told);
+    let (_holder, _) = hold(&mut session, &told);
     session.step();
     let said = |session: &Session| {
         let events = session.compositor().events();

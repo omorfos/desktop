@@ -24,6 +24,7 @@ use smithay::reexports::wayland_server::{Display, ListeningSocket};
 
 use crate::Compositor;
 use crate::Roles;
+use crate::seat::HeldSeat;
 
 /// How much the compositor keeps, in bytes, of what it has to send a
 /// program that is not reading, once the program's socket is full. A
@@ -109,29 +110,34 @@ impl Session {
     }
 
     /// Takes up what `omorfos-hold` hands over `holder`, the compositor's
-    /// end of the connection it was started with: serves the socket it
+    /// end of the connection it was started with, as [`Handed::take`] and
+    /// [`Session::take_up`] do.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either does.
+    pub fn hold(&mut self, holder: UnixStream) -> Result<(), Box<dyn Error>> {
+        Handed::take(holder).and_then(|handed| self.take_up(handed))
+    }
+
+    /// Takes up what `omorfos-hold` handed over: serves the socket it
     /// hands, with the IPC socket beside it, comes up as the holder says
     /// the compositor before it left the session, and tells it from then
     /// on what it is to keep. See `docs/adr/0060-the-session-outlives-the-compositor.md`.
     ///
     /// # Errors
     ///
-    /// Returns an error if nothing is handed over, if no socket with a
-    /// name comes with it, or if the IPC socket cannot be opened.
-    pub fn hold(&mut self, holder: UnixStream) -> Result<(), Box<dyn Error>> {
-        let (text, fds) = hold::take(&holder)?;
-        let told = Told::read(&text);
-        let mut fds = fds.into_iter();
-        // Relayed, the connection to the relay comes first, and the socket
-        // after it only for its name: the relay serves it (ADR 61).
-        let relay = told.relayed.then(|| fds.next()).flatten();
-        let socket = fds.next().map(UnixListener::from);
-        let socket = socket.ok_or("omorfos-hold handed over no socket to serve")?;
-        // Showing what the compositor before drew, its card comes last.
-        let card = told.showing.then(|| fds.next()).flatten();
-        let address = socket.local_addr().ok();
-        let path = address.and_then(|address| address.as_pathname().map(Path::to_owned));
-        let path = path.ok_or("the socket omorfos-hold handed over has no name")?;
+    /// Returns an error if the IPC socket cannot be opened.
+    pub fn take_up(&mut self, handed: Handed) -> Result<(), Box<dyn Error>> {
+        let Handed {
+            holder,
+            told,
+            relay,
+            socket,
+            path,
+            card,
+            seat: _,
+        } = handed;
         // Neither is ever to make the compositor wait.
         socket
             .set_nonblocking(true)
@@ -245,6 +251,71 @@ impl Session {
                 .and_then(|()| self.compositor.display.flush_clients().map_err(Box::from));
         }
         outcome
+    }
+}
+
+/// What `omorfos-hold` handed the compositor it started (ADR 60).
+#[derive(Debug)]
+pub struct Handed {
+    /// The compositor's end of the connection it was started with.
+    holder: UnixStream,
+    told: Told,
+    /// The compositor's end of its connection to the relay, where programs
+    /// reach it through one (ADR 61).
+    relay: Option<OwnedFd>,
+    /// The socket programs connect to, served where there is no relay, and
+    /// where it is.
+    socket: UnixListener,
+    path: PathBuf,
+    /// The card the screens show what the compositor before drew on (ADR
+    /// 62).
+    card: Option<OwnedFd>,
+    /// The seat the holder keeps, for the compositor to take its devices
+    /// from (ADR 63).
+    seat: Option<HeldSeat>,
+}
+
+impl Handed {
+    /// Takes what `omorfos-hold` hands over `holder`, the compositor's end
+    /// of the connection it was started with: what it is told, and the
+    /// descriptors that come with it, in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if nothing is handed over, or if no socket with a
+    /// name comes with it.
+    pub fn take(holder: UnixStream) -> Result<Self, Box<dyn Error>> {
+        let (text, fds) = hold::take(&holder)?;
+        let told = Told::read(&text);
+        let mut fds = fds.into_iter();
+        // Relayed, the connection to the relay comes first, and the socket
+        // after it only for its name: the relay serves it (ADR 61).
+        let relay = told.relayed.then(|| fds.next()).flatten();
+        let socket = fds.next().map(UnixListener::from);
+        let socket = socket.ok_or("omorfos-hold handed over no socket to serve")?;
+        let address = socket.local_addr().ok();
+        let path = address.and_then(|address| address.as_pathname().map(Path::to_owned));
+        let path = path.ok_or("the socket omorfos-hold handed over has no name")?;
+        // Showing what the compositor before drew, its card comes next, and
+        // the seat last.
+        let card = told.showing.then(|| fds.next()).flatten();
+        let seat = told.seat.clone().zip(fds.next());
+        let seat = seat.map(|(name, link)| HeldSeat::new(name, UnixStream::from(link)));
+        Ok(Self {
+            holder,
+            told,
+            relay,
+            socket,
+            path,
+            card,
+            seat,
+        })
+    }
+
+    /// The seat the holder keeps, for the compositor to take from it rather
+    /// than from libseat, if it keeps one; once.
+    pub fn seat(&mut self) -> Option<HeldSeat> {
+        self.seat.take()
     }
 }
 

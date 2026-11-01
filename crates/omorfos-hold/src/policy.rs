@@ -102,8 +102,8 @@ impl Policy {
 
     /// What the compositors before have told, for the next.
     #[must_use]
-    pub const fn told(&self) -> Told {
-        self.told
+    pub fn told(&self) -> Told {
+        self.told.clone()
     }
 
     /// What the compositor about to be started from `which` is to be told.
@@ -111,7 +111,7 @@ impl Policy {
         let told = Told {
             again: self.started,
             older: which == Which::Held,
-            ..self.told
+            ..self.told.clone()
         };
         // Said by the one it is told to, and by no other after it.
         self.told.updated = false;

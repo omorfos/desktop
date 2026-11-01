@@ -55,7 +55,7 @@ impl Holder {
 /// Puts `session` under a holder that tells it `told` and hands it a socket
 /// in the session's own directory, as `omorfos-hold` hands one in the
 /// runtime directory; returns the holder and where the socket is.
-pub(crate) fn hold(session: &mut Session, told: Told) -> (Holder, PathBuf) {
+pub(crate) fn hold(session: &mut Session, told: &Told) -> (Holder, PathBuf) {
     let path = session.config.path().join("wayland-held");
     let socket = UnixListener::bind(&path).unwrap();
     let holder = hold_with(session, told, &[socket.as_fd()]);
@@ -63,7 +63,7 @@ pub(crate) fn hold(session: &mut Session, told: Told) -> (Holder, PathBuf) {
 }
 
 /// Puts `session` under a holder that tells it `told` and hands it `fds`.
-pub(crate) fn hold_with(session: &mut Session, told: Told, fds: &[BorrowedFd<'_>]) -> Holder {
+pub(crate) fn hold_with(session: &mut Session, told: &Told, fds: &[BorrowedFd<'_>]) -> Holder {
     let (holder, compositor) = UnixStream::pair().unwrap();
     hold::give(&holder, &told.written(), fds).unwrap();
     session.inner().hold(compositor).unwrap();
@@ -96,7 +96,7 @@ fn stand_in(path: &Path, mark: &str) {
 #[test]
 fn a_compositor_under_a_holder_serves_the_socket_it_is_handed_and_says_it_is_up() {
     let mut session = Session::new();
-    let (mut holder, path) = hold(&mut session, Told::default());
+    let (mut holder, path) = hold(&mut session, &Told::default());
     session.step();
     assert_eq!(holder.said(), [Word::Up]);
     assert!(!session.compositor().started_again());
@@ -148,7 +148,7 @@ fn a_hand_without_a_socket_to_serve_is_refused() {
 #[test]
 fn the_holder_hears_when_the_session_is_locked_and_unlocked() {
     let mut session = Session::new();
-    let (mut holder, _) = hold(&mut session, Told::default());
+    let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
     assert_eq!(holder.said(), [Word::Up]);
 
@@ -167,7 +167,7 @@ fn told_the_session_was_locked_it_comes_up_locked_and_starts_its_locker() {
         locked: true,
         ..Told::default()
     };
-    let (mut holder, _) = hold(&mut session, told);
+    let (mut holder, _) = hold(&mut session, &told);
     assert!(session.compositor().is_locked(), "before anything is drawn");
     assert_eq!(session.draw().at(WIDTH / 2, HEIGHT / 2), 0xff00_0000);
     let mark = session.config.path().join("locker");
@@ -198,7 +198,7 @@ fn started_again_it_starts_its_own_programs_but_not_what_starts_with_the_session
         again: true,
         ..Told::default()
     };
-    let _held = hold(&mut session, told);
+    let _held = hold(&mut session, &told);
     assert!(session.compositor().started_again());
     session.compositor_mut().autostart();
     let directory = session.config.path().to_owned();
@@ -212,7 +212,7 @@ fn the_first_compositor_of_a_login_starts_what_starts_with_the_session() {
     let autostart =
         "autostart: [[sh, -c, 'printf x >> \"$(dirname \"$OMORFOS_SOCKET\")/autostarted\"']]\n";
     let mut session = Session::with_config(&[("config.yaml", autostart)]);
-    let _held = hold(&mut session, Told::default());
+    let _held = hold(&mut session, &Told::default());
     session.compositor_mut().autostart();
     let mark = session.config.path().join("autostarted");
     session.eventually(|_| mark.exists());
@@ -221,7 +221,7 @@ fn the_first_compositor_of_a_login_starts_what_starts_with_the_session() {
 #[test]
 fn restarting_the_compositor_under_a_holder_says_so_and_ends_without_asking_programs_to() {
     let mut session = Session::new();
-    let (mut holder, _) = hold(&mut session, Told::default());
+    let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
     assert_eq!(holder.said(), [Word::Up]);
     // A program of the user's, which ending the session would ask to end,
@@ -250,7 +250,7 @@ fn stepping_down_it_hands_the_holder_the_card_the_screens_show_and_not_before() 
     let (card, _other) = UnixStream::pair().unwrap();
     // With no holder, there is nobody to hand it.
     session.compositor_mut().hand_screens(card.as_fd());
-    let (mut holder, _) = hold(&mut session, Told::default());
+    let (mut holder, _) = hold(&mut session, &Told::default());
     session.step();
     assert_eq!(holder.said(), [Word::Up]);
     session.compositor_mut().hand_screens(card.as_fd());
@@ -275,7 +275,7 @@ fn a_compositor_handed_the_card_the_screens_show_takes_it_once() {
         showing: true,
         ..Told::default()
     };
-    let _holder = hold_with(&mut session, told, &[socket.as_fd(), card.as_fd()]);
+    let _holder = hold_with(&mut session, &told, &[socket.as_fd(), card.as_fd()]);
     assert!(session.compositor_mut().take_screens_before().is_some());
     assert!(session.compositor_mut().take_screens_before().is_none());
 
@@ -286,10 +286,49 @@ fn a_compositor_handed_the_card_the_screens_show_takes_it_once() {
     let socket = UnixListener::bind(&path).unwrap();
     let _holder = hold_with(
         &mut session,
-        Told::default(),
+        &Told::default(),
         &[socket.as_fd(), card.as_fd()],
     );
     assert!(session.compositor_mut().take_screens_before().is_none());
+}
+
+#[test]
+fn a_compositor_takes_the_seat_the_holder_keeps_from_it_once() {
+    use smithay::backend::session::Session as _;
+
+    let mut session = Session::new();
+    let path = session.config.path().join("wayland-held");
+    let socket = UnixListener::bind(&path).unwrap();
+    let (card, _other) = UnixStream::pair().unwrap();
+    let (ours, link) = UnixStream::pair().unwrap();
+    let told = Told {
+        showing: true,
+        seat: Some("seat9".to_owned()),
+        ..Told::default()
+    };
+    let (holder, compositor) = UnixStream::pair().unwrap();
+    let fds = [socket.as_fd(), card.as_fd(), link.as_fd()];
+    hold::give(&holder, &told.written(), &fds).unwrap();
+    let mut handed = omorfos::Handed::take(compositor).unwrap();
+    let seat = handed.seat().unwrap();
+    assert!(handed.seat().is_none(), "once");
+    assert_eq!(seat.seat(), "seat9");
+    // What the holder says on the connection handed, last, is heard.
+    std::io::Write::write_all(&mut &ours, b"active\n").unwrap();
+    seat.wait_until_active().unwrap();
+    assert!(seat.is_active());
+    session.inner().take_up(handed).unwrap();
+    assert!(session.compositor_mut().take_screens_before().is_some());
+
+    // Told of one, and handed no connection for it, it has none.
+    let told = Told {
+        seat: Some("seat9".to_owned()),
+        ..Told::default()
+    };
+    let (holder, compositor) = UnixStream::pair().unwrap();
+    hold::give(&holder, &told.written(), &[socket.as_fd()]).unwrap();
+    let mut handed = omorfos::Handed::take(compositor).unwrap();
+    assert!(handed.seat().is_none());
 }
 
 #[test]
@@ -313,7 +352,7 @@ fn a_compositor_older_than_the_one_installed_says_the_fix_is_not_in() {
         older: true,
         ..Told::default()
     };
-    let _held = hold(&mut session, told);
+    let _held = hold(&mut session, &told);
     let problems = session.compositor().problems().join("\n");
     assert!(
         problems.contains("new version would not start"),

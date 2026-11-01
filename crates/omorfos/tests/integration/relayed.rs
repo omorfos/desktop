@@ -55,7 +55,7 @@ fn unready(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
         relayed: true,
         ..Told::default()
     };
-    let holder = hold_with(session, told, &[compositor.as_fd(), socket.as_fd()]);
+    let holder = hold_with(session, &told, &[compositor.as_fd(), socket.as_fd()]);
     // The socket is the relay's to serve, and kept open as it would be.
     (holder, relays, path, socket)
 }
@@ -257,7 +257,7 @@ impl Relayed {
         };
         let holder = hold_with(
             &mut session,
-            told,
+            &told,
             &[compositor.as_fd(), self.socket.as_fd()],
         );
         relay::send(self.holder.as_fd(), &Hand::Compositor, &[relays.as_fd()]).unwrap();

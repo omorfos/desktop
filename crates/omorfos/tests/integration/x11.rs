@@ -1370,7 +1370,7 @@ fn started_again_under_a_holder_the_x_server_has_the_number_the_session_had() {
         display: Some(number),
         ..omorfos_ipc::hold::Told::default()
     };
-    let (mut holder, _) = crate::hold::hold(&mut session, told);
+    let (mut holder, _) = crate::hold::hold(&mut session, &told);
     session.compositor_mut().start_xwayland(None);
     let expected = format!(":{number}");
     assert_eq!(
@@ -1394,7 +1394,7 @@ fn started_again_under_a_holder_the_x_server_has_the_number_the_session_had() {
 fn the_first_compositor_under_a_holder_tells_it_the_number_its_x_server_took() {
     let _starting = STARTING.read().unwrap_or_else(PoisonError::into_inner);
     let mut session = Session::new();
-    let (mut holder, _) = crate::hold::hold(&mut session, omorfos_ipc::hold::Told::default());
+    let (mut holder, _) = crate::hold::hold(&mut session, &omorfos_ipc::hold::Told::default());
     session.compositor_mut().start_xwayland(None);
     let number = display(&session).unwrap();
     let number: u32 = number.trim_start_matches(':').parse().unwrap();
