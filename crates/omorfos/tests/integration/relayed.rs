@@ -35,10 +35,19 @@ use crate::holding::{nudge, pointed};
 use crate::taskbar::{entry, listing};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
-/// Puts `session` under a holder that has it served by a relay; returns the
-/// holder, the relay's end of its connection to the compositor, where the
-/// socket is, and the socket.
+/// Puts `session` under a holder that has it served by a relay with nothing
+/// kept for it, which says so; returns the holder, the relay's end of its
+/// connection to the compositor, where the socket is, and the socket.
 pub(crate) fn relayed(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
+    let relayed = unready(session);
+    relay::send(relayed.1.as_fd(), &Hand::Ready, &[]).unwrap();
+    session.step();
+    relayed
+}
+
+/// Puts `session` under a holder as [`relayed`] does, with a relay that has
+/// not yet said that what it kept is ready.
+fn unready(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
     let path = session.config.path().join("wayland-relayed");
     let socket = UnixListener::bind(&path).unwrap();
     let (relays, compositor) = relay::pair().unwrap();
@@ -1791,6 +1800,77 @@ fn a_panel_kept_by_the_relay_is_on_its_edge_again_after_a_restart() {
         .iter()
         .any(|event| matches!(event, Event::LayerConfigure { .. } | Event::LayerClosed));
     assert!(!configured, "{told:?}");
+}
+
+#[test]
+fn the_next_compositor_shows_nothing_until_the_panel_and_windows_kept_are_back() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| ());
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::PANEL.bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    let mut panel = first.adopt(ours);
+    let strip = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let _held = first.open_layer(&mut panel, &strip, (WIDTH, 30), BLUE);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    let picture = first.draw();
+    assert_eq!((picture.at(5, 5), picture.at(5, 35)), (BLUE, RED));
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    // Its clock stands still: what it waits for is the relay, not time.
+    for _ in 0..5000 {
+        second.step();
+        let picture = second.draw();
+        if picture.damaged {
+            assert_eq!((picture.at(5, 5), picture.at(5, 35)), (BLUE, RED));
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("nothing was ever shown");
+}
+
+#[test]
+fn a_compositor_with_nothing_kept_for_it_shows_the_session_at_once() {
+    let relayed = Relayed::new();
+    let (mut session, _holder) = relayed.compositor();
+    for _ in 0..5000 {
+        session.step();
+        if session.draw().damaged {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("nothing was ever shown");
+}
+
+#[test]
+fn a_compositor_never_told_what_was_kept_is_back_shows_the_session_after_a_moment() {
+    let mut session = Session::new();
+    let (_holder, relays, _path, _socket) = unready(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    session.step();
+    assert!(!session.draw().damaged);
+    // It wakes to show it in time, with nothing else to wake it.
+    let by = session.now + Duration::from_secs(1);
+    assert_eq!(session.compositor().deadline(), Some(by));
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(300, 300), BACKGROUND);
+    assert_eq!(session.compositor().deadline(), None);
 }
 
 #[test]

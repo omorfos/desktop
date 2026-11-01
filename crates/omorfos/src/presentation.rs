@@ -35,6 +35,11 @@ use crate::compositor::Compositor;
 pub struct Feedback(OutputPresentationFeedback);
 
 impl Feedback {
+    /// Nothing to be told, of a frame on `output` nothing was drawn in.
+    pub(crate) fn none(output: &Output) -> Self {
+        Self(OutputPresentationFeedback::new(output))
+    }
+
     /// Tells the programs that the frame reached the screen.
     ///
     /// `card` is what the graphics card said of it, if it said anything:

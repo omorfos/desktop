@@ -646,3 +646,7 @@ and fails while that is other than what 3e still has to come.
   is not taken up regardless at the first key. Otherwise the wait is from
   when the new version was first heard of, so that installing again does
   not put it off.
+- **What was kept is shown only once it is back** (ADR 62, the first
+  step): the relay tells the compositor `ready` once each program it kept
+  has caught up and all of it is written, and the compositor draws nothing
+  until then, or for a second at most.

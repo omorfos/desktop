@@ -333,6 +333,14 @@ impl Link {
         room && open
     }
 
+    /// Whether all the program had is made again for the compositor it is
+    /// joined to, and written to it: the relay has caught up, and has
+    /// nothing more to send it.
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.keeping.caught_up() && !self.writes(Way::Up)
+    }
+
     /// Whether there is something to write `way`.
     #[must_use]
     pub fn writes(&self, way: Way) -> bool {

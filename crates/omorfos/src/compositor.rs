@@ -1149,6 +1149,7 @@ impl Compositor {
             self.updates.versions.due(),
             self.updates.retiring.iter().map(|(_, by)| *by).min(),
             self.updates.next,
+            self.shown_by(),
             self.interim.deadline(),
             match self.on_demand.ending {
                 Ending::By(by) => Some(by),
@@ -1191,6 +1192,7 @@ impl Compositor {
         }
         self.settle_recording(now);
         self.settle_capture(now);
+        self.wait_for_relay(now);
         // Collect children that have exited so they do not linger as
         // zombies, noting those that did not exit as they should have.
         let (mut failed, mut ended) = (Vec::new(), Vec::new());
@@ -2519,6 +2521,9 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
         P: std::fmt::Debug + 'static,
     {
+        if let Some(nothing) = self.hidden(output) {
+            return Ok(nothing);
+        }
         if self.is_dark(output) {
             // Nothing is drawn on a screen that is off, by a backend that can
             // turn it off; one that cannot is shown black.

@@ -75,6 +75,10 @@ pub enum Hand {
     /// From the relay: every program it kept for this compositor has been
     /// handed over.
     Kept,
+    /// From the relay: every program it kept for this compositor has had
+    /// all it had made again there, and the relay has sent all of it, so
+    /// that the session may be shown as it was.
+    Ready,
     /// From the compositor: where a window of the program the relay
     /// numbered `number` is, its toplevel being the program's object
     /// `toplevel`, as the compositor says it, which the relay keeps for the
@@ -119,6 +123,7 @@ impl Hand {
             Self::Part(program, roles) => format!("part {}", who(program, Some(*roles))),
             Self::Sandboxed(program) => format!("sandboxed {}", who(program, None)),
             Self::Kept => "kept".to_owned(),
+            Self::Ready => "ready".to_owned(),
             Self::Placed {
                 number,
                 toplevel,
@@ -156,6 +161,7 @@ impl Hand {
                 read_who(words, false).map(|(program, _)| Self::Sandboxed(program))
             }
             Some("kept") => words.next().is_none().then_some(Self::Kept),
+            Some("ready") => words.next().is_none().then_some(Self::Ready),
             Some("placed") => {
                 let mut said = text.splitn(4, ' ').skip(1);
                 let number = said.next()?.parse().ok()?;
@@ -386,7 +392,7 @@ mod tests {
         let hands = [Hand::Socket, Hand::Compositor, PROGRAM, UNNUMBERED];
         let hands = hands
             .into_iter()
-            .chain([STARTED, PART, SANDBOXED, Hand::Kept]);
+            .chain([STARTED, PART, SANDBOXED, Hand::Kept, Hand::Ready]);
         for hand in hands.chain([placed(), desk()]).chain(listed()) {
             assert_eq!(Hand::read(&hand.written()), Some(hand.clone()));
         }
@@ -400,6 +406,7 @@ mod tests {
         assert_eq!(PART.written(), "part 4321 1000 100 16 7");
         assert_eq!(SANDBOXED.written(), "sandboxed 4321 1000 100 7");
         assert_eq!(Hand::Kept.written(), "kept");
+        assert_eq!(Hand::Ready.written(), "ready");
     }
 
     #[test]
@@ -424,6 +431,7 @@ mod tests {
             "part 1 2 3 256 4",
             "part 1 2 3 4 5 6",
             "kept 1",
+            "ready 1",
             "sandboxed",
             "sandboxed 1 2 3 4 5",
             "placed",

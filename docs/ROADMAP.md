@@ -951,6 +951,35 @@ what only games and touchpads need last.
       and one that does not come up is replaced by the one held, as after
       a crash; and on real hardware it has not yet been tried. `wl_touch`
       is made again once the compositor offers touch.
+- [x] A change of compositor unseen (ADR 62), the first step: nothing
+      shown until what the relay kept is back, so that the wallpaper, the
+      panel and the windows are in the first frame, rather than coming back
+      one by one; the relay says `ready` once each program it kept has
+      caught up, and a compositor not told within a second shows the
+      session regardless.
+- [ ] A change of compositor unseen, the second step: the picture before
+      kept on the screens through the change. The compositor stepping down
+      to be started again leaves the screens as they are, where Smithay puts
+      the console back; the one coming takes them as they are, where it
+      turns every one off, and sets a mode only where it is not the one a
+      screen is in. Tried on real hardware with one screen, two, and one on
+      a cable.
+- [ ] A change of compositor unseen, the third step: the picture before,
+      read from the card as each screen shows it, drawn over the session's
+      first frames and faded out.
+- [ ] Blue and green, once the three steps are tried: the time a change of
+      compositor still stands still measured, and whether a compositor
+      caught up beside the one going is worth the relay feeding both (ADR
+      62, "Alternatives").
+- [ ] Changes of compositor tried with real programs, kept in the tree and
+      run by hand or nightly, where the probes so far were thrown away:
+      `foot`, Firefox, a GTK and a Qt program, a program in a Flatpak, and
+      the components, through several changes one after another, each
+      checked to be kept and to draw again.
+- [ ] A routine for real hardware in `docs/TESTING.md`: a change of
+      compositor with one screen, with two, with one on a cable, locked,
+      with a video playing and with a window of a program written for X11
+      open, and what is to be seen in each.
 
 ## 4. The look
 

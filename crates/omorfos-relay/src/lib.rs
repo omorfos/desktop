@@ -66,6 +66,9 @@ pub struct Relay {
     /// The windows the compositor lists, by the identifier it gives each:
     /// which it is, where it is relayed.
     listed: BTreeMap<String, Option<(u32, u32)>>,
+    /// Whether the compositor is still to be told that what was kept for it
+    /// is ready to be shown.
+    readying: bool,
 }
 
 impl Relay {
@@ -81,6 +84,7 @@ impl Relay {
             next: 1,
             desk: None,
             listed: BTreeMap::new(),
+            readying: false,
         }
     }
 
@@ -182,7 +186,19 @@ impl Relay {
         let mut ended = through.iter().map(|(ended, _)| *ended);
         self.sandboxes.retain(|_| !ended.next().unwrap_or_default());
         self.take_sandboxes(log);
+        self.tell_ready();
         true
+    }
+
+    /// Tells the compositor, once, that every program kept for it is ready
+    /// to be shown, as soon as each is.
+    fn tell_ready(&mut self) {
+        if self.readying && self.links.iter().all(Link::ready) {
+            self.readying = false;
+            let compositor = self.compositor.as_ref();
+            // A compositor that cannot be told goes, and is seen to.
+            let _ = compositor.map(|towards| relay::send(towards.as_fd(), &Hand::Ready, &[]));
+        }
     }
 
     /// Listens on each sandbox a program has made, as far as there is room
@@ -350,6 +366,8 @@ impl Relay {
                 // A compositor that cannot be told goes, and is seen to.
                 let _ = relay::send(towards, &Hand::Kept, &[]);
                 self.compositor = Some(compositor);
+                self.readying = true;
+                self.tell_ready();
             }
             _ => {}
         }

@@ -69,14 +69,15 @@ impl Held {
     }
 
     /// The next record the relay hands `compositor` with a connection: not
-    /// the word that it has handed every program it kept.
+    /// the words that it has handed every program it kept, and that they
+    /// are ready.
     fn handed(&mut self, compositor: &OwnedFd) -> Received {
         let mut handed = None;
         self.until(|_| {
             handed = relay::receive(compositor.as_fd()).unwrap();
             handed
                 .as_ref()
-                .is_some_and(|handed| handed.hand != Some(Hand::Kept))
+                .is_some_and(|handed| !matches!(handed.hand, Some(Hand::Kept | Hand::Ready)))
         });
         handed.unwrap()
     }
@@ -499,6 +500,8 @@ fn a_compositor_is_told_once_every_program_kept_has_been_handed_to_it() {
     let compositor = held.compositor();
     let first = relay::receive(compositor.as_fd()).unwrap().unwrap();
     assert_eq!(first.hand, Some(Hand::Kept), "none, at first");
+    let ready = relay::receive(compositor.as_fd()).unwrap().unwrap();
+    assert_eq!(ready.hand, Some(Hand::Ready), "and none to wait for");
     let (_program, connection, who) = held.connect(&compositor);
     drop((compositor, connection));
     held.step();
@@ -507,6 +510,10 @@ fn a_compositor_is_told_once_every_program_kept_has_been_handed_to_it() {
     assert_eq!(handed.hand, Some(Hand::Program(who)));
     let then = relay::receive(next.as_fd()).unwrap().unwrap();
     assert_eq!(then.hand, Some(Hand::Kept), "then that it is all");
+    // Not ready while what the program had is still being made again, which
+    // waits on this compositor answering.
+    held.step();
+    assert!(relay::receive(next.as_fd()).unwrap().is_none());
 }
 
 #[test]

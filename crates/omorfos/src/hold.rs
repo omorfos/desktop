@@ -10,11 +10,14 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{Told, Word};
+use smithay::backend::renderer::sync::SyncPoint;
+use smithay::output::Output;
 
-use crate::compositor::Compositor;
+use crate::compositor::{Compositor, Drawn};
+use crate::presentation::Feedback;
 
 /// What the user is told when the compositor is asked to start again with
 /// nothing to start it.
@@ -31,6 +34,24 @@ const OLDER: &str = "omorfos was updated, but the new version would not start, s
 const UPDATED: &str = "omorfos has been updated to its new version, which waited as long as it \
      may for a moment the session was not in use";
 
+/// How long a compositor under a relay waits, at most, to be told that
+/// what the relay kept for it is ready before it shows the session. The
+/// relay makes it all again in a few turns of the two; one that does not
+/// say so, as one started before it could, is waited for no longer.
+const CATCHING_UP: Duration = Duration::from_secs(1);
+
+/// Whether the session is shown, by a compositor under a relay that may be
+/// making again for it what it kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Showing {
+    /// Not yet, and not yet waited for.
+    Waiting,
+    /// Not until the relay says it is ready, or this passes.
+    Until(Instant),
+    /// It is.
+    Shown,
+}
+
 /// The holder, as the compositor knows it.
 #[derive(Debug)]
 pub(crate) struct Holder {
@@ -43,6 +64,7 @@ pub(crate) struct Holder {
     /// Whether the compositor is ending to be started again, and if so
     /// whether as its new version though the session is in use.
     stepping_down: Option<bool>,
+    showing: Showing,
 }
 
 /// What the holder knows of the session.
@@ -105,6 +127,14 @@ impl Compositor {
                 told,
                 said,
                 stepping_down: None,
+                // A session shown before the relay has made again what it
+                // kept would be shown without it, the panel and the
+                // wallpaper missing for a moment, as a blink.
+                showing: if told.relayed {
+                    Showing::Waiting
+                } else {
+                    Showing::Shown
+                },
             });
             if told.older {
                 self.problems.push(OLDER.to_owned());
@@ -162,6 +192,50 @@ impl Compositor {
                 self.running = false;
             }
             None => self.refused.say(NOT_HELD),
+        }
+    }
+
+    /// What drawing `output` comes to while the session is kept from the
+    /// screens, as it is until what a relay kept for this compositor has
+    /// been made again: nothing, so the screen goes on showing what it did,
+    /// and the damage tracker knows nothing has been drawn.
+    pub(crate) fn hidden(&self, output: &Output) -> Option<Drawn> {
+        let holder = self.holder.as_ref();
+        holder
+            .filter(|holder| holder.showing != Showing::Shown)
+            .map(|_| Drawn {
+                damage: None,
+                sync: SyncPoint::signaled(),
+                feedback: Feedback::none(output),
+            })
+    }
+
+    /// Takes in that the relay has made again all it kept for this
+    /// compositor: the session is shown.
+    pub fn relay_ready(&mut self) {
+        // A relay is handed over only by the holder.
+        let holder = self.holder.iter_mut();
+        holder.for_each(|holder| holder.showing = Showing::Shown);
+    }
+
+    /// Shows the session as of `now` if the relay has been waited for as
+    /// long as it may be.
+    pub(crate) fn wait_for_relay(&mut self, now: Instant) {
+        if let Some(holder) = self.holder.as_mut() {
+            holder.showing = match holder.showing {
+                Showing::Waiting => Showing::Until(now + CATCHING_UP),
+                Showing::Until(by) if by <= now => Showing::Shown,
+                showing => showing,
+            };
+        }
+    }
+
+    /// When the session is shown though the relay has not said it is
+    /// ready, while it is waited for.
+    pub(crate) fn shown_by(&self) -> Option<Instant> {
+        match self.holder.as_ref()?.showing {
+            Showing::Until(by) => Some(by),
+            Showing::Waiting | Showing::Shown => None,
         }
     }
 

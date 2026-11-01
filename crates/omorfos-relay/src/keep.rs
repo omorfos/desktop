@@ -516,7 +516,8 @@ impl Keeping {
 
     /// Whether what the compositor says is taken as it is, as it is once
     /// the relay has caught up with it.
-    fn caught_up(&self) -> bool {
+    #[must_use]
+    pub fn caught_up(&self) -> bool {
         matches!(self.phase, Phase::Live | Phase::Settling)
     }
 

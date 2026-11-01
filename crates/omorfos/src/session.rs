@@ -304,6 +304,10 @@ fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostActio
                 ..
             })) => compositor.relay_kept(),
             Ok(Some(Received {
+                hand: Some(Hand::Ready),
+                ..
+            })) => compositor.relay_ready(),
+            Ok(Some(Received {
                 hand:
                     Some(Hand::Placed {
                         number,

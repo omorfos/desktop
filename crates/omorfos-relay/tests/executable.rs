@@ -26,10 +26,11 @@ fn it_relays_what_the_holder_hands_it_until_the_holder_goes() {
 
     let _program = UnixStream::connect(&path).unwrap();
     let by = Instant::now() + Duration::from_secs(5);
-    // After the word that every program it kept, none, has been handed.
+    // After the words that every program it kept, none, has been handed
+    // and is ready.
     let handed = loop {
         if let Some(handed) = relay::receive(compositor.as_fd()).unwrap()
-            && handed.hand != Some(Hand::Kept)
+            && !matches!(handed.hand, Some(Hand::Kept | Hand::Ready))
         {
             break handed;
         }
