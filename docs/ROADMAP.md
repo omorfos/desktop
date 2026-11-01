@@ -957,16 +957,32 @@ what only games and touchpads need last.
       one by one; the relay says `ready` once each program it kept has
       caught up, and a compositor not told within a second shows the
       session regardless.
-- [ ] A change of compositor unseen, the second step: the picture before
+- [x] A change of compositor unseen, the second step: the picture before
       kept on the screens through the change. The compositor stepping down
-      to be started again leaves the screens as they are, where Smithay puts
-      the console back; the one coming takes them as they are, where it
-      turns every one off, and sets a mode only where it is not the one a
-      screen is in. Tried on real hardware with one screen, two, and one on
-      a cable.
+      to be started again hands the holder its card, open, and gives it up
+      without letting go of what it drew, which would put the console back
+      and take the picture off the screens; the holder hands the card to the
+      next, which takes the screens as they are, each on what drives it
+      already, sets a mode only where it is not the one a screen is in, and
+      lets the card go once each shows what it draws. Tried on a laptop's
+      own screen: no mode is set anew, but the console shows for about a
+      fifth of a second, as logind, with no one in control of the session
+      for that moment, puts the virtual terminal back into text (ADR 62).
+      Not yet tried with two screens or one on a cable; nor with the
+      holder taking up its own new version between the two compositors,
+      which hands the card on as well.
 - [ ] A change of compositor unseen, the third step: the picture before,
       read from the card as each screen shows it, drawn over the session's
       first frames and faded out.
+- [ ] The session never out of anyone's control (ADR 62, "No one in control
+      of the session"): `omorfos-hold` takes control of the session from
+      logind once, and keeps it while compositors come and go, opening the
+      cards and input devices for each and taking them back as it ends and
+      as the user leaves for another virtual terminal; the compositor takes
+      its seat from the holder through Smithay's `Session` trait. With it
+      the virtual terminal is never put back into text between two
+      compositors, and the console never shows. A decision of its own, in
+      a new ADR.
 - [ ] Blue and green, once the three steps are tried: the time a change of
       compositor still stands still measured, and whether a compositor
       caught up beside the one going is worth the relay feeding both (ADR

@@ -136,6 +136,19 @@ fn beside(own: Option<&Path>, name: &str) -> PathBuf {
     beside.unwrap_or_else(|| PathBuf::from(name))
 }
 
+/// Which part of the graphics card, of those `possible`, is to drive a
+/// screen: the one driving it already, `current`, as the compositor before
+/// left it, if it is among them and drives no other screen, so that what
+/// the screen shows stays on it and no mode is set where none has to be
+/// (ADR 62); else the first that drives none, of those `in_use`.
+#[must_use]
+pub fn driver<T: Copy + PartialEq>(current: Option<T>, possible: &[T], in_use: &[T]) -> Option<T> {
+    let free = |part: &T| possible.contains(part) && !in_use.contains(part);
+    current
+        .filter(free)
+        .or_else(|| possible.iter().copied().find(free))
+}
+
 /// A way of running the compositor until the session ends, started as it
 /// was.
 pub type Launcher = fn(Start) -> Result<(), Box<dyn Error>>;
@@ -178,6 +191,21 @@ mod tests {
     use std::ptr::fn_addr_eq;
 
     use super::*;
+
+    #[test]
+    fn a_screen_is_driven_by_what_drives_it_already_where_it_may_be() {
+        assert_eq!(driver(Some(3), &[1, 2, 3], &[]), Some(3), "not the first");
+        assert_eq!(
+            driver(Some(3), &[1, 2, 3], &[3]),
+            Some(1),
+            "driving another"
+        );
+        assert_eq!(driver(Some(3), &[1, 2, 3], &[1, 3]), Some(2));
+        assert_eq!(driver(Some(4), &[1, 2], &[]), Some(1), "one it cannot be");
+        assert_eq!(driver(None, &[1, 2], &[1]), Some(2), "none driving it");
+        assert_eq!(driver(Some(1), &[1, 2], &[1, 2]), None, "none free");
+        assert_eq!(driver::<u32>(None, &[], &[]), None);
+    }
 
     #[test]
     fn the_panel_beside_the_compositor_is_the_one_to_start() {

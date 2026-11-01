@@ -8,11 +8,12 @@
 //! changes, what the next one would need to be told.
 
 use std::io::Write;
+use std::os::fd::{BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use omorfos_ipc::hold::{Told, Word};
+use omorfos_ipc::hold::{self, Told, Word};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::output::Output;
 
@@ -65,6 +66,9 @@ pub(crate) struct Holder {
     /// whether as its new version though the session is in use.
     stepping_down: Option<bool>,
     showing: Showing,
+    /// The graphics card the compositor before left the screens showing
+    /// what it drew on, until it is taken.
+    before: Option<OwnedFd>,
 }
 
 /// What the holder knows of the session.
@@ -101,12 +105,15 @@ impl Said {
 
 impl Compositor {
     /// Takes up what the holder handed over: `connection` to it, what it
-    /// was `told`, and the `socket` programs connect to, which it serves.
+    /// was `told`, the `socket` programs connect to, which it serves, and
+    /// the `card` the screens show what the compositor before drew on, if
+    /// they do.
     pub(crate) fn take_up_holder(
         &mut self,
         connection: UnixStream,
         told: Told,
         socket: &Path,
+        card: Option<OwnedFd>,
     ) -> std::io::Result<()> {
         // A socket handed over has a name, which programs are told, and
         // the IPC socket is beside it, named after it.
@@ -135,6 +142,7 @@ impl Compositor {
                 } else {
                     Showing::Shown
                 },
+                before: card,
             });
             if told.older {
                 self.problems.push(OLDER.to_owned());
@@ -166,6 +174,26 @@ impl Compositor {
     pub fn stepping_down(&self) -> bool {
         let holder = self.holder.as_ref();
         holder.is_some_and(|holder| holder.stepping_down.is_some())
+    }
+
+    /// The graphics card the compositor before handed over as it stepped
+    /// down, open, with the screens showing what it drew on it, if it did;
+    /// once. The screens are to be taken as they are, and the card kept
+    /// open until each shows what this one draws: closed, it takes what it
+    /// shows with it (ADR 62).
+    pub fn take_screens_before(&mut self) -> Option<OwnedFd> {
+        self.holder.as_mut().and_then(|holder| holder.before.take())
+    }
+
+    /// Hands the holder `card`, the graphics card the screens show what was
+    /// drawn on, as the compositor steps down, for the holder to keep it
+    /// open and hand it to the next, which takes the screens as they are
+    /// (ADR 62). Nothing, unless it is stepping down under a holder.
+    pub fn hand_screens(&self, card: BorrowedFd<'_>) {
+        let holder = self.holder.as_ref();
+        let holder = holder.filter(|holder| holder.stepping_down.is_some());
+        // What cannot be handed is not: the screens go dark, as before.
+        let _ = holder.map(|holder| hold::give(&holder.connection, &Word::Showing.line(), &[card]));
     }
 
     /// The number the holder says the session's X server had, which the

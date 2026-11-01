@@ -17,7 +17,7 @@ use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, Write, stderr};
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::rc::Rc;
@@ -85,6 +85,10 @@ struct Hardware {
     mice: Vec<Device>,
     configured: Option<(Touchpad, Mouse)>,
     reported: Vec<String>,
+    /// The card as the compositor before left it, kept open until each
+    /// screen shows what this one draws: closed, it takes what it shows
+    /// off the screens (ADR 62).
+    before: Option<OwnedFd>,
 }
 
 /// One screen being driven.
@@ -149,12 +153,14 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let seat_name = seat.seat();
     let mut session = Session::new(config_directory)?;
     let heard = wait_for_seat(&mut session, &seat, seat_events)?;
-    let (card, card_events, gbm, gpus, renderer) = open_card(&mut seat)?;
 
     match holder {
         Some(holder) => session.hold(holder)?,
         None => listen(&mut session)?,
     }
+    // Taken as they are, where they show what the compositor before drew.
+    let before = session.compositor_mut().take_screens_before();
+    let (card, card_events, gbm, gpus, renderer) = open_card(&mut seat, before.is_some())?;
     let hardware = Rc::new(RefCell::new(Hardware {
         seat: seat.clone(),
         card,
@@ -169,6 +175,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
         mice: Vec::new(),
         configured: None,
         reported: Vec::new(),
+        before,
     }));
     let compositor = session.compositor_mut();
     hardware.borrow_mut().scan(compositor);
@@ -201,8 +208,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
             match event {
                 SeatEvent::PauseSession => {
                     devices.suspend();
-                    hardware.card.pause();
-                    hardware.active = false;
+                    hardware.pause();
                 }
                 SeatEvent::ActivateSession => {
                     let _ = devices.resume();
@@ -247,9 +253,25 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     )?;
 
     let handle = session.handle();
+    let kept = Rc::clone(&hardware);
     let ended = session.run(move |compositor| turn(&hardware, &handle, compositor));
-    end_session(session.compositor());
+    end_session(session.compositor(), kept);
     ended
+}
+
+/// Leaves the screens showing what was drawn, as the compositor steps down
+/// to be started again (ADR 62): hands the holder the card it was drawn on,
+/// to keep open for the next, gives the card up, and never lets go of what
+/// it was drawn with, as Smithay, letting go of it, puts back what the
+/// screens showed before the compositor and takes what it drew off them.
+/// The process ends straight after, and all of it with it.
+fn keep_screens(hardware: Rc<RefCell<Hardware>>, compositor: &Compositor) {
+    {
+        let mut hardware = hardware.borrow_mut();
+        compositor.hand_screens(hardware.card.device_fd().as_fd());
+        hardware.card.pause();
+    }
+    std::mem::forget(hardware);
 }
 
 /// Takes the seat: the screens and input devices of the virtual terminal it
@@ -472,9 +494,11 @@ fn announce_session(compositor: &mut Compositor) {
 
 /// Tells systemd that the session has ended, so that the services of the
 /// graphical session stop with it and none is left for the next.
-fn end_session(compositor: &Compositor) {
-    // One that steps down is to be started again in the same session.
+fn end_session(compositor: &Compositor, hardware: Rc<RefCell<Hardware>>) {
+    // One that steps down is to be started again in the same session, and
+    // leaves the screens to it as they are.
     if compositor.stepping_down() {
+        keep_screens(hardware, compositor);
         return;
     }
     let _ = std::process::Command::new("systemctl")
@@ -519,13 +543,16 @@ fn turn(
         return Ok(());
     }
     let Hardware {
+        card,
         gpus,
         renderer,
         screens,
         started,
+        before,
         ..
     } = &mut *now;
-    for screen in screens {
+    let mut refused = false;
+    for screen in screens.iter_mut() {
         // One the configuration has off is turned off, and nothing is drawn
         // on it until it is on again.
         let dark = compositor.is_dark(&screen.output);
@@ -556,6 +583,7 @@ fn turn(
                     let _ = writeln!(stderr(), "omorfos: cannot draw on {name}: {error}");
                 }
                 screen.picture = Picture::Stale;
+                refused = true;
                 // As though something had been drawn: nothing is to be
                 // told to draw again on the strength of this.
                 true
@@ -580,6 +608,16 @@ fn turn(
             TimeoutAction::Drop
         })?;
     }
+    // Screens taken as the compositor before left them, where one cannot
+    // be drawn on so, are turned off and set anew, as at login, rather
+    // than left showing what it showed for good.
+    if refused && before.take().is_some() {
+        let _ = card.reset_state();
+        for screen in screens {
+            screen.surface.reset_buffers();
+            screen.picture = Picture::Stale;
+        }
+    }
     Ok(())
 }
 
@@ -592,8 +630,9 @@ type Card = (
     DrmNode,
 );
 
-/// Opens the seat's graphics card.
-fn open_card(seat: &mut LibSeatSession) -> Result<Card, Box<dyn Error>> {
+/// Opens the seat's graphics card: with every screen turned off, unless it
+/// is to `keep` what they show.
+fn open_card(seat: &mut LibSeatSession, keep: bool) -> Result<Card, Box<dyn Error>> {
     let seat_name = seat.seat();
     let path = primary_gpu(&seat_name)
         .ok()
@@ -606,7 +645,7 @@ fn open_card(seat: &mut LibSeatSession) -> Result<Card, Box<dyn Error>> {
         .open(&path, flags)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let (card, card_events) = DrmDevice::new(fd.clone(), true)?;
+    let (card, card_events) = DrmDevice::new(fd.clone(), !keep)?;
     let gbm = GbmDevice::new(fd)?;
     let renderer = node
         .node_with_type(NodeType::Render)
@@ -648,6 +687,14 @@ fn chosen(
 }
 
 impl Hardware {
+    /// Gives the card up, as the user leaves for another virtual terminal.
+    /// What the screens showed goes with them.
+    fn pause(&mut self) {
+        self.card.pause();
+        self.active = false;
+        self.before = None;
+    }
+
     /// Looks at what is plugged in, takes on the screens that are new and
     /// lets go of those that have gone.
     fn scan(&mut self, compositor: &mut Compositor) {
@@ -768,17 +815,24 @@ impl Hardware {
     }
 
     /// A part of the card that can drive `connector` and is not driving
-    /// another screen.
+    /// another screen: the one driving it already, where it may be.
     fn free_crtc(&self, connector: connector::Handle) -> Option<crtc::Handle> {
         let resources = self.card.resource_handles().ok()?;
         let socket = self.card.get_connector(connector, false).ok()?;
-        let in_use = |crtc: &crtc::Handle| self.screens.iter().any(|screen| screen.crtc == *crtc);
-        socket
+        let in_use: Vec<crtc::Handle> = self.screens.iter().map(|screen| screen.crtc).collect();
+        let possible: Vec<crtc::Handle> = socket
             .encoders()
             .iter()
             .filter_map(|encoder| self.card.get_encoder(*encoder).ok())
             .flat_map(|encoder| resources.filter_crtcs(encoder.possible_crtcs()))
-            .find(|crtc| !in_use(crtc))
+            .collect();
+        let current = socket.current_encoder();
+        let current = current.and_then(|encoder| self.card.get_encoder(encoder).ok());
+        super::driver(
+            current.and_then(|encoder| encoder.crtc()),
+            &possible,
+            &in_use,
+        )
     }
 
     /// Notes that a frame reached the screen driven by `crtc`, at the time
@@ -801,6 +855,12 @@ impl Hardware {
                 screen.picture = Picture::Ours;
             }
             compositor.send_frames(&screen.output, elapsed);
+        }
+        // Once every screen shows what this one drew, or nothing, what the
+        // compositor before left on them is no longer needed.
+        let shown = |screen: &Screen| screen.dark || screen.picture != Picture::Stale;
+        if self.screens.iter().all(shown) {
+            self.before = None;
         }
     }
 

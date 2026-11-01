@@ -15,7 +15,7 @@ pub mod renew;
 mod socket;
 
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
@@ -52,6 +52,10 @@ pub struct Hold {
     pub(crate) relay: Option<Relay>,
     /// Whether a relay has been started in this login.
     pub(crate) relay_started: bool,
+    /// The graphics card the compositor last running handed over as it
+    /// stepped down, open, so that the screens go on showing what it drew
+    /// until the next draws, which it is handed to (ADR 62).
+    pub(crate) card: Option<OwnedFd>,
 }
 
 /// The relay running, as far as the holder is concerned.
@@ -103,6 +107,7 @@ impl Hold {
             relay_program: None,
             relay: None,
             relay_started: false,
+            card: None,
         }
     }
 
@@ -191,8 +196,12 @@ impl Hold {
             self.stop_relay();
         }
         let relayed = self.relay_connection(log);
+        // The compositor has the card from then on, and the holder keeps it
+        // no longer.
+        let card = self.card.take();
         let told = Told {
             relayed: relayed.is_some(),
+            showing: card.is_some(),
             ..told
         };
         // Started from the file held, by the holder's own name for it,
@@ -216,6 +225,7 @@ impl Hold {
             // One that has gone already cannot be handed anything, and is
             // heard to have ended.
             let fds = relayed.iter().map(AsFd::as_fd).chain([self.socket.as_fd()]);
+            let fds = fds.chain(card.as_ref().map(AsFd::as_fd));
             let fds: Vec<BorrowedFd<'_>> = fds.collect();
             let _ = hold::give(&connection, &told.written(), &fds);
             Running {
@@ -233,7 +243,11 @@ impl Hold {
         let mut bytes = [0; 256];
         // The connection closes when the compositor ends: nothing it starts
         // has it.
-        while let Ok(read @ 1..) = running.connection.read(&mut bytes) {
+        while let Ok((read @ 1.., handed)) = hold::read(&running.connection, &mut bytes) {
+            // What a compositor hands with what it says is its card alone.
+            if let Some(card) = handed.into_iter().next() {
+                self.card = Some(card);
+            }
             for word in heard.hear(&bytes[..read]) {
                 self.policy.heard(word);
             }
@@ -336,5 +350,57 @@ const RELAY: &str = "omorfos-relay";
 impl Drop for Hold {
     fn drop(&mut self) {
         self.stop_relay();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::renew::tests::{hold, program};
+
+    #[test]
+    fn the_card_a_compositor_hands_as_it_ends_goes_to_the_next_alone() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let mut held = hold(runtime.path());
+        // A compositor stepping down, with what it drew on its card.
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let (card, _other) = UnixStream::pair().unwrap();
+        let ended = Running {
+            child: Command::new("true").spawn().unwrap(),
+            connection: theirs,
+            file: File::open("/proc/self/exe").unwrap(),
+        };
+        (&ours).write_all(b"up\n").unwrap();
+        hold::give(&ours, &hold::Word::Showing.line(), &[card.as_fd()]).unwrap();
+        hold::give(&ours, &hold::Word::SteppingDown.line(), &[]).unwrap();
+        drop(ours);
+        assert!(!held.hear(ended), "stepped down");
+        assert!(held.card.is_some(), "kept open");
+
+        // The next is told so, and handed the card after the socket.
+        let told = runtime.path().join("told");
+        let script = format!(
+            "#!/bin/sh\nwhile read -r line && [ -n \"$line\" ]; do echo \"$line\" >> '{}'; done\n",
+            told.display()
+        );
+        program(&held.compositor, &script);
+        let mut log = Vec::new();
+        let starting = held.policy.starting(Which::Installed);
+        let next = held.start(Which::Installed, starting, &mut log).unwrap();
+        assert!(held.card.is_none(), "the holder keeps it no longer");
+        held.hear(next);
+        assert_eq!(fs_told(&told), "showing\n");
+
+        // The one after, handed none, is told nothing of it.
+        std::fs::remove_file(&told).unwrap();
+        let starting = held.policy.starting(Which::Installed);
+        let after = held.start(Which::Installed, starting, &mut log).unwrap();
+        held.hear(after);
+        assert_eq!(fs_told(&told), "again\n");
+    }
+
+    /// What a stand-in wrote it was told, nothing if it was told nothing.
+    fn fs_told(path: &Path) -> String {
+        std::fs::read_to_string(path).unwrap_or_default()
     }
 }

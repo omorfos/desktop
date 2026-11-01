@@ -63,6 +63,8 @@ impl Hold {
             let mut fds = vec![running.as_fd(), self.socket.as_fd(), self.socket.lock()];
             fds.extend(self.held.as_ref().map(AsFd::as_fd));
             fds.extend(self.relay.as_ref().map(|relay| relay.connection.as_fd()));
+            // Last, for a version that does not know it to pass it over.
+            fds.extend(self.card.as_ref().map(AsFd::as_fd));
             hold::give(&ours, &self.written(which), &fds).map(|()| theirs)
         })
     }
@@ -73,6 +75,7 @@ impl Hold {
         // The empty line that ends what is told ends what is handed.
         text.pop();
         let held = if self.held.is_some() { "held\n" } else { "" };
+        let card = if self.card.is_some() { "card\n" } else { "" };
         let next = if which == Which::Held {
             "next held\n"
         } else {
@@ -91,7 +94,7 @@ impl Hold {
             .map(|pid| format!("relayed by {pid}\n"))
             .unwrap_or_default();
         format!(
-            "{text}socket {socket}\ncompositor {compositor}\n{own}{relay}{relayed}{held}{next}\n"
+            "{text}socket {socket}\ncompositor {compositor}\n{own}{relay}{relayed}{held}{card}{next}\n"
         )
     }
 }
@@ -155,7 +158,8 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
     let relayed = relayed
         .and_then(|pid| pid.parse().ok())
         .and_then(Pid::from_raw);
-    let enough = fds.len() >= 3 + usize::from(flag("held")) + usize::from(relayed.is_some());
+    let said = [flag("held"), relayed.is_some(), flag("card")];
+    let enough = fds.len() >= 3 + said.into_iter().filter(|said| *said).count();
     let (Some(path), Some(compositor), true) = (line("socket "), line("compositor "), enough)
     else {
         return Err((text.to_owned(), fds));
@@ -165,7 +169,9 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
     let listener = fds.next().map(UnixListener::from);
     let lock = fds.next().map(File::from);
     let held = flag("held").then(|| fds.next()).flatten().map(File::from);
-    let relay = relayed.zip(fds.next());
+    // Taken only where there is one, for what comes after it.
+    let relay = relayed.and_then(|pid| fds.next().map(|connection| (pid, connection)));
+    let card = flag("card").then(|| fds.next()).flatten();
     let socket = listener.zip(lock);
     let socket = socket.map(|(listener, lock)| Socket::from_parts(listener, path, lock));
     let socket = socket.ok_or((String::new(), Vec::new()));
@@ -173,6 +179,7 @@ pub fn take(text: &str, fds: Vec<OwnedFd>) -> Result<(Hold, Which), (String, Vec
         let policy = Policy::resumed(Told::read(text));
         let mut taken = Hold::new(socket, compositor, policy);
         taken.held = held;
+        taken.card = card;
         taken.own = line("own ");
         // A version from before there was a relay says nothing of it: the
         // one installed beside this one is used.
@@ -209,13 +216,13 @@ pub fn handing_back(text: &str, fds: &[OwnedFd]) -> io::Result<(PathBuf, UnixStr
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Puts `script` at `path` as a program, written by a process of its
     /// own: one written by this process could not be run while a process
     /// another test is starting holds it open.
-    fn program(path: &Path, script: &str) {
+    pub(crate) fn program(path: &Path, script: &str) {
         let mut writer = Command::new("sh")
             .args([
                 "-c",
@@ -233,7 +240,7 @@ mod tests {
     }
 
     /// A hold of a socket in `runtime`, for a compositor that is not there.
-    fn hold(runtime: &Path) -> Hold {
+    pub(crate) fn hold(runtime: &Path) -> Hold {
         let socket = Socket::bind(runtime).unwrap();
         Hold::new(socket, runtime.join("omorfos"), Policy::default())
     }
@@ -246,12 +253,14 @@ mod tests {
         held.policy.heard(hold::Word::Display(4));
         held.held = Some(File::open("/proc/self/exe").unwrap());
         held.own = Some(runtime.path().join("omorfos-hold"));
+        let (card, _) = UnixStream::pair().unwrap();
+        held.card = Some(OwnedFd::from(card));
         let handing = held.handing(Which::Held).unwrap();
         let (text, fds) = hold::take(&handing).unwrap();
         assert_eq!(
             fds.len(),
-            4,
-            "its own file, the socket, its lock and the one held"
+            5,
+            "its own file, the socket, its lock, the one held and the card"
         );
         let (mut taken, which) = take(&text, fds).unwrap();
         assert_eq!(which, Which::Held);
@@ -259,6 +268,7 @@ mod tests {
         assert_eq!(taken.compositor, held.compositor);
         assert_eq!(taken.own, held.own);
         assert!(taken.held.is_some());
+        assert!(taken.card.is_some(), "the screens go on showing it");
         let told = taken.policy.told();
         assert_eq!((told.locked, told.display), (true, Some(4)));
         // The one that takes it is not the first.
@@ -281,6 +291,7 @@ mod tests {
         assert_eq!(which, Which::Installed);
         assert!(taken.held.is_none());
         assert!(taken.own.is_none());
+        assert!(taken.card.is_none());
         std::mem::forget(held);
     }
 
@@ -312,6 +323,9 @@ mod tests {
         let short = "socket /x\ncompositor /y\nheld\n\n";
         let (_, fds) = take(short, fds).unwrap_err();
         assert_eq!(fds.len(), 3, "one held was said, and not handed");
+        let short = "socket /x\ncompositor /y\ncard\n\n";
+        let (_, fds) = take(short, fds).unwrap_err();
+        assert_eq!(fds.len(), 3, "nor the card");
     }
 
     #[test]

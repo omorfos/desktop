@@ -131,6 +131,8 @@ impl Policy {
             Word::Display(display) => self.told.display = Some(display),
             Word::SteppingDown => self.stepping_down = true,
             Word::Updated => self.told.updated = true,
+            // The card it is said with is the holder's to keep.
+            Word::Showing => {}
         }
     }
 

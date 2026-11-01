@@ -55,6 +55,11 @@ pub struct Told {
     /// though the session was in use, having waited as long as it may for a
     /// moment it was not: the user is to be told why it blinked.
     pub updated: bool,
+    /// The screens show what the compositor before drew, on its graphics
+    /// card, which is handed after the socket, open, so that they go on
+    /// showing it (ADR 62): the compositor takes the screens as they are,
+    /// and lets the card go once each shows what it draws.
+    pub showing: bool,
 }
 
 /// What a compositor says to the holder.
@@ -74,6 +79,12 @@ pub enum Word {
     /// use: the next is to say so. Said before [`Word::SteppingDown`], which
     /// a holder that does not know this word still acts on.
     Updated,
+    /// The screens show what it drew, on the graphics card handed with this
+    /// word, which is to be kept open and handed to the next, so that they
+    /// go on showing it until the next draws: closed, the card would take
+    /// what it drew off the screens with it. A holder that does not know
+    /// this word closes the card, and the screens go dark, as before.
+    Showing,
 }
 
 impl Told {
@@ -99,6 +110,9 @@ impl Told {
         }
         if self.updated {
             text.push_str("updated\n");
+        }
+        if self.showing {
+            text.push_str("showing\n");
         }
         text.push('\n');
         text
@@ -128,6 +142,10 @@ impl Told {
                 updated: true,
                 ..told
             },
+            "showing" => Self {
+                showing: true,
+                ..told
+            },
             _ => Self {
                 display: number(line, "display ").or(told.display),
                 ..told
@@ -147,6 +165,7 @@ impl Word {
             Self::Display(display) => format!("display {display}\n"),
             Self::SteppingDown => "stepping down\n".to_owned(),
             Self::Updated => "updated\n".to_owned(),
+            Self::Showing => "showing\n".to_owned(),
         }
     }
 
@@ -159,6 +178,7 @@ impl Word {
             "unlocked" => Some(Self::Unlocked),
             "stepping down" => Some(Self::SteppingDown),
             "updated" => Some(Self::Updated),
+            "showing" => Some(Self::Showing),
             _ => number(line, "display ").map(Self::Display),
         }
     }
@@ -207,8 +227,6 @@ pub fn give(to: &UnixStream, text: &str, fds: &[BorrowedFd<'_>]) -> io::Result<(
 pub fn take(from: &UnixStream) -> io::Result<(String, Vec<OwnedFd>)> {
     let mut text = Vec::new();
     let mut fds = Vec::new();
-    let mut space =
-        [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(MOST), ScmCredentials(1))];
     let mut chunk = [0; LONGEST + 1];
     loop {
         if let Some(end) = ended(&text) {
@@ -219,22 +237,36 @@ pub fn take(from: &UnixStream) -> io::Result<(String, Vec<OwnedFd>)> {
             let long = "what was handed over runs on past its end";
             return Err(io::Error::new(io::ErrorKind::InvalidData, long));
         }
-        let mut control = RecvAncillaryBuffer::new(&mut space);
-        let chunks = &mut [IoSliceMut::new(&mut chunk)];
-        let got = recvmsg(from, chunks, &mut control, RecvFlags::CMSG_CLOEXEC)?;
-        // Whatever else comes with it, such as who sent it, is not asked
-        // for.
-        for message in control.drain() {
-            if let RecvAncillaryMessage::ScmRights(handed) = message {
-                fds.extend(handed);
-            }
-        }
-        if got.bytes == 0 {
+        let (got, handed) = read(from, &mut chunk)?;
+        fds.extend(handed);
+        if got == 0 {
             let early = "the connection closed before all of it was handed over";
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, early));
         }
-        text.extend_from_slice(&chunk[..got.bytes]);
+        text.extend_from_slice(&chunk[..got]);
     }
+}
+
+/// Reads what comes over `from` into `bytes`, with the descriptors handed
+/// with it: how many bytes were read, none once it has closed.
+///
+/// # Errors
+///
+/// Returns an error if the connection cannot be read.
+pub fn read(from: &UnixStream, bytes: &mut [u8]) -> io::Result<(usize, Vec<OwnedFd>)> {
+    let mut space =
+        [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(MOST), ScmCredentials(1))];
+    let mut control = RecvAncillaryBuffer::new(&mut space);
+    let chunks = &mut [IoSliceMut::new(bytes)];
+    let got = recvmsg(from, chunks, &mut control, RecvFlags::CMSG_CLOEXEC)?;
+    // Whatever else comes with it, such as who sent it, is not asked for.
+    let mut fds = Vec::new();
+    for message in control.drain() {
+        if let RecvAncillaryMessage::ScmRights(handed) = message {
+            fds.extend(handed);
+        }
+    }
+    Ok((got.bytes, fds))
 }
 
 /// Where the text handed over ends, after the empty line, if it has.
@@ -300,6 +332,7 @@ mod tests {
                 older: true,
                 relayed: true,
                 updated: true,
+                showing: true,
             },
             Told {
                 again: true,
@@ -308,6 +341,7 @@ mod tests {
                 older: false,
                 relayed: false,
                 updated: false,
+                showing: false,
             },
         ] {
             let written = told.written();
@@ -327,6 +361,7 @@ mod tests {
             older: false,
             relayed: false,
             updated: false,
+            showing: false,
         };
         assert_eq!(told, expected);
     }
@@ -341,6 +376,7 @@ mod tests {
             Word::Display(12),
             Word::SteppingDown,
             Word::Updated,
+            Word::Showing,
         ];
         for word in words {
             let line = word.line();
@@ -393,6 +429,21 @@ mod tests {
         drop(two);
         let mut byte = [0];
         assert_eq!(io::Read::read(&mut &one, &mut byte).unwrap(), 0, "closed");
+    }
+
+    #[test]
+    fn a_word_is_read_with_what_is_handed_with_it() {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let (card, _other) = UnixStream::pair().unwrap();
+        io::Write::write_all(&mut &ours, b"up\n").unwrap();
+        let mut bytes = [0; 64];
+        let (got, fds) = read(&theirs, &mut bytes).unwrap();
+        assert_eq!((&bytes[..got], fds.len()), (&b"up\n"[..], 0));
+        give(&ours, &Word::Showing.line(), &[card.as_fd()]).unwrap();
+        let (got, fds) = read(&theirs, &mut bytes).unwrap();
+        assert_eq!((&bytes[..got], fds.len()), (&b"showing\n"[..], 1));
+        drop(ours);
+        assert_eq!(read(&theirs, &mut bytes).unwrap().0, 0, "closed");
     }
 
     #[test]

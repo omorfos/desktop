@@ -38,6 +38,18 @@ impl Holder {
         }
         words
     }
+
+    /// The words the compositor has said since last asked, and how many
+    /// descriptors it handed with them.
+    pub(crate) fn handed(&mut self) -> (Vec<Word>, usize) {
+        let mut bytes = [0; 256];
+        let (mut words, mut fds) = (Vec::new(), 0);
+        while let Ok((read @ 1.., handed)) = hold::read(&self.connection, &mut bytes) {
+            words.extend(self.heard.hear(&bytes[..read]));
+            fds += handed.len();
+        }
+        (words, fds)
+    }
 }
 
 /// Puts `session` under a holder that tells it `told` and hands it a socket
@@ -230,6 +242,54 @@ fn restarting_the_compositor_under_a_holder_says_so_and_ends_without_asking_prog
     assert!(session.compositor().stepping_down());
     std::thread::sleep(Duration::from_millis(500));
     assert!(!directory.join("asked").exists(), "it was asked to end");
+}
+
+#[test]
+fn stepping_down_it_hands_the_holder_the_card_the_screens_show_and_not_before() {
+    let mut session = Session::new();
+    let (card, _other) = UnixStream::pair().unwrap();
+    // With no holder, there is nobody to hand it.
+    session.compositor_mut().hand_screens(card.as_fd());
+    let (mut holder, _) = hold(&mut session, Told::default());
+    session.step();
+    assert_eq!(holder.said(), [Word::Up]);
+    session.compositor_mut().hand_screens(card.as_fd());
+    assert_eq!(holder.handed(), (vec![], 0), "not stepping down");
+
+    session.compositor_mut().perform(&Action::RestartCompositor);
+    session.step();
+    session.compositor_mut().hand_screens(card.as_fd());
+    assert_eq!(
+        holder.handed(),
+        (vec![Word::SteppingDown, Word::Showing], 1)
+    );
+}
+
+#[test]
+fn a_compositor_handed_the_card_the_screens_show_takes_it_once() {
+    let mut session = Session::new();
+    let path = session.config.path().join("wayland-held");
+    let socket = UnixListener::bind(&path).unwrap();
+    let (card, _other) = UnixStream::pair().unwrap();
+    let told = Told {
+        showing: true,
+        ..Told::default()
+    };
+    let _holder = hold_with(&mut session, told, &[socket.as_fd(), card.as_fd()]);
+    assert!(session.compositor_mut().take_screens_before().is_some());
+    assert!(session.compositor_mut().take_screens_before().is_none());
+
+    // Handed one it is not told of, as by a holder newer than it would
+    // be, it has none.
+    let mut session = Session::new();
+    let path = session.config.path().join("wayland-held");
+    let socket = UnixListener::bind(&path).unwrap();
+    let _holder = hold_with(
+        &mut session,
+        Told::default(),
+        &[socket.as_fd(), card.as_fd()],
+    );
+    assert!(session.compositor_mut().take_screens_before().is_none());
 }
 
 #[test]

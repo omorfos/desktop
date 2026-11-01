@@ -127,6 +127,8 @@ impl Session {
         let relay = told.relayed.then(|| fds.next()).flatten();
         let socket = fds.next().map(UnixListener::from);
         let socket = socket.ok_or("omorfos-hold handed over no socket to serve")?;
+        // Showing what the compositor before drew, its card comes last.
+        let card = told.showing.then(|| fds.next()).flatten();
         let address = socket.local_addr().ok();
         let path = address.and_then(|address| address.as_pathname().map(Path::to_owned));
         let path = path.ok_or("the socket omorfos-hold handed over has no name")?;
@@ -134,7 +136,7 @@ impl Session {
         socket
             .set_nonblocking(true)
             .and_then(|()| holder.set_nonblocking(true))
-            .and_then(|()| self.compositor.take_up_holder(holder, told, &path))
+            .and_then(|()| self.compositor.take_up_holder(holder, told, &path, card))
             .map_err(Box::from)
             .and_then(|()| match relay {
                 Some(relay) => self.serve_relay(relay),
