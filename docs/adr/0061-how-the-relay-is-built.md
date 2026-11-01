@@ -351,6 +351,12 @@ and fails while that is other than what 3e still has to come.
   A field is still told
   it left and entered: it has no serial, and is enabled again by the
   program as it enters, which a field kept from the enter would not be.
+  A key the keyboard holds as the compositor goes is let go of then,
+  under the last serial the program was told, as no compositor will say
+  so: a program repeats a key held itself, and Return, pressed to start
+  the compositor anew and let go of while none was there, was typed on
+  and on, the keyboard's enter that would have ended it kept from the
+  program.
 - **What the next compositor first says of a window is the relay's to
   answer** (3b). It is said of a window not yet shown again, with no size
   and no focus; told it, Firefox took its window for one that had lost

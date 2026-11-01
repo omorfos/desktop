@@ -4,8 +4,9 @@
 //! keyboard and any field typed into have left its surfaces, that a gesture
 //! under way was cancelled, that the pointer it held is let go of, that a user
 //! it was told is away is back, as the next compositor counts from when it
-//! starts, that an input method typing in a field is no longer, with any key
-//! held in its keyboard grab let go of, that a picture it asked for has failed
+//! starts, that a key the keyboard held is let go of, that an input method
+//! typing in a field is no longer, with any key held in its keyboard grab let
+//! go of, that a picture it asked for has failed
 //! and the pointer it follows has left, that what it takes pictures of a window
 //! through has stopped, and that what lasts only a moment has ended: a popup
 //! dismissed, a token given, a picture discarded, which the relay answers for
@@ -76,6 +77,12 @@ const DEACTIVATE: u16 = 1;
 const TYPING_DONE: u16 = 5;
 const UNAVAILABLE: u16 = 6;
 const GRABBED_KEY: u16 = 1;
+
+/// The events of a keyboard that say it entered a surface, that it left,
+/// and that a key was pressed or let go of.
+const ENTER: u16 = 1;
+const LEAVE: u16 = 2;
+const KEY: u16 = 3;
 
 /// The events of a window in a list of windows: that it has closed, that
 /// what has been said of it is whole, what it is called, what program it
@@ -417,6 +424,8 @@ pub struct Keeping {
     methods: HashMap<u32, Method>,
     /// The keys held, as each keyboard grab of an input method was told.
     grabbed: HashMap<u32, HashSet<u32>>,
+    /// The keys held, as each keyboard was told.
+    pressed: HashMap<u32, HashSet<u32>>,
     /// The input methods told another is the one, and the locks told they
     /// are over, and what each made, which are to go: not made again.
     refused: HashSet<u32>,
@@ -490,6 +499,7 @@ impl Default for Keeping {
             imports: HashMap::new(),
             methods: HashMap::new(),
             grabbed: HashMap::new(),
+            pressed: HashMap::new(),
             refused: HashSet::new(),
             locked: HashSet::new(),
             shots: HashMap::new(),
@@ -638,6 +648,7 @@ impl Keeping {
             self.imports.remove(&object);
             self.methods.remove(&object);
             self.grabbed.remove(&object);
+            self.pressed.remove(&object);
             self.refused.remove(&object);
             self.locked.remove(&object);
             self.shots.remove(&object);
@@ -931,13 +942,9 @@ impl Keeping {
                 let _ = moved.map(|focus| focus.at = Some((word(4), word(8))));
             }
             ("wl_pointer", 5) if self.framing.remove(&object) => return false,
-            ("wl_keyboard", 1) => {
-                // A key held as it enters is the program's to be told of.
-                let clear = word(8) == 0;
-                return self.entered(object, word(4), Some(word(0)), None, clear, read);
-            }
+            ("wl_keyboard", opcode) => return self.keyboard(object, opcode, body, read),
             ("zwp_text_input_v3", 0) => self.focused(object, word(0), None, None, read),
-            ("wl_pointer" | "zwp_text_input_v3", 1) | ("wl_keyboard", 2) => {
+            ("wl_pointer" | "zwp_text_input_v3", 1) => {
                 self.focus.remove(&object);
             }
             // What the next compositor first says of a window, before it is
@@ -1443,6 +1450,56 @@ impl Keeping {
         }
     }
 
+    /// Takes in the event `opcode`, with `body`, to `keyboard`, which `read`
+    /// says it is, as far as it says which surface the keyboard has and
+    /// which keys it holds: those it entered with, each pressed and not let
+    /// go of since, and none once it has left. Returns whether it is passed
+    /// on.
+    fn keyboard(&mut self, keyboard: u32, opcode: u16, body: &[u8], read: &Read) -> bool {
+        let word = |at| wire::word(body, at).unwrap_or_default();
+        match opcode {
+            ENTER => {
+                let keys = usize::try_from(word(8)).unwrap_or_default();
+                let keys = (12..12 + keys).step_by(4).map(word);
+                self.pressed.insert(keyboard, keys.collect());
+                // A key held as it enters is the program's to be told of.
+                let clear = word(8) == 0;
+                return self.entered(keyboard, word(4), Some(word(0)), None, clear, read);
+            }
+            LEAVE => {
+                self.focus.remove(&keyboard);
+                self.pressed.remove(&keyboard);
+            }
+            // Pressed, or repeated, as from version 10; or let go of.
+            KEY if word(12) == 0 => {
+                self.pressed.entry(keyboard).or_default().remove(&word(8));
+            }
+            KEY => {
+                self.pressed.entry(keyboard).or_default().insert(word(8));
+            }
+            _ => {}
+        }
+        true
+    }
+
+    /// Lets go of each key a keyboard holds, as the compositor goes, as no
+    /// compositor will say so: the program repeats a key held itself, and
+    /// would type it on, as the keyboard back where it was is kept from it.
+    fn let_go_of_keys(&mut self) {
+        let held = self.pressed.drain();
+        let held =
+            held.flat_map(|(keyboard, keys)| keys.into_iter().map(move |key| (keyboard, key)));
+        let mut held: Vec<(u32, u32)> = held.collect();
+        held.sort_unstable();
+        let last = self.serials.last();
+        for (keyboard, key) in held {
+            // Under the last serial the program was told, as a leave is,
+            // and with no time.
+            let let_go = journal::message(keyboard, KEY, &[last, 0, key, 0]);
+            self.to_program.push(let_go);
+        }
+    }
+
     /// Takes in that `device`, a pointer or keyboard, entered `surface`
     /// with `serial`, at `at` and with nothing held if `clear`, as `read`
     /// says. Where it had that surface as the compositor went, there and
@@ -1700,6 +1757,7 @@ impl Keeping {
             self.to_program.push(journal::message(watching, 1, &[]));
         }
         self.let_go_of_typing();
+        self.let_go_of_keys();
         // An input method told another is the one is to go, and is not
         // made again, nor what it made; the relay answers for each.
         spent.extend(self.refused.drain());
@@ -2543,6 +2601,71 @@ mod tests {
         kept.answer(sync);
         assert!(kept.keeping.live());
         assert!(kept.keeping.to_program.is_empty(), "nothing left");
+    }
+
+    #[test]
+    fn a_key_held_as_the_compositor_goes_is_let_go_of_and_the_keyboard_kept() {
+        let (mut kept, globals) = focused();
+        // Return pressed, as what starts the compositor anew is typed, and
+        // another pressed and let go of.
+        let key = |serial, key, state| message(6, 3, &words(&[serial, 100, key, state]));
+        // Shift held and let go of, which says nothing of keys.
+        let modifiers = |serial, held| message(6, 4, &words(&[serial, held, 0, 0, 0]));
+        let typed = [
+            key(12, 28, 1),
+            modifiers(13, 1),
+            key(14, 30, 1),
+            key(15, 30, 0),
+            modifiers(16, 0),
+        ];
+        for told in typed {
+            assert!(kept.told(&told).is_some());
+        }
+        kept.restarted(&globals);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(6, 3, &words(&[16, 0, 28, 0]))],
+            "let go of, under the last serial it was told, with no time"
+        );
+        kept.keeping.to_program.clear();
+        let entered = message(6, 1, &words(&[4, 7, 0]));
+        assert_eq!(kept.told(&entered), None, "the keyboard back where it was");
+    }
+
+    #[test]
+    fn the_keys_a_keyboard_enters_holding_are_held_until_it_leaves_or_is_released() {
+        let (mut kept, globals) = focused();
+        // Back in, holding Return and Shift.
+        kept.told(&message(6, 2, &words(&[12, 7]))).unwrap();
+        kept.told(&message(6, 1, &words(&[13, 7, 8, 28, 42])))
+            .unwrap();
+        kept.restarted(&globals);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [
+                message(6, 3, &words(&[13, 0, 28, 0])),
+                message(6, 3, &words(&[13, 0, 42, 0]))
+            ]
+        );
+
+        // Holding a key as it leaves: nothing is held once it has.
+        let (mut kept, globals) = focused();
+        kept.told(&message(6, 3, &words(&[12, 100, 28, 1])))
+            .unwrap();
+        kept.told(&message(6, 2, &words(&[13, 7]))).unwrap();
+        kept.restarted(&globals);
+        assert!(kept.keeping.to_program.is_empty(), "nothing to let go of");
+
+        // Released by the program while a key is held: it has no keys.
+        let (mut kept, globals) = focused();
+        kept.told(&message(6, 3, &words(&[12, 100, 28, 1])))
+            .unwrap();
+        kept.send(&message(6, 0, &[])).unwrap();
+        kept.restarted(&globals);
+        assert!(
+            kept.keeping.to_program.is_empty(),
+            "nothing told a keyboard released"
+        );
     }
 
     #[test]
