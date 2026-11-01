@@ -170,6 +170,14 @@ as GTK's are, come in step 3.
   connection closes, with no error said, waits up to half a second for
   the compositor to be seen gone before it is taken to have been let go
   by a compositor that goes on, which omorfos does only with an error.
+  Half a second was not always enough: on real hardware, a compositor
+  stepping down once closed every program's connection more than that
+  before its own, and the relay let every program go. A compositor
+  stepping down now says `going` before it closes anything, and a
+  program whose connection closes after that is the compositor going,
+  however long its own connection stays open; the wait is left for one
+  that says nothing, as an older one does, or one that crashes, whose
+  connections all close at once.
   A program that is busy, as one playing a video is, is as likely to find
   the compositor gone by a request that cannot be written to it, which is
   taken the same way; taken for the program's own end, it let Firefox go.

@@ -450,6 +450,41 @@ fn a_program_whose_connection_closes_a_moment_before_the_compositor_has_gone_is_
     );
 }
 
+/// Has the compositor of `held` say it is going, and close the program's
+/// connection, `connection`, then or a step later, as `then` says, its own
+/// connection to the relay still open well after; checks that the program
+/// is kept, and handed to the next.
+fn going(then: bool) {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (_program, connection, who) = held.connect(&compositor);
+    relay::send(compositor.as_fd(), &Hand::Going, &[]).unwrap();
+    if !then {
+        held.step();
+    }
+    drop(connection);
+    for _ in 0..4 {
+        held.step();
+    }
+    let said = String::from_utf8_lossy(&held.said).into_owned();
+    assert_eq!(held.relay.programs(), 1, "kept: {said}");
+    assert!(!said.contains("was let go"), "{said}");
+    let next = held.compositor();
+    let handed = held.handed(&next);
+    assert_eq!(handed.hand, Some(Hand::Program(who)), "handed to the next");
+    drop(compositor);
+}
+
+#[test]
+fn a_program_let_go_by_a_compositor_that_said_it_is_going_is_kept_for_the_next() {
+    going(false);
+}
+
+#[test]
+fn a_program_let_go_as_the_compositor_says_it_is_going_is_kept_for_the_next() {
+    going(true);
+}
+
 #[test]
 fn a_program_the_compositor_lets_go_while_it_goes_on_is_let_go() {
     let mut held = Held::new();

@@ -8,12 +8,13 @@
 //! changes, what the next one would need to be told.
 
 use std::io::Write;
-use std::os::fd::{BorrowedFd, OwnedFd};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{self, Told, Word};
+use omorfos_ipc::relay::{self, Hand};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::output::Output;
 
@@ -235,6 +236,11 @@ impl Compositor {
             Some(holder) => {
                 holder.stepping_down = Some(regardless);
                 self.running = false;
+                // Before any program's connection closes, which the relay
+                // would otherwise take for each being let go of, unless its
+                // own closes soon after (ADR 61).
+                let relay = self.autostarted.parts.relay.as_ref();
+                let _ = relay.map(|relay| relay::send(relay.as_fd(), &Hand::Going, &[]));
             }
             None => self.refused.say(NOT_HELD),
         }

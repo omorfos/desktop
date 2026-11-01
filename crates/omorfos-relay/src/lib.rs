@@ -69,6 +69,9 @@ pub struct Relay {
     /// Whether the compositor is still to be told that what was kept for it
     /// is ready to be shown.
     readying: bool,
+    /// Whether the compositor has said it is going: each program's
+    /// connection it closes from then is it going, and the program kept.
+    going: bool,
 }
 
 impl Relay {
@@ -85,6 +88,7 @@ impl Relay {
             desk: None,
             listed: BTreeMap::new(),
             readying: false,
+            going: false,
         }
     }
 
@@ -152,7 +156,7 @@ impl Relay {
                 Err(why) => ended.push((index, why)),
             }
         }
-        let gone = went || (lost && self.compositor_gone(GRACE, log));
+        let gone = went || (lost && (self.going || self.compositor_gone(GRACE, log)));
         if gone {
             // One that lost it is kept with the rest; one let go alone, by
             // a compositor still there, is not.
@@ -268,7 +272,9 @@ impl Relay {
 
     /// Whether the compositor has gone: there is none, or its connection to
     /// the relay has closed, or does within `grace`. What it hands meanwhile
-    /// is taken, and said on `log` if it cannot be.
+    /// is taken, and said on `log` if it cannot be. One that said it is
+    /// going has said so before it closed any program's connection, and is
+    /// heard to have, as what it hands is taken first in each step.
     fn compositor_gone(&mut self, grace: Duration, log: &mut dyn Write) -> bool {
         let readable = self.compositor.as_ref().is_none_or(|compositor| {
             let mut polled = [PollFd::new(compositor, PollFlags::IN)];
@@ -289,6 +295,7 @@ impl Relay {
             next: &mut self.next,
             desk: &mut self.desk,
             listed: &mut self.listed,
+            going: &mut self.going,
         };
         let compositor = self.compositor.as_ref();
         compositor.is_some_and(|compositor| hear_compositor(compositor.as_fd(), kept, log))
@@ -298,6 +305,7 @@ impl Relay {
     /// waits for the next; the rest are let go, and said on `log` to be.
     fn lose_compositor(&mut self, log: &mut dyn Write) {
         self.compositor = None;
+        self.going = false;
         let mut losing = Vec::new();
         self.links.retain_mut(|link| {
             let lost = link.compositor().is_some().then(|| link.lose());
@@ -384,6 +392,8 @@ struct Kept<'a> {
     desk: &'a mut Option<String>,
     /// The windows the compositor lists.
     listed: &'a mut BTreeMap<String, Option<(u32, u32)>>,
+    /// Whether the compositor has said it is going.
+    going: &'a mut bool,
 }
 
 /// Takes what `compositor` has handed into what the relay keeps, `kept`:
@@ -396,6 +406,7 @@ fn hear_compositor(compositor: BorrowedFd<'_>, kept: Kept<'_>, log: &mut dyn Wri
         next,
         desk,
         listed,
+        going,
     } = kept;
     loop {
         match relay::receive(compositor) {
@@ -436,6 +447,10 @@ fn hear_compositor(compositor: BorrowedFd<'_>, kept: Kept<'_>, log: &mut dyn Wri
                 hand: Some(Hand::Desk(said)),
                 ..
             })) => *desk = Some(said),
+            Ok(Some(Received {
+                hand: Some(Hand::Going),
+                ..
+            })) => *going = true,
             Ok(Some(Received {
                 hand: Some(Hand::Listed { identifier, window }),
                 ..

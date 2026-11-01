@@ -1845,6 +1845,18 @@ fn the_next_compositor_shows_nothing_until_the_panel_and_windows_kept_are_back()
 }
 
 #[test]
+fn a_compositor_stepping_down_tells_the_relay_it_is_going_before_it_closes_anything() {
+    let mut session = Session::new();
+    let (_holder, relays, _path, _socket) = unready(&mut session);
+    session.compositor_mut().perform(&Action::RestartCompositor);
+    let mut said = Vec::new();
+    while let Ok(Some(received)) = relay::receive(relays.as_fd()) {
+        said.extend(received.hand);
+    }
+    assert_eq!(said, [Hand::Going]);
+}
+
+#[test]
 fn a_compositor_with_nothing_kept_for_it_shows_the_session_at_once() {
     let relayed = Relayed::new();
     let (mut session, _holder) = relayed.compositor();
