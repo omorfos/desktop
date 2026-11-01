@@ -128,6 +128,9 @@ pub struct Link {
     keeping: Keeping,
     /// Whether the compositor has said the program did what it may not.
     errored: bool,
+    /// The object and request of what was last put to be written to the
+    /// compositor, to say, should it let the program go.
+    last_up: Option<(u32, u16)>,
     /// Whether what the compositor said is to be read again, once it is
     /// known what it is.
     again: bool,
@@ -156,6 +159,7 @@ impl Link {
             objects: Objects::default(),
             keeping: Keeping::default(),
             errored: false,
+            last_up: None,
             again: false,
             up: Passing::default(),
             down: Passing::default(),
@@ -465,7 +469,7 @@ impl Link {
                 // relay's to free.
                 if let Some((made, ..)) = read.made {
                     let standing = self.keeping.stand_in(made);
-                    self.up.push(standing);
+                    self.send_up(standing);
                 }
                 if read.ends {
                     let freed = journal::message(DISPLAY, DELETE_ID, &[header.object]);
@@ -478,7 +482,7 @@ impl Link {
                 .journal
                 .request(header, &message, &fds, &read, described);
             if self.keeping.request(&read, &mut message, described) {
-                self.up.push((message, fds));
+                self.send_up((message, fds));
             }
         }
         Ok(())
@@ -537,9 +541,49 @@ impl Link {
     /// written. What it is to tell the program is put so as it comes, in
     /// its place among what the compositor says.
     fn flush_keeping(&mut self) {
-        for sending in self.keeping.to_compositor.drain(..) {
-            self.up.push(sending);
+        let sending = std::mem::take(&mut self.keeping.to_compositor);
+        for sending in sending {
+            self.send_up(sending);
         }
+    }
+
+    /// Puts `sending` to be written to the compositor, noting what it is.
+    fn send_up(&mut self, sending: Sending) {
+        let header = wire::header(&sending.0).ok().flatten();
+        self.last_up = header
+            .map(|header| (header.object, header.opcode))
+            .or(self.last_up);
+        self.up.push(sending);
+    }
+
+    /// What the relay was doing for the program as the compositor let it
+    /// go, to be said with it: whether it was making again what it kept,
+    /// what it last put to be written to the compositor, and how much the
+    /// program had not read. A compositor lets a program go without a word
+    /// where what it is sent cannot be read, or where it will not keep any
+    /// more for it to read (ADR 45).
+    #[must_use]
+    pub fn lost(&self) -> String {
+        let doing = if self.keeping.caught_up() {
+            "passing on what each said"
+        } else {
+            "making again what it kept"
+        };
+        let last = self.last_up.map_or_else(
+            || "nothing".to_owned(),
+            |(object, opcode)| {
+                let interface = self.objects.living(object);
+                let request = interface.and_then(|known| known.requests.get(usize::from(opcode)));
+                let interface = interface.map_or("an object gone", |known| known.name);
+                let request = request.map_or("?", |known| known.name);
+                format!("{interface}@{object}.{request}")
+            },
+        );
+        let waiting = self.down.written.len();
+        format!(
+            "while {doing}, having last sent it {last}, and with {waiting} bytes the program had \
+             not read"
+        )
     }
 
     /// Writes what is waiting to go `way`, as much as is taken now.
@@ -897,6 +941,60 @@ mod tests {
     }
 
     #[test]
+    fn a_compositor_letting_a_program_go_is_said_with_what_the_relay_was_doing() {
+        // Nothing sent it yet.
+        let (mut link, _program, compositor) = linked();
+        drop(compositor);
+        assert_eq!(link.read(Way::Down), Err(Ended::Lost));
+        let said = link.lost();
+        assert!(said.contains("having last sent it nothing"), "{said}");
+
+        // Let go by the next while the relay makes the program again, with
+        // what the compositor before said not yet read by the program.
+        let (mut link, program, compositor) = linked();
+        send(&program, &get_registry(), &[]);
+        link.read(Way::Up).unwrap();
+        send(&compositor, &message(1, 1, &words(&[5])), &[]);
+        drop(compositor);
+        link.read(Way::Down).unwrap();
+        assert_eq!(link.read(Way::Down), Err(Ended::Lost));
+        assert_eq!(link.lose(), Ok(()));
+        let (towards, next) = UnixStream::pair().unwrap();
+        link.join(towards).unwrap();
+        drop(next);
+        assert_eq!(link.read(Way::Down), Err(Ended::Lost));
+        let said = link.lost();
+        assert!(
+            said.starts_with(
+                "while making again what it kept, having last sent it wl_display@1.sync"
+            ),
+            "{said}"
+        );
+        drop(program);
+    }
+
+    #[test]
+    fn what_was_sent_to_an_object_gone_is_said_as_such() {
+        let (mut link, program, compositor) = linked();
+        // The shm bound at version 2, and let go of, last.
+        let mut body = words(&[1]);
+        body.extend(text("wl_shm"));
+        body.extend(words(&[2, 3]));
+        let mut sent = get_registry();
+        sent.extend(message(2, 0, &body));
+        sent.extend(message(3, 1, &[]));
+        send(&program, &sent, &[]);
+        link.read(Way::Up).unwrap();
+        drop(compositor);
+        assert_eq!(link.read(Way::Down), Err(Ended::Lost));
+        let said = link.lost();
+        assert!(
+            said.contains("having last sent it an object gone@3.?"),
+            "{said}"
+        );
+    }
+
+    #[test]
     fn a_side_closing_ends_the_link_once_what_it_sent_is_passed_on() {
         let (mut link, program, compositor) = linked();
         send(&program, &get_registry(), &[]);
@@ -909,6 +1007,11 @@ mod tests {
         link.read(Way::Down).unwrap();
         assert_eq!(link.read(Way::Down), Err(Ended::Lost));
         assert_eq!(received(&program).0, deleted);
+        assert_eq!(
+            link.lost(),
+            "while passing on what each said, having last sent it wl_display@1.get_registry, \
+             and with 0 bytes the program had not read"
+        );
 
         // Having said the program did what it may not, it is.
         let (mut link, program, compositor) = linked();

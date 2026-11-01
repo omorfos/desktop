@@ -250,7 +250,13 @@ as GTK's are, come in step 3.
   deepest first.
 - **A program let go is said to be**, named by the file it runs and its
   process, with everything it held that cannot be made again, so that a
-  program that did not come back on real hardware says why.
+  program that did not come back on real hardware says why. One the
+  compositor lets go of without a word is said to be with what the relay
+  was doing for it: whether it was making the program again, the last
+  request it sent, and how much the program had not read. A compositor
+  lets a program go silently where what it is sent cannot be read, or
+  where it will keep no more for the program to read (ADR 45); a
+  protocol error it says itself, and the compositor writes it in its log.
 - **A window comes back as a new one would**: placed by the new
   compositor, on the workspace in front. Carrying where each was is the
   compositor's to hand on, keyed by a number the relay gives each program

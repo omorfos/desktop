@@ -480,7 +480,8 @@ fn named(who: Program) -> String {
 /// what the program sent, or the compositor let it go.
 fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write) {
     for (index, why) in ended.into_iter().rev() {
-        let who = links.remove(index).who();
+        let link = links.remove(index);
+        let who = link.who();
         let said = match why {
             Ended::Broken(broken) => writeln!(
                 log,
@@ -491,8 +492,9 @@ fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write
             Ended::Lost => writeln!(
                 log,
                 "omorfos-relay: {} was let go, as the compositor closed its connection and went \
-                 on",
-                named(who)
+                 on, {}",
+                named(who),
+                link.lost()
             ),
             Ended::Closed => Ok(()),
         };

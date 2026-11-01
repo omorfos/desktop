@@ -463,7 +463,8 @@ fn a_program_the_compositor_lets_go_while_it_goes_on_is_let_go() {
     let said = String::from_utf8_lossy(&held.said);
     assert!(
         said.contains(&format!(
-            "{} was let go, as the compositor closed its connection",
+            "{} was let go, as the compositor closed its connection and went on, while passing \
+             on what each said, having last sent it ",
             named()
         )),
         "{said}"
