@@ -101,6 +101,7 @@ use crate::bridge::{self, Bindings};
 use crate::capture::{self, Capture, Due, Gpu, Pass, Subject};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
+use crate::fading::Fade;
 use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::gpu;
@@ -407,7 +408,7 @@ pub struct Compositor {
     /// What programs have been refused for want of a role.
     pub(crate) refused: Refused,
     /// What is changing colour or coming in, and the time it goes by.
-    animation: Animation,
+    pub(crate) animation: Animation,
     pub(crate) ipc: Option<Server>,
     /// What the peer that speaks for the machine's radios last said of
     /// them, while it is connected.
@@ -1136,6 +1137,9 @@ impl Compositor {
         let settling = self.protocols.gestures.slide.settling();
         let sliding = self.animation.epoch.filter(|_| settling);
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
+        // And what the screens showed before, while it gives way.
+        let fading = self.animation.epoch.filter(|_| self.is_fading());
+        let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         [
@@ -1160,6 +1164,7 @@ impl Compositor {
             awake,
             moving,
             sliding,
+            fading,
             said,
         ]
         .into_iter()
@@ -1193,6 +1198,7 @@ impl Compositor {
         self.settle_recording(now);
         self.settle_capture(now);
         self.wait_for_relay(now);
+        self.fade();
         // Collect children that have exited so they do not linger as
         // zombies, noting those that did not exit as they should have.
         let (mut failed, mut ended) = (Vec::new(), Vec::new());
@@ -2975,6 +2981,9 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let mut elements: Vec<Element<R>> = Vec::new();
+        if shown.mark {
+            self.fading_elements(renderer, output, view, &mut elements);
+        }
         let signs = self.signs(output);
         if shown.mark && signs.any() {
             // Over everything, the pointer too: nothing hides it; and over
@@ -3455,7 +3464,7 @@ impl Compositor {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct View {
     /// Where in the space the output's top-left corner is.
-    origin: Point<i32, Logical>,
+    pub(crate) origin: Point<i32, Logical>,
     pub(crate) scale: Scale,
 }
 
@@ -4040,7 +4049,7 @@ struct MarkNote {
 
 /// What is changing colour, coming in or going.
 #[derive(Debug)]
-struct Animation {
+pub(crate) struct Animation {
     /// The frames and menu rows that are on their way from one look to
     /// another, and what has just come into the picture.
     motion: Motion,
@@ -4061,6 +4070,8 @@ struct Animation {
     drawn: RefCell<Vec<(WlSurface, Noted)>>,
     /// What has gone from the screen and is still fading, oldest first.
     gone: Vec<Gone>,
+    /// What the screens showed as the compositor was started, to fade.
+    pub(crate) fading: Vec<Fade>,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -4123,6 +4134,7 @@ impl Animation {
             before: Vec::new(),
             drawn: RefCell::new(Vec::new()),
             gone: Vec::new(),
+            fading: Vec::new(),
         }
     }
 
@@ -4313,16 +4325,27 @@ impl Painted {
 
     /// `bytes` are `pixels` across and down, and stand for `size` units.
     fn from_pixels(bytes: &[u8], pixels: (i32, i32), size: (i32, i32)) -> Self {
+        Self::from_bytes(bytes, Fourcc::Argb8888, pixels, size.into())
+    }
+
+    /// Readies `bytes`, a picture of `pixels` across and down in `format`,
+    /// to be drawn `size` large.
+    pub(crate) fn from_bytes(
+        bytes: &[u8],
+        format: Fourcc,
+        pixels: (i32, i32),
+        size: Size<i32, Logical>,
+    ) -> Self {
         Self {
             pixels: MemoryRenderBuffer::from_slice(
                 bytes,
-                Fourcc::Argb8888,
+                format,
                 pixels,
                 1,
                 Transform::Normal,
                 None,
             ),
-            size: size.into(),
+            size,
             whole: Rectangle::from_size(Size::from(pixels).to_f64()),
         }
     }
@@ -4342,7 +4365,28 @@ impl Painted {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        self.placed(renderer, at, view, (opacity, Kind::Unspecified))
+        self.placed(
+            renderer,
+            (at, self.size),
+            view,
+            (opacity, Kind::Unspecified),
+        )
+    }
+
+    /// The painting placed at `at` as [`Painted::element`] places it, but
+    /// made `size` large on screen, whatever it was readied to be.
+    pub(crate) fn stretched<R>(
+        &self,
+        renderer: &mut R,
+        (at, size): (Point<f64, Logical>, Size<i32, Logical>),
+        view: View,
+        opacity: f32,
+    ) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        self.placed(renderer, (at, size), view, (opacity, Kind::Unspecified))
     }
 
     /// The painting as the pointer, which a backend may show by other
@@ -4352,13 +4396,13 @@ impl Painted {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        self.placed(renderer, at, view, (1.0, Kind::Cursor))
+        self.placed(renderer, (at, self.size), view, (1.0, Kind::Cursor))
     }
 
     fn placed<R>(
         &self,
         renderer: &mut R,
-        at: Point<f64, Logical>,
+        (at, size): (Point<f64, Logical>, Size<i32, Logical>),
         view: View,
         (opacity, kind): (f32, Kind),
     ) -> Option<Element<R>>
@@ -4372,7 +4416,7 @@ impl Painted {
             &self.pixels,
             Some(opacity),
             Some(self.whole),
-            Some(self.size),
+            Some(size),
             kind,
         )
         .ok()

@@ -17,6 +17,7 @@ mod decorations;
 mod display_key;
 mod dragging;
 mod executable;
+mod fading;
 mod gestures;
 mod gpu;
 mod hold;

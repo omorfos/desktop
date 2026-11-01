@@ -971,9 +971,10 @@ what only games and touchpads need last.
       Not yet tried with two screens or one on a cable; nor with the
       holder taking up its own new version between the two compositors,
       which hands the card on as well.
-- [ ] A change of compositor unseen, the third step: the picture before,
+- [x] A change of compositor unseen, the third step: the picture before,
       read from the card as each screen shows it, drawn over the session's
-      first frames and faded out.
+      first frames and faded out in a quarter of a second, once the
+      session is shown. Not yet tried on real hardware.
 - [x] The session never out of anyone's control (ADR 63): `omorfos-hold`
       takes the seat once, through libseat, and keeps it while compositors
       come and go, opening the cards and input devices for each and closing

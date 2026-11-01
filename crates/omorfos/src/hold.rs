@@ -229,6 +229,13 @@ impl Compositor {
         }
     }
 
+    /// Whether the session is shown: not while it is kept from the screens
+    /// until what a relay kept for this compositor has been made again.
+    pub(crate) fn showing(&self) -> bool {
+        let holder = self.holder.as_ref();
+        holder.is_none_or(|holder| holder.showing == Showing::Shown)
+    }
+
     /// What drawing `output` comes to while the session is kept from the
     /// screens, as it is until what a relay kept for this compositor has
     /// been made again: nothing, so the screen goes on showing what it did,

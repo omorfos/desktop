@@ -47,7 +47,7 @@ pub(crate) fn relayed(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixL
 
 /// Puts `session` under a holder as [`relayed`] does, with a relay that has
 /// not yet said that what it kept is ready.
-fn unready(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
+pub(crate) fn unready(session: &mut Session) -> (Holder, OwnedFd, PathBuf, UnixListener) {
     let path = session.config.path().join("wayland-relayed");
     let socket = UnixListener::bind(&path).unwrap();
     let (relays, compositor) = relay::pair().unwrap();

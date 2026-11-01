@@ -71,7 +71,20 @@ hardware, the first being the one that can be tested without it.
    control of the session" below).
 3. **The picture before fades into the session.** The compositor coming
    reads what each screen shows from the card, as it finds it, and draws
-   it over the session's first frames, fading it out.
+   it over the session's first frames, fading it out. Being the card's
+   master, it is told what the screen shows, and its buffers, which it
+   reads into memory once with the graphics card, as it takes the screen
+   on: a few tens of megabytes for a large screen, let go of as the fade
+   ends. It begins to fade once the session is shown, and is gone a
+   quarter of a second later; it is drawn over everything, the pointer
+   too, on the screen alone, and never in a picture a program takes. It
+   is made as large as the screen is as it is drawn: the backend says how
+   large a screen's pixels are only after it has taken it on, and a
+   picture sized before was drawn twice as large on a screen at scale 2.
+   Where the picture cannot be read, the session replaces it at once, as
+   after the second step. The fade itself, which decides everything, is
+   in the compositor and tested; reading the picture is in the hardware
+   backend (ADR 2).
 
 With all three, and the session never out of anyone's control, a change of
 compositor is a moment in which the screens do not move, and then a fade.

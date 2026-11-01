@@ -19,6 +19,7 @@ pub mod cli;
 mod compositor;
 mod corners;
 mod cursor;
+mod fading;
 mod gestures;
 mod ghost;
 mod gpu;

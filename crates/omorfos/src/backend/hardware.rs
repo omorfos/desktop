@@ -25,8 +25,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Acceleration, Action, Command, Mouse, OfferedMode, ScreenMode, Touchpad};
-use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
+use smithay::backend::allocator::{Fourcc, Modifier};
 use smithay::backend::drm::{
     DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmEventMetadata, DrmNode,
     GbmBufferedSurface, NodeType,
@@ -37,7 +38,7 @@ use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
 use smithay::backend::renderer::multigpu::GpuManager;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
-use smithay::backend::renderer::{Bind, ImportDma};
+use smithay::backend::renderer::{Bind, ExportMem, ImportDma};
 use smithay::backend::session::libseat::{LibSeatSession, LibSeatSessionNotifier};
 use smithay::backend::session::{AsErrno, Event as SeatEvent, Session as Seat};
 use smithay::backend::udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu};
@@ -46,11 +47,11 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode as Level, PostAction, channel};
 use smithay::reexports::drm::control::{
-    Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc,
+    Device as ControlDevice, Mode, ModeTypeFlags, connector, crtc, plane,
 };
 use smithay::reexports::input::{AccelProfile, Device, DeviceCapability, Libinput};
 use smithay::reexports::rustix::fs::OFlags;
-use smithay::utils::{DeviceFd, Transform};
+use smithay::utils::{DeviceFd, Rectangle, Transform};
 
 use super::winit::{
     cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
@@ -898,6 +899,9 @@ impl Hardware {
             .free_crtc(connector)
             .ok_or("the graphics card cannot drive another")?;
         let scanout = self.card.create_surface(crtc, mode, &[connector])?;
+        // What the compositor before left on it, to fade from (ADR 62).
+        let kept = self.before.is_some();
+        let shown = kept.then(|| self.shown(scanout.plane())).flatten();
         let flags = GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT;
         let allocator = GbmAllocator::new(self.gbm.clone(), flags);
         let formats = self.gpus.single_renderer(&self.renderer)?.dmabuf_formats();
@@ -910,6 +914,9 @@ impl Hardware {
         let (width, height) = mode.size();
         let size = (i32::from(width), i32::from(height));
         let output = compositor.add_output(name, size, Transform::Normal);
+        if let Some((bytes, pixels)) = shown {
+            compositor.fade_from(&output, &bytes, pixels, Fourcc::Abgr8888);
+        }
         let offers: Vec<OfferedMode> = modes.iter().map(offered).collect();
         compositor.offer_modes(&output, &offers, offered(&mode));
         compositor.suggest_scale(&output, Scale::for_screen(u32::from(width), millimetres));
@@ -929,6 +936,44 @@ impl Hardware {
             failing: false,
             dark: false,
         })
+    }
+
+    /// What `plane` shows, as the compositor before left it, read into
+    /// memory with red first, and how many pixels across and down it is:
+    /// nothing, where it shows nothing or cannot be read. Only the card's
+    /// master is told where what a plane shows is, which this compositor is.
+    fn shown(&mut self, plane: plane::Handle) -> Option<(Vec<u8>, (i32, i32))> {
+        let framebuffer = self.card.get_plane(plane).ok()?.framebuffer()?;
+        let info = self.card.get_planar_framebuffer(framebuffer).ok()?;
+        let (width, height) = info.size();
+        let pixels = (i32::try_from(width).ok()?, i32::try_from(height).ok()?);
+        let modifier = info.modifier().unwrap_or(Modifier::Invalid);
+        let mut dmabuf =
+            Dmabuf::builder(pixels, info.pixel_format(), modifier, DmabufFlags::empty());
+        let mut buffers = info.buffers().into_iter().flatten().collect::<Vec<_>>();
+        for (index, buffer) in info.buffers().into_iter().enumerate() {
+            let flags = (OFlags::CLOEXEC | OFlags::RDWR).bits();
+            let exported =
+                buffer.and_then(|buffer| self.card.buffer_to_prime_fd(buffer, flags).ok());
+            let (offset, pitch) = (info.offsets()[index], info.pitches()[index]);
+            let index = u32::try_from(index).unwrap_or_default();
+            let _ = exported.map(|fd| dmabuf.add_plane(fd, index, offset, pitch));
+        }
+        // What this compositor was told of the picture is let go of: the
+        // memory stays the one before's, and goes with it.
+        buffers.dedup();
+        for buffer in buffers {
+            let _ = self.card.close_buffer(buffer);
+        }
+        let dmabuf = dmabuf.build()?;
+        let mut renderer = self.gpus.single_renderer(&self.renderer).ok()?;
+        let texture = renderer.import_dmabuf(&dmabuf, None).ok()?;
+        let whole = Rectangle::from_size(pixels.into());
+        let copied = renderer
+            .copy_texture(&texture, whole, Fourcc::Abgr8888)
+            .ok()?;
+        let bytes = renderer.map_texture(&copied).ok()?.to_vec();
+        Some((bytes, pixels))
     }
 
     /// A part of the card that can drive `connector` and is not driving
