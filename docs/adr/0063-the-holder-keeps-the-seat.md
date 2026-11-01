@@ -78,10 +78,10 @@ holder, which says nothing of a seat.
 **Taking up its own new version, the holder lets the seat go first**: what
 libseat holds cannot be handed to another program. The new version takes
 the seat again before it starts the next compositor; the console shows
-for that moment, once, as before. The holder takes up a new version
-whenever the file installed is another than its own, which installing
-always makes it, so every installation still shows the console, once:
-only a compositor started again by hand, or after a crash, is unseen.
+for that moment, once, as before. Installing puts a new file in place of
+the old whether the holder changed or not, so the holder takes up the file
+installed only where what is in it is not what it runs: an installation
+that did not change the holder leaves it, and the seat, as they are.
 
 ## Alternatives
 

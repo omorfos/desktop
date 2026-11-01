@@ -982,11 +982,11 @@ what only games and touchpads need last.
       `Session` trait, and its own seat where the holder keeps none. With it
       the virtual terminal is not put back into text between two
       compositors. Not yet tried on real hardware.
-- [ ] The holder taking up its own new version only where it is another:
+- [x] The holder taking up its own new version only where it is another:
       installing always puts a new file in place of the old, and the holder,
-      which lets the seat go to take up a new version, shows the console
-      then, once each installation, which a file the same as the one
-      running need not.
+      which lets the seat go to take up a new version, showed the console
+      then, once each installation; it now takes up the file installed only
+      where what is in it is not what it runs.
 - [ ] Blue and green, once the three steps are tried: the time a change of
       compositor still stands still measured, and whether a compositor
       caught up beside the one going is worth the relay feeding both (ADR

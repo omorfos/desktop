@@ -314,7 +314,8 @@ of it and the action that asks the compositor to step down,
   as it would hang the session without a holder; noticing one is left
   for later.
 - **Its own new version is taken up between one compositor and the next**,
-  checked first by running it with `--check`, and handed, as
+  where what is installed is not what it runs (ADR 63), checked first by
+  running it with `--check`, and handed, as
   `omorfos-hold --taking`, the socket, its lock, the file held, its own old
   file and a few lines of what it knew. One that cannot take it runs the old
   file again with `--taking-back`. Becoming another program is in a file of

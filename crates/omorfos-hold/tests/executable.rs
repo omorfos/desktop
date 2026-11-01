@@ -74,6 +74,7 @@ fn compositor(place: &Path, then: &str) {
          while read -r line && [ -n \"$line\" ]; do told=\"$told$line,\"; done\n\
          printf '%s;' \"$told\" >> \"$marks/told\"\n\
          printf '%s;' \"$PPID\" >> \"$marks/parents\"\n\
+         printf '%s;' \"$(readlink /proc/$PPID/exe)\" >> \"$marks/holders\"\n\
          {then}\n"
     );
     install(&place.join("omorfos"), &script);
@@ -169,9 +170,11 @@ fn its_own_new_version_takes_its_place_between_one_compositor_and_the_next() {
     let (place, program) = installed();
     // The first compositor installs a new version of the holder as it
     // runs, as installing omorfos does, and steps down; the next comes up
-    // under the new one, and ends the session.
+    // under the new one, and ends the session. Another version, as one
+    // more byte at its end makes it, which runs all the same.
     let then = format!(
-        "if [ $n = 1 ]; then cp '{built}' '{program}.next' && mv '{program}.next' '{program}'; \
+        "if [ $n = 1 ]; then cp '{built}' '{program}.next' && printf x >> '{program}.next' \
+         && mv '{program}.next' '{program}'; \
          printf 'up\\nlocked\\nstepping down\\n' >&0; exit 0; fi; printf 'up\\n' >&0; exit 0",
         built = built().display(),
         program = program.display(),
@@ -187,14 +190,43 @@ fn its_own_new_version_takes_its_place_between_one_compositor_and_the_next() {
         "{}",
         said(&output)
     );
-    // It is the same process, which the login screen watches, all along.
+    // It is the same process, which the login screen watches, all along,
+    // running the file installed.
     let parents = fs::read_to_string(place.path().join("parents")).unwrap();
     let parents: Vec<&str> = parents.split_terminator(';').collect();
     assert_eq!(parents.len(), 2);
     assert_eq!(parents[0], parents[1]);
+    let holders = fs::read_to_string(place.path().join("holders")).unwrap();
+    let installed = format!("{};", program.display());
+    assert_eq!(holders, installed.repeat(2), "taken up");
     assert!(
         !place.path().join("wayland-1").exists(),
         "the name is given back"
+    );
+}
+
+#[test]
+fn the_same_version_installed_again_is_not_taken_up() {
+    let (place, program) = installed();
+    // As installing does when the holder has not changed: a new file, the
+    // same as the one running.
+    let then = format!(
+        "if [ $n = 1 ]; then cp '{built}' '{program}.next' && mv '{program}.next' '{program}'; \
+         printf 'up\\nstepping down\\n' >&0; exit 0; fi; printf 'up\\n' >&0; exit 0",
+        built = built().display(),
+        program = program.display(),
+    );
+    compositor(place.path(), &then);
+    let output = holder(&program, Some(place.path())).output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    let holders = fs::read_to_string(place.path().join("holders")).unwrap();
+    // Still the file it was started from, which has been replaced since.
+    let running = format!("{} (deleted);", program.display());
+    assert_eq!(
+        holders,
+        format!("{};{running}", program.display()),
+        "{}",
+        said(&output)
     );
 }
 

@@ -99,13 +99,16 @@ impl Hold {
     }
 }
 
-/// Whether the holder installed at `own` is another file than the one
-/// running.
+/// Whether the holder installed at `own` is another version than the one
+/// running: another file, with something else in it. Installing puts a new
+/// file in place of the old whether it changed or not, and taking up a new
+/// version lets the seat go for a moment (ADR 63).
 fn replaced(own: &Path) -> bool {
     let identity = |metadata: fs::Metadata| (metadata.dev(), metadata.ino());
     let running = fs::metadata("/proc/self/exe").map(identity).ok();
     let installed = fs::metadata(own).map(identity).ok();
-    installed.is_some() && installed != running
+    let other = installed.is_some() && installed != running;
+    other && fs::read(own).ok() != fs::read("/proc/self/exe").ok()
 }
 
 /// Whether the holder at `own` says it starts, in time.
@@ -355,6 +358,27 @@ pub(crate) mod tests {
         let mut held = held.renewed_from(runtime.path().join("gone"));
         assert!(held.renewal(Which::Installed, &mut log).is_none());
         assert_eq!(log, b"");
+    }
+
+    #[test]
+    fn a_new_file_the_same_as_the_one_running_is_not_another_version() {
+        let runtime = tempfile::TempDir::new().unwrap();
+        let own = runtime.path().join("omorfos-hold");
+        // Copied by a process of its own, for the reason `program` says.
+        let running = std::env::current_exe().unwrap();
+        let copied = Command::new("cp").arg(running).arg(&own).status();
+        assert!(copied.unwrap().success());
+        assert!(!replaced(&own), "the same, though another file");
+        let mut changed = fs::read(&own).unwrap();
+        changed.push(b'x');
+        let other = runtime.path().join("other");
+        program(&other, "");
+        fs::write(&other, &changed).unwrap();
+        assert!(replaced(&other), "one byte more");
+        changed.pop();
+        changed.push(b'y');
+        fs::write(&other, &changed).unwrap();
+        assert!(replaced(&other), "as long, and not the same");
     }
 
     #[test]
