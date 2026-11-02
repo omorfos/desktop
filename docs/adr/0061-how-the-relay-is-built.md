@@ -604,10 +604,10 @@ and fails while that is other than what 3e still has to come.
   again, and puts the compositor's count in each commit. One told another
   is the input method is over, as a pointer held once only is: not made
   again, nor what it made, and the relay answers for each.
-- **Pictures of a screen go on, and of a window stop** (3e). A source of
-  a screen is made again for the screen the program bound, and each
-  session on it, and each following the pointer, with it; one whose
-  screen has gone is stopped by the next compositor, as when it is
+- **Pictures of a screen go on, and of a window once it is back** (3e).
+  A source of a screen is made again for the screen the program bound,
+  and each session on it, and each following the pointer, with it; one
+  whose screen has gone is stopped by the next compositor, as when it is
   unplugged. A picture asked for as the compositor goes cannot be
   carried, as the next would take it of its own screen with damage of
   its own: it is told it failed, as a picture may, and the program asks
@@ -617,14 +617,27 @@ and fails while that is other than what 3e still has to come.
   buffer has to be the next compositor says again, which a program may
   take as the screen having changed: the first it says is held back
   until it is whole, and passed on, all of it, only if it is not what
-  the program was told. A source of a window cannot be made again by
-  the relay alone: it names the window by its handle in a list of
-  windows, which the portal lets go of as soon as the source is made,
-  and the next compositor would know the window by another. What takes
-  pictures of a window is told it stopped, as when the window closes,
-  and a picture of it asked for that it failed; none of it is made
-  again, and the relay answers for each. Making it again, by a list of
-  the relay's own, is left for later.
+  the program was told. A source of a window names the window by its
+  handle in a list of windows, which the portal lets go of as soon as the
+  source is made, and the next compositor lists the window under a handle
+  and an identifier of its own. As the compositor goes, the source, and
+  what was made of it, is held back from being made again with the rest,
+  and what the program asks of it meanwhile is kept but not sent, as for
+  what no compositor has. Once the next compositor lists a window that is
+  kept, which it hands the relay as it lists any window, the relay binds
+  a list of windows of its own on the program's connection, under the
+  next number, while the program waits so that it cannot take that
+  number; finds the window there by the identifier it is listed by; makes
+  the source of it under the program's number, and what was made of it,
+  then asks again for each picture asked for meanwhile; and destroys its
+  list and what is in it. The program waits for no other program, only
+  for that roundtrip, and its pictures of the window do not come until
+  the window is back. What takes pictures of a window that is not kept,
+  whose program goes, which it closes, or which is listed and gone before
+  it is found, is told it stopped, as when the window closes, and a
+  picture of it asked for that it failed; none of it is made again, and
+  the relay answers for each. One whose window is hidden, rather than
+  closed, while it is awaited waits until the window is shown again.
 - **A locked session is locked again by the locker it had** (3e), settled
   as the last part of 3e was started: the locker kept, rather than one
   started anew, so that what was typed into it and how it looked go on,

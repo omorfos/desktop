@@ -163,6 +163,13 @@ impl Relay {
             ended.retain(|(_, why)| *why != Ended::Lost);
         }
         remove(&mut self.links, ended, log);
+        // Pictures of a window whose program has gone, or closed it, stop.
+        if self.links.iter().any(Link::awaits_pictures) {
+            let present: HashSet<(u32, u32)> = self.links.iter().flat_map(Link::windows).collect();
+            for link in &mut self.links {
+                link.windows_gone(&present);
+            }
+        }
         if gone {
             self.lose_compositor(log);
         } else {

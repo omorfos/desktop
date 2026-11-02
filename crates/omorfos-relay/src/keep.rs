@@ -7,8 +7,7 @@
 //! starts, that a key the keyboard held is let go of, that an input method
 //! typing in a field is no longer, with any key held in its keyboard grab let
 //! go of, that a picture it asked for has failed
-//! and the pointer it follows has left, that what it takes pictures of a window
-//! through has stopped, and that what lasts only a moment has ended: a popup
+//! and the pointer it follows has left, and that what lasts only a moment has ended: a popup
 //! dismissed, a token given, a picture discarded, which the relay answers for
 //! from then on. A pointer held once only that has been held is over too, and
 //! so is an input method told another is the one, and a lock told it is over;
@@ -25,7 +24,9 @@
 //! program's that it imported by the handle the compositor before shared it by
 //! is imported again by the one the next shares it by, once that is known: the
 //! import made again by the old handle, which the next compositor refuses, is
-//! destroyed first, and that it was refused is kept from the program.
+//! destroyed first, and that it was refused is kept from the program. What it
+//! takes pictures of a window through is made again once the next compositor
+//! lists the window, as `pictures` says, and stops if it does not.
 //!
 //! Some numbers mean something only to one compositor, and the relay puts
 //! the program's in their place and theirs in the program's: the names of
@@ -48,6 +49,10 @@ use crate::journal::{self, Journal, Numbering, Sending};
 use crate::objects::{Objects, Read, SERVERS};
 use crate::serials::{self, Serials};
 use crate::wire::{self, Broken, HEADER, Header};
+
+mod pictures;
+
+use pictures::{Finding, Pictured};
 
 /// The display, which every connection starts with.
 const DISPLAY: u32 = 1;
@@ -328,6 +333,10 @@ enum Phase {
     /// back, while the program waits to be read: the relay's syncs take
     /// numbers it may take next.
     Settling,
+    /// Caught up, looking through a list of windows of the relay's own for
+    /// a window pictures are taken of, while the program waits to be read:
+    /// the list has a number it may take next.
+    Picturing,
 }
 
 /// Keeping a program through a change of compositor.
@@ -440,10 +449,18 @@ pub struct Keeping {
     /// it follows, by its number for each.
     following: HashMap<u32, bool>,
     /// What the program takes pictures of a window through, by its number
-    /// for each, with what each is: the source, and each session, picture
-    /// and follower of the pointer made of it. They stop as the compositor
-    /// goes.
-    of_windows: HashMap<u32, &'static str>,
+    /// for each, with what each is, and the source it is of: the source
+    /// itself, and each session, picture and follower of the pointer made
+    /// of it.
+    of_windows: HashMap<u32, (&'static str, u32)>,
+    /// The identifier each source of pictures of a window was made by, as
+    /// the compositor lists the window, by the program's number for it.
+    sources: HashMap<u32, Vec<u8>>,
+    /// The windows pictures are taken of that are kept, by the source of
+    /// them, while the next compositor does not have it.
+    pictured: BTreeMap<u32, Pictured>,
+    /// The relay's own list of windows, while it is looked through.
+    finding: Option<Finding>,
     /// The highest of the program's numbers when the compositor went: what
     /// the program may take next may be any up to it.
     highest: u32,
@@ -506,6 +523,9 @@ impl Default for Keeping {
             taking: HashMap::new(),
             following: HashMap::new(),
             of_windows: HashMap::new(),
+            sources: HashMap::new(),
+            pictured: BTreeMap::new(),
+            finding: None,
             highest: DISPLAY,
             numbering: Numbering::default(),
             syncs: Vec::new(),
@@ -528,7 +548,7 @@ impl Keeping {
     /// the relay has caught up with it.
     #[must_use]
     pub fn caught_up(&self) -> bool {
-        matches!(self.phase, Phase::Live | Phase::Settling)
+        matches!(self.phase, Phase::Live | Phase::Settling | Phase::Picturing)
     }
 
     /// Takes in the request `bytes`, `described`, which `read` says the
@@ -659,7 +679,11 @@ impl Keeping {
             self.shots.remove(&object);
             self.taking.remove(&object);
             self.following.remove(&object);
-            self.of_windows.remove(&object);
+            // What pictures of a window are taken through is made again
+            // while something kept names it, as a source a session is of.
+            if !self.journal.has(object) {
+                self.of_windows.remove(&object);
+            }
             // A window gone belongs to none imported any longer.
             for import in self.imports.values_mut() {
                 import.child = import.child.filter(|child| *child != object);
@@ -718,14 +742,18 @@ impl Keeping {
             }
             _ => {}
         }
-        let source = wire::word(bytes, HEADER + 4).unwrap_or_default();
-        let window = match read.interface.name {
-            "ext_foreign_toplevel_image_capture_source_manager_v1" => true,
-            "ext_image_copy_capture_manager_v1" => self.of_windows.contains_key(&source),
-            _ => self.of_windows.contains_key(&object),
+        let named = wire::word(bytes, HEADER + 4).unwrap_or_default();
+        let source = match read.interface.name {
+            "ext_foreign_toplevel_image_capture_source_manager_v1" => {
+                self.noted(made, named);
+                Some(made)
+            }
+            "ext_image_copy_capture_manager_v1" => self.of_windows.get(&named).map(|of| of.1),
+            _ => self.of_windows.get(&object).map(|of| of.1),
         };
-        if window {
-            self.of_windows.insert(made, interface.name);
+        if let Some(source) = source {
+            self.of_windows.insert(made, (interface.name, source));
+            self.held_with(made, source);
         }
     }
 
@@ -785,6 +813,8 @@ impl Keeping {
             // One of the relay's syncs, answered.
             if self.syncs.contains(&header.object) {
                 self.answered(objects, header.object)?;
+            } else {
+                self.finding(objects, header.object, header.opcode, body);
             }
             return Ok(None);
         }
@@ -1112,33 +1142,22 @@ impl Keeping {
     }
 
     /// Lets go of what the program takes pictures through, as the compositor
-    /// goes. What it takes pictures of a window through is told it has
-    /// stopped, as when the window closes, as the next compositor could not
-    /// be told which window it is, and goes into `spent`. A picture asked
-    /// for is told it failed, as one may, for the program to ask for
-    /// another; it and every picture told of go into `spent` too, and the
-    /// rest is made again. A pointer followed is told it left. What a
-    /// buffer has to be is told again only if it changed.
+    /// goes. A picture asked for is told it failed, as one may, for the
+    /// program to ask for another; it and every picture told of go into
+    /// `spent`, and the rest is made again: what pictures of a window are
+    /// taken through once the window is back. A pointer followed is told it
+    /// left. What a buffer has to be is told again only if it changed.
     fn let_go_of_pictures(&mut self, spent: &mut HashSet<u32>) {
-        let mut windows: Vec<(u32, &str)> = self.of_windows.drain().collect();
-        windows.sort_unstable();
-        for (number, interface) in windows {
-            if interface == "ext_image_copy_capture_session_v1" {
-                self.to_program.push(journal::message(number, STOPPED, &[]));
-            }
-            spent.insert(number);
-        }
         let mut shots: Vec<(u32, Shot)> = self.shots.iter().map(|(n, s)| (*n, *s)).collect();
         shots.sort_unstable_by_key(|(number, _)| *number);
         for (frame, shot) in shots {
-            let window = spent.contains(&frame);
             if shot == Shot::Asked {
-                let why = if window { GONE } else { UNKNOWN };
                 self.to_program
-                    .push(journal::message(frame, SHOT_FAILED, &[why]));
+                    .push(journal::message(frame, SHOT_FAILED, &[UNKNOWN]));
             }
-            if shot != Shot::Made || window {
+            if shot != Shot::Made {
                 self.shots.remove(&frame);
+                self.of_windows.remove(&frame);
                 spent.insert(frame);
             }
         }
@@ -1306,6 +1325,7 @@ impl Keeping {
     /// listed from before, the window held back as that identifier is the
     /// one it has.
     pub fn listed(&mut self, identifier: &[u8], window: Option<(u32, u32)>) {
+        self.picture_listed(identifier, window);
         if !self.awaiting.is_empty() {
             self.known.insert(identifier.to_vec(), window);
             self.resolve();
@@ -1360,9 +1380,11 @@ impl Keeping {
     /// have closed.
     pub fn unlist(
         &mut self,
+        objects: &Objects,
         listed: &BTreeMap<String, Option<(u32, u32)>>,
         kept: &HashSet<(u32, u32)>,
     ) {
+        self.await_pictures(objects, listed, kept);
         let mut listings: Vec<(&u32, &Listing)> = self.listings.iter().collect();
         listings.sort_unstable_by_key(|(handle, _)| **handle);
         let mut closed = Vec::new();
@@ -1630,6 +1652,7 @@ impl Keeping {
         } else {
             self.settle();
         }
+        self.find(objects);
         Ok(())
     }
 
@@ -1767,6 +1790,7 @@ impl Keeping {
         // made again, nor what it made; the relay answers for each.
         spent.extend(self.refused.drain());
         self.let_go_of_pictures(&mut spent);
+        self.hold_pictures(objects);
         let mut menu = false;
         for (number, interface) in self.journal.end_lost(&spent) {
             let untold = !self.given.remove(&number);
@@ -3107,41 +3131,217 @@ mod tests {
         );
     }
 
-    #[test]
-    fn what_takes_pictures_of_a_window_stops_as_the_compositor_goes_and_is_not_made_again() {
+    /// A program taking pictures of the window (7, 20), which it lists as
+    /// `SERVERS` by the identifier "w", as the portal does: its source 10,
+    /// let go of with the window's handle, a session 11 of it with a picture
+    /// 16 asked for, and the pointer followed over it as 13, with a session
+    /// 14 of pictures of that, and a picture 17 of it made; and the list let
+    /// go of too unless `listing`. The compositor goes, with the window kept
+    /// if `window`, and the next, offering `globals`, has the registries
+    /// made again.
+    fn picturing_a_window(window: bool, listing: bool, globals: &[(u32, &str, u32)]) -> Kept {
         let mut kept = picturing();
-        let window = SERVERS;
-        kept.told(&toplevel(7, window)).unwrap();
-        kept.send(&message(5, 0, &words(&[10, window]))).unwrap();
+        let handle = SERVERS;
+        kept.told(&toplevel(7, handle)).unwrap();
+        kept.told(&saying(handle, IDENTIFIER, "w")).unwrap();
+        kept.send(&message(5, 0, &words(&[10, handle]))).unwrap();
         kept.send(&message(6, 0, &words(&[11, 10, 0]))).unwrap();
-        // The pointer followed over the window, with pictures of it.
         kept.send(&message(9, 0, &words(&[12]))).unwrap();
         kept.send(&message(6, 1, &words(&[13, 10, 12]))).unwrap();
         kept.send(&message(13, 1, &words(&[14]))).unwrap();
         buffer(&mut kept, 15);
         shot(&mut kept, (11, 16, 15), true);
         shot(&mut kept, (14, 17, 15), false);
+        kept.send(&message(handle, 0, &[])).unwrap();
+        kept.send(&message(10, 0, &[])).unwrap();
+        if !listing {
+            kept.send(&message(7, 1, &[])).unwrap();
+        }
 
-        kept.restarted(&PICTURING);
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        let listed = BTreeMap::from([("w".to_owned(), Some((7, 20)))]);
+        let windows = HashSet::from_iter(window.then_some((7, 20)));
+        kept.keeping.unlist(&kept.objects, &listed, &windows);
+        kept.keeping.join();
+        let sync = *kept.keeping.syncs.first().unwrap();
+        for (name, interface, version) in globals {
+            assert_eq!(kept.told(&global(*name, interface, *version)), None);
+        }
+        kept.answer(sync);
+        kept
+    }
+
+    #[test]
+    fn what_takes_pictures_of_a_window_not_kept_stops_and_is_not_made_again() {
+        let mut kept = picturing_a_window(false, true, &PICTURING);
         assert_eq!(
             bytes(&kept.keeping.to_program),
             [
+                message(16, SHOT_FAILED, &words(&[UNKNOWN])),
                 message(11, STOPPED, &[]),
                 message(14, STOPPED, &[]),
-                message(16, SHOT_FAILED, &words(&[GONE]))
             ],
             "as when the window closes"
         );
         kept.keeping.to_program.clear();
+        let making = *kept.keeping.syncs.first().unwrap();
+        kept.answer(making);
         let made = sent(&kept);
         for unmade in [(5, 0), (6, 0), (6, 1), (13, 1), (11, 0), (14, 0)] {
             assert!(!made.contains(&unmade), "{unmade:?} in {made:?}");
         }
+        assert!(!kept.keeping.awaits_pictures());
+        // Those not made again are the relay's to free.
         assert_eq!(kept.send(&message(11, 1, &[])), None);
         assert_eq!(
             bytes(&kept.keeping.to_program),
             [message(1, 1, &words(&[11]))]
         );
+    }
+
+    #[test]
+    fn what_takes_pictures_of_a_window_kept_is_made_again_by_a_list_of_the_relays_own() {
+        let mut kept = picturing_a_window(true, true, &PICTURING);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(16, SHOT_FAILED, &words(&[UNKNOWN]))],
+            "not stopped"
+        );
+        // Not made again with the rest, nor looked for until that is.
+        let made = sent(&kept);
+        assert!(!made.contains(&(5, 0)), "{made:?}");
+        kept.keeping.find(&kept.objects);
+        let making = *kept.keeping.syncs.first().unwrap();
+        kept.keeping.to_compositor.clear();
+        kept.answer(making);
+        assert!(kept.keeping.live());
+        // Another window listed is not the one.
+        kept.keeping.listed(b"w2", Some((7, 21)));
+        kept.keeping.find(&kept.objects);
+        assert!(kept.keeping.live());
+        // Asked for meanwhile, a picture is kept, with the rest.
+        assert_eq!(kept.send(&message(11, 0, &words(&[18]))), None);
+        assert_eq!(kept.send(&message(18, 1, &words(&[15]))), None);
+        assert_eq!(kept.send(&message(18, CAPTURE, &[])), None);
+        // Found as it is listed, with the program waiting meanwhile.
+        kept.keeping.to_compositor.clear();
+        kept.keeping.listed(b"w1", Some((7, 20)));
+        kept.keeping.find(&kept.objects);
+        assert!(!kept.keeping.live());
+        let list = kept.objects.highest().max(kept.keeping.numbering.top - 1);
+        let bound =
+            journal::said_between(2, 0, (&[5], b"ext_foreign_toplevel_list_v1", &[1, list]));
+        assert_eq!(kept.keeping.to_compositor[0].0, bound.0);
+        let finding = list + 1;
+        assert_eq!(
+            bytes(&kept.keeping.to_compositor[1..]),
+            [message(1, 0, &words(&[finding]))]
+        );
+        kept.keeping.to_compositor.clear();
+        let (other, window) = (SERVERS + 4, SERVERS + 5);
+        for (handle, identifier) in [(other, "w2"), (window, "w1")] {
+            assert_eq!(kept.told(&toplevel(list, handle)), None);
+            assert_eq!(kept.told(&saying(handle, IDENTIFIER, identifier)), None);
+            assert_eq!(kept.told(&saying(handle, TITLE, "t")), None);
+        }
+        // What the list says that is not looked for is kept from the
+        // program too.
+        assert_eq!(kept.told(&message(list, 1, &[])), None);
+        kept.answer(finding);
+        let made = sent(&kept);
+        // The source, what was made of it, and the picture made, then the
+        // one asked for meanwhile, asked for again.
+        let remade = [(5, 0), (6, 0), (6, 1), (13, 1), (14, 0), (17, 1), (17, 2)];
+        for remade in remade.into_iter().chain([(11, 0), (18, 1), (18, CAPTURE)]) {
+            assert!(made.contains(&remade), "{remade:?} in {made:?}");
+        }
+        let source = kept
+            .keeping
+            .to_compositor
+            .iter()
+            .find(|(bytes, _)| wire::header(bytes).unwrap().unwrap().object == 5);
+        assert_eq!(wire::word(&source.unwrap().0, HEADER + 4), Some(window));
+        let at = |sent: (u32, u16)| made.iter().position(|made| *made == sent).unwrap();
+        assert!(at((5, 0)) < at((6, 0)) && at((6, 0)) < at((11, 0)));
+        assert!(
+            at((11, 0)) < at((10, 0)),
+            "the source let go of again after"
+        );
+        assert!(at((18, 1)) < at((18, CAPTURE)));
+        let ending = made.len() - 4;
+        assert_eq!(
+            made[ending..],
+            [(other, 0), (window, 0), (list, 1), (1, 0)],
+            "the relay's list let go of"
+        );
+        let ended = kept.keeping.numbering.top;
+        assert!(!kept.keeping.live());
+        kept.answer(ended);
+        assert!(kept.keeping.live());
+        assert!(!kept.keeping.awaits_pictures());
+        // The window's numbers are the compositor's again, the relay's list
+        // let go of.
+        assert_eq!(kept.told(&message(1, 1, &words(&[list]))), None);
+        assert!(!kept.keeping.private.contains(&window));
+        assert!(
+            kept.keeping
+                .to_program
+                .iter()
+                .all(|(bytes, _)| { wire::header(bytes).unwrap().unwrap().opcode != STOPPED })
+        );
+        // What was made again is passed on as any is.
+        assert!(kept.send(&message(18, CAPTURE, &[])).is_some());
+    }
+
+    #[test]
+    fn pictures_of_a_window_that_is_not_in_the_relays_list_or_has_gone_stop() {
+        // Listed, then gone by the time the relay's list is whole.
+        let mut kept = picturing_a_window(true, true, &PICTURING);
+        let making = *kept.keeping.syncs.first().unwrap();
+        kept.answer(making);
+        kept.keeping.to_program.clear();
+        kept.keeping.listed(b"w1", Some((7, 20)));
+        kept.keeping.find(&kept.objects);
+        let finding = kept.keeping.numbering.top;
+        kept.answer(finding);
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [message(11, STOPPED, &[]), message(14, STOPPED, &[])]
+        );
+
+        // Not offered a list by the next compositor.
+        let unlisting: Vec<(u32, &str, u32)> = PICTURING
+            .into_iter()
+            .filter(|(_, interface, _)| *interface != "ext_foreign_toplevel_list_v1")
+            .collect();
+        let mut kept = picturing_a_window(true, false, &unlisting);
+        let making = *kept.keeping.syncs.first().unwrap();
+        kept.answer(making);
+        kept.keeping.to_program.clear();
+        kept.keeping.listed(b"w1", Some((7, 20)));
+        kept.keeping.find(&kept.objects);
+        assert!(kept.keeping.live());
+        assert!(!kept.keeping.awaits_pictures());
+
+        // Its program gone first, with a picture asked for meanwhile.
+        let mut kept = picturing_a_window(true, true, &PICTURING);
+        let making = *kept.keeping.syncs.first().unwrap();
+        kept.answer(making);
+        kept.send(&message(17, CAPTURE, &[]));
+        kept.keeping.to_program.clear();
+        kept.keeping
+            .windows_gone(&kept.objects, &HashSet::from([(7, 20)]));
+        assert!(kept.keeping.awaits_pictures(), "nothing said of it yet");
+        kept.keeping.windows_gone(&kept.objects, &HashSet::new());
+        assert_eq!(
+            bytes(&kept.keeping.to_program),
+            [
+                message(11, STOPPED, &[]),
+                message(14, STOPPED, &[]),
+                message(17, SHOT_FAILED, &words(&[GONE])),
+            ]
+        );
+        assert!(!kept.keeping.awaits_pictures());
     }
 
     #[test]
@@ -3658,7 +3858,7 @@ mod tests {
             ("d".to_owned(), Some((7, 23))),
         ]);
         let windows = HashSet::from([(7, 20), (7, 21), (7, 23)]);
-        kept.keeping.unlist(&listed, &windows);
+        kept.keeping.unlist(&kept.objects, &listed, &windows);
         assert_eq!(
             bytes(&kept.keeping.to_program),
             bytes(&[journal::message(alone, CLOSED, &[])])

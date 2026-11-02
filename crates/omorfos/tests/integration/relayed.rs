@@ -27,7 +27,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::capture::{ask, develop};
+use crate::capture::{ask, develop, snap_sized};
 use crate::common::{Client, Event, HEIGHT, LayerShape, Session, TEXT, WIDTH, key};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
@@ -1043,6 +1043,79 @@ fn an_input_method_types_through_the_next_compositor_in_the_field_it_typed_in() 
     assert_eq!(app.error(), None);
 }
 
+/// What shares a window, as the compositor `session` starts it, with the
+/// role to take pictures and to list windows, handed to the relay over
+/// `towards`, the compositor's end of its connection to it.
+fn sharing(session: &mut Session, towards: OwnedFd) -> Client {
+    let (part, ours) = UnixStream::pair().unwrap();
+    let started = Started {
+        pid: std::process::id(),
+        roles: Roles::CAPTURE.with(Roles::PANEL).bits(),
+    };
+    relay::send(towards.as_fd(), &Hand::Started(started), &[part.as_fd()]).unwrap();
+    drop((part, towards));
+    session.adopt(ours)
+}
+
+#[test]
+fn pictures_of_a_window_go_on_through_the_next_compositor() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| {});
+    let mut camera = sharing(&mut first, towards);
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let window = first.open(&mut app, "app", (200, 100), RED);
+    first.roundtrip(&mut camera);
+    // As the portal shares a window: nothing of the camera's names the
+    // window once its pictures are being taken.
+    let taking = camera.capture_window_alone("app");
+    first.roundtrip(&mut camera);
+    let (picture, _) = snap_sized(&mut first, &mut camera, &taking, (200, 100));
+    assert_eq!(picture.at(10, 10), RED);
+
+    drop((first, first_holder));
+    let (mut second, _holder) = relayed.compositor_with(|_| {});
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut camera);
+    let told = camera.take_events();
+    assert!(!told.contains(&Event::CaptureStopped), "{told:?}");
+    // What the window shows now, under the next compositor, is in the next
+    // picture of it.
+    app.fill(&window.surface, (200, 100), GREEN);
+    second.roundtrip(&mut app);
+    let (picture, told) = snap_sized(&mut second, &mut camera, &taking, (200, 100));
+    assert!(told.contains(&Event::ShotReady), "{told:?}");
+    assert_eq!(picture.at(10, 10), GREEN);
+    assert_eq!(camera.error(), None);
+    assert_eq!(app.error(), None);
+}
+
+#[test]
+fn pictures_of_a_window_whose_program_goes_while_the_compositor_is_away_stop() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder, towards) = relayed.compositor_and_end(|_| {});
+    let mut camera = sharing(&mut first, towards);
+    let mut app = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut app, "app", (200, 100), RED);
+    first.roundtrip(&mut camera);
+    let taking = camera.capture_window_alone("app");
+    first.roundtrip(&mut camera);
+    // A picture asked for, which fails as the compositor goes.
+    let (_file, buffer) = camera.shot_buffer((200, 100));
+    let _asked = ask(&camera, &taking, &buffer);
+    first.roundtrip(&mut camera);
+
+    drop((first, first_holder));
+    // Kept, its window awaited from the next compositor, until its program
+    // goes.
+    let failed = Event::ShotFailed(FailureReason::Unknown);
+    let told = relayed.told(&mut camera, |told| told.contains(&failed));
+    assert!(!told.contains(&Event::CaptureStopped), "{told:?}");
+    drop(app);
+    let told = relayed.told(&mut camera, |told| told.contains(&Event::CaptureStopped));
+    assert_eq!(relayed.relay.borrow().programs(), 1, "{told:?}");
+    assert_eq!(camera.error(), None);
+}
+
 /// The pointer shown, over the first screen at 300, 200.
 fn pointing(session: &mut Session) {
     session.compositor_mut().show_pointer();
@@ -1052,7 +1125,7 @@ fn pointing(session: &mut Session) {
 }
 
 #[test]
-fn pictures_of_a_screen_go_on_through_the_next_compositor_and_of_a_window_stop() {
+fn pictures_of_a_screen_go_on_through_the_next_compositor() {
     let relayed = Relayed::new();
     let (mut first, first_holder, towards) = relayed.compositor_and_end(pointing);
     // What shares the screen, as the compositor starts it, with the role to
@@ -1070,11 +1143,10 @@ fn pictures_of_a_screen_go_on_through_the_next_compositor_and_of_a_window_stop()
     first.roundtrip(&mut camera);
     // Pictures of the screen, one taken and the next asked for, which waits
     // for something to change; another made but not yet asked for; the
-    // pointer followed; and pictures of the window.
+    // pointer followed.
     let taking = camera.capture(0, false);
     let waiting = camera.capture(0, false);
     let (_cursor, _pointer) = camera.capture_pointer(0);
-    let window = camera.capture_window("app");
     first.roundtrip(&mut camera);
     let (file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
     let taken = ask(&camera, &taking, &buffer);
@@ -1091,17 +1163,14 @@ fn pictures_of_a_screen_go_on_through_the_next_compositor_and_of_a_window_stop()
 
     drop((first, first_holder));
     // The picture asked for is told it failed, as one may, and the pointer
-    // that it left; the pictures of the window stop, as when it closes.
-    let told = relayed.told(&mut camera, |told| told.contains(&Event::CaptureStopped));
+    // that it left.
+    let told = relayed.told(&mut camera, |told| told.contains(&Event::PointerLeft));
     assert_eq!(relayed.relay.borrow().programs(), 2, "both kept");
     assert!(
         told.contains(&Event::ShotFailed(FailureReason::Unknown)),
         "{told:?}"
     );
-    assert!(told.contains(&Event::PointerLeft), "{told:?}");
-    assert!(told.contains(&Event::CaptureStopped), "{told:?}");
     under_way.destroy();
-    window.destroy();
 
     let (mut second, _holder) = relayed.compositor_with(pointing);
     second.eventually(|session| session.draw().at(10, 10) == RED);

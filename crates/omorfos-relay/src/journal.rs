@@ -276,17 +276,30 @@ pub fn said(object: u32, opcode: u16, text: &str) -> Sending {
 /// `text`.
 #[must_use]
 pub fn said_after(object: u32, opcode: u16, arguments: &[u32], text: &[u8]) -> Sending {
+    said_between(object, opcode, (arguments, text, &[]))
+}
+
+/// A message to `object`, the `opcode`th of its, of `before`, then `text`,
+/// then `after`.
+#[must_use]
+pub fn said_between(
+    object: u32,
+    opcode: u16,
+    (before, text, after): (&[u32], &[u8], &[u32]),
+) -> Sending {
+    let arguments = before;
     let mut string = text.to_vec();
     string.push(0);
     let length = u32::try_from(string.len()).unwrap_or(u32::MAX);
     string.resize(string.len().next_multiple_of(4), 0);
-    let size = HEADER + 4 * arguments.len() + 4 + string.len();
+    let size = HEADER + 4 * (arguments.len() + after.len()) + 4 + string.len();
     let size = u32::try_from(size).unwrap_or(u32::MAX);
     let mut bytes = object.to_ne_bytes().to_vec();
     bytes.extend((size << 16 | u32::from(opcode)).to_ne_bytes());
     bytes.extend(arguments.iter().flat_map(|argument| argument.to_ne_bytes()));
     bytes.extend(length.to_ne_bytes());
     bytes.extend(string);
+    bytes.extend(after.iter().flat_map(|argument| argument.to_ne_bytes()));
     (bytes, Vec::new())
 }
 
@@ -399,6 +412,10 @@ pub struct Journal {
     /// The buffers on the graphics card the compositor made, which cannot
     /// be made again, while the program holds them.
     theirs: HashSet<u32>,
+    /// What is held back from being made again with the rest, to be made
+    /// again on its own later, or not at all: what pictures of a window are
+    /// taken through, until the window is back.
+    held: HashSet<u32>,
 }
 
 impl Journal {
@@ -715,7 +732,7 @@ impl Journal {
         let mut later = Vec::new();
         let ordered = self.ordered();
         for (number, kept) in &ordered {
-            if kept.interface.name == "wl_registry" {
+            if kept.interface.name == "wl_registry" || self.held.contains(number) {
                 continue;
             }
             numbering.fill(&mut sending, *number);
@@ -805,6 +822,59 @@ impl Journal {
         kept.map_or(Vec::new(), |(number, kept)| surface(number, kept))
     }
 
+    /// Whether something is kept under `number`.
+    #[must_use]
+    pub fn has(&self, number: u32) -> bool {
+        self.kept.contains_key(&number)
+    }
+
+    /// Holds `numbers` back from being made again with the rest, until they
+    /// are made again with [`Journal::remake`] or let go of with
+    /// [`Journal::forget`].
+    pub fn hold_back(&mut self, numbers: impl IntoIterator<Item = u32>) {
+        self.held.extend(numbers);
+    }
+
+    /// The requests that make again `numbers`, held back, in the order they
+    /// were made, each with what lasts of it, then destroy again those of
+    /// them the program has destroyed: what was made of a window by its
+    /// handle in a list of windows, `source`, made of it now by `handle`.
+    #[must_use]
+    pub fn remake(&mut self, numbers: &HashSet<u32>, (source, handle): (u32, u32)) -> Vec<Sending> {
+        self.held.retain(|number| !numbers.contains(number));
+        let ordered = self.ordered();
+        let ordered = ordered
+            .iter()
+            .filter(|(number, _)| numbers.contains(number));
+        let mut sending = Vec::new();
+        for (number, kept) in ordered.clone() {
+            let (mut bytes, fds) = kept.made.sending();
+            if *number == source {
+                wire::put(&mut bytes, HEADER + 4, handle);
+            }
+            sending.push((bytes, fds));
+            let lasting = kept.lasting.iter().chain(&kept.adding);
+            sending.extend(lasting.map(Message::sending));
+        }
+        let mut gone: Vec<&Kept> = ordered.map(|(_, kept)| *kept).collect();
+        gone.retain(|kept| kept.gone.is_some());
+        gone.sort_by_key(|kept| kept.ended);
+        let gone = gone.into_iter().filter_map(|kept| kept.gone.as_ref());
+        sending.extend(gone.map(Message::sending));
+        sending
+    }
+
+    /// Lets go of `numbers`, held back, which are not to be made again.
+    pub fn forget(&mut self, numbers: &HashSet<u32>) {
+        self.held.retain(|number| !numbers.contains(number));
+        for number in numbers {
+            let kept = self.kept.remove(number);
+            for names in kept.iter().flat_map(Kept::names) {
+                self.unname(*number, &names);
+            }
+        }
+    }
+
     /// What is kept that was made by a request to `object`.
     #[must_use]
     pub fn made_by(&self, object: u32) -> Vec<u32> {
@@ -814,13 +884,15 @@ impl Journal {
     }
 
     /// The requests that destroy again what was made again only as
-    /// something else named it, in the order the program destroyed them.
+    /// something else named it, in the order the program destroyed them;
+    /// but for what is held back.
     #[must_use]
     pub fn gone(&self) -> Vec<Sending> {
         let mut gone: Vec<&Kept> = self
             .kept
-            .values()
-            .filter(|kept| kept.gone.is_some())
+            .iter()
+            .filter(|(number, kept)| kept.gone.is_some() && !self.held.contains(number))
+            .map(|(_, kept)| kept)
             .collect();
         gone.sort_by_key(|kept| kept.ended);
         let gone = gone.into_iter().filter_map(|kept| kept.gone.as_ref());

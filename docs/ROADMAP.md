@@ -917,13 +917,15 @@ what only games and touchpads need last.
       picture of the pointer that failed, which it did not, so that the
       pointer beside a screen shared stopped changing its look after the
       session was locked.
-- [ ] Pictures of a window made again after a change of compositor:
-      the relay making, on the program's connection, a list of windows of
-      its own under numbers the program cannot take meanwhile, finding the
-      window by the identifiers it knows from the list of windows (3e, the
-      third part), making the source of it, and letting the list go. The
-      portal lets go of the window's handle as soon as the source is made,
-      so nothing of the program's names the window by then.
+- [x] Pictures of a window made again after a change of compositor:
+      the source, and what was made of it, held back as the compositor
+      goes; once the next lists the window, the relay making, on the
+      program's connection, a list of windows of its own while the program
+      waits, finding the window by the identifier it is listed by, making
+      the source of it, what was made of it and each picture asked for
+      meanwhile, and letting the list go. Stopped where the window is not
+      kept, its program goes or it closes; one hidden while it is awaited
+      waits until it is shown again.
 - [x] The lock made again (3e, the sixth part), with the holder's word
       on whether the session is locked: the locker kept by the relay as
       the components are, rather than one started anew, its lock and lock

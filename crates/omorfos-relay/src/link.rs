@@ -237,7 +237,7 @@ impl Link {
         listed: &BTreeMap<String, Option<(u32, u32)>>,
         kept: &HashSet<(u32, u32)>,
     ) {
-        self.keeping.unlist(listed, kept);
+        self.keeping.unlist(&self.objects, listed, kept);
         self.tell_program();
         let _ = self.give_out(Way::Down);
     }
@@ -250,6 +250,24 @@ impl Link {
         let again = std::mem::take(&mut self.keeping.again);
         self.again |= !again.is_empty();
         self.down.read.splice(..0, again);
+        // A window pictures are taken of, back, is looked for at once.
+        self.keeping.find(&self.objects);
+        self.flush_keeping();
+    }
+
+    /// Whether pictures of a window are awaited.
+    #[must_use]
+    pub fn awaits_pictures(&self) -> bool {
+        self.keeping.awaits_pictures()
+    }
+
+    /// Takes in that the windows there are now are `present`: pictures of
+    /// one awaited that has gone stop.
+    pub fn windows_gone(&mut self, present: &HashSet<(u32, u32)>) {
+        if self.keeping.awaits_pictures() {
+            self.keeping.windows_gone(&self.objects, present);
+            self.tell_program();
+        }
     }
 
     /// Takes in that the compositor lists the window it identified by

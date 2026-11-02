@@ -1007,6 +1007,20 @@ impl Client {
         session
     }
 
+    /// Takes pictures of the window of `app_id` as the portal does: letting
+    /// go of the window's handle once the source of it is made, so that
+    /// nothing of the client's names the window after.
+    pub(crate) fn capture_window_alone(
+        &self,
+        app_id: &str,
+    ) -> capture_session::ExtImageCopyCaptureSessionV1 {
+        let session = self.capture_window(app_id);
+        let listed = self.state.taskbar.iter();
+        let task = listed.rev().find(|task| task.app_id == app_id).unwrap();
+        task.handle.destroy();
+        session
+    }
+
     /// Follows the pointer over a screen, and asks for pictures of it by
     /// itself.
     pub(crate) fn capture_pointer(

@@ -962,7 +962,7 @@ fn window_camera(session: &mut Session) -> Client {
 }
 
 /// Takes a picture as large as `size` through `taking`.
-fn snap_sized(
+pub(crate) fn snap_sized(
     session: &mut Session,
     client: &mut Client,
     taking: &Taking,
