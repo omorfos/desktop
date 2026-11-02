@@ -2066,6 +2066,61 @@ impl Compositor {
         }
     }
 
+    /// Runs the compositor's own new version, installed at `own` and heard
+    /// of `now`, to see that it starts at all before it is taken up: asked
+    /// only for its version, it ends at once, touching nothing. One that
+    /// cannot even be started is said not to start at once.
+    fn check_own(&mut self, own: &Path, now: Instant) {
+        // What was checked before, replaced since, is of no use; it is
+        // collected as any child is.
+        if let Some((mut before, _)) = self.updates.checking.take() {
+            let _ = before.kill();
+            self.children.push(before);
+        }
+        let checking = std::process::Command::new(own)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match checking {
+            Ok(child) => {
+                self.wake_when_exited(&child);
+                self.updates.checking = Some((child, now));
+            }
+            Err(error) => self.not_starting(own, &error.to_string()),
+        }
+    }
+
+    /// Takes in how the check of the compositor's own new version went,
+    /// once it has ended: one that started is to be taken up, as from when
+    /// it was heard of; one that did not is said not to, and the version
+    /// running stays until another is installed.
+    fn checked_own(&mut self) {
+        let checking = self.updates.checking.as_mut();
+        let ended = checking.and_then(|(child, _)| child.try_wait().ok().flatten());
+        let Some(status) = ended else {
+            return;
+        };
+        let heard = self.updates.checking.take().map(|(_, heard)| heard);
+        if status.success() {
+            self.updates.newer = self.updates.newer.or(heard);
+        } else {
+            let own = self.updates.own.clone().unwrap_or_default();
+            self.not_starting(&own, &status.to_string());
+        }
+    }
+
+    /// Tells the user that the compositor's own new version, at `own`, does
+    /// not start, for `why`, and is not taken up.
+    fn not_starting(&mut self, own: &Path, why: &str) {
+        self.problems.push(format!(
+            "the new version of omorfos, `{}`, does not start ({why}), so the one running \
+             stays until another is installed",
+            own.display()
+        ));
+    }
+
     /// Takes up the new versions of the programs that come with omorfos
     /// that have been installed, by `now`, of those that run for the whole
     /// session: each is asked to end, and its new version started once it
@@ -2080,10 +2135,11 @@ impl Compositor {
     fn take_up(&mut self, ended: &[u32], now: Instant) {
         self.updates.versions.hear(now);
         let settled = self.updates.versions.settled(now);
-        let own = self.updates.own.as_ref();
-        if own.is_some_and(|own| settled.contains(own)) {
-            self.updates.newer.get_or_insert(now);
+        let own = self.updates.own.clone();
+        if let Some(own) = own.filter(|own| settled.contains(own)) {
+            self.check_own(&own, now);
         }
+        self.checked_own();
         let retired = self.updates.retiring.extract_if(.., |(_, by)| *by <= now);
         let retired = retired.filter_map(|(process, _)| Pid::from_raw(process.cast_signed()));
         for process in retired {
@@ -3991,6 +4047,9 @@ struct Updates {
     /// The processes of versions before that are to be asked to end, and
     /// when.
     retiring: Vec<(u32, Instant)>,
+    /// The compositor's own new version, run to see that it starts at all,
+    /// with when it was first heard of, until it has ended.
+    checking: Option<(Child, Instant)>,
 }
 
 impl Default for Updates {
@@ -4002,6 +4061,7 @@ impl Default for Updates {
             told: false,
             next: None,
             retiring: Vec::new(),
+            checking: None,
         }
     }
 }

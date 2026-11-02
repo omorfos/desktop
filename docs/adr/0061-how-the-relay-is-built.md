@@ -687,7 +687,15 @@ and fails while that is other than what 3e still has to come.
   watched; the wait then starts again once the user is back, so that it
   is not taken up regardless at the first key. Otherwise the wait is from
   when the new version was first heard of, so that installing again does
-  not put it off.
+  not put it off. Before any of that, the new version is run, asked only
+  for its version, which it says and ends without touching the session,
+  to see that it starts at all: one that cannot be run, as a file half
+  written or missing what it links, or that fails, is not taken up, and
+  the user is told so, while the one running stays until another is
+  installed. Without this, the holder would start it, see it fail, and
+  start the version it holds instead, as after a crash, with the programs
+  waiting through both. A check still running as another version is
+  installed is ended, and the new one checked.
 - **What was kept is shown only once it is back** (ADR 62, the first
   step): the relay tells the compositor `ready` once each program it kept
   has caught up and all of it is written, and the compositor draws nothing

@@ -104,6 +104,18 @@ fn running(path: &Path) -> Vec<(u32, u32)> {
     found.collect()
 }
 
+/// A stand-in for a version of the compositor that starts: run, as it is
+/// to be checked, it leaves a mark beside itself, and ends.
+const STARTS: &str = "#!/bin/sh\nprintf x >> \"$0.checked\"\n";
+
+/// Steps `session` until the compositor has run its new version at `own`,
+/// a stand-in that [`STARTS`], to check it, and seen it end.
+fn checked(session: &mut Session, own: &Path) {
+    let mark = own.with_extension("checked");
+    session.eventually(|_| mark.exists() && running(own).is_empty());
+    session.step();
+}
+
 /// A directory for programs, and where in it the one called `name` is.
 fn place(name: &str) -> (tempfile::TempDir, PathBuf) {
     let place = tempfile::TempDir::new().unwrap();
@@ -231,7 +243,7 @@ fn a_new_version_of_the_compositor_itself_is_said_to_need_logging_in_again() {
     written(&own, "one");
     session.compositor_mut().set_own(&own);
     session.compositor_mut().autostart();
-    written(&own, "two");
+    written(&own, STARTS);
     let said = |session: &Session| {
         let problems = session.compositor().problems();
         let said = problems
@@ -241,7 +253,7 @@ fn a_new_version_of_the_compositor_itself_is_said_to_need_logging_in_again() {
     };
     session.eventually(|session| said(session) == 1);
     // Once, however often it is installed.
-    written(&own, "three");
+    written(&own, STARTS);
     session.advance(Duration::from_secs(2));
     assert_eq!(said(&session), 1);
 }
@@ -253,11 +265,58 @@ pub(crate) fn updated(session: &mut Session) -> (tempfile::TempDir, PathBuf) {
     written(&own, "one");
     session.compositor_mut().set_own(&own);
     session.compositor_mut().autostart();
-    written(&own, "two");
-    // Heard of as the compositor next looks, and settled a second on.
+    written(&own, STARTS);
+    // Heard of as the compositor next looks, and settled a second on; then
+    // checked.
     session.advance(Duration::from_secs(2));
     session.advance(Duration::from_secs(2));
+    checked(session, &own);
     (place, own)
+}
+
+#[test]
+fn a_new_version_of_the_compositor_that_does_not_start_is_said_not_to_and_not_taken_up() {
+    let mut session = Session::new();
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    let (_place, own) = place("omorfos");
+    written(&own, STARTS);
+    session.compositor_mut().set_own(&own);
+    session.compositor_mut().autostart();
+    let said = |session: &Session| {
+        let problems = session.compositor().problems();
+        let said = problems
+            .iter()
+            .filter(|problem| problem.contains("does not start"));
+        said.count()
+    };
+    // One that fails as it starts, and one that is no program at all.
+    for (broken, times) in [("#!/bin/sh\nexit 1\n", 1), ("not a program", 2)] {
+        written(&own, broken);
+        session.advance(Duration::from_secs(2));
+        session.advance(Duration::from_secs(2));
+        session.eventually(|session| said(session) == times);
+        session.advance(Duration::from_secs(10));
+        assert!(
+            !session.compositor().stepping_down(),
+            "the one running stays"
+        );
+    }
+    // One whose check has not ended as another is installed is let go of;
+    // the other, which starts, is taken up.
+    written(
+        &own,
+        "#!/bin/sh\nprintf x >> \"$0.waiting\"\nexec sleep 30\n",
+    );
+    session.advance(Duration::from_secs(2));
+    session.advance(Duration::from_secs(2));
+    let waiting = own.with_extension("waiting");
+    session.eventually(|_| waiting.exists());
+    written(&own, STARTS);
+    session.advance(Duration::from_secs(2));
+    session.advance(Duration::from_secs(2));
+    checked(&mut session, &own);
+    session.eventually(|session| session.compositor().stepping_down());
 }
 
 #[test]
