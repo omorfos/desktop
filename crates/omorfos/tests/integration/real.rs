@@ -16,7 +16,7 @@
 use std::fs;
 use std::io::{Write, stderr};
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -24,8 +24,9 @@ use omorfos_config::Action;
 use omorfos_ipc::{Client, Reply, Request};
 use rustix::process::{Pid, Signal, kill_process};
 
-use crate::common::Session;
+use crate::common::{Session, runnable};
 use crate::hold::Holder;
+use crate::panel::{BAR, plain};
 use crate::relayed::Relayed;
 use crate::windows::BACKGROUND;
 
@@ -272,4 +273,186 @@ fn a_qt_program_in_a_flatpak_is_kept_through_changes_of_compositor() {
         missing("org.telegram.desktop");
     }
     let _ = fs::remove_dir_all(kept);
+}
+
+/// The components that run for the whole session, as their programs are
+/// called.
+const COMPONENTS: [&str; 4] = [
+    "omorfos-panel",
+    "omorfos-wallpaper",
+    "omorfos-notifications",
+    "omorfos-clipboard",
+];
+
+/// Where `program`, built with the tests, is: beside the directory the
+/// tests run from.
+fn built(program: &str) -> Option<PathBuf> {
+    let tests = std::env::current_exe().ok()?;
+    let built = tests.parent()?.parent()?.join(program);
+    built.is_file().then_some(built)
+}
+
+/// The processes running `program`, the one at that path.
+fn running(program: &Path) -> Vec<u32> {
+    let processes = fs::read_dir("/proc").into_iter().flatten().flatten();
+    let running = processes.filter(|process| {
+        fs::read_link(process.path().join("exe")).is_ok_and(|exe| exe == program)
+    });
+    let pids = running.filter_map(|process| process.file_name().to_str()?.parse().ok());
+    pids.collect()
+}
+
+/// A compositor started under `relayed` with `components`, answering over
+/// IPC at `ipc`, the same for each, as it is in a session.
+fn with_components(relayed: &Relayed, components: &Components, ipc: &Path) -> (Session, Holder) {
+    let started = |program: &PathBuf| components.home.path().join(program.file_name().unwrap());
+    let started: Vec<PathBuf> = components.programs.iter().map(started).collect();
+    let (mut session, holder) = relayed.compositor_with(|session| {
+        session.resize_screen(SCREEN);
+        let compositor = session.compositor_mut();
+        compositor.set_panel(&started[0]);
+        compositor.set_wallpaper(&started[1]);
+        compositor.set_notifier(&started[2]);
+        compositor.set_keeper(&started[3]);
+    });
+    let _ = fs::remove_file(ipc);
+    session.compositor_mut().listen_ipc(ipc).unwrap();
+    session.compositor_mut().autostart();
+    (session, holder)
+}
+
+/// The components at these paths, each started on a D-Bus of its own and
+/// with its configuration, cache and data in `home`, as the user's are not
+/// the test's to touch; ended with the test however it ends.
+///
+/// Their theme changes colours at once, so that the panel draws each state
+/// it is told of once, and not as it goes from one to the next.
+struct Components {
+    programs: Vec<PathBuf>,
+    home: tempfile::TempDir,
+}
+
+impl Components {
+    /// The components at `programs`, with a script in a new `home` to start
+    /// each by, of the same name.
+    fn new(programs: Vec<PathBuf>) -> Self {
+        let home = tempfile::TempDir::new().unwrap();
+        let config = home.path().join("config/omorfos");
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("theme.css"), "* { transition: none; }\n").unwrap();
+        let place = home.path().display();
+        for program in &programs {
+            let script = format!(
+                "#!/bin/sh\nexec dbus-run-session -- env XDG_CONFIG_HOME='{place}/config' \
+                 XDG_CACHE_HOME='{place}/cache' XDG_DATA_HOME='{place}/data' \
+                 XDG_STATE_HOME='{place}/state' '{}'\n",
+                program.display()
+            );
+            runnable(&home.path().join(program.file_name().unwrap()), &script);
+        }
+        Self { programs, home }
+    }
+
+    /// Each running once, by its process, or nothing while any is not.
+    fn one_each(&self) -> Option<Vec<u32>> {
+        let each = self
+            .programs
+            .iter()
+            .map(|program| match running(program)[..] {
+                [pid] => Some(pid),
+                _ => None,
+            });
+        each.collect()
+    }
+}
+
+impl Drop for Components {
+    fn drop(&mut self) {
+        for pid in self.programs.iter().flat_map(|program| running(program)) {
+            let pid = Pid::from_raw(pid.cast_signed());
+            let _ = pid.map(|pid| kill_process(pid, Signal::KILL));
+        }
+    }
+}
+
+/// The bottom of the screen as `session` draws it, once the panel's bar
+/// is there: along the very bottom, mostly the colour of a bar with nothing
+/// on it, as neither a wallpaper nor a screen not yet drawn is.
+fn bar(session: &mut Session) -> Option<Vec<u32>> {
+    let drawn = session.draw();
+    let rows = SCREEN.1 - BAR..SCREEN.1;
+    let along = |y| (0..SCREEN.0).map(move |x| (x, y));
+    let strip: Vec<u32> = rows.flat_map(along).map(|(x, y)| drawn.at(x, y)).collect();
+    let plain = plain();
+    let bottom = (0..SCREEN.0).filter(|x| drawn.at(*x, SCREEN.1 - 1) == plain);
+    let width = usize::try_from(SCREEN.0).unwrap();
+    (bottom.count() > width / 2).then_some(strip)
+}
+
+/// Whether the panel `session` runs says the session is kept awake once
+/// it is, and stops saying so once it is let go: as it is told over IPC.
+fn told_of_staying_awake(session: &mut Session) -> bool {
+    let mut before = None;
+    until(session, |session| {
+        before = bar(session);
+        before.is_some()
+    });
+    let Some(before) = before else {
+        return false;
+    };
+    session.compositor_mut().perform(&Action::StayAwake);
+    let mut awake = None;
+    until(session, |session| {
+        awake = bar(session).filter(|bar| *bar != before);
+        awake.is_some()
+    });
+    let Some(awake) = awake else {
+        return false;
+    };
+    session.compositor_mut().perform(&Action::StayAwake);
+    until(session, |session| {
+        bar(session).is_some_and(|bar| bar != awake)
+    })
+}
+
+#[test]
+#[ignore = "runs the components; run by hand, as docs/TESTING.md says"]
+fn the_components_are_kept_through_changes_of_compositor() {
+    let programs: Option<Vec<PathBuf>> = COMPONENTS.iter().map(|name| built(name)).collect();
+    let Some(programs) = programs else {
+        missing("the components, built");
+        return;
+    };
+    let components = Components::new(programs);
+    let relayed = Relayed::new();
+    let ipc = relayed.path.with_file_name("omorfos-ipc.sock");
+    let (mut session, mut holder) = with_components(&relayed, &components, &ipc);
+    let up = until(&mut session, |_| components.one_each().is_some());
+    assert!(up, "each component running");
+    let pids = components.one_each();
+    assert!(told_of_staying_awake(&mut session), "the panel drew");
+    let connected = relayed.relay.borrow().programs();
+    for change in 1..=CHANGES {
+        drop((session, holder));
+        relayed.step();
+        relayed.step();
+        (session, holder) = with_components(&relayed, &components, &ipc);
+        // The panel draws again, through the relay, and hears from the
+        // next compositor over IPC, connecting to it again.
+        assert!(
+            told_of_staying_awake(&mut session),
+            "the panel drew again after change {change}"
+        );
+        let relay = String::from_utf8_lossy(&relayed.said.borrow()).into_owned();
+        assert_eq!(
+            relayed.relay.borrow().programs(),
+            connected,
+            "kept: {relay}"
+        );
+        assert_eq!(
+            components.one_each(),
+            pids,
+            "kept, not started again, after change {change}"
+        );
+    }
 }

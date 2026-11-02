@@ -30,14 +30,14 @@ const RIGHT: u32 = 0x111;
 /// What the panel is told the time is.
 const TIME: &str = "14:05";
 /// How tall the default theme makes a bar.
-const BAR: i32 = 28;
+pub(crate) const BAR: i32 = 28;
 
 fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
 }
 
 /// The colour of a bar where there is nothing on it.
-fn plain() -> u32 {
+pub(crate) fn plain() -> u32 {
     argb(Theme::default().style(Part::Panel, States::NONE).background)
 }
 

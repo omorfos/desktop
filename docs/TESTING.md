@@ -190,8 +190,23 @@ they need the programs and depend on how each behaves; run them by hand
 after a change to the relay or to how the compositor is started anew:
 
 ```sh
+cargo build --workspace --all-features --locked
 cargo test -p omorfos --all-features --locked --test integration -- --ignored real::
 ```
+
+One more runs the components, as built beside the tests: the panel, the
+wallpaper, the notifier and the clipboard's keeper, which the compositor
+starts with their roles and the relay keeps. Each change of compositor
+has to leave each running as the same process, and the panel has to say
+the session is kept awake, and then that it is not, as it is told by the
+next compositor over IPC, which it connects to again. Building the
+workspace first matters: testing `omorfos` alone does not build the
+components, and the test would run whatever was built last. Each starts
+on a D-Bus of its own, with its configuration, cache and data in a
+directory of the test's, so that the notifier does not take the name of
+the user's own and the wallpaper does not write to their cache; and with
+a theme that changes colours at once, so that the panel draws each state
+once, not on its way from one to the next.
 
 CI runs foot and the GTK program on every push, from Ubuntu's own
 archive, and all four every night, Firefox ESR from Mozilla's repository,

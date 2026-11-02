@@ -1002,8 +1002,11 @@ what only games and touchpads need last.
 - [x] Real programs in CI: foot and the GTK program on every push, from
       Ubuntu's archive, and Firefox ESR, from Mozilla's repository, and
       Telegram, from Flathub, with them every night.
-- [ ] The same for the components, which the compositor starts with their
-      roles.
+- [x] The same for the components, which the compositor starts with their
+      roles: the panel, the wallpaper, the notifier and the clipboard's
+      keeper, kept as the same processes through each change, the panel
+      hearing the next compositor over IPC (`docs/TESTING.md`, "Real
+      programs").
 - [x] A routine for real hardware in `docs/TESTING.md` ("A change of
       compositor on real hardware"): one screen, a window fullscreen on
       another workspace, two screens, one on a cable, another virtual
