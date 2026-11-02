@@ -414,7 +414,12 @@ impl Hold {
         // compositor drew to stay on the screens.
         let card = self.seating.as_mut().and_then(Seating::ended);
         self.card = self.card.take().or(card);
+        let _ = self
+            .stood
+            .as_mut()
+            .map(|stood| stood.closed(Instant::now()));
         let status = child.wait();
+        let _ = self.stood.as_mut().map(|stood| stood.gone(Instant::now()));
         if self.policy.is_up() {
             self.held = Some(file);
         }

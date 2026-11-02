@@ -8,8 +8,12 @@ use std::time::Instant;
 pub(crate) struct Stood {
     /// When the compositor before said it is stepping down, or ended.
     since: Instant,
-    /// When its process ended.
+    /// When it ended, closing its connection to the holder.
     ended: Option<Instant>,
+    /// When what was opened for it was closed.
+    closed: Option<Instant>,
+    /// When its process was gone.
+    gone: Option<Instant>,
     /// When the next was started, the last time it was.
     started: Option<Instant>,
     /// When the next said it is up, serving the socket.
@@ -22,6 +26,8 @@ impl Stood {
         Self {
             since: at,
             ended: None,
+            closed: None,
+            gone: None,
             started: None,
             up: None,
         }
@@ -31,6 +37,17 @@ impl Stood {
     /// already.
     pub(crate) fn ended(&mut self, at: Instant) {
         self.ended = self.ended.or(Some(at));
+    }
+
+    /// Takes in that what was opened for the compositor before was closed
+    /// `at`.
+    pub(crate) const fn closed(&mut self, at: Instant) {
+        self.closed = Some(at);
+    }
+
+    /// Takes in that the process of the compositor before was gone `at`.
+    pub(crate) const fn gone(&mut self, at: Instant) {
+        self.gone = Some(at);
     }
 
     /// Takes in that the next was started `at`.
@@ -48,16 +65,21 @@ impl Stood {
     /// the change. A part not seen is taken to have taken no time.
     pub(crate) fn said(&self, at: Instant) -> String {
         let ended = self.ended.unwrap_or(self.since);
-        let started = self.started.unwrap_or(ended).max(ended);
+        let closed = self.closed.unwrap_or(ended).max(ended);
+        let gone = self.gone.unwrap_or(closed).max(closed);
+        let started = self.started.unwrap_or(gone).max(gone);
         let up = self.up.unwrap_or(started).max(started);
         let ms = |from: Instant, to: Instant| to.saturating_duration_since(from).as_millis();
         format!(
             "omorfos-hold: the session stood still for {} ms between one compositor and the \
-             next: {} ms for the one before to end, {} ms to start the next, {} ms for it to \
-             come up, and {} ms for it to show the session",
+             next: {} ms for the one before to end, {} ms to close what it had, {} ms for its \
+             process to be gone, {} ms to start the next, {} ms for it to come up, and {} ms \
+             for it to show the session",
             ms(self.since, at),
             ms(self.since, ended),
-            ms(ended, started),
+            ms(ended, closed),
+            ms(closed, gone),
+            ms(gone, started),
             ms(started, up),
             ms(up, at)
         )
@@ -77,15 +99,18 @@ mod tests {
         let mut stood = Stood::since(at);
         stood.ended(after(300));
         stood.ended(after(310));
-        stood.started(after(305));
-        stood.started(after(320));
+        stood.closed(after(340));
+        stood.gone(after(390));
+        stood.started(after(385));
+        stood.started(after(400));
         stood.up(after(500));
         stood.up(after(510));
         assert_eq!(
             stood.said(after(700)),
             "omorfos-hold: the session stood still for 700 ms between one compositor and the \
-             next: 300 ms for the one before to end, 20 ms to start the next, 180 ms for it to \
-             come up, and 200 ms for it to show the session"
+             next: 300 ms for the one before to end, 40 ms to close what it had, 50 ms for its \
+             process to be gone, 10 ms to start the next, 100 ms for it to come up, and 200 ms \
+             for it to show the session"
         );
     }
 
@@ -96,8 +121,9 @@ mod tests {
         assert_eq!(
             stood.said(at + Duration::from_millis(40)),
             "omorfos-hold: the session stood still for 40 ms between one compositor and the \
-             next: 0 ms for the one before to end, 0 ms to start the next, 0 ms for it to come \
-             up, and 40 ms for it to show the session"
+             next: 0 ms for the one before to end, 0 ms to close what it had, 0 ms for its \
+             process to be gone, 0 ms to start the next, 0 ms for it to come up, and 40 ms for \
+             it to show the session"
         );
     }
 }
