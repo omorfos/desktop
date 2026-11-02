@@ -1005,10 +1005,12 @@ what only games and touchpads need last.
       Telegram, from Flathub, with them every night.
 - [ ] The same for the components, which the compositor starts with their
       roles.
-- [ ] A routine for real hardware in `docs/TESTING.md`: a change of
-      compositor with one screen, with two, with one on a cable, locked,
-      with a video playing and with a window of a program written for X11
-      open, and what is to be seen in each.
+- [x] A routine for real hardware in `docs/TESTING.md` ("A change of
+      compositor on real hardware"): one screen, a window fullscreen on
+      another workspace, two screens, one on a cable, another virtual
+      terminal, locked, a video playing, a window of a program written for
+      X11, and installing anew, with what is to be seen in each and what
+      the log says.
 
 ## 4. The look
 

@@ -205,6 +205,83 @@ all of the user's its sandbox lets it have, so that the user's account is
 not touched, and the test removes it after. Every process started with the
 test's socket is stopped at the end, whatever started it.
 
+### A change of compositor on real hardware
+
+What a change of compositor looks like on the screens, and how the seat
+is kept through it, only real hardware shows (ADR 62, ADR 63). Go through
+this after a change to the hardware backend, the holder, the relay, or how
+the compositor steps down and comes up, and on a machine that is new to
+it. Each step says what to do and what is to be seen; `~/omorfos.log`
+says the rest.
+
+To begin, install the build, log out and in again, as the holder and the
+relay start with the login, and watch the log in a terminal:
+
+```sh
+make nightly && sudo make install PROFILE=nightly
+tail -f ~/omorfos.log
+```
+
+The compositor is started anew with `omorfosctl action
+restart_compositor`, or a key bound to `restart_compositor`. After each
+change the log says how long the session stood still, and where the time
+went:
+
+```text
+omorfos-hold: the session stood still for 700 ms between one compositor and the next: …
+```
+
+It says nothing else. A line `omorfos-relay: … was let go, …` says a
+program was not kept, and why; `omorfos: … was disconnected for asking …`
+says the compositor refused it something; a program gone with neither said
+closed by itself, which `coredumpctl list` may say more of, once its core
+size is not limited (`prlimit --pid PID --core=unlimited`).
+
+1. **One screen**, with a few programs open, among them a terminal with
+   the keyboard. The screen goes on showing the desktop through the
+   change, with no black and no text of the console, then the session
+   gives way to it as the picture before fades, in a quarter of a second.
+   Every program is back, its windows where they were, the same desktop
+   shown, and the same window with the keyboard. Nothing typed goes on by
+   itself: a key held as the compositor went is let go of.
+2. **A window fullscreen on another workspace.** Make a window fullscreen
+   (Super+F), go back to the desktop it came from (Super+Left), give
+   another window there the keyboard, and change the compositor. The
+   desktop is shown again, with that window with the keyboard; the
+   fullscreen window is on its own workspace beside it. Doing the same
+   from the fullscreen window's workspace comes back to that workspace.
+3. **Two screens.** Each goes on showing what it showed, and comes back
+   showing the workspace it did, its windows on it.
+4. **A screen on a cable** (HDMI or DisplayPort). The screen does not lose
+   its picture: it shows no "no signal", nor that its mode changed. A
+   screen whose mode is changed in `config.yaml` meanwhile is set anew,
+   and only that one.
+5. **Another virtual terminal.** Leave for a text console (Ctrl+Alt+F3)
+   and come back, before and after a change. The session takes the
+   keyboard, the mouse and the screens back each time; the console is
+   shown only while it is the console's turn.
+6. **Locked.** Start a change for a little later, then lock, and wait:
+
+   ```sh
+   (sleep 10 && omorfosctl action restart_compositor) & omorfosctl action lock
+   ```
+
+   The session comes back locked, the lock screen as it was, and unlocks.
+   Nothing of the session is seen meanwhile.
+7. **A video playing**, in Firefox or mpv. It plays on after the change,
+   its sound without a break; its picture stands still only for the
+   moment the session does.
+8. **A window of a program written for X11** open, such as `xterm`. It
+   closes with the change, as the X server is started anew with the
+   compositor (ADR 60); the rest is kept. Installing a new version with
+   one open, the compositor waits to change until it is closed, and says
+   so.
+9. **Installing anew**, `sudo make install PROFILE=nightly`, with the
+   session in use. The compositor steps down for its new version at a
+   quiet moment, by itself, and says so after. Where the holder itself
+   changed, it takes up its new version between the two compositors, and
+   the console shows for that moment, once (ADR 63).
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X
