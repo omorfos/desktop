@@ -15,6 +15,7 @@ pub mod renew;
 mod seat;
 mod seating;
 mod socket;
+mod stood;
 
 use std::fs::File;
 use std::io::{self, Write};
@@ -36,6 +37,7 @@ use smithay::reexports::calloop::{
 };
 
 use crate::seating::Seating;
+use crate::stood::Stood;
 
 pub use exec::give_back;
 pub use policy::{Next, Policy, Which};
@@ -74,9 +76,10 @@ pub struct Hold {
     pub(crate) watching: Option<RegistrationToken>,
     /// Whether the compositor running has ended, as far as has been heard.
     ended: bool,
-    /// When the compositor before stepped down, or ended, until the next
-    /// says the session is shown, for how long that took to be said.
-    stood: Option<Instant>,
+    /// The moments of the change of compositor under way, from when the
+    /// one before stepped down, or ended, until the next says the session
+    /// is shown, for how long that took, and where it went, to be said.
+    stood: Option<Stood>,
     /// What is to be said on the log, as the holder next can.
     logged: Vec<String>,
 }
@@ -212,12 +215,14 @@ impl Hold {
     /// ended, to be said.
     fn heard(&mut self, word: Word) {
         match word {
-            Word::SteppingDown => self.stood = Some(Instant::now()),
+            Word::SteppingDown => self.stood = Some(Stood::since(Instant::now())),
+            Word::Up => {
+                let _ = self.stood.as_mut().map(|stood| stood.up(Instant::now()));
+            }
             Word::Shown => {
-                let stood = self.stood.take().map(|since| since.elapsed().as_millis());
-                self.logged.extend(stood.map(|stood| {
-                    format!("omorfos-hold: the session stood still for {stood} ms between one compositor and the next")
-                }));
+                let stood = self.stood.take();
+                self.logged
+                    .extend(stood.map(|stood| stood.said(Instant::now())));
             }
             _ => {}
         }
@@ -313,6 +318,10 @@ impl Hold {
         // Started from the file held, by the holder's own name for it,
         // which stays good however the file installed is replaced.
         let program = format!("/proc/{}/fd/{}", std::process::id(), file.as_raw_fd());
+        let _ = self
+            .stood
+            .as_mut()
+            .map(|stood| stood.started(Instant::now()));
         let pair = UnixStream::pair();
         let started = pair.and_then(|(connection, theirs)| {
             Command::new(program)
@@ -395,7 +404,8 @@ impl Hold {
         self.say(log);
         self.ended = false;
         // One that ended without stepping down stood still from then.
-        self.stood = self.stood.or_else(|| Some(Instant::now()));
+        let now = Instant::now();
+        self.stood.get_or_insert(Stood::since(now)).ended(now);
         let tokens = [words.ok(), asking.and_then(Result::ok)];
         for token in tokens.into_iter().flatten() {
             handle.remove(token);
@@ -668,12 +678,13 @@ mod tests {
         heard(&mut held, &mut event_loop, "up\nshown\n", &mut log);
         let said = String::from_utf8(std::mem::take(&mut log)).unwrap();
         let stood = said.strip_prefix("omorfos-hold: the session stood still for ");
-        let stood =
-            stood.and_then(|stood| stood.strip_suffix(" ms between one compositor and the next\n"));
+        let parts =
+            stood.and_then(|stood| stood.split_once(" ms between one compositor and the next: "));
         assert!(
-            stood.is_some_and(|stood| stood.parse::<u128>().is_ok()),
+            parts.is_some_and(|(stood, _)| stood.parse::<u128>().is_ok()),
             "{said}"
         );
+        assert!(said.ends_with(" ms for it to show the session\n"), "{said}");
         // One that ended without stepping down, as one that crashed does.
         heard(&mut held, &mut event_loop, "up\n", &mut log);
         heard(&mut held, &mut event_loop, "shown\n", &mut log);
