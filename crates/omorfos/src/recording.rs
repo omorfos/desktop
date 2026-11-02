@@ -7,7 +7,9 @@
 //! compositor have: a line for each thing recording, and a line with a
 //! full stop when it has said everything. The mark that says a screen is
 //! captured shows a sign for each kind, and its tooltip says which program
-//! does what. See `docs/adr/0043-what-records.md`.
+//! does what. See `docs/adr/0043-what-records.md`. It says, too, of each
+//! program playing sound, that it is, which is no recording and is not on
+//! the mark, and which holds back the compositor's own new version.
 
 use std::io::{ErrorKind, Read};
 use std::process::ChildStdout;
@@ -71,6 +73,10 @@ pub(crate) struct Recording {
     pub(crate) now: Vec<Recorder>,
     /// What is being said, until it has all been.
     coming: Vec<Recorder>,
+    /// Whether anything plays sound, as last said in full, and as it is
+    /// being said.
+    pub(crate) playing: bool,
+    coming_playing: bool,
     /// What has been read of a line that has not ended.
     partial: Vec<u8>,
     /// Kinds that have stopped, which the mark shows until when.
@@ -98,6 +104,11 @@ impl Recording {
         if line == "." {
             let said = std::mem::take(&mut self.coming);
             self.changed(said, now);
+            self.playing = std::mem::take(&mut self.coming_playing);
+            return;
+        }
+        if line.split_whitespace().next() == Some("playing") {
+            self.coming_playing = true;
             return;
         }
         let recorder = Recorder::read(line).filter(|_| self.coming.len() < MOST);
@@ -155,8 +166,11 @@ impl Compositor {
             let length = read.unwrap_or(0);
             if length == 0 {
                 self.event_loop.remove(token);
-                self.capture.recording.partial.clear();
-                self.capture.recording.changed(Vec::new(), now);
+                let recording = &mut self.capture.recording;
+                recording.partial.clear();
+                recording.changed(Vec::new(), now);
+                recording.playing = false;
+                recording.coming_playing = false;
                 break;
             }
             self.capture.recording.heard(&bytes[..length], now);

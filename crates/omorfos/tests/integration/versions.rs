@@ -21,7 +21,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{LayerShape, Session};
+use crate::common::{LayerShape, Session, runnable};
 use crate::hold::hold;
 use crate::relayed::relayed;
 use crate::windows::{GREEN, RED};
@@ -112,8 +112,17 @@ const STARTS: &str = "#!/bin/sh\nprintf x >> \"$0.checked\"\n";
 /// a stand-in that [`STARTS`], to check it, and seen it end.
 fn checked(session: &mut Session, own: &Path) {
     let mark = own.with_extension("checked");
-    session.eventually(|_| mark.exists() && running(own).is_empty());
-    session.step();
+    // Not as `Session::eventually` waits, which moves the clock on: what is
+    // tested here counts how long the session has been quiet.
+    for _ in 0..5000 {
+        session.step();
+        if mark.exists() && running(own).is_empty() {
+            session.step();
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("the new version was never checked");
 }
 
 /// A directory for programs, and where in it the one called `name` is.
@@ -370,6 +379,46 @@ fn a_fullscreen_window_holds_the_compositors_new_version_back_until_it_has_waite
         at(Word::Updated) < at(Word::SteppingDown) && at(Word::Updated).is_some(),
         "the next is to say so, which a holder that does not know the word passes over: {said:?}"
     );
+}
+
+#[test]
+fn sound_playing_holds_the_compositors_new_version_back_until_it_stops() {
+    let (mut session, _) = session(&[]);
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    // What watches PipeWire says this process plays sound, and then, once
+    // told to, that nothing does.
+    let folder = session.config.path().to_owned();
+    let script = format!(
+        "#!/bin/sh\n\
+         printf 'playing %s\\n.\\n' $PPID\n\
+         : > '{folder}/said'\n\
+         while [ -d '{folder}' ] && [ ! -e '{folder}/quiet' ]; do sleep 0.01; done\n\
+         printf '.\\n'\n\
+         : > '{folder}/said quiet'\n\
+         while [ -d '{folder}' ]; do sleep 0.01; done\n",
+        folder = folder.display()
+    );
+    let watcher = folder.join("watcher");
+    runnable(&watcher, &script);
+    session.compositor_mut().set_recorder(watcher);
+    let (_place, own) = place("omorfos");
+    written(&own, STARTS);
+    session.compositor_mut().set_own(&own);
+    session.compositor_mut().autostart();
+    // Heard to play before the new version is installed: waiting moves
+    // the clock on, and the session is quiet meanwhile.
+    session.eventually(|_| folder.join("said").exists());
+    session.step();
+    written(&own, STARTS);
+    session.advance(Duration::from_secs(2));
+    session.advance(Duration::from_secs(2));
+    checked(&mut session, &own);
+    session.advance(Duration::from_secs(10));
+    assert!(!session.compositor().stepping_down(), "music is playing");
+    fs::write(folder.join("quiet"), "").unwrap();
+    session.eventually(|_| folder.join("said quiet").exists());
+    session.eventually(|session| session.compositor().stepping_down());
 }
 
 #[test]

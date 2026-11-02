@@ -93,13 +93,17 @@ impl Graph {
     /// number of the process shown a screen and that of the one sharing
     /// it. A stream records while it runs, from what is linked into it; and
     /// a process with a camera open records from it, unless it has it open
-    /// for PipeWire.
+    /// for PipeWire. And what plays sound, which records nothing:
+    /// `playing` and the number of the process, while its stream runs.
     #[must_use]
     pub fn said(&self) -> Vec<String> {
         let mut said = Vec::new();
         let recording = self.nodes.iter().filter(|(_, node)| node.running);
         for (id, node) in recording {
             let Some(pid) = self.pid(node) else { continue };
+            if node.class == "Stream/Output/Audio" {
+                said.push(format!("playing {pid}"));
+            }
             let from = self.links.values().filter(|(_, into)| into == id);
             let from = from.filter_map(|(from, _)| self.nodes.get(from));
             for source in from {
@@ -185,6 +189,22 @@ mod tests {
     }
 
     #[test]
+    fn a_running_stream_of_sound_played_says_that_it_plays_and_records_nothing() {
+        let mut graph = graph();
+        graph.node(15, node("Stream/Output/Audio", 70, true));
+        graph.node(16, node("Stream/Output/Audio", 80, false));
+        graph.node(17, node("Stream/Output/Audio", 60, true));
+        let said = [
+            "camera 7",
+            "microphone 7",
+            "playing 7",
+            "screen 7 8",
+            "sound 7",
+        ];
+        assert_eq!(graph.said(), said, "nor one paused, or of no known process");
+    }
+
+    #[test]
     fn a_stream_that_is_not_running_or_is_not_known_records_nothing() {
         let mut graph = graph();
         graph.running(11, false);
@@ -216,7 +236,13 @@ mod tests {
             },
         );
         graph.link(27, Some((1, 17)));
-        assert_eq!(graph.said().len(), 4, "the four there were, and no more");
+        let said = graph.said();
+        assert_eq!(
+            said.len(),
+            5,
+            "the four there were, and that 7 plays: {said:?}"
+        );
+        assert!(said.contains(&"playing 7".to_owned()));
     }
 
     #[test]

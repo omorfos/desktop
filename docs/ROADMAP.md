@@ -947,14 +947,17 @@ what only games and touchpads need last.
       written for X11 with no window open, as one in the tray, still
       closes as it is taken up, until Smithay can take up a running X
       server (stage 8); so does any program the relay lets go (known gaps
-      after step 3d), unasked; sound played by a program that neither
-      keeps the session awake nor asks it not to sleep is not heard as
-      playing; and on real hardware it has not yet been tried. `wl_touch`
+      after step 3d), unasked; and on real hardware it has not yet been
+      tried. `wl_touch`
       is made again once the compositor offers touch.
 - [x] The compositor's own new version checked before it is taken up:
       run, asked only for its version, and not taken up where it cannot be
       run or fails, which the user is told, rather than replaced by the
       version held as after a crash.
+- [x] Sound playing holds the compositor's own new version back, as a
+      film kept awake does, where the program playing asks for neither:
+      the watcher of what records says what plays, from PipeWire, and it
+      is on no mark.
 - [x] A change of compositor unseen (ADR 62), the first step: nothing
       shown until what the relay kept is back, so that the wallpaper, the
       panel and the windows are in the first frame, rather than coming back

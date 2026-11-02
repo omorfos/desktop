@@ -152,10 +152,10 @@ type Noting = (
     Rc<Cell<Option<u32>>>,
 );
 
-/// Notes what has come into the graph that says something records: a
-/// node, which is followed to be told whether it runs if it is a stream
-/// that records; a link; or a client, which is followed to be told the
-/// number of its process.
+/// Notes what has come into the graph that says something records, or
+/// plays sound: a node, which is followed to be told whether it runs if it
+/// is a stream that records or plays sound; a link; or a client, which is
+/// followed to be told the number of its process.
 fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObject<&DictRef>) {
     let (graph, bound, daemon) = noting;
     let said = |key: &str| global.props.and_then(|props| props.get(key));
@@ -164,7 +164,7 @@ fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObj
     match global.type_ {
         ObjectType::Node => {
             let class = said(*pw::keys::MEDIA_CLASS).unwrap_or_default().to_owned();
-            let records = class.starts_with("Stream/Input/");
+            let records = class.starts_with("Stream/Input/") || class == "Stream/Output/Audio";
             let node = Node {
                 class,
                 client: number(*pw::keys::CLIENT_ID),

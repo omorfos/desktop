@@ -670,7 +670,8 @@ and fails while that is other than what 3e still has to come.
   hears of the others', and taken up by its stepping down to be started
   again, as `restart_compositor` does. A quiet moment is one with nothing
   fullscreen, nothing recording or sharing a screen, nothing keeping the
-  session awake or from sleeping, as what plays does, the sealed prompt
+  session awake or from sleeping, as what plays does, nothing playing
+  sound, as the watcher of what records hears in PipeWire, the sealed prompt
   and the launcher closed, which go with the compositor, and no input for
   five seconds. Only once the relay has handed over all it kept, and only
   under the relay; where nothing keeps the programs, the user is still

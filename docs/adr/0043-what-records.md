@@ -52,7 +52,13 @@ not to be turned off.
 - **What it says** is a line for each, the kind and the number of the
   process, and a full stop once it has said everything; each time it
   changes. The compositor believes no more than 64 lines, none longer
-  than 256 bytes, and what it does not understand it ignores.
+  than 256 bytes, and what it does not understand it ignores. It says
+  too, as `playing` and the number of the process, what plays sound,
+  while its stream (`Stream/Output/Audio`) runs: that records nothing and
+  is not on the mark, but it is the session in use, which holds back the
+  compositor's own new version (ADR 61, 3f) as a film kept awake does,
+  where the program asks for neither. A compositor from before this
+  ignores the line.
 - **The mark shows a sign for each kind**, side by side: a dot for the
   screen, a microphone for sound, and a camera. Sound and the camera show
   on every screen. What has stopped stays a moment, as a picture of the

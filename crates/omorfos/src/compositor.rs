@@ -2039,7 +2039,9 @@ impl Compositor {
         let in_use = InUse {
             fullscreen: self.desktop.frames().any(|frame| frame.fullscreen),
             recording: self.capture.recording.any(&recorded) || self.capture.sharing(),
-            playing: self.presence.kept_awake || self.kept_from().sleep,
+            playing: self.presence.kept_awake
+                || self.kept_from().sleep
+                || self.capture.recording.playing,
             open: self.sealed().is_some() || self.on_demand.launcher.1.is_some(),
             input: self.last_active(),
             x11: (self.windows.iter()).any(|mapped| matches!(mapped.role, Role::X11(_))),
