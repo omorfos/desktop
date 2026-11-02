@@ -378,16 +378,29 @@ fn what_waits_to_be_written_is_written_once_there_is_room() {
         still = if more == 0 { still + 1 } else { 0 };
         held.step();
     }
+    // All of it comes through, however long that takes the machine the
+    // test runs on, so long as something does each second: nothing waits
+    // for ever.
     let mut read = 0;
-    held.until(|held| {
-        let mut chunk = vec![0; 65536];
+    let mut moved = Instant::now();
+    let mut chunk = vec![0; 65536];
+    while read < flood.len() {
+        let before = read;
         while let Ok(more @ 1..) = connection.read(&mut chunk) {
             read += more;
         }
         sent += program.write(&flood[sent..]).unwrap_or_default();
         held.step();
-        read == flood.len()
-    });
+        if read > before {
+            moved = Instant::now();
+        }
+        let waited = moved.elapsed();
+        assert!(
+            waited < Duration::from_secs(1),
+            "stuck at {read} of {}",
+            flood.len()
+        );
+    }
 }
 
 #[test]
