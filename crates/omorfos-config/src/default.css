@@ -12,6 +12,7 @@
   --text: #e6e8ee;
   --text-dim: #8b90a0;
   --border: #2c303a;
+  --border-strong: #7a8090; /* the edge of what has focus */
   --capture: #f0524f;      /* the screen is being captured */
 }
 
@@ -25,12 +26,19 @@
 
 desktop { background: var(--background); }
 
-/* A window's frame. Its sizes are taken from the rule without a state. */
+/* A window's frame. Its sizes are taken from the rule without a state.
+ * Its shadow says it floats over the desktop, and how far: the window
+ * with focus is lifted higher. A shadow is black and falls straight down;
+ * `box-shadow: none` does without it. */
 window {
   border: 1px solid var(--border);
   border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
 }
-window:focus { border-color: var(--accent); }
+window:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
 
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
@@ -61,7 +69,7 @@ tab {
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
-tab:focus { border-left-color: var(--accent); }
+tab:focus { border-left-color: var(--border-strong); }
 tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
   background: var(--surface);
@@ -89,10 +97,12 @@ button-close:hover, button-maximize:hover, button-minimize:hover {
   color: var(--background);
 }
 
+/* What floats over windows casts a deeper shadow than they do. */
 menu {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 menu-item {
   height: 28px;
@@ -165,6 +175,7 @@ launcher {
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 launcher-input {
   height: 32px;

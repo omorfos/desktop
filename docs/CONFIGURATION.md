@@ -500,6 +500,7 @@ This is the whole built-in theme, which is also every part there is:
   --text: #e6e8ee;
   --text-dim: #8b90a0;
   --border: #2c303a;
+  --border-strong: #7a8090; /* the edge of what has focus */
   --capture: #f0524f;      /* the screen is being captured */
 }
 
@@ -513,12 +514,19 @@ This is the whole built-in theme, which is also every part there is:
 
 desktop { background: var(--background); }
 
-/* A window's frame. Its sizes are taken from the rule without a state. */
+/* A window's frame. Its sizes are taken from the rule without a state.
+ * Its shadow says it floats over the desktop, and how far: the window
+ * with focus is lifted higher. A shadow is black and falls straight down;
+ * `box-shadow: none` does without it. */
 window {
   border: 1px solid var(--border);
   border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
 }
-window:focus { border-color: var(--accent); }
+window:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
 
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
@@ -549,7 +557,7 @@ tab {
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
-tab:focus { border-left-color: var(--accent); }
+tab:focus { border-left-color: var(--border-strong); }
 tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
   background: var(--surface);
@@ -577,10 +585,12 @@ button-close:hover, button-maximize:hover, button-minimize:hover {
   color: var(--background);
 }
 
+/* What floats over windows casts a deeper shadow than they do. */
 menu {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 menu-item {
   height: 28px;
@@ -653,6 +663,7 @@ launcher {
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 launcher-input {
   height: 32px;
@@ -837,7 +848,7 @@ is measured to the outside of its border.
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out` or `ease-in-out`; or `none` | how long the part's colours take to change when its state does, and how; also `transition-duration` and `transition-timing-function` |
-| `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`; one, not `inset`. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`; and by the parts the components show, such as `notification` and `launcher`. It changes with the part's state, as its colours do |
+| `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`; one, not `inset`. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`; and by the parts the components show, such as `launcher`. The notifications are shown together, so a `notification`'s shadow falls round all of them at once, not round each. It changes with the part's state, as its colours do |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -891,8 +902,8 @@ Not every part uses every property yet:
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
   focus.
-- Layout (`display`, `position`, `flex`), gradients and shadows are not
-  there, and nor are a transition's delay, `cubic-bezier()` or
+- Layout (`display`, `position`, `flex`), gradients, more than one shadow
+  and a shadow `inset` are not there, and nor are a transition's delay, `cubic-bezier()` or
   `@keyframes`.
 
 Nothing is passed over in silence: a part, state, property or value that

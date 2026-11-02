@@ -12,6 +12,41 @@ pub(crate) const GREEN: u32 = 0xff00_ff00;
 /// The default theme's background, `#14161b`.
 pub(crate) const BACKGROUND: u32 = 0xff14_161b;
 
+/// Whether `pixel` is `color`, in the open or in the shadow of something
+/// beside it: darkened evenly, as black over it darkens it, by no more than
+/// a few shadows together, and never lighter or of another hue.
+pub(crate) fn shaded(pixel: u32, color: u32) -> bool {
+    let channels = |of: u32| [of >> 16, of >> 8, of].map(|channel| f64::from(channel & 0xff));
+    let (seen, open) = (channels(pixel), channels(color));
+    // How much of the colour's brightest channel is left.
+    let brightest = seen.iter().zip(open).max_by(|a, b| a.1.total_cmp(&b.1));
+    let share = brightest.map_or(0.0, |(seen, open)| seen / open);
+    if pixel >> 24 != 0xff || !share.is_finite() {
+        return pixel == color;
+    }
+    let mut pairs = seen.iter().zip(open);
+    (0.25..=1.0).contains(&share) && pairs.all(|(seen, open)| (seen - open * share).abs() <= 1.5)
+}
+
+#[test]
+fn a_colour_in_a_shadow_is_darkened_evenly_and_nothing_else() {
+    assert!(shaded(BACKGROUND, BACKGROUND), "in the open");
+    assert!(shaded(0xff0f_1014, BACKGROUND), "under a shadow");
+    assert!(shaded(0xffbb_0000, RED));
+    assert!(!shaded(0xff2c_303a, BACKGROUND), "lighter, as a border is");
+    assert!(
+        !shaded(0xff1b_1d23, BACKGROUND),
+        "lighter, as a titlebar is"
+    );
+    assert!(!shaded(0xff14_1614, BACKGROUND), "of another hue");
+    assert!(
+        !shaded(0xff00_0000, BACKGROUND),
+        "darker than shadows make it"
+    );
+    assert!(!shaded(0x8014_161b, BACKGROUND), "see-through");
+    assert!(!shaded(0xff10_0000, 0xff00_0000), "black is only black");
+}
+
 #[test]
 fn a_new_window_is_shown_focused_and_told_so() {
     let mut session = Session::new();

@@ -1032,10 +1032,18 @@ the first than on the last.
       and cut into nine pieces, kept while it is in use; under windows,
       the compositor's menus and the components' panels, changing with a
       window's focus and fading with what goes.
-- [ ] The built-in theme's shadows, at the levels of `docs/DESIGN.md`
+- [x] The built-in theme's shadows, at the levels of `docs/DESIGN.md`
       ("Depth"), with the focused window's edge in `--border-strong` in
       place of the accent; the tests that take the space beside a window
-      or a menu to be bare made to say what they mean.
+      or a menu to be bare made to say what they mean: it is the
+      background, or the background in a shadow.
+- [ ] Each notification a panel of its own, so that each casts a shadow
+      round itself and comes and goes on its own: they are one panel
+      now, and a shadow is cast round all of them at once, so the
+      built-in theme gives `notification` none.
+- [ ] A shadow under the questions `omorfos-ask` puts, as under a
+      dialog: its panel is larger than the question, to shake it, and is
+      named after no part.
 - [ ] Shadows under the compositor's notice, tooltips and the palette of
       tiles, which are drawn by the compositor and are not a part's
       layer.

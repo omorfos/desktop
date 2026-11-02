@@ -32,7 +32,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use crate::common::{Client, HEIGHT, Session, WIDTH, key};
 use crate::relayed::relayed;
 use crate::versions::updated;
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const LEFT: u32 = 0x110;
 const FOCUSED_TITLEBAR: u32 = 0xff23_262e;
@@ -1206,8 +1206,10 @@ fn on_a_dense_screen_a_program_written_for_x11_draws_with_as_many_pixels_as_it_h
     assert_eq!(picture.at(3, 57), RED, "its first pixel");
     assert_eq!(picture.at(200, 100), RED, "its last column");
     assert_eq!(picture.at(100, 154), RED, "its last rows");
-    assert_eq!(picture.at(210, 100), BACKGROUND, "beside it");
-    assert_eq!(picture.at(100, 164), BACKGROUND, "below it");
+    for (x, y, place) in [(210, 100, "beside it"), (100, 164, "below it")] {
+        let seen = picture.at(x, y);
+        assert!(shaded(seen, BACKGROUND), "{place}: {seen:#x}");
+    }
 }
 
 #[test]

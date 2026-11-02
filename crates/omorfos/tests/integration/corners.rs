@@ -3,7 +3,7 @@
 use omorfos::Scale;
 
 use crate::common::Session;
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 /// The default theme's frame around a window 200 by 100: a border of one,
 /// a titlebar of 28 and corners rounded to a radius of eight.
@@ -17,14 +17,16 @@ fn the_bottom_corners_of_a_frame_are_rounded_window_and_all() {
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
 
-    // Outside the curve there is nothing of the frame or the window.
+    // Outside the curve there is nothing of the frame or the window, only
+    // its shadow.
     for (x, y) in [
         (0, BOTTOM),
         (1, BOTTOM - 1),
         (RIGHT, BOTTOM),
         (RIGHT - 1, BOTTOM - 1),
     ] {
-        assert_eq!(picture.at(x, y), BACKGROUND, "at {x}, {y}");
+        let seen = picture.at(x, y);
+        assert!(shaded(seen, BACKGROUND), "at {x}, {y}: {seen:#x}");
     }
     // The border runs straight up to the curve and follows it round.
     let border = picture.at(0, 60);
@@ -62,7 +64,8 @@ fn what_is_behind_a_frame_shows_past_its_corners() {
     let bottom = i32::try_from(bottom).unwrap();
 
     let picture = session.draw();
-    assert_eq!(picture.at(left, bottom), BLUE, "the corner");
+    let corner = picture.at(left, bottom);
+    assert!(shaded(corner, BLUE), "the corner: {corner:#x}");
     assert_eq!(picture.at(left + 10, bottom - 8), RED, "the window");
 }
 
@@ -103,7 +106,8 @@ fn a_frame_that_has_not_changed_is_not_drawn_again() {
         GREEN,
         "in the strips by the curve"
     );
-    assert_eq!(picture.at(1, BOTTOM - 1), BACKGROUND);
+    let outside = picture.at(1, BOTTOM - 1);
+    assert!(shaded(outside, BACKGROUND), "{outside:#x}");
 }
 
 #[test]
@@ -116,7 +120,8 @@ fn corners_are_rounded_at_the_scale_of_the_screen() {
     // Twice the size in pixels: the frame is 404 by 258 and the radius 16.
     let (right, bottom) = (403, 257);
     for (x, y) in [(0, bottom), (3, bottom - 3), (right - 3, bottom - 3)] {
-        assert_eq!(picture.at(x, y), BACKGROUND, "at {x}, {y}");
+        let seen = picture.at(x, y);
+        assert!(shaded(seen, BACKGROUND), "at {x}, {y}: {seen:#x}");
     }
     assert_eq!(picture.at(8, bottom - 8), RED, "inside the curve");
     assert_eq!(picture.at(right - 8, bottom - 8), RED);

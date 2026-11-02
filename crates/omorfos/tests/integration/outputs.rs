@@ -13,7 +13,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 };
 
 use crate::common::{Client, Event, HEIGHT, LayerShape, Session, WIDTH, key};
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const BLACK: u32 = 0xff00_0000;
 const WHITE: u32 = 0xffff_ffff;
@@ -226,7 +226,8 @@ fn each_output_has_its_own_scale() {
     assert_eq!(picture.at(100, 100), RED, "under a titlebar 56 pixels tall");
     assert_ne!(picture.at(190, 40), RED);
     assert_ne!(picture.at(190, 40), BACKGROUND);
-    assert_eq!(picture.at(100, 170), BACKGROUND, "below the window");
+    let below = picture.at(100, 170);
+    assert!(shaded(below, BACKGROUND), "below the window: {below:#x}");
 
     // Moved to the first output, it is told that one's.
     perform(&mut session, &Action::Maximize);

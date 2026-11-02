@@ -57,11 +57,20 @@ fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
 
 #[test]
 fn a_theme_without_shadows_casts_none() {
-    let none = "window, window:focus { box-shadow: none; }\n";
+    let none = "* { transition: none; }\n\
+                window, window:focus, menu { box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", none)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     assert_eq!(session.draw().at(100, BOTTOM + 4), BACKGROUND);
+
+    // Nor does a menu, which is 220 wide, beside it or under it.
+    let mut session = Session::with_config(&[("theme.css", none)]);
+    open_menu(&mut session);
+    let picture = session.draw();
+    assert_ne!(picture.at(200, 110), BACKGROUND, "the menu");
+    assert_eq!(picture.at(322, 110), BACKGROUND, "beside it");
+    assert_eq!(picture.at(96, 110), BACKGROUND);
 }
 
 /// Opens the menu with its corner at the pointer, at (100, 100).

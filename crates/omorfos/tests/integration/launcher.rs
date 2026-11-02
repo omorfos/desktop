@@ -22,7 +22,7 @@ use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
 use crate::common::{Event, HEIGHT, Session, WIDTH, half_way, key};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
 
@@ -138,10 +138,10 @@ fn the_launcher_opens_in_the_middle_of_the_screen_over_everything() {
 
     let picture = session.draw();
     let (left, top) = corner();
-    assert_eq!(
-        picture.at(left - 2, top - 2),
-        RED,
-        "the window is still there"
+    let beside = picture.at(left - 2, top - 2);
+    assert!(
+        shaded(beside, RED),
+        "the window is still there: {beside:#x}"
     );
     assert_eq!(picture.at(left + 4, top + 150), surface());
     // The first program is the one that would be started.

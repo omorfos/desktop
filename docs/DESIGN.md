@@ -213,8 +213,6 @@ the titlebar of a window. The content of a window is never glass.
 
 ## Depth
 
-(Stage 4: needs shadows.)
-
 Three levels, and a shadow says which. Shadows are black, soft, and fall
 straight down.
 
@@ -229,8 +227,7 @@ straight down.
 - The window with focus has its titlebar in `--surface` and its text in
   `--text`; the others are in `--surface-dim` and `--text-dim`. Its edge
   is `--border-strong`, not the accent: a ring of accent round every
-  focused window is louder than it need be once there are shadows. (Until
-  stage 4 the edge stays the accent, as it is the only sign there is.)
+  focused window is louder than it need be once there are shadows.
 - Inside a surface, what the keyboard is on has a ring: 2 pixels of the
   accent, 2 pixels out from the thing. It shows when the keyboard is
   being used and not when the pointer is.

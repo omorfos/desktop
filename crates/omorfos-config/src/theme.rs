@@ -625,6 +625,7 @@ mod tests {
     const TEXT: Color = Color::rgb(0xe6, 0xe8, 0xee);
     const TEXT_DIM: Color = Color::rgb(0x8b, 0x90, 0xa0);
     const BORDER: Color = Color::rgb(0x2c, 0x30, 0x3a);
+    const BORDER_STRONG: Color = Color::rgb(0x7a, 0x80, 0x90);
     const RED: Color = Color::rgb(255, 0, 0);
 
     fn line(color: Color, width: u32) -> Line {
@@ -671,7 +672,8 @@ mod tests {
             shadow("window { box-shadow: 0 8px 24px black; box-shadow: none; }"),
             Shadow::NONE
         );
-        assert_eq!(shadow(""), Shadow::NONE, "none unless the theme gives one");
+        let titlebar = styled(Part::Titlebar, "").shadow;
+        assert_eq!(titlebar, Shadow::NONE, "none unless the theme gives one");
         assert!(Shadow::NONE.is_none() && !soft.is_none());
         assert_eq!(
             shadow("window { box-shadow: 0 1px black; opacity: 0.5; }")
@@ -791,12 +793,33 @@ mod tests {
     fn a_frame_has_a_border_in_the_colour_of_its_focus() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, Edges::all(line(ACCENT, 1)));
+        assert_eq!(focused.border, Edges::all(line(BORDER_STRONG, 1)));
         assert_eq!(focused.radius, 8);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
         assert_eq!(other.border, Edges::all(line(BORDER, 1)));
         assert_eq!(other.radius, 8);
+    }
+
+    #[test]
+    fn what_floats_casts_a_shadow_as_deep_as_it_is_high() {
+        let theme = Theme::default();
+        let shadow = |part, states| theme.style(part, states).shadow;
+        let cast = |y, blur, alpha| Shadow {
+            y,
+            blur,
+            color: Color::rgba(0, 0, 0, alpha),
+            ..Shadow::NONE
+        };
+        // DESIGN.md's levels: a window is on the first, half as deep
+        // without focus; what floats over windows is on the second.
+        assert_eq!(shadow(Part::Window, FOCUSED), cast(8, 24, 0x47));
+        assert_eq!(shadow(Part::Window, States::NONE), cast(4, 12, 0x24));
+        assert_eq!(shadow(Part::Menu, States::NONE), cast(12, 32, 0x5c));
+        assert_eq!(shadow(Part::Launcher, States::NONE), cast(12, 32, 0x5c));
+        for level in [Part::Desktop, Part::Panel, Part::Titlebar, Part::MenuItem] {
+            assert_eq!(shadow(level, States::NONE), Shadow::NONE, "{level:?}");
+        }
     }
 
     #[test]
@@ -816,7 +839,7 @@ mod tests {
         let shown = theme.style(Part::Tab, FOCUSED.with(State::Active));
         assert_eq!((shown.background, shown.color), (SURFACE, TEXT));
         assert_eq!(shown.border.bottom, line(ACCENT, 2));
-        assert_eq!(shown.border.left, line(ACCENT, 1));
+        assert_eq!(shown.border.left, line(BORDER_STRONG, 1));
         assert_eq!((shown.border.top.width, shown.border.right.width), (0, 0));
         assert_eq!(shown.padding.across(), 20);
 
@@ -828,7 +851,7 @@ mod tests {
         let behind = theme.style(Part::Tab, FOCUSED);
         assert_eq!((behind.background, behind.color), (SURFACE_DIM, TEXT_DIM));
         assert_eq!(behind.border.bottom.width, 0);
-        assert_eq!(behind.border.left, line(ACCENT, 1));
+        assert_eq!(behind.border.left, line(BORDER_STRONG, 1));
     }
 
     #[test]
@@ -1018,7 +1041,14 @@ mod tests {
     #[test]
     fn giving_a_variable_another_value_changes_everything_that_uses_it() {
         let theme = Theme::parse(":root { --accent: #f00; }").unwrap();
-        assert_eq!(theme.style(Part::Window, FOCUSED).border.top.color, RED);
+        assert_eq!(
+            theme
+                .style(Part::Tab, FOCUSED.with(State::Active))
+                .border
+                .bottom
+                .color,
+            RED
+        );
         assert_eq!(theme.style(Part::MenuItem, HOVERED).background, RED);
         assert_eq!(theme.style(Part::NoticeHeading, States::NONE).color, RED);
         assert_eq!(theme.style(Part::Task, ACTIVE).border.bottom.color, RED);

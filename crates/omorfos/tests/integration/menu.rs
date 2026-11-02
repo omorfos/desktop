@@ -8,7 +8,7 @@ use std::time::Duration;
 use smithay::input::keyboard::Keycode;
 
 use crate::common::{Event, Session, between, half_way, key};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -75,8 +75,10 @@ fn a_right_click_on_the_desktop_opens_the_menu_at_the_pointer() {
 
     let picture = session.draw();
     assert_eq!(picture.at(510, 220), PANEL, "a panel 220 pixels wide");
-    assert_eq!(picture.at(521, 220), BACKGROUND);
-    assert_eq!(picture.at(299, 220), BACKGROUND);
+    for x in [521, 299] {
+        let beside = picture.at(x, 220);
+        assert!(shaded(beside, BACKGROUND), "at {x}: {beside:#x}");
+    }
 }
 
 #[test]
@@ -203,7 +205,8 @@ fn a_submenu_opens_beside_its_row_and_its_entries_can_be_chosen() {
         PANEL,
         "a second panel beside the row"
     );
-    assert_eq!(session.draw().at(70, 255), BACKGROUND);
+    let beside = session.draw().at(70, 255);
+    assert!(shaded(beside, BACKGROUND), "{beside:#x}");
 
     move_to(&mut session, 150, 255);
     click(&mut session, LEFT);
@@ -318,7 +321,8 @@ fn right_goes_into_a_submenu_and_left_comes_back_out() {
 
     press(&mut session, &[key::LEFT]);
     let picture = session.draw();
-    assert_eq!(picture.at(290, 255), BACKGROUND, "the submenu is gone");
+    let gone = picture.at(290, 255);
+    assert!(shaded(gone, BACKGROUND), "the submenu is gone: {gone:#x}");
     assert_eq!(picture.at(510, 255), ACCENT);
 
     press(&mut session, &[key::RETURN, key::RETURN]);

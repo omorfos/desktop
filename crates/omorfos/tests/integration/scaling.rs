@@ -4,7 +4,7 @@ use omorfos::{Input, Scale};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
 use crate::common::{Event, HEIGHT, Session, Told, WIDTH};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 const WHITE: u32 = 0xffff_ffff;
 
@@ -249,7 +249,8 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
     // The menu opens at the pointer and is 220 wide; the notice of the
     // broken theme is at the top right.
     assert_ne!(before.at(200, 120), BACKGROUND, "the menu");
-    assert_eq!(before.at(300, 120), BACKGROUND, "beside the menu");
+    let beside = before.at(300, 120);
+    assert!(shaded(beside, BACKGROUND), "beside the menu: {beside:#x}");
     assert_ne!(before.at(WIDTH - 20, 20), BACKGROUND, "the notice");
     assert_eq!(before.at(60, 20), BACKGROUND, "left of the notice");
 
@@ -257,7 +258,11 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
     session.settle();
     let after = session.draw();
     assert_ne!(after.at(300, 200), BACKGROUND, "the menu, twice as wide");
-    assert_eq!(after.at(60, 200), BACKGROUND, "left of where it now starts");
+    let left = after.at(60, 200);
+    assert!(
+        shaded(left, BACKGROUND),
+        "left of where it now starts: {left:#x}"
+    );
     assert_ne!(
         after.at(60, 40),
         BACKGROUND,

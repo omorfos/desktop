@@ -10,7 +10,7 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 use std::time::Duration;
 
 use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
 const BORDER: i32 = 1;
@@ -62,7 +62,8 @@ fn a_decorated_window_is_drawn_inside_its_frame() {
     // Its bottom corners are rounded with the frame's; see `corners`.
     assert_eq!(picture.at(BORDER + 199, TITLEBAR + 80), RED, "its far edge");
     assert_eq!(picture.at(BORDER + 100, TITLEBAR + 99), RED, "its last row");
-    assert_eq!(picture.at(BORDER + 210, TITLEBAR + 50), BACKGROUND);
+    let beside = picture.at(BORDER + 210, TITLEBAR + 50);
+    assert!(shaded(beside, BACKGROUND), "beside it: {beside:#x}");
 }
 
 #[test]
@@ -173,7 +174,7 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
 }
 
 /// Colours of the default theme, as `0xAARRGGBB`.
-const ACCENT: u32 = 0xff5b_9cf5;
+const BORDER_STRONG: u32 = 0xff7a_8090;
 const FOCUSED_TITLEBAR: u32 = 0xff23_262e;
 const UNFOCUSED_TITLEBAR: u32 = 0xff1b_1d23;
 const UNFOCUSED_BORDER: u32 = 0xff2c_303a;
@@ -194,15 +195,21 @@ fn a_decorated_frame_is_drawn_with_a_titlebar_and_borders() {
     );
     assert_eq!(
         picture.at(100, 0),
-        ACCENT,
-        "the focused frame's outline is the accent colour"
+        BORDER_STRONG,
+        "the focused frame's outline is the strong edge"
     );
-    assert_eq!(picture.at(0, 60), ACCENT, "left border");
-    assert_eq!(picture.at(201, 60), ACCENT, "right border");
-    assert_eq!(picture.at(100, 128), ACCENT, "bottom border");
-    assert_eq!(picture.at(0, 0), BACKGROUND, "the top corners are rounded");
-    assert_eq!(picture.at(202, 60), BACKGROUND, "nothing beyond the frame");
-    assert_eq!(picture.at(100, 129), BACKGROUND);
+    assert_eq!(picture.at(0, 60), BORDER_STRONG, "left border");
+    assert_eq!(picture.at(201, 60), BORDER_STRONG, "right border");
+    assert_eq!(picture.at(100, 128), BORDER_STRONG, "bottom border");
+    // Beyond the frame there is only its shadow.
+    for (x, y, place) in [
+        (0, 0, "the top corners are rounded"),
+        (202, 60, "nothing beyond the frame"),
+        (100, 129, "nothing below it"),
+    ] {
+        let seen = picture.at(x, y);
+        assert!(shaded(seen, BACKGROUND), "{place}: {seen:#x}");
+    }
 }
 
 #[test]
@@ -302,11 +309,11 @@ fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
         between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
         "{titlebar:#x}"
     );
-    assert!(between(border, BACKGROUND, ACCENT), "{border:#x}");
+    assert!(between(border, BACKGROUND, BORDER_STRONG), "{border:#x}");
     assert!(between(window, BACKGROUND, RED), "{window:#x}");
 
     session.advance(Duration::from_millis(50));
-    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, ACCENT, RED]);
+    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, BORDER_STRONG, RED]);
     assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
     session.step();
     assert!(!session.draw().damaged, "and not drawn again");
@@ -325,7 +332,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
         let picture = session.draw();
         [picture.at(190, 14), picture.at(0, 100), picture.at(100, 80)]
     };
-    let whole = [FOCUSED_TITLEBAR, ACCENT, RED];
+    let whole = [FOCUSED_TITLEBAR, BORDER_STRONG, RED];
     session.open_decorated(&mut client, "first", (200, 100), RED);
     session.advance(Duration::from_millis(100));
     assert_eq!(seen(&mut session), whole);
@@ -344,7 +351,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
         between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
         "{titlebar:#x}"
     );
-    assert!(between(border, BACKGROUND, ACCENT), "{border:#x}");
+    assert!(between(border, BACKGROUND, BORDER_STRONG), "{border:#x}");
     assert!(between(window, BACKGROUND, RED), "{window:#x}");
 
     session.advance(Duration::from_millis(50));
