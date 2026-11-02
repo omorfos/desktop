@@ -42,6 +42,7 @@ mod roles;
 mod sealed;
 mod seat;
 mod session;
+mod shadows;
 mod slide;
 mod standing;
 mod switcher;

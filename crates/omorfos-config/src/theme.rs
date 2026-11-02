@@ -12,8 +12,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::value::{color, fraction, size, time, words};
-use crate::{Bounded, Color, Easing, Edges, Part, Position, States, Style, Transition};
+use crate::value::{color, fraction, shadow, size, time, words};
+use crate::{Bounded, Color, Easing, Edges, Part, Position, Shadow, States, Style, Transition};
 
 /// The stylesheet every theme starts from.
 const BUILT_IN: &str = include_str!("default.css");
@@ -222,6 +222,7 @@ enum Setting {
     FontItalic(bool),
     TransitionDuration(u32),
     TransitionEasing(Easing),
+    Shadow(Shadow),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
@@ -229,8 +230,9 @@ enum Setting {
 const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
                           border-radius, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
-                          transition-duration and transition-timing-function; border, padding \
-                          and margin may name a side, as in border-bottom-color";
+                          transition-duration, transition-timing-function and box-shadow; \
+                          border, padding and margin may name a side, as in \
+                          border-bottom-color";
 
 /// The variables a stylesheet declares.
 fn declared(sheet: &Sheet, by_user: bool) -> impl Iterator<Item = Variable<'_>> {
@@ -359,6 +361,7 @@ impl Look {
             Setting::FontItalic(italic) => self.font.italic = *italic,
             Setting::TransitionDuration(millis) => style.transition.duration = *millis,
             Setting::TransitionEasing(easing) => style.transition.easing = *easing,
+            Setting::Shadow(shadow) => style.shadow = *shadow,
         }
     }
 
@@ -371,6 +374,7 @@ impl Look {
         let style = &mut self.style;
         faded(&mut style.background);
         faded(&mut style.color);
+        faded(&mut style.shadow.color);
         on(&mut style.border, None, |line| faded(&mut line.color));
     }
 }
@@ -409,6 +413,7 @@ fn settings(
         ("transition", None) => transition(value),
         ("transition-duration", None) => one(lasting(value).map(Setting::TransitionDuration)),
         ("transition-timing-function", None) => one(easing(value).map(Setting::TransitionEasing)),
+        ("box-shadow", None) => one(shadow(value).map(Setting::Shadow)),
         _ => {
             let name = &declaration.name;
             let message = format!("`{name}` is not a property; the properties are {PROPERTIES}");
@@ -607,7 +612,7 @@ fn family(value: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::style::CLEAR;
-    use crate::{Line, State};
+    use crate::{Line, Shadow, State};
 
     const FOCUSED: States = States::NONE.with(State::Focused);
     const ACTIVE: States = States::NONE.with(State::Active);
@@ -633,6 +638,66 @@ mod tests {
     /// How a part looks under a theme of one rule, in no state.
     fn styled(part: Part, stylesheet: &str) -> Style {
         Theme::parse(stylesheet).unwrap().style(part, States::NONE)
+    }
+
+    #[test]
+    fn a_part_casts_the_shadow_a_theme_gives_it_or_none() {
+        let shadow = |stylesheet: &str| styled(Part::Window, stylesheet).shadow;
+        let black = Color::rgb(0, 0, 0);
+        let soft = Shadow {
+            x: 0,
+            y: 8,
+            blur: 24,
+            spread: 0,
+            color: Color::rgba(0, 0, 0, 0x47),
+        };
+        assert_eq!(shadow("window { box-shadow: 0 8px 24px #00000047; }"), soft);
+        assert_eq!(
+            shadow("window { box-shadow: 0px 8px 24px 0px rgba(0, 0, 0, 0.28); }"),
+            soft
+        );
+        let sharp = Shadow {
+            x: -2,
+            y: 3,
+            color: black,
+            ..Shadow::NONE
+        };
+        assert_eq!(shadow("window { box-shadow: -2px 3px black; }"), sharp);
+        assert_eq!(
+            shadow("window { box-shadow: 0 0 4px -2px #000; }").spread,
+            -2
+        );
+        assert_eq!(
+            shadow("window { box-shadow: 0 8px 24px black; box-shadow: none; }"),
+            Shadow::NONE
+        );
+        assert_eq!(shadow(""), Shadow::NONE, "none unless the theme gives one");
+        assert!(Shadow::NONE.is_none() && !soft.is_none());
+        assert_eq!(
+            shadow("window { box-shadow: 0 1px black; opacity: 0.5; }")
+                .color
+                .alpha,
+            0x80,
+            "as see-through as the part"
+        );
+    }
+
+    #[test]
+    fn a_shadow_the_theme_cannot_cast_is_said_not_to_be_one() {
+        for value in [
+            "8px",
+            "0 8px 24px",
+            "inset 0 8px black",
+            "0 100px black",
+            "0 8px -1px black",
+            "0 8px 24px 1px 2px black",
+            "0 8px 24px 40px black",
+            "0 8px 24px black, 0 1px red",
+            "0 8px 24px nothing",
+        ] {
+            let said = problem(&format!("window {{ box-shadow: {value}; }}"));
+            assert!(said.contains("shadow"), "{value}: {said}");
+        }
     }
 
     #[test]
@@ -1063,6 +1128,7 @@ mod tests {
                min-width: 40px;\n\
                max-width: 400px;\n\
                transition: 80ms linear;\n\
+               box-shadow: 1px 2px 3px 4px #050505;\n\
              }",
         );
         let style = theme.unwrap().style(Part::Task, States::NONE);
@@ -1093,6 +1159,13 @@ mod tests {
             transition: Transition {
                 duration: 80,
                 easing: Easing::Linear,
+            },
+            shadow: Shadow {
+                x: 1,
+                y: 2,
+                blur: 3,
+                spread: 4,
+                color: Color::rgb(5, 5, 5),
             },
         };
         assert_eq!(style, expected);

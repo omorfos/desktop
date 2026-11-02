@@ -121,6 +121,7 @@ use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
+use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
 use crate::switcher::Switch;
 use crate::tiles::Lines;
@@ -2282,6 +2283,7 @@ impl Compositor {
         let sliding = self.desktop.slid() != 0;
         let motion = &mut self.animation.motion;
         motion.begin(self.animation.clock);
+        let shades = self.animation.shades.begun();
 
         let mut scene = Vec::new();
         for Mapped {
@@ -2317,7 +2319,7 @@ impl Compositor {
                                 shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
                             })
                             .and_then(|index| previous.swap_remove(index).chrome);
-                        let tools = (&mut *text, &mut *motion);
+                        let tools = (&mut *text, &mut *motion, &mut *shades);
                         Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
@@ -2385,11 +2387,31 @@ impl Compositor {
                 let mut hasher = DefaultHasher::new();
                 surface.id().hash(&mut hasher);
                 let key = hasher.finish();
-                let present = part.map(|part| Present {
-                    surface: surface.clone(),
-                    part,
-                    layer: layer.layer(),
-                    share: animation.motion.presence(theme, part, key),
+                let present = part.map(|part| {
+                    let style = theme.style(part, States::NONE);
+                    let shade = animation.shades.of(style.shadow, style.radius, head.scale);
+                    // The one it had, if it is the same, so that it is not
+                    // drawn anew.
+                    let had = animation
+                        .before
+                        .iter_mut()
+                        .find(|was| was.surface == *surface);
+                    let had = had.and_then(|was| was.shadow.take());
+                    let mut shadow = shade.map(|shade| match had {
+                        Some(had) if had.is_of(&shade) => had,
+                        _ => Shadowing::new(shade),
+                    });
+                    let at = layer_origin(&layers, layer) + head.area().loc;
+                    let size = layers.layer_geometry(layer).unwrap_or_default().size;
+                    let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
+                    let _ = shadow.as_mut().map(|shadow| shadow.place(Some(area)));
+                    Present {
+                        surface: surface.clone(),
+                        part,
+                        layer: layer.layer(),
+                        share: animation.motion.presence(theme, part, key),
+                        shadow,
+                    }
                 });
                 animation.layers.extend(present);
             }
@@ -2405,7 +2427,7 @@ impl Compositor {
                 from: was.share,
                 opacity: was.share,
                 level: Level::Layer(was.layer),
-                what: What::Surface(None, pieces),
+                what: What::Surface(None, pieces, was.shadow),
                 private: false,
             });
             animation.gone.extend(gone);
@@ -2479,7 +2501,8 @@ impl Compositor {
         self.menu_chrome = match (current, menu.zip(looks)) {
             (Some(chrome), _) => Some(chrome),
             (None, Some((menu, looks))) => {
-                Some(MenuChrome::paint(&mut self.text, theme, menu, looks, scale))
+                let tools = (&mut self.text, &mut self.animation.shades);
+                Some(MenuChrome::paint(tools, theme, menu, looks, scale))
             }
             (None, None) => None,
         };
@@ -3095,13 +3118,8 @@ impl Compositor {
             ));
         }
         elements.extend(self.switcher_elements(renderer, output, view));
-        for (at, panel) in self.menu_chrome.iter().flat_map(|chrome| &chrome.panels) {
-            elements.extend(panel.element(
-                renderer,
-                at.to_f64(),
-                view,
-                self.animation.menu_opacity,
-            ));
+        if let Some(chrome) = &self.menu_chrome {
+            chrome.elements(renderer, view, self.animation.menu_opacity, &mut elements);
         }
         if let Some(shown) = &self.hover.palette.shown {
             // Its arrow stands above it, up to the titlebar.
@@ -3223,18 +3241,18 @@ impl Compositor {
         for gone in gone.filter(shown) {
             let opacity = gone.opacity;
             match &gone.what {
-                What::Surface(chrome, pieces) => {
+                What::Surface(chrome, pieces, cast) => {
                     if let Some(chrome) = chrome {
                         Self::chrome_elements(renderer, view, chrome, opacity, elements);
                     }
                     let pieces = pieces.elements(view.origin, view.scale.factor(), opacity);
                     elements.extend(pieces.map(Element::Ghost));
-                }
-                What::Menu(chrome) => {
-                    for (at, panel) in &chrome.panels {
-                        elements.extend(panel.element(renderer, at.to_f64(), view, opacity));
+                    let shadow = chrome.as_ref().and_then(|chrome| chrome.shadow.as_ref());
+                    if let Some(shadow) = shadow.or(cast.as_ref()) {
+                        shadow.elements(renderer, opacity, view, elements);
                     }
                 }
+                What::Menu(chrome) => chrome.elements(renderer, view, opacity, elements),
                 What::Notice(notice) => {
                     let at = (notice.area.origin.x, notice.area.origin.y);
                     let at = Point::<i32, Logical>::from(at).to_f64();
@@ -3294,6 +3312,14 @@ impl Compositor {
                 self.animation.note(&shown.surface, nothing.done());
             } else {
                 self.window_elements(renderer, view, shown, elements);
+            }
+            // Under it all, its shadow.
+            let shadow = shown
+                .chrome
+                .as_ref()
+                .and_then(|chrome| chrome.shadow.as_ref());
+            if let Some(shadow) = shadow {
+                shadow.elements(renderer, shown.opacity, view, elements);
             }
         }
     }
@@ -3473,6 +3499,11 @@ impl Compositor {
                 self.animation.note(&known.surface, noting.done());
             }
             elements.extend(surfaces.into_iter().map(Element::Surface));
+            // Under it, the shadow its part casts.
+            let shadow = known.and_then(|known| Some(known.share).zip(known.shadow.as_ref()));
+            if let Some((share, shadow)) = shadow {
+                shadow.elements(renderer, share, view, elements);
+            }
         }
     }
 
@@ -4134,6 +4165,8 @@ pub(crate) struct Animation {
     gone: Vec<Gone>,
     /// What the screens showed as the compositor was started, to fade.
     pub(crate) fading: Vec<Fade>,
+    /// The pictures of the shadows cast.
+    shades: Shades,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -4145,6 +4178,8 @@ struct Present {
     layer: Layer,
     /// How much of it there is to see, from 0 to 1.
     share: f32,
+    /// The shadow it casts, if the theme gives its part one.
+    shadow: Option<Shadowing>,
 }
 
 /// Something that has gone from the screen, while it fades.
@@ -4178,8 +4213,9 @@ enum Level {
 /// What it was that has gone.
 #[derive(Debug)]
 enum What {
-    /// A window, with the decoration it had, or a panel, which has none.
-    Surface(Option<Box<Chrome>>, Noted),
+    /// A window, with the decoration it had and the shadow it cast; or a
+    /// panel, which has no decoration, with the shadow it cast.
+    Surface(Option<Box<Chrome>>, Noted, Option<Shadowing>),
     Menu(MenuChrome),
     Notice(Notice),
 }
@@ -4197,6 +4233,7 @@ impl Animation {
             drawn: RefCell::new(Vec::new()),
             gone: Vec::new(),
             fading: Vec::new(),
+            shades: Shades::default(),
         }
     }
 
@@ -4233,7 +4270,7 @@ impl Animation {
                 opacity: shown.opacity,
                 level: Level::Frames(shown.over),
                 private: shown.private,
-                what: What::Surface(shown.chrome.map(Box::new), pieces),
+                what: What::Surface(shown.chrome.map(Box::new), pieces, None),
             });
             self.gone.extend(gone);
         }
@@ -4286,17 +4323,19 @@ struct MenuChrome {
     scale: Scale,
     /// Each panel's position and pixels, from the root outwards.
     panels: Vec<(Point<i32, Logical>, Painted)>,
+    /// The shadow each casts, if the theme gives menus one.
+    shadows: Vec<Shadowing>,
 }
 
 impl MenuChrome {
     fn paint(
-        text: &mut Text,
+        (text, shades): (&mut Text, &mut Shades),
         theme: &Theme,
         menu: &Menu<Action>,
         looks: Vec<Vec<Style>>,
         scale: Scale,
     ) -> Self {
-        let panels = menu
+        let panels: Vec<(Point<i32, Logical>, Painted)> = menu
             .panels()
             .iter()
             .zip(&looks)
@@ -4306,12 +4345,40 @@ impl MenuChrome {
                 (Point::from((origin.x, origin.y)), Painted::new(&canvas))
             })
             .collect();
+        let style = theme.style(Part::Menu, States::NONE);
+        let shade = shades.of(style.shadow, style.radius, scale);
+        let shadows = panels.iter().filter_map(|(at, panel)| {
+            let mut shadow = shade.clone().map(Shadowing::new)?;
+            shadow.place(Some((at.x, at.y, panel.width(), panel.height())));
+            Some(shadow)
+        });
         Self {
             menu: menu.clone(),
             looks,
             theme: theme.clone(),
             scale,
+            shadows: shadows.collect(),
             panels,
+        }
+    }
+
+    /// Its panels, then the shadows under them, as see-through as `opacity`
+    /// says.
+    fn elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        opacity: f32,
+        elements: &mut Vec<Element<R>>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        for (at, panel) in &self.panels {
+            elements.extend(panel.element(renderer, at.to_f64(), view, opacity));
+        }
+        for shadow in &self.shadows {
+            shadow.elements(renderer, opacity, view, elements);
         }
     }
 }
@@ -4605,6 +4672,8 @@ struct Chrome {
     corners: [Painted; 2],
     /// What the strips the window is drawn as are called.
     strips: Names,
+    /// The shadow it casts, if the theme gives it one.
+    shadow: Option<Shadowing>,
 }
 
 /// Everything a titlebar's pixels depend on. Its position is not part of
@@ -4626,7 +4695,7 @@ impl Chrome {
     /// Brings a frame's decoration up to date, reusing `cached` pixels when
     /// nothing they depend on has changed.
     fn paint(
-        (text, motion): (&mut Text, &mut Motion),
+        (text, motion, shades): (&mut Text, &mut Motion, &mut Shades),
         theme: &Theme,
         cached: Option<Self>,
         frame: &FrameInfo,
@@ -4655,6 +4724,8 @@ impl Chrome {
             scale,
         };
         let straight = corners::straight_borders(&decoration, radius);
+        let window = &appearance.looks.window;
+        let shade = shades.of(window.shadow, window.radius, scale);
         // Everything painted is kept for as long as it would look the same.
         let kept = cached.filter(|chrome| chrome.appearance == appearance);
         let mut chrome = kept.unwrap_or_else(|| {
@@ -4675,6 +4746,7 @@ impl Chrome {
                 radius,
                 corners: [corner(false), corner(true)],
                 strips: Names::default(),
+                shadow: shade.map(Shadowing::new),
             }
         });
         for (buffer, border) in chrome.borders.iter_mut().zip(straight) {
@@ -4684,6 +4756,18 @@ impl Chrome {
         chrome.tabs.clone_from(&frame.tabs);
         chrome.decoration = decoration;
         chrome.radius = radius;
+        // A window as large as it can be, or larger, casts none.
+        let outer = frame.geometry;
+        let area = (
+            outer.origin.x,
+            outer.origin.y,
+            outer.size.width,
+            outer.size.height,
+        );
+        let cast = !frame.fullscreen && !frame.maximized;
+        if let Some(shadow) = chrome.shadow.as_mut() {
+            shadow.place(cast.then_some(area));
+        }
         chrome
     }
 }

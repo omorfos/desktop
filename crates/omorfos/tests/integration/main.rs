@@ -52,6 +52,7 @@ mod screens_off;
 mod screenshot;
 mod sealed;
 mod session;
+mod shadows;
 mod sharing;
 mod sleep;
 mod switcher;

@@ -506,7 +506,7 @@ impl Taps {
 
 /// The outline of a box in pixels: its size, how far its corners are
 /// rounded, and how thick its border is on the top, right, bottom and left.
-struct Shape {
+pub(crate) struct Shape {
     width: u32,
     height: u32,
     radius: u32,
@@ -514,6 +514,22 @@ struct Shape {
 }
 
 impl Shape {
+    /// A square box `side` pixels across, its corners rounded by `radius`,
+    /// with no border.
+    pub(crate) const fn plain(side: u32, radius: u32) -> Self {
+        Self {
+            width: side,
+            height: side,
+            radius,
+            widths: [0; 4],
+        }
+    }
+
+    /// How much of the pixel at `(x, y)` the box covers, out of 255.
+    pub(crate) fn covered(&self, at: (u32, u32)) -> u8 {
+        self.at(at).2
+    }
+
     /// What is at a pixel of the box, counted from its top-left corner:
     /// which side's border, how much of the pixel that border covers, and
     /// how much the background does, each out of 255.
@@ -583,7 +599,7 @@ pub fn inset((x, y, width, height): Area, edges: Edges<u32>) -> Area {
 ///
 /// Both ends are rounded, not the length, so that two lengths that meet in
 /// units still meet in pixels.
-fn span(scale: Scale, start: i32, length: u32) -> (i32, u32) {
+pub(crate) fn span(scale: Scale, start: i32, length: u32) -> (i32, u32) {
     let end = i64::from(start) + i64::from(length);
     let end = scale.pixels(i32::try_from(end).unwrap_or(i32::MAX));
     let start = scale.pixels(start);

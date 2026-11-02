@@ -325,6 +325,40 @@ impl Line {
 /// Nothing: fully transparent.
 pub(crate) const CLEAR: Color = Color::rgba(0, 0, 0, 0);
 
+/// The shadow a part casts on what is under it (`box-shadow`), in units of
+/// layout: its box, made larger by `spread` on each side, moved `x` across
+/// and `y` down, its edge softened over `blur`, in `color`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shadow {
+    /// How far it falls to the right, or to the left if less than none.
+    pub x: i32,
+    /// How far it falls down, or up if less than none.
+    pub y: i32,
+    /// How wide its soft edge is.
+    pub blur: u32,
+    /// How much larger than the part it is on each side, or smaller.
+    pub spread: i32,
+    /// Its colour.
+    pub color: Color,
+}
+
+impl Shadow {
+    /// No shadow.
+    pub const NONE: Self = Self {
+        x: 0,
+        y: 0,
+        blur: 0,
+        spread: 0,
+        color: CLEAR,
+    };
+
+    /// Whether nothing of it is to be seen.
+    #[must_use]
+    pub const fn is_none(&self) -> bool {
+        self.color.alpha == 0
+    }
+}
+
 /// Something a part has on each of its four sides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Edges<T> {
@@ -409,6 +443,8 @@ pub struct Style {
     pub max_width: u32,
     /// How its colours get here from those of the state it was in before.
     pub transition: Transition,
+    /// The shadow it casts.
+    pub shadow: Shadow,
 }
 
 impl Style {
@@ -424,6 +460,7 @@ impl Style {
         min_width: 0,
         max_width: 0,
         transition: Transition::NONE,
+        shadow: Shadow::NONE,
     };
 
     /// The room its border and padding take on each side: how far in from

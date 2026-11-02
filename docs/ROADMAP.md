@@ -1027,8 +1027,18 @@ Stage 2 says what it is to be; this builds it. The redrawn theme and
 `appearance` come first, then the shadows, then glass, as more waits on
 the first than on the last.
 
-- [ ] Shadows under windows, menus and panels (`box-shadow`), as
-      pictures made on the CPU (ADR 33).
+- [x] Shadows under windows, menus and panels (`box-shadow`), as
+      pictures made on the CPU (ADR 33): each shadow made once, blurred,
+      and cut into nine pieces, kept while it is in use; under windows,
+      the compositor's menus and the components' panels, changing with a
+      window's focus and fading with what goes.
+- [ ] The built-in theme's shadows, at the levels of `docs/DESIGN.md`
+      ("Depth"), with the focused window's edge in `--border-strong` in
+      place of the accent; the tests that take the space beside a window
+      or a menu to be bare made to say what they mean.
+- [ ] Shadows under the compositor's notice, tooltips and the palette of
+      tiles, which are drawn by the compositor and are not a part's
+      layer.
 - [ ] Glass, drawn in software and tested (`backdrop-filter: blur()`):
       what is under each sheet, its blurred picture, when that is stale,
       and the software blur that is the shader's specification. The

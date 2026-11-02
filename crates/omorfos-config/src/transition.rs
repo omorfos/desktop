@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use crate::value::byte;
-use crate::{Color, Edges, Line, Style};
+use crate::{Color, Edges, Line, Shadow, Style};
 
 /// How a change gathers and loses speed on its way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -164,14 +164,52 @@ impl Style {
                 bottom: line(from.border.bottom, self.border.bottom),
                 left: line(from.border.left, self.border.left),
             },
+            shadow: self.shadow.blended(&from.shadow, share),
             ..*self
         }
+    }
+}
+
+impl Shadow {
+    /// This shadow, `share` of the way here from `from`. One that comes or
+    /// goes keeps its place and only fades; between two, everything of it
+    /// is between them.
+    #[must_use]
+    pub fn blended(&self, from: &Self, share: f32) -> Self {
+        let share = share.clamp(0.0, 1.0);
+        let color = from.color.toward(self.color, share);
+        let placed = match (from.is_none(), self.is_none()) {
+            (true, _) => *self,
+            (false, true) => *from,
+            (false, false) => {
+                let between = |from: i32, to: i32| {
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "the sizes of a shadow are small, and what is between them too"
+                    )]
+                    let between = (to - from) as f32 * share + from as f32;
+                    #[expect(clippy::cast_possible_truncation, reason = "between two small sizes")]
+                    let between = between.round() as i32;
+                    between
+                };
+                let blur = |blur: u32| i32::try_from(blur).unwrap_or(i32::MAX);
+                Self {
+                    x: between(from.x, self.x),
+                    y: between(from.y, self.y),
+                    blur: between(blur(from.blur), blur(self.blur)).unsigned_abs(),
+                    spread: between(from.spread, self.spread),
+                    color,
+                }
+            }
+        };
+        Self { color, ..placed }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Shadow;
     use crate::style::CLEAR;
 
     const RED: Color = Color::rgb(255, 0, 0);
@@ -270,5 +308,36 @@ mod tests {
         assert_eq!(between.radius, 8);
         assert_eq!(new.blended(&old, 0.0).background, RED);
         assert_eq!(new.blended(&old, 1.0), new);
+    }
+
+    #[test]
+    fn a_shadow_on_its_way_from_another_falls_and_softens_between_them() {
+        let shadow = |y: i32, blur, spread, color| Shadow {
+            x: -y,
+            y,
+            blur,
+            spread,
+            color,
+        };
+        let old = Style {
+            shadow: shadow(4, 12, -2, RED),
+            ..Style::NONE
+        };
+        let new = Style {
+            shadow: shadow(8, 24, 2, BLUE),
+            ..Style::NONE
+        };
+        let purple = Color::rgb(128, 0, 128);
+        assert_eq!(new.blended(&old, 0.5).shadow, shadow(6, 18, 0, purple));
+        assert_eq!(new.blended(&old, 0.0).shadow, old.shadow);
+        // From none, it comes in where it is to be.
+        let none = Style::NONE;
+        let coming = new.blended(&none, 0.5).shadow;
+        assert_eq!((coming.y, coming.blur), (8, 24));
+        assert_eq!(coming.color.alpha, 128);
+        // To none, it goes where it was.
+        let going = none.blended(&new, 0.5).shadow;
+        assert_eq!((going.y, going.blur), (8, 24));
+        assert_eq!(going.color.alpha, 128);
     }
 }

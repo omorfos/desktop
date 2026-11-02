@@ -17,7 +17,7 @@ const RIGHT: u32 = 0x111;
 const YELLOW: u32 = 0xffff_ff00;
 
 /// A 30 pixel panel across the top that reserves its height.
-fn panel() -> LayerShape {
+pub(crate) fn panel() -> LayerShape {
     LayerShape {
         layer: Layer::Top,
         anchor: Anchor::Top | Anchor::Left | Anchor::Right,

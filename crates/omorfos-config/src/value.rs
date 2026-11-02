@@ -3,8 +3,8 @@
 //! Each function takes a value as written, with nothing around it, and
 //! returns what it means or says what is wrong with it.
 
-use crate::Color;
 use crate::style::CLEAR;
+use crate::{Color, Shadow};
 
 /// Splits a value into its words. What is in brackets is one word, spaces
 /// and all, so that `1px solid rgb(0, 0, 0)` is three.
@@ -150,6 +150,65 @@ pub(crate) fn size(value: &str, unit: &str, least: u32, most: u32) -> Result<u32
     let number = number.filter(|number| (least..=most).contains(number));
     number.ok_or_else(|| {
         format!("`{value}` is not a size from {least}{unit} to {most}{unit}, in whole {unit}")
+    })
+}
+
+/// A shadow (`box-shadow`): `none`, or how far it falls across and down,
+/// perhaps how soft its edge is and how far it spreads, in pixels, then its
+/// colour. One only, and not inside the part.
+pub(crate) fn shadow(value: &str) -> Result<Shadow, String> {
+    let value = value.trim();
+    if value == "none" {
+        return Ok(Shadow::NONE);
+    }
+    let wrong = |why: &str| {
+        format!(
+            "`{value}` is not a shadow{why}; write `none`, or how far it falls across and down, \
+             perhaps how soft and how far it spreads, in px, then a color, as in \
+             `0 8px 24px rgba(0, 0, 0, 0.28)`"
+        )
+    };
+    let mut depth = 0_i32;
+    let several = value.chars().any(|letter| {
+        depth += i32::from(letter == '(') - i32::from(letter == ')');
+        letter == ',' && depth == 0
+    });
+    if several {
+        return Err(wrong(": a part casts one"));
+    }
+    let length = |word: &str| word.strip_suffix("px").unwrap_or(word).parse::<i32>().ok();
+    let mut words = value.split_whitespace().peekable();
+    let mut lengths = Vec::new();
+    while let Some(found) = words.peek().and_then(|word| length(word)) {
+        lengths.push(found);
+        words.next();
+    }
+    let rest: Vec<&str> = words.collect();
+    let color = color(&rest.join(" ")).map_err(|_| wrong(" with a color last"))?;
+    let within = |found: i32, least: i32, most: i32| (least..=most).contains(&found);
+    let shadow = match lengths[..] {
+        [x, y, ref more @ ..] if more.len() <= 2 => {
+            let blur = more.first().copied().unwrap_or(0);
+            let spread = more.get(1).copied().unwrap_or(0);
+            let fits = within(x, -64, 64)
+                && within(y, -64, 64)
+                && within(blur, 0, 64)
+                && within(spread, -32, 32);
+            fits.then(|| Shadow {
+                x,
+                y,
+                blur: blur.unsigned_abs(),
+                spread,
+                color,
+            })
+        }
+        _ => None,
+    };
+    shadow.ok_or_else(|| {
+        wrong(
+            ": two to four lengths, across and down from -64px to 64px, how soft from 0 to 64px, \
+             how far it spreads from -32px to 32px",
+        )
     })
 }
 
