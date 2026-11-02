@@ -125,9 +125,16 @@ each window where it was.
   first is still used would have the relay feed both, keep what each says
   apart, and answer for the second as for the first. That is a relay of
   its own, several times the work of the three steps, for the second or
-  so they leave the screens still. It is not ruled out: once the three are
-  built and tried, the time a change of compositor stands still is
-  measured, and whether blue and green is worth its cost is decided then.
+  so they leave the screens still. It was not ruled out until the three
+  were built and tried, and the time a change of compositor stands still
+  measured, which the holder now says on its log after each. On a laptop
+  with the session in use, a browser, terminals and the components among
+  it, it stood still for 600 to 850 ms, the picture before on the screens
+  meanwhile and fading into the session after; nothing of the console
+  shows, the seat being the holder's throughout (ADR 63). For that, a
+  relay feeding two compositors is not worth its cost, and blue and green
+  is not taken up. Should the time grow, it is to be shortened where the
+  holder's log says it goes, as it was once already.
 - **Waiting for the panel and the wallpaper to draw anew**, rather than
   for the relay. What they drew is made again by the relay without their
   drawing, and a program that does not draw again for a while would hold

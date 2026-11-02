@@ -988,13 +988,12 @@ what only games and touchpads need last.
       which lets the seat go to take up a new version, showed the console
       then, once each installation; it now takes up the file installed only
       where what is in it is not what it runs.
-- [ ] Blue and green, once the three steps are tried: the time a change of
-      compositor still stands still measured, and whether a compositor
-      caught up beside the one going is worth the relay feeding both (ADR
-      62, "Alternatives"). The holder now says on its log, after each
-      change, how long the session stood still, from the compositor before
-      stepping down, or ending, until the next shows the session: what is
-      left is to read it on real hardware and decide.
+- [x] Blue and green, once the three steps are tried, decided against (ADR
+      62, "Alternatives"): measured on real hardware, a change of
+      compositor stands still for 600 to 850 ms, with the picture before on
+      the screens and a fade after, which a compositor caught up beside the
+      one going, the relay feeding both, would not be worth its cost to
+      shorten. The holder's log says where the time goes, should it grow.
 - [x] Changes of compositor tried with real programs, kept in the tree and
       run by hand (`real.rs`, `docs/TESTING.md`), where the probes so far
       were thrown away: foot, Firefox ESR, a GTK program and a Qt program in
