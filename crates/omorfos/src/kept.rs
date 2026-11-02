@@ -206,9 +206,11 @@ pub(crate) fn key(toplevel: &ToplevelSurface) -> Option<(u32, u32)> {
     number.map(|number| (number, toplevel.xdg_toplevel().id().protocol_id()))
 }
 
-/// The letters that say a kept window's states and standing, and whether it
-/// is the tab its frame shows, in the order written; `-` for none.
-const FLAGS: [char; 8] = ['m', 'f', 'n', 's', 'a', 'k', 'c', 't'];
+/// The letters that say a kept window's states and standing, whether it is
+/// the tab its frame shows, and whether its workspace is the one shown, in
+/// the order written; `-` for none. One written before there was a letter
+/// for the workspace shown is read as its not being.
+const FLAGS: [char; 9] = ['m', 'f', 'n', 's', 'a', 'k', 'c', 't', 'w'];
 
 /// How the relay keeps where `kept` is, it being on the output named
 /// `output`.
@@ -222,6 +224,7 @@ pub(crate) fn place(kept: &Kept, output: &str) -> String {
         kept.standing.sticky,
         kept.focused,
         kept.tab.is_some_and(|tab| tab.shown),
+        kept.shown,
     ];
     let flags: String = FLAGS
         .iter()
@@ -342,6 +345,7 @@ pub(crate) fn read_place(text: &str) -> Option<(Kept, String)> {
         },
         under,
         focused: set('c'),
+        shown: set('w'),
         tab,
         tile,
     };
@@ -461,6 +465,7 @@ mod tests {
             },
             under: 3,
             focused: true,
+            shown: true,
             tab: None,
             tile: None,
         }
@@ -469,12 +474,13 @@ mod tests {
     #[test]
     fn where_a_window_is_is_read_as_it_is_written() {
         let written = place(&kept(), "DP-1");
-        assert_eq!(written, "v2 2 -10 20 640 480 mnac 3 - - DP-1");
+        assert_eq!(written, "v2 2 -10 20 640 480 mnacw 3 - - DP-1");
         assert_eq!(read_place(&written), Some((kept(), "DP-1".to_owned())));
         let plain = Kept {
             states: States::default(),
             standing: Standing::default(),
             focused: false,
+            shown: false,
             ..kept()
         };
         let written = place(&plain, "eDP-1");
@@ -502,7 +508,7 @@ mod tests {
         let written = place(&shared, "DP-1");
         assert_eq!(
             written,
-            "v2 2 -10 20 640 480 mnact 3 12:1 7:3:s:30000:32768:65536:1101 DP-1"
+            "v2 2 -10 20 640 480 mnactw 3 12:1 7:3:s:30000:32768:65536:1101 DP-1"
         );
         assert_eq!(read_place(&written), Some((shared, "DP-1".to_owned())));
         let hidden = Kept {
@@ -523,7 +529,11 @@ mod tests {
     #[test]
     fn a_place_written_before_tabs_and_parts_were_is_read_as_neither() {
         let read = read_place("2 -10 20 640 480 mnac 3 DP 1");
-        assert_eq!(read, Some((kept(), "DP 1".to_owned())));
+        let kept = Kept {
+            shown: false,
+            ..kept()
+        };
+        assert_eq!(read, Some((kept, "DP 1".to_owned())), "nor shown");
     }
 
     #[test]

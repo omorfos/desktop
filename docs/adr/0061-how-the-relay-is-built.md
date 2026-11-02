@@ -438,7 +438,15 @@ and fails while that is other than what 3e still has to come.
   the workspace does not have, sends the window to its desktop alone.
   The place begins `v2`, and one without, written before, is read as a
   window of neither, so that windows kept across the update still come
-  back.
+  back. A window fullscreen alone says too whether the workspace made for
+  it is the one shown: put back fullscreen, its workspace is made again
+  beside the desktop it came from, and is shown only if it was. Where
+  the session is says only which desktop each output shows, and that
+  desktop for one showing a fullscreen window's workspace; read as it
+  was, the desktop a fullscreen window came from, shown as the window
+  came back, gave way to the window's workspace, and with it the
+  keyboard, though the user had gone back to the desktop. A place
+  written before says it was not.
 - **A window's icon is given it again** (3c): what gives it is kept as
   the window's own, each window its own, and made again once everything
   else is, as the icon may have been made after the window.

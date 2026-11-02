@@ -1355,7 +1355,7 @@ fn a_window_imported_from_a_program_not_kept_is_gone_once_the_compositor_is_star
     relayed.step();
     relayed.kept();
     let (mut second, _holder) = relayed.compositor();
-    second.eventually(|session| session.compositor().desktop().frames().count() == 1);
+    second.eventually(|session| session.compositor().desktop().windows().count() == 1);
     second.roundtrip(&mut portal);
     assert!(portal.take_events().contains(&Event::ImportGone));
     assert_eq!(portal.error(), None);
@@ -1660,6 +1660,106 @@ fn windows_that_shared_a_workspace_share_it_again_as_it_was_cut() {
         lines,
         "cut as it was"
     );
+}
+
+#[test]
+fn the_desktop_shown_is_shown_again_though_a_window_kept_is_fullscreen_on_another() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    // A window made fullscreen on the second desktop, and then the first
+    // shown.
+    let second_desktop = omorfos_config::WorkspaceNumber::clamped(2);
+    first
+        .compositor_mut()
+        .perform(&Action::Workspace(second_desktop));
+    first.open(&mut client, "terminal", (200, 100), RED);
+    first.compositor_mut().perform(&Action::Fullscreen);
+    first.roundtrip(&mut client);
+    first.compositor_mut().perform(&Action::Workspace(
+        omorfos_config::WorkspaceNumber::clamped(1),
+    ));
+    first.step();
+    let before = first.compositor().desktop().desk();
+    assert_eq!(
+        (before.shown.clone(), before.made.clone()),
+        (vec![0], vec![None])
+    );
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.compositor().desktop().windows().count() == 1);
+    second.step();
+    let after = second.compositor().desktop().desk();
+    assert_eq!(
+        (after.shown, after.made),
+        (before.shown, before.made),
+        "the first desktop shown, as it was"
+    );
+}
+
+/// What the compositor of `session` says it has, asked over IPC by `peer`.
+fn state_of(session: &mut Session, peer: &mut omorfos_ipc::Client) -> omorfos_ipc::State {
+    let omorfos_ipc::Reply::State(state) = session.ask(peer, &omorfos_ipc::Request::State) else {
+        unreachable!("expected the state");
+    };
+    state
+}
+
+/// Which window has the keyboard, as the compositor of `session` says to
+/// `peer`, by its application.
+fn with_the_keyboard(session: &mut Session, peer: &mut omorfos_ipc::Client) -> Option<String> {
+    let windows = state_of(session, peer).windows.into_iter();
+    windows
+        .filter(|window| window.focused)
+        .map(|window| window.app_id)
+        .next()
+}
+
+#[test]
+fn the_window_with_the_keyboard_has_it_again_though_another_kept_is_fullscreen_elsewhere() {
+    let relayed = Relayed::new();
+    let (mut first, first_holder) = relayed.compositor();
+    // Each window a program's of its own, made again each in its own time.
+    let mut programs: Vec<_> = (0..3)
+        .map(|_| first.adopt(UnixStream::connect(&relayed.path).unwrap()))
+        .collect();
+    first.open(&mut programs[0], "foot", (200, 100), RED);
+    first.open(&mut programs[1], "firefox", (200, 100), BLUE);
+    first.open(&mut programs[2], "ghostty", (200, 100), RED);
+    first.compositor_mut().perform(&Action::Fullscreen);
+    first.roundtrip(&mut programs[2]);
+    first.compositor_mut().perform(&Action::PreviousWorkspace);
+    first.step();
+    // Given the keyboard, as a click on it does.
+    let path = first.listen();
+    let mut peer = omorfos_ipc::Client::connect(&path).unwrap();
+    let state = state_of(&mut first, &mut peer);
+    let firefox = state
+        .windows
+        .iter()
+        .find(|window| window.app_id == "firefox");
+    let window = firefox.map(|window| window.id).unwrap();
+    first.ask(&mut peer, &omorfos_ipc::Request::Activate { window });
+    first.step();
+    let before = with_the_keyboard(&mut first, &mut peer);
+    assert_eq!(before.as_deref(), Some("firefox"));
+    drop(peer);
+
+    drop((first, first_holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.compositor().desktop().windows().count() == 3);
+    second.step();
+    let path = second.listen();
+    let mut peer = omorfos_ipc::Client::connect(&path).unwrap();
+    let after = with_the_keyboard(&mut second, &mut peer);
+    assert_eq!(after.as_deref(), Some("firefox"), "as it was");
+    let desk = second.compositor().desktop().desk();
+    assert_eq!((desk.shown, desk.made), (vec![0], vec![None]));
 }
 
 #[test]

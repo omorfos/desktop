@@ -47,6 +47,10 @@ pub struct Kept {
     pub under: usize,
     /// Whether it is the focused frame of its workspace.
     pub focused: bool,
+    /// Whether its workspace is the one its output shows: for one
+    /// fullscreen, the workspace made for it, rather than the desktop it
+    /// came from.
+    pub shown: bool,
     /// The frame it shares with other windows as a tab, if it does.
     pub tab: Option<Tab>,
     /// The part it fills of a workspace windows share, if it does.
@@ -1694,6 +1698,7 @@ impl Desktop {
             standing: group.standing,
             under: at.group,
             focused: workspace.focused == Some(group.serial),
+            shown: set.active == at.workspace,
             tab: (group.tabs.len() > 1).then_some(Tab {
                 frame: group.serial,
                 at: at.tab,
@@ -1786,7 +1791,15 @@ impl Desktop {
         on.repair();
         self.sets[set].settle();
         if kept.states.fullscreen {
+            // Made again beside the desktop it came from, which may be shown
+            // as it was: its own is shown only if it was.
+            let showing = self.sets[set].workspaces[self.sets[set].active].id;
             self.set_fullscreen(id, true);
+            if !kept.shown {
+                let set = &mut self.sets[set];
+                let showing = set.workspaces.iter().position(|on| on.id == showing);
+                set.active = showing.unwrap_or(set.active);
+            }
         }
         id
     }
@@ -6626,6 +6639,29 @@ mod tests {
         let shown = frame(&back, ids[0]);
         assert!(shown.maximized && shown.standing.above);
         assert_eq!(back.kept(WindowId::from_raw(999)), None);
+    }
+
+    #[test]
+    fn a_window_kept_fullscreen_has_its_workspace_shown_again_only_if_it_was() {
+        let mut desktop = desktop();
+        let other = open(&mut desktop, "other");
+        let full = open(&mut desktop, "full");
+        desktop.set_fullscreen(full, true);
+        let seen = [other, full].map(|window| desktop.kept(window).unwrap());
+        assert!(
+            seen[1].states.fullscreen && seen[1].shown,
+            "its workspace shown"
+        );
+        desktop.previous_workspace();
+        let unseen = [other, full].map(|window| desktop.kept(window).unwrap());
+        assert!(unseen[1].states.fullscreen && !unseen[1].shown);
+        assert!(unseen[0].shown, "the desktop it came from shown");
+
+        // Its workspace is made again either way, and shown as it was.
+        let (back, ids) = kept_back(&unseen);
+        assert_eq!(back.focused(), Some(ids[0]), "the desktop shown");
+        let (back, ids) = kept_back(&seen);
+        assert_eq!(back.focused(), Some(ids[1]), "its workspace shown");
     }
 
     #[test]
