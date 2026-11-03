@@ -1141,13 +1141,20 @@ mod tests {
         program
     }
 
-    /// Binds `wl_shm` as 50, with a pool of it as `pool`.
+    /// Binds `wl_shm`, if it is not yet bound, as the number before `pool`,
+    /// with a pool of it as `pool`.
     fn pooled(program: &mut Program, pool: u32) {
         let memory = Rc::new(OwnedFd::from(File::open("/dev/null").unwrap()));
-        if program.objects.living(50).is_none() {
-            program.bind(9, "wl_shm", 1, 50);
+        let bound = program
+            .objects
+            .each_living()
+            .find(|(_, interface)| interface.name == "wl_shm")
+            .map(|(number, _)| number);
+        let shm = bound.unwrap_or(pool - 1);
+        if bound.is_none() {
+            program.bind(9, "wl_shm", 1, shm);
         }
-        program.send(&sent(50, 0, &words(&[pool, 4096])), &[memory]);
+        program.send(&sent(shm, 0, &words(&[pool, 4096])), &[memory]);
     }
 
     /// Makes `buffer` from `pool`.
@@ -1228,7 +1235,7 @@ mod tests {
         let (sending, _) = replayed(&program.journal, &Some).unwrap();
         let pool = sending
             .iter()
-            .find(|(bytes, _)| wire::word(bytes, 0) == Some(50));
+            .find(|(bytes, _)| wire::word(bytes, 0) == Some(5));
         assert_eq!(pool.map(|(_, fds)| fds.len()), Some(1));
     }
 
@@ -1348,25 +1355,25 @@ mod tests {
         program.send(&sent(4, 0, &words(&[6])), &[]);
         program.send(&sent(3, 2, &words(&[7, 6])), &[]);
         program.send(&sent(7, 1, &words(&[8])), &[]);
-        // An icon, 9, then a buffer for it, 11, as Qt makes them; given the
+        // An icon, 9, then a buffer for it, 12, as Qt makes them; given the
         // window, then all destroyed, the icon first.
         program.send(&sent(5, 1, &words(&[9])), &[]);
         program.send(&sent(9, 1, &text("telegram")), &[]);
-        pooled(&mut program, 10);
-        buffered(&mut program, 10, 11);
-        program.send(&sent(9, 2, &words(&[11, 1])), &[]);
+        pooled(&mut program, 11);
+        buffered(&mut program, 11, 12);
+        program.send(&sent(9, 2, &words(&[12, 1])), &[]);
         program.send(&sent(5, 2, &words(&[8, 9])), &[]);
         program.send(&sent(9, 0, &[]), &[]);
-        program.send(&sent(10, 1, &[]), &[]);
-        program.send(&sent(11, 0, &[]), &[]);
+        program.send(&sent(11, 1, &[]), &[]);
+        program.send(&sent(12, 0, &[]), &[]);
         let (sending, _) = replayed(&program.journal, &Some).unwrap();
         let made = opcodes(&sending);
         let at = |wanted| made.iter().position(|made| *made == wanted).unwrap();
-        assert!(at((10, 0)) < at((9, 2)), "the buffer made first: {made:?}");
+        assert!(at((11, 0)) < at((9, 2)), "the buffer made first: {made:?}");
         assert!(at((9, 2)) < at((5, 2)), "then added, then given: {made:?}");
         // A buffer is not to be destroyed while an icon holds it.
         let gone = opcodes(&program.journal.gone());
-        assert_eq!(gone, [(9, 0), (10, 1), (11, 0)]);
+        assert_eq!(gone, [(9, 0), (11, 1), (12, 0)]);
     }
 
     #[test]
@@ -1400,13 +1407,14 @@ mod tests {
     fn parts_are_stacked_as_they_last_were_and_committed_before_what_they_are_part_of() {
         let mut program = surfaced();
         program.bind(2, "wl_subcompositor", 1, 5);
-        for surface in [6, 7, 8, 12] {
+        for surface in [6, 7, 8] {
             program.send(&sent(3, 0, &words(&[surface])), &[]);
         }
         // 6, 7 and 12 parts of 4, and 8 of 6.
         program.send(&sent(5, 1, &words(&[9, 6, 4])), &[]);
         program.send(&sent(5, 1, &words(&[10, 7, 4])), &[]);
         program.send(&sent(5, 1, &words(&[11, 8, 6])), &[]);
+        program.send(&sent(3, 0, &words(&[12])), &[]);
         program.send(&sent(5, 1, &words(&[13, 12, 4])), &[]);
         // 7 put under 4; 6 put by what is not its sibling, so on top; and
         // 12 no longer a part.
@@ -1511,9 +1519,9 @@ mod tests {
         assert_eq!(program.journal.freed(), [0_u32; 0]);
 
         // Once another is shown, both may be taken again.
-        pooled(&mut program, 9);
-        buffered(&mut program, 9, 8);
-        program.send(&sent(4, 1, &words(&[8, 0, 0])), &[]);
+        pooled(&mut program, 8);
+        buffered(&mut program, 8, 9);
+        program.send(&sent(4, 1, &words(&[9, 0, 0])), &[]);
         program.send(&sent(4, 6, &[]), &[]);
         let mut freed = program.journal.freed();
         freed.sort_unstable();

@@ -2119,34 +2119,34 @@ mod tests {
         ];
         let mut kept = Kept::registered(&globals);
         for (name, interface, version) in globals {
-            kept.bind(name, interface, version, name + 3);
+            kept.bind(name, interface, version, name + 2);
         }
-        // A window, on 7, and a menu on it, on 8, showing a buffer twice
+        // A window, on 6, and a menu on it, on 7, showing a buffer twice
         // and waiting for its next frame.
-        for surface in [7, 8] {
-            kept.send(&message(4, 0, &words(&[surface]))).unwrap();
+        for surface in [6, 7] {
+            kept.send(&message(3, 0, &words(&[surface]))).unwrap();
         }
-        kept.send(&message(5, 2, &words(&[9, 7]))).unwrap();
-        kept.send(&message(9, 1, &words(&[10]))).unwrap();
-        kept.send(&message(5, 1, &words(&[11]))).unwrap();
-        kept.send(&message(5, 2, &words(&[12, 8]))).unwrap();
-        kept.send(&message(12, 2, &words(&[13, 9, 11]))).unwrap();
-        kept.send(&message(6, 1, &words(&[14, 0, 0, 0, 0])))
+        kept.send(&message(4, 2, &words(&[8, 6]))).unwrap();
+        kept.send(&message(8, 1, &words(&[9]))).unwrap();
+        kept.send(&message(4, 1, &words(&[10]))).unwrap();
+        kept.send(&message(4, 2, &words(&[11, 7]))).unwrap();
+        kept.send(&message(11, 2, &words(&[12, 8, 10]))).unwrap();
+        kept.send(&message(5, 1, &words(&[13, 0, 0, 0, 0])))
             .unwrap();
         for _ in 0..2 {
-            kept.send(&message(8, 1, &words(&[14, 0, 0]))).unwrap();
-            kept.send(&message(8, 6, &[])).unwrap();
+            kept.send(&message(7, 1, &words(&[13, 0, 0]))).unwrap();
+            kept.send(&message(7, 6, &[])).unwrap();
         }
-        kept.send(&message(8, 3, &words(&[15]))).unwrap();
+        kept.send(&message(7, 3, &words(&[14]))).unwrap();
 
         kept.restarted(&globals);
         let sync = *kept.keeping.syncs.first().unwrap();
         kept.answer(sync);
         // Told the menu is done, the program destroys it, and its surface.
-        for menu in [13, 12, 8] {
+        for menu in [12, 11, 7] {
             kept.send(&message(menu, 0, &[]));
         }
-        let freed = message(DISPLAY, DELETE_ID, &words(&[8]));
+        let freed = message(DISPLAY, DELETE_ID, &words(&[7]));
         assert_eq!(kept.told(&freed), None, "withheld, as the frame names it");
     }
 
@@ -2161,16 +2161,16 @@ mod tests {
         ];
         let mut kept = Kept::registered(&globals);
         for (name, interface, version) in globals {
-            kept.bind(name, interface, version, name + 3);
+            kept.bind(name, interface, version, name + 2);
         }
-        kept.send(&message(4, 1, &words(&[7, 5]))).unwrap();
-        kept.send(&message(4, 0, &words(&[8]))).unwrap();
-        kept.send(&message(8, 0, &text("text/plain"))).unwrap();
-        kept.send(&message(7, 1, &words(&[8, 9]))).unwrap();
-        kept.send(&message(6, 1, &words(&[9, 5]))).unwrap();
-        kept.send(&message(6, 0, &words(&[10]))).unwrap();
-        kept.send(&message(10, 0, &text("text/plain"))).unwrap();
-        kept.send(&message(9, 0, &words(&[10, 9]))).unwrap();
+        kept.send(&message(3, 1, &words(&[6, 4]))).unwrap();
+        kept.send(&message(3, 0, &words(&[7]))).unwrap();
+        kept.send(&message(7, 0, &text("text/plain"))).unwrap();
+        kept.send(&message(6, 1, &words(&[7, 9]))).unwrap();
+        kept.send(&message(5, 1, &words(&[8, 4]))).unwrap();
+        kept.send(&message(5, 0, &words(&[9]))).unwrap();
+        kept.send(&message(9, 0, &text("text/plain"))).unwrap();
+        kept.send(&message(8, 0, &words(&[9, 9]))).unwrap();
         (kept, globals)
     }
 
@@ -2184,19 +2184,19 @@ mod tests {
         // As the program has the keyboard, the next compositor says there is
         // no selection: kept from the program, which still holds one, and its
         // own set again.
-        assert_eq!(kept.told(&message(7, 5, &words(&[0]))), None);
-        assert_eq!(kept.told(&message(9, 1, &words(&[0]))), None);
+        assert_eq!(kept.told(&message(6, 5, &words(&[0]))), None);
+        assert_eq!(kept.told(&message(8, 1, &words(&[0]))), None);
         let latest = kept.keeping.serials.latest();
         assert_eq!(
             bytes(&kept.keeping.to_compositor),
             [
-                message(7, 1, &words(&[8, latest])),
-                message(9, 0, &words(&[10, latest])),
+                message(6, 1, &words(&[7, latest])),
+                message(8, 0, &words(&[9, latest])),
             ]
         );
         kept.keeping.to_compositor.clear();
         // Once only.
-        assert!(kept.told(&message(7, 5, &words(&[0]))).is_some());
+        assert!(kept.told(&message(6, 5, &words(&[0]))).is_some());
         assert!(kept.keeping.to_compositor.is_empty());
     }
 
@@ -2205,15 +2205,15 @@ mod tests {
         let (mut kept, globals) = selecting();
         kept.restarted(&globals);
         // Something else copied meanwhile, under the next compositor.
-        kept.told(&message(7, 0, &words(&[SERVERS]))).unwrap();
-        let told = kept.told(&message(7, 5, &words(&[SERVERS])));
-        assert_eq!(told, Some(message(7, 5, &words(&[SERVERS]))));
-        kept.told(&message(9, 0, &words(&[SERVERS + 1]))).unwrap();
-        let told = kept.told(&message(9, 1, &words(&[SERVERS + 1])));
-        assert_eq!(told, Some(message(9, 1, &words(&[SERVERS + 1]))));
+        kept.told(&message(6, 0, &words(&[SERVERS]))).unwrap();
+        let told = kept.told(&message(6, 5, &words(&[SERVERS])));
+        assert_eq!(told, Some(message(6, 5, &words(&[SERVERS]))));
+        kept.told(&message(8, 0, &words(&[SERVERS + 1]))).unwrap();
+        let told = kept.told(&message(8, 1, &words(&[SERVERS + 1])));
+        assert_eq!(told, Some(message(8, 1, &words(&[SERVERS + 1]))));
         assert_eq!(
             bytes(&kept.keeping.to_program),
-            [message(8, 2, &[]), message(10, 1, &[])],
+            [message(7, 2, &[]), message(9, 1, &[])],
             "each source told it is the selection no longer"
         );
     }
@@ -2223,15 +2223,15 @@ mod tests {
         let (mut kept, globals) = selecting();
         // The clipboard taken by another; what was selected let go of, and
         // the primary selection given up.
-        kept.told(&message(8, 2, &[])).unwrap();
-        kept.send(&message(10, 1, &[])).unwrap();
-        kept.send(&message(9, 0, &words(&[0, 9]))).unwrap();
+        kept.told(&message(7, 2, &[])).unwrap();
+        kept.send(&message(9, 1, &[])).unwrap();
+        kept.send(&message(8, 0, &words(&[0, 9]))).unwrap();
         kept.restarted(&globals);
         let sync = *kept.keeping.syncs.first().unwrap();
         kept.answer(sync);
         kept.keeping.to_compositor.clear();
-        assert!(kept.told(&message(7, 5, &words(&[0]))).is_some());
-        assert!(kept.told(&message(9, 1, &words(&[0]))).is_some());
+        assert!(kept.told(&message(6, 5, &words(&[0]))).is_some());
+        assert!(kept.told(&message(8, 1, &words(&[0]))).is_some());
         assert!(kept.keeping.to_compositor.is_empty());
     }
 
@@ -2901,14 +2901,14 @@ mod tests {
             (2, "wl_compositor", 6),
             (3, "zxdg_decoration_manager_v1", 1),
         ]);
-        kept.bind(1, "xdg_wm_base", 6, 4);
-        kept.bind(2, "wl_compositor", 6, 5);
-        kept.bind(3, "zxdg_decoration_manager_v1", 1, 6);
-        kept.send(&message(5, 0, &words(&[7]))).unwrap();
-        kept.send(&message(4, 2, &words(&[8, 7]))).unwrap();
-        kept.send(&message(8, 1, &words(&[9]))).unwrap();
-        kept.send(&message(6, 1, &words(&[10, 9]))).unwrap();
-        let server_side = message(10, 0, &words(&[2]));
+        kept.bind(1, "xdg_wm_base", 6, 3);
+        kept.bind(2, "wl_compositor", 6, 4);
+        kept.bind(3, "zxdg_decoration_manager_v1", 1, 5);
+        kept.send(&message(4, 0, &words(&[6]))).unwrap();
+        kept.send(&message(3, 2, &words(&[7, 6]))).unwrap();
+        kept.send(&message(7, 1, &words(&[8]))).unwrap();
+        kept.send(&message(5, 1, &words(&[9, 8]))).unwrap();
+        let server_side = message(9, 0, &words(&[2]));
         assert!(kept.told(&server_side).is_some());
         assert!(kept.told(&server_side).is_some(), "live, with a configure");
         kept.restarted(&[
@@ -2917,7 +2917,7 @@ mod tests {
             (3, "zxdg_decoration_manager_v1", 1),
         ]);
         assert_eq!(kept.told(&server_side), None, "as it was");
-        let client_side = message(10, 0, &words(&[1]));
+        let client_side = message(9, 0, &words(&[1]));
         assert!(kept.told(&client_side).is_some(), "as it was not");
     }
 
@@ -2928,16 +2928,16 @@ mod tests {
             (2, "wl_compositor", 6),
             (3, "zwp_text_input_manager_v3", 1),
         ]);
-        kept.bind(1, "wl_seat", 7, 4);
-        kept.bind(2, "wl_compositor", 6, 5);
-        kept.bind(3, "zwp_text_input_manager_v3", 1, 6);
-        kept.send(&message(5, 0, &words(&[7]))).unwrap();
-        kept.send(&message(6, 1, &words(&[8, 4]))).unwrap();
-        kept.told(&message(8, 0, &words(&[7]))).unwrap();
+        kept.bind(1, "wl_seat", 7, 3);
+        kept.bind(2, "wl_compositor", 6, 4);
+        kept.bind(3, "zwp_text_input_manager_v3", 1, 5);
+        kept.send(&message(4, 0, &words(&[6]))).unwrap();
+        kept.send(&message(5, 1, &words(&[7, 3]))).unwrap();
+        kept.told(&message(7, 0, &words(&[6]))).unwrap();
         for _ in 0..2 {
-            kept.send(&message(8, 7, &[])).unwrap();
+            kept.send(&message(7, 7, &[])).unwrap();
         }
-        let done = |serial| message(8, 5, &words(&[serial]));
+        let done = |serial| message(7, 5, &words(&[serial]));
         assert_eq!(kept.told(&done(2)), Some(done(2)), "counted alike");
         kept.restarted(&[
             (1, "wl_seat", 7),
@@ -2946,17 +2946,17 @@ mod tests {
         ]);
         assert_eq!(
             kept.keeping.to_program.first().map(|(bytes, _)| bytes),
-            Some(&message(8, 1, &words(&[7]))),
+            Some(&message(7, 1, &words(&[6]))),
             "left, with no serial"
         );
-        kept.send(&message(8, 7, &[])).unwrap();
+        kept.send(&message(7, 7, &[])).unwrap();
         assert_eq!(kept.told(&done(1)), Some(done(3)), "as the field counts");
 
         // Destroyed, and another made under its number, which counts anew.
-        kept.send(&message(8, 0, &[])).unwrap();
-        kept.told(&message(1, 1, &words(&[8]))).unwrap();
-        kept.send(&message(6, 1, &words(&[8, 4]))).unwrap();
-        kept.send(&message(8, 7, &[])).unwrap();
+        kept.send(&message(7, 0, &[])).unwrap();
+        kept.told(&message(1, 1, &words(&[7]))).unwrap();
+        kept.send(&message(5, 1, &words(&[7, 3]))).unwrap();
+        kept.send(&message(7, 7, &[])).unwrap();
         assert_eq!(kept.told(&done(1)), Some(done(1)));
     }
 

@@ -243,8 +243,15 @@ impl Objects {
         interface: &'static Interface,
         version: u32,
     ) -> Result<(), Broken> {
+        // A program takes the next number past those it has had, or one it
+        // has had and been told is free, as libwayland's compositors let it:
+        // the relay takes each number below its highest for the next
+        // compositor, so one far past would have it take them all. One
+        // that takes freed numbers again, as libwayland's programs do,
+        // needs none past as many objects as it may have.
+        let next = number >= SERVERS || (number <= self.highest + 1 && number as usize <= MOST);
         let free = match self.known.get(&number) {
-            None => self.known.len() < MOST,
+            None => next && self.known.len() < MOST,
             // The compositor may take one of its own numbers again as soon
             // as the object is gone; a program has to wait to be told.
             Some(object) => object.gone && number >= SERVERS,
@@ -410,6 +417,43 @@ mod tests {
     }
 
     #[test]
+    fn a_program_takes_the_next_number_or_one_it_has_had_and_no_other() {
+        let mut objects = registered();
+        // wl_display.sync, with a number past the next, then the next.
+        let sync = |number| message(1, 0, &words(&[number]));
+        assert!(requested(&mut objects, &sync(4)).is_err(), "past the next");
+        assert!(
+            requested(&mut objects, &sync(0xa1a1_a120)).is_err(),
+            "far past it"
+        );
+        requested(&mut objects, &sync(3)).unwrap();
+        requested(&mut objects, &bind("wl_compositor", 6, 4)).unwrap();
+        // wl_callback.done ends the sync, and its number is freed.
+        sent(&mut objects, &message(3, 0, &words(&[0]))).unwrap();
+        sent(&mut objects, &message(1, 1, &words(&[3]))).unwrap();
+        assert_eq!(requested(&mut objects, &sync(3)), Ok(0), "one it had");
+        assert_eq!(requested(&mut objects, &sync(5)), Ok(0), "the next");
+    }
+
+    #[test]
+    fn a_program_takes_no_number_past_as_many_objects_as_it_may_have() {
+        let mut objects = registered();
+        let compositor = known::global("wl_compositor").unwrap();
+        let most = u32::try_from(MOST).unwrap();
+        for number in 3..=most {
+            objects.make(number, compositor, 1).unwrap();
+        }
+        // One let go of, and its number freed: there is room for another.
+        objects.destroy(most);
+        sent(&mut objects, &message(1, 1, &words(&[most]))).unwrap();
+        assert!(
+            requested(&mut objects, &bind("wl_shm", 1, most + 1)).is_err(),
+            "past them"
+        );
+        assert_eq!(requested(&mut objects, &bind("wl_shm", 1, most)), Ok(0));
+    }
+
+    #[test]
     fn a_programs_number_is_free_again_only_once_the_compositor_says() {
         let mut objects = registered();
         requested(&mut objects, &bind("wl_compositor", 6, 3)).unwrap();
@@ -471,11 +515,14 @@ mod tests {
     fn a_program_may_have_only_so_many_objects() {
         let mut objects = registered();
         let compositor = known::global("wl_compositor").unwrap();
-        for number in 3..=u32::try_from(MOST).unwrap() {
+        let most = u32::try_from(MOST).unwrap();
+        for number in 3..most {
             objects.make(number, compositor, 1).unwrap();
         }
+        // The compositor's count with the program's.
+        objects.make(SERVERS, compositor, 1).unwrap();
         assert_eq!(objects.len(), MOST);
-        assert!(requested(&mut objects, &bind("wl_shm", 1, 1 << 20)).is_err());
+        assert!(requested(&mut objects, &bind("wl_shm", 1, most)).is_err());
     }
 
     #[test]

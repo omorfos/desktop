@@ -314,6 +314,13 @@ and fails while that is other than what 3e still has to come.
   a program may take any number it has been told is free, where a compositor
   takes only the next or one it has freed; the relay takes every number up
   to the program's highest with syncs of its own, which the compositor frees.
+  So a program may itself take only the next number past those it has had,
+  as libwayland's compositors let it, or one it has been told is free, and
+  none past as many objects as it may have, which a program that takes freed
+  numbers again, as libwayland's do, never needs: one that does is let go.
+  A single request with a number far past the next would otherwise have the
+  relay take every number below it at the next compositor, as the fuzzer
+  found, billions of syncs held at once.
 - **What the relay tells a program of its own accord is read into the table
   of its objects** (3a), as what the compositor tells it is, so that a
   number it frees can be taken again.
