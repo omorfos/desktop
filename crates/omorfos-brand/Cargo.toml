@@ -16,7 +16,7 @@ publish.workspace = true
 # what omorfos-icons draws icons with; without its default features it
 # reads no text and no pictures inside a drawing, neither of which these
 # have.
-resvg = { version = "0.48.1", default-features = false }
+resvg = { version = "0.49.0", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"
