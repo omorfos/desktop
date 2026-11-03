@@ -254,12 +254,24 @@ fn a_qt_program_in_a_flatpak_is_kept_through_changes_of_compositor() {
     // Its own data, made for the test inside the program's, which is all
     // of the user's the sandbox lets it have, keeps the user's account out
     // of it: it shows its first screen and no more. It is removed after.
-    let data = Path::new(&std::env::var_os("HOME").unwrap()).join(".var/app/org.telegram.desktop");
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let data = home.join(".var/app/org.telegram.desktop");
     let kept = data.join("kept");
+    // Flatpak finds what the user installed in their data, which the
+    // program is started with another in place of: named as it is.
+    let installations = std::env::var_os("FLATPAK_USER_DIR").map_or_else(
+        || {
+            std::env::var_os("XDG_DATA_HOME")
+                .map_or_else(|| home.join(".local/share"), PathBuf::from)
+                .join("flatpak")
+        },
+        PathBuf::from,
+    );
     let script = format!(
-        "mkdir -p '{kept}' && exec flatpak run --env=QT_QPA_PLATFORM=wayland \
-         org.telegram.desktop -workdir '{kept}/'",
-        kept = kept.display()
+        "mkdir -p '{kept}' && FLATPAK_USER_DIR='{installations}' exec flatpak run \
+         --env=QT_QPA_PLATFORM=wayland org.telegram.desktop -workdir '{kept}/'",
+        kept = kept.display(),
+        installations = installations.display()
     );
     let installed = Command::new("flatpak")
         .args(["info", "org.telegram.desktop"])
