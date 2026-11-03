@@ -178,7 +178,7 @@ dependencies = [
  "futures-lite",
  "parking",
  "polling",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "slab",
  "windows-sys 0.61.2",
 ]
@@ -209,7 +209,7 @@ dependencies = [
  "cfg-if",
  "event-listener",
  "futures-lite",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -235,7 +235,7 @@ dependencies = [
  "cfg-if",
  "futures-core",
  "futures-io",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "signal-hook-registry",
  "slab",
  "windows-sys 0.61.2",
@@ -392,7 +392,7 @@ checksum = "43b32313e937c8721c9d17ee9bf60699a6402b4b7c2cb6ac1bee0ffcaa4b4e5e"
 dependencies = [
  "bitflags 2.13.2",
  "polling",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tracing",
 ]
 
@@ -711,7 +711,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51a91c9b32ac4e8105dec255e849e0d66e27d7c34d184364fb93e469db08f690"
 dependencies = [
  "drm-sys",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -1024,7 +1024,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-link",
 ]
 
@@ -1431,7 +1431,7 @@ dependencies = [
  "libc",
  "libspa-sys",
  "nom 8.0.0",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "system-deps",
 ]
 
@@ -1864,7 +1864,7 @@ dependencies = [
  "omorfos-wallpaper",
  "pipewire",
  "png",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde",
  "serde_json",
  "smithay",
@@ -1887,7 +1887,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-shell",
  "omorfos-ui",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -1940,7 +1940,7 @@ name = "omorfos-hold"
 version = "0.1.0"
 dependencies = [
  "omorfos-ipc",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "smithay",
  "tempfile",
 ]
@@ -1960,7 +1960,7 @@ dependencies = [
 name = "omorfos-ipc"
 version = "0.1.0"
 dependencies = [
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde",
  "serde_json",
  "tempfile",
@@ -1983,7 +1983,7 @@ dependencies = [
  "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde_json",
  "tempfile",
  "wayland-client",
@@ -2001,7 +2001,7 @@ dependencies = [
  "omorfos-shell",
  "omorfos-ui",
  "omorfos-wallpaper",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -2016,7 +2016,7 @@ dependencies = [
  "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -2032,7 +2032,7 @@ dependencies = [
  "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde_json",
  "tempfile",
  "wayland-client",
@@ -2066,7 +2066,7 @@ version = "0.1.0"
 dependencies = [
  "inotify",
  "pipewire",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
 ]
 
@@ -2075,7 +2075,7 @@ name = "omorfos-relay"
 version = "0.1.0"
 dependencies = [
  "omorfos-ipc",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-backend",
  "wayland-protocols",
@@ -2094,7 +2094,7 @@ dependencies = [
  "omorfos-picker",
  "omorfos-shell",
  "png",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -2107,7 +2107,7 @@ dependencies = [
  "omorfos-entries",
  "omorfos-ipc",
  "omorfos-journal",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde_json",
  "tempfile",
  "zbus",
@@ -2119,7 +2119,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "omorfos-ui",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-backend",
  "wayland-client",
  "xkbcommon",
@@ -2149,7 +2149,7 @@ dependencies = [
  "omorfos-shell",
  "omorfos-ui",
  "png",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -2264,7 +2264,7 @@ dependencies = [
  "libspa",
  "libspa-sys",
  "pipewire-sys",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -2331,7 +2331,7 @@ dependencies = [
  "concurrent-queue",
  "hermit-abi 0.5.3",
  "pin-project-lite",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-sys 0.61.2",
 ]
 
@@ -2634,9 +2634,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
@@ -2939,7 +2939,7 @@ dependencies = [
  "pkg-config",
  "profiling",
  "rand",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "scopeguard",
  "sha2",
  "smallvec",
@@ -3088,7 +3088,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.3",
  "once_cell",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-sys 0.61.2",
 ]
 
@@ -3456,7 +3456,7 @@ dependencies = [
  "cc",
  "downcast-rs",
  "log",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "scoped-tls",
  "smallvec",
  "wayland-sys",
@@ -3469,7 +3469,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3c36a0f861ad76d0901f2800b46321410d9f73f2ea88aac0650d86c32688073"
 dependencies = [
  "bitflags 2.13.2",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-backend",
  "wayland-scanner",
 ]
@@ -3491,7 +3491,7 @@ version = "0.31.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a52d18780be9b1314328a3de5f930b73d2200112e3849ca6cb11822793fb34d"
 dependencies = [
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-client",
  "xcursor",
 ]
@@ -3579,7 +3579,7 @@ checksum = "0dde9c29be0f723a573977de51ee455bf3dfa03652730a74f9dd3b337e374d75"
 dependencies = [
  "bitflags 2.13.2",
  "downcast-rs",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-backend",
  "wayland-scanner",
 ]
@@ -3876,7 +3876,7 @@ dependencies = [
  "libc",
  "libloading",
  "once_cell",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "x11rb-protocol",
 ]
 
@@ -3906,7 +3906,7 @@ dependencies = [
  "omorfos-shell",
  "omorfos-ui",
  "pipewire",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
@@ -3979,7 +3979,7 @@ dependencies = [
  "hex",
  "libc",
  "ordered-stream",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde",
  "serde_repr",
  "tracing",
