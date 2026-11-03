@@ -53,7 +53,13 @@ jobs:
         env:
           # Longer at night than on a change.
           SECONDS_TO_RUN: ${{ github.event_name == 'schedule' && '3600' || '120' }}
-        run: cargo "+$NIGHTLY" fuzz run messages -- -max_total_time="$SECONDS_TO_RUN" -rss_limit_mb=2048
+        # For the toolchain's own target: cargo-fuzz otherwise builds for
+        # the one it was itself built for, and the one installed is built
+        # for musl, whose static libc the sanitizer cannot work with.
+        run: |
+          host=$(rustc "+$NIGHTLY" -vV | sed -n 's/^host: //p')
+          cargo "+$NIGHTLY" fuzz run --target "$host" messages -- \
+            -max_total_time="$SECONDS_TO_RUN" -rss_limit_mb=2048
       - name: Keep what made it fail
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
