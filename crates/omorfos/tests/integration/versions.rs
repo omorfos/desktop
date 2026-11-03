@@ -105,18 +105,23 @@ fn running(path: &Path) -> Vec<(u32, u32)> {
 }
 
 /// A stand-in for a version of the compositor that starts: run, as it is
-/// to be checked, it leaves a mark beside itself, and ends.
-const STARTS: &str = "#!/bin/sh\nprintf x >> \"$0.checked\"\n";
+/// to be checked, it leaves its process's number beside itself, and ends,
+/// as a program may, a moment later and as another.
+const STARTS: &str = "#!/bin/sh\nprintf '%s\\n' $$ >> \"$0.checked\"\nexec sleep 0.1\n";
 
 /// Steps `session` until the compositor has run its new version at `own`,
-/// a stand-in that [`STARTS`], to check it, and seen it end.
+/// a stand-in that [`STARTS`], to check it, and collected it once it
+/// ended: a process that has ended is in `/proc` until then, but with
+/// nothing in its command line from as it begins to end.
 fn checked(session: &mut Session, own: &Path) {
     let mark = own.with_extension("checked");
+    let collected = |number: &str| !Path::new("/proc").join(number).exists();
     // Not as `Session::eventually` waits, which moves the clock on: what is
     // tested here counts how long the session has been quiet.
     for _ in 0..5000 {
         session.step();
-        if mark.exists() && running(own).is_empty() {
+        let checks = fs::read_to_string(&mark).unwrap_or_default();
+        if !checks.is_empty() && checks.lines().all(collected) {
             session.step();
             return;
         }
