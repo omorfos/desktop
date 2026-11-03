@@ -143,7 +143,12 @@ goes.
   the theme a component's surface is, by the name it gives its layer, and
   so what blur and shadow the theme gives it. The component draws its
   tint and nothing else; it cannot see what is behind it and is not given
-  it.
+  it. So the shadow falls round the whole surface, and a component that
+  shows several things apart, as the notifications do, puts each on a
+  surface of its own.
+- Surfaces on one layer stand at one height: their shadows are all drawn
+  under all of them, so that the shadow of one notification falls under
+  the next and not on it.
 - Other programs ask with `ext-background-effect-v1`, and are given blur
   of the same kind where they say. They are never given shadows wider
   than their own surface, or the picture.

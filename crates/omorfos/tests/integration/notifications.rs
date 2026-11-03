@@ -29,7 +29,7 @@ use zbus::blocking::connection::Builder;
 use zbus::zvariant::Value;
 
 use crate::common::{HEIGHT, Session, WIDTH, half_way};
-use crate::windows::BACKGROUND;
+use crate::windows::{BACKGROUND, shaded};
 
 const LEFT: u32 = 0x110;
 const NAME: &str = "org.freedesktop.Notifications";
@@ -202,10 +202,10 @@ fn a_notification_is_shown_in_the_corner_of_the_screen_and_goes_when_its_time_is
 
     assert_eq!(notify(&peer, "Hello", 2000, HashMap::new()), 1);
     until(&mut session, &mut notifier, Duration::ZERO, showing);
-    // In the corner, with room around it, and nowhere else.
+    // In the corner, with room around it, in its shadow, and nowhere else.
     let picture = session.draw();
-    assert_eq!(picture.at(WIDTH - 4, 30), BACKGROUND, "the margin");
-    assert_eq!(picture.at(WIDTH - 20, 4), BACKGROUND);
+    assert!(shaded(picture.at(WIDTH - 4, 30), BACKGROUND), "the margin");
+    assert!(shaded(picture.at(WIDTH - 20, 4), BACKGROUND));
     assert_eq!(picture.at(100, 50), BACKGROUND);
     assert_eq!(picture.at(WIDTH / 2, HEIGHT - 20), BACKGROUND);
     assert_eq!(notifier.deadline(), Some(Duration::from_secs(2)));
@@ -378,6 +378,148 @@ fn notifications_stack_and_the_oldest_makes_room_when_there_are_too_many() {
     until(&mut session, &mut notifier, Duration::ZERO, |session| {
         session.draw().at(INSIDE.0, HEIGHT - 20) == surface()
     });
+}
+
+/// Whether two notifications are showing, one under the other.
+fn both(session: &mut Session) -> bool {
+    let picture = session.draw();
+    picture.at(INSIDE.0, INSIDE.1) == surface() && picture.at(INSIDE.0, 130) == surface()
+}
+
+/// How far down the screen the first notification ends, where its edge
+/// below is, looking down from `INSIDE`.
+fn bottom(session: &mut Session) -> i32 {
+    let picture = session.draw();
+    let below = (INSIDE.1..HEIGHT).find(|y| picture.at(INSIDE.0, *y) != surface());
+    below.unwrap()
+}
+
+#[test]
+fn each_notification_casts_a_shadow_of_its_own_and_goes_on_its_own() {
+    // A hard ring of a shadow, so that where it falls is plain.
+    let theme = "* { transition: none; }\nnotification { box-shadow: 0 0 0 2px #000000; }\n";
+    // Darker than the background in each colour. How dark the software
+    // renderer draws it differs from edge to edge.
+    let dark = |pixel: u32| {
+        let channel = |of: u32, shift: u32| (of >> shift) & 0xff;
+        [16, 8, 0]
+            .iter()
+            .all(|shift| channel(pixel, *shift) < channel(BACKGROUND, *shift))
+    };
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    notify(&peer, "First", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+    notify(&peer, "Second", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, both);
+
+    // Round each, and not over the room between them or beside them.
+    let bottom = bottom(&mut session);
+    let picture = session.draw();
+    assert!(
+        dark(picture.at(INSIDE.0, bottom + 2)),
+        "under the one above"
+    );
+    assert_eq!(
+        picture.at(INSIDE.0, bottom + 8),
+        BACKGROUND,
+        "between the two"
+    );
+    assert!(dark(picture.at(WIDTH - 7, 30)), "beside it");
+    assert_eq!(
+        picture.at(WIDTH - 4, 30),
+        BACKGROUND,
+        "between it and the edge"
+    );
+    // Under the room between them, the one below.
+    let lower = bottom + 16 + 1 + 4;
+    assert_eq!(
+        picture.at(INSIDE.0 - 300, lower),
+        surface(),
+        "the one below"
+    );
+
+    // The one above dismissed, the other takes its place.
+    let (x, y) = (f64::from(INSIDE.0), f64::from(INSIDE.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        let picture = session.draw();
+        (picture.at(INSIDE.0, INSIDE.1), picture.at(INSIDE.0, lower)) == (surface(), BACKGROUND)
+    });
+}
+
+#[test]
+fn one_notification_casts_no_shadow_on_another() {
+    // They stand at one height, so the shadow of the one above falls under
+    // the one below, and not on it.
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("theme.css", "* { transition: none; }\n")]);
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    notify(&peer, "First", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+    notify(&peer, "Second", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, both);
+
+    let bottom = bottom(&mut session);
+    let picture = session.draw();
+    let between = picture.at(INSIDE.0, bottom + 8);
+    assert!(
+        shaded(between, BACKGROUND) && between != BACKGROUND,
+        "{between:#x}"
+    );
+    let lower = bottom + 16 + 1 + 1;
+    assert_eq!(picture.at(INSIDE.0, lower), surface(), "the one below");
+}
+
+#[test]
+fn those_showing_make_room_for_a_new_notification_once_it_is_drawn() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    notify(&peer, "First", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+
+    // Never is the first moved down with nothing yet where it was.
+    notify(&peer, "Second", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        let picture = session.draw();
+        let (top, below) = (picture.at(INSIDE.0, INSIDE.1), picture.at(INSIDE.0, 130));
+        assert!(
+            top == surface() || below != surface(),
+            "the room was left bare"
+        );
+        top == surface() && below == surface()
+    });
+}
+
+#[test]
+fn notifications_stay_together_on_the_screen_the_first_was_put_on() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    session.add_output((800, 600));
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    notify(&peer, "Here", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+
+    // With the pointer on the other screen, the next goes with the first.
+    let (x, y) = (f64::from(WIDTH + 400), 300.0);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    notify(&peer, "And here", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, both);
+    assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), surface());
+    assert_eq!(session.draw_on(1).at(800 - 20, 50), BACKGROUND);
 }
 
 #[test]

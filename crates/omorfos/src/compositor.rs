@@ -3448,7 +3448,10 @@ impl Compositor {
     }
 
     /// Adds the layer-shell surfaces of one layer that stand as asked,
-    /// topmost first.
+    /// topmost first, and under them all the shadows they cast: those on
+    /// one layer stand at one height, so that the shadow of one falls on
+    /// what is under the layer and not on another, as the shadow of one
+    /// notification does not on the next.
     fn layer_elements<R>(
         &self,
         renderer: &mut R,
@@ -3470,6 +3473,7 @@ impl Compositor {
             let sealed = sealed.as_ref() == Some(surface.wl_surface());
             self.standing(index, layer, area) == standing && !sealed
         };
+        let mut shadows = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             // A panel is placed within its own output.
             let at = layer_origin(&layers, surface) + view.origin;
@@ -3491,12 +3495,13 @@ impl Compositor {
                 self.animation.note(&known.surface, noting.done());
             }
             elements.extend(surfaces.into_iter().map(Element::Surface));
-            // Under it, the shadow its part casts.
+            // The shadow its part casts.
             let shadow = known.and_then(|known| Some(known.share).zip(known.shadow.as_ref()));
             if let Some((share, shadow)) = shadow {
-                shadow.elements(renderer, share, view, elements);
+                shadow.elements(renderer, share, view, &mut shadows);
             }
         }
+        elements.append(&mut shadows);
     }
 
     /// Tells what is on `output` that a frame was shown there, so that it

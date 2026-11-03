@@ -1037,10 +1037,13 @@ the first than on the last.
       place of the accent; the tests that take the space beside a window
       or a menu to be bare made to say what they mean: it is the
       background, or the background in a shadow.
-- [ ] Each notification a panel of its own, so that each casts a shadow
-      round itself and comes and goes on its own: they are one panel
-      now, and a shadow is cast round all of them at once, so the
-      built-in theme gives `notification` none.
+- [x] Each notification a panel of its own, so that each casts a shadow
+      round itself and comes and goes on its own, put in its place by
+      the margins of its layer, all of them on the screen the first was
+      put on; those showing make room for a new one only once it is
+      drawn; the shadows of panels on one layer are drawn under all of
+      them, so that one does not fall on the next; and the built-in
+      theme gives `notification` the second level's.
 - [ ] A shadow under the questions `omorfos-ask` puts, as under a
       dialog: its panel is larger than the question, to shake it, and is
       named after no part.
@@ -1083,7 +1086,8 @@ the first than on the last.
 - [ ] Movement: windows that open and close with a slight change of size
       as well as of opacity, workspaces that slide, a window that goes to
       the dock when minimized, a notification that comes in and goes
-      beside others that stay; the panels and the titlebar sliding in
+      beside others that stay, and those below sliding up into the room
+      one leaves, where now they jump; the panels and the titlebar sliding in
       from the edge they are brought back at on a fullscreen workspace,
       and out again; and a window that changes size, by its edge, by the
       line between parts, by being tiled, maximized or given the room of

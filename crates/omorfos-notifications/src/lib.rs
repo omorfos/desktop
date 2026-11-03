@@ -21,7 +21,7 @@ use std::path::Path;
 
 pub use bus::{Bus, Event};
 pub use client::Notifier;
-pub use note::{Note, Picture, Reason, Stack};
+pub use note::{Key, Note, Picture, Place, Reason, Stack};
 use omorfos_icons::Icons;
 
 /// Why the notifications could not go on.

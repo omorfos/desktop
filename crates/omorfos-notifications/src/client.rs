@@ -15,12 +15,13 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Store, Watcher};
 use omorfos_icons::Icons;
 use omorfos_ipc::{Client as Ipc, Reply, Request, Steady};
-use omorfos_shell::{picture, whole};
+use omorfos_shell::picture;
 use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -29,7 +30,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{Bus, Event, Failure, Reason, Stack};
+use crate::{Bus, Event, Failure, Key, Reason, Stack};
 
 /// The left and right buttons of a mouse, as Linux numbers them.
 const LEFT_BUTTON: u32 = 0x110;
@@ -251,14 +252,15 @@ struct Shell {
     viewporter: Option<wp_viewporter::WpViewporter>,
     scales: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     pointer: Option<wl_pointer::WlPointer>,
-    /// The surface the notifications are on, while there are any.
-    face: Option<Face>,
+    /// The surfaces the notifications are on, one each, from the top.
+    faces: Vec<Face>,
+    /// The screen they are on, once the compositor has said, until none
+    /// is left: the one the first was put on, so that they stay together.
+    screen: Option<wl_output::WlOutput>,
     stack: Stack,
     store: Store,
     text: Text,
     icons: Icons,
-    /// Where on the surface the pointer is.
-    over: (i32, i32),
     /// The notifications that were clicked and whose senders have yet to
     /// be told.
     clicked: Vec<u32>,
@@ -271,14 +273,19 @@ struct Shell {
     stale: bool,
 }
 
-/// The surface the notifications are on.
+/// The surface a notification is on.
 struct Face {
+    /// Which notification it is.
+    key: Key,
     surface: wl_surface::WlSurface,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
     viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How large the compositor has been asked to make it.
-    asked: (u32, u32),
+    size: (u32, u32),
+    /// How far from the top and the right of the screen it has been asked
+    /// to put it.
+    margin: (u32, u32),
     /// Whether the compositor has agreed to that size.
     ready: bool,
     /// How many pixels the screen has to a unit.
@@ -298,6 +305,14 @@ impl Face {
     }
 }
 
+/// What the compositor offers that the notifications are drawn with.
+type Globals<'a> = (
+    &'a wl_compositor::WlCompositor,
+    &'a zwlr_layer_shell_v1::ZwlrLayerShellV1,
+    &'a wp_viewporter::WpViewporter,
+    &'a wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+);
+
 impl Shell {
     fn new(store: Store, icons: Icons) -> Self {
         let usual = store.current().general.notifications.timeout.get();
@@ -308,12 +323,12 @@ impl Shell {
             viewporter: None,
             scales: None,
             pointer: None,
-            face: None,
+            faces: Vec::new(),
+            screen: None,
             stack: Stack::new(usual),
             store,
             text: Text::new(),
             icons,
-            over: (-1, -1),
             clicked: Vec::new(),
             gone: Vec::new(),
             motion: Motion::new(),
@@ -336,92 +351,126 @@ impl Shell {
         }
     }
 
-    /// Takes in where the pointer now is.
-    fn moved(&mut self, x: f64, y: f64) {
-        self.over = (whole(x), whole(y));
-        let theme = &self.store.current().theme;
-        self.stale |= self.stack.point(self.over.0, self.over.1, theme);
-    }
-
-    /// Puts the notifications on the screen, takes the surface away when
-    /// there are none, and draws them if they no longer show what they
-    /// should.
+    /// Puts each notification on the screen on a surface of its own, takes
+    /// away the surfaces of those that have gone, and draws them if they no
+    /// longer show what they should.
     fn show(&mut self, handle: &QueueHandle<Self>, now: Duration) -> io::Result<()> {
         if !mem::take(&mut self.stale) {
             return Ok(());
         }
-        if self.stack.is_empty() {
-            self.face.take().into_iter().for_each(Face::close);
-            return Ok(());
-        }
+        let theme = &self.store.current().theme;
+        self.stack.fit(theme, &mut self.text);
+        let layout = self.stack.layout(theme);
+        let mut faces = mem::take(&mut self.faces);
+        faces
+            .extract_if(.., |face| layout.iter().all(|place| place.key != face.key))
+            .for_each(Face::close);
+        // With none left, the next is put where the compositor chooses.
+        self.screen.take_if(|_| faces.is_empty());
         let globals = self.compositor.as_ref().zip(self.shm.as_ref());
         let globals = globals.zip(self.layers.as_ref());
         let globals = globals.zip(self.viewporter.as_ref().zip(self.scales.as_ref()));
         // Until the compositor has offered everything, there is nothing to
         // draw with. Each offer makes this worth trying again.
         let Some((((compositor, shm), layers), (viewporter, scales))) = globals else {
+            self.faces = faces;
             return Ok(());
         };
-        let theme = &self.store.current().theme;
-        self.stack.fit(theme, &mut self.text);
-        let size = self.stack.size(theme);
-        let face = self.face.take().unwrap_or_else(|| {
-            let surface = compositor.create_surface(handle, ());
-            // In the top right-hand corner of the screen the compositor
-            // chooses, which is the one the pointer is on, above
-            // everything, and never with the keyboard.
-            let layer = layers.get_layer_surface(
-                &surface,
-                None,
-                zwlr_layer_shell_v1::Layer::Overlay,
-                "notification".to_owned(),
-                handle,
-                (),
+        let globals = (compositor, layers, viewporter, scales);
+        let output = self.screen.clone();
+        for place in &layout {
+            let found = faces.iter().position(|face| face.key == place.key);
+            let face = found.map_or_else(
+                || Self::face(place.key, globals, output.as_ref(), handle),
+                |found| faces.remove(found),
             );
-            let corner = zwlr_layer_surface_v1::Anchor::Top | zwlr_layer_surface_v1::Anchor::Right;
-            layer.set_anchor(corner);
-            let viewport = viewporter.get_viewport(&surface, handle, ());
-            let fraction = scales.get_fractional_scale(&surface, handle, ());
-            Face {
-                surface,
-                layer,
-                viewport,
-                fraction,
-                asked: (0, 0),
-                ready: false,
-                scale: Scale::ONE,
-                buffer: None,
-            }
-        });
-        let face = self.face.insert(face);
-        if face.asked != size {
-            // The compositor answers this by agreeing to the size, and
-            // only then is there a surface of that size to draw on.
-            face.layer.set_size(size.0, size.1);
-            face.surface.commit();
-            face.asked = size;
-            face.ready = false;
+            self.faces.push(face);
         }
-        if !face.ready {
-            return Ok(());
+        // Those showing move to make room for one that cannot be drawn yet
+        // only once it can, so that the room is not left bare meanwhile.
+        let mut faces = layout.iter().zip(&self.faces);
+        let waiting = faces.any(|(place, face)| !face.ready || face.size != place.size);
+        for (place, face) in layout.iter().zip(&mut self.faces) {
+            let margin = (place.top, place.right);
+            // The compositor answers a new size by agreeing to it, and only
+            // then is there a surface of that size to draw on.
+            let resized = face.size != place.size;
+            face.ready &= !resized;
+            let moved = face.margin != margin && (!face.ready || !waiting);
+            if resized {
+                face.layer.set_size(place.size.0, place.size.1);
+                face.size = place.size;
+            }
+            if moved {
+                let (top, right) = (margin.0.cast_signed(), margin.1.cast_signed());
+                face.layer.set_margin(top, right, 0, 0);
+                face.margin = margin;
+            }
+            if resized || moved {
+                face.surface.commit();
+            }
         }
         let (text, icons) = (&mut self.text, &mut self.icons);
-        self.motion.begin(now);
-        let canvas = self
-            .stack
-            .paint(text, theme, face.scale, icons, &mut self.motion);
-        self.motion.end();
-        picture(shm, &canvas, handle).map(|buffer| {
-            face.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers this much.
-            face.viewport
-                .set_destination(size.0.cast_signed(), size.1.cast_signed());
-            face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            face.surface.commit();
-            // The picture before this one is let go of when the compositor
-            // says it has finished with it.
-            face.buffer = Some(buffer);
-        })
+        let (stack, motion) = (&self.stack, &mut self.motion);
+        motion.begin(now);
+        let mut ready = self.faces.iter_mut().filter(|face| face.ready);
+        let drawn = ready.try_for_each(|face| {
+            let canvas = stack.paint(face.key, text, theme, face.scale, icons, motion);
+            canvas.map_or(Ok(()), |canvas| {
+                let size = face.size;
+                picture(shm, &canvas, handle).map(|buffer| {
+                    face.surface.attach(Some(&buffer), 0, 0);
+                    // However many pixels the picture has, it covers this
+                    // much.
+                    face.viewport
+                        .set_destination(size.0.cast_signed(), size.1.cast_signed());
+                    face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                    face.surface.commit();
+                    // The picture before this one is let go of when the
+                    // compositor says it has finished with it.
+                    face.buffer = Some(buffer);
+                })
+            })
+        });
+        motion.end();
+        drawn
+    }
+
+    /// A surface for the notification `key` is of: in the top right-hand
+    /// corner of `output`, or of the screen the compositor chooses, which
+    /// is the one the pointer is on, above everything, and never with the
+    /// keyboard.
+    fn face(
+        key: Key,
+        (compositor, layers, viewporter, scales): Globals<'_>,
+        output: Option<&wl_output::WlOutput>,
+        handle: &QueueHandle<Self>,
+    ) -> Face {
+        let surface = compositor.create_surface(handle, ());
+        let layer = layers.get_layer_surface(
+            &surface,
+            output,
+            zwlr_layer_shell_v1::Layer::Overlay,
+            "notification".to_owned(),
+            handle,
+            (),
+        );
+        let corner = zwlr_layer_surface_v1::Anchor::Top | zwlr_layer_surface_v1::Anchor::Right;
+        layer.set_anchor(corner);
+        let viewport = viewporter.get_viewport(&surface, handle, ());
+        let fraction = scales.get_fractional_scale(&surface, handle, ());
+        Face {
+            key,
+            surface,
+            layer,
+            viewport,
+            fraction,
+            size: (0, 0),
+            margin: (0, 0),
+            ready: false,
+            scale: Scale::ONE,
+            buffer: None,
+        }
     }
 }
 
@@ -435,7 +484,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
         handle: &QueueHandle<Self>,
     ) {
         // A registry also says when something goes. If that is the screen
-        // the notifications are on, the compositor closes their surface,
+        // the notifications are on, the compositor closes their surfaces,
         // which is heard of there.
         if let wl_registry::Event::Global {
             name,
@@ -457,6 +506,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
                 "wl_seat" => {
                     let _: wl_seat::WlSeat = registry.bind(name, version.min(5), handle, ());
                 }
+                // Only so as to be told which screen a surface is on.
+                "wl_output" => {
+                    let _: wl_output::WlOutput = registry.bind(name, 1, handle, ());
+                }
                 _ => {}
             }
         }
@@ -475,32 +528,61 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for Shell {
         shell.stale = true;
         if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
             layer.ack_configure(serial);
-            shell.face.iter_mut().for_each(|face| face.ready = true);
+            let faces = shell.faces.iter_mut();
+            faces
+                .filter(|face| face.layer == *layer)
+                .for_each(|face| face.ready = true);
             return;
         }
         // The only other thing it says is that the compositor closed it,
-        // as when its screen goes. What is showing is put up again on
-        // another.
-        shell.face.take().into_iter().for_each(Face::close);
+        // as when its screen goes, which is the screen all of them are on.
+        // What is showing is put up again together on another.
+        mem::take(&mut shell.faces)
+            .into_iter()
+            .for_each(Face::close);
+        shell.screen = None;
+    }
+}
+
+impl Dispatch<wl_surface::WlSurface, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_surface::WlSurface,
+        event: wl_surface::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // A surface is told which screen it is on, and which it is no
+        // longer on, which is only ever as it goes. The first to be told
+        // says where the rest go.
+        if let wl_surface::Event::Enter { output } = event
+            && shell.screen.is_none()
+        {
+            shell.screen = Some(output);
+        }
     }
 }
 
 impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
     fn event(
         shell: &mut Self,
-        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        fraction: &wp_fractional_scale_v1::WpFractionalScaleV1,
         event: wp_fractional_scale_v1::Event,
         (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // The scale comes in parts of 120 to one. Told the one they
-        // already have, the notifications have nothing to do over.
+        // The scale comes in parts of 120 to one. Told the one it already
+        // has, a notification has nothing to do over.
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
             && let scale = Scale::new(f64::from(scale) / 120.0)
-            && shell.face.iter().any(|face| face.scale != scale)
+            && let Some(face) = shell
+                .faces
+                .iter_mut()
+                .find(|face| face.fraction == *fraction && face.scale != scale)
         {
-            shell.face.iter_mut().for_each(|face| face.scale = scale);
+            face.scale = scale;
             shell.stale = true;
         }
     }
@@ -536,17 +618,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter {
-                surface_x,
-                surface_y,
-                ..
+            wl_pointer::Event::Enter { surface, .. } => {
+                let mut faces = shell.faces.iter();
+                let on = faces.find(|face| face.surface == surface);
+                shell.stale |= shell.stack.point(on.map(|face| face.key));
             }
-            | wl_pointer::Event::Motion {
-                surface_x,
-                surface_y,
-                ..
-            } => shell.moved(surface_x, surface_y),
-            wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.leave(),
+            wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None),
             wl_pointer::Event::Button {
                 button: button @ (LEFT_BUTTON | RIGHT_BUTTON),
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
@@ -555,8 +632,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 // Either button dismisses the notification. The left one
                 // is also the click its sender may be waiting to hear of;
                 // the right one is a way to be rid of it without that.
-                let theme = &shell.store.current().theme;
-                let dismissed = shell.stack.click(shell.over.0, shell.over.1, theme);
+                let dismissed = shell.stack.click();
                 let acted = dismissed.filter(|(_, acts)| *acts && button == LEFT_BUTTON);
                 shell.clicked.extend(acted.map(|(id, _)| id));
                 let gone = dismissed.map(|(id, _)| (id, Reason::Dismissed));
@@ -586,7 +662,7 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
 delegate_noop!(Shell: wl_compositor::WlCompositor);
 delegate_noop!(Shell: ignore wl_shm::WlShm);
 delegate_noop!(Shell: wl_shm_pool::WlShmPool);
-delegate_noop!(Shell: ignore wl_surface::WlSurface);
+delegate_noop!(Shell: ignore wl_output::WlOutput);
 delegate_noop!(Shell: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);

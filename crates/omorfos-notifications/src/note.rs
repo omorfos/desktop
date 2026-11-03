@@ -24,10 +24,6 @@ const PROBLEM_LINES: usize = 6;
 /// What a notification about something that is wrong is headed.
 const OURS: &str = "omorfos";
 
-/// What sets the notifications about what is wrong apart from the numbers
-/// programs give theirs, which are no larger than thirty-two bits.
-const APART: u64 = 1 << 32;
-
 /// The most of a title or of a line of body that is kept, in characters.
 /// Only as much as fits is drawn; this keeps what is not drawn from being
 /// carried about.
@@ -88,6 +84,28 @@ pub struct Note {
     pub tag: Option<String>,
 }
 
+/// What tells a notification that is showing from every other. One that
+/// takes the place of another, as a program's next word of the volume
+/// does, keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Key(u64);
+
+/// Where a notification is put: its box, as far from the top and from the
+/// right of the screen as the room kept round it and above it puts it, in
+/// units of layout. Each is a surface of its own, so that each casts a
+/// shadow round itself and comes and goes by itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place {
+    /// Which notification it is.
+    pub key: Key,
+    /// How far its box is from the top of the screen.
+    pub top: u32,
+    /// How far its box is from the right of the screen.
+    pub right: u32,
+    /// How large its box is.
+    pub size: (u32, u32),
+}
+
 /// Why a notification is no longer showing, as the numbers programs are
 /// told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,8 +121,7 @@ pub enum Reason {
 /// A notification that is showing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Shown {
-    /// What tells it from every other that is showing.
-    key: u64,
+    key: Key,
     /// The number its program gave it, if it is a program's.
     id: u32,
     /// Whether it is from omorfos itself and not from a program.
@@ -135,14 +152,15 @@ pub struct Stack {
     /// Nothing is for until it is dismissed.
     usual: Option<Duration>,
     /// The one the pointer is over.
-    under: Option<u64>,
+    under: Option<Key>,
     /// What is wrong that the user has dismissed, and is still wrong.
     dismissed: Vec<String>,
     /// What has happened that has been shown, and that the compositor is
     /// still saying has.
     seen: Vec<String>,
-    /// How many times omorfos itself has had something shown.
-    told: u32,
+    /// How many notifications have been shown, each of which took the
+    /// next key.
+    made: u64,
 }
 
 impl Stack {
@@ -157,7 +175,7 @@ impl Stack {
             under: None,
             dismissed: Vec::new(),
             seen: Vec::new(),
-            told: 0,
+            made: 0,
         }
     }
 
@@ -192,8 +210,8 @@ impl Stack {
         let said = plain(&note.body);
         let said = said.lines().map(str::trim).filter(|line| !line.is_empty());
         let said: Vec<String> = said.take(LINES).map(clipped).collect();
-        let shown = Shown {
-            key: u64::from(note.id),
+        let mut shown = Shown {
+            key: self.next(),
             id: note.id,
             ours: false,
             problem: None,
@@ -208,12 +226,16 @@ impl Stack {
             until: lasts.map(|lasts| now.saturating_add(lasts)),
         };
         let tagged = |other: &Shown| shown.tag.is_some() && other.tag == shown.tag;
+        let same = |other: &Shown| !other.ours && other.id == shown.id;
         let place = self
             .shown
             .iter()
-            .position(|other| other.key == shown.key || tagged(other));
+            .position(|other| same(other) || tagged(other));
         match place.and_then(|place| self.shown.get_mut(place)) {
-            Some(other) => *other = shown,
+            Some(other) => {
+                shown.key = other.key;
+                *other = shown;
+            }
             None => self.shown.insert(0, shown),
         }
         // Room is made by a program's notification going, never by one
@@ -270,10 +292,9 @@ impl Stack {
     /// about a `problem`, which is urgent, or not, and staying `until` a
     /// time if it goes by itself.
     fn say(&mut self, words: &str, problem: Option<String>, until: Option<Duration>) {
-        self.told = self.told.wrapping_add(1);
         let said = vec![clipped(words.trim())];
         let shown = Shown {
-            key: APART | u64::from(self.told),
+            key: self.next(),
             id: 0,
             ours: true,
             urgent: problem.is_some(),
@@ -288,6 +309,12 @@ impl Stack {
             until,
         };
         self.shown.insert(0, shown);
+    }
+
+    /// A key no notification has had.
+    fn next(&mut self) -> Key {
+        self.made = self.made.wrapping_add(1);
+        Key(self.made)
     }
 
     /// Breaks what each notification says into lines that fit it under
@@ -324,7 +351,7 @@ impl Stack {
     pub fn close(&mut self, id: u32) -> bool {
         let before = self.shown.len();
         // The numbers programs know are those of their own.
-        self.shown.retain(|shown| shown.key != u64::from(id));
+        self.shown.retain(|shown| shown.ours || shown.id != id);
         self.shown.len() != before
     }
 
@@ -344,41 +371,35 @@ impl Stack {
         self.shown.iter().filter_map(|shown| shown.until).min()
     }
 
-    /// How large the notifications are together under `theme`, in units of
-    /// layout, with the room kept around each.
+    /// Where each notification is put under `theme`, from the top.
     #[must_use]
-    pub fn size(&self, theme: &Theme) -> (u32, u32) {
-        let places = self.places(theme);
-        let style = theme.style(Part::Notification, States::NONE);
-        let width = width(&style).saturating_add(style.margin.across());
-        let bottom = places.last().map_or(0, |(_, area)| {
-            let below = area.1.saturating_add_unsigned(area.3);
-            below.saturating_add_unsigned(style.margin.bottom)
+    pub fn layout(&self, theme: &Theme) -> Vec<Place> {
+        let places = self.places(theme).into_iter().map(|(shown, area)| {
+            let style = theme.style(Part::Notification, self.states(shown));
+            Place {
+                key: shown.key,
+                top: area.1.unsigned_abs(),
+                right: style.margin.right,
+                size: (area.2, area.3),
+            }
         });
-        (width, bottom.unsigned_abs())
+        places.collect()
     }
 
-    /// Notes where the pointer is, so that the notification under it can
+    /// Notes which notification the pointer is on, if any, so that it can
     /// be drawn as such. Returns whether that changed anything.
-    pub fn point(&mut self, x: i32, y: i32, theme: &Theme) -> bool {
-        let under = self.at(x, y, theme);
+    pub fn point(&mut self, under: Option<Key>) -> bool {
         let changed = under != self.under;
         self.under = under;
         changed
     }
 
-    /// Notes that the pointer has left. Returns whether that changed
-    /// anything.
-    pub fn leave(&mut self) -> bool {
-        self.under.take().is_some()
-    }
-
-    /// Takes a click: the notification at that point is dismissed.
-    /// Returns its number, if there was a program's there, and whether its
-    /// sender wants to hear of the click. One about something that is
-    /// wrong is not shown again while that stays wrong.
-    pub fn click(&mut self, x: i32, y: i32, theme: &Theme) -> Option<(u32, bool)> {
-        let under = self.at(x, y, theme);
+    /// Takes a click: the notification the pointer is on is dismissed.
+    /// Returns its number, if it was a program's, and whether its sender
+    /// wants to hear of the click. One about something that is wrong is
+    /// not shown again while that stays wrong.
+    pub fn click(&mut self) -> Option<(u32, bool)> {
+        let under = self.under.take();
         let place = under.and_then(|key| self.shown.iter().position(|shown| shown.key == key));
         let clicked = place.map(|place| self.shown.remove(place));
         let problem = clicked.as_ref().and_then(|shown| shown.problem.clone());
@@ -387,24 +408,28 @@ impl Stack {
         theirs.map(|shown| (shown.id, shown.acts))
     }
 
-    /// Draws the notifications, with `scale` pixels to a unit of layout.
-    /// Pictures that are named are looked up in `icons`. A notification
-    /// the pointer has just come onto or left is as far on its way to its
-    /// new colours as `motion` has it.
+    /// Draws the notification `key` is of, as large as its box, with
+    /// `scale` pixels to a unit of layout, if it is showing. Pictures that
+    /// are named are looked up in `icons`. One the pointer has just come
+    /// onto or left is as far on its way to its new colours as `motion` has
+    /// it.
     #[must_use]
     pub fn paint(
         &self,
+        key: Key,
         text: &mut Text,
         theme: &Theme,
         scale: Scale,
         icons: &mut Icons,
         motion: &mut Motion,
-    ) -> Canvas {
-        let (width, height) = self.size(theme);
-        let mut canvas = Canvas::scaled(width, height, scale);
-        for (shown, area) in self.places(theme) {
+    ) -> Option<Canvas> {
+        let mut places = self.places(theme).into_iter();
+        let found = places.find(|(shown, _)| shown.key == key);
+        found.map(|(shown, (_, _, width, height))| {
+            let mut canvas = Canvas::scaled(width, height, scale);
+            let area = (0, 0, width, height);
             let states = self.states(shown);
-            let key = shown.key;
+            let key = key.0;
             let style = motion.style(theme, Part::Notification, key, states);
             canvas.draw_box(area, &style);
             let mut room = inset(area, style.inset());
@@ -459,8 +484,8 @@ impl Stack {
                 };
                 canvas.draw_box((track.0, track.1, full, track.3), &filled);
             }
-        }
-        canvas
+            canvas
+        })
     }
 
     /// The states a notification is in.
@@ -496,20 +521,6 @@ impl Stack {
             (shown, area)
         });
         placed.collect()
-    }
-
-    /// The notification whose box a point is in.
-    fn at(&self, x: i32, y: i32, theme: &Theme) -> Option<u64> {
-        let places = self.places(theme);
-        let inside = |(left, top, width, height): Area| {
-            let across = u32::try_from(x.saturating_sub(left)).ok();
-            let down = u32::try_from(y.saturating_sub(top)).ok();
-            across
-                .zip(down)
-                .is_some_and(|(across, down)| across < width && down < height)
-        };
-        let found = places.into_iter().find(|(_, area)| inside(*area));
-        found.map(|(shown, _)| shown.key)
     }
 }
 
@@ -596,9 +607,27 @@ mod tests {
         u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
     }
 
-    fn painted(stack: &Stack, theme: &Theme) -> Canvas {
+    /// The notification `key` is of, drawn, if it is showing.
+    fn drawn(stack: &Stack, theme: &Theme, key: Key) -> Option<Canvas> {
         let (mut text, mut icons) = (Text::new(), Icons::default());
-        stack.paint(&mut text, theme, Scale::ONE, &mut icons, &mut Motion::new())
+        let motion = &mut Motion::new();
+        stack.paint(key, &mut text, theme, Scale::ONE, &mut icons, motion)
+    }
+
+    /// The notification `index` from the top, drawn.
+    fn painted(stack: &Stack, theme: &Theme, index: usize) -> Canvas {
+        drawn(stack, theme, stack.layout(theme)[index].key).unwrap()
+    }
+
+    /// How tall the notification `index` from the top is.
+    fn tall(stack: &Stack, theme: &Theme, index: usize) -> u32 {
+        stack.layout(theme)[index].size.1
+    }
+
+    /// Points at the notification `index` from the top, and clicks.
+    fn click(stack: &mut Stack, theme: &Theme, index: usize) -> Option<(u32, bool)> {
+        stack.point(Some(stack.layout(theme)[index].key));
+        stack.click()
     }
 
     /// The numbers of the notifications showing, from the top.
@@ -768,7 +797,7 @@ mod tests {
                     through the fields until it is quite out of sight";
         stack.show(note(1, "Long", long), START);
         assert_eq!(stack.shown[0].lines.len(), 1, "as its sender wrote it");
-        let before = stack.size(&theme).1;
+        let before = tall(&stack, &theme, 0);
 
         stack.fit(&theme, &mut text);
 
@@ -779,7 +808,7 @@ mod tests {
             long.split_whitespace().collect::<Vec<_>>().join(" ")
         );
         let more = u32::try_from(lines.len() - 1).unwrap();
-        assert_eq!(stack.size(&theme).1, before + 18 * more);
+        assert_eq!(tall(&stack, &theme, 0), before + 18 * more);
         // Each line but the last fits the room there is for words.
         let style = theme.style(Part::Notification, States::NONE);
         let room = 340 - style.inset().across();
@@ -846,11 +875,11 @@ mod tests {
         let mut stack = Stack::new(5);
         stack.show(level(1, Some("volume"), 50), START);
         // A line of title, and the bar under it with its room above.
-        let height = 8 + 1 + 10 + 18 + 8 + 6 + 10 + 1 + 8;
-        assert_eq!(stack.size(&theme).1, height);
+        let height = 1 + 10 + 18 + 8 + 6 + 10 + 1;
+        assert_eq!(tall(&stack, &theme, 0), height);
         let style = theme.style(Part::NotificationLevel, States::NONE);
-        let canvas = painted(&stack, &theme);
-        let (left, width, middle) = (8 + 1 + 12, 340 - 2 - 24, 8 + 1 + 10 + 18 + 8 + 3);
+        let canvas = painted(&stack, &theme, 0);
+        let (left, width, middle) = (1 + 12, 340 - 2 - 24, 1 + 10 + 18 + 8 + 3);
         assert_eq!(
             canvas.at(left + width / 4, middle),
             argb(style.color),
@@ -863,11 +892,11 @@ mod tests {
 
         // More than full is full.
         stack.show(level(1, Some("volume"), 150), START);
-        let canvas = painted(&stack, &theme);
+        let canvas = painted(&stack, &theme, 0);
         assert_eq!(canvas.at(left + width * 3 / 4, middle), argb(style.color));
         // And nothing is nothing.
         stack.show(level(1, Some("volume"), 0), START);
-        let canvas = painted(&stack, &theme);
+        let canvas = painted(&stack, &theme, 0);
         assert_eq!(canvas.at(left + width / 4, middle), argb(style.background));
     }
 
@@ -875,24 +904,61 @@ mod tests {
     fn notifications_are_stacked_with_room_around_each() {
         let theme = Theme::default();
         let mut stack = Stack::new(5);
-        assert_eq!(stack.size(&theme), (340 + 16, 0), "nothing to show");
+        assert_eq!(stack.layout(&theme), [], "nothing to show");
         stack.show(note(1, "Title alone", ""), START);
-        // A margin above and below, a border and padding inside, and one
-        // line of title.
-        let one = 8 + 1 + 10 + 18 + 10 + 1 + 8;
-        assert_eq!(stack.size(&theme), (356, one));
+        // A border and padding inside, and one line of title, with the
+        // margin round it.
+        let one = 1 + 10 + 18 + 10 + 1;
+        let first = stack.layout(&theme)[0].key;
+        let alone = Place {
+            key: first,
+            top: 8,
+            right: 8,
+            size: (340, one),
+        };
+        assert_eq!(stack.layout(&theme), [alone]);
         stack.show(note(2, "With a body", "one\ntwo"), START);
-        assert_eq!(stack.size(&theme), (356, one + one + 2 * 18));
+        let second = stack.layout(&theme)[0].key;
+        assert_ne!(second, first);
+        let upper = Place {
+            key: second,
+            size: (340, one + 2 * 18),
+            ..alone
+        };
+        // The newest on top, with the margins of both between them.
+        let lower = Place {
+            top: 8 + one + 2 * 18 + 8 + 8,
+            ..alone
+        };
+        assert_eq!(stack.layout(&theme), [upper, lower]);
 
-        let canvas = painted(&stack, &theme);
-        assert_eq!((canvas.width(), canvas.height()), stack.size(&theme));
+        // Each is drawn by itself, as large as its box, with its corners
+        // rounded off.
+        let canvas = painted(&stack, &theme, 1);
+        assert_eq!((canvas.width(), canvas.height()), (340, one));
         let surface = argb(theme.style(Part::Notification, States::NONE).background);
-        assert_eq!(canvas.at(4, 30), 0, "the margin is clear");
-        assert_eq!(canvas.at(352, 30), 0);
-        assert_eq!(canvas.at(340, 15), surface);
-        let between = one + 2 * 18 - 4;
-        assert_eq!(canvas.at(178, between), 0, "and so is the gap between two");
-        assert_eq!(canvas.at(340, between + 16), surface);
+        assert_eq!(canvas.at(170, 5), surface);
+        assert_eq!(canvas.at(0, 0), 0);
+        // The other with its body written under its title.
+        let canvas = painted(&stack, &theme, 0);
+        let mut body =
+            (1 + 10 + 18..1 + 10 + 18 + 2 * 18).flat_map(|y| (13..327).map(move |x| (x, y)));
+        assert!(body.any(|(x, y)| canvas.at(x, y) != surface), "written");
+    }
+
+    #[test]
+    fn one_that_takes_the_place_of_another_is_put_where_it_was() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        stack.show(level(1, Some("volume"), 10), START);
+        stack.show(note(2, "Other", ""), START);
+        let before = stack.layout(&theme)[1].key;
+        stack.show(level(3, Some("volume"), 20), START);
+        assert_eq!(stack.layout(&theme)[1].key, before, "of the same tag");
+        stack.show(note(3, "Louder", ""), START);
+        assert_eq!(stack.layout(&theme)[1].key, before, "and the same number");
+        assert_ne!(stack.layout(&theme)[0].key, before);
+        assert_eq!(showing(&stack), [2, 3]);
     }
 
     #[test]
@@ -900,21 +966,21 @@ mod tests {
         let theme = Theme::parse("notification { min-width: 10px; margin: 0; }").unwrap();
         let mut stack = Stack::new(5);
         stack.show(note(1, "Title", ""), START);
-        assert_eq!(stack.size(&theme).0, NARROWEST);
+        assert_eq!(stack.layout(&theme)[0].size.0, NARROWEST);
     }
 
     #[test]
-    fn a_click_dismisses_the_notification_it_is_on() {
+    fn a_click_dismisses_the_notification_the_pointer_is_on() {
         let theme = Theme::default();
         let mut stack = Stack::new(5);
         stack.show(note(1, "Lower", ""), START);
         stack.show(note(2, "Upper", ""), START);
-        assert_eq!(stack.click(4, 30, &theme), None, "in the margin");
-        assert_eq!(stack.click(-5, 30, &theme), None);
-        assert_eq!(stack.click(100, 5000, &theme), None);
-        assert_eq!(stack.click(100, 80, &theme), Some((1, false)));
-        assert_eq!(stack.click(100, 80, &theme), None, "nothing is there now");
-        assert_eq!(stack.click(100, 20, &theme), Some((2, false)));
+        assert_eq!(stack.click(), None, "on none");
+        let lower = stack.layout(&theme)[1].key;
+        assert_eq!(click(&mut stack, &theme, 1), Some((1, false)));
+        assert_eq!(stack.click(), None, "nothing is there now");
+        assert_eq!(drawn(&stack, &theme, lower), None, "nor drawn");
+        assert_eq!(click(&mut stack, &theme, 0), Some((2, false)));
         assert!(stack.is_empty());
         // One whose sender wants to hear of the click says so.
         let acting = Note {
@@ -922,7 +988,13 @@ mod tests {
             ..note(3, "Click to open", "")
         };
         stack.show(acting, START);
-        assert_eq!(stack.click(100, 20, &theme), Some((3, true)));
+        assert_eq!(click(&mut stack, &theme, 0), Some((3, true)));
+        // One the pointer was on that has gone by other means is not
+        // there to click.
+        stack.show(note(4, "Gone", ""), START);
+        stack.point(Some(stack.layout(&theme)[0].key));
+        assert!(stack.close(4));
+        assert_eq!(stack.click(), None);
     }
 
     #[test]
@@ -935,21 +1007,21 @@ mod tests {
         };
         stack.show(urgent, START);
         stack.show(note(2, "Plain", ""), START);
-        let edge = |stack: &Stack, y: u32| painted(stack, &theme).at(8, y);
+        let edge = |stack: &Stack, index: usize| painted(stack, &theme, index).at(0, 20);
         let border = |states| argb(theme.style(Part::Notification, states).border.left.color);
         let plain = border(States::NONE);
-        assert_eq!(edge(&stack, 30), plain);
-        assert_eq!(edge(&stack, 90), border(States::NONE.with(State::Urgent)));
+        assert_eq!(edge(&stack, 0), plain);
+        assert_eq!(edge(&stack, 1), border(States::NONE.with(State::Urgent)));
 
-        assert!(stack.point(100, 30, &theme));
-        assert!(!stack.point(101, 31, &theme), "still the same one");
-        assert_eq!(edge(&stack, 30), border(States::NONE.with(State::Hovered)));
-        assert!(stack.point(100, 4, &theme), "off it, into the margin");
-        assert_eq!(edge(&stack, 30), plain);
-        assert!(stack.point(100, 30, &theme));
-        assert!(stack.leave());
-        assert!(!stack.leave());
-        assert_eq!(edge(&stack, 30), plain);
+        let keys: Vec<Key> = stack.layout(&theme).iter().map(|place| place.key).collect();
+        assert!(stack.point(Some(keys[0])));
+        assert!(!stack.point(Some(keys[0])), "still the same one");
+        assert_eq!(edge(&stack, 0), border(States::NONE.with(State::Hovered)));
+        assert!(stack.point(Some(keys[1])), "onto the next");
+        assert_eq!(edge(&stack, 0), plain);
+        assert!(stack.point(None), "off them");
+        assert!(!stack.point(None));
+        assert_eq!(edge(&stack, 1), border(States::NONE.with(State::Urgent)));
     }
 
     #[test]
@@ -964,14 +1036,14 @@ mod tests {
         };
         stack.show(pictured, START);
         // Taller than its one line of words: as tall as the picture.
-        assert_eq!(stack.size(&theme).1, 8 + 1 + 10 + 40 + 10 + 1 + 8);
-        let canvas = painted(&stack, &theme);
-        let left = 8 + 1 + 12;
-        assert_eq!(canvas.at(left, 19), 0xff00_ff00);
-        assert_eq!(canvas.at(left + 39, 19 + 39), 0xff00_ff00);
+        assert_eq!(tall(&stack, &theme, 0), 1 + 10 + 40 + 10 + 1);
+        let canvas = painted(&stack, &theme, 0);
+        let left = 1 + 12;
+        assert_eq!(canvas.at(left, 11), 0xff00_ff00);
+        assert_eq!(canvas.at(left + 39, 11 + 39), 0xff00_ff00);
         let surface = argb(theme.style(Part::Notification, States::NONE).background);
         let gap = left + 40..left + 40 + GAP;
-        assert!(gap.into_iter().all(|x| canvas.at(x, 40) == surface));
+        assert!(gap.into_iter().all(|x| canvas.at(x, 32) == surface));
 
         // One named but not to be found is left out, and takes no room.
         let named = Note {
@@ -979,8 +1051,8 @@ mod tests {
             ..note(1, "With a name", "")
         };
         stack.show(named, START);
-        let canvas = painted(&stack, &theme);
-        let green = (0..canvas.width()).filter(|x| canvas.at(*x, 30) == 0xff00_ff00);
+        let canvas = painted(&stack, &theme, 0);
+        let green = (0..canvas.width()).filter(|x| canvas.at(*x, 22) == 0xff00_ff00);
         assert_eq!(green.count(), 0);
     }
 
@@ -1034,7 +1106,7 @@ mod tests {
         let broken = ["keys.yaml: no such key"];
         tell(&mut stack, &broken);
 
-        assert_eq!(stack.click(100, 20, &theme), None, "no program to tell");
+        assert_eq!(click(&mut stack, &theme, 0), None, "no program to tell");
         assert!(stack.is_empty());
         let again = tell(&mut stack, &broken);
         assert!(!again, "still wrong, and still dismissed");
@@ -1082,7 +1154,7 @@ mod tests {
 
         assert_eq!(theirs.shown[0].lines.len(), 3);
         assert_eq!(ours.shown[0].lines.len(), 6);
-        assert!(ours.size(&theme).1 > theirs.size(&theme).1);
+        assert!(tall(&ours, &theme, 0) > tall(&theirs, &theme, 0));
     }
 
     #[test]
@@ -1122,7 +1194,7 @@ mod tests {
         assert!(!stack.tell(&[], &[], seconds(110)));
         assert!(stack.tell(&[], &happened, seconds(200)));
         // It can be clicked away, and no program is told of that either.
-        assert_eq!(stack.click(100, 20, &theme), None);
+        assert_eq!(click(&mut stack, &theme, 0), None);
         assert!(stack.is_empty());
         assert!(!stack.tell(&[], &happened, seconds(201)));
     }

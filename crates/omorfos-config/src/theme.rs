@@ -816,7 +816,12 @@ mod tests {
         assert_eq!(shadow(Part::Window, FOCUSED), cast(8, 24, 0x47));
         assert_eq!(shadow(Part::Window, States::NONE), cast(4, 12, 0x24));
         assert_eq!(shadow(Part::Menu, States::NONE), cast(12, 32, 0x5c));
-        for floating in [Part::Launcher, Part::Notice, Part::Tooltip] {
+        for floating in [
+            Part::Launcher,
+            Part::Notice,
+            Part::Notification,
+            Part::Tooltip,
+        ] {
             assert_eq!(
                 shadow(floating, States::NONE),
                 cast(12, 32, 0x5c),
