@@ -1044,9 +1044,12 @@ the first than on the last.
 - [ ] A shadow under the questions `omorfos-ask` puts, as under a
       dialog: its panel is larger than the question, to shake it, and is
       named after no part.
-- [ ] Shadows under the compositor's notice, tooltips and the palette of
+- [x] Shadows under the compositor's notice, tooltips and the palette of
       tiles, which are drawn by the compositor and are not a part's
-      layer.
+      layer: the notice's fades with it, and the tooltip's falls under
+      the mark it tells of, which nothing darkens.
+- [ ] A shadow under the switcher on Alt+Tab, which DESIGN.md does not
+      yet give a level, drawn in pieces as it is.
 - [ ] Glass, drawn in software and tested (`backdrop-filter: blur()`):
       what is under each sheet, its blurred picture, when that is stale,
       and the software blur that is the shader's specification. The

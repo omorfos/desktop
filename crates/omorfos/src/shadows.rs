@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use omorfos_config::Shadow;
+use omorfos_config::{Shadow, Style};
 use omorfos_ui::{Area, Cut, Piece, Shade};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
@@ -50,6 +50,26 @@ impl Shades {
         let shade = found(&self.kept).or_else(|| Shade::new(&shadow, radius, scale).map(Rc::new));
         self.used.extend(shade.clone().map(|shade| (kind, shade)));
         shade
+    }
+
+    /// The shadow what is drawn in `style` casts at `scale`, placed under
+    /// its box at `area`: `had`, if that is of the same picture, so that
+    /// it is not drawn anew, or else one cut now; nothing for a style that
+    /// casts none.
+    pub(crate) fn cast(
+        &mut self,
+        style: &Style,
+        scale: Scale,
+        area: Area,
+        had: Option<Shadowing>,
+    ) -> Option<Shadowing> {
+        let shade = self.of(style.shadow, style.radius, scale)?;
+        let mut shadow = match had {
+            Some(had) if had.is_of(&shade) => had,
+            _ => Shadowing::new(shade),
+        };
+        shadow.place(Some(area));
+        Some(shadow)
     }
 }
 

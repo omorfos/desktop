@@ -9,7 +9,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 };
 
 use crate::common::{Client, Event, LayerShape, Session};
-use crate::windows::{BACKGROUND, GREEN, RED};
+use crate::windows::{BACKGROUND, GREEN, RED, shaded};
 
 /// A surface 20 high along the top of the screen, on a layer.
 fn strip(layer: Layer, keyboard: KeyboardInteractivity) -> LayerShape {
@@ -44,7 +44,9 @@ fn an_ordinary_program_cannot_put_a_panel_on_the_screen() {
     assert!(refused(&mut session, &mut client, Layer::Top));
     assert!(refused(&mut session, &mut client, Layer::Background));
     session.step();
-    assert_eq!(session.draw().at(300, 10), BACKGROUND, "nothing was put up");
+    // Beside the notice that says so.
+    let top = session.draw().at(300, 10);
+    assert!(shaded(top, BACKGROUND), "nothing was put up: {top:#x}");
 
     // The user is told what asked and how it could be let, once.
     let said = told(&session);

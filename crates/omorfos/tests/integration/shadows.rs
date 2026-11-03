@@ -2,12 +2,13 @@
 
 use std::time::Duration;
 
-use omorfos::Input;
+use omorfos::{Input, Roles};
 use omorfos_config::Action;
+use omorfos_core::Button;
 
-use crate::common::{Session, WIDTH, key};
+use crate::common::{HEIGHT, Picture, Session, WIDTH, key};
 use crate::layers::panel;
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 /// The frame of a window 200 by 100, as the default theme makes it, ends
 /// this far down: a titlebar of 28, then the window.
@@ -58,11 +59,22 @@ fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
 #[test]
 fn a_theme_without_shadows_casts_none() {
     let none = "* { transition: none; }\n\
-                window, window:focus, menu { box-shadow: none; }\n";
-    let mut session = Session::with_config(&[("theme.css", none)]);
+                window, window:focus, menu, notice { box-shadow: none; }\n";
+    // With a mistake in the keys, so that the notice says so.
+    let mut session = Session::with_config(&[("theme.css", none), ("keys.yaml", "nonsense: [")]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
-    assert_eq!(session.draw().at(100, BOTTOM + 4), BACKGROUND);
+    session.settle();
+    let picture = session.draw();
+    assert_eq!(picture.at(100, BOTTOM + 4), BACKGROUND);
+    assert_ne!(picture.at(WIDTH - 20, 16), BACKGROUND, "the notice");
+    assert_eq!(shaded_background(&picture), 0);
+
+    // Nor do the pictures of arrangements, which are drawn as a menu.
+    let (x, y) = rest_on_the_second_button(&mut session);
+    let picture = session.draw();
+    assert_ne!(picture.at(x + 330, y + 3), BACKGROUND, "the pictures");
+    assert_eq!(shaded_background(&picture), 0);
 
     // Nor does a menu, which is 220 wide, beside it or under it.
     let mut session = Session::with_config(&[("theme.css", none)]);
@@ -200,4 +212,108 @@ fn windows_that_cast_the_same_shadow_each_cast_it() {
     let red = |pixel: u32| (pixel >> 16) & 0xff;
     let on_the_first = picture.at(80, 32 + 28 + 50 + 2);
     assert!(red(on_the_first) < red(RED), "{on_the_first:#x}");
+}
+
+#[test]
+fn the_notice_casts_the_shadow_its_theme_gives_it_and_takes_it_as_it_goes() {
+    // Cast to the left of the notice, which is at the top right, from 108
+    // across.
+    let theme = "notice { transition: 100ms linear; box-shadow: -8px 0 8px #000000c0; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme), ("keys.yaml", "nonsense: [")]);
+    session.step();
+    session.advance(Duration::from_millis(100));
+    let beside = |session: &mut Session| darkness(session.draw().at(104, 20));
+    let whole = beside(&mut session);
+    assert!(whole > 0, "beside it, where it falls");
+    assert_eq!(session.draw().at(60, 20), BACKGROUND, "and no further");
+    session.step();
+    assert!(!session.draw().damaged, "and it is not drawn again");
+
+    session.write_config("keys.yaml", "");
+    session.compositor_mut().reload_config();
+    session.step();
+    session.advance(Duration::from_millis(50));
+    let fading = beside(&mut session);
+    assert!((1..whole).contains(&fading), "{fading} of {whole}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(beside(&mut session), 0, "gone");
+}
+
+/// How many pixels of `picture` are the background in a shadow.
+fn shaded_background(picture: &Picture) -> usize {
+    let pixels = (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| (x, y)));
+    let shadowed = pixels.map(|(x, y)| picture.at(x, y));
+    shadowed
+        .filter(|pixel| *pixel != BACKGROUND && shaded(*pixel, BACKGROUND))
+        .count()
+}
+
+#[test]
+fn the_tooltip_of_the_mark_casts_the_shadow_its_theme_gives_it() {
+    // Cast up over the mark, and round the tooltip.
+    let theme = "* { transition: none; }\ntooltip { box-shadow: 0 -16px 0 16px #000000c0; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut camera = session.connect_as(Roles::CAPTURE);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let rest = |session: &mut Session, (x, y): (f64, f64)| {
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+        session.step();
+        session.step();
+    };
+    // The mark, at the top right: a disc 16 across, and inside it.
+    let mark = |picture: &Picture| {
+        let around = (WIDTH - 24..WIDTH - 16).flat_map(|x| (12..20).map(move |y| (x, y)));
+        around.map(|(x, y)| picture.at(x, y)).collect::<Vec<_>>()
+    };
+    rest(&mut session, (400.0, 300.0));
+    let picture = session.draw();
+    assert_eq!(shaded_background(&picture), 0, "no shadow yet");
+    let unshaded = mark(&picture);
+
+    rest(&mut session, (f64::from(WIDTH - 20), 16.0));
+    assert_ne!(session.compositor().mark_tooltip(), [""; 0], "it is up");
+    let picture = session.draw();
+    assert!(shaded_background(&picture) > 0, "round the tooltip");
+    assert_eq!(mark(&picture), unshaded, "but never over the mark");
+    session.step();
+    assert!(!session.draw().damaged, "and it is not drawn again");
+}
+
+#[test]
+fn the_pictures_of_arrangements_cast_the_shadow_of_a_menu() {
+    let theme = "* { transition: none; }\n\
+                 window, window:focus { box-shadow: none; }\n\
+                 menu { box-shadow: 0 8px 8px #000000c0; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    assert_eq!(shaded_background(&session.draw()), 0, "no shadow yet");
+
+    let (x, y) = rest_on_the_second_button(&mut session);
+    let picture = session.draw();
+    assert_ne!(picture.at(x + 330, y + 3), BACKGROUND, "the pictures");
+    assert!(shaded_background(&picture) > 0, "under them");
+    session.step();
+    assert!(!session.draw().damaged, "and it is not drawn again");
+}
+
+/// Rests the pointer on the second button of the titlebar of the only
+/// window until the pictures of arrangements are up, under it, past the
+/// window to the right; returns where their top left corner is.
+fn rest_on_the_second_button(session: &mut Session) -> (i32, i32) {
+    let frame = session.compositor().desktop().frames().next();
+    let button = frame.and_then(|frame| frame.decoration);
+    let button = button.map(|decoration| decoration.button(Button::Maximize));
+    let button = button.unwrap_or_default();
+    let motion = Input::Motion {
+        x: f64::from(button.origin.x + 4),
+        y: f64::from(button.origin.y + 4),
+    };
+    session.compositor_mut().input(motion, 0);
+    session.step();
+    session.advance(Duration::from_millis(400));
+    // A little under the button, with room between for the arrow.
+    let below = button.origin.y + button.size.height.cast_signed() + 6;
+    (button.origin.x, below)
 }

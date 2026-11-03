@@ -5,6 +5,7 @@
 //! the window in that part. A click on the button itself still makes the
 //! window fullscreen. See `docs/adr/0039-windows-sharing-a-workspace.md`.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Part, State, States, Theme};
@@ -14,6 +15,7 @@ use omorfos_core::{Arrangement, Button, Home, WindowId};
 use crate::Scale;
 use crate::compositor::{Compositor, Painted};
 use crate::paint::{Canvas, Text};
+use crate::shadows::Shadowing;
 
 /// How long the pointer rests on the button before the pictures come.
 const REST: Duration = Duration::from_millis(400);
@@ -87,6 +89,8 @@ pub(crate) struct Shown {
     /// What they were painted for, to know when to paint them again.
     look: (Theme, Scale),
     pub(crate) pixels: Painted,
+    /// The shadow they cast, as a menu does.
+    pub(crate) shadow: Option<Shadowing>,
 }
 
 /// The pictures as they are wanted: whose, where, how far along them the
@@ -213,23 +217,39 @@ impl Compositor {
         let rested = self.hover.palette.resting;
         let (wanted, resting) = self.arrangements(was.as_ref(), rested, now);
         let scale = self.pointer_scale();
+        let config = Arc::clone(self.store.current());
+        let theme = &config.theme;
+        let (text, shades) = (&mut self.text, &mut self.animation.shades);
         self.hover.palette.shown = wanted.map(|(window, area, arrow, picked)| {
-            self.paint_with(|text, theme| {
-                // Painted again only if something about them has changed.
-                let same = |shown: &Shown| {
-                    let placed = (shown.window, shown.area, shown.arrow, shown.picked);
-                    placed == (window, area, arrow, picked)
-                        && shown.look.0 == *theme
-                        && shown.look.1 == scale
-                };
-                was.filter(same).unwrap_or_else(|| Shown {
+            // Painted again only if something about them has changed.
+            let same = |shown: &Shown| {
+                let placed = (shown.window, shown.area, shown.arrow, shown.picked);
+                placed == (window, area, arrow, picked)
+                    && shown.look.0 == *theme
+                    && shown.look.1 == scale
+            };
+            let (kept, had) = match was {
+                Some(shown) if same(&shown) => (Some(shown), None),
+                was => (None, was.and_then(|was| was.shadow)),
+            };
+            kept.unwrap_or_else(|| {
+                // The shadow falls from the pictures, not from the arrow.
+                let ground = theme.style(Part::Menu, States::NONE);
+                let under = (
+                    area.origin.x,
+                    area.origin.y,
+                    area.size.width,
+                    area.size.height,
+                );
+                Shown {
                     window,
                     area,
                     picked,
                     arrow,
                     look: (theme.clone(), scale),
                     pixels: Painted::new(&paint(text, theme, scale, (picked, arrow))),
-                })
+                    shadow: shades.cast(&ground, scale, under, had),
+                }
             })
         });
         self.hover.palette.resting = resting;

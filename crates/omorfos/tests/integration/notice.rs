@@ -5,7 +5,7 @@ use omorfos::Input;
 use std::time::Duration;
 
 use crate::common::{Event, HEIGHT, Session, WIDTH, between};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
 /// The notice's panel colour: the default theme's focused titlebar.
@@ -60,7 +60,8 @@ fn a_configuration_mistake_is_shown_on_screen() {
         "in the top-right corner"
     );
     assert_eq!(picture.at(WIDTH - 13, 40), ACCENT, "outlined");
-    assert_eq!(picture.at(WIDTH - 5, 40), BACKGROUND, "with a margin");
+    let margin = picture.at(WIDTH - 5, 40);
+    assert!(shaded(margin, BACKGROUND), "with a margin: {margin:#x}");
     assert_eq!(picture.at(100, HEIGHT - 20), BACKGROUND);
 }
 
@@ -181,7 +182,8 @@ fn the_notice_follows_the_output_and_the_theme() {
         0xff00_ff00,
         "restyled, and reaching to the left margin"
     );
-    assert_eq!(picture.at(5, 16), BACKGROUND);
+    let margin = picture.at(5, 16);
+    assert!(shaded(margin, BACKGROUND), "{margin:#x}");
 }
 
 #[test]

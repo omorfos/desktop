@@ -1484,12 +1484,6 @@ impl Compositor {
         self.open_menu_of(items);
     }
 
-    /// Has something painted with the compositor's text and theme.
-    pub(crate) fn paint_with<T>(&mut self, paint: impl FnOnce(&mut Text, &Theme) -> T) -> T {
-        let config = Arc::clone(self.store.current());
-        paint(&mut self.text, &config.theme)
-    }
-
     /// What a workspace is called: as the configuration names it, or by
     /// its number where it has no name for it, as it has none for those
     /// that were made.
@@ -2389,22 +2383,15 @@ impl Compositor {
                 let key = hasher.finish();
                 let present = part.map(|part| {
                     let style = theme.style(part, States::NONE);
-                    let shade = animation.shades.of(style.shadow, style.radius, head.scale);
-                    // The one it had, if it is the same, so that it is not
-                    // drawn anew.
                     let had = animation
                         .before
                         .iter_mut()
                         .find(|was| was.surface == *surface);
                     let had = had.and_then(|was| was.shadow.take());
-                    let mut shadow = shade.map(|shade| match had {
-                        Some(had) if had.is_of(&shade) => had,
-                        _ => Shadowing::new(shade),
-                    });
                     let at = layer_origin(&layers, layer) + head.area().loc;
                     let size = layers.layer_geometry(layer).unwrap_or_default().size;
                     let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
-                    let _ = shadow.as_mut().map(|shadow| shadow.place(Some(area)));
+                    let shadow = animation.shades.cast(&style, head.scale, area, had);
                     Present {
                         surface: surface.clone(),
                         part,
@@ -2471,7 +2458,10 @@ impl Compositor {
         });
         self.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
-            (None, true) => Some(Notice::paint(&mut self.text, theme, &said, within, scale)),
+            (None, true) => {
+                let tools = (&mut self.text, &mut self.animation.shades);
+                Some(Notice::paint(tools, theme, &said, within, scale))
+            }
             (None, false) => None,
         };
         let notice = self.notice.as_ref();
@@ -2855,7 +2845,11 @@ impl Compositor {
                 // Under the mark, at its right.
                 let left = mark.loc.x + mark.size.w - width.cast_signed();
                 let top = mark.loc.y + mark.size.h + 4;
+                let style = theme.style(Part::Tooltip, States::NONE);
+                let area = (left, top, width, height);
+                let shadow = self.animation.shades.cast(&style, scale, area, None);
                 MarkNote {
+                    shadow,
                     output,
                     says,
                     scale,
@@ -3074,14 +3068,18 @@ impl Compositor {
                 .mark
                 .as_ref()
                 .filter(|note| note.output == *output);
-            let tooltip = tooltip.and_then(|note| {
+            if let Some(note) = tooltip {
                 let at = Point::<i32, Logical>::from((note.area.origin.x, note.area.origin.y));
-                note.pixels.element(renderer, at.to_f64(), view, 1.0)
-            });
-            elements.extend(tooltip);
+                elements.extend(note.pixels.element(renderer, at.to_f64(), view, 1.0));
+            }
             let at = self.mark_area(output).loc;
             let mark = self.capture.mark(view.scale, signs);
             elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
+            // Its shadow is under the mark too, which nothing darkens.
+            let shadow = tooltip.and_then(|note| note.shadow.as_ref());
+            if let Some(shadow) = shadow {
+                shadow.elements(renderer, 1.0, view, &mut elements);
+            }
             // And round a screen that is shared, a line, which is no more in
             // a picture of it than the mark is.
             let corner = self.area_of(output).loc;
@@ -3109,13 +3107,8 @@ impl Compositor {
             elements.extend(prompt.pixels.element(renderer, at, view, 1.0));
         }
         if let Some(notice) = &self.notice {
-            let at = Point::<i32, Logical>::from((notice.area.origin.x, notice.area.origin.y));
-            elements.extend(notice.pixels.element(
-                renderer,
-                at.to_f64(),
-                view,
-                self.animation.notice_opacity,
-            ));
+            let opacity = self.animation.notice_opacity;
+            notice.elements(renderer, view, opacity, &mut elements);
         }
         elements.extend(self.switcher_elements(renderer, output, view));
         if let Some(chrome) = &self.menu_chrome {
@@ -3126,6 +3119,9 @@ impl Compositor {
             let up = shown.area.origin.offset(0, -palette::ARROW.cast_signed());
             let at = Point::<i32, Logical>::from((up.x, up.y));
             elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
+            if let Some(shadow) = &shown.shadow {
+                shadow.elements(renderer, 1.0, view, &mut elements);
+            }
         }
         self.gone_elements(renderer, view, (Level::Over, shown.mark), &mut elements);
         // From the top down: overlays, fullscreen windows, panels and
@@ -3253,11 +3249,7 @@ impl Compositor {
                     }
                 }
                 What::Menu(chrome) => chrome.elements(renderer, view, opacity, elements),
-                What::Notice(notice) => {
-                    let at = (notice.area.origin.x, notice.area.origin.y);
-                    let at = Point::<i32, Logical>::from(at).to_f64();
-                    elements.extend(notice.pixels.element(renderer, at, view, opacity));
-                }
+                What::Notice(notice) => notice.elements(renderer, view, opacity, elements),
             }
         }
     }
@@ -3772,11 +3764,12 @@ pub(crate) struct Notice {
     /// Where the notice is: the top-right corner of that output.
     pub(crate) area: Rect,
     pixels: Painted,
+    shadow: Option<Shadowing>,
 }
 
 impl Notice {
     fn paint(
-        text: &mut Text,
+        (text, shades): (&mut Text, &mut Shades),
         theme: &Theme,
         problems: &[String],
         within: Rectangle<i32, Logical>,
@@ -3796,6 +3789,8 @@ impl Notice {
             ),
             DomainSize::new(painted_width, painted_height),
         );
+        let style = theme.style(Part::Notice, States::NONE);
+        let placed = (area.origin.x, area.origin.y, painted_width, painted_height);
         Self {
             problems: problems.to_vec(),
             theme: theme.clone(),
@@ -3803,6 +3798,26 @@ impl Notice {
             scale,
             area,
             pixels: Painted::new(&canvas),
+            shadow: shades.cast(&style, scale, placed, None),
+        }
+    }
+
+    /// The notice, then the shadow under it, as see-through as `opacity`
+    /// says.
+    fn elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        opacity: f32,
+        elements: &mut Vec<Element<R>>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let at = Point::<i32, Logical>::from((self.area.origin.x, self.area.origin.y));
+        elements.extend(self.pixels.element(renderer, at.to_f64(), view, opacity));
+        if let Some(shadow) = &self.shadow {
+            shadow.elements(renderer, opacity, view, elements);
         }
     }
 }
@@ -4138,6 +4153,7 @@ struct MarkNote {
     /// Where it is shown, under the mark.
     area: Rect,
     pixels: Painted,
+    shadow: Option<Shadowing>,
 }
 
 /// What is changing colour, coming in or going.
@@ -4166,7 +4182,7 @@ pub(crate) struct Animation {
     /// What the screens showed as the compositor was started, to fade.
     pub(crate) fading: Vec<Fade>,
     /// The pictures of the shadows cast.
-    shades: Shades,
+    pub(crate) shades: Shades,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -4346,11 +4362,9 @@ impl MenuChrome {
             })
             .collect();
         let style = theme.style(Part::Menu, States::NONE);
-        let shade = shades.of(style.shadow, style.radius, scale);
         let shadows = panels.iter().filter_map(|(at, panel)| {
-            let mut shadow = shade.clone().map(Shadowing::new)?;
-            shadow.place(Some((at.x, at.y, panel.width(), panel.height())));
-            Some(shadow)
+            let area = (at.x, at.y, panel.width(), panel.height());
+            shades.cast(&style, scale, area, None)
         });
         Self {
             menu: menu.clone(),

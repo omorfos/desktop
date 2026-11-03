@@ -25,7 +25,8 @@ pub(crate) fn shaded(pixel: u32, color: u32) -> bool {
         return pixel == color;
     }
     let mut pairs = seen.iter().zip(open);
-    (0.25..=1.0).contains(&share) && pairs.all(|(seen, open)| (seen - open * share).abs() <= 1.5)
+    (0.25..=1.0).contains(&share)
+        && pairs.all(|(seen, open)| *seen <= open && (seen - open * share).abs() <= 1.5)
 }
 
 #[test]
@@ -37,6 +38,10 @@ fn a_colour_in_a_shadow_is_darkened_evenly_and_nothing_else() {
     assert!(
         !shaded(0xff1b_1d23, BACKGROUND),
         "lighter, as a titlebar is"
+    );
+    assert!(
+        !shaded(0xff15_171b, BACKGROUND),
+        "a little lighter, as the edge of a curve is"
     );
     assert!(!shaded(0xff14_1614, BACKGROUND), "of another hue");
     assert!(

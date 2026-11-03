@@ -6,7 +6,7 @@ use omorfos::Input;
 use omorfos_core::Button;
 
 use crate::common::{Client, Session, key};
-use crate::windows::{BACKGROUND, RED};
+use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
 /// Colours of the built-in theme: a menu's ground, a part of a picture,
@@ -300,14 +300,13 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
         0xff11_2233,
         "and open onto them"
     );
-    assert_eq!(
-        picture.at(middle + 40, foot + 3),
-        RED,
-        "only under the button"
-    );
-    assert_eq!(
-        picture.at(middle, foot - 1),
-        titlebar,
-        "and not in the titlebar"
+    // Beside it the window shows, and above it the titlebar, in the shadow
+    // the pictures cast.
+    let beside = picture.at(middle + 40, foot + 3);
+    assert!(shaded(beside, RED), "only under the button: {beside:#x}");
+    let above = picture.at(middle, foot - 1);
+    assert!(
+        shaded(above, titlebar),
+        "and not in the titlebar: {above:#x}"
     );
 }
