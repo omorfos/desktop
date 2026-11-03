@@ -12,7 +12,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
 use crate::common::{Client, Event, HEIGHT, LayerShape, Session, WIDTH, key};
-use crate::windows::{BACKGROUND, GREEN, RED};
+use crate::windows::{BACKGROUND, GREEN, RED, shaded};
 
 /// A prompt, `(100, 50)` in the middle of the screen, that wants the
 /// keyboard.
@@ -37,7 +37,12 @@ fn dimmed(pixel: u32) -> bool {
 
 /// A session with a window that has the keyboard, the pointer over it.
 fn busy() -> (Session, Client) {
-    let mut session = Session::new();
+    busy_with(&[])
+}
+
+/// The same, with the configuration `files`.
+fn busy_with(files: &[(&str, &str)]) -> (Session, Client) {
+    let mut session = Session::with_config(files);
     let mut app = session.connect_plain();
     session.open(&mut app, "app", (200, 100), RED);
     session
@@ -199,4 +204,66 @@ fn the_switcher_and_the_menu_are_closed_under_a_prompt() {
     // Nothing of the menu came back with the prompt gone.
     let picture = session.draw();
     assert_eq!(picture.at(50, 50), RED);
+}
+
+/// Where the prompt's bottom edge is.
+const BOTTOM: i32 = (HEIGHT - 50) / 2 + 50;
+
+#[test]
+fn the_prompt_casts_the_shadow_of_a_question_on_the_dim() {
+    let (mut session, _app) = busy();
+    let _asking = ask(&mut session, Roles::ASK);
+    let picture = session.draw();
+    let open = picture.at(PROMPT.0, HEIGHT - 5);
+    let under = picture.at(PROMPT.0, BOTTOM + 8);
+    assert_ne!(under, open, "a dialog is on the second level");
+    assert!(shaded(under, open), "{under:08x} over {open:08x}");
+
+    // A theme may cast none.
+    let theme = "question { box-shadow: none; }\n";
+    let (mut session, _app) = busy_with(&[("theme.css", theme)]);
+    let _asking = ask(&mut session, Roles::ASK);
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(PROMPT.0, BOTTOM + 8),
+        picture.at(PROMPT.0, HEIGHT - 5)
+    );
+}
+
+#[test]
+fn the_prompt_casts_its_shadow_round_where_it_takes_the_pointer() {
+    // A hard shadow, four pixels round the box, and blue to be told from
+    // the window and the dim.
+    let theme = "question { box-shadow: 0 0 0 4px #0000ff; }\n";
+    let (mut session, _app) = busy_with(&[("theme.css", theme)]);
+    let (mut asker, surface, _role) = ask(&mut session, Roles::ASK);
+    // The prompt's box is its right half; the rest is room it keeps.
+    asker.input_region(&surface, (50, 0, 50, 50));
+    session.roundtrip(&mut asker);
+    let picture = session.draw();
+    let left = (WIDTH - 100) / 2;
+    let under = picture.at(left + 75, BOTTOM + 2);
+    assert!(blue(under), "under the box: {under:08x}");
+    assert_eq!(
+        picture.at(left + 48, BOTTOM - 25),
+        GREEN,
+        "the room is drawn"
+    );
+    assert!(
+        dimmed_background(picture.at(left + 25, BOTTOM + 2)),
+        "and casts nothing: {:08x}",
+        picture.at(left + 25, BOTTOM + 2)
+    );
+}
+
+/// Whether `pixel` is blue, as a hard blue shadow is over the dim, however
+/// much of it shows.
+fn blue(pixel: u32) -> bool {
+    let (red, green, blue) = ((pixel >> 16) & 0xff, (pixel >> 8) & 0xff, pixel & 0xff);
+    blue > red + 0x40 && blue > green + 0x40
+}
+
+/// The background as it shows through the dim.
+fn dimmed_background(pixel: u32) -> bool {
+    pixel != BACKGROUND && shaded(pixel, BACKGROUND)
 }

@@ -846,6 +846,43 @@ fn a_theme_that_moves_nothing_has_the_box_keep_still() {
     }
 }
 
+/// Whether `pixel` is red, as a hard red shadow is over the dim, however
+/// much of it shows.
+fn red(pixel: u32) -> bool {
+    let (red, green, blue) = ((pixel >> 16) & 0xff, (pixel >> 8) & 0xff, pixel & 0xff);
+    red > green + 0x40 && red > blue + 0x40
+}
+
+/// Where the box's left edge is, on a row across its middle, and whether
+/// a hard red shadow four pixels wide is right beside it: red two pixels
+/// out, and the dimmed desktop six out.
+fn edge_shadowed(session: &mut Session) -> (i32, bool) {
+    let row = HEIGHT / 2;
+    let picture = session.draw();
+    let dim = picture.at(5, row);
+    let edge = (0..WIDTH).find(|x| picture.at(*x, row) != dim && !red(picture.at(*x, row)));
+    let edge = edge.unwrap();
+    let shadowed = red(picture.at(edge - 2, row)) && picture.at(edge - 6, row) == dim;
+    (edge, shadowed)
+}
+
+#[test]
+fn the_box_casts_its_shadow_where_it_is_as_it_shakes() {
+    let theme = "question { transition: 120ms; box-shadow: 0 0 0 4px #ff0000; }\n";
+    let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
+    let rest = (WIDTH - SIZE.0.cast_signed()) / 2;
+    let mut shown = 0;
+    let mut moved = false;
+    session.eventually(|session| {
+        shown += 16;
+        session.send_frames(std::time::Duration::from_millis(shown));
+        let (edge, shadowed) = edge_shadowed(session);
+        assert!(shadowed, "the shadow is beside the box at {edge}");
+        moved |= edge != rest;
+        moved && edge == rest
+    });
+}
+
 #[test]
 fn the_eye_says_what_it_does_when_the_pointer_rests_on_it() {
     let mut session = Session::new();

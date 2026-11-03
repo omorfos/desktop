@@ -22,8 +22,8 @@ use omorfos_ui::{Area, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry,
+    wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -620,6 +620,13 @@ impl Shell {
         );
         picture(&globals.shm, &canvas, handle).map(|buffer| {
             face.surface.attach(Some(&buffer), 0, 0);
+            // The box takes the pointer and the room it shakes in does not;
+            // the compositor casts the box's shadow round that, as it goes.
+            let region = globals.compositor.create_region(handle, ());
+            let (across, down) = (SIZE.0.cast_signed(), SIZE.1.cast_signed());
+            region.add(SHAKE + shift, 0, across, down);
+            face.surface.set_input_region(Some(&region));
+            region.destroy();
             let (width, height) = (SURFACE.0.cast_signed(), SURFACE.1.cast_signed());
             face.viewport.set_destination(width, height);
             face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
@@ -999,6 +1006,7 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
 }
 
 delegate_noop!(Shell: wl_compositor::WlCompositor);
+delegate_noop!(Shell: wl_region::WlRegion);
 delegate_noop!(Shell: ignore wl_shm::WlShm);
 delegate_noop!(Shell: wl_shm_pool::WlShmPool);
 delegate_noop!(Shell: ignore wl_surface::WlSurface);

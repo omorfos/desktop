@@ -241,6 +241,7 @@ question {
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 question-detail { color: var(--text-dim); }
 question-button {

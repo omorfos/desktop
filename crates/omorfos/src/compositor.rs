@@ -121,6 +121,7 @@ use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
+use crate::sealed::Seal;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
 use crate::switcher::Switch;
@@ -386,8 +387,8 @@ pub struct Compositor {
     pub(crate) idle: IdleNotifierState<Self>,
     /// The input method, and what is known of it.
     pub(crate) typing: Typing,
-    /// What dims each screen while a prompt asks for a secret.
-    pub(crate) seal: Vec<(Output, SolidColorBuffer)>,
+    /// What is drawn round a prompt that asks for a secret.
+    pub(crate) seal: Seal,
     /// Surfaces that ask for the session not to go idle while they are
     /// shown, such as a film being played.
     pub(crate) inhibitors: Vec<WlSurface>,
@@ -497,7 +498,7 @@ impl Compositor {
                     asked: Asked::new(&display),
                     switch: Switch::offer(&display),
                     typing: Typing::offer(&display),
-                    seal: Vec::new(),
+                    seal: Seal::default(),
                     protocols: Protocols::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
                     x11: X11::new(&display),

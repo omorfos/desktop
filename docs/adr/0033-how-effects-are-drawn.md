@@ -149,6 +149,14 @@ goes.
 - Surfaces on one layer stand at one height: their shadows are all drawn
   under all of them, so that the shadow of one notification falls under
   the next and not on it.
+- The prompt that asks for a secret (ADR 48) is known by its program's
+  role, not its layer's name, and the compositor draws it itself over the
+  dim. Its surface is wider than its box, for the room the box shakes in,
+  so a shadow round the surface would stand still beside a box that
+  moves. It says where its box is by the region it takes the pointer in,
+  moved with the box at each frame of the shake, and the compositor casts
+  the `question` part's shadow round the bounds of that region, kept
+  within the surface; round the whole surface where it says none.
 - Other programs ask with `ext-background-effect-v1`, and are given blur
   of the same kind where they say. They are never given shadows wider
   than their own surface, or the picture.
