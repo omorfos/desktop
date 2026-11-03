@@ -260,7 +260,11 @@ fn the_relay_outlives_each_compositor() {
 fn a_relay_that_keeps_ending_is_given_up_and_programs_connect_to_the_compositor() {
     let place = Place::new();
     place.install_relay("exit 0");
-    let then = "if [ $n -lt 8 ]; then printf 'up\\nstepping down\\n' >&0; exit 0; fi; \
+    // Stepping down for as long as it is relayed: a relay is found to have
+    // ended only once it has, which a busy machine may take several
+    // compositors to come to. A bound, for a hold that never gives up.
+    let then = "case $told in *relayed*) if [ $n -lt 500 ]; then \
+                printf 'up\\nstepping down\\n' >&0; exit 0; fi;; esac; \
                 printf 'up\\n' >&0; exit 0";
     place.install(&place.compositor(), then);
     let (failed, said) = place.hold_relayed();
