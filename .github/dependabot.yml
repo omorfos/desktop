@@ -33,3 +33,8 @@ updates:
     commit-message:
       prefix: ci
       include: scope
+    # CodeQL's steps refuse to run beside one of another version, so its
+    # actions are updated together, in one pull request.
+    groups:
+      codeql:
+        patterns: ["github/codeql-action/*"]
