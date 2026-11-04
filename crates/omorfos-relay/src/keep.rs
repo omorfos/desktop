@@ -941,20 +941,17 @@ impl Keeping {
     }
 
     /// The program's name for the global the compositor names `name`: the
-    /// same, unless the program knows another global by it.
+    /// same, unless the program knows another global by it; then one past
+    /// the highest it knows, or, with no name past that, the lowest it does
+    /// not know. A name is never 0.
     fn name_for(&self, name: u32) -> u32 {
         let taken = |name: u32| self.globals.iter().any(|global| global.name == name);
-        let mut ours = name;
-        while taken(ours) {
-            ours = self
-                .globals
-                .iter()
-                .map(|global| global.name)
-                .max()
-                .unwrap_or(name)
-                + 1;
+        if !taken(name) {
+            return name;
         }
-        ours
+        let names = self.globals.iter().map(|global| global.name);
+        let past = names.max().and_then(|highest| highest.checked_add(1));
+        past.unwrap_or_else(|| (1..u32::MAX).find(|name| !taken(*name)).unwrap_or(name))
     }
 
     /// Takes in the event `bytes`, which `read` says it is, once read as
@@ -2276,6 +2273,20 @@ mod tests {
         // Taken away, it is taken away by the program's name.
         let gone = kept.told(&message(2, 1, &words(&[1]))).unwrap();
         assert_eq!(wire::word(&gone, HEADER), Some(2));
+    }
+
+    #[test]
+    fn a_global_offered_under_the_highest_name_there_is_is_named_by_one_free() {
+        let mut kept = Kept::registered(&[(u32::MAX, "wl_compositor", 6)]);
+        kept.restarted(&[(7, "wl_compositor", 6)]);
+        let sync = *kept.keeping.syncs.first().unwrap();
+        kept.answer(sync);
+        // With no name past the one the program knows, the lowest it does
+        // not.
+        let told = kept.told(&global(u32::MAX, "wl_shm", 1)).unwrap();
+        assert_eq!(wire::word(&told, HEADER), Some(1));
+        let bound = kept.bind(1, "wl_shm", 1, 3);
+        assert_eq!(wire::word(&bound, HEADER), Some(u32::MAX));
     }
 
     #[test]
