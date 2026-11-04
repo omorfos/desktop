@@ -329,7 +329,13 @@ impl Group {
 
     /// Whether the frame has a titlebar and borders when not fullscreen.
     fn decorated(&self) -> bool {
-        self.tabs.len() > 1 || self.tabs[self.active].decorated
+        self.decorated_showing(self.active)
+    }
+
+    /// Whether it has them when not fullscreen, showing its tab numbered
+    /// `tab`.
+    fn decorated_showing(&self, tab: usize) -> bool {
+        self.tabs.len() > 1 || self.tabs[tab].decorated
     }
 
     fn remove(&mut self, tab: usize) -> Window {
@@ -2888,62 +2894,86 @@ impl Desktop {
         (0..3)
             .flat_map(shown)
             .map(|(index, workspace, group, (shift, shown))| {
-                // A frame fills its own output; with none, it has only
-                // itself to fill.
-                let own = self.outputs.get(index).copied();
-                let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
-                let part = workspace.solo.filter(|_| group.fullscreen);
-                let part = part.map(|tiling| {
-                    let titlebar = self.settings.decoration.titlebar;
-                    let roomy = tiling.with_room(screen.area, &workspace.groups, titlebar);
-                    roomy.part_of(group.serial, screen.area)
-                });
-                let mut geometry = match (part, group.maximized) {
-                    (Some(part), _) => part,
-                    (None, true) => screen.usable,
-                    (None, false) => group.geometry,
-                };
-                geometry.origin = geometry.origin.offset(shift, 0);
-                let home = workspace.solo.map_or(Home::Desktop, |tiling| {
-                    if tiling.shared() {
-                        Home::Shared
-                    } else {
-                        Home::Solo
-                    }
-                });
-                let decorated = group.decorated() && !group.fullscreen;
-                // Rolled up, a frame is as tall as its titlebar and no more.
-                let shaded = group.standing.shaded && decorated;
-                let titlebar = self.settings.decoration.titlebar;
-                let rolled = geometry.size.height.min(titlebar);
-                geometry.size.height = if shaded { rolled } else { geometry.size.height };
-                Frame {
-                    tabs: &group.tabs,
-                    active: group.active,
-                    geometry,
-                    decoration: decorated
-                        .then_some((geometry, self.settings.decoration))
-                        .or(self.laid_over(index, group, geometry, home == Home::Shared))
-                        .map(|(within, metrics)| {
-                            Decoration::new(within, metrics, group.tabs.len())
-                        }),
-                    maximized: group.maximized,
-                    fullscreen: group.fullscreen,
-                    home,
-                    focused: index == self.current
-                        && shown
-                        && workspace.focused == Some(group.serial),
-                    standing: Standing {
-                        shaded,
-                        ..group.standing
-                    },
-                    on: if shown {
-                        Showing::Shown
-                    } else {
-                        Showing::Beside
-                    },
-                }
+                self.frame(index, workspace, group, group.active, (shift, shown))
             })
+    }
+
+    /// The frame window `id` is in, as it is drawn showing it, wherever
+    /// it is: minimized, on a workspace out of sight, or a tab behind
+    /// another; where it stands, not moved by a slide. Nothing, if there
+    /// is no such window.
+    #[must_use]
+    pub fn frame_of(&self, id: WindowId) -> Option<Frame<'_>> {
+        let at = self.locate(id)?;
+        let set = &self.sets[at.set];
+        let workspace = &set.workspaces[at.workspace];
+        let group = &workspace.groups[at.group];
+        let shown = at.workspace == set.active;
+        Some(self.frame(at.set, workspace, group, at.tab, (0, shown)))
+    }
+
+    /// The frame of `group`, on `workspace` of the set numbered `index`,
+    /// showing its tab numbered `active`, moved `shift` across, and on the
+    /// workspace its output shows if `shown`.
+    fn frame<'a>(
+        &'a self,
+        index: usize,
+        workspace: &'a Workspace,
+        group: &'a Group,
+        active: usize,
+        (shift, shown): (i32, bool),
+    ) -> Frame<'a> {
+        // A frame fills its own output; with none, it has only
+        // itself to fill.
+        let own = self.outputs.get(index).copied();
+        let screen = own.unwrap_or_else(|| Screen::from(group.geometry));
+        let part = workspace.solo.filter(|_| group.fullscreen);
+        let part = part.map(|tiling| {
+            let titlebar = self.settings.decoration.titlebar;
+            let roomy = tiling.with_room(screen.area, &workspace.groups, titlebar);
+            roomy.part_of(group.serial, screen.area)
+        });
+        let mut geometry = match (part, group.maximized) {
+            (Some(part), _) => part,
+            (None, true) => screen.usable,
+            (None, false) => group.geometry,
+        };
+        geometry.origin = geometry.origin.offset(shift, 0);
+        let home = workspace.solo.map_or(Home::Desktop, |tiling| {
+            if tiling.shared() {
+                Home::Shared
+            } else {
+                Home::Solo
+            }
+        });
+        let decorated = group.decorated_showing(active) && !group.fullscreen;
+        // Rolled up, a frame is as tall as its titlebar and no more.
+        let shaded = group.standing.shaded && decorated;
+        let titlebar = self.settings.decoration.titlebar;
+        let rolled = geometry.size.height.min(titlebar);
+        geometry.size.height = if shaded { rolled } else { geometry.size.height };
+        Frame {
+            tabs: &group.tabs,
+            active,
+            geometry,
+            decoration: decorated
+                .then_some((geometry, self.settings.decoration))
+                .or(self.laid_over(index, group, geometry, home == Home::Shared))
+                .map(|(within, metrics)| Decoration::new(within, metrics, group.tabs.len())),
+            maximized: group.maximized,
+            fullscreen: group.fullscreen,
+            home,
+            focused: index == self.current && shown && workspace.focused == Some(group.serial),
+            standing: Standing {
+                shaded,
+                ..group.standing
+            },
+            on: if shown {
+                Showing::Shown
+            } else {
+                Showing::Beside
+            },
+        }
     }
 
     // --- Internals ---------------------------------------------------------
@@ -5115,6 +5145,46 @@ mod tests {
             (frame.geometry, frame.maximized, frame.fullscreen),
             (geometry, false, false)
         );
+    }
+
+    #[test]
+    fn a_window_out_of_sight_has_the_frame_it_would_be_drawn_in_showing_it() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        let terminal = open(&mut desktop, "terminal");
+        desktop.set_decorated(terminal, false);
+        let drawn = frame(&desktop, terminal);
+        assert_eq!(desktop.frame_of(terminal), Some(drawn), "as it is drawn");
+        assert_eq!(drawn.decoration, None, "with no titlebar of its own");
+        let (geometry, decoration) = {
+            let drawn = frame(&desktop, editor);
+            (drawn.geometry, drawn.decoration)
+        };
+
+        desktop.minimize(editor);
+        let minimized = desktop.frame_of(editor).unwrap();
+        let seen = (
+            minimized.window().id,
+            minimized.geometry,
+            minimized.decoration,
+        );
+        assert_eq!(seen, (editor, geometry, decoration), "minimized");
+
+        desktop.move_to_workspace(terminal, 1);
+        let away = desktop.frame_of(terminal).unwrap();
+        assert_eq!(away.window().id, terminal, "on a workspace out of sight");
+        assert!(!away.focused);
+
+        // Behind another tab, it is shown in the frame in that one's place.
+        desktop.activate(editor);
+        let other = open(&mut desktop, "other");
+        desktop.attach(other, editor);
+        let behind = desktop.frame_of(editor).unwrap();
+        let tabs: Vec<WindowId> = behind.tabs.iter().map(|tab| tab.id).collect();
+        assert_eq!((behind.window().id, tabs), (editor, vec![editor, other]));
+        assert!(behind.decoration.is_some());
+
+        assert_eq!(desktop.frame_of(WindowId::from_raw(99)), None);
     }
 
     #[test]
