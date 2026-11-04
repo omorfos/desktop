@@ -1060,11 +1060,13 @@ the first than on the last.
       has focus or not; and the picker outlining the frame, and showing a
       covered window by itself as far beyond that as its picture reaches,
       which the socket for scripts says.
-- [ ] Shadows drawn in software whole to their ends: the software
+- [x] Shadows drawn in software whole to their ends: the software
       renderer stretches a piece of a shadow's picture with a bilinear
-      filter and nothing beyond its edge, so a side of a shadow fades
+      filter and nothing beyond its edge, so a side of a shadow faded
       toward its corners, to about a third at the ends of the password
-      prompt's sides. GLES clamps to the edge and draws it whole.
+      prompt's sides. Each piece now carries a border copied from its
+      edge, as GLES clamps to it; the fault in Smithay is in
+      `docs/UPSTREAM.md`.
 - [x] Shadows under the compositor's notice, tooltips and the palette of
       tiles, which are drawn by the compositor and are not a part's
       layer: the notice's fades with it, and the tooltip's falls under

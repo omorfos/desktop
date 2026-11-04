@@ -43,6 +43,27 @@ fn a_window_casts_the_shadow_its_theme_gives_it_under_it_and_no_further() {
 }
 
 #[test]
+fn a_side_of_a_shadow_is_as_dark_to_its_ends_as_in_its_middle() {
+    // Cast hard, down and to the right, so that each side is evenly dark
+    // but for the rounded corners of the window: its right side along the
+    // window, and its bottom under it.
+    let hard = "window, window:focus { box-shadow: 8px 8px 0 #000000c0; }\n";
+    let mut session = Session::with_config(&[("theme.css", hard)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    let picture = session.draw();
+    let right = |y: i32| darkness(picture.at(204, y));
+    let bottom = |x: i32| darkness(picture.at(x, BOTTOM + 4));
+    assert!(right(68) > 0 && bottom(104) > 0, "cast");
+    for y in 32..=104 {
+        assert_eq!(right(y), right(68), "down the right side at {y}");
+    }
+    for x in 32..=176 {
+        assert_eq!(bottom(x), bottom(104), "along the bottom at {x}");
+    }
+}
+
+#[test]
 fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
     let mut session = Session::with_config(&[("theme.css", SHADOWED)]);
     let mut client = session.connect();

@@ -101,7 +101,14 @@ impl Shade {
 
     /// Its nine pieces, the corners, the edges between them and the
     /// middle, row by row: each as what of the picture it is, in pixels
-    /// across, down, wide and high, and its pixels.
+    /// across, down, wide and high, and its pixels, with a border one pixel
+    /// wide round them that is a copy of its edge.
+    ///
+    /// The border is not to be drawn: it is what a piece stretched is
+    /// blended with at its edge. A renderer that takes what is beyond a
+    /// picture to be nothing, as the software one does, would otherwise
+    /// fade an edge stretched from one pixel toward its ends; GLES takes
+    /// the pixels at the edge, as the border is.
     #[must_use]
     pub fn cut(&self) -> Vec<(Cut, Vec<u8>)> {
         let corner = self.corner.0;
@@ -113,14 +120,19 @@ impl Shade {
     }
 
     /// The pixels of `from`, a piece of the picture: across, down, wide and
-    /// high.
+    /// high; and round them a border one pixel wide, a copy of its edge.
     fn slice(&self, (x, y, wide, high): Cut) -> Vec<u8> {
-        let row = |row: u32| {
-            let start = usize::try_from((row * self.side + x) * 4).unwrap_or(0);
-            let end = start + usize::try_from(wide * 4).unwrap_or(0);
-            self.pixels.get(start..end).unwrap_or_default()
+        // Which of the piece's pixels is at `at` of `length` and the border
+        // each side of it.
+        let inside = |at: u32, length: u32| at.saturating_sub(1).min(length - 1);
+        let pixel = move |(column, row): (u32, u32)| {
+            let at = (y + inside(row, high)) * self.side + x + inside(column, wide);
+            let at = usize::try_from(at * 4).unwrap_or(0);
+            self.pixels.get(at..at + 4).unwrap_or_default()
         };
-        (y..y + high).flat_map(row).copied().collect()
+        let rows = 0..high + 2;
+        let pixels = rows.flat_map(|row| (0..wide + 2).map(move |column| (column, row)));
+        pixels.flat_map(pixel).copied().collect()
     }
 
     /// Where its pieces are drawn to cast the shadow of a part whose box is
@@ -389,14 +401,41 @@ mod tests {
         assert_eq!(from[1], (56, 0, 1, 56));
         assert_eq!(from[4], (56, 56, 1, 1));
         assert_eq!(from[8], (57, 57, 56, 56));
-        let bytes: usize = cut.iter().map(|(_, bytes)| bytes.len()).sum();
-        assert_eq!(bytes, shade.bytes().len(), "all of it, once");
-        // The middle is the middle pixel.
+        // The middle is the middle pixel, and the border round it.
         let middle = usize::try_from((56 * shade.side() + 56) * 4).unwrap();
-        assert_eq!(cut[4].1, shade.bytes()[middle..middle + 4]);
-        // Each piece is the size it says.
+        assert_eq!(cut[4].1, shade.bytes()[middle..middle + 4].repeat(9));
+        // Each piece is the size it says, and a pixel more each side.
         for ((_, _, wide, high), bytes) in &cut {
-            assert_eq!(bytes.len(), usize::try_from(wide * high * 4).unwrap());
+            let bordered = (wide + 2) * (high + 2) * 4;
+            assert_eq!(bytes.len(), usize::try_from(bordered).unwrap());
+        }
+    }
+
+    #[test]
+    fn each_piece_is_bordered_by_a_copy_of_its_edge() {
+        let shade = Shade::new(&SOFT, 8, Scale::ONE).unwrap();
+        let picture = |(x, y): (u32, u32)| {
+            let at = usize::try_from((y * shade.side() + x) * 4).unwrap();
+            shade.bytes()[at..at + 4].to_vec()
+        };
+        for ((x, y, wide, high), bytes) in shade.cut() {
+            let pixel = |(column, row): (u32, u32)| {
+                let at = usize::try_from((row * (wide + 2) + column) * 4).unwrap();
+                bytes[at..at + 4].to_vec()
+            };
+            // Its own pixels inside, and at each corner of the border the
+            // pixel at that corner of the piece.
+            assert_eq!(pixel((1, 1)), picture((x, y)));
+            assert_eq!(pixel((wide, high)), picture((x + wide - 1, y + high - 1)));
+            assert_eq!(pixel((0, 0)), picture((x, y)));
+            assert_eq!(pixel((wide + 1, 0)), picture((x + wide - 1, y)));
+            assert_eq!(pixel((0, high + 1)), picture((x, y + high - 1)));
+            let last = (x + wide - 1, y + high - 1);
+            assert_eq!(pixel((wide + 1, high + 1)), picture(last));
+            // And along each side the pixel beside it.
+            let half = high / 2;
+            assert_eq!(pixel((0, half + 1)), picture((x, y + half)));
+            assert_eq!(pixel((wide + 1, half + 1)), picture((last.0, y + half)));
         }
     }
 

@@ -75,7 +75,9 @@ impl Shades {
 
 /// The shadow under one thing: its picture cut into nine pieces, each its
 /// own texture, as one texture drawn nine times would be taken for one
-/// thing where what is drawn again is worked out; and where they go.
+/// thing where what is drawn again is worked out; and where they go. Each
+/// is drawn from within the border it is cut with, so that stretched it
+/// is blended at its edge with its own pixels.
 #[derive(Debug)]
 pub(crate) struct Shadowing {
     shade: Rc<Shade>,
@@ -89,8 +91,9 @@ impl Shadowing {
     pub(crate) fn new(shade: Rc<Shade>) -> Self {
         let pieces = shade.cut().into_iter().map(|(from, bytes)| {
             let pixels = (from.2.cast_signed(), from.3.cast_signed());
-            let painted = Painted::from_bytes(&bytes, Fourcc::Argb8888, pixels, pixels.into());
-            (from, painted)
+            let bordered = (pixels.0 + 2, pixels.1 + 2);
+            let painted = Painted::from_bytes(&bytes, Fourcc::Argb8888, bordered, pixels.into());
+            (from, painted.within(1))
         });
         Self {
             pieces: pieces.collect(),

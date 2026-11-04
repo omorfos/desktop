@@ -183,6 +183,22 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   through, take the filter out and run
   `cargo test -p omorfos --test integration sharing::a_shared_window_that_says_an_empty_part_of_it_is_opaque_goes_on_being_shared`.
 
+### A picture stretched in software fades at its edges
+
+- **Wrong:** the pixman renderer draws a texture with
+  `set_repeat(Repeat::None)`, so its bilinear filter blends what is beyond
+  the texture's edge in as nothing, and a texture stretched fades toward
+  its edges; one a pixel across, stretched, fades along all of its length.
+  The GLES renderer clamps to the edge, and draws it whole. `Repeat::Pad`
+  is what GLES does.
+- **Meanwhile:** each piece of a shadow is cut, in
+  `crates/omorfos-ui/src/shadow.rs`, with a border of one pixel copied from
+  its edge, and drawn from within it (ADR 33). Other pictures it stretches
+  are left as they are.
+- **Check:** `grep -n 'set_repeat' "$S"/src/backend/renderer/pixman/mod.rs`.
+  Once it pads, the border may go: cut the pieces without it and run
+  `cargo test -p omorfos --test integration shadows::a_side_of_a_shadow_is_as_dark_to_its_ends_as_in_its_middle`.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### No safe way to hold a stream's buffer or give one memory

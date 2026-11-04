@@ -85,6 +85,13 @@ kept. It is cut into nine pieces, corners, edges and middle, so that one
 picture serves a surface of any size and a window being resized makes no
 new one. A shader would look no better, and this is tested.
 
+An edge or the middle is one pixel across, stretched. Each piece carries a
+border of one pixel, a copy of its edge, that is not drawn but is what its
+edge is blended with: the software renderer takes what is beyond a picture
+for nothing, where GLES takes the pixels at its edge, and a side stretched
+without the border faded toward its ends, to about a third. Drawn so, both
+renderers draw a side whole to its ends, and the tests can say so.
+
 ### Corners
 
 The corners of glass are cut as a window's are (ADR 16): the blurred

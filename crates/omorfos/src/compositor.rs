@@ -4595,6 +4595,16 @@ impl Painted {
         }
     }
 
+    /// The same painting, of which only what is within a border `border`
+    /// pixels wide is drawn.
+    pub(crate) fn within(mut self, border: i32) -> Self {
+        let inset = f64::from(border);
+        let (width, height) = (self.whole.size.w, self.whole.size.h);
+        let size = Size::from((width - 2.0 * inset, height - 2.0 * inset));
+        self.whole = Rectangle::new((inset, inset).into(), size);
+        self
+    }
+
     /// The painting placed at `at` in the space, as an output sees it, as
     /// see-through as `opacity` says, where 1 is not at all. If it cannot
     /// be uploaded to the renderer it is left out, which is better than
