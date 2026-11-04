@@ -645,13 +645,20 @@ impl Face {
         handle: &QueueHandle<Shell>,
     ) -> Self {
         let surface = globals.compositor.create_surface(handle, ());
-        // Its name is no part of the theme's, so that it goes at once and
-        // is not in the picture it leads to.
+        // The box is named after the part it is drawn as, so that the
+        // compositor casts that part's shadow round it; a question comes
+        // and goes at once, and is not in the picture it leads to. A
+        // picture is named after no part, and casts none.
+        let name = if still.is_some() {
+            "omorfos-prompt"
+        } else {
+            Part::Question.name()
+        };
         let layer = globals.layers.get_layer_surface(
             &surface,
             on.as_ref(),
             zwlr_layer_shell_v1::Layer::Overlay,
-            "omorfos-prompt".to_owned(),
+            name.to_owned(),
             handle,
             (),
         );

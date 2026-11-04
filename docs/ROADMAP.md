@@ -1048,8 +1048,11 @@ the first than on the last.
       dialog: the prompt marks its box by the region it takes the pointer
       in, which moves with it as it shakes, and the compositor casts the
       `question` part's shadow round that, at the second level.
-- [ ] A shadow under what the portals ask, as under the prompt for a
-      password: its panel, `omorfos-prompt`, is named after no part.
+- [x] A shadow under what the portals ask, as under the prompt for a
+      password: the box's panel is named after the `question` part, whose
+      shadow it casts, and a question comes and goes at once, whatever
+      the part's `transition`, so that it is not in the picture it leads
+      to; the pictures a colour is picked from are named after no part.
 - [ ] Shadows drawn in software whole to their ends: the software
       renderer stretches a piece of a shadow's picture with a bilinear
       filter and nothing beyond its edge, so a side of a shadow fades

@@ -2364,8 +2364,8 @@ impl Compositor {
     /// Works out how much there is to see of each panel that a shell
     /// component has put up or taken down: one that is named after a part
     /// of the theme comes in, and goes, over the time that part's colours
-    /// take to change. A panel of any other program is there at once and
-    /// gone at once.
+    /// take to change, but for a question. A panel of any other program is
+    /// there at once and gone at once.
     fn fade_layers(&mut self, theme: &Theme) {
         let animation = &mut self.animation;
         std::mem::swap(&mut animation.layers, &mut animation.before);
@@ -2393,11 +2393,16 @@ impl Compositor {
                     let size = layers.layer_geometry(layer).unwrap_or_default().size;
                     let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
                     let shadow = animation.shades.cast(&style, head.scale, area, had);
+                    let share = if fades(part) {
+                        animation.motion.presence(theme, part, key)
+                    } else {
+                        1.0
+                    };
                     Present {
                         surface: surface.clone(),
                         part,
                         layer: layer.layer(),
-                        share: animation.motion.presence(theme, part, key),
+                        share,
                         shadow,
                     }
                 });
@@ -2408,7 +2413,7 @@ impl Compositor {
         for was in before.drain(..) {
             let mut now = animation.layers.iter();
             let still = now.any(|now| now.surface == was.surface);
-            let pieces = (!still).then(|| animation.noted(&was.surface));
+            let pieces = (!still && fades(was.part)).then(|| animation.noted(&was.surface));
             let gone = pieces.flatten().map(|pieces| Gone {
                 part: was.part,
                 since: animation.clock,
@@ -3488,7 +3493,7 @@ impl Compositor {
                 smithay::utils::Scale::from(view.scale.factor()),
                 known.map_or(1.0, |known| known.share),
             );
-            if let Some(known) = known {
+            if let Some(known) = known.filter(|known| fades(known.part)) {
                 let mut noting = self.noting(view, known.part);
                 for surface in &surfaces {
                     noting.add(surface, noting.paint(surface.texture()));
@@ -4202,6 +4207,13 @@ struct Present {
     share: f32,
     /// The shadow it casts, if the theme gives its part one.
     shadow: Option<Shadowing>,
+}
+
+/// Whether a panel named after `part` comes and goes over the time the
+/// part's colours take to change. A question does not: what it leads to
+/// may be a picture of the screen, which it is not to be in.
+fn fades(part: Part) -> bool {
+    part != Part::Question
 }
 
 /// Something that has gone from the screen, while it fades.

@@ -157,6 +157,12 @@ goes.
   moved with the box at each frame of the shake, and the compositor casts
   the `question` part's shadow round the bounds of that region, kept
   within the surface; round the whole surface where it says none.
+- What an application asks through the portals is a panel named after
+  the `question` part, and casts its shadow as the components' panels do.
+  It comes and goes at once, not over the part's time as they do: what it
+  leads to may be a picture of the screen, and it is not to be in that,
+  nor is its shadow. The pictures it shows to pick a colour from are
+  named after no part, and cast none.
 - Other programs ask with `ext-background-effect-v1`, and are given blur
   of the same kind where they say. They are never given shadows wider
   than their own surface, or the picture.

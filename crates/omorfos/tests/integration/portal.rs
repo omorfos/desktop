@@ -23,8 +23,8 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
-use crate::common::{HEIGHT, Session, WIDTH, key};
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::common::{HEIGHT, Picture, Session, WIDTH, key};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const WHITE: u32 = 0xffff_ffff;
 
@@ -346,6 +346,56 @@ fn an_application_is_refused_when_the_user_says_no() {
         !session.config.path().join("Pictures").exists(),
         "nothing was taken"
     );
+}
+
+/// Steps and draws, with no time passing, until what is drawn is as
+/// `seen` says, and says whether it came to be.
+fn at_once(session: &mut Session, seen: impl Fn(&Picture) -> bool) -> bool {
+    (0..5000).any(|_| {
+        session.step();
+        let picture = session.draw();
+        std::thread::sleep(Duration::from_millis(1));
+        seen(&picture)
+    })
+}
+
+#[test]
+fn the_question_casts_the_shadow_of_its_part_and_takes_it_with_it_at_once() {
+    // Round the box, which is 440 across in the middle of the screen; and
+    // however long the theme says the part takes to change.
+    let theme = "question { transition: 1s linear; box-shadow: 0 0 0 8px #00000080; }\n";
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let (left, middle) = ((WIDTH - 440) / 2, HEIGHT / 2);
+    // It comes, and goes, with no time passing: it does not fade, so that
+    // it is not in a picture of the screen it leads to.
+    let looks = Theme::default()
+        .style(Part::Question, States::NONE)
+        .background;
+    let shown = u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue]);
+    let asking = ask(&daemon, "s");
+    let up = |picture: &Picture| picture.at(WIDTH / 2, middle) == shown;
+    assert!(at_once(&mut session, up), "it is up at once");
+    let picture = session.draw();
+    let beside = picture.at(left - 4, middle);
+    assert!(
+        beside != BACKGROUND && shaded(beside, BACKGROUND),
+        "beside it: {beside:#x}"
+    );
+    assert_eq!(picture.at(left - 12, middle), BACKGROUND, "and no further");
+
+    press(&mut session, key::ESCAPE);
+    let gone = |picture: &Picture| {
+        let gone = picture.at(WIDTH / 2, middle) == BACKGROUND;
+        assert!(
+            !gone || picture.at(left - 4, middle) == BACKGROUND,
+            "its shadow with it"
+        );
+        gone
+    };
+    assert!(at_once(&mut session, gone), "it is gone at once");
+    assert_eq!(answered(&mut session, asking).0, 1);
 }
 
 #[test]
