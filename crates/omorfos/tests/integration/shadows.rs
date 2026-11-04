@@ -5,8 +5,9 @@ use std::time::Duration;
 use omorfos::{Input, Roles};
 use omorfos_config::Action;
 use omorfos_core::Button;
+use smithay::input::keyboard::Keycode;
 
-use crate::common::{HEIGHT, Picture, Session, WIDTH, key};
+use crate::common::{Client, HEIGHT, Picture, Session, WIDTH, key};
 use crate::layers::panel;
 use crate::windows::{BACKGROUND, RED, shaded};
 
@@ -59,7 +60,7 @@ fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
 #[test]
 fn a_theme_without_shadows_casts_none() {
     let none = "* { transition: none; }\n\
-                window, window:focus, menu, notice { box-shadow: none; }\n";
+                window, window:focus, menu, notice, switcher { box-shadow: none; }\n";
     // With a mistake in the keys, so that the notice says so.
     let mut session = Session::with_config(&[("theme.css", none), ("keys.yaml", "nonsense: [")]);
     let mut client = session.connect();
@@ -83,6 +84,11 @@ fn a_theme_without_shadows_casts_none() {
     assert_ne!(picture.at(200, 110), BACKGROUND, "the menu");
     assert_eq!(picture.at(322, 110), BACKGROUND, "beside it");
     assert_eq!(picture.at(96, 110), BACKGROUND);
+
+    // Nor does the switcher, round it or the windows shown in it.
+    let (mut session, _client) = switching(none);
+    assert_eq!(shaded_background(&session.draw()), 0);
+    press(&mut session, key::ALT, false);
 }
 
 /// Opens the menu with its corner at the pointer, at (100, 100).
@@ -278,6 +284,57 @@ fn the_tooltip_of_the_mark_casts_the_shadow_its_theme_gives_it() {
     assert_eq!(mark(&picture), unshaded, "but never over the mark");
     session.step();
     assert!(!session.draw().damaged, "and it is not drawn again");
+}
+
+fn press(session: &mut Session, code: Keycode, pressed: bool) {
+    session
+        .compositor_mut()
+        .input(Input::Key { code, pressed }, 0);
+}
+
+/// Two windows, and the switcher opened over them by Alt+Tab, with Alt
+/// still held.
+fn switching(theme: &str) -> (Session, Client) {
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    for name in ["one", "two"] {
+        session.open(&mut client, name, (200, 100), RED);
+    }
+    session.step();
+    assert_eq!(shaded_background(&session.draw()), 0, "no shadow yet");
+    press(&mut session, key::ALT, true);
+    press(&mut session, key::TAB, true);
+    press(&mut session, key::TAB, false);
+    session.step();
+    assert!(session.compositor().switcher_layout().is_some(), "open");
+    (session, client)
+}
+
+#[test]
+fn the_switcher_casts_the_shadow_its_theme_gives_it_and_takes_it_when_it_closes() {
+    // Cast round it, under the windows shown small in it and its own
+    // pixels alike.
+    let theme = "* { transition: none; }\n\
+                 window, window:focus { box-shadow: none; }\n\
+                 switcher { box-shadow: 0 0 0 8px #000000c0; }\n";
+    let (mut session, _client) = switching(theme);
+    let area = session.compositor().switcher_layout().unwrap().area;
+    let (left, middle) = (
+        area.origin.x,
+        area.origin.y + area.size.height.cast_signed() / 2,
+    );
+    let picture = session.draw();
+    assert!(darkness(picture.at(left - 4, middle)) > 0, "beside it");
+    assert_eq!(picture.at(left - 12, middle), BACKGROUND, "and no further");
+    let bottom = area.origin.y + area.size.height.cast_signed();
+    assert!(darkness(picture.at(left + 40, bottom + 4)) > 0, "under it");
+    session.step();
+    assert!(!session.draw().damaged, "and it is not drawn again");
+
+    press(&mut session, key::ALT, false);
+    session.step();
+    assert_eq!(session.compositor().switcher_layout(), None, "closed");
+    assert_eq!(shaded_background(&session.draw()), 0, "gone with it");
 }
 
 #[test]

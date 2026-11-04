@@ -820,6 +820,7 @@ mod tests {
             Part::Launcher,
             Part::Notice,
             Part::Notification,
+            Part::Switcher,
             Part::Tooltip,
         ] {
             assert_eq!(

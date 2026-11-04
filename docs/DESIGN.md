@@ -220,7 +220,7 @@ straight down.
 |---|---|---|
 | 0 | The wallpaper, the top bar | none |
 | 1 | Windows, the dock | 0 8px 24px at 28%; half that for a window without focus |
-| 2 | Menus, tooltips, notifications and the notice of what is wrong, the launcher, dialogs | 0 12px 32px at 36% |
+| 2 | Menus, tooltips, notifications and the notice of what is wrong, the launcher, the switcher, dialogs | 0 12px 32px at 36% |
 
 ## Focus
 

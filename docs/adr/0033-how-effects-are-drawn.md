@@ -138,7 +138,7 @@ goes.
 - The theme says: `backdrop-filter: blur(24px)` and `box-shadow`, on any
   part.
 - The compositor draws them for its own parts: titlebars, menus, the
-  notice.
+  notice, the switcher.
 - It draws them for the components' too. It already knows which part of
   the theme a component's surface is, by the name it gives its layer, and
   so what blur and shadow the theme gives it. The component draws its

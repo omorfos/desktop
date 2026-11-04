@@ -1059,8 +1059,10 @@ the first than on the last.
       tiles, which are drawn by the compositor and are not a part's
       layer: the notice's fades with it, and the tooltip's falls under
       the mark it tells of, which nothing darkens.
-- [ ] A shadow under the switcher on Alt+Tab, which DESIGN.md does not
-      yet give a level, drawn in pieces as it is.
+- [x] A shadow under the switcher on Alt+Tab, at the second level with
+      the launcher, which it floats over the windows as: cast round the
+      whole of it, under the windows shown small in it as well as its
+      own pixels, kept while it is not painted anew and gone with it.
 - [ ] Glass, drawn in software and tested (`backdrop-filter: blur()`):
       what is under each sheet, its blurred picture, when that is stale,
       and the software blur that is the shader's specification. The

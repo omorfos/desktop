@@ -30,6 +30,7 @@ use crate::compositor::{Compositor, Element, Painted, View};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
 use crate::paint::{self, Places, Shown};
+use crate::shadows::Shadowing;
 
 /// The room between one window's place and the next, in units of layout.
 const GAP: u32 = 8;
@@ -101,6 +102,8 @@ struct Drawn {
     config: Arc<Config>,
     scale: Scale,
     pixels: Painted,
+    /// The shadow it casts, as a part on the second level does.
+    shadow: Option<Shadowing>,
 }
 
 /// The colour of a window's title in the switcher, which an icon that is
@@ -316,6 +319,16 @@ impl Compositor {
             let theme = &config.theme;
             let canvas = paint::switcher(&mut self.text, theme, &layout, &painted, picture, scale);
             let pixels = Painted::new(&canvas);
+            let style = theme.style(Part::Switcher, States::NONE);
+            let area = &layout.area;
+            let placed = (
+                area.origin.x,
+                area.origin.y,
+                area.size.width,
+                area.size.height,
+            );
+            let had = switching.painted.take().and_then(|drawn| drawn.shadow);
+            let shadow = self.animation.shades.cast(&style, scale, placed, had);
             switching.painted = Some(Drawn {
                 ids: shown.iter().map(|_| [Id::new(), Id::new()]).collect(),
                 layout,
@@ -323,6 +336,7 @@ impl Compositor {
                 config,
                 scale,
                 pixels,
+                shadow,
             });
         }
         self.switch.icons = icons;
@@ -414,6 +428,9 @@ impl Compositor {
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
         elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
+        if let Some(shadow) = &drawn.shadow {
+            shadow.elements(renderer, 1.0, view, &mut elements);
+        }
         elements
     }
 
