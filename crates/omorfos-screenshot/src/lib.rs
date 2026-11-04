@@ -334,7 +334,7 @@ fn stills(
         let windows: Vec<_> = on(placed, shot).collect();
         let alone = windows.iter().enumerate().map(|(at, window)| {
             let covered = windows[..at].iter().any(|above| overlap(above, window));
-            covered.then(|| alone(connection, &window.handle)).flatten()
+            covered.then(|| alone(connection, window)).flatten()
         });
         omorfos_picker::Still {
             screen: shot.screen.clone(),
@@ -364,14 +364,18 @@ fn overlap(one: &omorfos_ipc::Placed, other: &omorfos_ipc::Placed) -> bool {
         && !apart((one.y, one.height), (other.y, other.height))
 }
 
-/// A picture of the window called `handle` by itself, taken now, if it can
-/// be.
-fn alone(connection: &wayland_client::Connection, handle: &str) -> Option<omorfos_picker::Alone> {
-    let shot = shoot(connection, Some(handle.to_owned())).ok();
+/// A picture of the window `placed` by itself, taken now, if it can be.
+fn alone(
+    connection: &wayland_client::Connection,
+    placed: &omorfos_ipc::Placed,
+) -> Option<omorfos_picker::Alone> {
+    let shot = shoot(connection, Some(placed.handle.clone())).ok();
     let shot = shot.and_then(|(shots, _)| shots.into_iter().next());
     shot.map(|shot| omorfos_picker::Alone {
         size: (shot.width, shot.height),
         pixels: shot.pixels,
+        alpha: shot.alpha,
+        reach: placed.reach,
     })
 }
 

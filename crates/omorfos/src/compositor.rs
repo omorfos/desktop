@@ -1133,7 +1133,9 @@ impl Compositor {
         let away = self.away_at().into_iter().flatten().min();
         let awake = self.presence.awake.and_then(Awake::until);
         // What is changing colour is drawn again a moment later.
-        let moving = self.animation.epoch.zip(self.animation.motion.deadline());
+        let motions = [&self.animation.motion, &self.animation.portrayal];
+        let due = motions.into_iter().filter_map(Motion::deadline).min();
+        let moving = self.animation.epoch.zip(due);
         let moving = moving.map(|(epoch, due)| epoch + due);
         // So is a slide of the workspaces that is settling.
         let settling = self.protocols.gestures.slide.settling();
@@ -2350,6 +2352,7 @@ impl Compositor {
                 .map_element(shown.window.clone(), shown.origin, false);
         }
         self.animation.leave(previous, &self.scene);
+        self.portray(&config.theme);
 
         self.fade_layers(&config.theme);
         self.repaint_overlays();
@@ -2359,6 +2362,61 @@ impl Compositor {
         self.announce_scale();
         self.update_idle_inhibition();
         self.sync_keyboard_focus(focused);
+    }
+
+    /// Paints the frames the windows pictures are taken of by themselves
+    /// are drawn in, as each would be shown wherever it is, keeping what
+    /// was painted while it would look the same. Once the scene is laid
+    /// out, with the shadows in use begun.
+    fn portray(&mut self, theme: &Theme) {
+        let over = self.hover.button;
+        let pictured: Vec<(FrameInfo, Window, WlSurface)> = self
+            .capture
+            .windows()
+            .filter_map(|window| {
+                let mapped = self.windows.iter().find(|mapped| mapped.id == window);
+                mapped.zip(self.desktop.frame_of(window))
+            })
+            .map(|(mapped, frame)| {
+                let scale = self.portrait_head(frame.geometry).map(|head| head.scale);
+                let frame = FrameInfo::of(&frame, scale.unwrap_or(Scale::ONE), over);
+                (frame, mapped.window.clone(), mapped.surface.clone())
+            })
+            .collect();
+        let mut kept = std::mem::take(&mut self.animation.portraits);
+        let animation = &mut self.animation;
+        let (text, shades) = (&mut self.text, &mut animation.shades);
+        let (portrayal, portraits) = (&mut animation.portrayal, &mut animation.portraits);
+        portrayal.begin(animation.clock);
+        for (frame, window, surface) in pictured {
+            let id = frame.shown;
+            // Once, however many programs take pictures of it.
+            if portraits.iter().any(|portrait| portrait.id == id) {
+                continue;
+            }
+            let cached = kept.iter().position(|portrait| portrait.id == id);
+            let cached = cached.and_then(|index| kept.swap_remove(index).chrome);
+            let chrome = frame.decoration.map(|decoration| {
+                let tools = (&mut *text, &mut *portrayal, &mut *shades);
+                Chrome::paint(tools, theme, cached, &frame, decoration)
+            });
+            portraits.push(Shown {
+                id,
+                over: false,
+                window,
+                surface,
+                outer: frame.geometry,
+                origin: (frame.client.origin.x, frame.client.origin.y).into(),
+                // Nothing fades into a picture.
+                opacity: 1.0,
+                shaded: frame.standing.shaded,
+                chrome,
+                veil: None,
+                private: false,
+                on: frame.on,
+            });
+        }
+        portrayal.end();
     }
 
     /// Works out how much there is to see of each panel that a shell
@@ -2918,8 +2976,8 @@ impl Compositor {
     }
 
     /// A window by itself, from the top left corner of the screen, as a
-    /// picture of it is taken: what it draws, without the frame omorfos
-    /// puts round it, and the pointer over it if `pointer`. A blank, if a
+    /// picture of it is taken: in its frame, as it would be shown, with the
+    /// shadow it casts, and the pointer over it if `pointer`. A blank, if a
     /// rule says it is private.
     fn alone<R>(
         &self,
@@ -2933,7 +2991,7 @@ impl Compositor {
     {
         let corner = Point::<i32, Physical>::default();
         // The pointer is drawn where it is over the picture, which begins
-        // where all the window draws does.
+        // where all of the window does, its frame and its shadow too.
         let mut elements = Vec::new();
         let begins = self.pictured(window).filter(|_| pointer);
         if let Some((area, _)) = begins {
@@ -2948,18 +3006,32 @@ impl Compositor {
             elements.extend(blank.map(Element::Solid));
             return elements;
         }
-        let mapped = self.windows.iter().find(|mapped| mapped.id == window);
-        let surfaces = mapped.into_iter().flat_map(|mapped| {
-            // All that the window draws, the shadow it may draw round
-            // what it says is the window included.
-            let within = Point::<i32, Logical>::default() - mapped.window.bbox().loc;
-            let at = within.to_f64().to_physical(scale.factor()).to_i32_round();
-            let scale = smithay::utils::Scale::from(scale.factor());
-            mapped
-                .window
-                .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0)
+        // All of it, as it would be shown: its frame, what it draws, the
+        // shadow it may draw round what it says is the window included,
+        // and the shadow it casts; from the corner of all that.
+        let portraits = self.animation.portraits.iter();
+        let portrait = portraits.filter(|portrait| portrait.id == window);
+        let portrayed = portrait.filter_map(|portrait| {
+            let area = self.portrayed(window).map(|(area, _)| area);
+            area.map(|area| (portrait, area))
         });
-        elements.extend(surfaces.map(Element::Surface));
+        for (portrait, area) in portrayed {
+            let view = View {
+                origin: area.loc,
+                scale,
+            };
+            let chrome = portrait.chrome.as_ref();
+            if let Some(chrome) = chrome {
+                Self::chrome_elements(renderer, view, chrome, 1.0, &mut elements);
+            }
+            if !portrait.shaded {
+                self.window_elements(renderer, view, (portrait, false), &mut elements);
+            }
+            let shadow = chrome.and_then(|chrome| chrome.shadow.as_ref());
+            if let Some(shadow) = shadow {
+                shadow.elements(renderer, 1.0, view, &mut elements);
+            }
+        }
         elements
     }
 
@@ -3309,7 +3381,7 @@ impl Compositor {
                 let nothing = self.noting::<R::TextureId>(view, Part::Window);
                 self.animation.note(&shown.surface, nothing.done());
             } else {
-                self.window_elements(renderer, view, shown, elements);
+                self.window_elements(renderer, view, (shown, true), elements);
             }
             // Under it all, its shadow.
             let shadow = shown
@@ -3363,20 +3435,24 @@ impl Compositor {
 
     /// Adds what a window itself shows: its pop-ups whole, and its own
     /// picture, which is cut to the frame if the frame's bottom corners are
-    /// rounded.
+    /// rounded. What it is drawn from is noted if `noted`, to fade it out
+    /// by when it goes.
     fn window_elements<R>(
         &self,
         renderer: &mut R,
         view: View,
-        shown: &Shown,
+        (shown, noted): (&Shown, bool),
         elements: &mut Vec<Element<R>>,
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let scale = smithay::utils::Scale::from(view.scale.factor());
-        // What it is drawn from is noted, to fade it out by when it goes.
-        let mut noting = self.noting(view, Part::Window);
+        let mut noting = if noted {
+            self.noting(view, Part::Window)
+        } else {
+            Noting::new(false, view.origin, view.scale.factor())
+        };
         // A window's surface may start above and left of its visible
         // geometry, where it draws its own shadows.
         let location = shown.origin - shown.window.geometry().loc;
@@ -4173,6 +4249,12 @@ pub(crate) struct Animation {
     /// The frames and menu rows that are on their way from one look to
     /// another, and what has just come into the picture.
     motion: Motion,
+    /// The same of the frames windows are pictured in by themselves, kept
+    /// apart: a tab behind another is shown in front in its own picture.
+    portrayal: Motion,
+    /// The windows pictures are being taken of by themselves, each in its
+    /// frame as it would be shown, wherever it is, as of the last sync.
+    portraits: Vec<Shown>,
     /// The time they go by: how long it is since the first
     /// [`Compositor::refresh`], and when that was.
     clock: Duration,
@@ -4258,6 +4340,8 @@ impl Animation {
     fn new() -> Self {
         Self {
             motion: Motion::new(),
+            portrayal: Motion::new(),
+            portraits: Vec::new(),
             clock: Duration::ZERO,
             epoch: None,
             menu_opacity: 1.0,

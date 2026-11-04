@@ -1090,6 +1090,80 @@ fn a_picture_of_a_window_has_the_shadow_it_draws_round_itself() {
 }
 
 #[test]
+fn a_picture_of_a_window_has_its_frame_and_the_shadow_it_casts_wherever_it_is() {
+    // A shadow with a hard edge, wider while the window has focus.
+    let theme = "* { transition: none; }\n\
+                 window { box-shadow: 0 0 0 4px #00000080; }\n\
+                 window:focus { box-shadow: 0 0 0 8px #00000080; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut app = session.connect();
+    session.open_decorated(&mut app, "editor", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("editor");
+    session.roundtrip(&mut camera);
+    // Its frame, 202 by 129 with the titlebar and the border, and as far
+    // round it as the shadow falls with focus or without, so that it is
+    // one size whichever.
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(218, 145));
+
+    let see_through = ((218, 145), Format::Argb8888);
+    let alpha = |shot: &Picture, (x, y)| shot.at(x, y) >> 24;
+    let (shot, _) = snap_as(&mut session, &mut camera, &taking, see_through);
+    assert_eq!(shot.at(109, 8 + 28 + 50), RED, "the window");
+    let titlebar = shot.at(109, 8 + 14);
+    assert!(
+        titlebar != RED && alpha(&shot, (109, 22)) == 0xff,
+        "its titlebar"
+    );
+    assert!(alpha(&shot, (2, 72)) > 0, "the shadow it casts with focus");
+
+    // Out of sight and without focus, it is as it would be shown.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Minimize);
+    session.roundtrip(&mut app);
+    let (shot, events) = snap_as(&mut session, &mut camera, &taking, see_through);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    assert_eq!(shot.at(109, 8 + 28 + 50), RED);
+    assert!(shot.at(109, 22) != RED && alpha(&shot, (109, 22)) == 0xff);
+    assert_eq!(alpha(&shot, (2, 72)), 0, "the shadow it casts without");
+    assert!(alpha(&shot, (6, 72)) > 0);
+    assert_eq!(alpha(&shot, (0, 0)), 0, "nothing beyond");
+}
+
+#[test]
+fn a_picture_of_a_window_rolled_up_is_of_its_titlebar_and_the_shadow_that_casts() {
+    let theme = "* { transition: none; }\n\
+                 window, window:focus { box-shadow: 0 0 0 8px #00000080; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut app = session.connect();
+    session.open_decorated(&mut app, "editor", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("editor");
+    session.roundtrip(&mut camera);
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(218, 145));
+
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Shade);
+    session.step();
+    session.roundtrip(&mut camera);
+    // As tall as its titlebar, 28, and the shadow round that.
+    let events = camera.take_events();
+    assert!(events.contains(&Event::CaptureSize(218, 44)), "{events:?}");
+    let see_through = ((218, 44), Format::Argb8888);
+    let (shot, events) = snap_as(&mut session, &mut camera, &taking, see_through);
+    assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
+    let titlebar = shot.at(109, 8 + 14);
+    assert!(titlebar != RED && titlebar >> 24 == 0xff, "{titlebar:x}");
+    let under = shot.at(109, 40);
+    assert!(
+        under != RED && under >> 24 < 0xff,
+        "only its shadow: {under:x}"
+    );
+}
+
+#[test]
 fn a_window_larger_than_its_screen_is_given_whole() {
     let mut session = Session::new();
     let mut app = session.connect();
@@ -1119,10 +1193,11 @@ fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
 
     let taking = camera.capture_window("editor");
     session.roundtrip(&mut camera);
-    // As large as the window draws itself: the frame round it is not its.
-    // It may be see-through, as a screen is not.
+    // As large as the window in its frame, 202 by 129, and the shadow
+    // the built-in theme gives it, which falls 24 out and 8 down with
+    // focus. It may be see-through, as a screen is not.
     let told = [
-        Event::CaptureSize(200, 100),
+        Event::CaptureSize(250, 177),
         Event::CaptureFormat(Format::Argb8888),
         Event::CaptureFormat(Format::Xrgb8888),
         Event::CaptureKnown,
@@ -1135,12 +1210,16 @@ fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
     );
 
     let before = session.draw();
-    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (200, 100));
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (250, 177));
     assert_eq!(
         events,
-        [Event::ShotDamage(0, 0, 200, 100), Event::ShotReady]
+        [Event::ShotDamage(0, 0, 250, 177), Event::ShotReady]
     );
-    for (x, y) in [(0, 0), (199, 0), (0, 99), (199, 99), (100, 50)] {
+    // The window, under its titlebar and in from its border, but for the
+    // corners the frame rounds at the bottom.
+    let (left, top) = (24 + 1, 16 + 28);
+    let corners = [(0, 0), (199, 0), (10, 89), (189, 89), (100, 50)];
+    for (x, y) in corners.map(|(x, y)| (left + x, top + y)) {
         assert_eq!(shot.at(x, y), RED, "at {x}, {y}");
     }
     // The screen is as it was: the window was drawn by itself only for

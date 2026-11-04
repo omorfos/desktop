@@ -52,11 +52,14 @@ use smithay::wayland::dmabuf::get_dmabuf;
 use smithay::wayland::shm::with_buffer_contents;
 
 use crate::Scale;
-use omorfos_config::{Part, States};
-use omorfos_core::WindowId;
+use omorfos_config::{Part, State, States};
+use omorfos_core::geometry::Rect;
+use omorfos_core::{Frame, WindowId};
+use omorfos_ui::Area;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 
-use crate::compositor::{Compositor, Painted, color};
+use crate::compositor::{Compositor, Mapped, Painted, color};
+use crate::outputs::Head;
 use crate::paint;
 use crate::paint::Signs;
 use crate::recording::{Recorded, Recording};
@@ -493,6 +496,16 @@ impl Capture {
             .any(|taking| matches!(taking.subject, Subject::Screen(_)))
     }
 
+    /// The windows pictures are being taken of by themselves.
+    pub(crate) fn windows(&self) -> impl Iterator<Item = WindowId> {
+        self.takings
+            .iter()
+            .filter_map(|taking| match taking.subject {
+                Subject::Window(window) => Some(window),
+                Subject::Screen(_) => None,
+            })
+    }
+
     /// The windows being shared or recorded, as `shared` says of screens.
     fn shared_windows(&self) -> impl Iterator<Item = WindowId> {
         let windows = self.takings.iter().filter(|taking| taking.asked > 1);
@@ -793,17 +806,66 @@ impl Compositor {
     }
 
     /// Where on the desktop a picture of a window by itself is of, and at
-    /// what scale it is drawn: that of the screen that shows it, or of the
-    /// first. Nothing, if it is not shown.
+    /// what scale it is drawn, while it is shown. Nothing, if it is not.
     pub(crate) fn pictured(&self, window: WindowId) -> Option<(Rectangle<i32, Logical>, f64)> {
-        let shown = self.scene.iter().find(|shown| shown.id == window);
-        shown.map(|shown| {
-            let head = self.head_at(shown.origin.to_f64()).or(self.primary_head());
-            let scale = head.map_or(1.0, |head| head.scale.factor());
-            let all = shown.window.bbox();
-            let corner = shown.origin - shown.window.geometry().loc + all.loc;
-            (Rectangle::new(corner, all.size), scale)
+        let shown = self.scene.iter().any(|shown| shown.id == window);
+        let portrayed = self.portrayed(window).filter(|_| shown);
+        portrayed.map(|(area, head)| (area, head.scale.factor()))
+    }
+
+    /// Where on the desktop all of a picture of a window by itself is, as
+    /// it would be shown wherever it is: its frame, all it draws, and as
+    /// far round as the shadow it casts falls, with focus or without, so
+    /// that the picture is one size whichever; and the screen it is drawn
+    /// for, the one most of its frame is on, or the first. Nothing, if it
+    /// has gone.
+    pub(crate) fn portrayed(&self, window: WindowId) -> Option<(Rectangle<i32, Logical>, &Head)> {
+        let mapped = self.windows.iter().find(|mapped| mapped.id == window);
+        let framed = mapped.zip(self.desktop.frame_of(window));
+        framed.and_then(|(mapped, frame)| {
+            let head = self.portrait_head(frame.geometry);
+            head.map(|head| (self.portrait_area(mapped, &frame), head))
         })
+    }
+
+    /// Where on the desktop all of a picture of `mapped` is, in `frame`.
+    fn portrait_area(&self, mapped: &Mapped, frame: &Frame<'_>) -> Rectangle<i32, Logical> {
+        let rectangle = |(x, y, width, height): Area| {
+            let size = (width.cast_signed(), height.cast_signed());
+            Rectangle::<i32, Logical>::new((x, y).into(), size.into())
+        };
+        let outer = frame.geometry;
+        let outer = (
+            outer.origin.x,
+            outer.origin.y,
+            outer.size.width,
+            outer.size.height,
+        );
+        let mut area = rectangle(outer);
+        if !frame.standing.shaded {
+            let client = frame.client().origin;
+            let drawn = mapped.window.bbox();
+            let at = Point::from((client.x, client.y)) - mapped.window.geometry().loc + drawn.loc;
+            area = area.merge(Rectangle::new(at, drawn.size));
+        }
+        // A window as large as it can be, or larger, casts none.
+        let cast = frame.decoration.is_some() && !frame.fullscreen && !frame.maximized;
+        let theme = &self.config().theme;
+        let focus = [States::NONE, States::NONE.when(State::Focused, true)];
+        let shadows = focus.map(|states| theme.style(Part::Window, states).shadow);
+        let falls = shadows
+            .iter()
+            .filter_map(|shadow| omorfos_ui::falls(shadow, outer));
+        for falls in falls.filter(|_| cast) {
+            area = area.merge(rectangle(falls));
+        }
+        area
+    }
+
+    /// The screen a picture of a window whose frame is at `geometry` is
+    /// drawn for: the one most of it is on, or the first.
+    pub(crate) fn portrait_head(&self, geometry: Rect) -> Option<&Head> {
+        self.head_for(geometry).or(self.primary_head())
     }
 
     /// Where what pictures are taken of stands: a screen where it is, and
@@ -817,20 +879,13 @@ impl Compositor {
                 let head = self.head(output);
                 head.map(|head| (head.output.clone(), head.upright(), head.scale.factor()))
             }
-            Subject::Window(window) => {
-                let mapped = self.windows.iter().find(|mapped| mapped.id == *window);
-                let shown = self.scene.iter().find(|shown| shown.id == *window);
-                let on = shown.and_then(|shown| self.head_at(shown.origin.to_f64()));
-                let head = on.or(self.primary_head());
-                mapped.zip(head).map(|(mapped, head)| {
-                    let scale = head.scale.factor();
-                    // All it draws, its shadow included.
-                    let size = mapped.window.bbox().size;
-                    let size: Size<i32, Physical> = size.to_f64().to_physical(scale).to_i32_round();
-                    let size = Size::from((size.w.clamp(1, LARGEST), size.h.clamp(1, LARGEST)));
-                    (head.output.clone(), size, scale)
-                })
-            }
+            Subject::Window(window) => self.portrayed(*window).map(|(area, head)| {
+                let scale = head.scale.factor();
+                let size = area.size;
+                let size: Size<i32, Physical> = size.to_f64().to_physical(scale).to_i32_round();
+                let size = Size::from((size.w.clamp(1, LARGEST), size.h.clamp(1, LARGEST)));
+                (head.output.clone(), size, scale)
+            }),
         }
     }
 

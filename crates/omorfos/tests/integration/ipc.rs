@@ -725,10 +725,13 @@ fn where_windows_are_is_told_in_the_pixels_of_the_screen_and_not_of_one_rolled_u
         let sizes = placed.iter().map(|place| (place.width, place.height));
         sizes.collect::<Vec<_>>()
     };
-    assert_eq!(
-        sizes(placed(&mut session, &mut peer)),
-        [(120, 80), (200, 100)]
-    );
+    // One in its frame, 62 by 69 with its titlebar and border, whose
+    // picture by itself reaches as far beyond as the shadow the built-in
+    // theme gives it with focus: 24 out, and 8 down. The other has none.
+    let told = placed(&mut session, &mut peer);
+    let reach: Vec<_> = told.iter().map(|place| place.reach).collect();
+    assert_eq!(reach, [[48, 32, 48, 64], [0; 4]]);
+    assert_eq!(sizes(told), [(124, 138), (200, 100)]);
     let shade = Request::Perform {
         action: json!("shade"),
     };

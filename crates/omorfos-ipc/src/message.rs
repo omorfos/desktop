@@ -320,9 +320,10 @@ pub struct Standing {
     pub sticky: bool,
 }
 
-/// Where a window is on a screen: the part of it there, in the pixels of
-/// that screen from its top left corner, as a picture of the screen has
-/// them. Only what the window draws is counted, not its frame.
+/// Where a window is on a screen: the part of its frame there, titlebar and
+/// border included, in the pixels of that screen from its top left corner,
+/// as a picture of the screen has them; and how much further a picture of
+/// the window by itself reaches, with the shadow it casts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placed {
     /// The window's [`Window::id`].
@@ -340,6 +341,13 @@ pub struct Placed {
     pub width: u32,
     /// How tall it is there.
     pub height: u32,
+    /// How far beyond that part a picture of the window by itself reaches,
+    /// on the left, at the top, on the right and at the bottom, in the
+    /// same pixels: as far as the shadow it casts falls, and the shadow it
+    /// draws round itself, and as much of it as is on no screen. Nothing,
+    /// from a compositor too old to say.
+    #[serde(default)]
+    pub reach: [u32; 4],
 }
 
 /// Writes a message as one line, newline included.
@@ -517,6 +525,7 @@ mod tests {
                 y: 20,
                 width: 640,
                 height: 480,
+                reach: [24, 16, 24, 32],
             }]),
             Reply::Done,
             Reply::Error {
@@ -584,6 +593,13 @@ mod tests {
         assert_eq!(Reply::State(state.clone()).into_state(), Some(state));
         assert_eq!(Reply::Done.into_state(), None);
         assert_eq!(Reply::Placed(Vec::new()).into_state(), None);
+    }
+
+    #[test]
+    fn a_window_placed_by_a_compositor_from_before_its_pictures_had_frames_reaches_no_further() {
+        let old = r#"{"id":3,"handle":"3f2a","output":"eDP-1","x":1,"y":2,"width":3,"height":4}"#;
+        let placed: Placed = serde_json::from_str(old).unwrap();
+        assert_eq!(placed.reach, [0; 4]);
     }
 
     #[test]

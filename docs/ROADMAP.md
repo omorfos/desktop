@@ -241,10 +241,10 @@ calls for them.
       `--window` and `Alt+Print`.
 - [x] Pictures of a window as large as it is, and see-through where it
       is, saved so by `omorfos-screenshot --window`.
-- [ ] Known gaps in pictures of a window: it is given without the frame
-      omorfos draws, with no way to ask for it; and one taken in the
-      memory of the graphics card is solid, see-through only in shared
-      memory.
+- [ ] Known gaps in pictures of a window: it is given in the frame
+      omorfos draws, with no way to ask for it without; and one taken in
+      the memory of the graphics card is solid, see-through only in
+      shared memory.
 - [ ] A private window blurred in pictures in place of blank, as a
       choice of the rule (`private: blur`), once glass has brought the
       blur and a way to draw a window by itself. A blur hides less than
@@ -1053,6 +1053,13 @@ the first than on the last.
       shadow it casts, and a question comes and goes at once, whatever
       the part's `transition`, so that it is not in the picture it leads
       to; the pictures a colour is picked from are named after no part.
+- [x] Pictures of a window by itself in its frame, with the shadow it
+      casts, as a program that draws its own titlebar has its own in its
+      picture: shared and saved alike, as it would be shown wherever it
+      is, the tab in front if it is behind another; one size whether it
+      has focus or not; and the picker outlining the frame, and showing a
+      covered window by itself as far beyond that as its picture reaches,
+      which the socket for scripts says.
 - [ ] Shadows drawn in software whole to their ends: the software
       renderer stretches a piece of a shadow's picture with a bilinear
       filter and nothing beyond its edge, so a side of a shadow fades

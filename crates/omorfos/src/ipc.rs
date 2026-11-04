@@ -419,7 +419,8 @@ impl Compositor {
     }
 
     /// Where each window that can be seen is on each screen it is on, the
-    /// one on top first: those over the panels, then the rest.
+    /// one on top first: those over the panels, then the rest. Each is its
+    /// frame, and how far a picture of it by itself reaches beyond that.
     fn placed(&self) -> Vec<Placed> {
         let mut top_first: Vec<_> = self.scene.iter().rev().collect();
         top_first.sort_by_key(|shown| !shown.over);
@@ -428,12 +429,24 @@ impl Compositor {
         let pixels = |units: i32| u32::try_from(units).unwrap_or_default();
         let mut placed = Vec::new();
         for shown in seen {
-            let area = Rectangle::new(shown.origin, shown.window.geometry().size);
+            let outer = shown.outer;
+            let size = (outer.size.width, outer.size.height);
+            let size = (size.0.cast_signed(), size.1.cast_signed());
+            let area = Rectangle::new((outer.origin.x, outer.origin.y).into(), size.into());
+            // All of a picture of it by itself, which takes in its frame.
+            let portrayed = self.portrayed(shown.id);
+            let pictured = portrayed.map_or(area, |(all, _)| all.merge(area));
             let on = self.heads.iter().filter_map(|head| {
                 let screen = head.area();
                 let part = area.intersection(screen)?;
                 let from = part.loc - screen.loc;
                 let scale = head.scale;
+                // Each side, in the screen's pixels from its corner.
+                let sides = |of: Rectangle<i32, Logical>| {
+                    let (near, far) = (of.loc - screen.loc, of.loc + of.size - screen.loc);
+                    [near.x, near.y, far.x, far.y].map(|along| scale.pixels(along))
+                };
+                let (inner, all) = (sides(part), sides(pictured));
                 Some(Placed {
                     id: shown.id.raw(),
                     handle: self.handle_of(shown.id),
@@ -442,6 +455,12 @@ impl Compositor {
                     y: pixels(scale.pixels(from.y)),
                     width: pixels(scale.pixels(part.size.w)),
                     height: pixels(scale.pixels(part.size.h)),
+                    reach: [
+                        pixels(inner[0] - all[0]),
+                        pixels(inner[1] - all[1]),
+                        pixels(all[2] - inner[2]),
+                        pixels(all[3] - inner[3]),
+                    ],
                 })
             });
             placed.extend(on);

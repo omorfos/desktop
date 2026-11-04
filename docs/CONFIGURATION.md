@@ -1350,8 +1350,8 @@ folder called `Screenshots` among your pictures: `~/Pictures`, or wherever
 when it was taken, and after its screen when there is more than one. One
 that is there already is never written over.
 
-`Alt+Print` takes the window with focus by itself, as large as it is and
-without the frame omorfos draws round it.
+`Alt+Print` takes the window with focus by itself, as large as it is, in
+the frame omorfos draws round it and with the shadow it casts.
 
 `Shift+Print` lets you pick what the picture is of first, and puts it on
 the clipboard, to be pasted, and saves nothing. The screens go still and
@@ -1399,8 +1399,8 @@ with focus, and `--pick` that you pick what it is of, which needs the
 are to be picked from is asked at the socket for scripts; a program the
 compositor starts is told where that is. `--to` can be said
 with either of the other two. A picture of a window is the
-whole of it, however large, and see-through where the window is, as the
-shadow some programs draw round their windows is. A program says which window it
+whole of it, however large, in its frame with the shadow it casts, and
+see-through where nothing is, as the shadow is. A program says which window it
 wants a picture of by the window's entry in the list of windows, so one
 that takes pictures of windows needs the `panel` role as well, to be
 given that list. A picture put on the clipboard is kept by

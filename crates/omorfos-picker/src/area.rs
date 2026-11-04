@@ -115,6 +115,34 @@ pub(crate) fn under(
     })
 }
 
+/// Where a picture of a window by itself is drawn, the window drawn at
+/// `rect` in units on a screen shown `shown` units large from a picture
+/// `pixels` large: as far beyond it as the picture `reach`es, in those
+/// pixels, on the left, at the top, on the right and at the bottom.
+pub(crate) fn widened(
+    (x, y, width, height): Rect,
+    reach: [u32; 4],
+    shown: (u32, u32),
+    pixels: (u32, u32),
+) -> Rect {
+    let units = |along: u32, room: u32, pixels: u32| {
+        let along = u64::from(along) * u64::from(room) / u64::from(pixels.max(1));
+        u32::try_from(along).unwrap_or(u32::MAX)
+    };
+    let [left, top, right, bottom] = [
+        units(reach[0], shown.0, pixels.0),
+        units(reach[1], shown.1, pixels.1),
+        units(reach[2], shown.0, pixels.0),
+        units(reach[3], shown.1, pixels.1),
+    ];
+    (
+        x.saturating_sub_unsigned(left),
+        y.saturating_sub_unsigned(top),
+        width.saturating_add(left).saturating_add(right),
+        height.saturating_add(top).saturating_add(bottom),
+    )
+}
+
 /// What a drag from `from` to `to` over screen `screen` comes to, the
 /// screen shown `shown` units large from a picture `pixels` large with
 /// `windows` on it: the window or else the screen it began on, for one
@@ -310,6 +338,16 @@ mod tests {
             Some(1)
         );
         assert_eq!(under((0, 0), &[], SHOWN, pixels, 0), None);
+    }
+
+    #[test]
+    fn a_window_by_itself_is_drawn_as_far_beyond_it_as_its_picture_reaches() {
+        // Two pixels to a unit.
+        let pixels = (1280, 960);
+        let reach = [24, 16, 24, 32];
+        let rect = (100, 100, 200, 100);
+        assert_eq!(widened(rect, reach, SHOWN, pixels), (88, 92, 224, 124));
+        assert_eq!(widened(rect, [0; 4], SHOWN, pixels), rect);
     }
 
     #[test]

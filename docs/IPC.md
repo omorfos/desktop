@@ -214,7 +214,7 @@ showing.
 {
   "placed": [
     { "id": 7, "handle": "5d3a0f6c1b2e4a7f8c9d0e1f2a3b4c5d", "output": "eDP-1",
-      "x": 120, "y": 64, "width": 1280, "height": 800 }
+      "x": 120, "y": 64, "width": 1280, "height": 800, "reach": [24, 16, 24, 32] }
   ]
 }
 ```
@@ -222,8 +222,12 @@ showing.
 `"placed"` is answered with each window that can be seen, the one on top
 first, and with where it is on each screen it is on: the part of it on
 that screen, in the screen's pixels from its top left corner, as a
-picture of the screen has them. Only what the window draws is counted,
-not its frame, and a window rolled up into its titlebar is not there.
+picture of the screen has them. Its frame is counted, titlebar and
+border, and not the shadow round it; a window rolled up into its
+titlebar is not there. `reach` says how much further a picture of the
+window by itself goes on the left, at the top, on the right and at the
+bottom, in the same pixels: as far as the shadow it casts, or draws
+round itself, falls, and as much of it as is on no screen.
 This is how a program that takes pictures, the picker of `Shift+Print`
 among them, knows which window is under the pointer.
 

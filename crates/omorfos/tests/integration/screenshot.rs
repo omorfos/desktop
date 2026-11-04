@@ -445,9 +445,10 @@ fn told_to_it_takes_the_window_with_focus_in_place_of_the_screens() {
     let tool = start_window(&mut session, WINDOWS);
     let paths = finish(&mut session, tool).unwrap();
     assert_eq!(paths.len(), 1);
-    // As large as the window, and all of it the window.
-    assert_eq!(saved(&paths[0], (0, 0)), ((200, 100), GREEN));
-    assert_eq!(saved(&paths[0], (199, 99)).1, GREEN);
+    // As large as the window in its frame with the shadow it casts, and
+    // see-through beyond that.
+    assert_eq!(saved(&paths[0], (0, 0)), ((250, 177), 0));
+    assert_eq!(saved(&paths[0], (24 + 1 + 100, 16 + 28 + 50)).1, GREEN);
 }
 
 #[test]
@@ -752,6 +753,43 @@ fn the_window_under_the_pointer_is_outlined_and_a_click_takes_it_whole() {
         usize::try_from(hidden.1).unwrap(),
     );
     assert_eq!(saved(&paths[0], hidden).1, RED, "under the window in front");
+}
+
+#[test]
+fn a_covered_window_is_shown_by_itself_in_its_frame_with_its_shadow_where_it_is() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open_decorated(&mut app, "behind", (300, 200), RED);
+    session.open_decorated(&mut app, "front", (200, 100), GREEN);
+    let ipc = session.listen();
+    let placed = placed(&mut session, &ipc);
+    let (front, behind) = (&placed[0], &placed[1]);
+    let corner = |along: u32| i32::try_from(along).unwrap();
+    let (left, top) = (corner(behind.x), corner(behind.y));
+    let (right, bottom) = (left + corner(behind.width), top + corner(behind.height));
+    // Of the window behind: what the one in front covers, and beside it,
+    // where its shadow falls and nothing covers it.
+    let hidden = (corner(front.x) + 5, corner(front.y + front.height) - 5);
+    assert!(hidden.0 < right && hidden.1 < bottom - 1);
+    // Just under its titlebar, which a picture squeezed into the frame
+    // would show there.
+    let high = (hidden.0, corner(front.y) + 2);
+    assert!(high.1 >= top + 28);
+    let beside = (right + 4, top + 60);
+    let tool = picking_windows(&mut session, &ipc);
+    point(&mut session, (corner(front.x) + 20, corner(front.y) + 20));
+    session.eventually(|session| session.draw().at(hidden.0, hidden.1) == GREEN);
+
+    // On the window behind, it is drawn by itself, over the one in front;
+    // and the shadow it casts, under the dim with the rest, is see-through
+    // and not black.
+    point(&mut session, (right - 10, bottom - 10));
+    session.eventually(|session| session.draw().at(hidden.0, hidden.1) == RED);
+    assert_eq!(session.draw().at(high.0, high.1), RED);
+    let lifted = session.draw().at(beside.0, beside.1);
+    assert!((lifted >> 8) & 0xff > 0, "{lifted:x}");
+    press(&mut session, crate::common::key::ESCAPE);
+    finish(&mut session, tool).unwrap();
 }
 
 #[test]

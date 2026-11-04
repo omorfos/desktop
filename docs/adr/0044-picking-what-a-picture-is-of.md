@@ -114,5 +114,8 @@ whatever has moved since, and the picker is in no picture.
 
 - A region is of one screen: a drag that goes on to another stops at the
   edge of the screen it began on.
-- What the picker outlines is what the window draws, not its frame,
-  since a picture of a window is without the frame.
+- What the picker outlines is the window's frame, not the shadow round
+  it, which would let the pointer have a window through its shadow while
+  over the one behind. A window another covers is shown by itself as far
+  beyond the outline as its picture reaches, which the socket for
+  scripts says, its shadow see-through over the screen.

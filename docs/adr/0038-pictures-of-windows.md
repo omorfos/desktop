@@ -130,8 +130,13 @@ and the dock that this record is mostly about.
   window that is its contents, so in a picture it is gone at once, and
   only the screen shows it fade.
 
-**A picture of one window** is what the window draws, without the frame
-omorfos puts round it, as the protocol means it. It was drawn by itself
+**A picture of one window** is the window as it would be shown: in the
+frame omorfos puts round it, with the shadow it casts (ADR 33), and all
+it draws. It was at first what the window draws alone, without the
+frame, as the protocol leaves it to the compositor to say; but a program
+that draws its own titlebar draws its own shadow too, which is in its
+picture, and one omorfos frames was then a bare rectangle beside it,
+with no titlebar to say what it was. It was drawn by itself
 in the corner of the screen the window is on, before that screen was
 drawn, and cut from what was read back; so it could be no larger than
 that screen, and what was see-through in it came out black. It is drawn
@@ -143,8 +148,13 @@ offered see-through (`Argb8888`) as well as solid, and `omorfos-screenshot`
 saves it see-through. It is all that the window draws: a program that
 draws its own titlebar draws a shadow round what it says is the window,
 and the picture was cut to that at first, which left the shadow out;
-tried by hand, that looked cropped. A window out of sight can have its picture taken, since what it
-last drew is still held; one a rule calls private is a blank of its size.
+tried by hand, that looked cropped. A window out of sight can have its
+picture taken, since what it last drew is still held; it is in the frame
+it would be shown in, as the tab in front if it is behind another, and
+the picture is as large as its frame and as far round as its shadow
+falls with focus or without, so that it is one size whichever, and a
+stream of it does not change size as the focus comes and goes. One a
+rule calls private is a blank of that size.
 A window can say it is as large as it likes, and is drawn no larger than
 16384 pixels across or down.
 

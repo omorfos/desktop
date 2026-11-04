@@ -82,29 +82,44 @@ pub struct Still {
 impl Still {
     /// The picture, to be shown pixel for pixel.
     fn canvas(&self) -> Canvas {
-        canvas(self.size, &self.pixels)
+        canvas(self.size, &self.pixels, None)
     }
 }
 
 /// A picture of a window by itself: how many pixels across and down it
-/// is, and its pixels from the top left, three bytes to each, red, green
-/// and blue.
+/// is, its pixels from the top left, three bytes to each, red, green and
+/// blue, and how solid each is; and how far it reaches beyond where the
+/// window is said to be, its frame and the shadow it casts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Alone {
     /// Its size in pixels.
     pub size: (u32, u32),
     /// Its pixels.
     pub pixels: Vec<u8>,
+    /// How solid each pixel is, from 0 for not at all to 255; nothing for a
+    /// picture solid all over.
+    pub alpha: Option<Vec<u8>>,
+    /// How many pixels it reaches beyond where the window is, on the left,
+    /// at the top, on the right and at the bottom.
+    pub reach: [u32; 4],
 }
 
-/// A picture `size` pixels large of `pixels`, three bytes to each.
-fn canvas((width, height): (u32, u32), pixels: &[u8]) -> Canvas {
+/// A picture `size` pixels large of `pixels`, three bytes to each, as solid
+/// as `alpha` says, or solid all over.
+fn canvas((width, height): (u32, u32), pixels: &[u8], alpha: Option<&[u8]>) -> Canvas {
     let mut canvas = Canvas::new(width, height);
     let pixels = pixels.as_chunks::<3>().0.iter().zip(0..);
     for (&[red, green, blue], at) in pixels {
         let (x, y) = (at % width.max(1), at / width.max(1));
         let colour = Color::rgb(red, green, blue);
-        canvas.blend(x.cast_signed(), y.cast_signed(), colour, u8::MAX);
+        let index = usize::try_from(at).unwrap_or(usize::MAX);
+        let solid = alpha.and_then(|alpha| alpha.get(index).copied());
+        canvas.blend(
+            x.cast_signed(),
+            y.cast_signed(),
+            colour,
+            solid.unwrap_or(u8::MAX),
+        );
     }
     canvas
 }
@@ -431,7 +446,10 @@ impl State {
             let window = under.filter(|_| drag.is_none() && self.pickable != Pickable::Screen);
             let lifted = window.and_then(|(window, rect)| {
                 let alone = still.alone.get(window).and_then(Option::as_ref);
-                alone.map(|alone| (window, rect, alone))
+                alone.map(|alone| {
+                    let all = area::widened(rect, alone.reach, shown, still.size);
+                    (window, all, alone)
+                })
             });
             screen.lifted.show(lifted.zip(shm.as_ref()), handle);
             let rects = dimmed(drawn, shown).into_iter();
@@ -753,7 +771,8 @@ impl Lifted {
         let fresh = wanted
             .filter(|((window, ..), _)| !self.painted.iter().any(|(painted, _)| painted == window));
         if let Some(((window, _, alone), shm)) = fresh {
-            let painted = picture(shm, &canvas(alone.size, &alone.pixels), handle).ok();
+            let alpha = alone.alpha.as_deref();
+            let painted = picture(shm, &canvas(alone.size, &alone.pixels, alpha), handle).ok();
             self.painted
                 .extend(painted.map(|painted| (window, painted)));
         }
