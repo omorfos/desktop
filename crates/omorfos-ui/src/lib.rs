@@ -14,4 +14,4 @@ mod shadow;
 pub use canvas::{Area, Canvas, Image, Text, inset};
 pub use motion::Motion;
 pub use scale::Scale;
-pub use shadow::{Cut, Piece, Shade};
+pub use shadow::{Cut, Piece, Shade, falls};

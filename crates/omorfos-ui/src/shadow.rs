@@ -127,17 +127,8 @@ impl Shade {
     /// `area`, in units of layout: what of the picture each is, and where
     /// it goes. A part too small for whole corners has them squeezed.
     #[must_use]
-    pub fn pieces(&self, (x, y, width, height): Area) -> Vec<Piece> {
-        let Shadow {
-            x: across,
-            y: down,
-            blur,
-            spread,
-            ..
-        } = self.shadow;
-        let reach = i64::from(spread) + i64::from(blur);
-        let start = |from: i32, by: i32| i64::from(from) + i64::from(by) - reach;
-        let length = |of: u32| (i64::from(of) + 2 * reach).max(0);
+    pub fn pieces(&self, area: Area) -> Vec<Piece> {
+        let (left, top, wide, high) = bounds(&self.shadow, area);
         let (corner_pixels, corner) = (self.corner.0, i64::from(self.corner.1));
         // Along one side: where each of the three bands is drawn, and what
         // of the picture each is.
@@ -159,8 +150,9 @@ impl Shade {
         let unit = |value: i64| i32::try_from(value).unwrap_or(i32::MAX);
         let size = |value: i64| u32::try_from(value).unwrap_or(0);
         let mut pieces = Vec::new();
-        for ((top, high), (from_y, rows)) in bands(start(y, down), length(height)) {
-            for ((left, wide), (from_x, columns)) in bands(start(x, across), length(width)) {
+        let across = (i64::from(left), i64::from(wide));
+        for ((top, high), (from_y, rows)) in bands(i64::from(top), i64::from(high)) {
+            for ((left, wide), (from_x, columns)) in bands(across.0, across.1) {
                 if wide > 0 && high > 0 {
                     pieces.push(Piece {
                         from: (from_x, from_y, columns, rows),
@@ -171,6 +163,27 @@ impl Shade {
         }
         pieces
     }
+}
+
+/// Where all of `shadow` falls, cast by a part whose box is `area`, in
+/// units of layout; nothing for a shadow not to be seen.
+#[must_use]
+pub fn falls(shadow: &Shadow, area: Area) -> Option<Area> {
+    (!shadow.is_none()).then(|| bounds(shadow, area))
+}
+
+/// Where all of `shadow` falls, cast by a part whose box is `area`: moved
+/// by its offset, and out by its spread and its blur, or in by as much as
+/// it is drawn in, to nothing at most.
+fn bounds(shadow: &Shadow, (x, y, width, height): Area) -> Area {
+    let reach = i64::from(shadow.spread) + i64::from(shadow.blur);
+    let start = |from: i32, by: i32| i64::from(from) + i64::from(by) - reach;
+    let length = |of: u32| (i64::from(of) + 2 * reach).max(0);
+    let (left, top) = (start(x, shadow.x), start(y, shadow.y));
+    let (wide, high) = (length(width), length(height));
+    let unit = |value: i64| i32::try_from(value).unwrap_or(i32::MAX);
+    let size = |value: i64| u32::try_from(value).unwrap_or(u32::MAX);
+    (unit(left), unit(top), size(wide), size(high))
 }
 
 /// `cover`, a square `side` pixels across, softened over `blur` pixels as a
@@ -338,6 +351,33 @@ mod tests {
         let spread = Shadow { spread: 4, ..SOFT };
         let spread = Shade::new(&spread, 8, Scale::ONE).unwrap();
         assert_eq!(spread.pieces((100, 100, 400, 300))[0].to.0, left - 4);
+    }
+
+    #[test]
+    fn a_shadow_falls_where_its_pieces_go_and_none_falls_nowhere() {
+        let area = (100, 100, 400, 300);
+        let pieces = Shade::new(&SOFT, 8, Scale::ONE).unwrap().pieces(area);
+        let (first, last) = (pieces[0].to, pieces[8].to);
+        let wide = last.0 + last.2.cast_signed() - first.0;
+        let high = last.1 + last.3.cast_signed() - first.1;
+        let whole = (first.0, first.1, wide.cast_unsigned(), high.cast_unsigned());
+        assert_eq!(falls(&SOFT, area), Some(whole));
+        assert_eq!(whole, (76, 84, 448, 348));
+        // Drawn in, it falls within the part, and no shadow at all where
+        // it is drawn in further than the part is large.
+        let within = Shadow {
+            spread: -30,
+            blur: 0,
+            ..SOFT
+        };
+        assert_eq!(falls(&within, area), Some((130, 138, 340, 240)));
+        let gone = Shadow {
+            spread: -200,
+            blur: 0,
+            ..SOFT
+        };
+        assert_eq!(falls(&gone, area), Some((300, 308, 0, 0)));
+        assert_eq!(falls(&Shadow::NONE, area), None);
     }
 
     #[test]
