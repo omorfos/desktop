@@ -2,7 +2,7 @@
 //! picture of each shadow made once on the CPU and kept while it is in
 //! use, and drawn in nine pieces under each window it falls from.
 
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use omorfos_config::{Shadow, Style};
 use omorfos_ui::{Area, Cut, Piece, Shade};
@@ -17,20 +17,19 @@ use crate::compositor::{Element, Painted, View};
 /// of what casts it are, and the scale it is drawn at.
 type Kind = (Shadow, u32, Scale);
 
-/// The pictures of the shadows in use, each made once.
+/// The pictures of the shadows in use, each made once and kept for as long
+/// as a shadow cast from it is: one that stays as it is, as a menu's while
+/// the pointer is still, is not made again when it next changes.
 #[derive(Debug, Default)]
 pub(crate) struct Shades {
-    /// Those in use as the scene was last laid out.
-    kept: Vec<(Kind, Rc<Shade>)>,
-    /// Those used in laying it out now.
-    used: Vec<(Kind, Rc<Shade>)>,
+    made: Vec<(Kind, Weak<Shade>)>,
 }
 
 impl Shades {
-    /// Begins laying out the scene: a picture not used in it is let go of
-    /// as the next is begun.
+    /// Begins laying out the scene, forgetting the pictures nothing casts
+    /// any more.
     pub(crate) fn begun(&mut self) -> &mut Self {
-        self.kept = std::mem::take(&mut self.used);
+        self.made.retain(|(_, shade)| shade.strong_count() > 0);
         self
     }
 
@@ -39,17 +38,14 @@ impl Shades {
     /// now; nothing for a shadow not to be seen.
     pub(crate) fn of(&mut self, shadow: Shadow, radius: u32, scale: Scale) -> Option<Rc<Shade>> {
         let kind = (shadow, radius, scale);
-        let found = |kept: &Vec<(Kind, Rc<Shade>)>| {
-            let mut kept = kept.iter();
-            kept.find(|(made, _)| *made == kind)
-                .map(|(_, shade)| Rc::clone(shade))
-        };
-        if let Some(shade) = found(&self.used) {
-            return Some(shade);
-        }
-        let shade = found(&self.kept).or_else(|| Shade::new(&shadow, radius, scale).map(Rc::new));
-        self.used.extend(shade.clone().map(|shade| (kind, shade)));
-        shade
+        let mut made = self.made.iter().filter(|(made, _)| *made == kind);
+        let found = made.find_map(|(_, shade)| shade.upgrade());
+        found.or_else(|| {
+            let shade = Shade::new(&shadow, radius, scale).map(Rc::new);
+            self.made
+                .extend(shade.as_ref().map(|shade| (kind, Rc::downgrade(shade))));
+            shade
+        })
     }
 
     /// The shadow what is drawn in `style` casts at `scale`, placed under
@@ -135,5 +131,37 @@ impl Shadowing {
                 .and_then(|(_, painted)| painted.stretched(renderer, (at, size), view, opacity));
             elements.extend(drawn);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use omorfos_config::Color;
+
+    use super::*;
+
+    const SOFT: Shadow = Shadow {
+        x: 0,
+        y: 8,
+        blur: 16,
+        spread: 0,
+        color: Color::rgba(0, 0, 0, 0x60),
+    };
+
+    #[test]
+    fn a_shadows_picture_is_kept_while_a_shadow_cast_from_it_is_and_let_go_after() {
+        let mut shades = Shades::default();
+        let held = shades.begun().of(SOFT, 8, Scale::ONE).unwrap();
+        // Scenes are laid out in which nothing asks for it, as while a menu
+        // stays as it is, and it is not made again when one does.
+        shades.begun();
+        shades.begun();
+        let again = shades.begun().of(SOFT, 8, Scale::ONE).unwrap();
+        assert!(Rc::ptr_eq(&held, &again), "made again");
+        // Once nothing casts it, it goes.
+        let made = Rc::downgrade(&held);
+        drop((held, again));
+        shades.begun();
+        assert!(made.upgrade().is_none(), "kept");
     }
 }

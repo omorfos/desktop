@@ -2560,19 +2560,20 @@ impl Compositor {
         };
         let closed = closed.map(|chrome| self.animation.closing(Part::Menu, What::Menu(chrome)));
         self.animation.gone.extend(closed);
-        let current = had.filter(|chrome| {
+        let unchanged = had.as_ref().is_some_and(|chrome| {
             menu == Some(&chrome.menu)
                 && Some(&chrome.looks) == looks.as_ref()
                 && chrome.theme == *theme
                 && chrome.scale == scale
         });
-        self.menu_chrome = match (current, menu.zip(looks)) {
-            (Some(chrome), _) => Some(chrome),
-            (None, Some((menu, looks))) => {
+        self.menu_chrome = match (had, menu.zip(looks)) {
+            (Some(chrome), _) if unchanged => Some(chrome),
+            // Painted anew from what it was, whose shadows it keeps.
+            (had, Some((menu, looks))) => {
                 let tools = (&mut self.text, &mut self.animation.shades);
-                Some(MenuChrome::paint(tools, theme, menu, looks, scale))
+                Some(MenuChrome::paint(tools, theme, (menu, looks), scale, had))
             }
-            (None, None) => None,
+            (_, None) => None,
         };
         let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
         self.animation.menu_opacity = share.unwrap_or(1.0);
@@ -4544,12 +4545,14 @@ struct MenuChrome {
 }
 
 impl MenuChrome {
+    /// Paints `menu`, its rows as `looks` says, keeping the shadows of
+    /// what it was painted as before, `had`, where they are the same.
     fn paint(
         (text, shades): (&mut Text, &mut Shades),
         theme: &Theme,
-        menu: &Menu<Action>,
-        looks: Vec<Vec<Style>>,
+        (menu, looks): (&Menu<Action>, Vec<Vec<Style>>),
         scale: Scale,
+        had: Option<Self>,
     ) -> Self {
         let panels: Vec<(Point<i32, Logical>, Painted)> = menu
             .panels()
@@ -4562,9 +4565,10 @@ impl MenuChrome {
             })
             .collect();
         let style = theme.style(Part::Menu, States::NONE);
+        let mut had = had.map(|had| had.shadows).unwrap_or_default().into_iter();
         let shadows = panels.iter().filter_map(|(at, panel)| {
             let area = (at.x, at.y, panel.width(), panel.height());
-            shades.cast(&style, scale, area, None)
+            shades.cast(&style, scale, area, had.next())
         });
         Self {
             menu: menu.clone(),

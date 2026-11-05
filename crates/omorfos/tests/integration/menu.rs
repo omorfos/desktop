@@ -445,3 +445,24 @@ fn an_action_from_a_key_closes_the_menu_and_does_not_carry_it_along() {
     session.step();
     assert_ne!(session.draw().at(510, 218), BACKGROUND);
 }
+
+#[test]
+fn moving_from_row_to_row_draws_the_menu_again_and_not_its_shadow() {
+    // The built-in theme's menu casts a shadow 32 pixels soft, round the
+    // panel, which is from 300 to 520 across; its rows are 28 high.
+    let plain = "items:\n  - { label: One, action: quit }\n  - { label: Two, action: quit }\n";
+    let mut session = Session::with_config(&[("menu.yaml", plain)]);
+    open_menu(&mut session);
+    move_to(&mut session, 400, 218);
+    session.step();
+    drop(session.draw());
+
+    move_to(&mut session, 400, 246);
+    session.step();
+    let picture = session.draw();
+    assert!(picture.damaged, "the rows are drawn again");
+    for damage in &picture.damage {
+        let (left, right) = (damage.loc.x, damage.loc.x + damage.size.w);
+        assert!(left >= 300 && right <= 520, "{damage:?}");
+    }
+}

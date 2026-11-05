@@ -1067,6 +1067,12 @@ the first than on the last.
       prompt's sides. Each piece now carries a border copied from its
       edge, as GLES clamps to it; the fault in Smithay is in
       `docs/UPSTREAM.md`.
+- [ ] A shadow's picture made faster, or kept between one opening of a
+      menu and the next: it is made each time what casts it comes, which
+      takes 8.5ms at a scale of 1 for a menu's in an optimised build, and
+      about four times that at a scale of 2, in the frame it opens in.
+      Until a menu stayed open as it was, it was made again at each row
+      the pointer crossed, which stuttered.
 - [x] Shadows under the compositor's notice, tooltips and the palette of
       tiles, which are drawn by the compositor and are not a part's
       layer: the notice's fades with it, and the tooltip's falls under

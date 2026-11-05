@@ -23,7 +23,7 @@ use smithay::output::Output;
 use smithay::reexports::calloop::channel;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::pixman::{FormatCode, Image};
-use smithay::utils::{Rectangle, Transform};
+use smithay::utils::{Physical, Rectangle, Transform};
 use tempfile::TempDir;
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
@@ -179,6 +179,8 @@ pub(crate) struct Picture {
     width: i32,
     /// Whether anything had to be redrawn.
     pub(crate) damaged: bool,
+    /// What had to be, in pixels of the screen.
+    pub(crate) damage: Vec<Rectangle<i32, Physical>>,
 }
 
 impl Picture {
@@ -192,6 +194,7 @@ impl Picture {
             pixels,
             width,
             damaged: true,
+            damage: Vec::new(),
         }
     }
 
@@ -628,6 +631,7 @@ impl Session {
             )
             .unwrap();
         let damaged = result.damage.is_some();
+        let damage = result.damage.unwrap_or_default();
         monitor.drawn = Some(result.feedback);
         let width = monitor.size.0;
         let region = Rectangle::from_size(monitor.size.into());
@@ -640,6 +644,7 @@ impl Session {
             pixels,
             width,
             damaged,
+            damage,
         }
     }
 }
