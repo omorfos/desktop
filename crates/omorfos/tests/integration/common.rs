@@ -231,7 +231,9 @@ impl Session {
     /// the temporary directory itself when `None`.
     pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
         let directory = directory.unwrap_or(config.path()).to_owned();
-        let inner = omorfos::Session::new(directory).unwrap();
+        let mut inner = omorfos::Session::new(directory).unwrap();
+        // Glass is blurred as its specification says, which is in software.
+        inner.compositor_mut().set_frost(omorfos::Frost::Software);
         let mut session = Self {
             inner,
             renderer: PixmanRenderer::new().unwrap(),

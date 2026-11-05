@@ -94,6 +94,34 @@ pub(crate) fn strips(
     strips
 }
 
+/// The parts of `area` inside it once all four of its corners are rounded
+/// by `radius`, or as much of that as there is room for, as strips from the
+/// top down. All in pixels. A pixel the curve passes through is left out,
+/// as of a window, for the edge of what is drawn over it to cover.
+pub(crate) fn rounded(
+    area: Rectangle<i32, Physical>,
+    radius: i32,
+) -> Vec<Rectangle<i32, Physical>> {
+    let radius = radius.min(area.size.w / 2).min(area.size.h / 2).max(0);
+    let (top, bottom) = (area.loc.y, area.loc.y + area.size.h);
+    let mut strips: Vec<Rectangle<i32, Physical>> = Vec::new();
+    for row in top..bottom {
+        // How far into the curve of a top or a bottom corner the row is,
+        // from where the curve begins; less than nothing between them.
+        let into = (top + radius - 1 - row).max(row - (bottom - radius));
+        let taken = u32::try_from(into).map_or(0, |into| cut(radius.unsigned_abs(), into));
+        let from = area.loc.x + taken;
+        let width = (area.size.w - 2 * taken).max(0);
+        match strips.last_mut() {
+            // Rows of the same width make one strip.
+            Some(above) if above.loc.x == from && above.size.w == width => above.size.h += 1,
+            _ => strips.push(Rectangle::new((from, row).into(), (width, 1).into())),
+        }
+    }
+    strips.retain(|strip| strip.size.w > 0);
+    strips
+}
+
 /// How many pixels the curve takes from each end of a row of a rounded
 /// corner: those wholly outside it and the one it passes through.
 ///
@@ -237,6 +265,29 @@ mod tests {
     /// Whether a pixel is in any of the strips.
     fn covered(strips: &[Rectangle<i32, Physical>], x: i32, y: i32) -> bool {
         strips.iter().any(|strip| strip.contains((x, y)))
+    }
+
+    #[test]
+    fn a_sheet_with_its_four_corners_rounded_is_cut_at_each_and_whole_between() {
+        let area = rectangle(10, 20, 40, 30);
+        assert_eq!(rounded(area, 0), vec![area], "square, one strip");
+        let strips = rounded(area, 8);
+        let covered = |x, y| covered(&strips, x, y);
+        for (x, y) in [(10, 20), (49, 20), (10, 49), (49, 49), (11, 21)] {
+            assert!(!covered(x, y), "the corner at {x}, {y}");
+        }
+        for (x, y) in [(18, 20), (10, 28), (30, 35), (41, 49), (49, 41)] {
+            assert!(covered(x, y), "within, at {x}, {y}");
+        }
+        // As round at the top as at the bottom.
+        for row in 0..8 {
+            let at = |y| strips.iter().find(|strip| strip.contains((30, y))).copied();
+            let (high, low) = (at(20 + row).unwrap(), at(49 - row).unwrap());
+            assert_eq!((high.loc.x, high.size.w), (low.loc.x, low.size.w), "{row}");
+        }
+        // A radius larger than there is room for is as much as there is.
+        assert_eq!(rounded(area, 100), rounded(area, 15));
+        assert_eq!(rounded(rectangle(0, 0, 0, 10), 4), Vec::new());
     }
 
     #[test]

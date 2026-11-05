@@ -1075,11 +1075,18 @@ the first than on the last.
       the launcher, which it floats over the windows as: cast round the
       whole of it, under the windows shown small in it as well as its
       own pixels, kept while it is not painted anew and gone with it.
-- [ ] Glass, drawn in software and tested (`backdrop-filter: blur()`):
+- [x] Glass, drawn in software and tested (`backdrop-filter: blur()`):
       what is under each sheet, its blurred picture, when that is stale,
       and the software blur that is the shader's specification. The
       wallpaper is blurred once and used wherever nothing else is under
       the glass. The hardware backend draws solid until the next item.
+      Under menus, the pictures of arrangements, the notice, the switcher
+      and the components' panels; solid with
+      `appearance.reduce_transparency`; how many blurs were made is kept,
+      for the state published over IPC.
+- [ ] Known gaps in glass: a part that has gone fades as its tint alone,
+      without its glass; the box that asks for a password and the
+      tooltip of the mark are not glass yet.
 - [ ] The blur shader, its check at startup, and the file left out of
       coverage, tried on real hardware: behind the bar, the dock, menus
       and notifications, for the compositor's parts and the components'.

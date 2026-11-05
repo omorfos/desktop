@@ -22,6 +22,7 @@ mod cursor;
 mod fading;
 mod gestures;
 mod ghost;
+mod glass;
 mod gpu;
 mod handlers;
 mod hold;
@@ -53,6 +54,7 @@ mod x11;
 
 pub use compositor::{ClientState, Compositor, DESKTOP_NAME, Drawn};
 pub use cursor::Themes;
+pub use glass::Frost;
 pub use input::{Gesture, Input};
 pub use omorfos_ui::Scale;
 pub use presentation::Feedback;

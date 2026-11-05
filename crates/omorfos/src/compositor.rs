@@ -104,6 +104,7 @@ use crate::cursor::{self, Themes};
 use crate::fading::Fade;
 use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
+use crate::glass::{self, Frost, Glass, Pane, Scene};
 use crate::gpu;
 use crate::hold::Holder;
 use crate::holding::Holding;
@@ -1784,6 +1785,19 @@ impl Compositor {
         self.set_component(Program::Panel, program.into());
     }
 
+    /// Says how glass is drawn: solid, which it is until this is called, or
+    /// blurred in software.
+    pub fn set_frost(&mut self, frost: Frost) {
+        self.animation.glass.set(frost);
+    }
+
+    /// How many times what is behind glass has been blurred since the
+    /// compositor started.
+    #[must_use]
+    pub const fn blurs(&self) -> u64 {
+        self.animation.glass.blurs()
+    }
+
     /// Says where the wallpaper that comes with omorfos is: a name to look
     /// up in `PATH`, or a path. It is then started with the session, unless
     /// the configuration turns it off. Until this is called there is none
@@ -2678,7 +2692,7 @@ impl Compositor {
             .iter()
             .position(|mirror| mirror.head.output == *output);
         if let Some(mirror) = mirror {
-            return self.render_mirror(mirror, renderer, framebuffer, tracker, age);
+            return self.render_mirror::<R, P>(mirror, renderer, framebuffer, tracker, age);
         }
         let head = self.head(output);
         let view = View {
@@ -2718,7 +2732,7 @@ impl Compositor {
                         pointer,
                         mark: false,
                     };
-                    (self.elements(renderer, output, view, shown), behind)
+                    (self.scene::<R, P>(renderer, output, view, shown), behind)
                 }
                 Pass::Window { window, pointer } => (
                     self.alone(renderer, window, (view.scale, pointer)),
@@ -2778,9 +2792,34 @@ impl Compositor {
             pointer: true,
             mark: true,
         };
-        let elements = self.elements(renderer, output, view, shown);
+        let elements = self.scene::<R, P>(renderer, output, view, shown);
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
         self.drawn(output, output, drawn, before)
+    }
+
+    /// Everything `output` shows, with or without what `shown` names, from
+    /// the top down, and the glass under each part the theme makes glass.
+    fn scene<R, P>(
+        &mut self,
+        renderer: &mut R,
+        output: &Output,
+        view: View,
+        shown: Extras,
+    ) -> Vec<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
+        R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
+    {
+        let scene = self.elements(renderer, output, view, shown);
+        let desktop = self.config().theme.style(Part::Desktop, States::NONE);
+        let behind = color(desktop.background);
+        let size = self.head(output).map(Head::upright).unwrap_or_default();
+        let name = output.name();
+        let screen = (name.as_str(), size, view.scale.factor());
+        let solid = self.config().general.appearance.reduce_transparency;
+        let glass = &mut self.animation.glass;
+        glass.frost::<R, P>(renderer, screen, scene, (behind, solid))
     }
 
     /// What drawing `output` came to, with what was drawn before it in the
@@ -3038,7 +3077,7 @@ impl Compositor {
     /// Draws on the output that is mirror `at` what the output it mirrors
     /// shows: drawn as for that one, made as large as fits and put in the
     /// middle, with black either side where the two are not of a shape.
-    fn render_mirror<R>(
+    fn render_mirror<R, P>(
         &mut self,
         at: usize,
         renderer: &mut R,
@@ -3047,8 +3086,9 @@ impl Compositor {
         age: usize,
     ) -> Result<Drawn, RenderError<R::Error>>
     where
-        R: Renderer + ImportAll + ImportMem,
+        R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
         R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
     {
         let source = self.aside.mirrors[at].source.clone();
         let room = self.aside.mirrors[at].head.upright();
@@ -3078,7 +3118,7 @@ impl Compositor {
             };
             let desktop = self.config().theme.style(Part::Desktop, States::NONE);
             (
-                self.elements(renderer, &source, view, shown),
+                self.scene::<R, P>(renderer, &source, view, shown),
                 color(desktop.background),
             )
         };
@@ -3122,18 +3162,14 @@ impl Compositor {
 
     /// Everything an unlocked screen shows, from the top of the stack
     /// down, with or without what `shown` names.
-    fn elements<R>(
-        &self,
-        renderer: &mut R,
-        output: &Output,
-        view: View,
-        shown: Extras,
-    ) -> Vec<Element<R>>
+    fn elements<R>(&self, renderer: &mut R, output: &Output, view: View, shown: Extras) -> Scene<R>
     where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let mut elements: Vec<Element<R>> = Vec::new();
+        let mut panes = Vec::new();
+        let mut desktop = 0;
         if shown.mark {
             self.fading_elements(renderer, output, view, &mut elements);
         }
@@ -3186,21 +3222,14 @@ impl Compositor {
         }
         if let Some(notice) = &self.notice {
             let opacity = self.animation.notice_opacity;
-            notice.elements(renderer, view, opacity, &mut elements);
+            notice.elements(renderer, view, opacity, (&mut elements, &mut panes));
         }
-        elements.extend(self.switcher_elements(renderer, output, view));
+        self.switcher_elements(renderer, output, view, (&mut elements, &mut panes));
         if let Some(chrome) = &self.menu_chrome {
-            chrome.elements(renderer, view, self.animation.menu_opacity, &mut elements);
+            let opacity = self.animation.menu_opacity;
+            chrome.elements(renderer, view, opacity, (&mut elements, &mut panes));
         }
-        if let Some(shown) = &self.hover.palette.shown {
-            // Its arrow stands above it, up to the titlebar.
-            let up = shown.area.origin.offset(0, -palette::ARROW.cast_signed());
-            let at = Point::<i32, Logical>::from((up.x, up.y));
-            elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
-            if let Some(shadow) = &shown.shadow {
-                shadow.elements(renderer, 1.0, view, &mut elements);
-            }
-        }
+        self.palette_elements(renderer, view, (&mut elements, &mut panes));
         self.gone_elements(renderer, view, (Level::Over, shown.mark), &mut elements);
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them. What
@@ -3209,13 +3238,18 @@ impl Compositor {
         let frames = [Some(true), Some(false), None, None];
         for (layer, fullscreen) in layers.into_iter().zip(frames) {
             let seen = shown.mark;
+            // Behind everything else, the desktop: its colour and what is
+            // drawn on it.
+            if layer == Layer::Background {
+                desktop = elements.len();
+            }
             self.gone_elements(renderer, view, (Level::Layer(layer), seen), &mut elements);
             self.layer_elements(
                 renderer,
                 output,
                 view,
                 (layer, Placing::Usual),
-                &mut elements,
+                (&mut elements, &mut panes),
             );
             if let Some(fullscreen) = fullscreen {
                 if fullscreen {
@@ -3224,7 +3258,8 @@ impl Compositor {
                     self.unmanaged_elements(renderer, view, &mut elements);
                     // Panels brought back over a fullscreen window.
                     let raised = (Layer::Top, Placing::Raised);
-                    self.layer_elements(renderer, output, view, raised, &mut elements);
+                    let drawn = (&mut elements, &mut panes);
+                    self.layer_elements(renderer, output, view, raised, drawn);
                     // A private window offered in a part with nothing in it
                     // shown by its icon, over its blank.
                     elements.extend(self.offer_icons(renderer, view));
@@ -3241,7 +3276,42 @@ impl Compositor {
                 self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
             }
         }
-        elements
+        Scene {
+            elements,
+            panes,
+            desktop,
+        }
+    }
+
+    /// Adds the pictures of arrangements, if they are up, the shadow they
+    /// cast, and their glass if the theme makes menus glass, as they are
+    /// drawn as one.
+    fn palette_elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let Some(shown) = &self.hover.palette.shown else {
+            return;
+        };
+        // Its arrow stands above it, up to the titlebar.
+        let up = shown.area.origin.offset(0, -palette::ARROW.cast_signed());
+        let at = Point::<i32, Logical>::from((up.x, up.y));
+        elements.extend(shown.pixels.element(renderer, at.to_f64(), view, 1.0));
+        let glass = elements.len();
+        if let Some(shadow) = &shown.shadow {
+            shadow.elements(renderer, 1.0, view, elements);
+        }
+        // Its glass is under the panel, below the arrow.
+        let style = self.config().theme.style(Part::Menu, States::NONE);
+        let area = logical(shown.area);
+        let key = glass::key(&"palette");
+        let pane = Pane::of(&style, (area, view), (key, glass, elements.len()), 1.0);
+        panes.extend(pane);
     }
 
     /// Adds the pointer, if it is the compositor's to draw and is not
@@ -3326,8 +3396,13 @@ impl Compositor {
                         shadow.elements(renderer, opacity, view, elements);
                     }
                 }
-                What::Menu(chrome) => chrome.elements(renderer, view, opacity, elements),
-                What::Notice(notice) => notice.elements(renderer, view, opacity, elements),
+                // What has gone fades without its glass.
+                What::Menu(chrome) => {
+                    chrome.elements(renderer, view, opacity, (elements, &mut Vec::new()));
+                }
+                What::Notice(notice) => {
+                    notice.elements(renderer, view, opacity, (elements, &mut Vec::new()));
+                }
             }
         }
     }
@@ -3540,7 +3615,7 @@ impl Compositor {
         output: &Output,
         view: View,
         (layer, standing): (Layer, Placing),
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
@@ -3556,6 +3631,7 @@ impl Compositor {
             self.standing(index, layer, area) == standing && !sealed
         };
         let mut shadows = Vec::new();
+        let mut glass = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             // A panel is placed within its own output.
             let at = layer_origin(&layers, surface) + view.origin;
@@ -3577,13 +3653,26 @@ impl Compositor {
                 self.animation.note(&known.surface, noting.done());
             }
             elements.extend(surfaces.into_iter().map(Element::Surface));
-            // The shadow its part casts.
+            // The shadow its part casts, and its glass, which is under it and
+            // over the shadows of the others.
             let shadow = known.and_then(|known| Some(known.share).zip(known.shadow.as_ref()));
             if let Some((share, shadow)) = shadow {
                 shadow.elements(renderer, share, view, &mut shadows);
             }
+            let size = layers.layer_geometry(surface).unwrap_or_default().size;
+            let place = Rectangle::new(at, size);
+            let theme = &self.config().theme;
+            glass.extend(known.and_then(|known| {
+                let style = theme.style(known.part, States::NONE);
+                let key = glass::key(&known.surface.id());
+                let at = (key, elements.len(), 0);
+                Pane::of(&style, (place, view), at, known.share)
+            }));
         }
         elements.append(&mut shadows);
+        // What is behind each begins under all of their shadows.
+        let under = elements.len();
+        panes.extend(glass.into_iter().map(|pane| pane.under(under)));
     }
 
     /// Tells what is on `output` that a frame was shown there, so that it
@@ -3833,6 +3922,8 @@ render_elements! {
     Solid=SolidColorRenderElement,
     Cropped=CropRenderElement<WaylandSurfaceRenderElement<R>>,
     Texture=TextureRenderElement<<R as RendererSuper>::TextureId>,
+    Frosted=Strip<MemoryRenderBufferRenderElement<R>>,
+    Tinted=Strip<SolidColorRenderElement>,
 }
 
 /// The widest the problem notice gets, and its distance from the edges of
@@ -3890,22 +3981,26 @@ impl Notice {
     }
 
     /// The notice, then the shadow under it, as see-through as `opacity`
-    /// says.
+    /// says; and its glass, if the theme makes it glass.
     fn elements<R>(
         &self,
         renderer: &mut R,
         view: View,
         opacity: f32,
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let at = Point::<i32, Logical>::from((self.area.origin.x, self.area.origin.y));
         elements.extend(self.pixels.element(renderer, at.to_f64(), view, opacity));
+        let glass = elements.len();
         if let Some(shadow) = &self.shadow {
             shadow.elements(renderer, opacity, view, elements);
         }
+        let style = self.theme.style(Part::Notice, States::NONE);
+        let at = (glass::key(&"notice"), glass, elements.len());
+        panes.extend(Pane::of(&style, (logical(self.area), view), at, opacity));
     }
 }
 
@@ -4276,6 +4371,8 @@ pub(crate) struct Animation {
     pub(crate) fading: Vec<Fade>,
     /// The pictures of the shadows cast.
     pub(crate) shades: Shades,
+    /// The glass under parts, and what it keeps between frames.
+    pub(crate) glass: Glass,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -4352,6 +4449,7 @@ impl Animation {
             gone: Vec::new(),
             fading: Vec::new(),
             shades: Shades::default(),
+            glass: Glass::default(),
         }
     }
 
@@ -4479,23 +4577,31 @@ impl MenuChrome {
     }
 
     /// Its panels, then the shadows under them, as see-through as `opacity`
-    /// says.
+    /// says; and the glass of each, if the theme makes menus glass.
     fn elements<R>(
         &self,
         renderer: &mut R,
         view: View,
         opacity: f32,
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        for (at, panel) in &self.panels {
+        let mut glass = Vec::new();
+        let style = self.theme.style(Part::Menu, States::NONE);
+        for (index, (at, panel)) in self.panels.iter().enumerate() {
             elements.extend(panel.element(renderer, at.to_f64(), view, opacity));
+            let size = Size::from((panel.width().cast_signed(), panel.height().cast_signed()));
+            let place = (Rectangle::new(*at, size), view);
+            let key = glass::key(&("menu", index));
+            glass.extend(Pane::of(&style, place, (key, elements.len(), 0), opacity));
         }
         for shadow in &self.shadows {
             shadow.elements(renderer, opacity, view, elements);
         }
+        let under = elements.len();
+        panes.extend(glass.into_iter().map(|pane| pane.under(under)));
     }
 }
 
@@ -4969,6 +5075,12 @@ pub(crate) fn set(states: &mut ToplevelStateSet, state: ToplevelState, on: bool)
     } else {
         states.unset(state);
     }
+}
+
+/// Where `area` is in the space.
+pub(crate) fn logical(area: Rect) -> Rectangle<i32, Logical> {
+    let corner = Point::from((area.origin.x, area.origin.y));
+    Rectangle::new(corner, logical_size(area.size))
 }
 
 pub(crate) fn logical_size(size: DomainSize) -> Size<i32, Logical> {

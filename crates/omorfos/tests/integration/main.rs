@@ -19,6 +19,7 @@ mod dragging;
 mod executable;
 mod fading;
 mod gestures;
+mod glass;
 mod gpu;
 mod hold;
 mod holding;

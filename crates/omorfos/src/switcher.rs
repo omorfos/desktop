@@ -26,7 +26,8 @@ use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
-use crate::compositor::{Compositor, Element, Painted, View};
+use crate::compositor::{Compositor, Element, Painted, View, logical};
+use crate::glass::{self, Pane};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
 use crate::paint::{self, Places, Shown};
@@ -343,16 +344,17 @@ impl Compositor {
         self.switch.open = Some(switching);
     }
 
-    /// The switcher, on the screen it is on: each window's picture, made
-    /// small to fit its place, over the switcher's own pixels. A window a
-    /// rule says is private has its title and no picture.
+    /// Adds the switcher, on the screen it is on: each window's picture,
+    /// made small to fit its place, over the switcher's own pixels, and its
+    /// glass if the theme makes it glass. A window a rule says is private
+    /// has its title and no picture.
     pub(crate) fn switcher_elements<R>(
         &self,
         renderer: &mut R,
         output: &Output,
         view: View,
-    ) -> Vec<Element<R>>
-    where
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
@@ -361,11 +363,10 @@ impl Compositor {
             here == Some(switching.screen)
         });
         let Some(drawn) = switching.and_then(|switching| switching.painted.as_ref()) else {
-            return Vec::new();
+            return;
         };
         let theme = &drawn.config.theme;
         let (_, tall) = metrics(theme);
-        let mut elements = Vec::new();
         let given = drawn.layout.items.iter().zip(&drawn.shown).zip(&drawn.ids);
         for (((_, place, picked), shown), ids) in given {
             let Some(Icon::Given(buffer)) = &shown.icon else {
@@ -428,10 +429,14 @@ impl Compositor {
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
         elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
+        let glass = elements.len();
         if let Some(shadow) = &drawn.shadow {
-            shadow.elements(renderer, 1.0, view, &mut elements);
+            shadow.elements(renderer, 1.0, view, elements);
         }
-        elements
+        let style = theme.style(Part::Switcher, States::NONE);
+        let area = (logical(drawn.layout.area), view);
+        let key = (glass::key(&"switcher"), glass, elements.len());
+        panes.extend(Pane::of(&style, area, key, 1.0));
     }
 
     /// Tells each window shown in the switcher on `output` that what it

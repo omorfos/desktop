@@ -92,6 +92,30 @@ for nothing, where GLES takes the pixels at its edge, and a side stretched
 without the border faded toward its ends, to about a third. Drawn so, both
 renderers draw a side whole to its ends, and the tests can say so.
 
+### How the software blur is made
+
+`backdrop-filter: blur(24px)` asks, as in CSS, for what a Gaussian of
+that deviation would make. The dual filter's width doubles with each
+halving, and widens with how far apart its samples are; both were
+measured, and a blur takes the fewest halvings that reach it with samples
+no more than two pixels apart, and the spacing that reaches it exactly.
+A test holds it to within a little over a tenth of what was asked, from
+2 to 48 pixels. Each pass is rounded to bytes, as a pass drawn into a
+texture is, so that the shader can match it.
+
+What is behind a sheet is taken in as far round it as three deviations,
+beyond which what there is counts for too little to be seen; beyond that
+the edge is taken. A part's own shadow is not behind it, as in CSS: its
+glass is under its pixels and over its shadow, and what is behind begins
+under the shadow. A part whose background cannot be seen through has no
+glass, and nothing is blurred for it.
+
+How it is drawn is the backend's to say, as `Frost`: solid until the
+shader comes, which is what a backend that says nothing gets, or in
+software, read back from the renderer, which the tests draw and a
+graphics card would be made to wait for. A sheet that cannot have a
+picture to draw into is solid too.
+
 ### Corners
 
 The corners of glass are cut as a window's are (ADR 16): the blurred
