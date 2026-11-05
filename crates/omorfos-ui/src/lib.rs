@@ -6,11 +6,13 @@
 //! system has. Sharing it is what makes a panel look as if it belongs to
 //! the window frames beside it.
 
+mod blur;
 mod canvas;
 mod motion;
 mod scale;
 mod shadow;
 
+pub use blur::Blur;
 pub use canvas::{Area, Canvas, Image, Text, inset};
 pub use motion::Motion;
 pub use scale::Scale;
