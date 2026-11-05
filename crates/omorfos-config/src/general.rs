@@ -42,6 +42,8 @@ pub struct General {
     pub wallpaper: Wallpaper,
     /// The pointer.
     pub cursor: Cursor,
+    /// How what the desktop draws looks, whatever the theme.
+    pub appearance: Appearance,
     /// The launcher that comes with omorfos.
     pub launcher: Launcher,
     /// The notifications that come with omorfos.
@@ -271,6 +273,16 @@ impl Default for Notifications {
             timeout: Bounded::clamped(5),
         }
     }
+}
+
+/// How what the desktop draws looks, whatever the theme says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Appearance {
+    /// Whether every surface the theme makes glass is solid in its colour,
+    /// with nothing behind it blurred or seen through.
+    pub reduce_transparency: bool,
 }
 
 /// The launcher that comes with omorfos: what it shows of each program
@@ -985,6 +997,14 @@ mod tests {
             .cursor;
         assert_eq!((cursor.theme.as_str(), cursor.size.get()), ("Adwaita", 32));
         assert!(parse("cursor: { size: 4 }").is_err());
+    }
+
+    #[test]
+    fn glass_is_glass_unless_transparency_is_to_be_reduced() {
+        assert!(!General::default().appearance.reduce_transparency);
+        let reduced = parse("appearance: { reduce_transparency: true }").unwrap();
+        assert!(reduced.appearance.reduce_transparency);
+        assert!(parse("appearance: { reduce_motion: true }").is_err());
     }
 
     #[test]

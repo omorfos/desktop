@@ -153,6 +153,22 @@ pub(crate) fn size(value: &str, unit: &str, least: u32, most: u32) -> Result<u32
     })
 }
 
+/// How far what is behind a part is blurred (`backdrop-filter`), in
+/// pixels: `none`, which is not at all, or `blur()` of up to 64px.
+pub(crate) fn backdrop(value: &str) -> Result<u32, String> {
+    let value = value.trim();
+    if value == "none" {
+        return Ok(0);
+    }
+    let inside = value
+        .strip_prefix("blur(")
+        .and_then(|rest| rest.strip_suffix(')'));
+    let blur = inside.and_then(|inside| size(inside.trim(), "px", 0, 64).ok());
+    blur.ok_or_else(|| {
+        format!("`{value}` is not a backdrop filter: `none`, or `blur()` of 0px to 64px")
+    })
+}
+
 /// A shadow (`box-shadow`): `none`, or how far it falls across and down,
 /// perhaps how soft its edge is and how far it spreads, in pixels, then its
 /// colour. One only, and not inside the part.

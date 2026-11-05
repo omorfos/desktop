@@ -35,6 +35,18 @@
         }
       ]
     },
+    "Appearance": {
+      "additionalProperties": false,
+      "description": "How what the desktop draws looks, whatever the theme says.",
+      "properties": {
+        "reduce_transparency": {
+          "default": false,
+          "description": "Whether every surface the theme makes glass is solid in its colour,\nwith nothing behind it blurred or seen through.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Clipboard": {
       "additionalProperties": false,
       "description": "The clipboard.",
@@ -858,6 +870,10 @@
   "additionalProperties": false,
   "description": "The contents of `config.yaml`.",
   "properties": {
+    "appearance": {
+      "$ref": "#/$defs/Appearance",
+      "description": "How what the desktop draws looks, whatever the theme."
+    },
     "arrangements": {
       "description": "Screens as `outputs` lists them, for when just those are plugged\nin: the first that names exactly the screens there are is used in\nplace of `outputs`.",
       "items": {

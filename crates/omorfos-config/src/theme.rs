@@ -12,7 +12,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::value::{color, fraction, shadow, size, time, words};
+use crate::value::{backdrop, color, fraction, shadow, size, time, words};
 use crate::{Bounded, Color, Easing, Edges, Part, Position, Shadow, States, Style, Transition};
 
 /// The stylesheet every theme starts from.
@@ -223,6 +223,7 @@ enum Setting {
     TransitionDuration(u32),
     TransitionEasing(Easing),
     Shadow(Shadow),
+    Blur(u32),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
@@ -230,7 +231,8 @@ enum Setting {
 const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
                           border-radius, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
-                          transition-duration, transition-timing-function and box-shadow; \
+                          transition-duration, transition-timing-function, box-shadow and \
+                          backdrop-filter; \
                           border, padding and margin may name a side, as in \
                           border-bottom-color";
 
@@ -362,6 +364,7 @@ impl Look {
             Setting::TransitionDuration(millis) => style.transition.duration = *millis,
             Setting::TransitionEasing(easing) => style.transition.easing = *easing,
             Setting::Shadow(shadow) => style.shadow = *shadow,
+            Setting::Blur(blur) => style.blur = *blur,
         }
     }
 
@@ -414,6 +417,7 @@ fn settings(
         ("transition-duration", None) => one(lasting(value).map(Setting::TransitionDuration)),
         ("transition-timing-function", None) => one(easing(value).map(Setting::TransitionEasing)),
         ("box-shadow", None) => one(shadow(value).map(Setting::Shadow)),
+        ("backdrop-filter", None) => one(backdrop(value).map(Setting::Blur)),
         _ => {
             let name = &declaration.name;
             let message = format!("`{name}` is not a property; the properties are {PROPERTIES}");
@@ -699,6 +703,32 @@ mod tests {
         ] {
             let said = problem(&format!("window {{ box-shadow: {value}; }}"));
             assert!(said.contains("shadow"), "{value}: {said}");
+        }
+    }
+
+    #[test]
+    fn a_part_has_what_is_behind_it_blurred_as_far_as_the_theme_says_or_not_at_all() {
+        let blur = |stylesheet: &str| styled(Part::Menu, stylesheet).blur;
+        assert_eq!(blur("menu { backdrop-filter: blur(24px); }"), 24);
+        assert_eq!(blur("menu { backdrop-filter: blur( 64px ); }"), 64);
+        assert_eq!(blur("menu { backdrop-filter: blur(0); }"), 0);
+        let none = "menu { backdrop-filter: blur(24px); backdrop-filter: none; }";
+        assert_eq!(blur(none), 0);
+        assert_eq!(blur(""), 0, "not unless the theme says");
+        // Opacity makes the part fainter, not its blur less.
+        assert_eq!(
+            blur("menu { backdrop-filter: blur(8px); opacity: 0.5; }"),
+            8
+        );
+        for value in [
+            "blur(65px)",
+            "blur(-1px)",
+            "blur(8px",
+            "8px",
+            "brightness(2)",
+        ] {
+            let said = problem(&format!("menu {{ backdrop-filter: {value}; }}"));
+            assert!(said.contains("backdrop filter"), "{value}: {said}");
         }
     }
 
@@ -1171,6 +1201,7 @@ mod tests {
                max-width: 400px;\n\
                transition: 80ms linear;\n\
                box-shadow: 1px 2px 3px 4px #050505;\n\
+               backdrop-filter: blur(24px);\n\
              }",
         );
         let style = theme.unwrap().style(Part::Task, States::NONE);
@@ -1209,6 +1240,7 @@ mod tests {
                 spread: 4,
                 color: Color::rgb(5, 5, 5),
             },
+            blur: 24,
         };
         assert_eq!(style, expected);
     }

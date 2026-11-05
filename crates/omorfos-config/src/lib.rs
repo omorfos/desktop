@@ -42,10 +42,10 @@ pub use config::{Config, FILES, MAX_FILE_SIZE};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Acceleration, Align, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept, Keyboard,
-    Launcher, Lock, Mouse, NamedOutput, Notifications, OfferedMode, Offset, Output, OutputScale,
-    Outputs, Panel, Place, Placement, Portals, Rotation, ScreenMode, Screenshots, Speed, Touchpad,
-    Update, Workspaces, X11Scaling, Xwayland,
+    Acceleration, Align, Appearance, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept,
+    Keyboard, Launcher, Lock, Mouse, NamedOutput, Notifications, OfferedMode, Offset, Output,
+    OutputScale, Outputs, Panel, Place, Placement, Portals, Rotation, ScreenMode, Screenshots,
+    Speed, Touchpad, Update, Workspaces, X11Scaling, Xwayland,
 };
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};

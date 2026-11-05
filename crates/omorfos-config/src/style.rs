@@ -445,6 +445,9 @@ pub struct Style {
     pub transition: Transition,
     /// The shadow it casts.
     pub shadow: Shadow,
+    /// How far what is behind it is blurred, in units of layout, where its
+    /// background lets it be seen (`backdrop-filter`); 0 for not at all.
+    pub blur: u32,
 }
 
 impl Style {
@@ -461,6 +464,7 @@ impl Style {
         max_width: 0,
         transition: Transition::NONE,
         shadow: Shadow::NONE,
+        blur: 0,
     };
 
     /// The room its border and padding take on each side: how far in from
