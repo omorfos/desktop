@@ -3779,7 +3779,7 @@ impl Compositor {
     /// takes time to go.
     fn noting<T: Clone + 'static>(&self, view: View, part: Part) -> Noting<T> {
         let going = self.config().theme.style(part, States::NONE).transition;
-        Noting::new(going.duration > 0, view.origin, view.scale.factor())
+        Noting::new(!going.lasts().is_zero(), view.origin, view.scale.factor())
     }
 
     /// Adds the layer-shell surfaces of one layer that stand as asked,

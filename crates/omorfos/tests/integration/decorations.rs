@@ -396,6 +396,42 @@ fn a_window_that_closes_fades_out_as_it_last_was() {
 }
 
 #[test]
+fn a_window_that_closes_waits_as_long_as_its_theme_says_before_it_fades() {
+    for (theme, half_way) in [
+        ("window { transition: 100ms linear 100ms; }\n", 150),
+        // One that only waits goes all at once once it has.
+        ("window { transition: 0s 100ms; }\n", 100),
+    ] {
+        let mut session = Session::with_config(&[("theme.css", theme)]);
+        let mut client = session.connect();
+        let window = session.open_decorated(&mut client, "first", (200, 100), RED);
+        session.advance(Duration::from_millis(200));
+        assert_eq!(session.draw().at(100, 80), RED, "{theme}");
+
+        window.role.destroy();
+        window.xdg_surface.destroy();
+        window.surface.destroy();
+        session.roundtrip(&mut client);
+        let start = session.now;
+        session.now = start + Duration::from_millis(50);
+        session.step();
+        assert_eq!(session.draw().at(100, 80), RED, "waiting: {theme}");
+
+        session.now = start + Duration::from_millis(half_way);
+        session.step();
+        let inside = session.draw().at(100, 80);
+        if half_way == 150 {
+            assert!(between(inside, BACKGROUND, RED), "{theme}: {inside:#x}");
+        } else {
+            assert_eq!(inside, BACKGROUND, "{theme}");
+        }
+        session.now = start + Duration::from_millis(200);
+        session.step();
+        assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone: {theme}");
+    }
+}
+
+#[test]
 fn a_window_whose_program_has_gone_does_not_stop_the_screen_being_drawn() {
     let theme = "window { transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);

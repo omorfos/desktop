@@ -12,7 +12,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::value::{backdrop, color, fraction, shadow, size, time, words};
+use crate::value::{backdrop, color, cubic_bezier, fraction, shadow, size, time, words};
 use crate::{Bounded, Color, Easing, Edges, Part, Position, Shadow, States, Style, Transition};
 
 /// The stylesheet every theme starts from.
@@ -221,6 +221,7 @@ enum Setting {
     FontWeight(u16),
     FontItalic(bool),
     TransitionDuration(u32),
+    TransitionDelay(u32),
     TransitionEasing(Easing),
     Shadow(Shadow),
     Blur(u32),
@@ -231,7 +232,8 @@ enum Setting {
 const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
                           border-radius, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
-                          transition-duration, transition-timing-function, box-shadow and \
+                          transition-duration, transition-delay, transition-timing-function, \
+                          box-shadow and \
                           backdrop-filter; \
                           border, padding and margin may name a side, as in \
                           border-bottom-color";
@@ -362,6 +364,7 @@ impl Look {
             Setting::FontWeight(weight) => self.font.weight = *weight,
             Setting::FontItalic(italic) => self.font.italic = *italic,
             Setting::TransitionDuration(millis) => style.transition.duration = *millis,
+            Setting::TransitionDelay(millis) => style.transition.delay = *millis,
             Setting::TransitionEasing(easing) => style.transition.easing = *easing,
             Setting::Shadow(shadow) => style.shadow = *shadow,
             Setting::Blur(blur) => style.blur = *blur,
@@ -415,6 +418,7 @@ fn settings(
         ("font-style", None) => one(slant(value)),
         ("transition", None) => transition(value),
         ("transition-duration", None) => one(lasting(value).map(Setting::TransitionDuration)),
+        ("transition-delay", None) => one(lasting(value).map(Setting::TransitionDelay)),
         ("transition-timing-function", None) => one(easing(value).map(Setting::TransitionEasing)),
         ("box-shadow", None) => one(shadow(value).map(Setting::Shadow)),
         ("backdrop-filter", None) => one(backdrop(value).map(Setting::Blur)),
@@ -558,42 +562,61 @@ fn slant(value: &str) -> Result<Setting, String> {
     }
 }
 
-/// How long a change of colours takes.
+/// How long a change of colours takes, or waits.
 fn lasting(value: &str) -> Result<u32, String> {
     time(value, Transition::LONGEST)
 }
 
-/// How a change of colours gathers and loses speed, by its name.
+/// How a change of colours gathers and loses speed, by its name or by a
+/// curve of the theme's own.
 fn easing(value: &str) -> Result<Easing, String> {
     let named = Easing::ALL
         .into_iter()
         .find(|easing| easing.name() == value);
-    named.ok_or_else(|| {
+    let easing = named.or_else(|| cubic_bezier(value));
+    easing.ok_or_else(|| {
         format!(
-            "`{value}` is not a way for colours to change; write linear, ease, ease-in, \
-             ease-out or ease-in-out"
+            "`{value}` is not a way for colours to change; write {EASINGS}, each x from 0 to \
+             1 and each y from -10 to 10"
         )
     })
 }
 
-/// A change of colours all at once: how long it takes and perhaps how it
-/// goes, or `none`. What is left out is as it would be had nothing been
-/// said, as in CSS.
+/// The ways colours may change, as a theme writes them.
+const EASINGS: &str = "linear, ease, ease-in, ease-out, ease-in-out or \
+                       cubic-bezier(x1, y1, x2, y2)";
+
+/// A change of colours all at once: how long it takes, and perhaps how
+/// long it waits first and how it goes, or `none`. The first time is how
+/// long it takes and the second how long it waits, as in CSS, and what is
+/// left out is as it would be had nothing been said.
 fn transition(value: &str) -> Result<Vec<Setting>, String> {
     let mut change = Transition::NONE;
+    let mut given = 0;
     for word in words(value) {
         match word {
             // Every colour of a part changes together.
             "none" | "all" => {}
             timed if timed.starts_with(|first: char| first.is_ascii_digit() || first == '.') => {
-                change.duration = lasting(timed)?;
+                let time = lasting(timed)?;
+                match given {
+                    0 => change.duration = time,
+                    1 => change.delay = time,
+                    _ => {
+                        return Err(format!(
+                            "`{timed}` is one time too many in a transition; write how long the \
+                             colours take to change, then perhaps how long they wait first"
+                        ));
+                    }
+                }
+                given += 1;
             }
             other => {
                 change.easing = easing(other).map_err(|_| {
                     format!(
                         "`{other}` is not part of a transition; write how long the colours of \
-                         the part take to change, as in `150ms` or `0.2s`, and perhaps how: \
-                         linear, ease, ease-in, ease-out or ease-in-out"
+                         the part take to change, as in `150ms` or `0.2s`, perhaps how long \
+                         they wait first, and perhaps how: {EASINGS}"
                     )
                 })?;
             }
@@ -601,6 +624,7 @@ fn transition(value: &str) -> Result<Vec<Setting>, String> {
     }
     Ok(vec![
         Setting::TransitionDuration(change.duration),
+        Setting::TransitionDelay(change.delay),
         Setting::TransitionEasing(change.easing),
     ])
 }
@@ -737,6 +761,7 @@ mod tests {
         let change = |stylesheet: &str| styled(Part::Tab, stylesheet).transition;
         let gentle = Transition {
             duration: 150,
+            delay: 0,
             easing: Easing::EaseOut,
         };
         assert_eq!(change("tab { transition: 150ms ease-out; }"), gentle);
@@ -763,6 +788,57 @@ mod tests {
     }
 
     #[test]
+    fn colours_wait_before_they_change_as_long_as_a_theme_says() {
+        let change = |stylesheet: &str| styled(Part::Tab, stylesheet).transition;
+        let waiting = Transition {
+            duration: 150,
+            delay: 50,
+            easing: Easing::EaseOut,
+        };
+        assert_eq!(change("tab { transition: 150ms ease-out 50ms; }"), waiting);
+        assert_eq!(
+            change("tab { transition: all 0.15s .05s ease-out; }"),
+            waiting
+        );
+        assert_eq!(
+            change("tab { transition: 150ms ease-out; transition-delay: 50ms; }"),
+            waiting
+        );
+        assert_eq!(
+            change("* { transition: 1s 1s; } tab { transition: 150ms ease-out; }"),
+            Transition {
+                delay: 0,
+                ..waiting
+            },
+            "said all at once, a wait left out is none"
+        );
+    }
+
+    #[test]
+    fn colours_change_along_a_curve_a_theme_gives() {
+        let easing = |stylesheet: &str| styled(Part::Tab, stylesheet).transition.easing;
+        assert_eq!(
+            easing("tab { transition: 200ms cubic-bezier(0.2, 0, 0, 1); }"),
+            Easing::CubicBezier {
+                x1: 200,
+                y1: 0,
+                x2: 0,
+                y2: 1000
+            }
+        );
+        assert_eq!(
+            easing("tab { transition-timing-function: cubic-bezier(.4,-0.5,.6,1.5); }"),
+            Easing::CubicBezier {
+                x1: 400,
+                y1: -500,
+                x2: 600,
+                y2: 1500
+            },
+            "beyond its start and end, but not before or after its time"
+        );
+    }
+
+    #[test]
     fn a_state_can_have_a_change_of_its_own() {
         let theme = Theme::parse("tab { transition: 300ms; } tab:active { transition: 50ms; }");
         let theme = theme.unwrap();
@@ -777,6 +853,7 @@ mod tests {
     fn colours_take_a_moment_to_change_unless_a_theme_says_otherwise() {
         let gentle = Transition {
             duration: 120,
+            delay: 0,
             easing: Easing::EaseOut,
         };
         let theme = Theme::default();
@@ -806,6 +883,25 @@ mod tests {
             message.contains("`bouncy` is not a way for colours to change"),
             "{message}"
         );
+        let message = problem("tab { transition: 1s 2s 3s; }");
+        assert!(message.contains("`3s` is one time too many"), "{message}");
+        let message = problem("tab { transition-delay: 11s; }");
+        assert!(message.contains("`11s` is not a time"), "{message}");
+        for curve in [
+            "cubic-bezier(1.5, 0, 0, 1)",
+            "cubic-bezier(0, 0, -0.5, 1)",
+            "cubic-bezier(0, 0, 1)",
+            "cubic-bezier(0, a, 1, 1)",
+            "cubic-bezier(0, 0, 1, 11)",
+            "cubic-bezier(0, 0, 1, 1",
+        ] {
+            let message = problem(&format!("tab {{ transition-timing-function: {curve}; }}"));
+            assert!(
+                message.contains("not a way for colours to change")
+                    && message.contains("cubic-bezier("),
+                "{curve}: {message}"
+            );
+        }
     }
 
     #[test]
@@ -1231,6 +1327,7 @@ mod tests {
             max_width: 400,
             transition: Transition {
                 duration: 80,
+                delay: 0,
                 easing: Easing::Linear,
             },
             shadow: Shadow {

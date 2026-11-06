@@ -23,10 +23,23 @@ pub enum Easing {
     EaseOut,
     /// Slow to start and to finish.
     EaseInOut,
+    /// Bent by two points a theme gives, as `cubic-bezier()` does, each
+    /// in thousandths: how far along its time, from 0 to 1000, and how far
+    /// along the change, which may go before its start or past its end.
+    CubicBezier {
+        /// How far along its time the first point is.
+        x1: u16,
+        /// How far along the change the first point is.
+        y1: i16,
+        /// How far along its time the second point is.
+        x2: u16,
+        /// How far along the change the second point is.
+        y2: i16,
+    },
 }
 
 impl Easing {
-    /// Every way there is.
+    /// Every way there is by a name of its own.
     pub const ALL: [Self; 5] = [
         Self::Linear,
         Self::Ease,
@@ -44,17 +57,27 @@ impl Easing {
             Self::EaseIn => "ease-in",
             Self::EaseOut => "ease-out",
             Self::EaseInOut => "ease-in-out",
+            Self::CubicBezier { .. } => "cubic-bezier",
         }
     }
 
     /// The two points that bend the curve, as CSS defines them.
-    const fn curve(self) -> (f32, f32, f32, f32) {
+    fn curve(self) -> (f32, f32, f32, f32) {
         match self {
             Self::Linear => (0.0, 0.0, 1.0, 1.0),
             Self::Ease => (0.25, 0.1, 0.25, 1.0),
             Self::EaseIn => (0.42, 0.0, 1.0, 1.0),
             Self::EaseOut => (0.0, 0.0, 0.58, 1.0),
             Self::EaseInOut => (0.42, 0.0, 0.58, 1.0),
+            Self::CubicBezier { x1, y1, x2, y2 } => {
+                let point = |thousandths: f32| thousandths / 1000.0;
+                (
+                    point(f32::from(x1)),
+                    point(f32::from(y1)),
+                    point(f32::from(x2)),
+                    point(f32::from(y2)),
+                )
+            }
         }
     }
 
@@ -88,6 +111,8 @@ impl Easing {
 pub struct Transition {
     /// How long the change takes, in milliseconds. None is at once.
     pub duration: u32,
+    /// How long it waits before it begins, in milliseconds.
+    pub delay: u32,
     /// How it gathers and loses speed.
     pub easing: Easing,
 }
@@ -96,27 +121,34 @@ impl Transition {
     /// A change that happens at once.
     pub const NONE: Self = Self {
         duration: 0,
+        delay: 0,
         easing: Easing::Ease,
     };
 
-    /// The longest a change may take, in milliseconds.
+    /// The longest a change may take, or wait, in milliseconds.
     pub const LONGEST: u32 = 10_000;
 
-    /// How long the change takes.
+    /// How long until the change is done: the wait and the change.
     #[must_use]
     pub const fn lasts(&self) -> Duration {
-        Duration::from_millis(self.duration as u64)
+        Duration::from_millis(self.delay as u64 + self.duration as u64)
     }
 
     /// How far along the change is once `elapsed` has gone by since it
-    /// began: from 0, not begun, to 1, done.
+    /// was asked for: from 0, not begun, which it is while it waits, to 1,
+    /// done.
     #[must_use]
     pub fn progress(&self, elapsed: Duration) -> f32 {
-        let lasts = self.lasts();
-        if elapsed >= lasts {
+        if elapsed >= self.lasts() {
             return 1.0;
         }
-        self.easing.at(elapsed.as_secs_f32() / lasts.as_secs_f32())
+        let delay = Duration::from_millis(u64::from(self.delay));
+        let Some(changing) = elapsed.checked_sub(delay) else {
+            return 0.0;
+        };
+        // Not done, so the change takes some time.
+        let takes = Duration::from_millis(u64::from(self.duration));
+        self.easing.at(changing.as_secs_f32() / takes.as_secs_f32())
     }
 }
 
@@ -250,6 +282,7 @@ mod tests {
     fn a_change_is_done_when_its_time_is_up_and_at_once_if_it_takes_none() {
         let linear = Transition {
             duration: 200,
+            delay: 0,
             easing: Easing::Linear,
         };
         let after = |millis| linear.progress(Duration::from_millis(millis));
@@ -262,6 +295,49 @@ mod tests {
         assert_eq!(Transition::default(), Transition::NONE);
         let at_once = Transition::NONE.progress(Duration::ZERO);
         assert!((at_once - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_change_that_waits_does_not_begin_until_it_has_and_is_done_after_both() {
+        let waiting = Transition {
+            duration: 200,
+            delay: 100,
+            easing: Easing::Linear,
+        };
+        let after = |millis| waiting.progress(Duration::from_millis(millis));
+        assert!(after(0) < f32::EPSILON);
+        assert!(after(100) < 0.01, "waited");
+        assert!((after(200) - 0.5).abs() < 0.01, "half way");
+        assert!((after(300) - 1.0).abs() < f32::EPSILON);
+        assert_eq!(waiting.lasts(), Duration::from_millis(300), "both");
+        // One that only waits changes all at once when it is done.
+        let then = Transition {
+            duration: 0,
+            ..waiting
+        };
+        assert!(then.progress(Duration::from_millis(99)) < f32::EPSILON);
+        assert!((then.progress(Duration::from_millis(100)) - 1.0).abs() < f32::EPSILON);
+        assert_eq!(then.lasts(), Duration::from_millis(100));
+    }
+
+    #[test]
+    fn a_curve_of_a_themes_own_is_bent_by_the_points_it_gives() {
+        let curve = |x1, y1, x2, y2| Easing::CubicBezier { x1, y1, x2, y2 };
+        // The one CSS calls `ease`, given by its points.
+        let ease = curve(250, 100, 250, 1000);
+        for step in 0..=10_u8 {
+            let share = f32::from(step) / 10.0;
+            assert!((ease.at(share) - Easing::Ease.at(share)).abs() < 0.001);
+        }
+        assert!(
+            (curve(0, 0, 1000, 1000).at(0.3) - 0.3).abs() < 0.01,
+            "straight"
+        );
+        // One that goes past its end and comes back goes no further than it.
+        let past = curve(300, 1500, 700, 1500);
+        assert!((past.at(0.5) - 1.0).abs() < f32::EPSILON);
+        assert!(curve(300, -500, 700, -500).at(0.5) < f32::EPSILON);
+        assert_eq!(ease.name(), "cubic-bezier");
     }
 
     #[test]

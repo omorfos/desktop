@@ -4,7 +4,7 @@
 //! returns what it means or says what is wrong with it.
 
 use crate::style::CLEAR;
-use crate::{Color, Shadow};
+use crate::{Color, Easing, Shadow};
 
 /// Splits a value into its words. What is in brackets is one word, spaces
 /// and all, so that `1px solid rgb(0, 0, 0)` is three.
@@ -118,6 +118,36 @@ fn number(text: &str) -> Option<f32> {
         .all(|byte| byte.is_ascii_digit() || byte == b'.');
     let value = text.parse::<f32>().ok().filter(|_| plain);
     value.filter(|value| value.is_finite())
+}
+
+/// A curve a theme gives for a change, `cubic-bezier(x1, y1, x2, y2)`:
+/// each x from 0 to 1, as the curve's time only goes forwards, and each y
+/// from -10 to 10, kept in thousandths.
+pub(crate) fn cubic_bezier(value: &str) -> Option<Easing> {
+    let inside = value.strip_prefix("cubic-bezier(")?.strip_suffix(')')?;
+    let given: Vec<&str> = inside.split(',').map(str::trim).collect();
+    let [x1, y1, x2, y2] = given.as_slice() else {
+        return None;
+    };
+    let thousandths = |text: &str, least: f32, most: f32| {
+        let (sign, digits) = text
+            .strip_prefix('-')
+            .map_or((1.0, text), |digits| (-1.0, digits));
+        let point = number(digits).map(|point| sign * point);
+        let point = point.filter(|point| (least..=most).contains(point))?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "from -10000 to 10000, which an i16 holds"
+        )]
+        Some((point * 1000.0).round() as i16)
+    };
+    let along = |text| thousandths(text, 0.0, 1.0).map(i16::unsigned_abs);
+    Some(Easing::CubicBezier {
+        x1: along(x1)?,
+        y1: thousandths(y1, -10.0, 10.0)?,
+        x2: along(x2)?,
+        y2: thousandths(y2, -10.0, 10.0)?,
+    })
 }
 
 /// A share of the whole, from `0` to `1` or `0%` to `100%`, as a byte.

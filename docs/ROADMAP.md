@@ -1139,8 +1139,10 @@ the first than on the last.
       window that draws its own frame with rounded corners, as GTK's do,
       and asks for all of it, as Ghostty does, is blurred into the
       corners, as the compositor knows not how round they are.
-- [ ] Gradients and a picture as a background, a transition's delay, and
-      `cubic-bezier()`.
+- [x] A transition's delay, in `transition` and `transition-delay`, and
+      `cubic-bezier()`: a part waits as long as its theme says before its
+      colours change, and fades as it comes and goes after the same wait.
+- [ ] Gradients and a picture as a background.
 - [ ] The built-in theme redrawn in the design language: light and dark,
       with the accent a setting, and the settings under `appearance`.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked

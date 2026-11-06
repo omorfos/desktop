@@ -438,6 +438,7 @@ impl Shell {
         let fade = self.store.current().general.wallpaper.fade.get();
         Transition {
             duration: fade,
+            delay: 0,
             easing: Easing::EaseInOut,
         }
     }
