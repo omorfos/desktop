@@ -2503,6 +2503,7 @@ impl Compositor {
                         layer: layer.layer(),
                         share,
                         shadow,
+                        place: Rectangle::new(at, size),
                     }
                 });
                 animation.layers.extend(present);
@@ -2519,7 +2520,7 @@ impl Compositor {
                 from: was.share,
                 opacity: was.share,
                 level: Level::Layer(was.layer),
-                what: What::Surface(None, pieces, was.shadow),
+                what: What::Surface(None, pieces, was.shadow, Some(was.place)),
                 private: false,
             });
             animation.gone.extend(gone);
@@ -3208,6 +3209,67 @@ impl Compositor {
         elements
     }
 
+    /// While a program takes pictures of `output`, the mark that says so,
+    /// over everything, the pointer too: nothing hides it; over that, what
+    /// it says while the pointer rests on it, with its glass and its
+    /// shadow; and a line round the screen if it is shared.
+    fn mark_elements<R>(
+        &self,
+        renderer: &mut R,
+        output: &Output,
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let signs = self.signs(output);
+        if !signs.any() {
+            return;
+        }
+        // Over everything, the pointer too: nothing hides it; and over
+        // that, what it says when the pointer rests on it.
+        let tooltip = self
+            .hover
+            .mark
+            .as_ref()
+            .filter(|note| note.output == *output);
+        let mut glass = None;
+        if let Some(note) = tooltip {
+            let at = Point::<i32, Logical>::from((note.area.origin.x, note.area.origin.y));
+            elements.extend(note.pixels.element(renderer, at.to_f64(), view, 1.0));
+            // Its glass, if the theme makes it glass, is under it.
+            let style = self.config().theme.style(Part::Tooltip, States::NONE);
+            let size = Size::from((
+                note.area.size.width.cast_signed(),
+                note.area.size.height.cast_signed(),
+            ));
+            let place = (Rectangle::new(at, size), view);
+            let key = glass::key(&"the mark's tooltip");
+            glass = Pane::of(&style, place, (key, elements.len(), 0), 1.0);
+        }
+        let at = self.mark_area(output).loc;
+        let mark = self.capture.mark(view.scale, signs);
+        elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
+        // Its shadow is under the mark too, which nothing darkens.
+        let shadow = tooltip.and_then(|note| note.shadow.as_ref());
+        if let Some(shadow) = shadow {
+            shadow.elements(renderer, 1.0, view, elements);
+        }
+        // What is behind its glass begins under its shadow.
+        panes.extend(glass.map(|pane| pane.under(elements.len())));
+        // And round a screen that is shared, a line, which is no more in
+        // a picture of it than the mark is.
+        let corner = self.area_of(output).loc;
+        for (at, side) in self.capture.edges(&Subject::Screen(output.clone())) {
+            let at = view.pixel((corner + *at).to_f64());
+            let scale = view.scale.factor();
+            let side =
+                SolidColorRenderElement::from_buffer(side, at, scale, 1.0, Kind::Unspecified);
+            elements.push(Element::Solid(side));
+        }
+    }
+
     /// Everything an unlocked screen shows, from the top of the stack
     /// down, with or without what `shown` names.
     fn elements<R>(&self, renderer: &mut R, output: &Output, view: View, shown: Extras) -> Scene<R>
@@ -3220,45 +3282,14 @@ impl Compositor {
         let mut desktop = 0;
         if shown.mark {
             self.fading_elements(renderer, output, view, &mut elements);
-        }
-        let signs = self.signs(output);
-        if shown.mark && signs.any() {
-            // Over everything, the pointer too: nothing hides it; and over
-            // that, what it says when the pointer rests on it.
-            let tooltip = self
-                .hover
-                .mark
-                .as_ref()
-                .filter(|note| note.output == *output);
-            if let Some(note) = tooltip {
-                let at = Point::<i32, Logical>::from((note.area.origin.x, note.area.origin.y));
-                elements.extend(note.pixels.element(renderer, at.to_f64(), view, 1.0));
-            }
-            let at = self.mark_area(output).loc;
-            let mark = self.capture.mark(view.scale, signs);
-            elements.extend(mark.and_then(|mark| mark.element(renderer, at.to_f64(), view, 1.0)));
-            // Its shadow is under the mark too, which nothing darkens.
-            let shadow = tooltip.and_then(|note| note.shadow.as_ref());
-            if let Some(shadow) = shadow {
-                shadow.elements(renderer, 1.0, view, &mut elements);
-            }
-            // And round a screen that is shared, a line, which is no more in
-            // a picture of it than the mark is.
-            let corner = self.area_of(output).loc;
-            for (at, side) in self.capture.edges(&Subject::Screen(output.clone())) {
-                let at = view.pixel((corner + *at).to_f64());
-                let scale = view.scale.factor();
-                let side =
-                    SolidColorRenderElement::from_buffer(side, at, scale, 1.0, Kind::Unspecified);
-                elements.push(Element::Solid(side));
-            }
+            self.mark_elements(renderer, output, view, (&mut elements, &mut panes));
         }
         if shown.pointer {
             self.pointer_elements(renderer, view, &mut elements);
         }
         // A prompt that asks for a secret is over all but the pointer and the
         // mark, and dims the rest; no input method types into it.
-        self.sealed_elements(renderer, output, view, &mut elements);
+        self.sealed_elements(renderer, output, view, (&mut elements, &mut panes));
         self.popup_elements(renderer, view, &mut elements);
         // Whether to keep the screens as they are is asked over everything
         // but the pointer.
@@ -3278,7 +3309,12 @@ impl Compositor {
             chrome.elements(renderer, view, opacity, (&mut elements, &mut panes));
         }
         self.palette_elements(renderer, view, (&mut elements, &mut panes));
-        self.gone_elements(renderer, view, (Level::Over, shown.mark), &mut elements);
+        self.gone_elements(
+            renderer,
+            view,
+            (Level::Over, shown.mark),
+            (&mut elements, &mut panes),
+        );
         // From the top down: overlays, fullscreen windows, panels and
         // docks, ordinary windows, then whatever sits behind them. What
         // has gone from among each of them is over those that are left.
@@ -3291,7 +3327,8 @@ impl Compositor {
             if layer == Layer::Background {
                 desktop = elements.len();
             }
-            self.gone_elements(renderer, view, (Level::Layer(layer), seen), &mut elements);
+            let drawn = (&mut elements, &mut panes);
+            self.gone_elements(renderer, view, (Level::Layer(layer), seen), drawn);
             self.layer_elements(
                 renderer,
                 output,
@@ -3320,7 +3357,7 @@ impl Compositor {
                     elements.extend(self.offer_elements(renderer, view));
                 }
                 let frames = (Level::Frames(fullscreen), shown.mark);
-                self.gone_elements(renderer, view, frames, &mut elements);
+                self.gone_elements(renderer, view, frames, (&mut elements, &mut panes));
                 self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
             }
         }
@@ -3415,43 +3452,59 @@ impl Compositor {
     }
 
     /// Adds what has gone from one level of what is drawn and is still
-    /// fading, the last to go first. A window a rule called private is
-    /// not in a picture as it fades, any more than it was before: only
-    /// where it is `seen`.
+    /// fading, the last to go first, with its glass if it was glass. A
+    /// window a rule called private is not in a picture as it fades, any
+    /// more than it was before: only where it is `seen`.
     fn gone_elements<R>(
         &self,
         renderer: &mut R,
         view: View,
         (level, seen): (Level, bool),
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let gone = self.animation.gone.iter().rev();
         let shown = |gone: &&Gone| gone.level == level && (seen || !gone.private);
+        let theme = &self.config().theme;
         for gone in gone.filter(shown) {
             let opacity = gone.opacity;
+            // Its glass fades with it, kept apart from that of anything like
+            // it that has come since.
+            let mut glass = Vec::new();
             match &gone.what {
-                What::Surface(chrome, pieces, cast) => {
+                What::Surface(chrome, pieces, cast, place) => {
                     if let Some(chrome) = chrome {
                         Self::chrome_elements(renderer, view, chrome, opacity, elements);
                     }
                     let pieces = pieces.elements(view.origin, view.scale.factor(), opacity);
                     elements.extend(pieces.map(Element::Ghost));
+                    let style = theme.style(gone.part, States::NONE);
+                    let laid = place.and_then(|place| {
+                        // Two that went together are told apart by where.
+                        let (loc, size) = (place.loc, place.size);
+                        let key = glass::key(&("gone", loc.x, loc.y, size.w, size.h));
+                        let at = (key, elements.len(), 0);
+                        Pane::of(&style, (place, view), at, opacity)
+                    });
+                    glass.extend(laid);
                     let shadow = chrome.as_ref().and_then(|chrome| chrome.shadow.as_ref());
                     if let Some(shadow) = shadow.or(cast.as_ref()) {
                         shadow.elements(renderer, opacity, view, elements);
                     }
+                    let under = elements.len();
+                    glass = glass.into_iter().map(|pane| pane.under(under)).collect();
                 }
-                // What has gone fades without its glass.
                 What::Menu(chrome) => {
-                    chrome.elements(renderer, view, opacity, (elements, &mut Vec::new()));
+                    chrome.elements(renderer, view, opacity, (elements, &mut glass));
                 }
                 What::Notice(notice) => {
-                    notice.elements(renderer, view, opacity, (elements, &mut Vec::new()));
+                    notice.elements(renderer, view, opacity, (elements, &mut glass));
                 }
             }
+            let apart = |pane: Pane| pane.apart(&(gone.since, gone.part.name()));
+            panes.extend(glass.into_iter().map(apart));
         }
     }
 
@@ -4432,6 +4485,8 @@ struct Present {
     share: f32,
     /// The shadow it casts, if the theme gives its part one.
     shadow: Option<Shadowing>,
+    /// Where it is on the screens, for its glass as it fades out.
+    place: Rectangle<i32, Logical>,
 }
 
 /// Whether a panel named after `part` comes and goes over the time the
@@ -4473,8 +4528,14 @@ enum Level {
 #[derive(Debug)]
 enum What {
     /// A window, with the decoration it had and the shadow it cast; or a
-    /// panel, which has no decoration, with the shadow it cast.
-    Surface(Option<Box<Chrome>>, Noted, Option<Shadowing>),
+    /// panel, which has no decoration, with the shadow it cast and where
+    /// it was, for its glass.
+    Surface(
+        Option<Box<Chrome>>,
+        Noted,
+        Option<Shadowing>,
+        Option<Rectangle<i32, Logical>>,
+    ),
     Menu(MenuChrome),
     Notice(Notice),
 }
@@ -4532,7 +4593,7 @@ impl Animation {
                 opacity: shown.opacity,
                 level: Level::Frames(shown.over),
                 private: shown.private,
-                what: What::Surface(shown.chrome.map(Box::new), pieces, None),
+                what: What::Surface(shown.chrome.map(Box::new), pieces, None, None),
             });
             self.gone.extend(gone);
         }

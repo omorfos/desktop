@@ -26,6 +26,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::Scale;
 use crate::compositor::{Compositor, Element, View, color};
+use crate::glass::{self, Pane};
 use crate::roles::Roles;
 use crate::shadows::Shadowing;
 
@@ -150,15 +151,15 @@ impl Compositor {
         }
     }
 
-    /// While a prompt asks for a secret: on its screen the prompt and its
-    /// shadow, over a dim of every screen, under which is what is shown as
-    /// ever.
+    /// While a prompt asks for a secret: on its screen the prompt, its
+    /// glass if the theme makes a question glass, and its shadow, over a
+    /// dim of every screen, under which is what is shown as ever.
     pub(crate) fn sealed_elements<R>(
         &self,
         renderer: &mut R,
         output: &Output,
         view: View,
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
@@ -178,10 +179,23 @@ impl Compositor {
             )
         });
         elements.extend(shown.map(Element::Surface));
+        // Its glass is under its box, and what is behind that begins under
+        // its shadow: the dim, and the session under it.
+        let question = self.config().theme.style(Part::Question, States::NONE);
+        let boxed = self.sealed_box().filter(|_| on == *output);
+        let glass = boxed.and_then(|((x, y, width, height), _)| {
+            let area = Rectangle::new(
+                (x, y).into(),
+                (width.cast_signed(), height.cast_signed()).into(),
+            );
+            let key = glass::key(&"the sealed prompt");
+            Pane::of(&question, (area, view), (key, elements.len(), 0), 1.0)
+        });
         let shadow = self.seal.shadow.as_ref().filter(|_| on == *output);
         if let Some(shadow) = shadow {
             shadow.elements(renderer, 1.0, view, elements);
         }
+        panes.extend(glass.map(|pane| pane.under(elements.len())));
         let dim = self.seal.dims.iter().find(|(kept, _)| kept == output);
         let dim = dim.map(|(_, dim)| {
             let scale = view.scale.factor();

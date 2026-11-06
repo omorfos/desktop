@@ -1092,9 +1092,11 @@ the first than on the last.
       and the components' panels; solid with
       `appearance.reduce_transparency`; how many blurs were made is kept,
       for the state published over IPC.
-- [ ] Known gaps in glass: a part that has gone fades as its tint alone,
-      without its glass; the box that asks for a password and the
-      tooltip of the mark are not glass yet.
+- [x] Known gaps in glass: a menu, the notice or a panel that has gone
+      keeps its glass as it fades, told apart from one like it that has
+      come since; the box that asks for a password is glass as the theme's
+      `question` is, blurring the dim and the session under it, and the
+      tooltip of the mark as `tooltip` is.
 - [x] The blur shader, its check at startup, and the file left out of
       coverage, tried on real hardware: behind the bar, the dock, menus
       and notifications, for the compositor's parts and the components'.

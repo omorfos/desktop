@@ -3,8 +3,9 @@
 
 use std::any::Any;
 use std::rc::Rc;
+use std::time::Duration;
 
-use omorfos::{Frosting, Input, Software};
+use omorfos::{Frosting, Input, Roles, Software};
 use omorfos_config::Action;
 use omorfos_ui::Blur;
 use smithay::backend::renderer::element::RenderElement;
@@ -15,7 +16,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Drawn, LayerShape, Session, Toplevel, WIDTH};
+use crate::common::{Client, Drawn, LayerShape, Session, Toplevel, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 /// A theme in which a panel is glass: white at half, over what is behind
@@ -225,6 +226,113 @@ fn a_menu_of_glass_over_a_red_window_is_red_there_and_not_beside_it() {
         picture.at(300, 104)
     );
     assert!(session.compositor().blurs() > 0);
+}
+
+#[test]
+fn a_menu_fading_out_keeps_its_glass_as_it_goes() {
+    let theme = "window, window:focus { box-shadow: none; }\n\
+                 menu { background: rgba(255, 255, 255, 0.5); transition: 100ms linear; \
+                 backdrop-filter: blur(8px); box-shadow: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 400), RED);
+    // Its corner at (100, 100), 220 wide: half over the window.
+    let motion = Input::Motion { x: 100.0, y: 100.0 };
+    session.compositor_mut().input(motion, 0);
+    session.compositor_mut().perform(&Action::ShowMenu);
+    session.step();
+    session.advance(Duration::from_millis(100));
+    drop(session.draw());
+    for pressed in [true, false] {
+        let code = key::ESCAPE;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+    session.advance(Duration::from_millis(50));
+    // Half gone, the window's red still runs under it past the window's
+    // edge, blurred, which a tint alone would not show.
+    let picture = session.draw();
+    let (past, beside) = (picture.at(204, 104), picture.at(300, 104));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+}
+
+#[test]
+fn a_panel_fading_out_keeps_its_glass_as_it_goes() {
+    let theme = format!("{GLASS}panel {{ transition: 100ms linear; }}\n");
+    let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+    let mut window = session.connect();
+    session.open(&mut window, "app", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let (surface, role) = session.open_layer(&mut panel, &across(30), (WIDTH, 30), TINT);
+    session.advance(Duration::from_millis(100));
+    drop(session.draw());
+    role.destroy();
+    surface.destroy();
+    session.roundtrip(&mut panel);
+    session.step();
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    let (past, beside) = (picture.at(204, 15), picture.at(400, 15));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+}
+
+#[test]
+fn the_tooltip_of_the_mark_is_glass_if_the_theme_makes_it_so() {
+    for (glass, blurred) in [("blur(8px)", true), ("none", false)] {
+        let theme = format!(
+            "* {{ transition: none; }}\n\
+             tooltip {{ background: rgba(255, 255, 255, 0.5); \
+             backdrop-filter: {glass}; box-shadow: none; }}\n"
+        );
+        let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+        let mut camera = session.connect_as(Roles::CAPTURE);
+        let _screen = camera.capture(0, false);
+        session.roundtrip(&mut camera);
+        drop(session.draw());
+        assert_eq!(session.compositor().blurs(), 0, "nothing glass yet");
+        // The pointer resting on the mark, at the top right.
+        let motion = Input::Motion {
+            x: f64::from(WIDTH - 20),
+            y: 16.0,
+        };
+        session.compositor_mut().input(motion, 0);
+        session.step();
+        session.step();
+        assert_ne!(session.compositor().mark_tooltip(), [""; 0], "it is up");
+        drop(session.draw());
+        assert_eq!(session.compositor().blurs() > 0, blurred, "{glass}");
+    }
+}
+
+#[test]
+fn the_prompt_that_asks_for_a_secret_is_glass_if_the_theme_makes_its_question_so() {
+    for (glass, blurred) in [("blur(8px)", true), ("none", false)] {
+        let theme = format!(
+            "question {{ background: rgba(255, 255, 255, 0.5); \
+             backdrop-filter: {glass}; box-shadow: none; }}\n"
+        );
+        let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+        let mut app = session.connect_plain();
+        session.open(&mut app, "app", (200, 100), RED);
+        drop(session.draw());
+        assert_eq!(session.compositor().blurs(), 0, "nothing glass yet");
+        // A prompt that draws nothing of its own over its glass.
+        let mut asker = session.connect_as(Roles::ASK);
+        let shape = LayerShape {
+            layer: Layer::Overlay,
+            anchor: Anchor::empty(),
+            size: (100, 50),
+            exclusive_zone: 0,
+            keyboard: KeyboardInteractivity::Exclusive,
+        };
+        let _prompt = session.open_layer(&mut asker, &shape, (100, 50), 0);
+        session.step();
+        drop(session.draw());
+        assert_eq!(session.compositor().blurs() > 0, blurred, "{glass}");
+    }
 }
 
 /// A blur that says it blurred and has nothing to draw, as a shader might

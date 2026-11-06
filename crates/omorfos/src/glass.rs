@@ -390,6 +390,16 @@ impl Pane {
     pub(crate) const fn under(self, under: usize) -> Self {
         Self { under, ..self }
     }
+
+    /// The same, told apart by `from` from the sheet it was while what it
+    /// is the glass of was there, so that something fading out as another
+    /// like it comes in keeps its own picture.
+    pub(crate) fn apart(self, from: &impl Hash) -> Self {
+        Self {
+            key: key(&(self.key, from)),
+            ..self
+        }
+    }
 }
 
 /// What tells a sheet of glass from another, from one frame to the next,
