@@ -110,11 +110,40 @@ glass is under its pixels and over its shadow, and what is behind begins
 under the shadow. A part whose background cannot be seen through has no
 glass, and nothing is blurred for it.
 
-How it is drawn is the backend's to say, as `Frost`: solid until the
-shader comes, which is what a backend that says nothing gets, or in
-software, read back from the renderer, which the tests draw and a
-graphics card would be made to wait for. A sheet that cannot have a
-picture to draw into is solid too.
+What blurs it is the backend's to hand to each frame it draws, as a
+`Frosting`: the trait of the line above, which blurs the picture of what
+is behind a sheet and gives back what draws it. A backend that hands none
+gets glass solid. The software one reads the picture back from the
+renderer, which the tests draw and a graphics card would be made to wait
+for. A sheet that cannot have a picture to draw into, or whose picture
+was not blurred, is solid too.
+
+### How the shader is made
+
+The shader is in `shader.rs`, two programs Smithay compiles: one for a
+pass down and one for a pass up, the last pass up with the saturation.
+The sizes it draws at are the ones `Blur` gives the software blur, and
+each is a texture drawn into whole, written as it is made rather than
+laid over what was there. They are kept with the sheet, so a blur made
+again draws into what it drew into before.
+
+It cannot reach the GPU through the renderer the compositor is written
+for, which may be any; and the hardware backend's, Smithay's manager of
+several GPUs, can neither be asked whether it is OpenGL nor have a
+texture of its own made from one the shader drew. So the backend, which
+knows which renderer it has, hands the shader in; the shader reaches
+the OpenGL renderer underneath, and draws what it made through the frame
+underneath. Both backends that draw with a GPU hand it in, the nested
+one too.
+
+Textures Smithay makes to be drawn into are sampled round to their other
+side beyond their edges (`docs/UPSTREAM.md`). The shader keeps its
+samples within the middles of the pixels at the edge, which takes the
+edge beyond it, as the software blur does.
+
+On an Intel UHD 620 the shader blurs the picture it is tried on, and
+others as wide as 200 by 120 blurred by 48, within 2 in 255 of the
+software. The check allows 4.
 
 ### Corners
 
@@ -216,10 +245,10 @@ goes.
 4. Blur behind titlebars, which every window has, only once its cost has
    been measured on a modest laptop with a dozen windows.
 
-Step 3 begins with a trial: that a picture drawn into through the manager
+Step 3 began with a trial: that a picture drawn into through the manager
 of several GPUs can be blurred by the renderer underneath and drawn back
-in the same frame. Nothing read so far says it cannot; nothing has been
-run.
+in the same frame. It can: a test that needs a card does it, as the check
+at startup does.
 
 ### What it costs is shown
 

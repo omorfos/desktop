@@ -13,7 +13,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use omorfos::{Compositor, Feedback};
+use omorfos::{Compositor, Feedback, Frosting, Software};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::drm::DrmEventMetadata;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -161,7 +161,14 @@ pub(crate) struct Session {
     /// What else is stepped each time the compositor is, such as a relay
     /// between it and its clients.
     pub(crate) stepped: Vec<Box<dyn FnMut()>>,
+    /// What blurs what is behind glass: as its specification says, which
+    /// is in software, unless the test says otherwise. Glass is solid
+    /// without it.
+    pub(crate) frosting: Option<Box<dyn Frosting<PixmanRenderer, Drawn>>>,
 }
+
+/// What the software renderer draws into.
+pub(crate) type Drawn = Image<'static, 'static>;
 
 /// What a frame looked like.
 /// An output drawn with the software renderer.
@@ -234,9 +241,7 @@ impl Session {
     /// the temporary directory itself when `None`.
     pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
         let directory = directory.unwrap_or(config.path()).to_owned();
-        let mut inner = omorfos::Session::new(directory).unwrap();
-        // Glass is blurred as its specification says, which is in software.
-        inner.compositor_mut().set_frost(omorfos::Frost::Software);
+        let inner = omorfos::Session::new(directory).unwrap();
         let mut session = Self {
             inner,
             renderer: PixmanRenderer::new().unwrap(),
@@ -244,6 +249,7 @@ impl Session {
             config,
             now: Instant::now(),
             stepped: Vec::new(),
+            frosting: Some(Box::new(Software)),
         };
         session.add_output((WIDTH, HEIGHT));
         session
@@ -601,6 +607,17 @@ impl Session {
         window
     }
 
+    /// What the compositor makes of `made` as what is to blur glass on the
+    /// software renderer: it, if it blurs as it should.
+    pub(crate) fn try_frosting<F>(&mut self, made: Result<F, &str>) -> Result<F, String>
+    where
+        F: Frosting<PixmanRenderer, Drawn>,
+    {
+        let now = self.now;
+        let compositor = self.inner.compositor_mut();
+        compositor.frosting::<_, Drawn, _>(&mut self.renderer, made, now)
+    }
+
     /// Draws a frame and returns what is on screen.
     pub(crate) fn draw(&mut self) -> Picture {
         self.draw_on(0)
@@ -622,12 +639,12 @@ impl Session {
         let result = self
             .inner
             .compositor_mut()
-            .render::<_, Image<'static, 'static>>(
+            .render::<_, Drawn>(
                 &monitor.output,
                 &mut self.renderer,
                 &mut target,
-                &mut monitor.tracker,
-                1,
+                (&mut monitor.tracker, 1),
+                self.frosting.as_deref_mut(),
             )
             .unwrap();
         let damaged = result.damage.is_some();

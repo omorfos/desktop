@@ -35,7 +35,7 @@ use smithay::backend::drm::{
 use smithay::backend::input::InputEvent;
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
+use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::multigpu::GpuManager;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::{Bind, ExportMem, ImportDma};
@@ -58,7 +58,7 @@ use super::winit::{
     wallpaper,
 };
 use crate::cli::Start;
-use crate::{Compositor, Feedback, Handed, HeldSeat, Scale, Session};
+use crate::{Compositor, Feedback, Frosting, Gles, Handed, HeldSeat, Scale, Session, Shader};
 
 /// The graphics cards in use. There is one, but Smithay's manager for
 /// several is also its only way to a GPU renderer without `unsafe`.
@@ -73,6 +73,9 @@ struct Hardware {
     gpus: Gpus,
     /// The device that draws, which the card's buffers are bound to.
     renderer: DrmNode,
+    /// What blurs what is behind glass, if the card blurred a picture as
+    /// it should at startup. Glass is solid without it.
+    frosting: Option<Shader>,
     /// The screens being driven, in the order they were taken on.
     screens: Vec<Screen>,
     started: Instant,
@@ -171,6 +174,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
         gbm,
         gpus,
         renderer,
+        frosting: None,
         screens: Vec::new(),
         started: Instant::now(),
         active: true,
@@ -182,6 +186,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
         before,
     }));
     let compositor = session.compositor_mut();
+    hardware.borrow_mut().frost(compositor);
     hardware.borrow_mut().scan(compositor);
     offer_gpu_buffers(&mut hardware.borrow_mut(), compositor);
     compositor.set_cursor_themes(cursor_themes());
@@ -231,30 +236,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
             }
         })?;
 
-    // A frame reaching a screen.
-    let shown = Rc::clone(&hardware);
-    session
-        .handle()
-        .insert_source(card_events, move |event, card, compositor| match event {
-            DrmEvent::VBlank(crtc) => {
-                let card = card.as_ref();
-                shown.borrow_mut().frame_shown(crtc, card, compositor);
-            }
-            DrmEvent::Error(error) => {
-                let _ = writeln!(stderr(), "omorfos: {error}");
-            }
-        })?;
-
-    // A screen being plugged in or unplugged.
-    let plugged = Rc::clone(&hardware);
-    session.handle().insert_source(
-        UdevBackend::new(&seat_name)?,
-        move |event, (), compositor| {
-            if let UdevEvent::Changed { .. } = event {
-                plugged.borrow_mut().scan(compositor);
-            }
-        },
-    )?;
+    watch_screens(&session, &hardware, card_events, &seat_name)?;
 
     let handle = session.handle();
     let kept = Rc::clone(&hardware);
@@ -466,6 +448,38 @@ fn take_holder() -> io::Result<UnixStream> {
     Ok(UnixStream::from(holder))
 }
 
+/// Has frames reaching the screens, and screens being plugged in or
+/// unplugged, handled as they happen.
+fn watch_screens(
+    session: &Session,
+    hardware: &Rc<RefCell<Hardware>>,
+    card_events: DrmDeviceNotifier,
+    seat_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let shown = Rc::clone(hardware);
+    session
+        .handle()
+        .insert_source(card_events, move |event, card, compositor| match event {
+            DrmEvent::VBlank(crtc) => {
+                let card = card.as_ref();
+                shown.borrow_mut().frame_shown(crtc, card, compositor);
+            }
+            DrmEvent::Error(error) => {
+                let _ = writeln!(stderr(), "omorfos: {error}");
+            }
+        })?;
+    let plugged = Rc::clone(hardware);
+    session.handle().insert_source(
+        UdevBackend::new(seat_name)?,
+        move |event, (), compositor| {
+            if let UdevEvent::Changed { .. } = event {
+                plugged.borrow_mut().scan(compositor);
+            }
+        },
+    )?;
+    Ok(())
+}
+
 /// Reads the keyboard, mice and touchpads, and keeps track of which
 /// touchpads and mice there are so that they can be given their settings.
 fn watch_devices(
@@ -664,6 +678,7 @@ fn turn(
         card,
         gpus,
         renderer,
+        frosting,
         screens,
         started,
         before,
@@ -690,7 +705,7 @@ fn turn(
         // the session. The commonest cause is another virtual terminal
         // having taken the screen a moment before we are told so, and it
         // comes back. It is said once, and tried again the next turn.
-        let drawn = match screen.draw(gpus, renderer, compositor) {
+        let drawn = match screen.draw((gpus, renderer), frosting.as_mut(), compositor) {
             Ok(drawn) => {
                 screen.failing = false;
                 drawn
@@ -805,6 +820,22 @@ fn chosen(
 }
 
 impl Hardware {
+    /// Makes the shader that blurs what is behind glass, and keeps it if
+    /// it blurs a picture as it should; else glass is solid, and the user
+    /// and the log are told why.
+    fn frost(&mut self, compositor: &mut Compositor) {
+        let Ok(mut renderer) = self.gpus.single_renderer(&self.renderer) else {
+            return;
+        };
+        let made = Shader::new(renderer.gles());
+        let tried = compositor.frosting::<_, GlesTexture, _>(&mut renderer, made, Instant::now());
+        self.frosting = tried
+            .map_err(|said| {
+                let _ = writeln!(stderr(), "omorfos: {said}");
+            })
+            .ok();
+    }
+
     /// Gives the card up, as the user leaves for another virtual terminal.
     /// What the screens showed goes with them.
     fn pause(&mut self) {
@@ -1110,8 +1141,8 @@ impl Screen {
     /// there was anything new to show.
     fn draw(
         &mut self,
-        gpus: &mut Gpus,
-        renderer: &DrmNode,
+        (gpus, renderer): (&mut Gpus, &DrmNode),
+        frosting: Option<&mut Shader>,
         compositor: &mut Compositor,
     ) -> Result<bool, Box<dyn Error>> {
         let (mut buffer, age) = self.surface.next_buffer()?;
@@ -1127,12 +1158,13 @@ impl Screen {
         let mut renderer = gpus.single_renderer(renderer)?;
         let drawn = {
             let mut framebuffer = renderer.bind(&mut buffer)?;
-            let result = compositor.render::<_, GlesRenderbuffer>(
+            let frosting = frosting.map(|shader| shader as &mut dyn Frosting<_, _>);
+            let result = compositor.render::<_, GlesTexture>(
                 &self.output,
                 &mut renderer,
                 &mut framebuffer,
-                &mut self.tracker,
-                usize::from(age),
+                (&mut self.tracker, usize::from(age)),
+                frosting,
             )?;
             let (damage, sync, feedback) = (result.damage, result.sync, result.feedback);
             damage.map(|damage| (damage, sync, feedback))

@@ -310,3 +310,35 @@ fn pictures_in_the_memory_of_the_card_go_on_while_a_private_window_is_open() {
         assert_eq!(events.last(), Some(&Event::ShotReady), "moved: {events:?}");
     }
 }
+
+#[test]
+#[ignore = "needs a graphics card this user may use: run with --include-ignored"]
+fn the_cards_shader_blurs_as_the_software_does_through_the_manager_of_several_cards() {
+    use std::os::fd::OwnedFd;
+
+    use omorfos::{Gles, Shader};
+    use smithay::backend::allocator::gbm::GbmDevice;
+    use smithay::backend::drm::{DrmDeviceFd, DrmNode};
+    use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+    use smithay::backend::renderer::multigpu::GpuManager;
+    use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
+    use smithay::utils::DeviceFd;
+
+    // As the hardware backend reaches the card.
+    let (card, number) = card();
+    let fd = DrmDeviceFd::new(DeviceFd::from(OwnedFd::from(card)));
+    let node = DrmNode::from_dev_id(number).unwrap();
+    let mut gpus = GpuManager::new(GbmGlesBackend::<GlesRenderer, DrmDeviceFd>::default()).unwrap();
+    gpus.as_mut()
+        .add_node(node, GbmDevice::new(fd).unwrap())
+        .unwrap();
+    let mut renderer = gpus.single_renderer(&node).unwrap();
+    let made = Shader::new(renderer.gles());
+    let mut session = Session::new();
+    let now = session.now;
+    let tried = session
+        .compositor_mut()
+        .frosting::<_, GlesTexture, _>(&mut renderer, made, now);
+    assert!(tried.is_ok(), "{:?}", tried.err());
+    assert_eq!(session.compositor().events().count(), 0);
+}

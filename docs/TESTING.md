@@ -150,7 +150,10 @@ instant.
 What depends on the memory of a graphics card is tested where there is
 one, in the same files as everything else, through the `gbm` crate Smithay
 re-exports: `gpu.rs` makes a buffer on the card and hands it over, and the
-software renderer draws it. A test that needs a card is
+software renderer draws it. One draws with the card itself: the shader
+that blurs glass is tried against the software blur through Smithay's
+manager of several cards, as the hardware backend draws. A test that
+needs a card is
 `#[ignore]`d, with that as the reason, so that where it is not asked for,
 as in CI, whose runners have none, it is reported as ignored and not as
 passed. Asked for where `/dev/dri/renderD128` cannot be opened, it fails.

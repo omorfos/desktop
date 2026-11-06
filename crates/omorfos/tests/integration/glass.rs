@@ -1,14 +1,21 @@
 //! Glass: what is behind a part, blurred, under it where its background
 //! lets it be seen (`backdrop-filter`, ADR 33).
 
-use omorfos::{Frost, Input};
+use std::any::Any;
+use std::rc::Rc;
+
+use omorfos::{Frosting, Input, Software};
 use omorfos_config::Action;
+use omorfos_ui::Blur;
+use smithay::backend::renderer::element::RenderElement;
+use smithay::backend::renderer::pixman::PixmanRenderer;
+use smithay::utils::{Physical, Rectangle, Size};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, LayerShape, Session, Toplevel, WIDTH};
+use crate::common::{Client, Drawn, LayerShape, Session, Toplevel, WIDTH};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 /// A theme in which a panel is glass: white at half, over what is behind
@@ -125,7 +132,7 @@ fn glass_over_the_desktop_alone_takes_what_is_behind_it_from_one_blur_of_it() {
 #[test]
 fn glass_where_blur_cannot_be_drawn_is_solid_in_its_colour() {
     let (mut session, _window, _panel) = over_a_red_window(GLASS);
-    session.compositor_mut().set_frost(Frost::Solid);
+    session.frosting = None;
     session.step();
     let picture = session.draw();
     // Its tint over white, which is white, over the window and beside it.
@@ -139,7 +146,7 @@ fn glass_has_its_corners_rounded_as_its_part_does() {
     let rounded = "panel { background: rgba(255, 255, 255, 0.5); border-radius: 12px; \
                    backdrop-filter: blur(8px); box-shadow: none; }\n";
     let (mut session, _window, _panel) = over_a_red_window(rounded);
-    session.compositor_mut().set_frost(Frost::Solid);
+    session.frosting = None;
     session.step();
     let picture = session.draw();
     // In the corner, nothing of the glass: the tint over the window as it
@@ -204,4 +211,106 @@ fn a_menu_of_glass_over_a_red_window_is_red_there_and_not_beside_it() {
         picture.at(300, 104)
     );
     assert!(session.compositor().blurs() > 0);
+}
+
+/// A blur that says it blurred and has nothing to draw, as a shader might
+/// whose textures could not be drawn with.
+struct Blank;
+
+impl Frosting<PixmanRenderer, Drawn> for Blank {
+    fn blur(
+        &mut self,
+        _renderer: &mut PixmanRenderer,
+        _picture: (&mut Drawn, Size<i32, Physical>),
+        _blur: &Blur,
+        made: &mut Option<Box<dyn Any>>,
+    ) -> bool {
+        *made = Some(Box::new(()));
+        true
+    }
+
+    fn element(
+        &self,
+        _renderer: &mut PixmanRenderer,
+        _made: &dyn Any,
+        _at: (Rectangle<i32, Physical>, f64, f32),
+    ) -> Option<Rc<dyn RenderElement<PixmanRenderer>>> {
+        None
+    }
+}
+
+/// A blur wider than it is asked for, as a shader that sampled further
+/// apart than it should would make.
+struct Wider;
+
+impl Frosting<PixmanRenderer, Drawn> for Wider {
+    fn blur(
+        &mut self,
+        renderer: &mut PixmanRenderer,
+        picture: (&mut Drawn, Size<i32, Physical>),
+        _blur: &Blur,
+        made: &mut Option<Box<dyn Any>>,
+    ) -> bool {
+        Blur::new(16).is_some_and(|wider| {
+            Frosting::<PixmanRenderer, Drawn>::blur(&mut Software, renderer, picture, &wider, made)
+        })
+    }
+
+    fn element(
+        &self,
+        renderer: &mut PixmanRenderer,
+        made: &dyn Any,
+        at: (Rectangle<i32, Physical>, f64, f32),
+    ) -> Option<Rc<dyn RenderElement<PixmanRenderer>>> {
+        Frosting::<PixmanRenderer, Drawn>::element(&Software, renderer, made, at)
+    }
+}
+
+#[test]
+fn glass_whose_blur_has_nothing_to_draw_is_solid_in_its_colour() {
+    let (mut session, _window, _panel) = over_a_red_window(GLASS);
+    session.frosting = Some(Box::new(Blank));
+    session.step();
+    let picture = session.draw();
+    assert_eq!(picture.at(100, 15), 0xffff_ffff);
+    assert_eq!(picture.at(400, 15), 0xffff_ffff);
+}
+
+#[test]
+fn a_blur_that_blurs_as_the_software_does_is_kept_for_glass() {
+    let mut session = Session::new();
+    assert!(session.try_frosting(Ok(Software)).is_ok());
+    assert_eq!(
+        session.compositor().events().count(),
+        0,
+        "and nothing is said"
+    );
+}
+
+#[test]
+fn a_blur_that_blurs_otherwise_leaves_glass_solid_and_says_by_how_much() {
+    let mut session = Session::new();
+    let said = session.try_frosting(Ok(Wider)).err().unwrap();
+    assert!(said.contains("Glass is drawn solid"), "{said}");
+    assert!(said.contains("by as much as"), "{said}");
+    let events: Vec<_> = session.compositor().events().collect();
+    assert_eq!(events, [said.as_str()], "told once");
+}
+
+#[test]
+fn a_blur_that_has_nothing_to_draw_leaves_glass_solid() {
+    let mut session = Session::new();
+    let said = session.try_frosting(Ok(Blank)).err().unwrap();
+    assert!(said.contains("could not blur a picture"), "{said}");
+}
+
+#[test]
+fn a_blur_that_could_not_be_made_leaves_glass_solid_and_says_why() {
+    let mut session = Session::new();
+    let said = session
+        .try_frosting::<Software>(Err("no shader"))
+        .err()
+        .unwrap();
+    assert!(said.contains("could not be made (no shader)"), "{said}");
+    assert_eq!(session.compositor().events().count(), 1);
 }

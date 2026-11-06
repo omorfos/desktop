@@ -1093,9 +1093,11 @@ the first than on the last.
 - [ ] Known gaps in glass: a part that has gone fades as its tint alone,
       without its glass; the box that asks for a password and the
       tooltip of the mark are not glass yet.
-- [ ] The blur shader, its check at startup, and the file left out of
+- [x] The blur shader, its check at startup, and the file left out of
       coverage, tried on real hardware: behind the bar, the dock, menus
       and notifications, for the compositor's parts and the components'.
+- [ ] The check's allowance, 4 in 255, measured on cards other than
+      Intel's, where the shader is within 2: AMD's and NVIDIA's.
 - [ ] How long a frame took to draw, and how many blurs it made, in the
       state published over IPC.
 - [ ] Blur behind titlebars, once its cost has been measured with a

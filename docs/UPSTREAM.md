@@ -199,6 +199,20 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   Once it pads, the border may go: cut the pieces without it and run
   `cargo test -p omorfos --test integration shadows::a_side_of_a_shadow_is_as_dark_to_its_ends_as_in_its_middle`.
 
+### A texture made to draw into samples round to its other side
+
+- **Wrong:** `Offscreen<GlesTexture>::create_buffer` makes a texture
+  without setting how it is sampled beyond its edges, so it is OpenGL's
+  default, `GL_REPEAT`: a texture drawn into and then sampled near its
+  edge, as a blur does, takes in pixels from the opposite edge. The
+  textures it imports are set to `GL_CLAMP_TO_EDGE`.
+- **Meanwhile:** the blur's shader, `crates/omorfos/src/shader.rs`, keeps
+  every sample within the middles of the pixels at the edge, which is
+  what clamping to the edge gives (ADR 33).
+- **Check:** `grep -n -A30 'impl Offscreen<GlesTexture> for GlesRenderer' "$S"/src/backend/renderer/gles/mod.rs | grep -n WRAP`.
+  Once it clamps, the shader's `clamp` may go: take it out and run
+  `cargo test -p omorfos --all-features --test integration -- --include-ignored gpu::the_cards_shader`.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### No safe way to hold a stream's buffer or give one memory

@@ -20,7 +20,7 @@ use smithay::backend::input::{
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
+use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
@@ -28,7 +28,7 @@ use smithay::utils::Transform;
 
 use crate::Roles;
 use crate::cli::Start;
-use crate::{Compositor, Gesture, Input, Scale, Session, Themes};
+use crate::{Compositor, Frosting, Gesture, Input, Scale, Session, Shader, Themes};
 
 /// The distance scrolled by one notch of a wheel, in pixels.
 const WHEEL_NOTCH: f64 = 15.0;
@@ -43,6 +43,9 @@ struct Screen {
     /// Set when the window wants drawing again.
     redraw: Rc<Cell<bool>>,
     reported: Vec<String>,
+    /// What blurs what is behind glass, if it blurred a picture as it
+    /// should at startup. Glass is solid without it.
+    frosting: Option<Shader>,
 }
 
 /// Runs the compositor in a window until the session ends.
@@ -60,7 +63,7 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
 
     // The usual reason is that there is no session to open a window on,
     // which the error itself does not say.
-    let (backend, winit) = winit::init::<GlesRenderer>().map_err(|error| {
+    let (mut backend, winit) = winit::init::<GlesRenderer>().map_err(|error| {
         format!(
             "cannot open a window: {error}. omorfos runs inside a Wayland or X11 session for \
              now: start it from one, where WAYLAND_DISPLAY or DISPLAY is set"
@@ -91,6 +94,14 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
     compositor.set_recorder(recorder());
     compositor.start_xwayland(None);
     compositor.autostart();
+    let renderer = backend.renderer();
+    let made = Shader::new(renderer);
+    let frosting = compositor.frosting::<_, GlesTexture, _>(renderer, made, Instant::now());
+    let frosting = frosting
+        .map_err(|said| {
+            let _ = writeln!(stderr(), "omorfos: {said}");
+        })
+        .ok();
 
     let redraw = Rc::new(Cell::new(true));
     let wanted = Rc::clone(&redraw);
@@ -116,6 +127,7 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
         started: Instant::now(),
         redraw,
         reported: Vec::new(),
+        frosting,
     };
     session.run(|compositor| screen.turn(compositor))
 }
@@ -310,12 +322,14 @@ impl Screen {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
                 // A window by itself is drawn in a buffer of the card's
                 // that can be read back from.
-                let result = compositor.render::<_, GlesRenderbuffer>(
+                let frosting = self.frosting.as_mut();
+                let frosting = frosting.map(|shader| shader as &mut dyn Frosting<_, _>);
+                let result = compositor.render::<_, GlesTexture>(
                     &self.output,
                     renderer,
                     &mut framebuffer,
-                    &mut self.tracker,
-                    age,
+                    (&mut self.tracker, age),
+                    frosting,
                 )?;
                 (result.damage, result.feedback)
             };

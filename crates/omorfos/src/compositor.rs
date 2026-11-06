@@ -104,7 +104,7 @@ use crate::cursor::{self, Themes};
 use crate::fading::Fade;
 use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
-use crate::glass::{self, Frost, Glass, Pane, Scene};
+use crate::glass::{self, Frosted, Frosting, Glass, Pane, Scene};
 use crate::gpu;
 use crate::hold::Holder;
 use crate::holding::Holding;
@@ -1785,10 +1785,34 @@ impl Compositor {
         self.set_component(Program::Panel, program.into());
     }
 
-    /// Says how glass is drawn: solid, which it is until this is called, or
-    /// blurred in software.
-    pub fn set_frost(&mut self, frost: Frost) {
-        self.animation.glass.set(frost);
+    /// What glass is to be blurred by on `renderer`: `made`, if it could be
+    /// made and blurs a picture as the software blur does, within rounding.
+    /// Else glass is drawn solid for the session, and the user is told why,
+    /// as of `now`, once; that is returned, for the log.
+    ///
+    /// # Errors
+    ///
+    /// Returns what the user was told if `made` could not be made or does
+    /// not blur as it should.
+    pub fn frosting<R, P, F>(
+        &mut self,
+        renderer: &mut R,
+        made: Result<F, impl std::fmt::Display>,
+        now: Instant,
+    ) -> Result<F, String>
+    where
+        R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
+        R::TextureId: Clone + Texture + Send + 'static,
+        F: Frosting<R, P>,
+    {
+        let tried = made
+            .map_err(|error| format!("could not be made ({error})"))
+            .and_then(|mut frosting| glass::check(renderer, &mut frosting).map(|()| frosting));
+        tried.map_err(|why| {
+            let said = format!("Glass is drawn solid: the blur of this graphics card {why}");
+            self.happened(&said, now);
+            said
+        })
     }
 
     /// How many times what is behind glass has been blurred since the
@@ -2659,7 +2683,8 @@ impl Compositor {
     /// if unknown, and lets the damage tracker redraw only what changed.
     /// `P` is what the renderer draws a picture of a window by itself in,
     /// to be read back: one as large as the window, and see-through where
-    /// it is.
+    /// it is; and what is behind glass, to be blurred by `frosting`. Glass
+    /// is solid without one.
     ///
     /// # Errors
     ///
@@ -2669,8 +2694,8 @@ impl Compositor {
         output: &Output,
         renderer: &mut R,
         framebuffer: &mut R::Framebuffer<'_>,
-        tracker: &mut OutputDamageTracker,
-        age: usize,
+        (tracker, age): (&mut OutputDamageTracker, usize),
+        mut frosting: Option<&mut (dyn Frosting<R, P> + '_)>,
     ) -> Result<Drawn, RenderError<R::Error>>
     where
         R: Renderer + ImportAll + ImportMem + ExportMem + Bind<Dmabuf> + Offscreen<P> + Bind<P>,
@@ -2693,7 +2718,8 @@ impl Compositor {
             .iter()
             .position(|mirror| mirror.head.output == *output);
         if let Some(mirror) = mirror {
-            return self.render_mirror::<R, P>(mirror, renderer, framebuffer, tracker, age);
+            let target = (framebuffer, tracker, age);
+            return self.render_mirror::<R, P>(mirror, renderer, target, frosting);
         }
         let head = self.head(output);
         let view = View {
@@ -2733,7 +2759,9 @@ impl Compositor {
                         pointer,
                         mark: false,
                     };
-                    (self.scene::<R, P>(renderer, output, view, shown), behind)
+                    let frosting = frosting.as_deref_mut();
+                    let scene = self.scene::<R, P>(renderer, output, (view, shown), frosting);
+                    (scene, behind)
                 }
                 Pass::Window { window, pointer } => (
                     self.alone(renderer, window, (view.scale, pointer)),
@@ -2746,11 +2774,7 @@ impl Compositor {
             // read back from what the screen is drawn into.
             let (on_card, due) = self.capture.split(due);
             let scale = view.scale.factor();
-            for (due, mut buffer) in on_card {
-                let at = (due.size(), scale);
-                let drawn = gpu::draw(renderer, &mut buffer, at, &elements, behind);
-                self.capture.give(due, drawn, self.animation.clock);
-            }
+            self.draw_on_card(renderer, on_card, (&elements, behind), scale);
             // A window by itself is drawn in a picture of its own, as large
             // as it is, whatever the screen is; and so is a screen that is
             // turned, as what it is drawn into is turned with it, and the
@@ -2793,19 +2817,20 @@ impl Compositor {
             pointer: true,
             mark: true,
         };
-        let elements = self.scene::<R, P>(renderer, output, view, shown);
+        let elements = self.scene::<R, P>(renderer, output, (view, shown), frosting);
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
         self.drawn(output, output, drawn, before)
     }
 
     /// Everything `output` shows, with or without what `shown` names, from
-    /// the top down, and the glass under each part the theme makes glass.
+    /// the top down, and the glass under each part the theme makes glass,
+    /// blurred by `frosting`.
     fn scene<R, P>(
         &mut self,
         renderer: &mut R,
         output: &Output,
-        view: View,
-        shown: Extras,
+        (view, shown): (View, Extras),
+        frosting: Option<&mut (dyn Frosting<R, P> + '_)>,
     ) -> Vec<Element<R>>
     where
         R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
@@ -2820,7 +2845,7 @@ impl Compositor {
         let screen = (name.as_str(), size, view.scale.factor());
         let solid = self.config().general.appearance.reduce_transparency;
         let glass = &mut self.animation.glass;
-        glass.frost::<R, P>(renderer, screen, scene, (behind, solid))
+        glass.frost::<R, P>(renderer, screen, scene, (behind, solid), frosting)
     }
 
     /// What drawing `output` came to, with what was drawn before it in the
@@ -2976,6 +3001,26 @@ impl Compositor {
             .map_or(&[], |note| note.says.as_slice())
     }
 
+    /// Draws `elements` over `behind` straight into each buffer of the
+    /// graphics card in `on_card`, a picture at `scale` that is due, and
+    /// gives it to its program, or says it could not be drawn.
+    fn draw_on_card<R>(
+        &mut self,
+        renderer: &mut R,
+        on_card: Vec<(Due, Dmabuf)>,
+        (elements, behind): (&[Element<R>], Color32F),
+        scale: f64,
+    ) where
+        R: Renderer + ImportAll + ImportMem + Bind<Dmabuf>,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        for (due, mut buffer) in on_card {
+            let at = (due.size(), scale);
+            let drawn = gpu::draw(renderer, &mut buffer, at, elements, behind);
+            self.capture.give(due, drawn, self.animation.clock);
+        }
+    }
+
     /// Draws a window by itself, or a screen that is turned, as `elements`
     /// have it over `behind`, in a picture the right way up as large as the
     /// largest of those `due`, and gives them what they need of it.
@@ -3082,9 +3127,8 @@ impl Compositor {
         &mut self,
         at: usize,
         renderer: &mut R,
-        framebuffer: &mut R::Framebuffer<'_>,
-        tracker: &mut OutputDamageTracker,
-        age: usize,
+        (framebuffer, tracker, age): (&mut R::Framebuffer<'_>, &mut OutputDamageTracker, usize),
+        frosting: Option<&mut (dyn Frosting<R, P> + '_)>,
     ) -> Result<Drawn, RenderError<R::Error>>
     where
         R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
@@ -3119,7 +3163,7 @@ impl Compositor {
             };
             let desktop = self.config().theme.style(Part::Desktop, States::NONE);
             (
-                self.scene::<R, P>(renderer, &source, view, shown),
+                self.scene::<R, P>(renderer, &source, (view, shown), frosting),
                 color(desktop.background),
             )
         };
@@ -3923,7 +3967,7 @@ render_elements! {
     Solid=SolidColorRenderElement,
     Cropped=CropRenderElement<WaylandSurfaceRenderElement<R>>,
     Texture=TextureRenderElement<<R as RendererSuper>::TextureId>,
-    Frosted=Strip<MemoryRenderBufferRenderElement<R>>,
+    Frosted=Strip<Frosted<R>>,
     Tinted=Strip<SolidColorRenderElement>,
 }
 
