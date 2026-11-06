@@ -21,7 +21,7 @@ use smithay::backend::renderer::Renderer;
 use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{Element, Id, RenderElement};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
-use smithay::utils::{Buffer, Physical, Rectangle, Scale, Transform};
+use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
 
 /// The radius the bottom corners of a frame are actually rounded to, in
 /// units of layout: the one asked for, or as much of it as there is room
@@ -120,6 +120,24 @@ pub(crate) fn rounded(
     }
     strips.retain(|strip| strip.size.w > 0);
     strips
+}
+
+/// The parts of `area` inside it once its top corners are rounded by
+/// `radius`, or as much of that as there is room for, and its bottom ones
+/// left square, as a titlebar is over its window: as [`rounded`] makes
+/// them.
+pub(crate) fn rounded_above(
+    area: Rectangle<i32, Physical>,
+    radius: i32,
+) -> Vec<Rectangle<i32, Physical>> {
+    // Rounded all round, and as deep again below as the corners are, which
+    // is then cut off.
+    let radius = radius.min(area.size.h).max(0);
+    let deeper = Rectangle::new(area.loc, area.size + Size::from((0, radius)));
+    let strips = rounded(deeper, radius).into_iter();
+    strips
+        .filter_map(|strip| strip.intersection(area))
+        .collect()
 }
 
 /// How many pixels the curve takes from each end of a row of a rounded
@@ -288,6 +306,35 @@ mod tests {
         // A radius larger than there is room for is as much as there is.
         assert_eq!(rounded(area, 100), rounded(area, 15));
         assert_eq!(rounded(rectangle(0, 0, 0, 10), 4), Vec::new());
+    }
+
+    #[test]
+    fn a_sheet_rounded_above_is_cut_at_its_top_corners_as_one_rounded_all_round_is() {
+        let area = rectangle(10, 20, 40, 30);
+        assert_eq!(rounded_above(area, 0), vec![area], "square, one strip");
+        let strips = rounded_above(area, 8);
+        let all_round = rounded(area, 8);
+        let covered = |x, y| covered(&strips, x, y);
+        for (x, y) in [(10, 20), (49, 20), (11, 21)] {
+            assert!(!covered(x, y), "the corner at {x}, {y}");
+        }
+        for (x, y) in [(10, 49), (49, 49), (18, 20), (30, 35)] {
+            assert!(covered(x, y), "within, at {x}, {y}");
+        }
+        let curve = |strips: &[Rectangle<i32, Physical>]| {
+            let above = strips
+                .iter()
+                .filter(|strip| strip.loc.y + strip.size.h <= 28);
+            above.copied().collect::<Vec<_>>()
+        };
+        assert_ne!(curve(&strips), Vec::new(), "rounded at all");
+        assert_eq!(curve(&strips), curve(&all_round), "the same curve");
+        assert!(strips.iter().all(|strip| area.contains_rect(*strip)));
+        // A radius larger than there is room for is as much as there is:
+        // the whole height, half the width.
+        assert_eq!(rounded_above(area, 100), rounded_above(area, 20));
+        let narrow = rectangle(0, 0, 10, 30);
+        assert_eq!(rounded_above(narrow, 100), rounded_above(narrow, 5));
     }
 
     #[test]

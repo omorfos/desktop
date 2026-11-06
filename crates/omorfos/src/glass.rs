@@ -350,6 +350,8 @@ pub(crate) struct Pane {
     area: Rectangle<i32, Physical>,
     /// How far its corners are rounded, in pixels.
     radius: i32,
+    /// Whether its bottom corners are rounded as well as its top ones.
+    below: bool,
     /// How far what is behind it is blurred, in pixels.
     blur: u32,
     /// The colour it is solid in where it is not blurred.
@@ -380,6 +382,7 @@ impl Pane {
             under,
             area: Rectangle::new(from, (to - from).to_size()),
             radius: view.scale.pixels(style.radius.cast_signed()),
+            below: true,
             blur: pixels(style.blur.max(LEAST_BLUR)),
             color: style.background,
             opacity,
@@ -389,6 +392,16 @@ impl Pane {
     /// The same, with what is behind it beginning at `under`.
     pub(crate) const fn under(self, under: usize) -> Self {
         Self { under, ..self }
+    }
+
+    /// The same, with its top corners rounded by `radius` pixels and its
+    /// bottom ones square, as a titlebar is over its window.
+    pub(crate) const fn rounded_above(self, radius: i32) -> Self {
+        Self {
+            radius,
+            below: false,
+            ..self
+        }
     }
 
     /// The same, told apart by `from` from the sheet it was while what it
@@ -584,10 +597,12 @@ impl Glass {
         let logical = pane.area.size.to_f64().to_logical(scale).to_i32_round();
         kept.solid.update(logical, color(solid));
         let mut glass = Vec::new();
-        for (index, strip) in corners::rounded(pane.area, pane.radius)
-            .into_iter()
-            .enumerate()
-        {
+        let rounded = if pane.below {
+            corners::rounded
+        } else {
+            corners::rounded_above
+        };
+        for (index, strip) in rounded(pane.area, pane.radius).into_iter().enumerate() {
             let frosted = blurred.as_ref().and_then(|blurred| {
                 let whole = Frosted(Rc::clone(blurred));
                 let cut = Strip::of(whole, scale, strip, index, &kept.names);

@@ -279,6 +279,89 @@ fn a_panel_fading_out_keeps_its_glass_as_it_goes() {
     assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
 }
 
+/// A theme in which a titlebar is glass, white at half over what is behind
+/// it blurred by 8 pixels, and a window casts no shadow and takes a moment
+/// to go.
+const TITLEBAR: &str = "window, window:focus { box-shadow: none; transition: 100ms linear; }\n\
+                        titlebar, titlebar:focus { background: rgba(255, 255, 255, 0.5); \
+                        backdrop-filter: blur(8px); }\n";
+
+/// The row of the screen a titlebar's glass is tried along: near its top,
+/// above its title, in the titlebar of a window cascaded from the corner.
+const ALONG: i32 = 35;
+
+/// A session with `theme`, a red window 200 by 400 in the top left corner,
+/// and over it a blue one 400 by 100 with a titlebar, cascaded from the
+/// corner, whose titlebar runs from 32 down to 60.
+fn a_titlebar_over_a_red_window(theme: &str) -> (Session, [(Client, Toplevel); 2]) {
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut red = session.connect();
+    let under = session.open(&mut red, "red", (200, 400), RED);
+    let mut blue = session.connect();
+    let over = session.open_decorated(&mut blue, "blue", (400, 100), BLUE);
+    // Come, as windows take a moment to.
+    session.advance(Duration::from_millis(100));
+    (session, [(red, under), (blue, over)])
+}
+
+#[test]
+fn a_titlebar_of_glass_is_redder_over_a_red_window_and_only_there() {
+    let (mut session, _windows) = a_titlebar_over_a_red_window(TITLEBAR);
+    let picture = session.draw();
+    let (over, past, beside) = (
+        picture.at(150, ALONG),
+        picture.at(204, ALONG),
+        picture.at(380, ALONG),
+    );
+    assert!(red(over) > red(beside) + 64, "{over:#x} {beside:#x}");
+    // Blurred, the red runs on past the window's edge.
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+    assert!(session.compositor().blurs() > 0);
+}
+
+#[test]
+fn a_titlebars_glass_is_rounded_above_as_its_window_is_and_square_below() {
+    let theme = format!("{TITLEBAR}window {{ border: none; }}\n");
+    let (mut session, _windows) = a_titlebar_over_a_red_window(&theme);
+    session.frosting = None;
+    session.step();
+    let picture = session.draw();
+    // In the top corner, nothing of the titlebar or its glass: the red
+    // window. In the bottom one, the tint over the glass, solid white.
+    assert_eq!(picture.at(32, 32), RED, "rounded above");
+    assert_eq!(picture.at(32, 59), 0xffff_ffff, "square below");
+    assert_eq!(picture.at(32, 60), BLUE, "the window under it");
+    // What is drawn on the titlebar is over its glass: the button that
+    // closes the window, in its colour, in the middle of it.
+    assert_eq!(picture.at(48, 46), 0xffe0_6c75, "the close button over it");
+}
+
+#[test]
+fn a_window_rolled_up_into_its_titlebar_keeps_its_glass() {
+    let (mut session, _windows) = a_titlebar_over_a_red_window(TITLEBAR);
+    session.compositor_mut().perform(&Action::Shade);
+    session.step();
+    let picture = session.draw();
+    let (over, beside) = (picture.at(150, ALONG), picture.at(380, ALONG));
+    assert!(red(over) > red(beside) + 64, "{over:#x} {beside:#x}");
+    assert_eq!(picture.at(300, 80), BACKGROUND, "nothing of it below");
+}
+
+#[test]
+fn a_window_fading_out_keeps_its_titlebars_glass_as_it_goes() {
+    let (mut session, _windows) = a_titlebar_over_a_red_window(TITLEBAR);
+    session.advance(Duration::from_millis(100));
+    drop(session.draw());
+    session.compositor_mut().perform(&Action::Minimize);
+    session.step();
+    session.advance(Duration::from_millis(50));
+    // Half gone, the red still runs past the red window's edge under it,
+    // blurred, which a tint alone would not show.
+    let picture = session.draw();
+    let (past, beside) = (picture.at(204, ALONG), picture.at(380, ALONG));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+}
+
 #[test]
 fn the_tooltip_of_the_mark_is_glass_if_the_theme_makes_it_so() {
     for (glass, blurred) in [("blur(8px)", true), ("none", false)] {

@@ -171,7 +171,9 @@ software. The check allows 4.
 
 The corners of glass are cut as a window's are (ADR 16): the blurred
 picture is drawn in strips that follow the curve, and the tint, which is
-smooth, is over the join. One way for both renderers.
+smooth, is over the join. One way for both renderers. A titlebar's glass
+is rounded above only, as the titlebar is, its window being under it
+below.
 
 ### Nothing is blurred twice
 
@@ -264,8 +266,9 @@ goes.
    backend drawing solid.
 3. The shader and its check, tried on real hardware, behind the bar, the
    dock, menus and notifications.
-4. Blur behind titlebars, which every window has, only once its cost has
-   been measured on a modest laptop with a dozen windows.
+4. Blur behind titlebars, which every window has, where a theme asks for
+   it; in the built-in theme only once its cost has been measured on a
+   modest laptop with a dozen windows.
 
 Step 3 began with a trial: that a picture drawn into through the manager
 of several GPUs can be blurred by the renderer underneath and drawn back
@@ -274,9 +277,12 @@ at startup does.
 
 ### What it costs is shown
 
-How long the last frame took to draw, and how many blurs it made, are in
-the state published over IPC. A budget is not enforced by the compositor;
-it is watched by people, and the fourth step waits on it.
+How long the last frame took to draw, and how many blurs it made, are
+told over IPC, as a request of their own (`"frames"`, and `omorfosctl
+frames`): not in the state, which is sent to every subscriber whenever it
+changes, and this changes with every frame. A budget is not enforced by
+the compositor; it is watched by people, and glass behind titlebars in
+the built-in theme waits on it.
 
 ## Alternatives
 

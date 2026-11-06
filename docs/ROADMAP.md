@@ -242,9 +242,10 @@ calls for them.
 - [x] Pictures of a window as large as it is, and see-through where it
       is, saved so by `omorfos-screenshot --window`.
 - [ ] Known gaps in pictures of a window: it is given in the frame
-      omorfos draws, with no way to ask for it without; and one taken in
+      omorfos draws, with no way to ask for it without; one taken in
       the memory of the graphics card is solid, see-through only in
-      shared memory.
+      shared memory; and a titlebar of glass is in it as its tint alone,
+      with nothing of what is behind it, which is not in the picture.
 - [ ] A private window blurred in pictures in place of blank, as a
       choice of the rule (`private: blur`), once glass has brought the
       blur and a way to draw a window by itself. A blur hides less than
@@ -1111,8 +1112,14 @@ the first than on the last.
       with every frame, but as a request of its own, `"frames"`, as
       `"placed"` is, and `omorfosctl frames`. The time is the compositor's
       own, until the frame is handed to the graphics card.
-- [ ] Blur behind titlebars, once its cost has been measured with a
-      dozen windows on a modest laptop.
+- [x] Blur behind titlebars, where the theme makes `titlebar` glass:
+      under each, rounded above as its window is and square below, kept
+      as the window rolls up into it and as it fades out. The built-in
+      theme does not, so it costs nothing until a theme asks for it.
+- [ ] What glass behind titlebars costs, measured with `omorfosctl
+      frames` on a modest laptop with a dozen windows, one dragged over
+      the others, and written into ADR 33; until then the built-in theme
+      does not make titlebars glass.
 - [ ] Blur for other programs that ask (`ext-background-effect`).
 - [ ] Gradients and a picture as a background, a transition's delay, and
       `cubic-bezier()`.

@@ -112,10 +112,17 @@ pub(crate) fn titlebar(
     let edge = border.cast_signed();
     let mut canvas = Canvas::scaled(width, height, scale);
 
-    canvas.fill((0, 0, width, height), outline.color);
+    // The outline along the top and down each side, and the background
+    // within it alone, so that a background that can be seen through
+    // shows what is behind the titlebar, its glass if it has any.
     let inner_height = height.saturating_sub(border);
+    let inner_width = width.saturating_sub(border * 2);
+    canvas.fill((0, 0, width, border), outline.color);
+    canvas.fill((0, edge, border, inner_height), outline.color);
+    let right = width.saturating_sub(border).cast_signed();
+    canvas.fill((right, edge, border, inner_height), outline.color);
     canvas.fill(
-        (edge, edge, width.saturating_sub(border * 2), inner_height),
+        (edge, edge, inner_width, inner_height),
         looks.titlebar.background,
     );
 
@@ -968,6 +975,30 @@ mod tests {
         );
         assert_eq!(canvas.at(200, 0), argb(palette(&theme).unfocused.border));
         assert_eq!(canvas.at(300, 14), argb(palette(&theme).unfocused.titlebar));
+    }
+
+    #[test]
+    fn a_titlebar_that_can_be_seen_through_is_so_within_its_outline() {
+        let theme =
+            Theme::parse("titlebar:focus { background: rgba(255, 255, 255, 0.5); }").unwrap();
+        let mut text = Text::new();
+        let canvas = titlebar(
+            &mut text,
+            &theme,
+            &frame(1),
+            &["Terminal"],
+            0,
+            true,
+            Scale::ONE,
+        );
+        let border = argb(palette(&theme).focused.border);
+        assert_eq!(canvas.at(200, 0), border, "the outline along the top");
+        assert_eq!(canvas.at(0, 20), border, "and down the side");
+        assert_eq!(
+            canvas.at(300, 14),
+            0x8080_8080,
+            "white at half, and nothing under it"
+        );
     }
 
     /// The colours the built-in theme gives the buttons of a frame with

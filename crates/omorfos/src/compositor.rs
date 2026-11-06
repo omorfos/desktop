@@ -3141,7 +3141,10 @@ impl Compositor {
             };
             let chrome = portrait.chrome.as_ref();
             if let Some(chrome) = chrome {
-                Self::chrome_elements(renderer, view, chrome, 1.0, &mut elements);
+                // What is behind it is not in a picture of it alone, nor is
+                // its titlebar's glass.
+                let drawn = (&mut elements, &mut Vec::new());
+                Self::chrome_elements(renderer, view, chrome, 1.0, drawn);
             }
             if !portrait.shaded {
                 self.window_elements(renderer, view, (portrait, false), &mut elements);
@@ -3388,7 +3391,8 @@ impl Compositor {
                 }
                 let frames = (Level::Frames(fullscreen), shown.mark);
                 self.gone_elements(renderer, view, frames, (&mut elements, &mut panes));
-                self.frame_elements(renderer, view, (fullscreen, shown.mark), &mut elements);
+                let drawn = (&mut elements, &mut panes);
+                self.frame_elements(renderer, view, (fullscreen, shown.mark), drawn);
             }
         }
         Scene {
@@ -3506,7 +3510,8 @@ impl Compositor {
             match &gone.what {
                 What::Surface(chrome, pieces, cast, place) => {
                     if let Some(chrome) = chrome {
-                        Self::chrome_elements(renderer, view, chrome, opacity, elements);
+                        let drawn = (&mut *elements, &mut glass);
+                        Self::chrome_elements(renderer, view, chrome, opacity, drawn);
                     }
                     let pieces = pieces.elements(view.origin, view.scale.factor(), opacity);
                     elements.extend(pieces.map(Element::Ghost));
@@ -3544,7 +3549,7 @@ impl Compositor {
         renderer: &mut R,
         view: View,
         (fullscreen, seen): (bool, bool),
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
@@ -3578,8 +3583,10 @@ impl Compositor {
                     SolidColorRenderElement::from_buffer(side, at, scale, 1.0, Kind::Unspecified);
                 elements.push(Element::Solid(side));
             }
+            let mut glass = Vec::new();
             if let Some(chrome) = &shown.chrome {
-                Self::chrome_elements(renderer, view, chrome, shown.opacity, elements);
+                let drawn = (&mut *elements, &mut glass);
+                Self::chrome_elements(renderer, view, chrome, shown.opacity, drawn);
             }
             if shown.shaded {
                 // Rolled up into its titlebar, none of the window is
@@ -3597,24 +3604,38 @@ impl Compositor {
             if let Some(shadow) = shadow {
                 shadow.elements(renderer, shown.opacity, view, elements);
             }
+            // What is behind its titlebar's glass begins under its shadow.
+            let under = elements.len();
+            panes.extend(glass.into_iter().map(|pane| pane.under(under)));
         }
     }
 
-    /// Adds a frame's decoration: its titlebar, its borders and where they
-    /// turn the bottom corners.
+    /// Adds a frame's decoration: its titlebar, with its glass if the theme
+    /// makes it glass, its borders and where they turn the bottom corners.
     fn chrome_elements<R>(
         renderer: &mut R,
         view: View,
         chrome: &Chrome,
         opacity: f32,
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let bar = chrome.decoration.titlebar().origin;
-        let at = Point::<i32, Logical>::from((bar.x, bar.y)).to_f64();
-        elements.extend(chrome.titlebar.element(renderer, at, view, opacity));
+        let bar = chrome.decoration.titlebar();
+        let at = Point::<i32, Logical>::from((bar.origin.x, bar.origin.y));
+        let titlebar = chrome
+            .titlebar
+            .element(renderer, at.to_f64(), view, opacity);
+        elements.extend(titlebar);
+        // Its glass is under it, and what is written on it over that,
+        // rounded above as it is.
+        let looks = &chrome.appearance.looks;
+        let area = (Rectangle::new(at, logical_size(bar.size)), view);
+        let key = glass::key(&("titlebar", &chrome.tabs));
+        let glass = Pane::of(&looks.titlebar, area, (key, elements.len(), 0), opacity);
+        let radius = view.scale.pixels(looks.window.radius.cast_signed());
+        panes.extend(glass.map(|pane| pane.rounded_above(radius)));
         let straight = corners::straight_borders(&chrome.decoration, chrome.radius);
         for (buffer, border) in chrome.borders.iter().zip(straight) {
             let at = Point::<i32, Logical>::from((border.origin.x, border.origin.y));
