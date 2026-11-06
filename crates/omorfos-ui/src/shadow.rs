@@ -220,27 +220,58 @@ fn softened(cover: &[f32], side: usize, blur: u32) -> Vec<f32> {
         })
         .collect();
     let total: f32 = weights.iter().sum();
-    let pass = |from: &[f32], step: (usize, usize)| {
-        let mut to = vec![0.0_f32; from.len()];
-        for row in 0..side {
-            for column in 0..side {
-                let mut sum = 0.0;
-                for (offset, weight) in (-reach..=reach).zip(&weights) {
-                    let along = i64::try_from(column).unwrap_or(0) + offset;
-                    let Ok(along) = usize::try_from(along) else {
-                        continue;
-                    };
-                    if along < side {
-                        sum += weight * from[row * step.0 + along * step.1];
-                    }
-                }
-                to[row * step.0 + column * step.1] = sum / total;
-            }
-        }
-        to
+    let reach = usize::try_from(blur).unwrap_or(0);
+    // Each tap in turn is added to a whole run of what is made: the run of
+    // pixels it reaches within the square, `count` long, from `first`,
+    // taken from as far along as the tap is from the middle. Every pixel
+    // still has its taps added in order, as it would one by one, but along
+    // rows of memory rather than across them.
+    let runs = |length: usize| {
+        weights.iter().enumerate().map(move |(tap, weight)| {
+            let first = reach.saturating_sub(tap);
+            let source = (first + tap).saturating_sub(reach);
+            (
+                *weight,
+                first,
+                source,
+                length.saturating_sub(first.max(source)),
+            )
+        })
     };
-    let across = pass(cover, (side, 1));
-    pass(&across, (1, side))
+    let add = |to: &mut [f32],
+               from: &[f32],
+               (weight, first, source, count): (f32, usize, usize, usize)| {
+        // Each run is within the square, so neither is ever missing.
+        let (to, from) = to
+            .get_mut(first..first + count)
+            .zip(from.get(source..source + count))
+            .unwrap_or_default();
+        for (to, from) in to.iter_mut().zip(from) {
+            *to += weight * from;
+        }
+    };
+    let mut across = vec![0.0_f32; cover.len()];
+    for (to, from) in across.chunks_mut(side).zip(cover.chunks(side)) {
+        for run in runs(side) {
+            add(to, from, run);
+        }
+    }
+    for value in &mut across {
+        *value /= total;
+    }
+    // Down, whole rows at a time.
+    let mut down = vec![0.0_f32; cover.len()];
+    for (weight, first, source, count) in runs(side) {
+        add(
+            &mut down,
+            &across,
+            (weight, first * side, source * side, count * side),
+        );
+    }
+    for value in &mut down {
+        *value /= total;
+    }
+    down
 }
 
 /// The nearest byte to a value from 0 to 255.
