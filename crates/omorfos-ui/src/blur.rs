@@ -21,7 +21,11 @@
 //!   which is `w` by `h`, where `W` by `H` is what is made; a pixel `i`
 //!   covers `i` to `i + 1`.
 //! - A sample is bilinear, between the four pixels whose middles are
-//!   nearest; beyond an edge, the pixel at the edge is taken.
+//!   nearest; beyond an edge is what is inside it, mirrored, so that the
+//!   pixel `-1` is the pixel `0` and the pixel `w` is the pixel `w - 1`.
+//!   Taking the pixel at the edge for all that is beyond it would make
+//!   whatever is along the edge endless, and keep it bright under any
+//!   blur; CSS mirrors, for that reason.
 //! - Down: the point four times and the four points `offset` away
 //!   diagonally, over eight.
 //! - Up: the four points `2 · offset` away across and down, once each, and
@@ -95,7 +99,8 @@ impl Blur {
 
     /// How far round a sheet of glass, in pixels, what is behind it is
     /// taken in to be blurred: three deviations, beyond which what there is
-    /// counts for too little to be seen. Beyond that, the edge is taken.
+    /// counts for too little to be seen. Beyond that, what is inside is
+    /// taken, mirrored.
     #[must_use]
     pub const fn reach(&self) -> u32 {
         self.deviation.saturating_mul(3)
@@ -147,7 +152,7 @@ impl Blur {
 }
 
 impl Layer {
-    /// It sampled bilinearly at `(x, y)`, in its pixels, the edge taken
+    /// It sampled bilinearly at `(x, y)`, in its pixels, mirrored
     /// beyond it.
     fn sample(&self, (x, y): (f32, f32)) -> [f32; 4] {
         let (x, y) = (x - 0.5, y - 0.5);
@@ -265,15 +270,23 @@ fn saturated([red, green, blue, alpha]: [f32; 4]) -> [f32; 4] {
     [moved(red), moved(green), moved(blue), alpha]
 }
 
-/// Which of `length` pixels is at `at`: the nearest at the edge beyond it.
+/// Which of `length` pixels is at `at`, a whole number: beyond an edge,
+/// the one as far inside it, as in a mirror.
 fn index(at: f32, length: usize) -> usize {
-    let last = float_of(length.saturating_sub(1));
+    // The picture and its mirror image, side by side, over and over.
+    let twice = float_of(length) * 2.0;
+    let within = at.rem_euclid(twice);
+    let mirrored = if within < float_of(length) {
+        within
+    } else {
+        twice - 1.0 - within
+    };
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "kept from nothing to the last pixel, a whole number"
+        reason = "from nothing to the last pixel, a whole number"
     )]
-    let index = at.clamp(0.0, last) as usize;
+    let index = mirrored.max(0.0) as usize;
     index
 }
 
@@ -465,6 +478,40 @@ mod tests {
         assert_eq!((red(60), red(140)), (0, 255), "the slope ends");
         assert!((100..156).contains(&red(99)) && (100..156).contains(&red(100)));
         assert!(red(92) > 0 && red(108) < 255, "and is wide");
+    }
+
+    #[test]
+    fn beyond_an_edge_is_what_is_inside_it_mirrored() {
+        // A line 4 pixels wide along the right edge of a black picture,
+        // and the same picture beside itself mirrored, the line in the
+        // middle: blurred, each is the same up to where they meet.
+        let (width, height) = (128_u32, 8_u32);
+        let mut picture = flat([0, 0, 0, 255], (width, height));
+        for (at, pixel) in picture.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            if size(width) - 4 <= at % size(width) {
+                *pixel = [255; 4];
+            }
+        }
+        let rows = picture.chunks(size(width) * 4);
+        let doubled: Vec<u8> = rows
+            .flat_map(|row| {
+                let (pixels, _) = row.as_chunks::<4>();
+                let mirrored = pixels.iter().rev().flatten();
+                row.iter().chain(mirrored).copied().collect::<Vec<_>>()
+            })
+            .collect();
+        let blur = Blur::new(16).unwrap();
+        let alone = blur.apply(&picture, (width, height));
+        let beside = blur.apply(&doubled, (width * 2, height));
+        let row = |picture: &[u8], across: u32| {
+            let at = size(4 * across * 4);
+            picture[at..at + size(width * 4)].to_vec()
+        };
+        assert_eq!(row(&alone, width), row(&beside, width * 2));
+        // So the line is spread thin, where taking the edge for what is
+        // beyond it would make it endless and keep it bright.
+        let edge = row(&alone, width)[size(width - 1) * 4];
+        assert!(edge < 64, "{edge}");
     }
 
     #[test]

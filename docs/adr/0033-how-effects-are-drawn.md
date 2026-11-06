@@ -104,8 +104,28 @@ A test holds it to within a little over a tenth of what was asked, from
 texture is, so that the shader can match it.
 
 What is behind a sheet is taken in as far round it as three deviations,
-beyond which what there is counts for too little to be seen; beyond that
-the edge is taken. A part's own shadow is not behind it, as in CSS: its
+beyond which what there is counts for too little to be seen; beyond that,
+and beyond the screen, is what is inside, mirrored. Taking the pixel at
+the edge for all that is beyond it, as the blur first did, makes
+whatever is along the edge endless: a bright line in a wallpaper along
+the bottom of the screen, under the panel, stayed bright under any blur.
+CSS's `backdrop-filter` was changed from the one to the other for the
+same reason, and for colours flickering as a sheet moves along an edge
+(the CSS working group, November 2023; Chrome 129). A line 10 pixels
+high along the bottom, under a panel 70 high, at the bottom of the
+panel and as bright as 255: 203 taking the edge and 182 mirrored at a
+deviation of 9; 123 and 83 at 21; 86 and 65 at 28.
+
+Mirrored, a narrow blur still shows such a line, which is under the
+glass and is shown. So glass is never blurred less than 16 units of
+layout, whatever the theme asks: two thirds of the thinnest glass in
+`DESIGN.md`, which already says that nothing is see-through and not
+blurred. Less leaves letters behind to be read, and a line along an
+edge a line; 16 spreads it over about the height of a panel, a glow.
+That is the one place glass is not as CSS has it: a theme asking for
+`blur(5px)` gets 16. It costs little, the wider blur being made on
+smaller pictures, though what is taken in round a sheet is wider. A
+part's own shadow is not behind it, as in CSS: its
 glass is under its pixels and over its shadow, and what is behind begins
 under the shadow. A part whose background cannot be seen through has no
 glass, and nothing is blurred for it.
@@ -137,9 +157,11 @@ underneath. Both backends that draw with a GPU hand it in, the nested
 one too.
 
 Textures Smithay makes to be drawn into are sampled round to their other
-side beyond their edges (`docs/UPSTREAM.md`). The shader keeps its
-samples within the middles of the pixels at the edge, which takes the
-edge beyond it, as the software blur does.
+side beyond their edges (`docs/UPSTREAM.md`). The shader folds each
+sample back over the edge, as the software blur mirrors, and keeps it
+within the middles of the pixels along the edge, between which the
+sampler would blend in the other side; the two together sample as a
+texture told to mirror would.
 
 On an Intel UHD 620 the shader blurs the picture it is tried on, and
 others as wide as 200 by 120 blurred by 48, within 2 in 255 of the

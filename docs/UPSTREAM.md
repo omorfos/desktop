@@ -206,9 +206,10 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   default, `GL_REPEAT`: a texture drawn into and then sampled near its
   edge, as a blur does, takes in pixels from the opposite edge. The
   textures it imports are set to `GL_CLAMP_TO_EDGE`.
-- **Meanwhile:** the blur's shader, `crates/omorfos/src/shader.rs`, keeps
-  every sample within the middles of the pixels at the edge, which is
-  what clamping to the edge gives (ADR 33).
+- **Meanwhile:** the blur's shader, `crates/omorfos/src/shader.rs`, folds
+  each sample back over the edge, as the software blur mirrors, and then
+  keeps it within the middles of the pixels at the edge, which is what
+  clamping to the edge gives (ADR 33).
 - **Check:** `grep -n -A30 'impl Offscreen<GlesTexture> for GlesRenderer' "$S"/src/backend/renderer/gles/mod.rs | grep -n WRAP`.
   Once it clamps, the shader's `clamp` may go: take it out and run
   `cargo test -p omorfos --all-features --test integration -- --include-ignored gpu::the_cards_shader`.

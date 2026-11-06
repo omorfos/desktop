@@ -327,6 +327,14 @@ fn tried((width, height): (u32, u32)) -> Vec<u8> {
     bytes
 }
 
+/// The least glass is blurred, in units of layout, whatever the theme
+/// asks: glass is never see-through and not blurred (DESIGN.md). Less
+/// leaves what is behind sharp enough to be read, and a bright line in a
+/// wallpaper along the edge of the screen, under a panel, a line still;
+/// this much spreads it over about a panel's height, a glow. It is two
+/// thirds of the blur of the thinnest glass DESIGN.md gives.
+const LEAST_BLUR: u32 = 16;
+
 /// A sheet of glass in a scene being laid out.
 #[derive(Debug, Clone)]
 pub(crate) struct Pane {
@@ -372,7 +380,7 @@ impl Pane {
             under,
             area: Rectangle::new(from, (to - from).to_size()),
             radius: view.scale.pixels(style.radius.cast_signed()),
-            blur: pixels(style.blur),
+            blur: pixels(style.blur.max(LEAST_BLUR)),
             color: style.background,
             opacity,
         })
@@ -520,8 +528,8 @@ impl Glass {
         let blur = frosting.zip(Blur::new(pane.blur));
         let blurred = blur.and_then(|(frosting, blur)| {
             let reach = i32::try_from(blur.reach()).unwrap_or(i32::MAX);
-            // Within the screen: beyond it, the edge is taken, as it is of the
-            // desktop blurred.
+            // Within the screen: beyond it is what is inside it, mirrored, as
+            // it is of the desktop blurred.
             let around = Rectangle::new(
                 pane.area.loc - Point::from((reach, reach)),
                 pane.area.size + Size::from((reach * 2, reach * 2)),

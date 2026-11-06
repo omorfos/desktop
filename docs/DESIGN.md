@@ -209,7 +209,9 @@ the titlebar of a window. The content of a window is never glass.
   wider blur costs more to draw.
 - Where blur cannot be drawn, or would cost too much, the surface is
   solid. Nothing is ever see-through and not blurred: that is text over
-  text.
+  text. So no theme blurs glass less than 16 px, whatever it asks: less
+  leaves letters behind to be read, and a bright line along the edge of
+  a wallpaper, under the bar, a line.
 
 ## Depth
 

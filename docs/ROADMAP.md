@@ -1098,6 +1098,10 @@ the first than on the last.
       and notifications, for the compositor's parts and the components'.
 - [ ] The check's allowance, 4 in 255, measured on cards other than
       Intel's, where the shader is within 2: AMD's and NVIDIA's.
+- [x] Glass at the edges of the screen: beyond them is what is inside,
+      mirrored, as CSS has it, and no glass is blurred less than 16 px,
+      so that a bright line along the bottom of a wallpaper is a glow
+      under the bar, not a line.
 - [ ] How long a frame took to draw, and how many blurs it made, in the
       state published over IPC.
 - [ ] Blur behind titlebars, once its cost has been measured with a

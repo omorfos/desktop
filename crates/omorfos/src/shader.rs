@@ -29,10 +29,13 @@ use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
 use crate::glass::Frosting;
 
 /// What every pass begins with: Smithay's place for its own definitions,
-/// what it samples, and the sampling itself, kept to the middles of the
-/// pixels at the edge so that beyond the edge is the edge, as the software
-/// takes it to be. Textures made to be drawn into are not told to stop at
-/// their edges, so the sampler would go round to the other side.
+/// what it samples, and the sampling itself. Beyond an edge is what is
+/// inside it, mirrored, as the software takes it to be: the point is
+/// folded back over the edge, then kept to the middles of the pixels along
+/// it, between which the sampler would otherwise blend in the other side,
+/// since textures made to be drawn into are not told to stop at their
+/// edges. Folding the point and then keeping it from the edge samples as a
+/// sampler told to mirror would.
 const COMMON: &str = r"#version 100
 
 //_DEFINES_
@@ -64,7 +67,9 @@ uniform vec2 apart;
 uniform vec2 edge;
 
 vec4 tap(vec2 offset) {
-    return texture2D(tex, clamp(v_coords + offset, edge, vec2(1.0) - edge));
+    vec2 within = mod(v_coords + offset, 2.0);
+    vec2 folded = min(within, vec2(2.0) - within);
+    return texture2D(tex, clamp(folded, edge, vec2(1.0) - edge));
 }
 
 vec4 shown(vec4 color) {

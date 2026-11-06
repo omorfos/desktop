@@ -61,8 +61,8 @@ fn a_panel_of_glass_is_redder_over_a_red_window_and_only_there() {
     let picture = session.draw();
     let (over, beside) = (picture.at(100, 15), picture.at(400, 15));
     assert!(red(over) > red(beside) + 64, "{over:#x} {beside:#x}");
-    // To the edge of the screen, where what is beyond is taken to be what
-    // is at the edge.
+    // To the edge of the screen, beyond which is what is inside it,
+    // mirrored.
     assert_eq!(picture.at(100, 0), over, "as red at the top");
     // What is behind it is blurred: its edge is soft, where it is sharp
     // under it.
@@ -70,6 +70,20 @@ fn a_panel_of_glass_is_redder_over_a_red_window_and_only_there() {
     assert!(red(picture.at(204, 15)) > red(beside), "and out");
     assert_eq!(picture.at(100, 60), RED, "the window, below it");
     assert_eq!(picture.at(400, 60), BACKGROUND, "the desktop, below it");
+}
+
+#[test]
+fn glass_asked_to_blur_too_little_to_hide_what_is_behind_it_blurs_as_little_as_glass_may() {
+    let slight = GLASS.replace("blur(8px)", "blur(2px)");
+    let least = GLASS.replace("blur(8px)", "blur(16px)");
+    let more = GLASS.replace("blur(8px)", "blur(24px)");
+    let across_the_edge = |theme: &str| {
+        let (mut session, _window, _panel) = over_a_red_window(theme);
+        let picture = session.draw();
+        (150..250).map(|x| picture.at(x, 15)).collect::<Vec<_>>()
+    };
+    assert_eq!(across_the_edge(&slight), across_the_edge(&least));
+    assert_ne!(across_the_edge(&more), across_the_edge(&least), "and more");
 }
 
 #[test]
