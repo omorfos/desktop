@@ -1872,6 +1872,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-misc",
+ "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "wayland-server",
  "x11rb",
@@ -2080,6 +2081,7 @@ dependencies = [
  "wayland-backend",
  "wayland-protocols",
  "wayland-protocols-misc",
+ "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "wayland-server",
 ]
@@ -3544,6 +3546,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-scanner",
+ "wayland-server",
 ]
 
 [[package]]

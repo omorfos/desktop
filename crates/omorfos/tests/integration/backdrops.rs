@@ -11,25 +11,25 @@ use crate::windows::{BACKGROUND, RED};
 
 /// A theme in which nothing moves or casts a shadow, and what is behind a
 /// program is blurred by 16 pixels where it asks.
-const BLURRED: &str = "* { transition: none; }\n\
+pub(crate) const BLURRED: &str = "* { transition: none; }\n\
                        window, window:focus { box-shadow: none; backdrop-filter: blur(16px); }\n";
 
 /// The same, but giving programs no blur.
-const UNBLURRED: &str = "* { transition: none; }\n\
+pub(crate) const UNBLURRED: &str = "* { transition: none; }\n\
                          window, window:focus { box-shadow: none; backdrop-filter: none; }\n";
 
 /// What a program is told the compositor can do: blur.
 const BLUR: u32 = 1;
 
 /// How red a pixel is.
-fn red(pixel: u32) -> u32 {
+pub(crate) fn red(pixel: u32) -> u32 {
     (pixel >> 16) & 0xff
 }
 
 /// A session with `theme`, a red window 200 by 400 in the top left corner,
 /// and over it a window that cannot be seen at all, `width` by 200,
 /// cascaded from the corner to 32 across and down.
-fn over_a_red_window(theme: &str, width: i32) -> (Session, [(Client, Toplevel); 2]) {
+pub(crate) fn over_a_red_window(theme: &str, width: i32) -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut red = session.connect();
     let under = session.open(&mut red, "red", (200, 400), RED);
@@ -46,7 +46,7 @@ fn told(session: &mut Session, client: &mut Client) -> Vec<u32> {
 
 /// The error `client` was ended with, if any, once the compositor has had
 /// a few chances to say it.
-fn ended(session: &mut Session, client: &mut Client) -> Option<(String, u32)> {
+pub(crate) fn ended(session: &mut Session, client: &mut Client) -> Option<(String, u32)> {
     let mut error = None;
     for _ in 0..10 {
         session.step();

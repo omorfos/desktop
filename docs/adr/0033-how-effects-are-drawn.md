@@ -247,8 +247,9 @@ goes.
   leads to may be a picture of the screen, and it is not to be in that,
   nor is its shadow. The pictures it shows to pick a colour from are
   named after no part, and cast none.
-- Other programs ask with `ext-background-effect-v1`, and are given blur
-  of the same kind where they say. They are never given shadows wider
+- Other programs ask with `ext-background-effect-v1`, or, until those
+  that do move to it, KDE's `org_kde_kwin_blur` (ADR 64), and are given
+  blur of the same kind where they say. They are never given shadows wider
   than their own surface, or the picture. How far it blurs is the
   `window` part's `backdrop-filter`, the same for every program, and a
   program is told it may have none where that is `none` or transparency

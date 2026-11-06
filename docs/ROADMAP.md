@@ -1124,6 +1124,12 @@ the first than on the last.
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface and the frame's rounded corners, one blur for all of
       a region; kept through a change of compositor by the relay.
+- [x] The same through KDE's protocol (`org_kde_kwin_blur`), which
+      Ghostty, KDE's programs and fcitx5 ask through rather than the
+      standard (ADR 64).
+- [ ] Take KDE's blur protocol out once Ghostty, KWindowSystem and fcitx5
+      ask through `ext-background-effect`: ADR 64 says how to tell and
+      what goes.
 - [ ] Known gaps in blur for other programs: a pop-up's, or a part of a
       window drawn on a surface of its own, is not blurred behind; a
       window's goes as soon as it closes, rather than fading with it; and

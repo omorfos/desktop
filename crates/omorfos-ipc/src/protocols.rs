@@ -105,6 +105,15 @@ pub const OFFERED: &[Protocol] = &[
                    five seconds, leaves it locked, with a new locker started.",
     },
     Protocol {
+        // KDE's, until the programs that ask through it ask through
+        // `ext_background_effect_manager_v1` (ADR 64).
+        interface: "org_kde_kwin_blur_manager",
+        version: 1,
+        replayed: "Each surface's object made again, the region it last set set again and \
+                   committed again if it was, which the surface's last commit, committed \
+                   again, applies.",
+    },
+    Protocol {
         interface: "wl_compositor",
         version: 6,
         replayed: "Each surface and region made again. A surface's last commit is committed \

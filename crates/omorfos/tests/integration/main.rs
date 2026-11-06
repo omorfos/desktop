@@ -27,6 +27,7 @@ mod holding;
 mod idle;
 mod input;
 mod ipc;
+mod kde_blur;
 mod keeper;
 mod launcher;
 mod layers;

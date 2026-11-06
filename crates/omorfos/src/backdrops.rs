@@ -47,9 +47,10 @@ pub(crate) struct Backdrops {
 }
 
 impl Backdrops {
-    /// Offers the protocol on `display`.
+    /// Offers the protocol on `display`, and KDE's for the same (ADR 64).
     pub(crate) fn offer(display: &DisplayHandle) -> Self {
         display.create_global::<Compositor, ExtBackgroundEffectManagerV1, ()>(1, ());
+        crate::kde_blur::offer(display);
         Self {
             bound: Vec::new(),
             told: Capability::empty(),
@@ -58,9 +59,17 @@ impl Backdrops {
 }
 
 /// The parts of a surface its program asks to have what is behind blurred,
-/// in its own coordinates, double-buffered with it; none until it asks.
+/// double-buffered with it; none until it asks.
 #[derive(Debug, Clone, Default)]
-struct Asked(Option<Vec<Rectangle<i32, Logical>>>);
+pub(crate) enum Asked {
+    /// None of it.
+    #[default]
+    Nothing,
+    /// All of it, as only KDE's protocol asks (ADR 64).
+    Whole,
+    /// These rectangles of it, in its own coordinates.
+    Within(Vec<Rectangle<i32, Logical>>),
+}
 
 impl Cacheable for Asked {
     fn commit(&mut self, _: &DisplayHandle) -> Self {
@@ -79,7 +88,7 @@ struct Asking(Cell<bool>);
 
 /// The rectangles a region comes to, which do not overlap: those added,
 /// less those taken away since, in order.
-fn rectangles(region: &RegionAttributes) -> Vec<Rectangle<i32, Logical>> {
+pub(crate) fn rectangles(region: &RegionAttributes) -> Vec<Rectangle<i32, Logical>> {
     let mut within: Vec<Rectangle<i32, Logical>> = Vec::new();
     for (kind, rectangle) in &region.rects {
         within = match kind {
@@ -139,15 +148,20 @@ impl Compositor {
         let asked = may.then(|| {
             with_states(surface, |states| {
                 let mut cached = states.cached_state.get::<Asked>();
-                cached.current().0.clone()
+                cached.current().clone()
             })
         });
         let size = with_renderer_surface_state(surface, |state| state.surface_size());
         let whole = Rectangle::from_size(size.flatten().unwrap_or_default());
+        let asked = match asked.unwrap_or_default() {
+            Asked::Nothing => Vec::new(),
+            Asked::Whole => vec![whole],
+            Asked::Within(asked) => asked,
+        };
         let placed = |area: Rectangle<i32, Logical>| {
             view.pixels(Rectangle::new(origin + area.loc, area.size))
         };
-        let strips = asked.flatten().unwrap_or_default().into_iter();
+        let strips = asked.into_iter();
         let strips = strips
             .filter_map(|area| area.intersection(whole))
             .map(placed);
@@ -229,9 +243,11 @@ impl Dispatch<ExtBackgroundEffectSurfaceV1, WlSurface> for Compositor {
                 );
                 return;
             }
-            let asked = region.map(|region| rectangles(&get_region_attributes(&region)));
+            let asked = region.map_or(Asked::Nothing, |region| {
+                Asked::Within(rectangles(&get_region_attributes(&region)))
+            });
             with_states(surface, |states| {
-                *states.cached_state.get::<Asked>().pending() = Asked(asked);
+                *states.cached_state.get::<Asked>().pending() = asked;
             });
         }
     }
@@ -241,7 +257,7 @@ impl Dispatch<ExtBackgroundEffectSurfaceV1, WlSurface> for Compositor {
         // surface may be asked for through another.
         if surface.is_alive() {
             with_states(surface, |states| {
-                *states.cached_state.get::<Asked>().pending() = Asked(None);
+                *states.cached_state.get::<Asked>().pending() = Asked::Nothing;
                 let asking = states.data_map.get_or_insert(Asking::default);
                 asking.0.set(false);
             });

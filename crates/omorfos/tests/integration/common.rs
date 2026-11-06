@@ -114,6 +114,9 @@ use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
     zwp_virtual_keyboard_manager_v1 as virtual_keyboard_manager,
     zwp_virtual_keyboard_v1 as virtual_keyboard,
 };
+use wayland_protocols_plasma::blur::client::{
+    org_kde_kwin_blur as kde_blur, org_kde_kwin_blur_manager as kde_blurs,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 /// A `config.yaml` for a session with four workspaces that are always
@@ -823,6 +826,8 @@ pub(crate) struct ClientState {
     /// blurred, and what the compositor has said it can do, each time.
     backdrops: Option<backdrops::ExtBackgroundEffectManagerV1>,
     pub(crate) backdrop_capabilities: Vec<u32>,
+    /// KDE's protocol for the same, which tells nothing.
+    kde_blurs: Option<kde_blurs::OrgKdeKwinBlurManager>,
     compositor: Option<wl_compositor::WlCompositor>,
     subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     shm: Option<wl_shm::WlShm>,
@@ -1523,6 +1528,46 @@ impl Client {
         region.destroy();
     }
 
+    /// Asks through KDE's protocol for what is behind `surface` to be
+    /// blurred, within `rects` of it if any are given and over all of it if
+    /// not, from its next commit.
+    pub(crate) fn kde_blur(
+        &self,
+        surface: &wl_surface::WlSurface,
+        rects: Option<&[(i32, i32, i32, i32)]>,
+    ) -> kde_blur::OrgKdeKwinBlur {
+        let blurs = self.state.kde_blurs.as_ref().unwrap();
+        let blur = blurs.create(surface, &self.handle(), ());
+        if let Some(rects) = rects {
+            self.kde_blur_within(&blur, rects);
+        }
+        blur.commit();
+        blur
+    }
+
+    /// Sets the region `blur` asks for, `rects`, which its next commit
+    /// makes what it asks for: a region destroyed as soon as it is given,
+    /// which the compositor copies.
+    pub(crate) fn kde_blur_within(
+        &self,
+        blur: &kde_blur::OrgKdeKwinBlur,
+        rects: &[(i32, i32, i32, i32)],
+    ) {
+        let compositor = self.state.compositor.as_ref().unwrap();
+        let region = compositor.create_region(&self.handle(), ());
+        for &(x, y, width, height) in rects {
+            region.add(x, y, width, height);
+        }
+        blur.set_region(Some(&region));
+        region.destroy();
+    }
+
+    /// Asks through KDE's protocol for nothing behind `surface` to be
+    /// blurred, from its next commit.
+    pub(crate) fn kde_unblur(&self, surface: &wl_surface::WlSurface) {
+        self.state.kde_blurs.as_ref().unwrap().unset(surface);
+    }
+
     /// A region of the client's of one rectangle, to hold the pointer in.
     pub(crate) fn region(
         &self,
@@ -2051,9 +2096,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.fractions = Some(registry.bind(name, version, handle, ()));
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
-            "ext_background_effect_manager_v1" => {
-                state.backdrops = Some(registry.bind(name, version, handle, ()));
-            }
             "zwp_linux_dmabuf_v1" => {
                 state.gpu_buffers = Some(registry.bind(name, version.min(3), handle, ()));
             }
@@ -2209,7 +2251,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for ClientState {
 
 impl ClientState {
     /// Binds the globals about the pointer and how what is drawn is shown,
-    /// if `interface` is one of them.
+    /// what is behind it blurred among them, if `interface` is one of them.
     fn bind_pointing(
         &mut self,
         registry: &wl_registry::WlRegistry,
@@ -2229,6 +2271,12 @@ impl ClientState {
             }
             "wp_presentation" => {
                 self.presentation = Some(registry.bind(name, version, handle, ()));
+            }
+            "ext_background_effect_manager_v1" => {
+                self.backdrops = Some(registry.bind(name, version, handle, ()));
+            }
+            "org_kde_kwin_blur_manager" => {
+                self.kde_blurs = Some(registry.bind(name, version, handle, ()));
             }
             _ => {}
         }
@@ -2989,6 +3037,8 @@ impl Dispatch<backdrops::ExtBackgroundEffectManagerV1, ()> for ClientState {
 }
 
 delegate_noop!(ClientState: backdrop::ExtBackgroundEffectSurfaceV1);
+delegate_noop!(ClientState: kde_blurs::OrgKdeKwinBlurManager);
+delegate_noop!(ClientState: kde_blur::OrgKdeKwinBlur);
 delegate_noop!(ClientState: wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
 delegate_noop!(ClientState: wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(ClientState: wp_viewport::WpViewport);

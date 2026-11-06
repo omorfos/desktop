@@ -32,6 +32,7 @@ mod holding;
 mod icons;
 mod input;
 mod ipc;
+mod kde_blur;
 mod kept;
 mod lock;
 mod outputs;

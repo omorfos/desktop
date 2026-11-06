@@ -29,6 +29,7 @@ wayland-server = { version = "0.31.14", default-features = false }
 wayland-protocols = { version = "0.32.13", features = ["server", "staging", "unstable"] }
 wayland-protocols-misc = { version = "0.3.12", features = ["server"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
+wayland-protocols-plasma = { version = "0.3.12", features = ["server"] }
 
 [lints]
 workspace = true

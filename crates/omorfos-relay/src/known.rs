@@ -40,6 +40,7 @@ use wayland_protocols::xdg::xdg_output::zv1::server::zxdg_output_manager_v1;
 use wayland_protocols::xwayland::shell::v1::server::xwayland_shell_v1;
 use wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_manager_v2;
 use wayland_protocols_misc::zwp_virtual_keyboard_v1::server::zwp_virtual_keyboard_manager_v1;
+use wayland_protocols_plasma::blur::server::org_kde_kwin_blur_manager;
 use wayland_protocols_wlr::layer_shell::v1::server::zwlr_layer_shell_v1;
 
 /// The object every connection starts with.
@@ -65,7 +66,7 @@ pub(crate) fn globals() -> impl Iterator<Item = &'static Interface> {
 }
 
 /// Every global the compositor offers, as `omorfos-ipc`'s list says.
-const GLOBALS: [fn() -> &'static Interface; 39] = [
+const GLOBALS: [fn() -> &'static Interface; 40] = [
     ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1::interface,
     ext_data_control_manager_v1::ExtDataControlManagerV1::interface,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1::interface,
@@ -74,6 +75,7 @@ const GLOBALS: [fn() -> &'static Interface; 39] = [
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1::interface,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1::interface,
     ext_session_lock_manager_v1::ExtSessionLockManagerV1::interface,
+    org_kde_kwin_blur_manager::OrgKdeKwinBlurManager::interface,
     wl_compositor::WlCompositor::interface,
     wl_data_device_manager::WlDataDeviceManager::interface,
     wl_output::WlOutput::interface,

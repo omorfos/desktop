@@ -728,6 +728,31 @@ fn a_window_that_asked_for_what_is_behind_it_blurred_has_it_so_by_the_next_compo
 }
 
 #[test]
+fn a_window_that_asked_through_kdes_protocol_for_a_region_blurred_has_it_by_the_next_compositor() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let _red = first.open(&mut client, "red", (200, 400), RED);
+    // As above, and only by its top: blurred at 80 down and not at 200.
+    let clear = first.open(&mut client, "clear", (300, 200), 0);
+    let _blur = client.kde_blur(&clear.surface, Some(&[(140, 0, 100, 100)]));
+    clear.surface.commit();
+    first.roundtrip(&mut client);
+    first.settle();
+    let red = |session: &mut Session, y| (session.draw().at(204, y) >> 16) & 0xff > 0x40;
+    let blurred = |session: &mut Session| red(session, 80) && !red(session, 200);
+    assert!(blurred(&mut first), "blurred past the red window's edge");
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(blurred);
+    second.roundtrip(&mut client);
+    relayed.kept();
+}
+
+#[test]
 fn a_program_with_a_menu_open_is_kept_and_told_the_menu_is_done() {
     let relayed = Relayed::new();
     let (mut first, first_holder) = relayed.compositor();

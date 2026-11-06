@@ -22,6 +22,9 @@
 //! showing nothing. So is a pointer held once only that has been held, as
 //! it is over.
 //!
+//! A request that names what is made after its object waits until that is
+//! made, and those asked of the object after it wait with it, in order.
+//!
 //! A surface's parts (`wl_subsurface`) are stacked as they last were, and
 //! each surface is committed after its parts, so that what a part shows,
 //! which it shows only once the surface it is part of is committed, is
@@ -114,6 +117,12 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection")
         | ("wp_alpha_modifier_surface_v1", "set_multiplier")
         | ("ext_background_effect_surface_v1", "set_blur_region")
+        // Each is sent again in the order last asked. A region set since
+        // the last commit is set again after it, uncommitted, and what
+        // that commit asked for becomes all of the surface: KDE's programs
+        // make an object for each region they ask for, and Ghostty sets
+        // none.
+        | ("org_kde_kwin_blur", "set_region" | "commit")
         | ("zwp_locked_pointer_v1", "set_cursor_position_hint" | "set_region")
         | ("zwp_confined_pointer_v1", "set_region")
         | ("zwp_virtual_keyboard_v1", "keymap")
@@ -134,7 +143,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 51] = [
+const KEPT: [&str; 52] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -172,6 +181,7 @@ const KEPT: [&str; 51] = [
     "zwlr_layer_surface_v1",
     "wp_alpha_modifier_surface_v1",
     "ext_background_effect_surface_v1",
+    "org_kde_kwin_blur",
     "zwp_relative_pointer_v1",
     "zwp_locked_pointer_v1",
     "zwp_confined_pointer_v1",
@@ -750,6 +760,9 @@ impl Journal {
                 kept.interface.name,
                 "xdg_surface" | "ext_data_control_device_v1"
             );
+            // Once one of its requests waits, those asked after it wait too,
+            // so that none overtakes it: a blur's commit, the region it sets.
+            let mut waiting = false;
             for message in lasting {
                 // What is asked of another for it, its icon given it, may
                 // name what is made after it.
@@ -760,7 +773,8 @@ impl Journal {
                 };
                 if deferred || elsewhere {
                     roled.push(message.sending());
-                } else if message.names.iter().any(made_after) {
+                } else if waiting || message.names.iter().any(made_after) {
+                    waiting = true;
                     later.push(message.sending());
                 } else {
                     sending.push(message.sending());
@@ -1359,6 +1373,34 @@ mod tests {
     }
 
     #[test]
+    fn a_blur_asked_for_through_kdes_protocol_is_set_and_committed_again_as_last_asked() {
+        let mut program = Program::default();
+        program.bind(1, "wl_compositor", 6, 3);
+        program.bind(2, "org_kde_kwin_blur_manager", 1, 4);
+        // A surface, 5, a blur of it, 6, and a region made after the blur,
+        // 7, destroyed as soon as it is given: the region is set once it is
+        // made again, and the blur's commit, which came after, waits.
+        program.send(&sent(3, 0, &words(&[5])), &[]);
+        program.send(&sent(4, 0, &words(&[6, 5])), &[]);
+        program.send(&sent(3, 1, &words(&[7])), &[]);
+        program.send(&sent(7, 1, &words(&[0, 0, 10, 10])), &[]);
+        program.send(&sent(6, 1, &words(&[7])), &[]);
+        program.send(&sent(7, 0, &[]), &[]);
+        program.send(&sent(6, 0, &[]), &[]);
+        assert!(program.journal.unkept().is_empty(), "kept");
+        let asked = |program: &Program| {
+            let (sending, _) = replayed(&program.journal, &Some).unwrap();
+            let made = opcodes(&sending);
+            made.into_iter()
+                .filter(|(object, _)| *object == 6)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(asked(&program), [(6, 1), (6, 0)], "set, then committed");
+        program.send(&sent(6, 1, &words(&[0])), &[]);
+        assert_eq!(asked(&program), [(6, 0), (6, 1)], "set since");
+    }
+
+    #[test]
     fn a_windows_icon_is_given_it_again_once_the_icon_is_made() {
         let mut program = Program::default();
         program.bind(1, "xdg_wm_base", 6, 3);
@@ -1627,6 +1669,9 @@ mod tests {
         let blurred = "ext_background_effect_surface_v1";
         assert_eq!(rule(blurred, "set_blur_region"), Rule::Lasting);
         assert!(keeps(blurred));
+        assert_eq!(rule("org_kde_kwin_blur", "set_region"), Rule::Lasting);
+        assert_eq!(rule("org_kde_kwin_blur", "commit"), Rule::Lasting);
+        assert!(keeps("org_kde_kwin_blur"));
         let locked = "zwp_locked_pointer_v1";
         assert_eq!(rule(locked, "set_cursor_position_hint"), Rule::Lasting);
         assert_eq!(rule(locked, "set_region"), Rule::Lasting);
