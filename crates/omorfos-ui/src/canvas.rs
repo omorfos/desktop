@@ -132,6 +132,15 @@ impl Canvas {
     /// Where two sides with borders meet at a rounded corner, the border
     /// goes round it as thick as the thicker of the two and in its colour.
     pub fn draw_box(&mut self, area: Area, style: &Style) {
+        self.draw_box_within(area, style, (area, 0));
+    }
+
+    /// Draws a part as a box filling `area`, as [`Canvas::draw_box`] does,
+    /// but only within `within`, an area whose corners are rounded by
+    /// `radius`: a row of a menu with rounded corners, kept to them, as
+    /// CSS keeps what a box holds to its corners where it says `overflow:
+    /// hidden`.
+    pub fn draw_box_within(&mut self, area: Area, style: &Style, (within, radius): (Area, u32)) {
         let (left, width) = span(self.scale, area.0, area.2);
         let (top, height) = span(self.scale, area.1, area.3);
         let pixels = |units: u32| span(self.scale, 0, units).1;
@@ -147,14 +156,30 @@ impl Canvas {
             radius: pixels(style.radius).min(width / 2).min(height / 2),
             widths,
         };
+        let (from, across) = span(self.scale, within.0, within.2);
+        let (above, down) = span(self.scale, within.1, within.3);
+        let clip = Shape {
+            width: across,
+            height: down,
+            radius: pixels(radius).min(across / 2).min(down / 2),
+            widths: [0; 4],
+        };
+        // How much of a pixel, counted from the start of a side `length`
+        // long, is within it.
+        let along = |at: i32, start: i32, length: u32| {
+            let at = u32::try_from(i64::from(at) - i64::from(start)).ok();
+            at.filter(|at| *at < length)
+        };
         let columns = visible(left, width, self.width);
         for row in visible(top, height, self.height) {
             for column in columns.clone() {
-                let within = (column.abs_diff(left), row.abs_diff(top));
-                let (side, edge, fill) = shape.at(within);
+                let inside = (column.abs_diff(left), row.abs_diff(top));
+                let (side, edge, fill) = shape.at(inside);
+                let at = along(column, from, across).zip(along(row, above, down));
+                let kept = at.map_or(0, |at| clip.covered(at));
                 let line = lines.get(side).map_or(style.background, |line| line.color);
-                self.blend(column, row, line, edge);
-                self.blend(column, row, style.background, fill);
+                self.blend(column, row, line, share_of(edge, kept));
+                self.blend(column, row, style.background, share_of(fill, kept));
             }
         }
     }
@@ -580,6 +605,12 @@ impl Shape {
         let hollow = hollow.min(outer);
         (side, share(outer - hollow), share(hollow))
     }
+}
+
+/// `coverage` of a pixel, out of 255, as much again as `kept` says.
+fn share_of(coverage: u8, kept: u8) -> u8 {
+    let share = u32::from(coverage) * u32::from(kept) / 255;
+    u8::try_from(share).unwrap_or(u8::MAX)
 }
 
 /// The part of `area` left inside `edges`: a box less its border and
@@ -1187,6 +1218,34 @@ mod tests {
         assert_eq!(canvas.at(1, 32), argb(WHITE));
         assert_eq!(canvas.at(0, 39), 0, "and the corner is still cut");
         assert_ne!(canvas.at(5, 38), 0, "with the line clipped to it");
+    }
+
+    #[test]
+    fn a_box_drawn_within_a_rounded_area_keeps_to_its_corners() {
+        // A square box with rounded corners, and a row across its top
+        // drawn within it: the row is cut to the curve, as the box is.
+        let mut canvas = Canvas::new(40, 40);
+        let within = ((0, 0, 40, 40), 10);
+        canvas.draw_box_within((0, 0, 40, 12), &boxed(RED, RED, 0, 0), within);
+        assert_eq!(canvas.at(20, 5), argb(RED), "inside");
+        assert_eq!(canvas.at(0, 0), 0, "beyond the curve, nothing");
+        assert_eq!(canvas.at(39, 0), 0, "on either side");
+        let mixed = canvas.at(1, 4);
+        assert!(mixed != 0 && mixed != argb(RED), "{mixed:#x}: on it, some");
+        // And nothing at all outside the area it is drawn within.
+        let mut canvas = Canvas::new(40, 40);
+        canvas.draw_box_within(
+            (0, 0, 40, 40),
+            &boxed(RED, RED, 0, 0),
+            ((10, 10, 20, 20), 0),
+        );
+        assert_eq!((canvas.at(5, 20), canvas.at(35, 20)), (0, 0), "beside");
+        assert_eq!(
+            (canvas.at(20, 5), canvas.at(20, 35)),
+            (0, 0),
+            "above, below"
+        );
+        assert_eq!(canvas.at(20, 20), argb(RED));
     }
 
     #[test]
