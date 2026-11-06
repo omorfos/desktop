@@ -276,6 +276,15 @@ as GTK's are, come in step 3.
   process as a line, as the holder cannot know it from anything handed
   over that a process becoming another program keeps. The new version
   waits on it by its number.
+- **A relay older than the compositor keeps from programs what it does
+  not know.** The relay is handed over, not started again, so it runs as
+  it was at login while compositors installed since come and go. Each
+  global the compositor offers that the relay does not know is kept from
+  the program, and its going with it, and each it knows is offered at no
+  later version than it knows: a program that bound one past it would be
+  let go, as one was, Ghostty binding KDE's blur, added to a compositor
+  installed under a relay from before it. What is new to a protocol is so
+  offered from the next login.
 
 ## Step 3: the rest of what programs make
 

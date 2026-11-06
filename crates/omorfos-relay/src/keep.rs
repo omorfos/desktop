@@ -46,6 +46,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use wayland_backend::protocol::MessageDesc;
 
 use crate::journal::{self, Journal, Numbering, Sending};
+use crate::known;
 use crate::objects::{Objects, Read, SERVERS};
 use crate::serials::{self, Serials};
 use crate::wire::{self, Broken, HEADER, Header};
@@ -354,6 +355,9 @@ pub struct Keeping {
     globals: Vec<Global>,
     /// The globals the new compositor offers, as it says them.
     offered: Vec<Global>,
+    /// The compositor's names for the globals it offers that the relay
+    /// does not know, which are kept from the program.
+    unknown: HashSet<u32>,
     /// The windows, by their `xdg_surface`, and the layer surfaces.
     windows: HashMap<u32, Window>,
     /// What has the pointer, the keyboard or a field, by the pointer,
@@ -488,6 +492,7 @@ impl Default for Keeping {
             orphans: HashSet::new(),
             globals: Vec::new(),
             offered: Vec::new(),
+            unknown: HashSet::new(),
             windows: HashMap::new(),
             focus: HashMap::new(),
             held: HashMap::new(),
@@ -894,7 +899,19 @@ impl Keeping {
                 .get(8..8 + length.saturating_sub(1))
                 .unwrap_or_default()
                 .to_vec();
-            let version = wire::word(body, 8 + length.next_multiple_of(4)).unwrap_or_default();
+            let at = 8 + length.next_multiple_of(4);
+            let version = wire::word(body, at).unwrap_or_default();
+            // A compositor newer than the relay may offer what the relay
+            // does not know, or at a later version, which a program would
+            // be let go for binding: it is kept from the program, which
+            // has it from the next relay, as it is started at login.
+            let known = std::str::from_utf8(&interface).ok().and_then(known::global);
+            let Some(known) = known else {
+                self.unknown.insert(name);
+                return None;
+            };
+            let version = version.min(known.version);
+            wire::put(bytes, HEADER + at, version);
             let global = Global {
                 name,
                 interface,
@@ -928,6 +945,9 @@ impl Keeping {
             });
             wire::put(bytes, HEADER, ours);
         } else {
+            if self.unknown.remove(&name) {
+                return None;
+            }
             // Each registry is told, so the name is kept until a new
             // global takes it, on either side.
             let ours = self.names.ours(name);
@@ -2021,6 +2041,25 @@ mod tests {
         body.extend(text(interface));
         body.extend(words(&[version]));
         message(registry, 0, &body)
+    }
+
+    #[test]
+    fn a_global_the_relay_does_not_know_is_kept_from_the_program_and_so_is_its_going() {
+        // As a compositor installed since the relay started may offer.
+        let mut kept = Kept::registered(&[(1, "wl_compositor", 6)]);
+        assert_eq!(kept.told(&global(2, "wp_unknown_v1", 1)), None);
+        assert_eq!(kept.told(&message(2, 1, &words(&[2]))), None, "gone");
+        let gone = message(2, 1, &words(&[1]));
+        assert_eq!(kept.told(&gone), Some(gone), "one it knows, told");
+    }
+
+    #[test]
+    fn a_global_at_a_version_past_the_relays_is_offered_at_the_relays() {
+        let mut kept = Kept::registered(&[]);
+        let known = known::global("wl_compositor").unwrap().version;
+        let told = kept.told(&global(1, "wl_compositor", known + 1));
+        assert_eq!(told, Some(global(1, "wl_compositor", known)));
+        kept.bind(1, "wl_compositor", known, 3);
     }
 
     #[test]
