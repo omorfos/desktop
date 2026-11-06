@@ -180,7 +180,9 @@ colour, which is also what "reduce transparency" does for good.)
 
 A surface is glass when what is behind it is worth being reminded of and
 not worth reading: bars, the dock, menus, notifications, the launcher,
-the titlebar of a window. The content of a window is never glass.
+the titlebar of a window. The content of a window is never glass, unless
+its program asks for what is behind it to be blurred, which is its own
+choice to make.
 
 | Glass | Tint | Blur | Used for | What may be written on it |
 |---|---|---|---|---|

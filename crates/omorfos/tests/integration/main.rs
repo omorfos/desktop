@@ -7,6 +7,7 @@
 mod actions;
 mod activation;
 mod ask;
+mod backdrops;
 mod capture;
 mod clipboard;
 mod common;

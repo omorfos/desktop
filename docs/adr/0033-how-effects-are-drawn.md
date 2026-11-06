@@ -249,7 +249,18 @@ goes.
   named after no part, and cast none.
 - Other programs ask with `ext-background-effect-v1`, and are given blur
   of the same kind where they say. They are never given shadows wider
-  than their own surface, or the picture.
+  than their own surface, or the picture. How far it blurs is the
+  `window` part's `backdrop-filter`, the same for every program, and a
+  program is told it may have none where that is `none` or transparency
+  is to be reduced, and told again whenever that changes. Its glass has
+  no tint, the program drawing its own over it, and where blur cannot be
+  drawn it is nothing at all, the program left as it drew itself, as it
+  would be on a compositor without the protocol: there is no colour to be
+  solid in. What it asks for is cut to its surface, and to its frame's
+  rounded corners, and blurred as one picture however many rectangles it
+  comes to, as a region with rounded corners is told as many. A panel
+  whose part the theme makes glass has that, and not what its program
+  asks for too, which would blur the same twice.
 
 ### When they are not drawn
 

@@ -348,14 +348,13 @@ pub(crate) struct Pane {
     pub(crate) under: usize,
     /// Where it is, in pixels of the output.
     area: Rectangle<i32, Physical>,
-    /// How far its corners are rounded, in pixels.
-    radius: i32,
-    /// Whether its bottom corners are rounded as well as its top ones.
-    below: bool,
+    /// What of that it takes.
+    shape: Shape,
     /// How far what is behind it is blurred, in pixels.
     blur: u32,
-    /// The colour it is solid in where it is not blurred.
-    color: Color,
+    /// The colour it is solid in where it is not blurred; none for glass a
+    /// program asked for, which is then left as the program drew it.
+    color: Option<Color>,
     /// How much of it there is to see as its part comes or goes, from 0 to
     /// 1.
     opacity: f32,
@@ -381,25 +380,52 @@ impl Pane {
             at,
             under,
             area: Rectangle::new(from, (to - from).to_size()),
-            radius: view.scale.pixels(style.radius.cast_signed()),
-            below: true,
+            shape: Shape::Rounded {
+                radius: view.scale.pixels(style.radius.cast_signed()),
+                below: true,
+            },
             blur: pixels(style.blur.max(LEAST_BLUR)),
-            color: style.background,
+            color: Some(style.background),
+            opacity,
+        })
+    }
+
+    /// The glass a program asked for behind it, within `strips`, in pixels
+    /// of the output, blurred by `blur` units of `view`; none if there is
+    /// nothing within them. It has no tint: the program draws its own.
+    pub(crate) fn behind(
+        strips: Vec<Rectangle<i32, Physical>>,
+        (blur, view): (u32, View),
+        (key, at, under): (u64, usize, usize),
+        opacity: f32,
+    ) -> Option<Self> {
+        let area = strips.iter().copied().reduce(Rectangle::merge);
+        let blur = view.scale.pixels(blur.max(LEAST_BLUR).cast_signed());
+        area.map(|area| Self {
+            key,
+            at,
+            under,
+            area,
+            shape: Shape::Asked(strips),
+            blur: blur.unsigned_abs(),
+            color: None,
             opacity,
         })
     }
 
     /// The same, with what is behind it beginning at `under`.
-    pub(crate) const fn under(self, under: usize) -> Self {
+    pub(crate) fn under(self, under: usize) -> Self {
         Self { under, ..self }
     }
 
     /// The same, with its top corners rounded by `radius` pixels and its
     /// bottom ones square, as a titlebar is over its window.
-    pub(crate) const fn rounded_above(self, radius: i32) -> Self {
+    pub(crate) fn rounded_above(self, radius: i32) -> Self {
         Self {
-            radius,
-            below: false,
+            shape: Shape::Rounded {
+                radius,
+                below: false,
+            },
             ..self
         }
     }
@@ -411,6 +437,34 @@ impl Pane {
         Self {
             key: key(&(self.key, from)),
             ..self
+        }
+    }
+}
+
+/// What of its area a sheet of glass takes.
+#[derive(Debug, Clone)]
+enum Shape {
+    /// All of it, with its corners rounded by `radius` pixels: all four, or
+    /// the top two alone where not `below`.
+    Rounded { radius: i32, below: bool },
+    /// The parts a program asked for, in pixels of the output, which do
+    /// not overlap.
+    Asked(Vec<Rectangle<i32, Physical>>),
+}
+
+impl Shape {
+    /// What it takes of `area`, as strips.
+    fn strips(&self, area: Rectangle<i32, Physical>) -> Vec<Rectangle<i32, Physical>> {
+        match *self {
+            Self::Rounded {
+                radius,
+                below: true,
+            } => corners::rounded(area, radius),
+            Self::Rounded {
+                radius,
+                below: false,
+            } => corners::rounded_above(area, radius),
+            Self::Asked(ref strips) => strips.clone(),
         }
     }
 }
@@ -590,25 +644,25 @@ impl Glass {
                 made.and_then(|made| frosting.element(renderer, made, at))
             })
         });
-        let solid = Color {
+        let solid = pane.color.map(|tint| Color {
             alpha: u8::MAX,
-            ..pane.color
-        };
+            ..tint
+        });
         let logical = pane.area.size.to_f64().to_logical(scale).to_i32_round();
-        kept.solid.update(logical, color(solid));
+        if let Some(solid) = solid {
+            kept.solid.update(logical, color(solid));
+        }
         let mut glass = Vec::new();
-        let rounded = if pane.below {
-            corners::rounded
-        } else {
-            corners::rounded_above
-        };
-        for (index, strip) in rounded(pane.area, pane.radius).into_iter().enumerate() {
+        for (index, strip) in pane.shape.strips(pane.area).into_iter().enumerate() {
             let frosted = blurred.as_ref().and_then(|blurred| {
                 let whole = Frosted(Rc::clone(blurred));
                 let cut = Strip::of(whole, scale, strip, index, &kept.names);
                 cut.map(Element::Frosted)
             });
+            // Glass a program asked for that cannot be blurred is not
+            // drawn at all.
             let element = frosted.or_else(|| {
+                solid?;
                 let kind = Kind::Unspecified;
                 let at = pane.area.loc;
                 let whole = SolidColorRenderElement::from_buffer(

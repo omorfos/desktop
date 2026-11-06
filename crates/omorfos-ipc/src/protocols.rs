@@ -38,6 +38,14 @@ pub const X_SERVER: &str = "xwayland_shell_v1";
 /// Every protocol the compositor offers, by the name of its global.
 pub const OFFERED: &[Protocol] = &[
     Protocol {
+        interface: "ext_background_effect_manager_v1",
+        version: 1,
+        replayed: "Each surface's object made again, and the region it last asked to have \
+                   what is behind blurred in set again, which the surface's last commit, \
+                   committed again, applies. What the program may have is passed on only if it \
+                   changed.",
+    },
+    Protocol {
         interface: "ext_data_control_manager_v1",
         version: 1,
         replayed: "Each device made again for its seat, and each source with what it offers; \

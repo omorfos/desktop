@@ -12,6 +12,7 @@
 //! turn with [`Compositor::render`].
 
 mod asked;
+mod backdrops;
 pub mod backend;
 pub mod bridge;
 mod capture;

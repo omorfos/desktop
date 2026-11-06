@@ -1894,7 +1894,8 @@ impl Keeping {
 /// compositor tells while the relay catches up are sifted.
 fn describes(interface: &str, opcode: u16) -> Option<bool> {
     match (interface, opcode) {
-        ("wp_fractional_scale_v1", 0) | ("wl_surface", 2 | 3) => Some(true),
+        ("wp_fractional_scale_v1" | "ext_background_effect_manager_v1", 0)
+        | ("wl_surface", 2 | 3) => Some(true),
         ("zxdg_toplevel_decoration_v1", 0) | ("xdg_toplevel", 2 | 3) => Some(false),
         _ => None,
     }
@@ -2903,6 +2904,18 @@ mod tests {
         kept.told(&message(1, 1, &words(&[6]))).unwrap();
         kept.send(&message(4, 1, &words(&[6, 5]))).unwrap();
         assert!(kept.told(&scale(180)).is_some(), "told the new one");
+    }
+
+    #[test]
+    fn what_a_program_may_have_behind_it_is_told_only_as_it_changes() {
+        let globals = [(1, "ext_background_effect_manager_v1", 1)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "ext_background_effect_manager_v1", 1, 3);
+        let capabilities = |flags| message(3, 0, &words(&[flags]));
+        assert!(kept.told(&capabilities(1)).is_some());
+        kept.restarted(&globals);
+        assert_eq!(kept.told(&capabilities(1)), None, "as it was");
+        assert!(kept.told(&capabilities(0)).is_some(), "changed");
     }
 
     #[test]

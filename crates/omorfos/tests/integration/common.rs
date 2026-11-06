@@ -31,6 +31,9 @@ use wayland_client::protocol::{
     wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_protocols::ext::background_effect::v1::client::{
+    ext_background_effect_manager_v1 as backdrops, ext_background_effect_surface_v1 as backdrop,
+};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1 as listed_handle, ext_foreign_toplevel_list_v1 as toplevel_list,
 };
@@ -816,6 +819,10 @@ pub(crate) struct ClientState {
     icons: Option<icon_manager::XdgToplevelIconManagerV1>,
     /// The sizes the compositor asked icons to be given in.
     pub(crate) icon_sizes: Vec<i32>,
+    /// The protocol by which a program asks for what is behind it to be
+    /// blurred, and what the compositor has said it can do, each time.
+    backdrops: Option<backdrops::ExtBackgroundEffectManagerV1>,
+    pub(crate) backdrop_capabilities: Vec<u32>,
     compositor: Option<wl_compositor::WlCompositor>,
     subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     shm: Option<wl_shm::WlShm>,
@@ -1479,6 +1486,43 @@ impl Client {
         exporter.export_toplevel(&window.surface, &self.handle(), ())
     }
 
+    /// Asks for what is behind `surface` to be blurred, within `rects` of
+    /// it, from its next commit.
+    pub(crate) fn blur_behind(
+        &self,
+        surface: &wl_surface::WlSurface,
+        rects: &[(i32, i32, i32, i32)],
+    ) -> backdrop::ExtBackgroundEffectSurfaceV1 {
+        let backdrops = self.state.backdrops.as_ref().unwrap();
+        let effect = backdrops.get_background_effect(surface, &self.handle(), ());
+        self.blur_within(&effect, rects);
+        effect
+    }
+
+    /// Lets go of the protocol by which it asks for blur, which leaves what
+    /// it asked for through it as it is.
+    pub(crate) fn let_go_of_backdrops(&mut self) {
+        let backdrops = self.state.backdrops.take().unwrap();
+        backdrops.destroy();
+    }
+
+    /// Asks for what is behind a surface to be blurred within `rects` of
+    /// it from its next commit, or nowhere if there are none: a region
+    /// destroyed as soon as it is given, which the compositor copies.
+    pub(crate) fn blur_within(
+        &self,
+        effect: &backdrop::ExtBackgroundEffectSurfaceV1,
+        rects: &[(i32, i32, i32, i32)],
+    ) {
+        let compositor = self.state.compositor.as_ref().unwrap();
+        let region = compositor.create_region(&self.handle(), ());
+        for &(x, y, width, height) in rects {
+            region.add(x, y, width, height);
+        }
+        effect.set_blur_region((!rects.is_empty()).then_some(&region));
+        region.destroy();
+    }
+
     /// A region of the client's of one rectangle, to hold the pointer in.
     pub(crate) fn region(
         &self,
@@ -2007,6 +2051,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
                 state.fractions = Some(registry.bind(name, version, handle, ()));
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
+            "ext_background_effect_manager_v1" => {
+                state.backdrops = Some(registry.bind(name, version, handle, ()));
+            }
             "zwp_linux_dmabuf_v1" => {
                 state.gpu_buffers = Some(registry.bind(name, version.min(3), handle, ()));
             }
@@ -2926,6 +2973,22 @@ impl Dispatch<ext_idle_notification_v1::ExtIdleNotificationV1, ()> for ClientSta
     }
 }
 
+impl Dispatch<backdrops::ExtBackgroundEffectManagerV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &backdrops::ExtBackgroundEffectManagerV1,
+        event: backdrops::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let backdrops::Event::Capabilities { flags } = event {
+            state.backdrop_capabilities.push(flags.into());
+        }
+    }
+}
+
+delegate_noop!(ClientState: backdrop::ExtBackgroundEffectSurfaceV1);
 delegate_noop!(ClientState: wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
 delegate_noop!(ClientState: wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(ClientState: wp_viewport::WpViewport);

@@ -113,6 +113,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
         | ("xdg_toplevel_icon_v1", "set_name")
         | ("ext_data_control_device_v1", "set_selection" | "set_primary_selection")
         | ("wp_alpha_modifier_surface_v1", "set_multiplier")
+        | ("ext_background_effect_surface_v1", "set_blur_region")
         | ("zwp_locked_pointer_v1", "set_cursor_position_hint" | "set_region")
         | ("zwp_confined_pointer_v1", "set_region")
         | ("zwp_virtual_keyboard_v1", "keymap")
@@ -133,7 +134,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 50] = [
+const KEPT: [&str; 51] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -170,6 +171,7 @@ const KEPT: [&str; 50] = [
     "zxdg_imported_v2",
     "zwlr_layer_surface_v1",
     "wp_alpha_modifier_surface_v1",
+    "ext_background_effect_surface_v1",
     "zwp_relative_pointer_v1",
     "zwp_locked_pointer_v1",
     "zwp_confined_pointer_v1",
@@ -1326,6 +1328,37 @@ mod tests {
     }
 
     #[test]
+    fn a_surface_is_blurred_behind_again_where_it_last_asked_by_a_region_since_destroyed() {
+        let mut program = Program::default();
+        program.bind(1, "wl_compositor", 6, 3);
+        program.bind(2, "ext_background_effect_manager_v1", 1, 4);
+        program.send(&sent(3, 0, &words(&[5])), &[]);
+        program.send(&sent(3, 1, &words(&[6])), &[]);
+        program.send(&sent(6, 1, &words(&[0, 0, 10, 10])), &[]);
+        program.send(&sent(4, 1, &words(&[7, 5])), &[]);
+        program.send(&sent(7, 1, &words(&[6])), &[]);
+        // The region destroyed as soon as it is given, as it may be.
+        program.send(&sent(6, 0, &[]), &[]);
+        assert!(program.journal.unkept().is_empty(), "kept");
+        assert!(
+            !program.told(&sent(1, 1, &words(&[6]))),
+            "the region's number withheld"
+        );
+        let (sending, _) = replayed(&program.journal, &Some).unwrap();
+        let made = opcodes(&sending);
+        assert!(
+            made.contains(&(3, 1)) && made.contains(&(6, 1)),
+            "the region made again and added to: {made:?}"
+        );
+        let set: Vec<Option<u32>> = sending
+            .iter()
+            .filter(|(bytes, _)| bytes[..8] == sent(7, 1, &words(&[0]))[..8])
+            .map(|(bytes, _)| wire::word(bytes, HEADER))
+            .collect();
+        assert_eq!(set, [Some(6)], "asked again by it");
+    }
+
+    #[test]
     fn a_windows_icon_is_given_it_again_once_the_icon_is_made() {
         let mut program = Program::default();
         program.bind(1, "xdg_wm_base", 6, 3);
@@ -1591,6 +1624,9 @@ mod tests {
             Rule::Lasting
         );
         assert!(keeps("wp_alpha_modifier_surface_v1"));
+        let blurred = "ext_background_effect_surface_v1";
+        assert_eq!(rule(blurred, "set_blur_region"), Rule::Lasting);
+        assert!(keeps(blurred));
         let locked = "zwp_locked_pointer_v1";
         assert_eq!(rule(locked, "set_cursor_position_hint"), Rule::Lasting);
         assert_eq!(rule(locked, "set_region"), Rule::Lasting);

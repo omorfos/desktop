@@ -34,6 +34,9 @@ window {
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+  /* What is behind a program, blurred where it asks to be see-through.
+   * `backdrop-filter: none` gives programs no blur. */
+  backdrop-filter: blur(24px);
 }
 window:focus {
   border-color: var(--border-strong);

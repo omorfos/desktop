@@ -7,6 +7,7 @@ use wayland_server::protocol::{
     wl_compositor, wl_data_device_manager, wl_output, wl_seat, wl_shm, wl_subcompositor,
 };
 
+use wayland_protocols::ext::background_effect::v1::server::ext_background_effect_manager_v1;
 use wayland_protocols::ext::data_control::v1::server::ext_data_control_manager_v1;
 use wayland_protocols::ext::foreign_toplevel_list::v1::server::ext_foreign_toplevel_list_v1;
 use wayland_protocols::ext::idle_notify::v1::server::ext_idle_notifier_v1;
@@ -64,7 +65,8 @@ pub(crate) fn globals() -> impl Iterator<Item = &'static Interface> {
 }
 
 /// Every global the compositor offers, as `omorfos-ipc`'s list says.
-const GLOBALS: [fn() -> &'static Interface; 38] = [
+const GLOBALS: [fn() -> &'static Interface; 39] = [
+    ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1::interface,
     ext_data_control_manager_v1::ExtDataControlManagerV1::interface,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1::interface,
     ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1::interface,

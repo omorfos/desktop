@@ -1120,7 +1120,14 @@ the first than on the last.
       frames` on a modest laptop with a dozen windows, one dragged over
       the others, and written into ADR 33; until then the built-in theme
       does not make titlebars glass.
-- [ ] Blur for other programs that ask (`ext-background-effect`).
+- [x] Blur for other programs that ask (`ext-background-effect`), under
+      windows and panels, as far as `window`'s `backdrop-filter` says, cut
+      to the surface and the frame's rounded corners, one blur for all of
+      a region; kept through a change of compositor by the relay.
+- [ ] Known gaps in blur for other programs: a pop-up's, or a part of a
+      window drawn on a surface of its own, is not blurred behind; a
+      window's goes as soon as it closes, rather than fading with it; and
+      every program is blurred by as much, which a rule cannot change.
 - [ ] Gradients and a picture as a background, a transition's delay, and
       `cubic-bezier()`.
 - [ ] The built-in theme redrawn in the design language: light and dark,

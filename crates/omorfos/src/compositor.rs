@@ -97,6 +97,7 @@ use smithay::wayland::xdg_foreign::XdgForeignState;
 
 use crate::Scale;
 use crate::asked::Asked;
+use crate::backdrops::Backdrops;
 use crate::bridge::{self, Bindings};
 use crate::capture::{self, Capture, Due, Gpu, Pass, Subject};
 use crate::corners::{self, Names, Strip};
@@ -1301,6 +1302,7 @@ impl Compositor {
         let screens = self.refused.screens.iter();
         problems.extend(screens.map(|(_, said)| said.clone()));
         self.problems = problems;
+        self.tell_backdrops();
     }
 
     // --- Actions -------------------------------------------------------------
@@ -3595,6 +3597,9 @@ impl Compositor {
                 self.animation.note(&shown.surface, nothing.done());
             } else {
                 self.window_elements(renderer, view, (shown, true), elements);
+                // What is behind it, blurred where its program asks, is
+                // under it.
+                glass.extend(self.window_backdrop(view, shown, elements.len()));
             }
             // Under it all, its shadow.
             let shadow = shown
@@ -3604,7 +3609,7 @@ impl Compositor {
             if let Some(shadow) = shadow {
                 shadow.elements(renderer, shown.opacity, view, elements);
             }
-            // What is behind its titlebar's glass begins under its shadow.
+            // What is behind its glass begins under its shadow.
             let under = elements.len();
             panes.extend(glass.into_iter().map(|pane| pane.under(under)));
         }
@@ -3716,19 +3721,7 @@ impl Compositor {
             }
             elements.extend(picture.into_iter().map(Element::Surface));
         }
-        let pixels = |area: Rect| {
-            let corner = Point::<i32, Logical>::from((area.origin.x, area.origin.y));
-            let size = logical_size(area.size);
-            let from = view.pixel(corner.to_f64());
-            let to = view.pixel((corner + size.to_point()).to_f64());
-            Rectangle::new(from, (to - from).to_size())
-        };
-        let areas = corners::strips(
-            pixels(chrome.decoration.outer()),
-            pixels(chrome.decoration.client()),
-            view.scale.pixels(chrome.radius.cast_signed()),
-        );
-        for (strip, area) in areas.into_iter().enumerate() {
+        for (strip, area) in Self::cut(view, chrome).into_iter().enumerate() {
             let whole: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
                 renderer,
                 &shown.surface,
@@ -3747,6 +3740,37 @@ impl Compositor {
             }
         }
         self.animation.note(&shown.surface, noting.done());
+    }
+
+    /// What of a window in a frame with rounded corners is drawn, in
+    /// pixels of the output: its own area, cut where the frame's bottom
+    /// corners turn.
+    fn cut(view: View, chrome: &Chrome) -> Vec<Rectangle<i32, Physical>> {
+        let pixels = |area: Rect| {
+            let corner = Point::<i32, Logical>::from((area.origin.x, area.origin.y));
+            view.pixels(Rectangle::new(corner, logical_size(area.size)))
+        };
+        corners::strips(
+            pixels(chrome.decoration.outer()),
+            pixels(chrome.decoration.client()),
+            view.scale.pixels(chrome.radius.cast_signed()),
+        )
+    }
+
+    /// The glass a window's program asked for behind it, cut to its
+    /// frame's rounded corners if it has them, to go at `at` in what is
+    /// drawn.
+    fn window_backdrop(&self, view: View, shown: &Shown, at: usize) -> Option<Pane> {
+        let origin = shown.origin - shown.window.geometry().loc;
+        let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
+        let bounds = rounded.map(|chrome| Self::cut(view, chrome));
+        let placed = (origin, view);
+        self.backdrop(
+            &shown.surface,
+            placed,
+            bounds.as_deref(),
+            (at, shown.opacity),
+        )
     }
 
     /// Begins noting what something is drawn from, if it is a `part` that
@@ -3814,11 +3838,18 @@ impl Compositor {
             let size = layers.layer_geometry(surface).unwrap_or_default().size;
             let place = Rectangle::new(at, size);
             let theme = &self.config().theme;
-            glass.extend(known.and_then(|known| {
+            // A panel its part makes glass has that, whatever its program
+            // asks; else what is behind it is blurred where it asks.
+            let share = known.map_or(1.0, |known| known.share);
+            let laid = known.and_then(|known| {
                 let style = theme.style(known.part, States::NONE);
                 let key = glass::key(&known.surface.id());
                 let at = (key, elements.len(), 0);
                 Pane::of(&style, (place, view), at, known.share)
+            });
+            glass.extend(laid.or_else(|| {
+                let placed = (at, view);
+                self.backdrop(surface.wl_surface(), placed, None, (elements.len(), share))
             }));
         }
         elements.append(&mut shadows);
@@ -3882,6 +3913,13 @@ impl View {
     pub(crate) fn pixel(self, at: Point<f64, Logical>) -> Point<i32, Physical> {
         let within = at - self.origin.to_f64();
         within.to_physical(self.scale.factor()).to_i32_round()
+    }
+
+    /// The pixels of the output that an area of the space covers.
+    pub(crate) fn pixels(self, area: Rectangle<i32, Logical>) -> Rectangle<i32, Physical> {
+        let from = self.pixel(area.loc.to_f64());
+        let to = self.pixel((area.loc + area.size.to_point()).to_f64());
+        Rectangle::new(from, (to - from).to_size())
     }
 }
 
@@ -4783,6 +4821,8 @@ pub(crate) struct Protocols {
     pub(crate) holding: Holding,
     /// Gestures on a touchpad, and the swipe of ours under way.
     pub(crate) gestures: Gestures,
+    /// What is behind programs, blurred where they ask.
+    pub(crate) backdrops: Backdrops,
 }
 
 impl Protocols {
@@ -4795,6 +4835,7 @@ impl Protocols {
             _presentation: PresentationState::new::<Compositor>(display, Monotonic::ID as u32),
             holding: Holding::offer(display),
             gestures: Gestures::offer(display),
+            backdrops: Backdrops::offer(display),
         }
     }
 }

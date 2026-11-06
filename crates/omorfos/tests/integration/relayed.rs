@@ -703,6 +703,31 @@ fn a_window_that_said_where_its_edges_are_is_shown_again_by_them() {
 }
 
 #[test]
+fn a_window_that_asked_for_what_is_behind_it_blurred_has_it_so_by_the_next_compositor() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let _red = first.open(&mut client, "red", (200, 400), RED);
+    // Cascaded to 32 across and down, and asking from 172 to 272 across,
+    // over the red window's edge.
+    let clear = first.open(&mut client, "clear", (300, 200), 0);
+    let _effect = client.blur_behind(&clear.surface, &[(140, 0, 100, 100)]);
+    clear.surface.commit();
+    first.roundtrip(&mut client);
+    first.settle();
+    let blurred = |session: &mut Session| (session.draw().at(204, 80) >> 16) & 0xff > 0x40;
+    assert!(blurred(&mut first), "blurred past the red window's edge");
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    relayed.kept();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(blurred);
+    second.roundtrip(&mut client);
+    relayed.kept();
+}
+
+#[test]
 fn a_program_with_a_menu_open_is_kept_and_told_the_menu_is_done() {
     let relayed = Relayed::new();
     let (mut first, first_holder) = relayed.compositor();
