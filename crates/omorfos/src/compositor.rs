@@ -3757,18 +3757,20 @@ impl Compositor {
         )
     }
 
-    /// The glass a window's program asked for behind it, cut to its
-    /// frame's rounded corners if it has them, to go at `at` in what is
-    /// drawn.
+    /// The glass a window's program asked for behind it, cut to the window
+    /// proper, and not the shadow a program that draws its own frame draws
+    /// round it on the same surface, and to its frame's rounded corners if
+    /// it has them, to go at `at` in what is drawn.
     fn window_backdrop(&self, view: View, shown: &Shown, at: usize) -> Option<Pane> {
-        let origin = shown.origin - shown.window.geometry().loc;
+        let geometry = shown.window.geometry();
+        let origin = shown.origin - geometry.loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
-        let bounds = rounded.map(|chrome| Self::cut(view, chrome));
-        let placed = (origin, view);
+        let proper = || vec![view.pixels(Rectangle::new(shown.origin, geometry.size))];
+        let bounds = rounded.map_or_else(proper, |chrome| Self::cut(view, chrome));
         self.backdrop(
             &shown.surface,
-            placed,
-            bounds.as_deref(),
+            (origin, view),
+            Some(&bounds),
             (at, shown.opacity),
         )
     }

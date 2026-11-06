@@ -11,9 +11,11 @@
 //!
 //! The region is double-buffered with the surface, and kept as the
 //! rectangles it comes to, which do not overlap: those it adds, less those
-//! it takes away. It is cut to the surface, whatever the program asks, and
-//! the whole of it is blurred as one picture, however many rectangles it
-//! is made of, as a program that rounds its corners makes it of many.
+//! it takes away. It is cut to the surface, whatever the program asks, a
+//! window's to the window proper and not the shadow it may draw round
+//! itself on the same surface, and the whole of it is blurred as one
+//! picture, however many rectangles it is made of, as a program that
+//! rounds its corners makes it of many.
 
 use std::cell::Cell;
 

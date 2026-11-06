@@ -1122,8 +1122,10 @@ the first than on the last.
       does not make titlebars glass.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
-      to the surface and the frame's rounded corners, one blur for all of
-      a region; kept through a change of compositor by the relay.
+      to the surface, a window's to the window proper and not the shadow
+      it draws round itself, and to the frame's rounded corners, one blur
+      for all of a region; kept through a change of compositor by the
+      relay.
 - [x] The same through KDE's protocol (`org_kde_kwin_blur`), which
       Ghostty, KDE's programs and fcitx5 ask through rather than the
       standard (ADR 64).
@@ -1133,7 +1135,10 @@ the first than on the last.
 - [ ] Known gaps in blur for other programs: a pop-up's, or a part of a
       window drawn on a surface of its own, is not blurred behind; a
       window's goes as soon as it closes, rather than fading with it; and
-      every program is blurred by as much, which a rule cannot change.
+      every program is blurred by as much, which a rule cannot change; a
+      window that draws its own frame with rounded corners, as GTK's do,
+      and asks for all of it, as Ghostty does, is blurred into the
+      corners, as the compositor knows not how round they are.
 - [ ] Gradients and a picture as a background, a transition's delay, and
       `cubic-bezier()`.
 - [ ] The built-in theme redrawn in the design language: light and dark,

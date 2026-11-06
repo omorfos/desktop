@@ -29,8 +29,8 @@ standard, until the programs that ask through it ask through the
 standard.** What a program asks for through it is put where what is asked
 through the standard is, a surface's double-buffered region, and drawn
 by the same code: how far is the `window` part's `backdrop-filter`, cut
-to the surface and its frame's rounded corners, with no tint and nothing
-at all where blur cannot be drawn. Whichever of the two a surface was
+to the window proper and its frame's rounded corners, with no tint and
+nothing at all where blur cannot be drawn. Whichever of the two a surface was
 asked through last is what it has.
 
 It is held apart, in `crates/omorfos/src/kde_blur.rs` and its tests in

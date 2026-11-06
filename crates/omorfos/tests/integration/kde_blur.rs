@@ -9,7 +9,9 @@
 //
 // TODO: take these out with what they test; ADR 64 says when.
 
-use crate::backdrops::{BLURRED, UNBLURRED, ended, over_a_red_window, red};
+use crate::backdrops::{
+    BLURRED, UNBLURRED, a_window_with_its_own_shadow, ended, over_a_red_window, red,
+};
 use crate::common::Session;
 use crate::windows::BACKGROUND;
 
@@ -148,4 +150,15 @@ fn what_a_program_last_asked_for_through_either_protocol_is_what_it_has() {
         blurred_at(&mut session, 200),
         "then all of it, as KDE's asks"
     );
+}
+
+#[test]
+fn a_window_that_asks_through_kdes_protocol_for_all_of_it_is_not_blurred_behind_its_shadow() {
+    // As Ghostty, drawn with GTK, which draws its own frame and shadow.
+    let (mut session, [_red, (mut clear, window)]) = a_window_with_its_own_shadow(BLURRED);
+    let _blur = clear.kde_blur(&window.surface, None);
+    window.surface.commit();
+    session.roundtrip(&mut clear);
+    assert!(blurred_at(&mut session, 180), "within it");
+    assert_eq!(session.draw().at(204, 200), BACKGROUND, "not in its shadow");
 }

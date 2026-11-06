@@ -38,6 +38,26 @@ pub(crate) fn over_a_red_window(theme: &str, width: i32) -> (Session, [(Client, 
     (session, [(red, under), (clear, over)])
 }
 
+/// A session with `theme`, the red window of [`over_a_red_window`], and
+/// over it one that cannot be seen at all and draws a shadow of its own
+/// around itself, as a program that draws its own frame does: a surface
+/// 300 by 200, of which the window proper is 240 by 160 from 30 across and
+/// 20 down. The window proper is cascaded to 32 across and down, so the
+/// surface reaches 20 past it below, to 212 down.
+pub(crate) fn a_window_with_its_own_shadow(theme: &str) -> (Session, [(Client, Toplevel); 2]) {
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut red = session.connect();
+    let under = session.open(&mut red, "red", (200, 400), RED);
+    let mut clear = session.connect();
+    let over = clear.toplevel("clear", "clear window");
+    session.roundtrip(&mut clear);
+    over.xdg_surface.set_window_geometry(30, 20, 240, 160);
+    clear.fill(&over.surface, (300, 200), 0);
+    session.roundtrip(&mut clear);
+    session.roundtrip(&mut clear);
+    (session, [(red, under), (clear, over)])
+}
+
 /// The capabilities the compositor has told `client` of, once it has.
 fn told(session: &mut Session, client: &mut Client) -> Vec<u32> {
     session.roundtrip(client);
@@ -276,4 +296,18 @@ fn what_is_behind_a_program_where_blur_cannot_be_drawn_is_left_as_it_is() {
     let picture = session.draw();
     assert_eq!(picture.at(60, 259), RED, "neither blurred nor solid");
     assert_eq!(picture.at(60, 262), BACKGROUND);
+}
+
+#[test]
+fn what_is_behind_a_window_is_not_blurred_beyond_its_edges_in_the_shadow_it_draws() {
+    let (mut session, [_red, (mut clear, window)]) = a_window_with_its_own_shadow(BLURRED);
+    let _effect = clear.blur_behind(&window.surface, &[(0, 0, 300, 200)]);
+    window.surface.commit();
+    session.roundtrip(&mut clear);
+    let picture = session.draw();
+    assert!(
+        red(picture.at(204, 180)) > red(BACKGROUND) + 8,
+        "blurred within it"
+    );
+    assert_eq!(picture.at(204, 200), BACKGROUND, "and not in its shadow");
 }

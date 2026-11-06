@@ -257,8 +257,10 @@ goes.
   no tint, the program drawing its own over it, and where blur cannot be
   drawn it is nothing at all, the program left as it drew itself, as it
   would be on a compositor without the protocol: there is no colour to be
-  solid in. What it asks for is cut to its surface, and to its frame's
-  rounded corners, and blurred as one picture however many rectangles it
+  solid in. What it asks for is cut to its surface, a window's to the
+  window proper, not the shadow a program drawing its own frame draws
+  round it on the same surface, and to its frame's rounded corners, and
+  blurred as one picture however many rectangles it
   comes to, as a region with rounded corners is told as many. A panel
   whose part the theme makes glass has that, and not what its program
   asks for too, which would blur the same twice.
