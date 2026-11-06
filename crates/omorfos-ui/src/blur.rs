@@ -101,27 +101,41 @@ impl Blur {
         self.deviation.saturating_mul(3)
     }
 
+    /// The sizes a picture `width` by `height` is made, one for each time
+    /// it is halved, the smallest last: half as large, rounded up, and at
+    /// least a pixel. It is made back up through them, to its own size.
+    #[must_use]
+    pub fn sizes(&self, (width, height): (u32, u32)) -> Vec<(u32, u32)> {
+        let half = |length: u32| length.div_ceil(2).max(1);
+        let mut sizes = Vec::new();
+        let mut made = (width, height);
+        for _ in 0..self.passes {
+            made = (half(made.0), half(made.1));
+            sizes.push(made);
+        }
+        sizes
+    }
+
     /// `pixels`, a picture `width` by `height`, blurred. A picture short of
     /// pixels is taken to be see-through where they are missing.
     #[must_use]
     pub fn apply(&self, pixels: &[u8], (width, height): (u32, u32)) -> Vec<u8> {
-        let (width, height) = (size(width), size(height));
         let (whole, _) = pixels.as_chunks::<4>();
         let mut start: Vec<[f32; 4]> = whole.iter().map(|pixel| pixel.map(f32::from)).collect();
-        start.resize(width * height, [0.0; 4]);
+        start.resize(size(width) * size(height), [0.0; 4]);
         let mut picture = Layer {
-            width,
-            height,
+            width: size(width),
+            height: size(height),
             pixels: start,
         };
-        // The sizes it is made smaller from, to be made that large again.
-        let mut sizes = Vec::new();
-        for _ in 0..self.passes {
-            sizes.push((picture.width, picture.height));
-            picture = picture.down(self.offset);
+        let halved = self.sizes((width, height));
+        for &made in &halved {
+            picture = picture.down(self.offset, made);
         }
-        while let Some(size) = sizes.pop() {
-            picture = picture.up(self.offset, size);
+        // Back up through the same sizes, to its own.
+        let back = std::iter::once((width, height)).chain(halved);
+        for made in back.rev().skip(1) {
+            picture = picture.up(self.offset, made);
         }
         picture
             .pixels
@@ -158,7 +172,8 @@ impl Layer {
 
     /// What a pass makes of it, `size` large: each pixel the taps, each at
     /// how far it is from the pixel's point and how much it counts.
-    fn pass(&self, (width, height): (usize, usize), taps: &[((f32, f32), f32)]) -> Self {
+    fn pass(&self, (width, height): (u32, u32), taps: &[((f32, f32), f32)]) -> Self {
+        let (width, height) = (size(width), size(height));
         let across = float_of(self.width) / float_of(width);
         let down = float_of(self.height) / float_of(height);
         let total: f32 = taps.iter().map(|(_, weight)| weight).sum();
@@ -183,9 +198,8 @@ impl Layer {
         }
     }
 
-    /// It made half as large.
-    fn down(&self, offset: f32) -> Self {
-        let half = |length: usize| length.div_ceil(2).max(1);
+    /// It made `made` large, half as large as it is.
+    fn down(&self, offset: f32, made: (u32, u32)) -> Self {
         let taps = [
             ((0.0, 0.0), 4.0),
             ((-offset, -offset), 1.0),
@@ -193,11 +207,11 @@ impl Layer {
             ((-offset, offset), 1.0),
             ((offset, offset), 1.0),
         ];
-        self.pass((half(self.width), half(self.height)), &taps)
+        self.pass(made, &taps)
     }
 
-    /// It made `size` large, twice as large as it is.
-    fn up(&self, offset: f32, size: (usize, usize)) -> Self {
+    /// It made `made` large, twice as large as it is.
+    fn up(&self, offset: f32, made: (u32, u32)) -> Self {
         let far = 2.0 * offset;
         let taps = [
             ((-far, 0.0), 1.0),
@@ -209,7 +223,7 @@ impl Layer {
             ((-offset, offset), 2.0),
             ((offset, offset), 2.0),
         ];
-        self.pass(size, &taps)
+        self.pass(made, &taps)
     }
 }
 
@@ -383,6 +397,15 @@ mod tests {
             let blur = Blur::new(deviation).unwrap();
             assert!((0.0..=2.0).contains(&blur.offset()), "{deviation}");
         }
+    }
+
+    #[test]
+    fn a_picture_is_halved_rounding_up_and_to_a_pixel_at_least() {
+        let blur = Blur::new(24).unwrap();
+        let sizes = blur.sizes((10, 1));
+        assert_eq!(sizes.len(), usize::try_from(blur.passes()).unwrap());
+        assert_eq!(sizes[..3], [(5, 1), (3, 1), (2, 1)]);
+        assert_eq!(sizes.last(), Some(&(1, 1)));
     }
 
     #[test]
