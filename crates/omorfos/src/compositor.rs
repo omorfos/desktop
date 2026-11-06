@@ -1513,11 +1513,14 @@ impl Compositor {
             DomainPoint::new(area.loc.x, area.loc.y),
             DomainSize::new(area.size.w.unsigned_abs(), area.size.h.unsigned_abs()),
         );
+        // Rows begin inside the menu's border and padding, as in CSS.
+        let room = config.theme.style(Part::Menu, States::NONE).inset();
         let metrics = MenuMetrics {
             width: MENU_WIDTH,
             row: config.theme.style(Part::MenuItem, States::NONE).height,
             separator: MENU_SEPARATOR,
-            padding: MENU_PADDING,
+            above: room.top,
+            below: room.bottom,
         };
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
     }
@@ -4153,8 +4156,6 @@ pub(crate) const NO_LOCKER: &str = "nothing is set to lock the session with: nam
 const MENU_WIDTH: u32 = 220;
 /// The height of a separator row in a menu.
 const MENU_SEPARATOR: u32 = 9;
-/// The space above the first and below the last row of a menu panel.
-const MENU_PADDING: u32 = 4;
 
 /// Which of the programs that run for the whole session one is. The panel
 /// is the first to be started.

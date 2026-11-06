@@ -60,7 +60,7 @@ fn click(session: &mut Session, button: u32) {
 }
 
 /// Opens the menu with its corner at (300, 200). Its rows are then:
-/// "Second workspace" at y 204..232, the separator, and "More" at 241..269.
+/// "Second workspace" at y 201..229, the separator, and "More" at 238..266.
 fn open_menu(session: &mut Session) {
     move_to(session, 300, 200);
     click(session, RIGHT);
@@ -99,6 +99,40 @@ fn the_row_under_the_pointer_is_highlighted() {
     session.step();
 
     assert_eq!(session.draw().at(510, 218), ACCENT);
+}
+
+#[test]
+fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
+    // The built-in theme gives the menu a border of 1 and no padding, so
+    // "Second workspace" is at 201..229 and "More" at 238..266, in a
+    // panel 200..267.
+    let mut session = session();
+    open_menu(&mut session);
+    move_to(&mut session, 400, 201);
+    session.step();
+    assert_eq!(session.draw().at(510, 201), ACCENT, "under the top border");
+    move_to(&mut session, 400, 265);
+    session.step();
+    assert_eq!(session.draw().at(510, 265), ACCENT, "over the bottom one");
+    assert_ne!(session.draw().at(510, 266), ACCENT, "which is not a row");
+
+    // Padded, the rows begin and end that far in, at the sides too.
+    let theme = "menu { padding: 6px 8px 10px; }";
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    open_menu(&mut session);
+    move_to(&mut session, 400, 206);
+    session.step();
+    assert_eq!(session.draw().at(510, 206), PANEL, "in the padding");
+    move_to(&mut session, 400, 207);
+    session.step();
+    let picture = session.draw();
+    assert_eq!(picture.at(510, 207), ACCENT, "the first row");
+    assert_eq!(picture.at(304, 207), PANEL, "but for the padding beside it");
+    move_to(&mut session, 400, 271);
+    session.step();
+    let picture = session.draw();
+    assert_eq!(picture.at(510, 271), ACCENT, "the last row");
+    assert_eq!(picture.at(510, 272), PANEL, "and the padding below it");
 }
 
 #[test]

@@ -848,8 +848,8 @@ is measured to the outside of its border.
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |
-| `border-radius` | `0` to `32px` | rounds the corners of the box |
-| `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left |
+| `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
+| `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |
 | `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
 | `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |

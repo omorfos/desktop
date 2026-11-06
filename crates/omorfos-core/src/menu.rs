@@ -38,8 +38,10 @@ pub struct MenuMetrics {
     pub row: u32,
     /// The height of a separator row.
     pub separator: u32,
-    /// The space above the first row and below the last.
-    pub padding: u32,
+    /// The room above the first row: the menu's border and padding there.
+    pub above: u32,
+    /// The room below the last row.
+    pub below: u32,
 }
 
 /// One column of an open menu.
@@ -131,7 +133,7 @@ impl<A: Clone> Menu<A> {
     /// The rectangle of each of a panel's rows, top to bottom.
     #[must_use]
     pub fn rows(&self, panel: &Panel<A>) -> Vec<Rect> {
-        let mut top = panel.origin.offset(0, self.metrics.padding.cast_signed());
+        let mut top = panel.origin.offset(0, self.metrics.above.cast_signed());
         panel
             .items
             .iter()
@@ -227,7 +229,7 @@ impl<A: Clone> Menu<A> {
     fn unfold(&mut self, panel: usize, row: usize, items: Vec<Item<A>>) {
         let beside = self.rows(&self.panels[panel])[row];
         let width = self.metrics.width.cast_signed();
-        let padding = self.metrics.padding.cast_signed();
+        let above = self.metrics.above.cast_signed();
         // Open to the right, or to the left if that would leave the area.
         let fits = beside.right() + i64::from(width) <= self.area.right();
         let x = if fits {
@@ -235,7 +237,8 @@ impl<A: Clone> Menu<A> {
         } else {
             beside.origin.offset(-width, 0).x
         };
-        self.push(items, Point::new(x, beside.origin.offset(0, -padding).y));
+        // Its first row level with the row it opens from.
+        self.push(items, Point::new(x, beside.origin.offset(0, -above).y));
     }
 
     /// Reports a button press at `point`.
@@ -289,7 +292,8 @@ impl<A: Clone> Menu<A> {
         let rows: u32 = items.iter().map(|item| self.row_height(item)).sum();
         Size::new(
             self.metrics.width,
-            rows.saturating_add(self.metrics.padding * 2),
+            rows.saturating_add(self.metrics.above)
+                .saturating_add(self.metrics.below),
         )
     }
 
@@ -309,7 +313,8 @@ mod tests {
         width: 200,
         row: 20,
         separator: 10,
-        padding: 4,
+        above: 4,
+        below: 4,
     };
     const AREA: Rect = Rect::new(Point::new(0, 0), Size::new(1000, 800));
 
@@ -364,6 +369,20 @@ mod tests {
                 rect(100, 154, 200, 20)
             ]
         );
+    }
+
+    #[test]
+    fn the_room_above_and_below_the_rows_may_differ() {
+        let metrics = MenuMetrics {
+            above: 1,
+            below: 9,
+            ..METRICS
+        };
+        let menu = Menu::open(items(), Point::new(100, 100), AREA, metrics);
+        let panel = &menu.panels()[0];
+        assert_eq!(menu.panel_rect(panel), rect(100, 100, 200, 80));
+        assert_eq!(menu.rows(panel)[0], rect(100, 101, 200, 20));
+        assert_eq!(menu.rows(panel)[3], rect(100, 151, 200, 20));
     }
 
     #[test]

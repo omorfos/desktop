@@ -224,8 +224,16 @@ pub(crate) fn menu_panel<A: Clone>(
     let whole = (0, 0, width, height);
     let mut canvas = Canvas::scaled(width, height, scale);
     canvas.draw_box(whole, &style);
-    // Rows run from one side of the menu to the other, inside its border.
-    let (edge, _, inner, _) = inset(whole, style.border.widths());
+    // Rows run from one side of the menu to the other, inside its border
+    // and padding, and are kept to its rounded corners, which within the
+    // border are rounded less by as much as the border is thick.
+    let widths = style.border.widths();
+    let inside = inset(whole, widths);
+    let (edge, _, inner, _) = inset(whole, style.inset());
+    let thickest = [widths.right, widths.bottom, widths.left]
+        .into_iter()
+        .fold(widths.top, u32::max);
+    let within = (inside, style.radius.saturating_sub(thickest));
 
     let rows = panel.items().iter().zip(menu.rows(panel)).zip(looks);
     for (index, ((item, row), style)) in rows.enumerate() {
@@ -246,7 +254,7 @@ pub(crate) fn menu_panel<A: Clone>(
         let highlighted = panel.highlighted() == Some(index);
         let states = States::NONE.when(State::Hovered, highlighted);
         let font = theme.font(Part::MenuItem, states);
-        canvas.draw_box(area, style);
+        canvas.draw_box_within(area, style, within);
         let (left, top, room, tall) = inset(area, style.inset());
         let arrow = if matches!(item, Item::Submenu { .. }) {
             ARROW
@@ -770,7 +778,8 @@ mod tests {
             width: 200,
             row: 28,
             separator: 9,
-            padding: 4,
+            above: 4,
+            below: 4,
         };
         let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
         let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
@@ -807,6 +816,43 @@ mod tests {
             argb(colors.focused.titlebar),
             "the others are not"
         );
+    }
+
+    #[test]
+    fn the_first_and_last_rows_highlighted_keep_to_the_menus_rounded_corners() {
+        use omorfos_core::MenuMetrics;
+
+        let red = Color::rgb(255, 0, 0);
+        let theme =
+            Theme::parse("menu { border-radius: 16px; } menu-item:hover { background: #ff0000; }")
+                .unwrap();
+        let mut text = Text::new();
+        let entry = |label: &str| Item::Entry {
+            label: label.to_owned(),
+            action: (),
+        };
+        let metrics = MenuMetrics {
+            width: 200,
+            row: 28,
+            separator: 9,
+            above: 4,
+            below: 4,
+        };
+        let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
+        let items = vec![entry("Terminal"), entry("Files")];
+        let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
+
+        // Rows: Terminal at 4..32, Files at 32..60, in a menu 64 high.
+        menu.hover(Point::new(350, 215));
+        let first = menu_panel(&mut text, &theme, &menu);
+        assert_eq!(first.at(100, 10), argb(red), "the row is highlighted");
+        assert_eq!(first.at(2, 5), 0, "but not beyond the top left corner");
+        assert_eq!(first.at(197, 5), 0, "nor the top right one");
+        menu.hover(Point::new(350, 245));
+        let last = menu_panel(&mut text, &theme, &menu);
+        assert_eq!(last.at(100, 50), argb(red), "the row is highlighted");
+        assert_eq!(last.at(2, 58), 0, "but not beyond the bottom left corner");
+        assert_eq!(last.at(197, 58), 0, "nor the bottom right one");
     }
 
     #[test]
