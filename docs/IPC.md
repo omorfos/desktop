@@ -10,6 +10,7 @@ integrates beyond what Wayland protocols offer.
 omorfosctl version                 # the compositor's version
 omorfosctl state                   # workspaces, windows and problems, as JSON
 omorfosctl screens                 # the screens, where they stand and their modes
+omorfosctl frames                  # how long each screen's last frame took to draw
 omorfosctl watch                   # the state again, one line per change
 omorfosctl action close            # any action from keys.yaml
 omorfosctl action workspace 2
@@ -54,6 +55,7 @@ and reads one reply.
 | `{"perform": {"action": ...}}` | `"done"` |
 | `{"activate": {"window": 7}}` | `"done"` |
 | `"placed"` | `{"placed": [...]}`, where the windows that can be seen are |
+| `"frames"` | `{"frames": [...]}`, how each screen's last frame was drawn |
 | `{"hold": {"idle": true, "sleep": false}}` | `"done"` |
 | `{"radios": {"radios": [...]}}` | `"done"` |
 
@@ -233,6 +235,33 @@ among them, knows which window is under the pointer.
 
 It is not in the state, and not sent to subscribers, since it changes
 each time a window moves.
+
+### How frames are drawn
+
+```json
+{
+  "frames": [
+    { "output": "eDP-1", "frames": 1200, "took": 850, "blurs": 1 }
+  ]
+}
+```
+
+`"frames"` is answered with each screen, in the order `screens` lists
+them, and how many frames have been drawn on it since the compositor
+started: a frame is counted when something on the screen changed and it
+was drawn again, and not when nothing did. `took` is how long the last
+one took, in microseconds, and `blurs` how many blurs it made of what is
+behind glass. A screen that has drawn nothing has 0 for each.
+
+`took` is the compositor's own work: laying the scene out, blurring, and
+drawing, until the frame is handed to the graphics card. The card may
+still be drawing it after that, which is not counted; in software, as
+inside another desktop without a card, it is all of it. A frame that
+blurs again, because something moved under glass, takes longer than one
+that does not, and this is where to see by how much.
+
+It is not in the state, and not sent to subscribers, since it changes
+with every frame.
 
 ### Versioning
 

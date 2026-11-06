@@ -20,6 +20,7 @@ mod compositor;
 mod corners;
 mod cursor;
 mod fading;
+mod frames;
 mod gestures;
 mod ghost;
 mod glass;

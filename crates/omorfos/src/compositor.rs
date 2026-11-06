@@ -102,6 +102,7 @@ use crate::capture::{self, Capture, Due, Gpu, Pass, Subject};
 use crate::corners::{self, Names, Strip};
 use crate::cursor::{self, Themes};
 use crate::fading::Fade;
+use crate::frames::Frames;
 use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::glass::{self, Frosted, Frosting, Glass, Pane, Scene};
@@ -2690,10 +2691,39 @@ impl Compositor {
     /// it is; and what is behind glass, to be blurred by `frosting`. Glass
     /// is solid without one.
     ///
+    /// A frame that drew something is counted, with how long it took and
+    /// how many blurs it made, for the socket to tell.
+    ///
     /// # Errors
     ///
     /// Returns an error if the renderer fails.
     pub fn render<R, P>(
+        &mut self,
+        output: &Output,
+        renderer: &mut R,
+        framebuffer: &mut R::Framebuffer<'_>,
+        tracking: (&mut OutputDamageTracker, usize),
+        frosting: Option<&mut (dyn Frosting<R, P> + '_)>,
+    ) -> Result<Drawn, RenderError<R::Error>>
+    where
+        R: Renderer + ImportAll + ImportMem + ExportMem + Bind<Dmabuf> + Offscreen<P> + Bind<P>,
+        R::TextureId: Clone + Texture + Send + 'static,
+        P: std::fmt::Debug + 'static,
+    {
+        let (started, blurs) = (Instant::now(), self.blurs());
+        let drawn = self.render_frame(output, renderer, framebuffer, tracking, frosting);
+        let made = self.blurs().saturating_sub(blurs);
+        let counted = drawn.as_ref().ok().filter(|drawn| drawn.damage.is_some());
+        if counted.is_some() {
+            self.animation
+                .frames
+                .drew(&output.name(), started.elapsed(), made);
+        }
+        drawn
+    }
+
+    /// What [`Compositor::render`] draws.
+    fn render_frame<R, P>(
         &mut self,
         output: &Output,
         renderer: &mut R,
@@ -4472,6 +4502,8 @@ pub(crate) struct Animation {
     pub(crate) shades: Shades,
     /// The glass under parts, and what it keeps between frames.
     pub(crate) glass: Glass,
+    /// How each screen's frames are drawn, for the socket to tell.
+    pub(crate) frames: Frames,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -4557,6 +4589,7 @@ impl Animation {
             fading: Vec::new(),
             shades: Shades::default(),
             glass: Glass::default(),
+            frames: Frames::default(),
         }
     }
 

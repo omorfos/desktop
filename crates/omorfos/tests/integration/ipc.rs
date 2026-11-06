@@ -6,10 +6,10 @@ use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
 use omorfos::Scale;
-use omorfos_ipc::{Client, PROTOCOL, Placed, Reply, Request, State};
+use omorfos_ipc::{Client, Drawing, PROTOCOL, Placed, Reply, Request, State};
 use serde_json::json;
 
-use crate::common::{HEIGHT, Session, WIDTH};
+use crate::common::{HEIGHT, LayerShape, Session, WIDTH};
 use crate::windows::{BLUE, RED};
 
 fn state(session: &mut Session, peer: &mut Client) -> State {
@@ -818,4 +818,62 @@ fn what_speaks_for_the_radios_says_what_they_are_for_as_long_as_it_is_connected(
 
     drop(radios);
     session.eventually(|session| state(session, &mut reader).radios.is_empty());
+}
+
+/// How each screen drew its last frame, as the compositor answers.
+fn frames(session: &mut Session, peer: &mut Client) -> Vec<Drawing> {
+    match session.ask(peer, &Request::Frames) {
+        Reply::Frames(frames) => frames,
+        other => unreachable!("expected how frames were drawn, got {other:?}"),
+    }
+}
+
+#[test]
+fn how_long_each_screens_last_frame_took_and_how_many_blurs_it_made_is_told() {
+    use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+    use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
+        Anchor, KeyboardInteractivity,
+    };
+
+    // A panel of glass across the bottom, and a window clear of it.
+    let theme = "panel { background: rgba(255, 255, 255, 0.5); \
+                 backdrop-filter: blur(8px); box-shadow: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let bottom = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Bottom | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    session.open_layer(&mut panel, &bottom, (WIDTH, 30), 0x8080_8080);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let before = frames(&mut session, &mut peer);
+    let names: Vec<_> = before
+        .iter()
+        .map(|drawing| drawing.output.as_str())
+        .collect();
+    assert_eq!(names, ["test-0"], "each screen");
+
+    // The first frame with the panel in it blurs what is behind it.
+    drop(session.draw());
+    let first = frames(&mut session, &mut peer).remove(0);
+    assert_eq!(first.frames, before[0].frames + 1, "{first:?}");
+    assert!(first.took > 0, "{first:?}");
+    assert_eq!(first.blurs, 1, "the desktop, blurred once");
+
+    // One in which nothing changed is not a frame drawn.
+    drop(session.draw());
+    assert_eq!(frames(&mut session, &mut peer)[0], first, "nothing drawn");
+
+    // The window drawn anew, clear of the glass, blurs nothing.
+    client.fill(&window.surface, (200, 100), BLUE);
+    session.roundtrip(&mut client);
+    drop(session.draw());
+    let next = frames(&mut session, &mut peer).remove(0);
+    assert_eq!((next.frames, next.blurs), (first.frames + 1, 0), "{next:?}");
 }

@@ -361,6 +361,14 @@ impl Compositor {
             | Request::Hold { .. }
             | Request::Radios { .. } => Reply::State(self.ipc_state()),
             Request::Placed => Reply::Placed(self.placed()),
+            Request::Frames => {
+                let screens = self.ipc_screens().into_iter();
+                Reply::Frames(
+                    screens
+                        .map(|screen| self.animation.frames.of(&screen.name))
+                        .collect(),
+                )
+            }
             Request::Reload => {
                 self.reload_config();
                 Reply::Done

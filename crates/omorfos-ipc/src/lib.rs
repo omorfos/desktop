@@ -32,7 +32,7 @@ mod steady;
 
 pub use client::{Client, socket_path, socket_path_from_env};
 pub use message::{
-    Awake, MAX_MESSAGE, PROTOCOL, Placed, Radio, Reply, Request, Screen, Standing, State, Window,
-    Workspace, decode, encode,
+    Awake, Drawing, MAX_MESSAGE, PROTOCOL, Placed, Radio, Reply, Request, Screen, Standing, State,
+    Window, Workspace, decode, encode,
 };
 pub use steady::{AGAIN, Steady};

@@ -1106,8 +1106,11 @@ the first than on the last.
       mirrored, as CSS has it, and no glass is blurred less than 16 px,
       so that a bright line along the bottom of a wallpaper is a glow
       under the bar, not a line.
-- [ ] How long a frame took to draw, and how many blurs it made, in the
-      state published over IPC.
+- [x] How long a frame took to draw, and how many blurs it made, over
+      IPC: not in the state, which would then be sent to every subscriber
+      with every frame, but as a request of its own, `"frames"`, as
+      `"placed"` is, and `omorfosctl frames`. The time is the compositor's
+      own, until the frame is handed to the graphics card.
 - [ ] Blur behind titlebars, once its cost has been measured with a
       dozen windows on a modest laptop.
 - [ ] Blur for other programs that ask (`ext-background-effect`).

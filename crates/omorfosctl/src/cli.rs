@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use omorfos_ipc::{Client, Reply, Request, State};
+use omorfos_ipc::{Client, Drawing, Reply, Request, State};
 use serde_json::{Value, json};
 
 const USAGE: &str = "\
@@ -16,6 +16,7 @@ Commands:
   version               Print the compositor's version
   state                 Print workspaces, windows and problems as JSON
   screens               Print the screens, where they stand and their modes
+  frames                Print how long each screen's last frame took to draw
   watch                 Print the state, one JSON line each time it changes
   action NAME [ARG]...  Perform an action, as named in keys.yaml
   activate ID           Switch to a window, by the id shown in `state`
@@ -42,6 +43,7 @@ enum Command {
     Version,
     State,
     Screens,
+    Frames,
     Watch,
     Perform(Value),
     Activate(u64),
@@ -62,6 +64,7 @@ fn parse(arguments: &[String]) -> Result<(Option<PathBuf>, Command), String> {
         ["version"] => Command::Version,
         ["state"] => Command::State,
         ["screens"] => Command::Screens,
+        ["frames"] => Command::Frames,
         ["watch"] => Command::Watch,
         ["config", "check"] => Command::Check,
         ["config", "reload"] => Command::Reload,
@@ -147,6 +150,7 @@ pub(crate) fn run(
 fn execute(command: &Command, client: &mut Client, out: &mut dyn Write) -> Result<bool, String> {
     let request = match command {
         Command::Version => Request::Version,
+        Command::Frames => Request::Frames,
         Command::Watch => Request::Subscribe,
         Command::Perform(action) => Request::Perform {
             action: action.clone(),
@@ -181,6 +185,10 @@ fn execute(command: &Command, client: &mut Client, out: &mut dyn Write) -> Resul
         (Command::Check, Reply::State(state)) => Ok(report(&state, out)),
         (Command::Screens, Reply::State(state)) => {
             screens(&state, out);
+            Ok(true)
+        }
+        (Command::Frames, Reply::Frames(drawn)) => {
+            frames(&drawn, out);
             Ok(true)
         }
         (Command::Watch, Reply::State(first)) => {
@@ -241,6 +249,31 @@ fn screens(state: &State, out: &mut dyn Write) {
             };
             let _ = writeln!(out, "  {mode}{best}");
         }
+    }
+}
+
+/// Prints how many frames each screen has drawn, and how long the last
+/// took to draw and how many blurs it made.
+fn frames(drawn: &[Drawing], out: &mut dyn Write) {
+    let counted = |count: u64, what: &str| {
+        let plural = if count == 1 { "" } else { "s" };
+        format!("{count} {what}{plural}")
+    };
+    for drawing in drawn {
+        if drawing.frames == 0 {
+            let _ = writeln!(out, "{}: no frames drawn", drawing.output);
+            continue;
+        }
+        let micros = drawing.took;
+        let _ = writeln!(
+            out,
+            "{}: {}, the last drawn in {}.{:02}ms with {}",
+            drawing.output,
+            counted(drawing.frames, "frame"),
+            micros / 1000,
+            micros % 1000 / 10,
+            counted(drawing.blurs, "blur"),
+        );
     }
 }
 
@@ -542,6 +575,33 @@ mod tests {
              2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\nHDMI-A-1: 2560 \
              by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\nDP-2: off\n  \
              1920x1080@60\n"
+        );
+    }
+
+    #[test]
+    fn frames_prints_how_each_screen_drew_its_last_frame() {
+        let drawing = |output: &str, frames, took, blurs| Drawing {
+            output: output.to_owned(),
+            frames,
+            took,
+            blurs,
+        };
+        let drawn = vec![
+            drawing("eDP-1", 1200, 850, 1),
+            drawing("HDMI-A-1", 1, 16_204, 2),
+            drawing("DP-2", 0, 0, 0),
+        ];
+        let outcome = invoke(&["frames"], vec![Reply::Frames(drawn)]);
+        assert_eq!(outcome.code, ExitCode::SUCCESS);
+        assert_eq!(outcome.requests, [Request::Frames]);
+        assert_eq!(
+            outcome.out,
+            "eDP-1: 1200 frames, the last drawn in 0.85ms with 1 blur
+\
+             HDMI-A-1: 1 frame, the last drawn in 16.20ms with 2 blurs
+\
+             DP-2: no frames drawn
+"
         );
     }
 

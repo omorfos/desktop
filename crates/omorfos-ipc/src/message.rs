@@ -47,6 +47,10 @@ pub enum Request {
     /// answered once and is not part of the [`State`], which would
     /// otherwise be sent again each time a window moved.
     Placed,
+    /// Ask how each screen's last frame was drawn, as [`Drawing`]. It is
+    /// answered once and is not part of the [`State`], which would
+    /// otherwise be sent again with every frame.
+    Frames,
     /// Say what the programs this connection speaks for ask the session to
     /// be kept from, in place of what it said before: going `idle`, which
     /// would lock it, turn the screens off and put the machine to sleep
@@ -118,6 +122,9 @@ pub enum Reply {
     /// The answer to [`Request::Placed`]: the part of each window that
     /// can be seen on each screen it is on, the window on top first.
     Placed(Vec<Placed>),
+    /// The answer to [`Request::Frames`]: how each screen's last frame was
+    /// drawn, the screens in the order they stand.
+    Frames(Vec<Drawing>),
     /// The request was carried out.
     Done,
     /// The request could not be understood or carried out.
@@ -133,7 +140,11 @@ impl Reply {
     pub fn into_state(self) -> Option<State> {
         match self {
             Self::State(state) => Some(state),
-            Self::Version { .. } | Self::Placed(_) | Self::Done | Self::Error { .. } => None,
+            Self::Version { .. }
+            | Self::Placed(_)
+            | Self::Frames(_)
+            | Self::Done
+            | Self::Error { .. } => None,
         }
     }
 
@@ -142,7 +153,11 @@ impl Reply {
     pub fn into_placed(self) -> Option<Vec<Placed>> {
         match self {
             Self::Placed(placed) => Some(placed),
-            Self::Version { .. } | Self::State(_) | Self::Done | Self::Error { .. } => None,
+            Self::Version { .. }
+            | Self::State(_)
+            | Self::Frames(_)
+            | Self::Done
+            | Self::Error { .. } => None,
         }
     }
 }
@@ -350,6 +365,23 @@ pub struct Placed {
     pub reach: [u32; 4],
 }
 
+/// How a screen's frames are drawn: how many have been, and how the last
+/// one was. A frame is counted when something on the screen changed and
+/// it was drawn again; one in which nothing did is not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Drawing {
+    /// The name of the screen.
+    pub output: String,
+    /// How many frames have been drawn on it since the compositor started.
+    pub frames: u64,
+    /// How long the last one took, in microseconds: the compositor's own
+    /// work, until it was handed to the graphics card, which may still be
+    /// drawing it after. Nothing while none has been drawn.
+    pub took: u64,
+    /// How many blurs the last one made, of what is behind glass.
+    pub blurs: u64,
+}
+
 /// Writes a message as one line, newline included.
 #[must_use]
 pub fn encode<T: Serialize>(message: &T) -> String {
@@ -437,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn every_message_survives_a_round_trip() {
+    fn every_request_survives_a_round_trip() {
         for request in [
             Request::Version,
             Request::State,
@@ -449,6 +481,7 @@ mod tests {
             },
             Request::Activate { window: u64::MAX },
             Request::Placed,
+            Request::Frames,
             Request::Hold {
                 idle: true,
                 sleep: false,
@@ -463,6 +496,10 @@ mod tests {
         ] {
             round_trip(&request);
         }
+    }
+
+    #[test]
+    fn every_reply_survives_a_round_trip() {
         let state = State {
             workspaces: vec![Workspace {
                 output: "eDP-1".to_owned(),
@@ -526,6 +563,12 @@ mod tests {
                 width: 640,
                 height: 480,
                 reach: [24, 16, 24, 32],
+            }]),
+            Reply::Frames(vec![Drawing {
+                output: "eDP-1".to_owned(),
+                frames: 1200,
+                took: 850,
+                blurs: 1,
             }]),
             Reply::Done,
             Reply::Error {
