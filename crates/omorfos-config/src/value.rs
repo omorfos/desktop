@@ -4,7 +4,7 @@
 //! returns what it means or says what is wrong with it.
 
 use crate::style::CLEAR;
-use crate::{Color, Easing, Shadow};
+use crate::{Color, Direction, Easing, Gradient, Shadow, Stop};
 
 /// Splits a value into its words. What is in brackets is one word, spaces
 /// and all, so that `1px solid rgb(0, 0, 0)` is three.
@@ -130,11 +130,7 @@ pub(crate) fn cubic_bezier(value: &str) -> Option<Easing> {
         return None;
     };
     let thousandths = |text: &str, least: f32, most: f32| {
-        let (sign, digits) = text
-            .strip_prefix('-')
-            .map_or((1.0, text), |digits| (-1.0, digits));
-        let point = number(digits).map(|point| sign * point);
-        let point = point.filter(|point| (least..=most).contains(point))?;
+        let point = signed(text).filter(|point| (least..=most).contains(point))?;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "from -10000 to 10000, which an i16 holds"
@@ -148,6 +144,156 @@ pub(crate) fn cubic_bezier(value: &str) -> Option<Easing> {
         x2: along(x2)?,
         y2: thousandths(y2, -10.0, 10.0)?,
     })
+}
+
+/// A number that may be below nothing, as `-0.5`.
+fn signed(text: &str) -> Option<f32> {
+    let (sign, digits) = text
+        .strip_prefix('-')
+        .map_or((1.0, text), |digits| (-1.0, digits));
+    number(digits).map(|number| sign * number)
+}
+
+/// What is drawn over a part's background colour: `none`, or a gradient.
+pub(crate) fn image(value: &str) -> Result<Option<Gradient>, String> {
+    if value == "none" {
+        return Ok(None);
+    }
+    gradient(value).map(Some)
+}
+
+/// A gradient, `linear-gradient()`: perhaps which way it runs, an angle as
+/// `90deg` or `0.25turn` or a side or corner as `to right` or `to top
+/// left`, down if it says not; then two to eight colours, each perhaps
+/// with how far along it is, as `50%`. A colour placed nowhere is halfway
+/// between those either side, the first at the start and the last at the
+/// end, as in CSS.
+pub(crate) fn gradient(value: &str) -> Result<Gradient, String> {
+    let wrong = || {
+        format!(
+            "`{value}` is not a gradient; write `linear-gradient()`, perhaps with which way it \
+             runs, as `90deg` or `to top right`, then two to eight colours, each perhaps with \
+             how far along it is, as `50%`"
+        )
+    };
+    let inside = value.strip_prefix("linear-gradient(");
+    let inside = inside.and_then(|inside| inside.strip_suffix(')'));
+    let mut given = arguments(inside.ok_or_else(wrong)?);
+    let direction = given.first().and_then(|first| direction(first));
+    if direction.is_some() {
+        given.remove(0);
+    }
+    let stops: Option<Vec<(Color, Option<u16>)>> = given.iter().map(|given| stop(given)).collect();
+    let stops = placed(&stops.ok_or_else(wrong)?);
+    Gradient::new(direction.unwrap_or(Direction::Angle(180)), &stops).ok_or_else(wrong)
+}
+
+/// What is between a function's brackets, split at its commas, but not
+/// those of a function inside it, as `rgb(0, 0, 0)`.
+fn arguments(inside: &str) -> Vec<&str> {
+    let mut given = Vec::new();
+    let (mut start, mut depth) = (0, 0_usize);
+    for (index, character) in inside.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                given.extend(inside.get(start..index).map(str::trim));
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    given.extend(inside.get(start..).map(str::trim));
+    given
+}
+
+/// Which way a gradient runs, if `text` says.
+fn direction(text: &str) -> Option<Direction> {
+    if let Some(towards) = text.strip_prefix("to ") {
+        let sides = words(towards);
+        let side = |name: &str| sides.contains(&name);
+        return match sides.as_slice() {
+            ["top"] => Some(Direction::Angle(0)),
+            ["right"] => Some(Direction::Angle(90)),
+            ["bottom"] => Some(Direction::Angle(180)),
+            ["left"] => Some(Direction::Angle(270)),
+            // A corner is a side across and one up or down.
+            [_, _] if side("top") != side("bottom") && side("left") != side("right") => {
+                Some(Direction::Corner {
+                    right: side("right"),
+                    down: side("bottom"),
+                })
+            }
+            _ => None,
+        };
+    }
+    let degrees = match (text.strip_suffix("deg"), text.strip_suffix("turn")) {
+        (Some(degrees), _) => signed(degrees)?,
+        (None, Some(turns)) => signed(turns)? * 360.0,
+        (None, None) => return None,
+    };
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "from 0 to 360, rounded"
+    )]
+    let degrees = degrees.rem_euclid(360.0).round() as u16 % 360;
+    Some(Direction::Angle(degrees))
+}
+
+/// A colour of a gradient, and how far along it is in thousandths, if it
+/// says.
+fn stop(text: &str) -> Option<(Color, Option<u16>)> {
+    match words(text).as_slice() {
+        [given] => Some((color(given).ok()?, None)),
+        [given, along] => {
+            let share = number(along.strip_suffix('%')?).filter(|share| *share <= 100.0)?;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "from 0 to 1000, rounded"
+            )]
+            let at = (share * 10.0).round() as u16;
+            Some((color(given).ok()?, Some(at)))
+        }
+        _ => None,
+    }
+}
+
+/// The stops of a gradient, each where it is placed, or halfway between
+/// those placed either side, the first at the start and the last at the
+/// end if they are placed nowhere.
+fn placed(stops: &[(Color, Option<u16>)]) -> Vec<Stop> {
+    let mut at: Vec<Option<u16>> = stops.iter().map(|(_, at)| *at).collect();
+    let ends = [0, at.len().saturating_sub(1)];
+    for (end, start) in ends.into_iter().zip([0, 1000]) {
+        if let Some(at) = at.get_mut(end) {
+            at.get_or_insert(start);
+        }
+    }
+    let known: Vec<(usize, u16)> = at
+        .iter()
+        .enumerate()
+        .filter_map(|(index, at)| at.map(|at| (index, at)))
+        .collect();
+    let between = |index: usize| {
+        let before = known.iter().rev().find(|(placed, _)| *placed < index);
+        let after = known.iter().find(|(placed, _)| *placed > index);
+        let ((from, low), (to, high)) = before.copied().zip(after.copied()).unwrap_or_default();
+        let share = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
+        let span = u32::from(high.max(low) - low) * share(index - from) / share(to - from).max(1);
+        low + u16::try_from(span).unwrap_or(0)
+    };
+    stops
+        .iter()
+        .zip(at)
+        .enumerate()
+        .map(|(index, ((color, _), at))| Stop {
+            color: *color,
+            at: at.unwrap_or_else(|| between(index)),
+        })
+        .collect()
 }
 
 /// A share of the whole, from `0` to `1` or `0%` to `100%`, as a byte.

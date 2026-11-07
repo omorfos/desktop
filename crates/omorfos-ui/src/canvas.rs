@@ -147,7 +147,7 @@ impl Canvas {
         let border = style.border;
         let lines = [border.top, border.right, border.bottom, border.left];
         let widths = lines.map(|line| pixels(line.width));
-        if style.background.alpha == 0 && widths == [0; 4] {
+        if style.background.alpha == 0 && style.gradient.is_none() && widths == [0; 4] {
             return;
         }
         let shape = Shape {
@@ -170,6 +170,21 @@ impl Canvas {
             let at = u32::try_from(i64::from(at) - i64::from(start)).ok();
             at.filter(|at| *at < length)
         };
+        // A gradient runs across what is inside the border, as in CSS.
+        let [above_in, right_in, below_in, left_in] = widths;
+        let inner = (
+            width.saturating_sub(left_in + right_in),
+            height.saturating_sub(above_in + below_in),
+        );
+        let start = (left + left_in.cast_signed(), top + above_in.cast_signed());
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a box is at most some thousands of pixels across"
+        )]
+        let room = (inner.0 as f32, inner.1 as f32);
+        let over = style
+            .gradient
+            .map(|gradient| (gradient, gradient.run(room)));
         let columns = visible(left, width, self.width);
         for row in visible(top, height, self.height) {
             for column in columns.clone() {
@@ -180,6 +195,19 @@ impl Canvas {
                 let line = lines.get(side).map_or(style.background, |line| line.color);
                 self.blend(column, row, line, share_of(edge, kept));
                 self.blend(column, row, style.background, share_of(fill, kept));
+                if let Some((gradient, run)) = &over {
+                    // Each pixel is taken at its middle.
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "a box is at most some thousands of pixels across"
+                    )]
+                    let point = (
+                        (column - start.0) as f32 + 0.5,
+                        (row - start.1) as f32 + 0.5,
+                    );
+                    let color = gradient.at(run.along(point));
+                    self.blend(column, row, color, share_of(fill, kept));
+                }
             }
         }
     }
@@ -1074,6 +1102,48 @@ mod tests {
         assert_eq!(canvas.at(34, 5), argb(RED));
         assert_eq!(canvas.at(5, 24), argb(BLUE));
         assert_eq!(canvas.at(34, 24), argb(BLUE));
+    }
+
+    #[test]
+    fn a_box_with_a_gradient_has_it_over_its_background_from_side_to_side() {
+        use omorfos_config::{Direction, Gradient, Stop};
+        let stop = |color, at| Stop { color, at };
+        let red_to_blue = Gradient::new(Direction::Angle(90), &[stop(RED, 0), stop(BLUE, 1000)]);
+        let style = Style {
+            gradient: red_to_blue,
+            border: Edges::all(line(GREEN, 1)),
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(110, 10);
+        canvas.draw_box((5, 0, 102, 10), &style);
+        assert_eq!(canvas.at(5, 5), argb(GREEN), "the border over it");
+        let near = |pixel: u32, color: Color| {
+            let channel =
+                |shift: u32, of: u8| ((pixel >> shift) & 0xff).abs_diff(u32::from(of)) <= 3;
+            channel(16, color.red) && channel(8, color.green) && channel(0, color.blue)
+        };
+        let [left, middle, right] = [6, 56, 105].map(|x| canvas.at(x, 5));
+        assert!(near(left, RED), "{left:#x}");
+        assert!(near(middle, Color::rgb(128, 0, 128)), "{middle:#x}");
+        assert!(near(right, BLUE), "{right:#x}");
+        // A gradient that can be seen through shows the colour under it.
+        let half = Color::rgba(0, 0, 255, 128);
+        let over_white = Style {
+            background: WHITE,
+            gradient: Gradient::new(Direction::Angle(90), &[stop(half, 0), stop(half, 1000)]),
+            ..Style::NONE
+        };
+        canvas.draw_box((0, 0, 10, 10), &over_white);
+        let mixed = canvas.at(5, 5);
+        assert!(near(mixed, Color::rgb(127, 127, 255)), "{mixed:#x}");
+        // A gradient alone is something to show.
+        let alone = Style {
+            gradient: red_to_blue,
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(10, 10);
+        canvas.draw_box((0, 0, 10, 10), &alone);
+        assert_ne!(canvas.at(5, 5), 0);
     }
 
     #[test]

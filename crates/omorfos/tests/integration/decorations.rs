@@ -396,6 +396,25 @@ fn a_window_that_closes_fades_out_as_it_last_was() {
 }
 
 #[test]
+fn a_titlebar_the_theme_fills_with_a_gradient_runs_from_one_colour_to_the_other() {
+    let theme = "* { transition: none; }\n\
+                 titlebar, titlebar:focus { background: linear-gradient(to right, #f00, #00f); }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    let _window = session.open_decorated(&mut client, "first", (200, 100), RED);
+    let picture = session.draw();
+    // Along its top, above the title.
+    let (left, right) = (picture.at(8, 4), picture.at(150, 4));
+    let channel = |pixel: u32, shift: u32| (pixel >> shift) & 0xff;
+    assert!(
+        channel(left, 16) > 0xe0 && channel(left, 0) < 0x20,
+        "{left:#x}"
+    );
+    assert!(channel(right, 16) < channel(right, 0), "bluer: {right:#x}");
+    assert!(channel(right, 16) > 0x10, "but not yet blue: {right:#x}");
+}
+
+#[test]
 fn a_window_that_closes_waits_as_long_as_its_theme_says_before_it_fades() {
     for (theme, half_way) in [
         ("window { transition: 100ms linear 100ms; }\n", 150),

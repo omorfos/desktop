@@ -5,7 +5,7 @@
 //! answer comes from: a stylesheet, in which rules written for parts and
 //! states give them these properties.
 
-use crate::{Color, Transition};
+use crate::{Color, Gradient, Transition};
 
 /// A part of the desktop that a theme gives a look to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -425,6 +425,8 @@ impl Edges<Line> {
 pub struct Style {
     /// What it is filled with, inside its border.
     pub background: Color,
+    /// What is drawn over that, if anything (`background-image`).
+    pub gradient: Option<Gradient>,
     /// What its text is written in.
     pub color: Color,
     /// The line along each side.
@@ -454,6 +456,7 @@ impl Style {
     /// A part of which nothing is drawn.
     pub const NONE: Self = Self {
         background: CLEAR,
+        gradient: None,
         color: CLEAR,
         border: Edges::all(Line::NONE),
         padding: Edges::NONE,
@@ -466,6 +469,25 @@ impl Style {
         shadow: Shadow::NONE,
         blur: 0,
     };
+
+    /// Whether what is behind it can be seen through its background: its
+    /// colour and its gradient, if it has one.
+    #[must_use]
+    pub fn see_through(&self) -> bool {
+        let gradient = self.gradient.is_none_or(|gradient| gradient.see_through());
+        self.background.alpha < u8::MAX && gradient
+    }
+
+    /// The one colour its background comes to, where one has to stand for
+    /// all of it, as for glass drawn solid: its colour, or, where it has
+    /// none, its gradient's halfway along.
+    #[must_use]
+    pub fn ground(&self) -> Color {
+        match self.gradient {
+            Some(gradient) if self.background.alpha == 0 => gradient.at(0.5),
+            _ => self.background,
+        }
+    }
 
     /// The room its border and padding take on each side: how far in from
     /// its edges what it holds begins.
@@ -497,6 +519,43 @@ impl Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Direction, Stop};
+
+    #[test]
+    fn a_background_can_be_seen_through_where_both_its_colour_and_gradient_can() {
+        let red = Color::rgb(255, 0, 0);
+        let half = Color::rgba(0, 0, 255, 128);
+        let gradient = |from, to| {
+            let stops = [
+                Stop { color: from, at: 0 },
+                Stop {
+                    color: to,
+                    at: 1000,
+                },
+            ];
+            Gradient::new(Direction::Angle(90), &stops)
+        };
+        let style = |background, gradient| Style {
+            background,
+            gradient,
+            ..Style::NONE
+        };
+        assert!(style(half, None).see_through());
+        assert!(!style(red, None).see_through());
+        assert!(style(CLEAR, gradient(red, half)).see_through());
+        assert!(!style(CLEAR, gradient(red, red)).see_through(), "covered");
+        assert!(
+            !style(red, gradient(half, half)).see_through(),
+            "over a colour"
+        );
+        // One colour standing for it all.
+        assert_eq!(style(red, gradient(half, half)).ground(), red);
+        assert_eq!(
+            style(CLEAR, gradient(red, half)).ground(),
+            red.toward(half, 0.5)
+        );
+        assert_eq!(style(half, None).ground(), half);
+    }
 
     #[test]
     fn a_part_is_in_the_states_it_was_given_and_no_others() {

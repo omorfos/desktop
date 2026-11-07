@@ -270,8 +270,11 @@ goes.
 - With `appearance.reduce_transparency`, or `backdrop-filter: none`.
 - Where the check at startup failed, or a picture to draw into cannot be
   had.
-- Then the surface is solid in its colour, as the design language says.
-  Glass that is not blurred is never drawn.
+- Then the surface is solid in its colour, as the design language says,
+  or, for one filled with a gradient and no colour, in the gradient's
+  colour halfway along, the gradient drawn over it as it is over glass.
+  A part is glass only where its colour and its gradient can both be seen
+  through. Glass that is not blurred is never drawn.
 
 ### In what order
 

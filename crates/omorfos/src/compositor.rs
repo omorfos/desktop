@@ -2782,7 +2782,7 @@ impl Compositor {
             self.draw_pointer::<R, P>(renderer, &surface, view.scale);
         }
         let desktop = self.config().theme.style(Part::Desktop, States::NONE);
-        let behind = color(desktop.background);
+        let behind = color(desktop.ground());
         // A picture a program is to be given is drawn first, without the
         // mark and with the pointer only if the program asked for it, and
         // read back. What the screen shows is drawn over it after.
@@ -2875,7 +2875,7 @@ impl Compositor {
     {
         let scene = self.elements(renderer, output, view, shown);
         let desktop = self.config().theme.style(Part::Desktop, States::NONE);
-        let behind = color(desktop.background);
+        let behind = color(desktop.ground());
         let size = self.head(output).map(Head::upright).unwrap_or_default();
         let name = output.name();
         let screen = (name.as_str(), size, view.scale.factor());
@@ -3203,7 +3203,7 @@ impl Compositor {
             let desktop = self.config().theme.style(Part::Desktop, States::NONE);
             (
                 self.scene::<R, P>(renderer, &source, (view, shown), frosting),
-                color(desktop.background),
+                color(desktop.ground()),
             )
         };
         elements.extend(drawn.into_iter().map(|element| {
@@ -5075,7 +5075,7 @@ impl Veils {
         let kept = kept.filter_map(|shown| shown.veil.take().map(|veil| (shown.id, veil)));
         Self {
             kept: kept.collect(),
-            color: color(theme.style(Part::Capture, States::NONE).background),
+            color: color(theme.style(Part::Capture, States::NONE).ground()),
         }
     }
 

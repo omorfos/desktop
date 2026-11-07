@@ -21,7 +21,7 @@ impl Appearance {
     pub fn of(theme: &Theme) -> Self {
         let picked = theme.style(Part::MenuItem, States::NONE.with(State::Hovered));
         let share = |channel: u8| f64::from(channel) / f64::from(u8::MAX);
-        let accent = picked.background;
+        let accent = picked.ground();
         Self {
             dark: theme.dark(),
             accent: (share(accent.red), share(accent.green), share(accent.blue)),

@@ -237,7 +237,7 @@ impl Compositor {
         let offers = offers.flat_map(|offer| {
             let private = self.desktop.private(offer.window);
             let under = offer.whole.contains(point);
-            let blank = private.then_some((offer.at, blank.background));
+            let blank = private.then_some((offer.at, blank.ground()));
             let states = if under {
                 States::NONE.with(State::Hovered)
             } else {

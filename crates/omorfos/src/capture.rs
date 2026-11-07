@@ -903,7 +903,7 @@ impl Compositor {
             self.config()
                 .theme
                 .style(Part::Capture, States::NONE)
-                .background,
+                .ground(),
         );
         let locked = self.is_locked();
         let capture = &mut self.capture;

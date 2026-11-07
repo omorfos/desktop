@@ -1142,7 +1142,14 @@ the first than on the last.
 - [x] A transition's delay, in `transition` and `transition-delay`, and
       `cubic-bezier()`: a part waits as long as its theme says before its
       colours change, and fades as it comes and goes after the same wait.
-- [ ] Gradients and a picture as a background.
+- [x] Gradients as a background, `linear-gradient()`, over the part's
+      colour, wherever a part is a box, its titlebar among them; glass
+      under one that can be seen through.
+- [ ] A picture as a background (`url()`).
+- [ ] Known gaps in gradients: `radial-gradient()`; a gradient on the
+      desktop and the dims, which take its colour halfway; and a gradient
+      that changes with the part's state, which changes at once rather
+      than over its `transition`.
 - [ ] The built-in theme redrawn in the design language: light and dark,
       with the accent a setting, and the settings under `appearance`.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked

@@ -127,7 +127,7 @@ impl Compositor {
             self.drag = None;
         }
         let theme = &self.store.current().theme;
-        let dim = theme.style(Part::Sealed, States::NONE).background;
+        let dim = theme.style(Part::Sealed, States::NONE).ground();
         let question = theme.style(Part::Question, States::NONE);
         let had = self.seal.shadow.take();
         self.seal.shadow = self

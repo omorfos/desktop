@@ -21,6 +21,7 @@ mod css;
 mod debounce;
 mod diagnostic;
 mod general;
+mod gradient;
 mod keys;
 mod menu;
 mod paths;
@@ -47,6 +48,7 @@ pub use general::{
     OutputScale, Outputs, Panel, Place, Placement, Portals, Rotation, ScreenMode, Screenshots,
     Speed, Touchpad, Update, Workspaces, X11Scaling, Xwayland,
 };
+pub use gradient::{Direction, Gradient, Run, Stop};
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
 pub use paths::{cache_dir, config_dir};

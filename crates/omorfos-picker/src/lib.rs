@@ -293,7 +293,7 @@ impl State {
     fn new(stills: Vec<Still>, (pickable, hint): (Pickable, &str), theme: &Theme) -> Self {
         let style = theme.style(Part::Picker, States::NONE);
         let look = Look {
-            dim: style.background,
+            dim: style.ground(),
             border: style.border.top.color,
             thick: style.border.top.width,
         };

@@ -249,7 +249,7 @@ pub fn paint(
     let ink = if marked {
         // All of it chosen: what is typed on what the theme marks it with.
         let chosen = theme.style(Part::QuestionInput, typing.with(State::Active));
-        canvas.fill((left, top, at, tall), chosen.background);
+        canvas.fill((left, top, at, tall), chosen.ground());
         chosen.color
     } else {
         field.color

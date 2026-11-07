@@ -164,11 +164,11 @@ fn paint(
         if row < ARROW {
             canvas.fill((left, row.cast_signed(), 2 * outer, 1), edge);
         }
-        canvas.fill((left + 1, row.cast_signed(), 2 * row, 1), ground.background);
+        canvas.fill((left + 1, row.cast_signed(), 2 * row, 1), ground.ground());
     }
     let plain = theme.style(Part::MenuSeparator, States::NONE).color;
     let chosen = States::NONE.with(State::Hovered);
-    let chosen = theme.style(Part::MenuItem, chosen).background;
+    let chosen = theme.style(Part::MenuItem, chosen).ground();
     for (arrangement, part, at) in parts(DomainPoint::new(0, down)) {
         let ink = if picked == Some((arrangement, part)) {
             chosen

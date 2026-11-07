@@ -543,7 +543,7 @@ impl Shell {
         // With neither a picture nor a colour, nor one that comes with
         // omorfos, the compositor's desktop is shown, and there is nothing
         // to draw.
-        let desktop = config.theme.style(Part::Desktop, States::NONE).background;
+        let desktop = config.theme.style(Part::Desktop, States::NONE).ground();
         let something = shown.picture.is_some() || shown.color.is_some() || self.unnamed.is_some();
         let named = !name.is_empty() && something;
         named.then(|| Wanted {

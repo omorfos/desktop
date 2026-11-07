@@ -371,7 +371,7 @@ impl Pane {
         (key, at, under): (u64, usize, usize),
         opacity: f32,
     ) -> Option<Self> {
-        let glass = style.blur > 0 && style.background.alpha < u8::MAX;
+        let glass = style.blur > 0 && style.see_through();
         let from = view.pixel(area.loc.to_f64());
         let to = view.pixel((area.loc + area.size.to_point()).to_f64());
         let pixels = |units: u32| view.scale.pixels(units.cast_signed()).unsigned_abs();
@@ -385,7 +385,7 @@ impl Pane {
                 below: true,
             },
             blur: pixels(style.blur.max(LEAST_BLUR)),
-            color: Some(style.background),
+            color: Some(style.ground()),
             opacity,
         })
     }

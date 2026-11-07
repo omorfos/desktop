@@ -121,10 +121,12 @@ pub(crate) fn titlebar(
     canvas.fill((0, edge, border, inner_height), outline.color);
     let right = width.saturating_sub(border).cast_signed();
     canvas.fill((right, edge, border, inner_height), outline.color);
-    canvas.fill(
-        (edge, edge, inner_width, inner_height),
-        looks.titlebar.background,
-    );
+    let within = Style {
+        background: looks.titlebar.background,
+        gradient: looks.titlebar.gradient,
+        ..Style::NONE
+    };
+    canvas.draw_box((edge, edge, inner_width, inner_height), &within);
 
     for ((button, _), style) in BUTTONS.into_iter().zip(&looks.buttons) {
         let share = decoration.button(button);

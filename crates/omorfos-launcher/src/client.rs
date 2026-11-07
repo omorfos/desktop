@@ -249,7 +249,7 @@ impl Backdrop {
         let Some((width, height)) = self.size.filter(|size| self.drawn != Some(*size)) else {
             return Ok(());
         };
-        let shade = theme.style(Part::LauncherBackdrop, States::NONE).background;
+        let shade = theme.style(Part::LauncherBackdrop, States::NONE).ground();
         // Nothing at all is the same at any size, so one pixel of it will
         // do. A colour is drawn at its full size: stretched from less, it
         // would fade towards the edges of the screen.

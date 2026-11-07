@@ -857,7 +857,7 @@ fn paint(
     let (width, height) = size;
     let share = shown.share;
     let mut canvas = Canvas::scaled(width, height, scale);
-    let behind = theme.style(Part::Desktop, States::NONE).background;
+    let behind = theme.style(Part::Desktop, States::NONE).ground();
     canvas.fill((0, 0, width, height), behind);
     let middle = |length: u32| (width.saturating_sub(length) / 2).cast_signed();
     // Who is to unlock is under the time, and the field under them: all of
@@ -984,7 +984,7 @@ fn paint_field(
                 states.with(omorfos_config::State::Active),
             )
             .blended(&Style::NONE, share);
-        canvas.fill((left_in, top_in, wide, tall), chosen.background);
+        canvas.fill((left_in, top_in, wide, tall), chosen.ground());
         chosen.color
     } else {
         field.color

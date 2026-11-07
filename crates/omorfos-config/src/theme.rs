@@ -12,8 +12,13 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
-use crate::value::{backdrop, color, cubic_bezier, fraction, shadow, size, time, words};
-use crate::{Bounded, Color, Easing, Edges, Part, Position, Shadow, States, Style, Transition};
+use crate::style::CLEAR;
+use crate::value::{
+    backdrop, color, cubic_bezier, fraction, gradient, image, shadow, size, time, words,
+};
+use crate::{
+    Bounded, Color, Easing, Edges, Gradient, Part, Position, Shadow, States, Style, Transition,
+};
 
 /// The stylesheet every theme starts from.
 const BUILT_IN: &str = include_str!("default.css");
@@ -220,6 +225,7 @@ enum Setting {
     FontSize(u32),
     FontWeight(u16),
     FontItalic(bool),
+    Gradient(Option<Gradient>),
     TransitionDuration(u32),
     TransitionDelay(u32),
     TransitionEasing(Easing),
@@ -229,7 +235,7 @@ enum Setting {
 
 /// The properties a stylesheet can give, as it is told when it gives
 /// another.
-const PROPERTIES: &str = "background, color, opacity, border, border-color, border-width, \
+const PROPERTIES: &str = "background, background-color, background-image, color, opacity, border, border-color, border-width, \
                           border-radius, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
                           transition-duration, transition-delay, transition-timing-function, \
@@ -345,6 +351,7 @@ impl Look {
         let style = &mut self.style;
         match setting {
             Setting::Background(color) => style.background = *color,
+            Setting::Gradient(gradient) => style.gradient = *gradient,
             Setting::Color(color) => style.color = *color,
             Setting::Opacity(share) => *opacity = *share,
             Setting::BorderColor(side, color) => {
@@ -379,6 +386,12 @@ impl Look {
         };
         let style = &mut self.style;
         faded(&mut style.background);
+        style.gradient = style.gradient.map(|gradient| {
+            gradient.recolored(|mut color| {
+                faded(&mut color);
+                color
+            })
+        });
         faded(&mut style.color);
         faded(&mut style.shadow.color);
         on(&mut style.border, None, |line| faded(&mut line.color));
@@ -398,7 +411,9 @@ fn settings(
     let (property, side) = sided(&declaration.name);
     let one = |setting: Result<Setting, String>| setting.map(|setting| vec![setting]);
     let understood = match (property.as_str(), side) {
-        ("background" | "background-color", None) => one(color(value).map(Setting::Background)),
+        ("background", None) => background(value),
+        ("background-color", None) => one(color(value).map(Setting::Background)),
+        ("background-image", None) => one(image(value).map(Setting::Gradient)),
         ("color", None) => one(color(value).map(Setting::Color)),
         ("opacity", None) => one(opacity(value)),
         ("border", side) => border(value, side),
@@ -562,6 +577,32 @@ fn slant(value: &str) -> Result<Setting, String> {
     }
 }
 
+/// What a part is filled with all at once: a colour, a gradient over it,
+/// or both. What is left out is none, as in CSS, so a gradient alone has
+/// no colour under it.
+fn background(value: &str) -> Result<Vec<Setting>, String> {
+    let (mut filled, mut over) = (None, None);
+    for word in words(value) {
+        if word.contains("gradient(") {
+            if over.replace(gradient(word)?).is_some() {
+                return Err(format!(
+                    "`{value}` has a gradient too many; a background has one gradient, over \
+                     perhaps one colour"
+                ));
+            }
+        } else if filled.replace(color(word)?).is_some() {
+            return Err(format!(
+                "`{value}` has a colour too many; a background has one colour, under perhaps \
+                 one gradient"
+            ));
+        }
+    }
+    Ok(vec![
+        Setting::Background(filled.unwrap_or(CLEAR)),
+        Setting::Gradient(over),
+    ])
+}
+
 /// How long a change of colours takes, or waits.
 fn lasting(value: &str) -> Result<u32, String> {
     time(value, Transition::LONGEST)
@@ -639,8 +680,7 @@ fn family(value: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::CLEAR;
-    use crate::{Line, Shadow, State};
+    use crate::{Direction, Gradient, Line, Shadow, State, Stop};
 
     const FOCUSED: States = States::NONE.with(State::Focused);
     const ACTIVE: States = States::NONE.with(State::Active);
@@ -667,6 +707,114 @@ mod tests {
     /// How a part looks under a theme of one rule, in no state.
     fn styled(part: Part, stylesheet: &str) -> Style {
         Theme::parse(stylesheet).unwrap().style(part, States::NONE)
+    }
+
+    #[test]
+    fn a_part_is_filled_with_a_gradient_a_theme_gives_it_over_its_colour() {
+        let looks = |stylesheet: &str| {
+            let style = styled(Part::Panel, stylesheet);
+            (style.background, style.gradient)
+        };
+        let red = Color::rgb(255, 0, 0);
+        let blue = Color::rgb(0, 0, 255);
+        let stop = |color, at| Stop { color, at };
+        let across = |direction, stops: &[Stop]| Gradient::new(direction, stops);
+        let even = [stop(red, 0), stop(blue, 1000)];
+        assert_eq!(
+            looks("panel { background: linear-gradient(red, blue); }"),
+            (CLEAR, across(Direction::Angle(180), &even)),
+            "down, as CSS has it unless told, and with no colour under it"
+        );
+        assert_eq!(
+            looks("panel { background: #0f0 linear-gradient(to right, red, blue); }"),
+            (Color::rgb(0, 255, 0), across(Direction::Angle(90), &even))
+        );
+        assert_eq!(
+            looks("panel { background: linear-gradient(-45deg, red 20%, rgba(0, 0, 255, .5)); }").1,
+            across(
+                Direction::Angle(315),
+                &[stop(red, 200), stop(Color::rgba(0, 0, 255, 128), 1000)]
+            )
+        );
+        let corner = Direction::Corner {
+            right: true,
+            down: false,
+        };
+        assert_eq!(
+            looks("panel { background-image: linear-gradient(to top right, red, blue); }"),
+            (styled(Part::Panel, "").background, across(corner, &even)),
+            "the colour as it was"
+        );
+        assert_eq!(
+            looks("panel { background: linear-gradient(0.25turn, red, #0f0, blue 90%); }").1,
+            across(
+                Direction::Angle(90),
+                &[
+                    stop(red, 0),
+                    stop(Color::rgb(0, 255, 0), 450),
+                    stop(blue, 900)
+                ]
+            ),
+            "a stop not placed halfway between those either side"
+        );
+        for (side, degrees) in [("top", 0), ("right", 90), ("bottom", 180), ("left", 270)] {
+            let sheet = format!("panel {{ background: linear-gradient(to {side}, red, blue); }}");
+            assert_eq!(looks(&sheet).1, across(Direction::Angle(degrees), &even));
+        }
+        let corner = |right, down| across(Direction::Corner { right, down }, &even);
+        let sheet = "panel { background: linear-gradient(to left bottom, red, blue); }";
+        assert_eq!(looks(sheet).1, corner(false, true), "named in either order");
+        let gone = "panel { background: linear-gradient(red, blue); } panel { background: red; }";
+        assert_eq!(looks(gone), (red, None), "said all at once, there is none");
+        let kept = "panel { background: linear-gradient(red, blue); background-color: red; }";
+        assert_eq!(looks(kept), (red, across(Direction::Angle(180), &even)));
+        let none = "panel { background: linear-gradient(red, blue); background-image: none; }";
+        assert_eq!(looks(none).1, None);
+        // As see-through as the part is.
+        let faded = looks("panel { background: linear-gradient(red, blue); opacity: 0.5; }");
+        let alphas: Vec<u8> = faded
+            .1
+            .unwrap()
+            .stops()
+            .iter()
+            .map(|stop| stop.color.alpha)
+            .collect();
+        assert_eq!(alphas, [128, 128]);
+    }
+
+    #[test]
+    fn a_gradient_that_is_not_understood_is_an_error() {
+        for gradient in [
+            "linear-gradient(red)",
+            "linear-gradient(90deg)",
+            "linear-gradient(to middle, red, blue)",
+            "linear-gradient(to top bottom, red, blue)",
+            "linear-gradient(sideways, red, blue)",
+            "linear-gradient(red 50, blue)",
+            "linear-gradient(red 120%, blue)",
+            "linear-gradient(red 10% 20%, blue)",
+            "linear-gradient(red, blue",
+            "radial-gradient(red, blue)",
+            "linear-gradient(red, red, red, red, red, red, red, red, red)",
+            "linear-gradient(xdeg, red, blue)",
+            "linear-gradient(xturn, red, blue)",
+            "linear-gradient(redd 10%, blue)",
+        ] {
+            let message = problem(&format!("panel {{ background-image: {gradient}; }}"));
+            assert!(
+                message.contains("is not a gradient"),
+                "{gradient}: {message}"
+            );
+        }
+        let message = problem("panel { background: #000 linear-gradient(red); }");
+        assert!(message.contains("is not a gradient"), "{message}");
+        let message = problem("panel { background: red blue; }");
+        assert!(message.contains("one colour"), "{message}");
+        let message =
+            problem("panel { background: linear-gradient(red, blue) linear-gradient(red, blue); }");
+        assert!(message.contains("one gradient"), "{message}");
+        let message = problem("panel { background: sparkly; }");
+        assert!(message.contains("`sparkly` is not"), "{message}");
     }
 
     #[test]
@@ -1304,6 +1452,7 @@ mod tests {
         let side = line(Color::rgb(3, 3, 3), 4);
         let expected = Style {
             background: Color::rgb(1, 1, 1),
+            gradient: None,
             color: Color::rgb(2, 2, 2),
             border: Edges {
                 bottom: line(Color::rgb(6, 6, 6), 7),

@@ -846,7 +846,7 @@ is measured to the outside of its border.
 
 | Property | Value | Notes |
 |---|---|---|
-| `background` | a color | also written `background-color` |
+| `background` | a colour, a gradient, or a colour and a gradient over it | what the part is filled with; what it leaves out is none, as in CSS, so a gradient alone has no colour under it. `background-color` gives the colour alone and `background-image` the gradient alone, or `none` |
 | `color` | a color | text; for `menu-separator` and `tile-line`, the line |
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
@@ -859,7 +859,7 @@ is measured to the outside of its border.
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |
 | `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`; one, not `inset`. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice` and `tooltip`; by `switcher`, under the switcher on Alt+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
-| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
+| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -870,6 +870,21 @@ as a fourth digit or pair; `rgb(91, 156, 245)` and `rgba(91, 156, 245,
 Sizes are whole numbers of `px`, and of `pt` for a font. A variable is
 declared in `:root` with a name beginning `--` and used as `var(--name)`,
 alone or as part of a value: `border: 1px solid var(--accent)`.
+
+**A part may be filled with a gradient**, `linear-gradient()`, as in
+CSS: perhaps which way it runs, as an angle (`90deg`, `0.25turn`) or a
+side or corner (`to right`, `to top left`), down if it does not say; then
+two to eight colours, each perhaps with how far along it is (`40%`). A
+colour placed nowhere is halfway between those either side. It runs across
+what is inside the border, from one side to the other whatever the part's
+shape, and is drawn over the part's colour, so `background: #222
+linear-gradient(to right, transparent, #fff3)` brightens a dark part
+towards its right. A gradient is drawn wherever a part is a box, its
+titlebar among them; where a part is one colour across the screen, the
+desktop and the dims behind the launcher, the prompt and a picture being
+taken, or the colour of chosen text, it is the gradient's colour halfway
+along. A gradient changes at once when the part's state does, its colour
+under it as `transition` says.
 
 **Colours change over time.** When a part changes state, as a window does
 on gaining focus or a menu row when the pointer comes onto it, its
@@ -918,9 +933,9 @@ Not every part uses every property yet:
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
   focus.
-- Layout (`display`, `position`, `flex`), gradients, more than one shadow
-  and a shadow `inset` are not there, and nor are `steps()` or
-  `@keyframes`.
+- Layout (`display`, `position`, `flex`), `radial-gradient()`, more than
+  one background, more than one shadow and a shadow `inset` are not
+  there, and nor are `steps()` or `@keyframes`.
 
 Nothing is passed over in silence: a part, state, property or value that
 is not understood is a mistake, reported with its line and column, and the
