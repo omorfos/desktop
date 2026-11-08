@@ -1145,7 +1145,16 @@ the first than on the last.
 - [x] Gradients as a background, `linear-gradient()`, over the part's
       colour, wherever a part is a box, its titlebar among them; glass
       under one that can be seen through.
-- [ ] A picture as a background (`url()`).
+- A picture as a background (`url()`) is set aside, to be built only
+  once a design needs one. It would be the first time a theme had omorfos
+  read a file the theme names, and every process that draws parts would
+  decode it: a JPEG decoder in the compositor, the panel, the
+  notifications, the launcher and the prompts, where only the wallpaper
+  and the lock screen have one now, and a table of pictures for each
+  theme carried to every place a part is drawn, as a part's style, copied
+  freely, cannot hold one. Were it built: only from the configuration's
+  directory, covering its part, decoded by what the wallpaper decodes
+  with and with its limits.
 - [ ] Known gaps in gradients: `radial-gradient()`; a gradient on the
       desktop and the dims, which take its colour halfway; and a gradient
       that changes with the part's state, which changes at once rather
