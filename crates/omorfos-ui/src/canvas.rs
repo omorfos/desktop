@@ -10,6 +10,8 @@ use cosmic_text::{
     Attrs, Buffer, Ellipsize, EllipsizeHeightLimit, Family, FontSystem, Metrics, Shaping,
     Style as Slant, SwashCache, Weight, Wrap,
 };
+use std::ops::Range;
+
 use omorfos_config::{Color, Edges, Font, Style};
 
 use crate::Scale;
@@ -99,8 +101,35 @@ impl Canvas {
     /// canvas.
     pub fn blend(&mut self, x: i32, y: i32, color: Color, coverage: u8) {
         let alpha = u32::from(color.alpha) * u32::from(coverage) / 255;
+        // Nothing drawn leaves the pixel as it was, as the sum below would.
+        if alpha == 0 {
+            return;
+        }
         if let Some(pixel) = self.pixel_mut(x, y) {
             let source = [color.blue, color.green, color.red, 255];
+            for (channel, source) in pixel.iter_mut().zip(source) {
+                let mixed =
+                    (u32::from(source) * alpha + u32::from(*channel) * (255 - alpha) + 127) / 255;
+                *channel = u8::try_from(mixed).unwrap_or(u8::MAX);
+            }
+        }
+    }
+
+    /// Draws `color` over every pixel of `row` in `columns`, wholly, as
+    /// [`Canvas::blend`] does one at a time: the middle of a box, where
+    /// there is neither border nor corner, all of a piece. Both are on
+    /// the canvas, being counted from where it begins and no further than
+    /// it goes.
+    fn cover(&mut self, row: u32, columns: Range<u32>, color: Color) {
+        let width = u64::from(self.width);
+        let at = |column: u32| {
+            let at = (u64::from(row) * width + u64::from(column)) * 4;
+            usize::try_from(at).unwrap_or(usize::MAX)
+        };
+        let alpha = u32::from(color.alpha);
+        let source = [color.blue, color.green, color.red, 255];
+        let pixels = self.pixels.get_mut(at(columns.start)..at(columns.end));
+        for pixel in pixels.unwrap_or_default().as_chunks_mut::<4>().0 {
             for (channel, source) in pixel.iter_mut().zip(source) {
                 let mixed =
                     (u32::from(source) * alpha + u32::from(*channel) * (255 - alpha) + 127) / 255;
@@ -226,8 +255,27 @@ impl Canvas {
             at.map_or(0, |at| shape.at(at).2)
         };
         let columns = visible(left, width, self.width);
+        // Where a row is wholly the background, within the clip as well,
+        // it is covered all at once: most of a large box is, and drawn a
+        // pixel at a time it took longer than a frame. A gradient changes
+        // from pixel to pixel, so that box has none.
+        let plain = style.gradient.is_none();
+        let seen = i64::from(columns.start)..i64::from(columns.end);
+        // On the canvas, so as small as its columns are.
+        let narrow = |column: i64| i32::try_from(column).unwrap_or(0);
         for row in visible(top, height, self.height) {
-            for column in columns.clone() {
+            // A shadow inside is sharp, so it is only where the box, moved
+            // as far as it falls, is not plain as well: a band along the
+            // sides it falls from.
+            let own = shape.plain_at(row.abs_diff(top), left, (across_by, down_by));
+            let kept = along(row, above, down).map_or(0..0, |y| clip.plain_at(y, from, (0, 0)));
+            let first = own.start.max(kept.start).clamp(seen.start, seen.end);
+            let last = own.end.min(kept.end).clamp(first, seen.end);
+            let last = if plain { last } else { first };
+            let (first, last) = (narrow(first), narrow(last));
+            let covered = first.unsigned_abs()..last.unsigned_abs();
+            self.cover(row.unsigned_abs(), covered, style.background);
+            for column in (columns.start..first).chain(last..columns.end) {
                 let inside = (column.abs_diff(left), row.abs_diff(top));
                 let (side, edge, fill) = shape.at(inside);
                 let at = along(column, from, across).zip(along(row, above, down));
@@ -296,7 +344,7 @@ impl Canvas {
     /// nearest along each side.
     pub fn draw_stretched(&mut self, (left, top, across, down): Area, image: &Image) {
         let columns = visible(left, across, self.width);
-        let taps = |range: std::ops::Range<i32>, start: i32, own: u32, drawn: u32| {
+        let taps = |range: Range<i32>, start: i32, own: u32, drawn: u32| {
             let within = range.map(move |at| at.abs_diff(start));
             within.map(move |at| Taps::new(own, drawn, at))
         };
@@ -613,6 +661,39 @@ pub(crate) struct Shape {
 }
 
 impl Shape {
+    /// The columns of row `y` of the box that are wholly its background,
+    /// in neither its border nor a corner: none in the border along the
+    /// top or the bottom.
+    fn plain_columns(&self, y: u32) -> Range<u32> {
+        let [top, right, bottom, left] = self.widths;
+        let from_bottom = self.height.saturating_sub(1).saturating_sub(y);
+        if y < top || from_bottom < bottom {
+            return 0..0;
+        }
+        let cornered = y < self.radius || from_bottom < self.radius;
+        let (start, end) = if cornered {
+            (left.max(self.radius), right.max(self.radius))
+        } else {
+            (left, right)
+        };
+        start..self.width.saturating_sub(end).max(start)
+    }
+
+    /// The columns of row `y` that are plain, as [`Shape::plain_columns`]
+    /// says, both in the box and in the box moved `by` pixels across and
+    /// down, counted on a canvas where the box begins at column `origin`.
+    fn plain_at(&self, y: u32, origin: i32, (across, down): (i32, i32)) -> Range<i64> {
+        let placed = |plain: Range<u32>, by: i32| {
+            let at = |column: u32| i64::from(origin) + i64::from(by) + i64::from(column);
+            at(plain.start)..at(plain.end)
+        };
+        let own = placed(self.plain_columns(y), 0);
+        let moved = u32::try_from(i64::from(y) - i64::from(down)).ok();
+        let moved = moved.filter(|y| *y < self.height);
+        let moved = placed(moved.map_or(0..0, |y| self.plain_columns(y)), across);
+        own.start.max(moved.start)..own.end.min(moved.end)
+    }
+
     /// A square box `side` pixels across, its corners rounded by `radius`,
     /// with no border.
     pub(crate) const fn plain(side: u32, radius: u32) -> Self {
@@ -931,7 +1012,7 @@ fn family(font: &Font) -> Family<'_> {
 
 /// The part of the span `start..start + length` that lies within
 /// `0..limit`, which is empty if none of it does.
-fn visible(start: i32, length: u32, limit: u32) -> std::ops::Range<i32> {
+fn visible(start: i32, length: u32, limit: u32) -> Range<i32> {
     let clamp = |position: i64| i32::try_from(position.clamp(0, i64::from(limit))).unwrap_or(0);
     let start = i64::from(start);
     clamp(start)..clamp(start + i64::from(length))
@@ -951,7 +1032,7 @@ mod tests {
     }
 
     /// The number of pixels in a row range that are not exactly `background`.
-    fn inked(canvas: &Canvas, columns: std::ops::Range<u32>, background: u32) -> usize {
+    fn inked(canvas: &Canvas, columns: Range<u32>, background: u32) -> usize {
         (0..canvas.height())
             .flat_map(|y| columns.clone().map(move |x| (x, y)))
             .filter(|(x, y)| canvas.at(*x, *y) != background)
@@ -1003,7 +1084,7 @@ mod tests {
         // last column or two hold ink that an ellipsis would not put there.
         let mut canvas = Canvas::new(long + 10, 24);
         text.draw(&mut canvas, "web and more", (0, 0, long, 24), RED, &font);
-        let ink = |columns: std::ops::Range<u32>| inked(&canvas, columns, 0);
+        let ink = |columns: Range<u32>| inked(&canvas, columns, 0);
         assert!(ink(0..long) > 0);
         assert_eq!(ink(long..long + 10), 0, "and none of it lies beyond");
     }
@@ -1269,6 +1350,54 @@ mod tests {
         canvas.draw_box((10, 10, 20, 10), &alone);
         assert_eq!(canvas.at(20, 10), argb(GREEN));
         assert_eq!(canvas.at(20, 11), 0);
+    }
+
+    #[test]
+    fn a_box_with_a_shadow_inside_is_drawn_as_it_is_a_pixel_at_a_time() {
+        use omorfos_config::{Direction, Gradient, Stop};
+        // A gradient that cannot be seen changes nothing, but has the box
+        // drawn a pixel at a time, as one that can be is.
+        let stop = |at| Stop {
+            color: Color::rgba(0, 0, 0, 0),
+            at,
+        };
+        let flat = Gradient::new(Direction::Angle(90), &[stop(0), stop(1000)]);
+        let falls = [(0, 1), (0, -2), (3, 0), (-1, 1), (2, -3), (30, 0)];
+        for factor in [1.0, 1.25, 2.5] {
+            for (radius, width, (x, y)) in [0, 3, 8]
+                .into_iter()
+                .flat_map(|radius| [0, 1, 2].map(|width| (radius, width)))
+                .flat_map(|(radius, width)| falls.map(|fall| (radius, width, fall)))
+            {
+                let style = Style {
+                    background: WHITE,
+                    border: Edges::all(line(RED, width)),
+                    radius,
+                    inset: Shadow {
+                        x,
+                        y,
+                        color: GREEN,
+                        ..Shadow::NONE
+                    },
+                    ..Style::NONE
+                };
+                let slow = Style {
+                    gradient: flat,
+                    ..style
+                };
+                let draw = |style: &Style, within| {
+                    let mut canvas = Canvas::scaled(40, 30, Scale::new(factor));
+                    canvas.draw_box_within((3, 2, 30, 20), style, within);
+                    canvas
+                };
+                for within in [((3, 2, 30, 20), 0), ((5, 4, 24, 14), 4)] {
+                    assert!(
+                        draw(&style, within) == draw(&slow, within),
+                        "at {factor} with {style:?} within {within:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
