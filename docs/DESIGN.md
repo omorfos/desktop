@@ -300,8 +300,8 @@ the user's theme is used as now.
 ## Settings for those who need them
 
 They are in `config.yaml` from the start and every part honours them.
-(Stage 4 brings the settings; the rules are binding on what is drawn
-before then.)
+(Stage 4 brings the settings, `scheme` and `accent` first; the rules are
+binding on what is drawn before then.)
 
 | Setting | What it does |
 |---|---|

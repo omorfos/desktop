@@ -1168,8 +1168,14 @@ the first than on the last.
       focus or without, as programs that draw their own have it; and the
       edge of a frame follows its top corners round, as it did its bottom
       ones.
-- [ ] The light scheme, and the accent a setting: `appearance.scheme`
-      and `appearance.accent`, each with what programs are told.
+- [x] The light scheme, and the accent a setting: `appearance.scheme`
+      and `appearance.accent`, laid over the built-in theme as a few
+      variables, under the user's own theme; each accent that comes with
+      omorfos held to the contrast in both schemes, and programs told
+      the scheme and the accent through the settings portal.
+- [ ] A theme that is wrong keeps the scheme and the accent it was last
+      built with until it is mended, as the whole of it is kept: a new
+      scheme in `config.yaml` meanwhile waits for it.
 - [ ] What the design language has that a theme cannot draw yet: the ring
       round what the keyboard is on, two pixels out from it (it is a
       border of the colour of text, which shows on the accent as well);

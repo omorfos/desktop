@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::de::DeserializeOwned;
 
-use crate::{Diagnostic, General, Keys, Menu, Rules, Theme};
+use crate::{Appearance, Diagnostic, General, Keys, Menu, Rules, Theme};
 
 /// The files that make up the configuration, relative to its directory.
 ///
@@ -59,12 +59,16 @@ impl Config {
     #[must_use]
     pub fn load(directory: &Path, fallback: &Self) -> (Self, Vec<Diagnostic>) {
         let mut diagnostics = Vec::new();
+        let general: General = section(directory, GENERAL, &fallback.general, &mut diagnostics);
+        // The theme is built in the scheme and with the accent `config.yaml`
+        // says, so it is read after it.
+        let appearance = general.appearance;
         let config = Self {
-            general: section(directory, GENERAL, &fallback.general, &mut diagnostics),
             keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
             rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: theme(directory, &fallback.theme, &mut diagnostics),
+            theme: theme(directory, appearance, &fallback.theme, &mut diagnostics),
             menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
+            general,
         };
         (config, diagnostics)
     }
@@ -83,8 +87,15 @@ where
         })
 }
 
-/// Loads the theme, which is a stylesheet and not YAML like the rest.
-fn theme(directory: &Path, fallback: &Theme, diagnostics: &mut Vec<Diagnostic>) -> Theme {
+/// Loads the theme, which is a stylesheet and not YAML like the rest, laid
+/// over the built-in one in the scheme and with the accent `appearance`
+/// says.
+fn theme(
+    directory: &Path,
+    appearance: Appearance,
+    fallback: &Theme,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Theme {
     let old = directory.join(OLD_THEME);
     if old.exists() {
         // Left where it is, it would look as though it were in use.
@@ -93,7 +104,7 @@ fn theme(directory: &Path, fallback: &Theme, diagnostics: &mut Vec<Diagnostic>) 
     }
     let path = directory.join(THEME);
     let loaded = read(&path).and_then(|text| {
-        let parsed = Theme::parse(&text);
+        let parsed = Theme::parse_in(&text, appearance.scheme, appearance.accent);
         parsed.map_err(|error| Diagnostic {
             file: path.clone(),
             position: error.position,
@@ -202,6 +213,28 @@ mod tests {
         let clock = config.theme.style(Part::Clock, States::NONE);
         assert_eq!(clock.color, Color::rgb(255, 0, 0));
         assert_eq!(config.menu.items.len(), 1);
+    }
+
+    #[test]
+    fn the_theme_is_in_the_scheme_and_accent_the_configuration_names() {
+        let light = "appearance: { scheme: light, accent: orange }\n";
+        let (config, diagnostics) = load(&[("config.yaml", light)]);
+        assert_eq!(diagnostics, [""; 0]);
+        assert!(!config.theme.dark());
+        let desktop = config.theme.style(Part::Desktop, States::NONE);
+        assert_eq!(desktop.background, Color::rgb(0xfc, 0xf7, 0xe3), "cream");
+        let picker = config.theme.style(Part::Picker, States::NONE);
+        assert_eq!(picker.border.top.color, Color::rgb(0xb8, 0x4a, 0x0e));
+
+        // The user's own theme is laid over both, and has the last word.
+        let (config, _) = load(&[
+            ("config.yaml", light),
+            ("theme.css", ":root { --background: #102030; }\n"),
+        ]);
+        let desktop = config.theme.style(Part::Desktop, States::NONE);
+        assert_eq!(desktop.background, Color::rgb(0x10, 0x20, 0x30));
+        let picker = config.theme.style(Part::Picker, States::NONE);
+        assert_eq!(picker.border.top.color, Color::rgb(0xb8, 0x4a, 0x0e));
     }
 
     #[test]

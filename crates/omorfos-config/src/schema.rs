@@ -12,9 +12,9 @@ use crate::keys::RawKeys;
 use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
-    Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu, MenuItem,
-    NamedOutput, Offset, OutputScale, Outputs, Picture, Role, Rules, ScreenMode, ScreenWallpaper,
-    Screens, Speed, Started, Workspaces,
+    Accent, Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu,
+    MenuItem, NamedOutput, Offset, OutputScale, Outputs, Picture, Role, Rules, ScreenMode,
+    ScreenWallpaper, Screens, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -223,6 +223,28 @@ impl JsonSchema for Picture {
                     "required": ["dark", "light"],
                     "additionalProperties": false,
                 },
+            ],
+        })
+    }
+}
+
+impl JsonSchema for Accent {
+    fn schema_name() -> Cow<'static, str> {
+        "Accent".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let names: Vec<&str> = crate::scheme::ACCENTS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        json_schema!({
+            "description": "One of the accents that come with omorfos, or any colour that \
+                            cannot be seen through, as `#rrggbb`.",
+            "type": "string",
+            "anyOf": [
+                { "enum": names },
+                { "pattern": "^#[0-9a-fA-F]{6}$" },
             ],
         })
     }

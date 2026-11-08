@@ -47,6 +47,12 @@ fn every_stylesheet_in_the_guide_is_a_theme() {
         let theme = omorfos_config::Theme::parse(stylesheet);
         assert!(theme.is_ok(), "{theme:?}\n{stylesheet}");
     }
+    // The light scheme is shown as it is.
+    let light = format!("```css\n{}```", include_str!("../src/light.css"));
+    assert!(
+        guide.contains(&light),
+        "the guide's light scheme is not the one built in"
+    );
 }
 
 #[test]

@@ -74,6 +74,8 @@ cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
 appearance:
+  scheme: dark            # dark | light
+  accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
 launcher:
   icons: false            # show each program's icon
@@ -811,6 +813,45 @@ picker {
 sealed { background: #000000aa; }
 ```
 
+That is the theme in its dark scheme. With `appearance.scheme: light` in
+`config.yaml`, these are laid over it, so that the same rules draw it
+light:
+
+```css
+/* The light scheme, laid over the built-in theme by
+ * `appearance: { scheme: light }`: the same variables, in a warm cream
+ * where the dark scheme has navy. The accent, and what is written on it,
+ * come from `appearance.accent`. */
+:root {
+  --background: #fcf7e3;
+  --surface: #fffdf4;
+  --surface-dim: #f6f0da;
+  --surface-raised: #ffffff;
+  --text: #0c1226;
+  --text-dim: #5c6888;
+  --border: #e4ddc4;
+  --border-strong: #7a8099;
+  --danger: #c4303a;
+  --warning: #8a5a00;
+  --success: #2f7a35;
+  --capture: #c4303a;
+  --glass-thin: rgba(255, 253, 244, 0.7);
+  --glass-thick: rgba(255, 253, 244, 0.9);
+  --glass-sealed: rgba(255, 253, 244, 0.95);
+}
+```
+
+`appearance.accent` gives `--accent`, and `--on-accent`, what is written
+on it, in either scheme. Each of `cyan`, `blue`, `teal`, `purple`, `pink`
+and `orange` has a colour for each scheme, deeper in the light one, as a
+colour clear on navy is too pale on cream, and text on it that can be
+read. A colour of your own, as `'#3584e4'`, is the same in both, and what
+is written on it is whichever of the scheme's dark and light text stands
+out from it more. Your own theme is laid over all of this, and has the
+last word: a `--background` of yours is the background in either scheme.
+A change of either is drawn as soon as `config.yaml` is saved, and
+applications that follow the desktop are told it.
+
 The quickest change is to give the built-in theme's variables other
 values:
 
@@ -1229,7 +1270,8 @@ Applications ask the desktop some things through the portals
 is how the desktop looks: whether it is light or dark, and the colour
 that picks things out. An application that follows the desktop, as most
 written with GTK or Qt do, is then dark when your theme is and light when
-it is.
+it is, as `appearance.scheme` makes it or your theme does, in the accent
+`appearance.accent` gives.
 
 An application can also ask for a picture of the screen, as a browser or
 a chat in a sandbox does. Each time, a question goes up in the middle of

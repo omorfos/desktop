@@ -28,6 +28,7 @@ mod paths;
 mod rules;
 #[cfg(feature = "schema")]
 pub mod schema;
+mod scheme;
 mod store;
 mod style;
 mod theme;
@@ -53,6 +54,7 @@ pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
 pub use paths::{cache_dir, config_dir};
 pub use rules::{Match, Rule, Rules};
+pub use scheme::{Accent, Scheme};
 pub use store::Store;
 pub use style::{Edges, Line, Part, Shadow, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};

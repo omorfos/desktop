@@ -15,6 +15,25 @@
         }
       ]
     },
+    "Accent": {
+      "anyOf": [
+        {
+          "enum": [
+            "cyan",
+            "blue",
+            "teal",
+            "purple",
+            "pink",
+            "orange"
+          ]
+        },
+        {
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      ],
+      "description": "One of the accents that come with omorfos, or any colour that cannot be seen through, as `#rrggbb`.",
+      "type": "string"
+    },
     "Align": {
       "description": "Where along the edge two screens share one is lined up with the other.",
       "oneOf": [
@@ -39,10 +58,18 @@
       "additionalProperties": false,
       "description": "How what the desktop draws looks, whatever the theme says.",
       "properties": {
+        "accent": {
+          "$ref": "#/$defs/Accent",
+          "description": "The colour the built-in theme picks out what has focus with: one\nthat comes with omorfos, by its name, or any other."
+        },
         "reduce_transparency": {
           "default": false,
           "description": "Whether every surface the theme makes glass is solid in its colour,\nwith nothing behind it blurred or seen through.",
           "type": "boolean"
+        },
+        "scheme": {
+          "$ref": "#/$defs/Scheme",
+          "description": "Whether the built-in theme is dark or light."
         }
       },
       "type": "object"
@@ -636,6 +663,21 @@
         {
           "const": "inverted",
           "description": "Upside down.",
+          "type": "string"
+        }
+      ]
+    },
+    "Scheme": {
+      "description": "Whether the desktop is dark or light.",
+      "oneOf": [
+        {
+          "const": "dark",
+          "description": "Light writing on navy.",
+          "type": "string"
+        },
+        {
+          "const": "light",
+          "description": "Dark writing on a warm cream.",
           "type": "string"
         }
       ]

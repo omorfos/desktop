@@ -1,0 +1,21 @@
+/* The light scheme, laid over the built-in theme by
+ * `appearance: { scheme: light }`: the same variables, in a warm cream
+ * where the dark scheme has navy. The accent, and what is written on it,
+ * come from `appearance.accent`. */
+:root {
+  --background: #fcf7e3;
+  --surface: #fffdf4;
+  --surface-dim: #f6f0da;
+  --surface-raised: #ffffff;
+  --text: #0c1226;
+  --text-dim: #5c6888;
+  --border: #e4ddc4;
+  --border-strong: #7a8099;
+  --danger: #c4303a;
+  --warning: #8a5a00;
+  --success: #2f7a35;
+  --capture: #c4303a;
+  --glass-thin: rgba(255, 253, 244, 0.7);
+  --glass-thick: rgba(255, 253, 244, 0.9);
+  --glass-sealed: rgba(255, 253, 244, 0.95);
+}

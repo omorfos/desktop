@@ -12,12 +12,14 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::css::{self, Declaration, Selector, Sheet};
+use crate::scheme;
 use crate::style::CLEAR;
 use crate::value::{
     backdrop, color, cubic_bezier, fraction, gradient, image, shadow, size, time, words,
 };
 use crate::{
-    Bounded, Color, Easing, Edges, Gradient, Part, Position, Shadow, States, Style, Transition,
+    Accent, Bounded, Color, Easing, Edges, Gradient, Part, Position, Scheme, Shadow, States, Style,
+    Transition,
 };
 
 /// The stylesheet every theme starts from.
@@ -95,7 +97,7 @@ impl std::error::Error for ThemeError {}
 impl Default for Theme {
     /// The built-in theme.
     fn default() -> Self {
-        let table = build(&built_in(), &Sheet::default());
+        let table = build(&built_in(Scheme::Dark, Accent::Cyan), &Sheet::default());
         Self {
             table: Arc::new(table.unwrap_or_default()),
         }
@@ -120,9 +122,20 @@ impl Theme {
     /// stylesheet is passed over: a part, state, property or value that is
     /// not understood is an error.
     pub fn parse(stylesheet: &str) -> Result<Self, ThemeError> {
+        Self::parse_in(stylesheet, Scheme::Dark, Accent::Cyan)
+    }
+
+    /// The theme that `stylesheet` makes when laid over the built-in one in
+    /// `scheme`, picking things out with `accent`. What the stylesheet
+    /// says wins over both.
+    ///
+    /// # Errors
+    ///
+    /// As [`Theme::parse`].
+    pub fn parse_in(stylesheet: &str, scheme: Scheme, accent: Accent) -> Result<Self, ThemeError> {
         let own = Sheet::parse(stylesheet);
         let own = own.map_err(|fault| (Some(fault.offset), fault.message));
-        let table = own.and_then(|own| build(&built_in(), &own));
+        let table = own.and_then(|own| build(&built_in(scheme, accent), &own));
         let theme = table.map(|table| Self {
             table: Arc::new(table),
         });
@@ -169,9 +182,10 @@ const fn index(part: Part, states: States) -> usize {
     part as usize * States::COMBINATIONS + states.index()
 }
 
-/// The built-in stylesheet, taken apart.
-fn built_in() -> Sheet {
-    Sheet::parse(BUILT_IN).unwrap_or_default()
+/// The built-in stylesheet in `scheme` with `accent`, taken apart.
+fn built_in(scheme: Scheme, accent: Accent) -> Sheet {
+    let stylesheet = format!("{BUILT_IN}{}", scheme::sheet(scheme, accent));
+    Sheet::parse(&stylesheet).unwrap_or_default()
 }
 
 /// What is wrong, and how far into the user's stylesheet, if it is there
@@ -680,6 +694,7 @@ fn family(value: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scheme::ACCENTS;
     use crate::{Direction, Gradient, Line, Shadow, State, Stop};
 
     const FOCUSED: States = States::NONE.with(State::Focused);
@@ -1059,6 +1074,14 @@ mod tests {
     fn the_built_in_stylesheet_is_sound() {
         let sheet = Sheet::parse(BUILT_IN).unwrap();
         assert!(build(&sheet, &Sheet::default()).is_ok());
+        // In either scheme, with any accent.
+        for scheme in [Scheme::Dark, Scheme::Light] {
+            for (_, accent) in ACCENTS {
+                let laid = format!("{BUILT_IN}{}", scheme::sheet(scheme, accent));
+                let sheet = Sheet::parse(&laid).unwrap();
+                assert!(build(&sheet, &Sheet::default()).is_ok());
+            }
+        }
         assert_eq!(Theme::parse("").unwrap(), Theme::default());
         assert_eq!(
             Theme::parse("/* nothing of my own */").unwrap(),
@@ -1066,32 +1089,19 @@ mod tests {
         );
     }
 
-    /// How much brighter the brighter of two opaque colours is than the
-    /// other, as WCAG 2 measures it: from 1, the same, to 21.
-    fn contrast(one: Color, other: Color) -> f64 {
-        let luminance = |color: Color| {
-            let linear = |channel: u8| {
-                let share = f64::from(channel) / 255.0;
-                if share <= 0.040_45 {
-                    share / 12.92
-                } else {
-                    ((share + 0.055) / 1.055).powf(2.4)
-                }
-            };
-            0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
-        };
-        let (one, other) = (luminance(one), luminance(other));
-        (one.max(other) + 0.05) / (one.min(other) + 0.05)
-    }
-
     #[test]
     fn the_built_in_theme_meets_the_contrast_the_design_language_asks() {
-        let (black, white) = (Color::rgb(0, 0, 0), Color::rgb(255, 255, 255));
-        assert!(
-            (contrast(black, white) - 21.0).abs() < 0.01,
-            "as WCAG has it"
-        );
-        let theme = Theme::default();
+        for scheme in [Scheme::Dark, Scheme::Light] {
+            for (name, accent) in ACCENTS {
+                let theme = Theme::parse_in("", scheme, accent).unwrap();
+                meets_contrast(&theme, &format!("{scheme:?} with {name}"));
+            }
+        }
+    }
+
+    /// Asserts that each text of `theme` is at least 4.5 to 1 against what
+    /// it is written on, and each edge that says a state 3 to 1.
+    fn meets_contrast(theme: &Theme, which: &str) {
         let style = |part, states| theme.style(part, states);
         let hovered = States::NONE.with(State::Hovered);
         // Text, and what it is written on: the part's own background, or
@@ -1154,35 +1164,35 @@ mod tests {
                 };
                 style(part, states).background
             });
-            let ratio = contrast(text.color, under);
-            assert!(ratio >= 4.5, "text {index}: {ratio:.2} to 1");
+            let ratio = text.color.contrast(under);
+            assert!(ratio >= 4.5, "{which}: text {index}: {ratio:.2} to 1");
         }
+        let surface = style(Part::Menu, States::NONE).background;
+        let raised = style(Part::MenuItem, hovered).background;
+        let background = style(Part::Desktop, States::NONE).background;
         // The edge of what takes input, and what says a state without
         // words, against what it is drawn on.
         let edges = [
             (
                 style(Part::QuestionInput, States::NONE).border.top.color,
-                SURFACE,
+                surface,
             ),
             (
                 style(Part::Tab, FOCUSED.with(State::Active))
                     .border
                     .bottom
                     .color,
-                SURFACE,
+                surface,
             ),
-            (
-                style(Part::Task, ACTIVE).border.bottom.color,
-                SURFACE_RAISED,
-            ),
+            (style(Part::Task, ACTIVE).border.bottom.color, raised),
             (
                 style(Part::Picker, States::NONE).border.top.color,
-                BACKGROUND,
+                background,
             ),
         ];
         for (index, (edge, under)) in edges.into_iter().enumerate() {
-            let ratio = contrast(edge, under);
-            assert!(ratio >= 3.0, "edge {index}: {ratio:.2} to 1");
+            let ratio = edge.contrast(under);
+            assert!(ratio >= 3.0, "{which}: edge {index}: {ratio:.2} to 1");
         }
     }
 

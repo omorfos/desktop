@@ -75,3 +75,22 @@ fn a_broken_save_keeps_the_session_running_on_the_previous_configuration() {
         "{problem}"
     );
 }
+
+#[test]
+fn a_new_scheme_or_accent_changes_the_theme_though_the_theme_itself_did_not() {
+    let directory = TempDir::new().unwrap();
+    let mut store = Store::open(directory.path());
+    assert_eq!(accent(&store), Color::rgb(0x22, 0xd3, 0xee));
+    let mut watcher = Watcher::new(store.directory()).unwrap();
+
+    fs::write(
+        directory.path().join("config.yaml"),
+        "appearance: { scheme: light, accent: teal }\n",
+    )
+    .unwrap();
+    assert!(watcher.drain().unwrap());
+
+    assert!(store.reload());
+    assert_eq!(accent(&store), Color::rgb(0x0f, 0x76, 0x6e));
+    assert!(!store.current().theme.dark());
+}

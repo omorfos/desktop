@@ -62,6 +62,19 @@ colour. Fixed hours are what there is without a location.
 out, and nothing else. Red, amber and green keep their meanings on the
 titlebar's buttons and for danger, warning and success.
 
+**The scheme and the accent are settings, not themes.** `appearance.scheme`
+and `appearance.accent` in `config.yaml` lay a few variables over the
+built-in theme: the light scheme's colours, and the accent with what is
+written on it. The user's `theme.css` is laid over those, so a theme of
+one's own still has the last word, and the rules of the built-in theme
+are written once for both schemes. Two built-in themes, one dark and one
+light, would each have to be kept in step with every part added; and a
+theme of the user's would have to choose one to start from. An accent
+the user names as a colour has as its text whichever of the scheme's
+dark and light text stands out from it more; it is not held to the
+contrast the six that come with omorfos are, which a test holds them to
+in both schemes.
+
 **The window with focus is shown by its titlebar and its shadow, not by
 a ring of accent**, once there are shadows. Until then the accent edge
 stays.

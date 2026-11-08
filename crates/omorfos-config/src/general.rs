@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::{Bounded, Command, MAX_WORKSPACES, Started, Wallpaper};
+use crate::{Accent, Bounded, Command, MAX_WORKSPACES, Scheme, Started, Wallpaper};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -280,6 +280,11 @@ impl Default for Notifications {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Appearance {
+    /// Whether the built-in theme is dark or light.
+    pub scheme: Scheme,
+    /// The colour the built-in theme picks out what has focus with: one
+    /// that comes with omorfos, by its name, or any other.
+    pub accent: Accent,
     /// Whether every surface the theme makes glass is solid in its colour,
     /// with nothing behind it blurred or seen through.
     pub reduce_transparency: bool,
@@ -987,6 +992,7 @@ impl TryFrom<String> for OutputScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Color;
 
     #[test]
     fn the_pointer_is_the_systems_default_unless_a_theme_and_size_are_named() {
@@ -1005,6 +1011,29 @@ mod tests {
         let reduced = parse("appearance: { reduce_transparency: true }").unwrap();
         assert!(reduced.appearance.reduce_transparency);
         assert!(parse("appearance: { reduce_motion: true }").is_err());
+    }
+
+    #[test]
+    fn the_desktop_is_dark_with_a_cyan_accent_unless_it_is_told_otherwise() {
+        let appearance = General::default().appearance;
+        assert_eq!(
+            (appearance.scheme, appearance.accent),
+            (Scheme::Dark, Accent::Cyan)
+        );
+        let chosen = parse("appearance: { scheme: light, accent: purple }").unwrap();
+        let appearance = chosen.appearance;
+        assert_eq!(
+            (appearance.scheme, appearance.accent),
+            (Scheme::Light, Accent::Purple)
+        );
+        let own = parse("appearance: { accent: '#3584e4' }").unwrap();
+        assert_eq!(
+            own.appearance.accent,
+            Accent::Own(Color::rgb(0x35, 0x84, 0xe4))
+        );
+        assert!(parse("appearance: { scheme: auto }").is_err(), "not yet");
+        let error = parse("appearance:\n  accent: green\n").unwrap_err();
+        assert!(error.contains("invalid accent `green`"), "{error}");
     }
 
     #[test]

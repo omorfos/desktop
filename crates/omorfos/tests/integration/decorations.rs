@@ -229,6 +229,19 @@ fn the_title_is_written_on_the_titlebar() {
 }
 
 #[test]
+fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
+    let light = "appearance: { scheme: light }\n";
+    let mut session = Session::with_config(&[("config.yaml", light)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "foot", (200, 100), RED);
+
+    let picture = session.draw();
+    assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
+    assert_eq!(picture.at(190, 14), 0xffff_fdf4, "the titlebar with focus");
+    assert_eq!(picture.at(0, 60), 0xffe4_ddc4, "its hairline");
+}
+
+#[test]
 fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
     let mut session = Session::new();
     let mut client = session.connect();

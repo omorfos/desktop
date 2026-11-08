@@ -39,6 +39,8 @@ impl Appearance {
 
 #[cfg(test)]
 mod tests {
+    use omorfos_config::{Accent, Scheme};
+
     use super::*;
 
     #[test]
@@ -49,6 +51,16 @@ mod tests {
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);
         assert!((blue - f64::from(0xee_u8) / 255.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_light_scheme_is_told_as_light_with_its_deeper_accent() {
+        let theme = Theme::parse_in("", Scheme::Light, Accent::Cyan).unwrap();
+        let appearance = Appearance::of(&theme);
+        assert!(!appearance.dark);
+        assert_eq!(appearance.scheme(), 2);
+        let share = |channel: u8| f64::from(channel) / 255.0;
+        assert_eq!(appearance.accent, (share(0x0e), share(0x74), share(0x90)));
     }
 
     #[test]

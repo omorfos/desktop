@@ -37,6 +37,29 @@ impl Color {
             alpha,
         }
     }
+
+    /// How far apart two colours are to the eye, as WCAG 2 measures it:
+    /// from 1, the same, to 21, black and white. Their opacity is not
+    /// counted.
+    #[must_use]
+    pub fn contrast(self, other: Self) -> f64 {
+        let luminance = |color: Self| {
+            let linear = |channel: u8| {
+                let share = f64::from(channel) / 255.0;
+                if share <= 0.040_45 {
+                    share / 12.92
+                } else {
+                    ((share + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.0722f64.mul_add(
+                linear(color.blue),
+                0.2126f64.mul_add(linear(color.red), 0.7152 * linear(color.green)),
+            )
+        };
+        let (one, other) = (luminance(self), luminance(other));
+        (one.max(other) + 0.05) / (one.min(other) + 0.05)
+    }
 }
 
 impl FromStr for Color {
@@ -91,6 +114,19 @@ mod tests {
     fn six_digits_parse_as_an_opaque_color() {
         assert_eq!("#1a2B3c".parse(), Ok(Color::rgb(0x1a, 0x2b, 0x3c)));
         assert_eq!(Color::rgb(1, 2, 3).alpha, 255);
+    }
+
+    #[test]
+    fn contrast_is_measured_as_wcag_measures_it() {
+        let (black, white) = (Color::rgb(0, 0, 0), Color::rgb(255, 255, 255));
+        assert!((black.contrast(white) - 21.0).abs() < 0.001);
+        assert!((white.contrast(black) - 21.0).abs() < 0.001, "either way");
+        assert!((white.contrast(white) - 1.0).abs() < 0.001);
+        // A dark channel and a bright one, each side of where the curve
+        // changes: WCAG gives #777777 on white 4.48.
+        let grey = Color::rgb(0x77, 0x77, 0x77);
+        assert!((grey.contrast(white) - 4.48).abs() < 0.01);
+        assert!((Color::rgb(1, 1, 1).contrast(black) - 1.006).abs() < 0.001);
     }
 
     #[test]
