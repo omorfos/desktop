@@ -393,9 +393,12 @@ fn the_tooltip_of_the_mark_is_glass_if_the_theme_makes_it_so() {
 #[test]
 fn the_prompt_that_asks_for_a_secret_is_glass_if_the_theme_makes_its_question_so() {
     for (glass, blurred) in [("blur(8px)", true), ("none", false)] {
+        // The session under the dim is not blurred, so that what is
+        // blurred is the question's alone.
         let theme = format!(
             "question {{ background: rgba(255, 255, 255, 0.5); \
-             backdrop-filter: {glass}; box-shadow: none; }}\n"
+             backdrop-filter: {glass}; box-shadow: none; }}\n\
+             sealed {{ backdrop-filter: none; }}\n"
         );
         let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
         let mut app = session.connect_plain();

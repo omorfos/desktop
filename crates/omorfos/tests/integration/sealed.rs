@@ -29,10 +29,11 @@ fn prompt_shape() -> LayerShape {
 /// Where the prompt is: the middle of the screen.
 const PROMPT: (i32, i32) = ((WIDTH - 100) / 2 + 50, (HEIGHT - 50) / 2 + 25);
 
-/// The red of a window as it shows through the dim: darker, and red still.
+/// The red of a window as it shows through the dim: half as bright, and red
+/// still.
 fn dimmed(pixel: u32) -> bool {
     let (red, green, blue) = ((pixel >> 16) & 0xff, (pixel >> 8) & 0xff, pixel & 0xff);
-    (70..100).contains(&red) && green == 0 && blue == 0
+    (110..140).contains(&red) && green == 0 && blue == 0
 }
 
 /// A session with a window that has the keyboard, the pointer over it.
@@ -97,6 +98,27 @@ fn a_prompt_that_asks_for_a_secret_dims_the_rest_of_the_screen() {
     // Gone, the screen is as it was.
     answered(&mut session, asking);
     assert_eq!(session.draw().at(50, 50), RED);
+}
+
+#[test]
+fn the_session_is_blurred_under_the_dim_unless_the_theme_says_not() {
+    let cases = [
+        ("", true),
+        ("sealed { backdrop-filter: none; }\n", false),
+        ("sealed { background: #000000; }\n", false),
+    ];
+    for (theme, blurred) in cases {
+        let (mut session, _app) = busy_with(&[("theme.css", theme)]);
+        drop(session.draw());
+        let before = session.compositor().blurs();
+        let _asking = ask(&mut session, Roles::ASK);
+        let picture = session.draw();
+        assert_eq!(session.compositor().blurs() > before, blurred, "{theme}");
+        // Beside the window, its red is blurred into the dim.
+        let beside = picture.at(205, 50);
+        let red = (beside >> 16) & 0xff;
+        assert_eq!(red > 0x20, blurred, "{theme}: {beside:08x}");
+    }
 }
 
 #[test]
@@ -263,7 +285,13 @@ fn blue(pixel: u32) -> bool {
     blue > red + 0x40 && blue > green + 0x40
 }
 
-/// The background as it shows through the dim.
+/// The background as it shows through the dim, blurred and so a little
+/// more saturated: darker in every channel, and not blue as the shadow is.
 fn dimmed_background(pixel: u32) -> bool {
-    pixel != BACKGROUND && shaded(pixel, BACKGROUND)
+    let channels = |of: u32| [of >> 16, of >> 8, of].map(|channel| channel & 0xff);
+    let darker = channels(pixel)
+        .iter()
+        .zip(channels(BACKGROUND))
+        .all(|(seen, open)| *seen <= open);
+    pixel != BACKGROUND && darker && !blue(pixel)
 }

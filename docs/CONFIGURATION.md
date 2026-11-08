@@ -813,8 +813,12 @@ picker {
 }
 
 /* What dims the session while a prompt asks for a secret, such as the
- * administrator's password: nothing a program draws can dim it so. */
-sealed { background: #000000aa; }
+ * administrator's password, and blurs it: nothing a program draws can dim
+ * and blur it so. `backdrop-filter: none` dims it alone. */
+sealed {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(24px);
+}
 ```
 
 That is the theme in its dark scheme. With `appearance.scheme: light` in
@@ -921,7 +925,7 @@ is measured to the outside of its border.
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |
 | `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`; one, not `inset`. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice` and `tooltip`; by `switcher`, under the switcher on Alt+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
-| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
+| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; `sealed`, under the dim of every screen while a password is asked for, which is blurred and is the dim alone where blur cannot be drawn; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -1700,11 +1704,12 @@ password is asked for again, and the box shakes; a theme that has the
 `question` part change at once, `question { transition: none; }`, keeps it
 still.
 
-While it asks, everything else is dimmed, and the keyboard and the
+While it asks, everything else is dimmed and blurred, and the keyboard and the
 pointer reach the box alone: no key binding works, no other program and
 no input method sees a key. Only a program omorfos started with the `ask`
 role can do that, which is how you know the box is omorfos's own and not
-a window imitating it. The dim is the theme's `sealed` part, and the box
+a window imitating it. The dim is the theme's `sealed` part, blurred as
+far as its `backdrop-filter` says, and the box
 is drawn as the `question` parts, its field as `question-input`.
 
 What you type goes only to polkit's own helper, which checks it, and is

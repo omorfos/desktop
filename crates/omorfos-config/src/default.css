@@ -321,5 +321,9 @@ picker {
 }
 
 /* What dims the session while a prompt asks for a secret, such as the
- * administrator's password: nothing a program draws can dim it so. */
-sealed { background: #000000aa; }
+ * administrator's password, and blurs it: nothing a program draws can dim
+ * and blur it so. `backdrop-filter: none` dims it alone. */
+sealed {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(24px);
+}

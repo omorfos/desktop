@@ -1120,7 +1120,7 @@ the first than on the last.
       frames` on a modest laptop with a dozen windows, one dragged over
       the others, and written into ADR 33; until then the built-in theme
       makes nothing glass, its surfaces solid in the colours glass would
-      be tinted with.
+      be tinted with, but for the session behind the password prompt.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface, a window's to the window proper and not the shadow
@@ -1180,6 +1180,9 @@ the first than on the last.
       two pixels out from it (`outline`, `outline-offset`), on the
       prompts' buttons; close round the eye in the password field, which
       has no room round it.
+- [x] The session blurred as well as dimmed under the prompt that asks
+      for a password (`sealed`'s `backdrop-filter`), by default; the dim
+      alone where blur cannot be drawn.
 - [ ] What the design language has that a theme cannot draw yet: the
       inner hairline of light along the top of glass; and what arrives
       taking longer than what leaves.

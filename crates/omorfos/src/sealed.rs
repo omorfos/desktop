@@ -202,5 +202,24 @@ impl Compositor {
             SolidColorRenderElement::from_buffer(dim, (0, 0), scale, 1.0, Kind::Unspecified)
         });
         elements.extend(dim.map(Element::Solid));
+        // The session is blurred under the dim, if the theme says so. The
+        // glass has no colour of its own, the dim being its tint: where
+        // blur cannot be drawn there is the dim alone, as there was before
+        // the session was ever blurred, and not a screen of solid colour.
+        let sealed = self.config().theme.style(Part::Sealed, States::NONE);
+        let head = self.heads.iter().find(|head| head.output == *output);
+        let whole = head.map(|head| {
+            let area = head.area();
+            let from = view.pixel(area.loc.to_f64());
+            let to = view.pixel((area.loc + area.size.to_point()).to_f64());
+            Rectangle::new(from, (to - from).to_size())
+        });
+        let key = glass::key(&("the sealed dim", output.name()));
+        let under = elements.len();
+        let blurred = whole.filter(|_| sealed.blur > 0 && sealed.see_through());
+        let blurred = blurred.and_then(|whole| {
+            Pane::behind(vec![whole], (sealed.blur, view), (key, under, under), 1.0)
+        });
+        panes.extend(blurred);
     }
 }

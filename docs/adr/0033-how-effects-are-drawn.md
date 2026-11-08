@@ -289,7 +289,11 @@ goes.
    design language, makes nothing glass until then, the panel, menus and
    notifications among them: its glass tints are there as variables
    (`--glass-thin`, `--glass-thick`, `--glass-sealed`) for a theme to use,
-   and one measurement settles them all.
+   and one measurement settles them all. The one exception is the session
+   behind the prompt that asks for a password, blurred under its dim:
+   the prompt is up seldom and briefly, nothing else is to be done while
+   it is, and being dimmed and blurred is what tells it from a window
+   that imitates it. Where blur cannot be drawn it is the dim alone.
 
 Step 3 began with a trial: that a picture drawn into through the manager
 of several GPUs can be blurred by the renderer underneath and drawn back
