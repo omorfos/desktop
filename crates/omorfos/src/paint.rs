@@ -112,21 +112,26 @@ pub(crate) fn titlebar(
     let edge = border.cast_signed();
     let mut canvas = Canvas::scaled(width, height, scale);
 
-    // The outline along the top and down each side, and the background
-    // within it alone, so that a background that can be seen through
-    // shows what is behind the titlebar, its glass if it has any.
+    // The background within the outline alone, so that a background that
+    // can be seen through shows what is behind the titlebar, its glass if
+    // it has any. It and the outline are each the top of a box taller than
+    // the titlebar by as much as its corners need, so that only its top
+    // corners are rounded.
+    let radius = looks.window.radius;
+    let below = radius.saturating_mul(2);
     let inner_height = height.saturating_sub(border);
     let inner_width = width.saturating_sub(border * 2);
-    canvas.fill((0, 0, width, border), outline.color);
-    canvas.fill((0, edge, border, inner_height), outline.color);
-    let right = width.saturating_sub(border).cast_signed();
-    canvas.fill((right, edge, border, inner_height), outline.color);
     let within = Style {
         background: looks.titlebar.background,
         gradient: looks.titlebar.gradient,
         ..Style::NONE
     };
-    canvas.draw_box((edge, edge, inner_width, inner_height), &within);
+    let inside = (edge, edge, inner_width, inner_height.saturating_add(below));
+    canvas.draw_box_within(
+        (edge, edge, inner_width, inner_height),
+        &within,
+        (inside, radius.saturating_sub(border)),
+    );
 
     for ((button, _), style) in BUTTONS.into_iter().zip(&looks.buttons) {
         let share = decoration.button(button);
@@ -165,7 +170,18 @@ pub(crate) fn titlebar(
         );
     }
 
-    canvas.round_top_corners(looks.window.radius);
+    // The outline along the top, down each side and round the corners
+    // between, over what reaches into them.
+    canvas.round_top_corners(radius);
+    let rim = Style {
+        border: Edges {
+            bottom: Line::NONE,
+            ..Edges::all(outline)
+        },
+        radius,
+        ..Style::NONE
+    };
+    canvas.draw_box((0, 0, width, height.saturating_add(below)), &rim);
     canvas
 }
 

@@ -54,6 +54,38 @@ fn the_bottom_corners_of_a_frame_are_rounded_window_and_all() {
 }
 
 #[test]
+fn the_border_follows_the_top_corners_round_as_it_does_the_bottom_ones() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    let picture = session.draw();
+
+    let (titlebar, border) = (picture.at(190, 14), picture.at(0, 60));
+    let apart = |one: u32, other: u32| {
+        (0..3)
+            .map(|channel| {
+                ((one >> (channel * 8)) & 0xff).abs_diff((other >> (channel * 8)) & 0xff)
+            })
+            .sum::<u32>()
+    };
+    // Where the curve is steep, near each side, and where it is shallow,
+    // near the top, it is mostly border, as it is round the bottom.
+    for (x, y) in [(1, 7), (7, 1), (RIGHT - 1, 7), (RIGHT - 7, 1)] {
+        let on_curve = picture.at(x, y);
+        assert!(
+            apart(on_curve, border) < apart(on_curve, titlebar),
+            "at {x}, {y}: {on_curve:#x}"
+        );
+        let below = picture.at(x, BOTTOM - y);
+        assert!(
+            apart(below, border) < apart(below, RED),
+            "at {x}, {}",
+            BOTTOM - y
+        );
+    }
+}
+
+#[test]
 fn what_is_behind_a_frame_shows_past_its_corners() {
     let mut session = Session::new();
     let mut client = session.connect();

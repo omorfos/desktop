@@ -1165,7 +1165,9 @@ the first than on the last.
       has them, padding on its grid, a row under the pointer raised and
       one chosen in the accent, and its contrast tested; solid, until
       glass has been measured. Every window's edge is a hairline, with
-      focus or without, as programs that draw their own have it.
+      focus or without, as programs that draw their own have it; and the
+      edge of a frame follows its top corners round, as it did its bottom
+      ones.
 - [ ] The light scheme, and the accent a setting: `appearance.scheme`
       and `appearance.accent`, each with what programs are told.
 - [ ] What the design language has that a theme cannot draw yet: the ring
