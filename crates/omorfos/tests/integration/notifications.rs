@@ -374,9 +374,10 @@ fn notifications_stack_and_the_oldest_makes_room_when_there_are_too_many() {
     for _ in 0..8 {
         notify(&peer, "More", 0, HashMap::new());
     }
-    // Eight are kept, which is as many as fit this screen and more.
+    // Eight are kept, which is more than fit this screen: they reach as far
+    // down as the sixth, which is the last whole one.
     until(&mut session, &mut notifier, Duration::ZERO, |session| {
-        session.draw().at(INSIDE.0, HEIGHT - 20) == surface()
+        session.draw().at(INSIDE.0, HEIGHT - 70) == surface()
     });
 }
 

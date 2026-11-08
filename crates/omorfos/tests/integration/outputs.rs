@@ -357,7 +357,10 @@ fn unplugging_an_output_moves_what_was_on_it_to_the_first() {
 
 #[test]
 fn a_session_carries_on_with_no_output_until_one_is_plugged_in() {
-    let mut session = Session::new();
+    // The menu is glass, which on a screen that has gone has nothing of any
+    // size behind it to blur.
+    let glass = "menu { background: rgba(20, 28, 56, 0.9); backdrop-filter: blur(32px); }\n";
+    let mut session = Session::with_config(&[("theme.css", glass)]);
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
     let only = session.output();

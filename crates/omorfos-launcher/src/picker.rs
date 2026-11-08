@@ -560,7 +560,7 @@ mod tests {
         let theme = Theme::default();
         // A border and padding each side, the text field with the room
         // under it, and eight rows.
-        assert_eq!(Picker::size(&theme), (480, 2 * 9 + 32 + 8 + 8 * 28));
+        assert_eq!(Picker::size(&theme), (480, 2 * 13 + 32 + 8 + 8 * 28));
         let wide = Theme::parse(
             "launcher { min-width: 600px; padding: 0; border: none; }\n\
              launcher-input { margin: 0; height: 40px; }\n\

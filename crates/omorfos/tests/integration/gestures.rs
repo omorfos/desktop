@@ -420,7 +420,7 @@ fn the_key_past_the_last_slides_in_the_one_it_makes() {
 
 /// The colour of the line between windows that share a workspace in the
 /// built-in theme.
-const LINE: u32 = 0xff2c_303a;
+const LINE: u32 = 0xff2b_3a6b;
 
 /// Four workspaces, and a blue window sharing the first with nothing beside
 /// it, where the red one of the desktop it was made from is offered.

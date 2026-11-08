@@ -214,6 +214,21 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   Once it clamps, the shader's `clamp` may go: take it out and run
   `cargo test -p omorfos --all-features --test integration -- --include-ignored gpu::the_cards_shader`.
 
+### Reading back a picture of no pixels in software is undefined
+
+- **Wrong:** `ExportMem::map_texture` of the pixman renderer
+  (`src/backend/renderer/pixman/mod.rs`) makes its slice with
+  `slice::from_raw_parts` from the image's data, which for an image of
+  no pixels is a null pointer: undefined behaviour even for an empty
+  slice, and a build with debug assertions aborts there. It should give
+  an empty slice for an empty mapping.
+- **Meanwhile:** glass makes no picture of an area with nothing in it
+  (`Picture::new` in `crates/omorfos/src/glass.rs`), as on a screen that
+  has gone, so nothing of no size is read back.
+- **Check:** `grep -n -B2 -A8 'fn map_texture' "$S"/src/backend/renderer/pixman/mod.rs`.
+  Once it handles an empty mapping, the guard may stay: it also saves
+  making a picture of nothing.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### No safe way to hold a stream's buffer or give one memory

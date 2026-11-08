@@ -43,9 +43,12 @@ pub(crate) fn plain() -> u32 {
 
 /// The colour of the line under what is lit.
 fn accent() -> u32 {
+    let active = States::NONE.with(omorfos_config::State::Active);
     argb(
         Theme::default()
-            .style(Part::NoticeHeading, States::NONE)
+            .style(Part::Workspace, active)
+            .border
+            .bottom
             .color,
     )
 }

@@ -12,7 +12,7 @@ const DELAY: Duration = Duration::from_millis(100);
 /// The colour the theme in effect picks things out in.
 fn accent(store: &Store) -> Color {
     let theme = &store.current().theme;
-    theme.style(Part::NoticeHeading, States::NONE).color
+    theme.style(Part::Picker, States::NONE).border.top.color
 }
 
 #[test]

@@ -18,7 +18,7 @@ use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
 /// The dot in the middle of the mark that says the screen is captured.
-const DOT: u32 = 0xfff0_524f;
+const DOT: u32 = 0xfff8_616d;
 /// The middle of the mark: it is 24 by 16, and 8 from the top and the
 /// right of the screen.
 const MARK: (i32, i32) = (WIDTH - 8 - 12, 8 + 8);

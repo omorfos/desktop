@@ -686,14 +686,17 @@ mod tests {
     const ACTIVE: States = States::NONE.with(State::Active);
     const HOVERED: States = States::NONE.with(State::Hovered);
 
-    const BACKGROUND: Color = Color::rgb(0x14, 0x16, 0x1b);
-    const ACCENT: Color = Color::rgb(0x5b, 0x9c, 0xf5);
-    const SURFACE: Color = Color::rgb(0x23, 0x26, 0x2e);
-    const SURFACE_DIM: Color = Color::rgb(0x1b, 0x1d, 0x23);
-    const TEXT: Color = Color::rgb(0xe6, 0xe8, 0xee);
-    const TEXT_DIM: Color = Color::rgb(0x8b, 0x90, 0xa0);
-    const BORDER: Color = Color::rgb(0x2c, 0x30, 0x3a);
-    const BORDER_STRONG: Color = Color::rgb(0x7a, 0x80, 0x90);
+    const BACKGROUND: Color = Color::rgb(0x0c, 0x12, 0x26);
+    const ACCENT: Color = Color::rgb(0x22, 0xd3, 0xee);
+    const SURFACE: Color = Color::rgb(0x14, 0x1c, 0x38);
+    const SURFACE_DIM: Color = Color::rgb(0x10, 0x17, 0x2f);
+    const TEXT: Color = Color::rgb(0xe6, 0xea, 0xf5);
+    const TEXT_DIM: Color = Color::rgb(0x9a, 0xa4, 0xc7);
+    const BORDER: Color = Color::rgb(0x2b, 0x3a, 0x6b);
+    const BORDER_STRONG: Color = Color::rgb(0x74, 0x82, 0xb3);
+    const SURFACE_RAISED: Color = Color::rgb(0x24, 0x33, 0x64);
+    const ON_ACCENT: Color = BACKGROUND;
+    const DANGER: Color = Color::rgb(0xf8, 0x61, 0x6d);
     const RED: Color = Color::rgb(255, 0, 0);
 
     fn line(color: Color, width: u32) -> Line {
@@ -1063,16 +1066,136 @@ mod tests {
         );
     }
 
+    /// How much brighter the brighter of two opaque colours is than the
+    /// other, as WCAG 2 measures it: from 1, the same, to 21.
+    fn contrast(one: Color, other: Color) -> f64 {
+        let luminance = |color: Color| {
+            let linear = |channel: u8| {
+                let share = f64::from(channel) / 255.0;
+                if share <= 0.040_45 {
+                    share / 12.92
+                } else {
+                    ((share + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
+        };
+        let (one, other) = (luminance(one), luminance(other));
+        (one.max(other) + 0.05) / (one.min(other) + 0.05)
+    }
+
     #[test]
-    fn a_frame_has_a_border_in_the_colour_of_its_focus() {
+    fn the_built_in_theme_meets_the_contrast_the_design_language_asks() {
+        let (black, white) = (Color::rgb(0, 0, 0), Color::rgb(255, 255, 255));
+        assert!(
+            (contrast(black, white) - 21.0).abs() < 0.01,
+            "as WCAG has it"
+        );
+        let theme = Theme::default();
+        let style = |part, states| theme.style(part, states);
+        let hovered = States::NONE.with(State::Hovered);
+        // Text, and what it is written on: the part's own background, or
+        // that of the part it is in where its own is clear.
+        let written = [
+            (style(Part::Titlebar, FOCUSED), None),
+            (style(Part::Titlebar, States::NONE), None),
+            (style(Part::Tab, FOCUSED.with(State::Active)), None),
+            (style(Part::Tab, States::NONE), None),
+            (style(Part::Menu, States::NONE), None),
+            (style(Part::MenuItem, States::NONE), Some(Part::Menu)),
+            (style(Part::MenuItem, hovered), None),
+            (style(Part::Notice, States::NONE), None),
+            (style(Part::NoticeHeading, States::NONE), Some(Part::Notice)),
+            (style(Part::Tooltip, States::NONE), None),
+            (style(Part::Panel, States::NONE), None),
+            (style(Part::Workspace, States::NONE), Some(Part::Panel)),
+            (style(Part::Task, ACTIVE), None),
+            (style(Part::Clock, States::NONE), Some(Part::Panel)),
+            (style(Part::Launcher, States::NONE), None),
+            (style(Part::LauncherInput, States::NONE), None),
+            (
+                style(Part::LauncherItem, States::NONE),
+                Some(Part::Launcher),
+            ),
+            (style(Part::LauncherItem, ACTIVE), None),
+            (
+                style(Part::LauncherDescription, States::NONE),
+                Some(Part::Launcher),
+            ),
+            (
+                style(Part::LauncherDescription, ACTIVE),
+                Some(Part::LauncherItem),
+            ),
+            (style(Part::Notification, States::NONE), None),
+            (
+                style(Part::NotificationBody, States::NONE),
+                Some(Part::Notification),
+            ),
+            (style(Part::Question, States::NONE), None),
+            (
+                style(Part::QuestionDetail, States::NONE),
+                Some(Part::Question),
+            ),
+            (style(Part::QuestionButton, States::NONE), None),
+            (style(Part::QuestionButton, ACTIVE), None),
+            (style(Part::QuestionInput, States::NONE), None),
+            (style(Part::QuestionInput, ACTIVE), None),
+            (
+                style(Part::SwitcherTitle, States::NONE),
+                Some(Part::Switcher),
+            ),
+        ];
+        for (index, (text, within)) in written.into_iter().enumerate() {
+            let under = within.map_or(text.background, |part| {
+                let states = if part == Part::LauncherItem {
+                    ACTIVE
+                } else {
+                    States::NONE
+                };
+                style(part, states).background
+            });
+            let ratio = contrast(text.color, under);
+            assert!(ratio >= 4.5, "text {index}: {ratio:.2} to 1");
+        }
+        // The edge of what takes input, and what says a state without
+        // words, against what it is drawn on.
+        let edges = [
+            (
+                style(Part::QuestionInput, States::NONE).border.top.color,
+                SURFACE,
+            ),
+            (
+                style(Part::Tab, FOCUSED.with(State::Active))
+                    .border
+                    .bottom
+                    .color,
+                SURFACE,
+            ),
+            (
+                style(Part::Task, ACTIVE).border.bottom.color,
+                SURFACE_RAISED,
+            ),
+            (
+                style(Part::Picker, States::NONE).border.top.color,
+                BACKGROUND,
+            ),
+        ];
+        for (index, (edge, under)) in edges.into_iter().enumerate() {
+            let ratio = contrast(edge, under);
+            assert!(ratio >= 3.0, "edge {index}: {ratio:.2} to 1");
+        }
+    }
+
+    #[test]
+    fn a_frame_has_a_hairline_border_with_focus_or_without() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, Edges::all(line(BORDER_STRONG, 1)));
-        assert_eq!(focused.radius, 8);
+        assert_eq!(focused.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(focused.radius, 12);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
         assert_eq!(other.border, Edges::all(line(BORDER, 1)));
-        assert_eq!(other.radius, 8);
+        assert_eq!(other.radius, 12);
     }
 
     #[test]
@@ -1125,9 +1248,9 @@ mod tests {
         let shown = theme.style(Part::Tab, FOCUSED.with(State::Active));
         assert_eq!((shown.background, shown.color), (SURFACE, TEXT));
         assert_eq!(shown.border.bottom, line(ACCENT, 2));
-        assert_eq!(shown.border.left, line(BORDER_STRONG, 1));
+        assert_eq!(shown.border.left, line(BORDER, 1));
         assert_eq!((shown.border.top.width, shown.border.right.width), (0, 0));
-        assert_eq!(shown.padding.across(), 20);
+        assert_eq!(shown.padding.across(), 24);
 
         // In a frame without focus the line is there but does not stand out.
         let shown = theme.style(Part::Tab, ACTIVE);
@@ -1137,20 +1260,21 @@ mod tests {
         let behind = theme.style(Part::Tab, FOCUSED);
         assert_eq!((behind.background, behind.color), (SURFACE_DIM, TEXT_DIM));
         assert_eq!(behind.border.bottom.width, 0);
-        assert_eq!(behind.border.left, line(BORDER_STRONG, 1));
+        assert_eq!(behind.border.left, line(BORDER, 1));
     }
 
     #[test]
-    fn the_menu_row_under_the_pointer_is_filled_with_the_accent() {
+    fn the_menu_row_under_the_pointer_is_raised() {
         let theme = Theme::default();
         let menu = theme.style(Part::Menu, States::NONE);
         assert_eq!((menu.background, menu.color), (SURFACE, TEXT));
         assert_eq!(menu.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(menu.radius, 10);
         let row = theme.style(Part::MenuItem, States::NONE);
         assert_eq!((row.background, row.color), (CLEAR, TEXT));
-        assert_eq!((row.padding.left, row.padding.right), (10, 10));
+        assert_eq!((row.padding.left, row.padding.right), (12, 12));
         let under = theme.style(Part::MenuItem, HOVERED);
-        assert_eq!((under.background, under.color), (ACCENT, BACKGROUND));
+        assert_eq!((under.background, under.color), (SURFACE_RAISED, TEXT));
         assert_eq!((row.height, under.height), (28, 28));
         let separator = theme.style(Part::MenuSeparator, States::NONE);
         assert_eq!(separator.color, BORDER);
@@ -1169,7 +1293,8 @@ mod tests {
         let theme = Theme::default();
         let question = theme.style(Part::Question, States::NONE);
         assert_eq!((question.background, question.color), (SURFACE, TEXT));
-        assert_eq!(question.border, Edges::all(line(ACCENT, 1)));
+        assert_eq!(question.border, Edges::all(line(BORDER_STRONG, 1)));
+        assert_eq!(question.radius, 12);
         assert_eq!(
             theme.style(Part::QuestionDetail, States::NONE).color,
             TEXT_DIM
@@ -1177,7 +1302,7 @@ mod tests {
         let button = theme.style(Part::QuestionButton, States::NONE);
         let gives = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
         assert_eq!((button.background, button.color), (SURFACE_DIM, TEXT));
-        assert_eq!((gives.background, gives.color), (ACCENT, BACKGROUND));
+        assert_eq!((gives.background, gives.color), (ACCENT, ON_ACCENT));
     }
 
     #[test]
@@ -1202,18 +1327,18 @@ mod tests {
         let tooltip = theme.style(Part::Tooltip, States::NONE);
         assert_eq!((tooltip.background, tooltip.color), (SURFACE, TEXT));
         assert_eq!(tooltip.border, Edges::all(line(BORDER, 1)));
-        assert_eq!(tooltip.radius, 6);
+        assert_eq!(tooltip.radius, 10);
     }
 
     #[test]
-    fn the_notice_is_outlined_and_headed_in_the_accent() {
+    fn the_notice_of_what_is_wrong_is_outlined_and_headed_in_the_colour_of_danger() {
         let theme = Theme::default();
         let notice = theme.style(Part::Notice, States::NONE);
         assert_eq!((notice.background, notice.color), (SURFACE, TEXT));
-        assert_eq!(notice.border, Edges::all(line(ACCENT, 1)));
-        assert_eq!(notice.padding, Edges::all(10));
+        assert_eq!(notice.border, Edges::all(line(DANGER, 1)));
+        assert_eq!(notice.padding, Edges::all(12));
         let heading = theme.style(Part::NoticeHeading, States::NONE);
-        assert_eq!(heading.color, ACCENT);
+        assert_eq!(heading.color, DANGER);
     }
 
     #[test]
@@ -1221,22 +1346,23 @@ mod tests {
         let theme = Theme::default();
         let mark = theme.style(Part::Capture, States::NONE);
         assert_eq!(mark.background, BACKGROUND);
-        assert_eq!(mark.color, Color::rgb(0xf0, 0x52, 0x4f));
+        assert_eq!(mark.color, DANGER);
     }
 
     #[test]
     fn what_is_active_on_the_panel_is_lit_and_underlined() {
         let theme = Theme::default();
         let panel = theme.style(Part::Panel, States::NONE);
-        assert_eq!((panel.background, panel.height), (SURFACE_DIM, 28));
+        assert_eq!((panel.background, panel.height), (SURFACE, 28));
         assert_eq!(panel.margin, Edges::NONE);
         for part in [Part::Workspace, Part::Task] {
             let button = theme.style(part, States::NONE);
-            assert_eq!((button.background, button.color), (CLEAR, TEXT_DIM));
+            // Written in the full colour of text, as on thin glass.
+            assert_eq!((button.background, button.color), (CLEAR, TEXT));
             assert_eq!(button.border.bottom.width, 0);
-            assert_eq!(button.padding.across(), 20);
+            assert_eq!(button.padding.across(), 24);
             let lit = theme.style(part, ACTIVE);
-            assert_eq!((lit.background, lit.color), (SURFACE, TEXT));
+            assert_eq!((lit.background, lit.color), (SURFACE_RAISED, TEXT));
             assert_eq!(lit.border.bottom, line(ACCENT, 2));
         }
         let workspace = theme.style(Part::Workspace, States::NONE);
@@ -1335,8 +1461,11 @@ mod tests {
                 .color,
             RED
         );
-        assert_eq!(theme.style(Part::MenuItem, HOVERED).background, RED);
-        assert_eq!(theme.style(Part::NoticeHeading, States::NONE).color, RED);
+        assert_eq!(theme.style(Part::LauncherItem, ACTIVE).background, RED);
+        assert_eq!(
+            theme.style(Part::Picker, States::NONE).border.top.color,
+            RED
+        );
         assert_eq!(theme.style(Part::Task, ACTIVE).border.bottom.color, RED);
         let plain = theme.style(Part::Window, States::NONE);
         assert_eq!(plain.border.top.color, BORDER);
@@ -1643,7 +1772,7 @@ mod tests {
         // the rule that did so.
         let message = problem("\nclock { height: var(--accent); }");
         assert!(
-            message.starts_with("2:17: `#5b9cf5` is not a size"),
+            message.starts_with("2:17: `#22d3ee` is not a size"),
             "{message}"
         );
     }

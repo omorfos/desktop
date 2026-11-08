@@ -9,8 +9,9 @@ use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
 /// The notice's panel colour: the default theme's focused titlebar.
-const PANEL: u32 = 0xff23_262e;
-const ACCENT: u32 = 0xff5b_9cf5;
+const PANEL: u32 = 0xff14_1c38;
+/// What is wrong is outlined in it.
+const DANGER: u32 = 0xfff8_616d;
 
 /// A point inside the notice, clear of its text: near its right edge, in
 /// the padding above the first line.
@@ -59,7 +60,7 @@ fn a_configuration_mistake_is_shown_on_screen() {
         PANEL,
         "in the top-right corner"
     );
-    assert_eq!(picture.at(WIDTH - 13, 40), ACCENT, "outlined");
+    assert_eq!(picture.at(WIDTH - 13, 40), DANGER, "outlined");
     let margin = picture.at(WIDTH - 5, 40);
     assert!(shaded(margin, BACKGROUND), "with a margin: {margin:#x}");
     assert_eq!(picture.at(100, HEIGHT - 20), BACKGROUND);

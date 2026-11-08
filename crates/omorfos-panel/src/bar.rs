@@ -297,7 +297,7 @@ mod tests {
     use omorfos_config::Color;
 
     /// The room the default theme leaves either side of a label.
-    const PADDING: u32 = 10;
+    const PADDING: u32 = 12;
     /// The widest the default theme makes a window's button.
     const WIDEST_TASK: u32 = 240;
 
@@ -308,27 +308,21 @@ mod tests {
 
     use super::*;
 
-    /// The colours of a theme, by what the built-in theme uses them for.
+    /// The colours of a bar, by what the built-in theme uses them for.
     struct Palette {
         accent: Color,
-        focused: Tone,
-        unfocused: Tone,
-    }
-
-    /// The colours of a frame and its titlebar, with focus or without.
-    #[derive(Clone, Copy)]
-    struct Tone {
-        titlebar: Color,
+        /// Where nothing is.
+        plain: Color,
+        /// Behind what is shown or has focus.
+        lit: Color,
     }
 
     fn palette(theme: &Theme) -> Palette {
-        let tone = |states| Tone {
-            titlebar: theme.style(Part::Titlebar, states).background,
-        };
+        let active = States::NONE.with(omorfos_config::State::Active);
         Palette {
-            accent: theme.style(Part::NoticeHeading, States::NONE).color,
-            focused: tone(States::NONE.with(omorfos_config::State::Focused)),
-            unfocused: tone(States::NONE),
+            accent: theme.style(Part::Workspace, active).border.bottom.color,
+            plain: theme.style(Part::Panel, States::NONE).background,
+            lit: theme.style(Part::Workspace, active).background,
         }
     }
 
@@ -478,7 +472,7 @@ mod tests {
         let theme = Theme::default();
         assert_eq!(bar.height(), theme.style(Part::Panel, States::NONE).height);
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
-        let background = palette(&theme).unfocused.titlebar;
+        let background = palette(&theme).plain;
         let all = usize::try_from(WIDTH * bar.height()).unwrap();
         assert_eq!(count(&canvas, 0..WIDTH, 0..bar.height(), background), all);
     }
@@ -588,31 +582,21 @@ mod tests {
                 count(&canvas, lit.clone(), underline.clone(), colors.accent),
                 wide * 2
             );
-            assert!(
-                count(
-                    &canvas,
-                    lit.clone(),
-                    0..height - LINE,
-                    colors.focused.titlebar
-                ) > 0
-            );
-            assert_eq!(count(&canvas, lit, 0..height, colors.unfocused.titlebar), 0);
+            assert!(count(&canvas, lit.clone(), 0..height - LINE, colors.lit) > 0);
+            assert_eq!(count(&canvas, lit, 0..height, colors.plain), 0);
         }
         // The first workspace and the first window.
         for plain in [starts[0]..starts[1], starts[2]..starts[3]] {
             assert_eq!(count(&canvas, plain.clone(), 0..height, colors.accent), 0);
-            assert_eq!(
-                count(&canvas, plain.clone(), 0..height, colors.focused.titlebar),
-                0
-            );
+            assert_eq!(count(&canvas, plain.clone(), 0..height, colors.lit), 0);
             // Its label is there, and keeps clear of the button's edges.
             let wide = usize::try_from(plain.end - plain.start).unwrap();
             let tall = usize::try_from(height).unwrap();
-            let background = count(&canvas, plain.clone(), 0..height, colors.unfocused.titlebar);
+            let background = count(&canvas, plain.clone(), 0..height, colors.plain);
             assert!(background < wide * tall, "nothing is written on it");
             let edge = plain.start..plain.start + PADDING;
             assert_eq!(
-                count(&canvas, edge, 0..height, colors.unfocused.titlebar),
+                count(&canvas, edge, 0..height, colors.plain),
                 usize::try_from(PADDING).unwrap() * tall
             );
         }
@@ -650,7 +634,7 @@ mod tests {
     #[test]
     fn the_time_is_at_the_right_hand_end_and_is_not_a_button() {
         let theme = Theme::default();
-        let background = palette(&theme).unfocused.titlebar;
+        let background = palette(&theme).plain;
         let bar = timed(&state(), "left", "14:05");
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let height = bar.height();
@@ -718,7 +702,7 @@ mod tests {
         );
         // And it is written there.
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
-        let background = palette(&theme).unfocused.titlebar;
+        let background = palette(&theme).plain;
         let height = bar.height();
         let all = usize::try_from(20 * height).unwrap();
         assert!(count(&canvas, found..found + 20, 0..height, background) < all);
@@ -833,8 +817,8 @@ mod tests {
             let span = spans(bar)[index];
             span.1 - span.0
         };
-        // Twenty a side more than the ten the theme has.
-        assert_eq!(width(&padded, 1), width(&plain, 1) + 40);
+        // Eighteen a side more than the twelve the theme has.
+        assert_eq!(width(&padded, 1), width(&plain, 1) + 36);
     }
 
     #[test]

@@ -170,7 +170,7 @@ fn glass_has_its_corners_rounded_as_its_part_does() {
     assert_eq!(picture.at(20, 15), 0xffff_ffff);
     assert_eq!(
         picture.at(WIDTH - 1, 0),
-        0xff8a_8b8d,
+        0xff86_8993,
         "the tint over the desktop"
     );
 }
@@ -333,7 +333,7 @@ fn a_titlebars_glass_is_rounded_above_as_its_window_is_and_square_below() {
     assert_eq!(picture.at(32, 60), BLUE, "the window under it");
     // What is drawn on the titlebar is over its glass: the button that
     // closes the window, in its colour, in the middle of it.
-    assert_eq!(picture.at(48, 46), 0xffe0_6c75, "the close button over it");
+    assert_eq!(picture.at(48, 46), 0xfff8_616d, "the close button over it");
 }
 
 #[test]

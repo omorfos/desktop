@@ -174,10 +174,9 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
 }
 
 /// Colours of the default theme, as `0xAARRGGBB`.
-const BORDER_STRONG: u32 = 0xff7a_8090;
-const FOCUSED_TITLEBAR: u32 = 0xff23_262e;
-const UNFOCUSED_TITLEBAR: u32 = 0xff1b_1d23;
-const UNFOCUSED_BORDER: u32 = 0xff2c_303a;
+const HAIRLINE: u32 = 0xff2b_3a6b;
+const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
+const UNFOCUSED_TITLEBAR: u32 = 0xff10_172f;
 
 #[test]
 fn a_decorated_frame_is_drawn_with_a_titlebar_and_borders() {
@@ -195,12 +194,12 @@ fn a_decorated_frame_is_drawn_with_a_titlebar_and_borders() {
     );
     assert_eq!(
         picture.at(100, 0),
-        BORDER_STRONG,
-        "the focused frame's outline is the strong edge"
+        HAIRLINE,
+        "the focused frame's outline is a hairline"
     );
-    assert_eq!(picture.at(0, 60), BORDER_STRONG, "left border");
-    assert_eq!(picture.at(201, 60), BORDER_STRONG, "right border");
-    assert_eq!(picture.at(100, 128), BORDER_STRONG, "bottom border");
+    assert_eq!(picture.at(0, 60), HAIRLINE, "left border");
+    assert_eq!(picture.at(201, 60), HAIRLINE, "right border");
+    assert_eq!(picture.at(100, 128), HAIRLINE, "bottom border");
     // Beyond the frame there is only its shadow.
     for (x, y, place) in [
         (0, 0, "the top corners are rounded"),
@@ -241,7 +240,7 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
 
     let picture = session.draw();
     assert_eq!(picture.at(190, 14), UNFOCUSED_TITLEBAR);
-    assert_eq!(picture.at(0, 100), UNFOCUSED_BORDER);
+    assert_eq!(picture.at(0, 100), HAIRLINE);
 }
 
 #[test]
@@ -309,11 +308,11 @@ fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
         between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
         "{titlebar:#x}"
     );
-    assert!(between(border, BACKGROUND, BORDER_STRONG), "{border:#x}");
+    assert!(between(border, BACKGROUND, HAIRLINE), "{border:#x}");
     assert!(between(window, BACKGROUND, RED), "{window:#x}");
 
     session.advance(Duration::from_millis(50));
-    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, BORDER_STRONG, RED]);
+    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, HAIRLINE, RED]);
     assert_eq!(session.compositor_mut().deadline(), None, "and at rest");
     session.step();
     assert!(!session.draw().damaged, "and not drawn again");
@@ -332,7 +331,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
         let picture = session.draw();
         [picture.at(190, 14), picture.at(0, 100), picture.at(100, 80)]
     };
-    let whole = [FOCUSED_TITLEBAR, BORDER_STRONG, RED];
+    let whole = [FOCUSED_TITLEBAR, HAIRLINE, RED];
     session.open_decorated(&mut client, "first", (200, 100), RED);
     session.advance(Duration::from_millis(100));
     assert_eq!(seen(&mut session), whole);
@@ -351,7 +350,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
         between(titlebar, BACKGROUND, FOCUSED_TITLEBAR),
         "{titlebar:#x}"
     );
-    assert!(between(border, BACKGROUND, BORDER_STRONG), "{border:#x}");
+    assert!(between(border, BACKGROUND, HAIRLINE), "{border:#x}");
     assert!(between(window, BACKGROUND, RED), "{window:#x}");
 
     session.advance(Duration::from_millis(50));
@@ -503,13 +502,13 @@ fn a_window_of_one_colour_fades_out_too() {
 /// The colours of a titlebar's buttons under the default theme: close,
 /// maximize and minimize when their frame has focus, and all of them when
 /// it has not.
-const BUTTONS: [u32; 3] = [0xffe0_6c75, 0xff98_c379, 0xffe5_c07b];
-const PLAIN_BUTTON: u32 = 0xff2c_303a;
+const BUTTONS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
+const PLAIN_BUTTON: u32 = 0xff2b_3a6b;
 
 /// The middle of each button of a frame whose corner is at the screen's.
-const CLOSE: (i32, i32) = (16, 14);
-const MAXIMIZE: (i32, i32) = (36, 14);
-const MINIMIZE: (i32, i32) = (56, 14);
+const CLOSE: (i32, i32) = (18, 14);
+const MAXIMIZE: (i32, i32) = (38, 14);
+const MINIMIZE: (i32, i32) = (58, 14);
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -635,7 +634,7 @@ fn a_button_is_coloured_under_the_pointer_whether_or_not_its_frame_has_focus() {
     session.step();
     let buttons = |session: &mut Session| {
         let picture = session.draw();
-        [(11, 14), (31, 14), (51, 14)].map(|(x, y)| picture.at(x, y))
+        [(13, 14), (33, 14), (53, 14)].map(|(x, y)| picture.at(x, y))
     };
     assert_eq!(buttons(&mut session), [PLAIN_BUTTON; 3]);
 

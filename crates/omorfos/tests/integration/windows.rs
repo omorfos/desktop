@@ -9,8 +9,8 @@ use crate::common::{Event, HEIGHT, Session, WIDTH};
 pub(crate) const RED: u32 = 0xffff_0000;
 pub(crate) const BLUE: u32 = 0xff00_00ff;
 pub(crate) const GREEN: u32 = 0xff00_ff00;
-/// The default theme's background, `#14161b`.
-pub(crate) const BACKGROUND: u32 = 0xff14_161b;
+/// The default theme's background, `#0c1226`.
+pub(crate) const BACKGROUND: u32 = 0xff0c_1226;
 
 /// Whether `pixel` is `color`, in the open or in the shadow of something
 /// beside it: darkened evenly, as black over it darkens it, by no more than
@@ -32,23 +32,23 @@ pub(crate) fn shaded(pixel: u32, color: u32) -> bool {
 #[test]
 fn a_colour_in_a_shadow_is_darkened_evenly_and_nothing_else() {
     assert!(shaded(BACKGROUND, BACKGROUND), "in the open");
-    assert!(shaded(0xff0f_1014, BACKGROUND), "under a shadow");
+    assert!(shaded(0xff09_0e1c, BACKGROUND), "under a shadow");
     assert!(shaded(0xffbb_0000, RED));
-    assert!(!shaded(0xff2c_303a, BACKGROUND), "lighter, as a border is");
+    assert!(!shaded(0xff2b_3a6b, BACKGROUND), "lighter, as a border is");
     assert!(
-        !shaded(0xff1b_1d23, BACKGROUND),
+        !shaded(0xff10_172f, BACKGROUND),
         "lighter, as a titlebar is"
     );
     assert!(
-        !shaded(0xff15_171b, BACKGROUND),
+        !shaded(0xff0d_1327, BACKGROUND),
         "a little lighter, as the edge of a curve is"
     );
-    assert!(!shaded(0xff14_1614, BACKGROUND), "of another hue");
+    assert!(!shaded(0xff0c_120c, BACKGROUND), "of another hue");
     assert!(
         !shaded(0xff00_0000, BACKGROUND),
         "darker than shadows make it"
     );
-    assert!(!shaded(0x8014_161b, BACKGROUND), "see-through");
+    assert!(!shaded(0x800c_1226, BACKGROUND), "see-through");
     assert!(!shaded(0xff10_0000, 0xff00_0000), "black is only black");
 }
 

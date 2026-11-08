@@ -875,11 +875,11 @@ mod tests {
         let mut stack = Stack::new(5);
         stack.show(level(1, Some("volume"), 50), START);
         // A line of title, and the bar under it with its room above.
-        let height = 1 + 10 + 18 + 8 + 6 + 10 + 1;
+        let height = 1 + 12 + 18 + 8 + 6 + 12 + 1;
         assert_eq!(tall(&stack, &theme, 0), height);
         let style = theme.style(Part::NotificationLevel, States::NONE);
         let canvas = painted(&stack, &theme, 0);
-        let (left, width, middle) = (1 + 12, 340 - 2 - 24, 1 + 10 + 18 + 8 + 3);
+        let (left, width, middle) = (1 + 12, 340 - 2 - 24, 1 + 12 + 18 + 8 + 3);
         assert_eq!(
             canvas.at(left + width / 4, middle),
             argb(style.color),
@@ -908,7 +908,7 @@ mod tests {
         stack.show(note(1, "Title alone", ""), START);
         // A border and padding inside, and one line of title, with the
         // margin round it.
-        let one = 1 + 10 + 18 + 10 + 1;
+        let one = 1 + 12 + 18 + 12 + 1;
         let first = stack.layout(&theme)[0].key;
         let alone = Place {
             key: first,
@@ -942,7 +942,7 @@ mod tests {
         // The other with its body written under its title.
         let canvas = painted(&stack, &theme, 0);
         let mut body =
-            (1 + 10 + 18..1 + 10 + 18 + 2 * 18).flat_map(|y| (13..327).map(move |x| (x, y)));
+            (1 + 12 + 18..1 + 12 + 18 + 2 * 18).flat_map(|y| (13..327).map(move |x| (x, y)));
         assert!(body.any(|(x, y)| canvas.at(x, y) != surface), "written");
     }
 
@@ -1036,10 +1036,10 @@ mod tests {
         };
         stack.show(pictured, START);
         // Taller than its one line of words: as tall as the picture.
-        assert_eq!(tall(&stack, &theme, 0), 1 + 10 + 40 + 10 + 1);
+        assert_eq!(tall(&stack, &theme, 0), 1 + 12 + 40 + 12 + 1);
         let canvas = painted(&stack, &theme, 0);
         let left = 1 + 12;
-        assert_eq!(canvas.at(left, 11), 0xff00_ff00);
+        assert_eq!(canvas.at(left, 13), 0xff00_ff00);
         assert_eq!(canvas.at(left + 39, 11 + 39), 0xff00_ff00);
         let surface = argb(theme.style(Part::Notification, States::NONE).background);
         let gap = left + 40..left + 40 + GAP;

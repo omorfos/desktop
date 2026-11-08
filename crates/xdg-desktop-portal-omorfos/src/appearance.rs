@@ -15,11 +15,12 @@ pub struct Appearance {
 
 impl Appearance {
     /// How a theme looks: dark as [`Theme::dark`] says, and what picks
-    /// things out is what it lights the row of a menu under the pointer
-    /// with.
+    /// things out is what it fills the row chosen in the launcher with.
+    /// A row under the pointer is not the accent but raised, as the design
+    /// language has it.
     #[must_use]
     pub fn of(theme: &Theme) -> Self {
-        let picked = theme.style(Part::MenuItem, States::NONE.with(State::Hovered));
+        let picked = theme.style(Part::LauncherItem, States::NONE.with(State::Active));
         let share = |channel: u8| f64::from(channel) / f64::from(u8::MAX);
         let accent = picked.ground();
         Self {
@@ -41,19 +42,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_built_in_theme_is_dark_with_a_blue_accent() {
+    fn the_built_in_theme_is_dark_with_a_cyan_accent() {
         let appearance = Appearance::of(&Theme::default());
         assert!(appearance.dark);
         assert_eq!(appearance.scheme(), 1);
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);
-        assert!((blue - f64::from(0xf5_u8) / 255.0).abs() < 1e-9);
+        assert!((blue - f64::from(0xee_u8) / 255.0).abs() < 1e-9);
     }
 
     #[test]
     fn a_theme_that_writes_dark_on_light_is_light() {
         let theme = "menu { background: #ffffff; color: #101010; }\n\
-                     menu-item:hover { background: #ff0000; }";
+                     launcher-item:active { background: #ff0000; }";
         let appearance = Appearance::of(&Theme::parse(theme).unwrap());
         assert!(!appearance.dark);
         assert_eq!(appearance.scheme(), 2);

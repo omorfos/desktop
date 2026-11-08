@@ -14,8 +14,9 @@ const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
 
 /// Colours of the default theme, as `0xAARRGGBB`.
-const ACCENT: u32 = 0xff5b_9cf5;
-const PANEL: u32 = 0xff23_262e;
+/// A row under the pointer, raised.
+const RAISED: u32 = 0xff24_3364;
+const PANEL: u32 = 0xff14_1c38;
 
 /// Second / ---- / More > (Quit)
 const MENU: &str = "
@@ -98,7 +99,7 @@ fn the_row_under_the_pointer_is_highlighted() {
     move_to(&mut session, 400, 218);
     session.step();
 
-    assert_eq!(session.draw().at(510, 218), ACCENT);
+    assert_eq!(session.draw().at(510, 218), RAISED);
 }
 
 #[test]
@@ -110,11 +111,11 @@ fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
     open_menu(&mut session);
     move_to(&mut session, 400, 201);
     session.step();
-    assert_eq!(session.draw().at(510, 201), ACCENT, "under the top border");
+    assert_eq!(session.draw().at(510, 201), RAISED, "under the top border");
     move_to(&mut session, 400, 265);
     session.step();
-    assert_eq!(session.draw().at(510, 265), ACCENT, "over the bottom one");
-    assert_ne!(session.draw().at(510, 266), ACCENT, "which is not a row");
+    assert_eq!(session.draw().at(510, 265), RAISED, "over the bottom one");
+    assert_ne!(session.draw().at(510, 266), RAISED, "which is not a row");
 
     // Padded, the rows begin and end that far in, at the sides too.
     let theme = "menu { padding: 6px 8px 10px; }";
@@ -126,12 +127,12 @@ fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
     move_to(&mut session, 400, 207);
     session.step();
     let picture = session.draw();
-    assert_eq!(picture.at(510, 207), ACCENT, "the first row");
+    assert_eq!(picture.at(510, 207), RAISED, "the first row");
     assert_eq!(picture.at(304, 207), PANEL, "but for the padding beside it");
     move_to(&mut session, 400, 271);
     session.step();
     let picture = session.draw();
-    assert_eq!(picture.at(510, 271), ACCENT, "the last row");
+    assert_eq!(picture.at(510, 271), RAISED, "the last row");
     assert_eq!(picture.at(510, 272), PANEL, "and the padding below it");
 }
 
@@ -331,12 +332,12 @@ fn the_arrows_go_through_the_rows_and_enter_chooses_one() {
     assert_eq!(session.draw().at(510, 218), PANEL, "nothing is highlighted");
 
     press(&mut session, &[key::DOWN]);
-    assert_eq!(session.draw().at(510, 218), ACCENT, "the first row");
+    assert_eq!(session.draw().at(510, 218), RAISED, "the first row");
 
     press(&mut session, &[key::DOWN]);
     let picture = session.draw();
     assert_eq!(picture.at(510, 218), PANEL);
-    assert_eq!(picture.at(510, 255), ACCENT, "past the separator");
+    assert_eq!(picture.at(510, 255), RAISED, "past the separator");
 
     press(&mut session, &[key::UP, key::RETURN]);
     assert_eq!(session.compositor().desktop().active_workspace(), 1);
@@ -350,14 +351,14 @@ fn right_goes_into_a_submenu_and_left_comes_back_out() {
 
     press(&mut session, &[key::UP, key::RIGHT]);
     let picture = session.draw();
-    assert_eq!(picture.at(290, 255), ACCENT, "its first row is highlighted");
-    assert_eq!(picture.at(510, 255), ACCENT, "and the row it belongs to");
+    assert_eq!(picture.at(290, 255), RAISED, "its first row is highlighted");
+    assert_eq!(picture.at(510, 255), RAISED, "and the row it belongs to");
 
     press(&mut session, &[key::LEFT]);
     let picture = session.draw();
     let gone = picture.at(290, 255);
     assert!(shaded(gone, BACKGROUND), "the submenu is gone: {gone:#x}");
-    assert_eq!(picture.at(510, 255), ACCENT);
+    assert_eq!(picture.at(510, 255), RAISED);
 
     press(&mut session, &[key::RETURN, key::RETURN]);
     assert!(!session.compositor().is_running(), "Quit was chosen");

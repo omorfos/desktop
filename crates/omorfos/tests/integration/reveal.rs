@@ -14,7 +14,7 @@ use crate::common::{Client, Event, LayerShape, Session, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
-const TITLEBAR: u32 = 0xff23_262e;
+const TITLEBAR: u32 = 0xff14_1c38;
 /// How long the pointer rests against an edge before what is there comes
 /// back.
 const REST: Duration = Duration::from_millis(600);

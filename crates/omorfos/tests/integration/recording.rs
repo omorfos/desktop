@@ -15,7 +15,7 @@ use crate::common::{Session, WIDTH, runnable};
 use crate::windows::BACKGROUND;
 
 /// The colour the signs of the mark are drawn in.
-const INK: u32 = 0xfff0_524f;
+const INK: u32 = 0xfff8_616d;
 
 /// A session whose watcher says, of the process the tests run in, that it
 /// records from the microphone, the sound that plays and the camera, and is

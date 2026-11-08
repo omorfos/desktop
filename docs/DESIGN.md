@@ -229,9 +229,12 @@ straight down.
 ## Focus
 
 - The window with focus has its titlebar in `--surface` and its text in
-  `--text`; the others are in `--surface-dim` and `--text-dim`. Its edge
-  is `--border-strong`, not the accent: a ring of accent round every
-  focused window is louder than it need be once there are shadows.
+  `--text`, its buttons in their colours and its shadow deeper; the
+  others are in `--surface-dim` and `--text-dim`. Every window's edge is
+  the `--border` hairline, with focus or without, as programs that draw
+  their own have it: a brighter edge round the focused window is louder
+  than it need be once there are shadows, and stands out beside a
+  program's own.
 - Inside a surface, what the keyboard is on has a ring: 2 pixels of the
   accent, 2 pixels out from the thing. It shows when the keyboard is
   being used and not when the pointer is.

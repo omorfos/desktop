@@ -674,6 +674,10 @@ mod tests {
     /// The colours of a theme, by what the built-in theme uses them for.
     struct Palette {
         accent: Color,
+        /// A row under the pointer.
+        raised: Color,
+        /// What is wrong.
+        danger: Color,
         focused: Tone,
         unfocused: Tone,
     }
@@ -691,7 +695,11 @@ mod tests {
             titlebar: theme.style(Part::Titlebar, states).background,
         };
         Palette {
-            accent: theme.style(Part::NoticeHeading, States::NONE).color,
+            accent: theme.style(Part::Picker, States::NONE).border.top.color,
+            raised: theme
+                .style(Part::MenuItem, States::NONE.with(State::Hovered))
+                .background,
+            danger: theme.style(Part::NoticeHeading, States::NONE).color,
             focused: tone(States::NONE.with(State::Focused)),
             unfocused: tone(States::NONE),
         }
@@ -817,7 +825,7 @@ mod tests {
         let lit = menu_panel(&mut text, &theme, &menu);
         assert_eq!(
             lit.at(190, 10),
-            argb(colors.accent),
+            argb(colors.raised),
             "the hovered row is highlighted"
         );
         assert_eq!(
@@ -878,11 +886,11 @@ mod tests {
 
         // A heading and two problems, 22 pixels each, inside the padding
         // and the border.
-        assert_eq!((canvas.width(), canvas.height()), (400, 88));
+        assert_eq!((canvas.width(), canvas.height()), (400, 92));
         assert_eq!(
             canvas.at(0, 40),
-            argb(colors.accent),
-            "outlined in the accent colour"
+            argb(colors.danger),
+            "outlined in the colour of danger"
         );
         assert_eq!(canvas.at(395, 40), argb(colors.focused.titlebar));
         let row = |top: u32| (10..300).flat_map(move |x| (top..top + 22).map(move |y| (x, y)));
@@ -892,7 +900,7 @@ mod tests {
                 .count()
         };
         assert!(
-            ink(10) > 30 && ink(32) > 30 && ink(54) > 30,
+            ink(13) > 30 && ink(35) > 30 && ink(57) > 30,
             "three lines of text"
         );
     }
@@ -904,10 +912,10 @@ mod tests {
         let many: Vec<String> = (0..40).map(|n| format!("problem {n}")).collect();
         let exactly = notice(&mut text, &Theme::default(), &few, 400, Scale::ONE);
         let capped = notice(&mut text, &Theme::default(), &many, 400, Scale::ONE);
-        assert_eq!(exactly.height(), 7 * 22 + 22, "a heading and six problems");
+        assert_eq!(exactly.height(), 7 * 22 + 26, "a heading and six problems");
         assert_eq!(
             capped.height(),
-            8 * 22 + 22,
+            8 * 22 + 26,
             "the same, and a line counting the rest"
         );
     }
@@ -1005,18 +1013,18 @@ mod tests {
 
     /// The colours the built-in theme gives the buttons of a frame with
     /// focus, from the left, and the one it gives them all without.
-    const BUTTON_COLORS: [u32; 3] = [0xffe0_6c75, 0xff98_c379, 0xffe5_c07b];
-    const BUTTON_PLAIN: u32 = 0xff2c_303a;
+    const BUTTON_COLORS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
+    const BUTTON_PLAIN: u32 = 0xff2b_3a6b;
 
     /// The middle of each button under the built-in theme: twelve across
     /// with room around them, the first further in than the others.
-    const BUTTON_MIDDLES: [u32; 3] = [16, 36, 56];
+    const BUTTON_MIDDLES: [u32; 3] = [18, 38, 58];
 
     /// A frame with room for the buttons the built-in theme has.
     fn buttoned() -> Decoration {
         let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
         let metrics = FrameMetrics {
-            buttons: [26, 20, 20],
+            buttons: [28, 20, 20],
             ..METRICS
         };
         Decoration::new(outer, metrics, 1)
@@ -1075,20 +1083,20 @@ mod tests {
 
         // A cross of two diagonals six long, a plus of two bars, and a bar.
         let close = hovering(Some(Button::Close), true);
-        assert_eq!(count(&close, 16), 12);
-        assert_eq!(close.at(13, 11), ink, "from one corner");
-        assert_eq!(close.at(18, 11), ink, "and from the other");
-        assert_eq!(count(&close, 36), 0, "and on no other button");
+        assert_eq!(count(&close, 18), 12);
+        assert_eq!(close.at(15, 11), ink, "from one corner");
+        assert_eq!(close.at(20, 11), ink, "and from the other");
+        assert_eq!(count(&close, 38), 0, "and on no other button");
         let maximize = hovering(Some(Button::Maximize), true);
-        assert_eq!(count(&maximize, 36), 11);
+        assert_eq!(count(&maximize, 38), 11);
         let minimize = hovering(Some(Button::Minimize), true);
-        assert_eq!(count(&minimize, 56), 6);
+        assert_eq!(count(&minimize, 58), 6);
 
         // Pointed at, a button has its colour whether or not its frame
         // has focus.
         let unfocused = hovering(Some(Button::Close), false);
-        assert_eq!(unfocused.at(11, 14), BUTTON_COLORS[0]);
-        assert_eq!(unfocused.at(36, 14), BUTTON_PLAIN);
+        assert_eq!(unfocused.at(13, 14), BUTTON_COLORS[0]);
+        assert_eq!(unfocused.at(38, 14), BUTTON_PLAIN);
     }
 
     #[test]

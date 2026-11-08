@@ -11,9 +11,9 @@ use crate::windows::{BACKGROUND, RED, shaded};
 const LEFT: u32 = 0x110;
 /// Colours of the built-in theme: a menu's ground, a part of a picture,
 /// and one the pointer is on.
-const GROUND: u32 = 0xff23_262e;
-const BLOCK: u32 = 0xff2c_303a;
-const PICKED: u32 = 0xff5b_9cf5;
+const GROUND: u32 = 0xff14_1c38;
+const BLOCK: u32 = 0xff2b_3a6b;
+const PICKED: u32 = 0xff24_3364;
 /// How long the pointer rests on the button before the pictures come.
 const REST: Duration = Duration::from_millis(400);
 
@@ -287,7 +287,7 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
     // window, edged as they are: seen whatever colour the titlebar is.
     assert_eq!(
         picture.at(middle, foot),
-        0xff2c_303a,
+        0xff2b_3a6b,
         "its point, at the titlebar"
     );
     assert_eq!(

@@ -35,7 +35,7 @@ use crate::versions::updated;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const LEFT: u32 = 0x110;
-const FOCUSED_TITLEBAR: u32 = 0xff23_262e;
+const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
 
 /// Runs `work`, which talks to the X server, while the compositor carries
 /// on.

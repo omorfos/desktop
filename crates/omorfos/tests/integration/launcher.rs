@@ -486,9 +486,11 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
         21,
         "the icon, three quarters of the row across"
     );
-    // More is written on the row than the four letters of the name.
-    let written = across.filter(|x| picture.at(*x, y) != lit());
-    assert!(written.count() > 21 + 40);
+    // Something is written on the row past where the four letters of the
+    // name end, as only what the program says of itself reaches.
+    let beyond = (left + 120..left + 480).flat_map(|x| (y - 6..=y + 6).map(move |y| (x, y)));
+    let written = beyond.filter(|(x, y)| picture.at(*x, *y) != lit());
+    assert!(written.count() > 20, "what it says of itself");
 }
 
 #[test]

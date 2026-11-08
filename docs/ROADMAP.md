@@ -1119,7 +1119,8 @@ the first than on the last.
 - [ ] What glass behind titlebars costs, measured with `omorfosctl
       frames` on a modest laptop with a dozen windows, one dragged over
       the others, and written into ADR 33; until then the built-in theme
-      does not make titlebars glass.
+      makes nothing glass, its surfaces solid in the colours glass would
+      be tinted with.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface, a window's to the window proper and not the shadow
@@ -1159,8 +1160,19 @@ the first than on the last.
       desktop and the dims, which take its colour halfway; and a gradient
       that changes with the part's state, which changes at once rather
       than over its `transition`.
-- [ ] The built-in theme redrawn in the design language: light and dark,
-      with the accent a setting, and the settings under `appearance`.
+- [x] The built-in theme redrawn in the design language, in its dark
+      scheme: its colours, the corners of each part, rows and fields as it
+      has them, padding on its grid, a row under the pointer raised and
+      one chosen in the accent, and its contrast tested; solid, until
+      glass has been measured. Every window's edge is a hairline, with
+      focus or without, as programs that draw their own have it.
+- [ ] The light scheme, and the accent a setting: `appearance.scheme`
+      and `appearance.accent`, each with what programs are told.
+- [ ] What the design language has that a theme cannot draw yet: the ring
+      round what the keyboard is on, two pixels out from it (it is a
+      border of the colour of text, which shows on the accent as well);
+      the inner hairline of light along the top of glass; and what
+      arrives taking longer than what leaves.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
       out from a latitude and longitude the user gives, or fixed hours
       without one.

@@ -10,7 +10,7 @@ const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
 /// The colour of the line in the built-in theme, which is that of a
 /// window's border.
-const LINE: u32 = 0xff2c_303a;
+const LINE: u32 = 0xff2b_3a6b;
 const YELLOW: u32 = 0xffff_ff00;
 const MAGENTA: u32 = 0xffff_00ff;
 const GREEN: u32 = 0xff00_ff00;

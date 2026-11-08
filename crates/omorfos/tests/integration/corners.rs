@@ -6,7 +6,7 @@ use crate::common::Session;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 /// The default theme's frame around a window 200 by 100: a border of one,
-/// a titlebar of 28 and corners rounded to a radius of eight.
+/// a titlebar of 28 and corners rounded to a radius of twelve.
 const RIGHT: i32 = 201;
 const BOTTOM: i32 = 128;
 
@@ -35,20 +35,20 @@ fn the_bottom_corners_of_a_frame_are_rounded_window_and_all() {
     assert_eq!(picture.at(100, BOTTOM), border, "along the bottom");
     assert_eq!(picture.at(RIGHT, 60), border, "down the right");
     assert_eq!(
-        picture.at(0, BOTTOM - 8),
+        picture.at(0, BOTTOM - 12),
         border,
         "to where the curve begins"
     );
-    assert_eq!(picture.at(8, BOTTOM), border);
-    for (x, y) in [(2, BOTTOM - 2), (RIGHT - 2, BOTTOM - 2)] {
+    assert_eq!(picture.at(12, BOTTOM), border);
+    for (x, y) in [(4, BOTTOM - 4), (RIGHT - 4, BOTTOM - 4)] {
         let on_curve = picture.at(x, y);
         assert_ne!(on_curve, RED, "at {x}, {y}");
         assert_ne!(on_curve, BACKGROUND, "at {x}, {y}");
     }
     // Inside it the window is whole.
     assert_eq!(picture.at(10, BOTTOM - 8), RED);
-    assert_eq!(picture.at(4, BOTTOM - 4), RED, "just inside the curve");
-    assert_eq!(picture.at(RIGHT - 4, BOTTOM - 4), RED);
+    assert_eq!(picture.at(6, BOTTOM - 6), RED, "just inside the curve");
+    assert_eq!(picture.at(RIGHT - 6, BOTTOM - 6), RED);
     assert_eq!(picture.at(100, BOTTOM - 1), RED, "its last row");
     assert_eq!(picture.at(1, 60), RED, "its first column");
 }
@@ -102,7 +102,7 @@ fn a_frame_that_has_not_changed_is_not_drawn_again() {
     assert!(picture.damaged);
     assert_eq!(picture.at(100, 60), GREEN);
     assert_eq!(
-        picture.at(4, BOTTOM - 4),
+        picture.at(6, BOTTOM - 6),
         GREEN,
         "in the strips by the curve"
     );
@@ -117,14 +117,14 @@ fn corners_are_rounded_at_the_scale_of_the_screen() {
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
-    // Twice the size in pixels: the frame is 404 by 258 and the radius 16.
+    // Twice the size in pixels: the frame is 404 by 258 and the radius 24.
     let (right, bottom) = (403, 257);
     for (x, y) in [(0, bottom), (3, bottom - 3), (right - 3, bottom - 3)] {
         let seen = picture.at(x, y);
         assert!(shaded(seen, BACKGROUND), "at {x}, {y}: {seen:#x}");
     }
-    assert_eq!(picture.at(8, bottom - 8), RED, "inside the curve");
-    assert_eq!(picture.at(right - 8, bottom - 8), RED);
+    assert_eq!(picture.at(12, bottom - 12), RED, "inside the curve");
+    assert_eq!(picture.at(right - 12, bottom - 12), RED);
     assert_eq!(picture.at(200, bottom - 2), RED, "the last row");
 }
 

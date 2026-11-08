@@ -285,7 +285,11 @@ goes.
    dock, menus and notifications.
 4. Blur behind titlebars, which every window has, where a theme asks for
    it; in the built-in theme only once its cost has been measured on a
-   modest laptop with a dozen windows.
+   modest laptop with a dozen windows. The built-in theme, redrawn in the
+   design language, makes nothing glass until then, the panel, menus and
+   notifications among them: its glass tints are there as variables
+   (`--glass-thin`, `--glass-thick`, `--glass-sealed`) for a theme to use,
+   and one measurement settles them all.
 
 Step 3 began with a trial: that a picture drawn into through the manager
 of several GPUs can be blurred by the renderer underneath and drawn back

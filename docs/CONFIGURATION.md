@@ -488,22 +488,35 @@ names more states wins, and then the later one.
 This is the whole built-in theme, which is also every part there is:
 
 ```css
-/* The built-in theme of omorfos.
+/* The built-in theme of omorfos, drawn in its design language (DESIGN.md).
  *
  * Your own theme.css is laid over this one: a rule of yours always wins
  * over a rule here, so you only write what you want changed. The quickest
  * change is to give the variables below other values. */
 
 :root {
-  --background: #14161b;   /* behind everything */
-  --accent: #5b9cf5;       /* what has focus, and what is picked out */
-  --surface: #23262e;      /* titlebars, menus and what is lit */
-  --surface-dim: #1b1d23;  /* the same, where focus is elsewhere */
-  --text: #e6e8ee;
-  --text-dim: #8b90a0;
-  --border: #2c303a;
-  --border-strong: #7a8090; /* the edge of what has focus */
-  --capture: #f0524f;      /* the screen is being captured */
+  --background: #0c1226;     /* behind everything, where there is no wallpaper */
+  --surface: #141c38;        /* titlebars, menus and the panel */
+  --surface-dim: #10172f;    /* the same, where focus is elsewhere */
+  --surface-raised: #243364; /* a field, and a row under the pointer */
+  --text: #e6eaf5;
+  --text-dim: #9aa4c7;       /* what is beside the point */
+  --border: #2b3a6b;         /* a hairline between or around surfaces */
+  --border-strong: #7482b3;  /* the edge of what takes input */
+  --accent: #22d3ee;         /* what has focus, and what is picked out */
+  --on-accent: #0c1226;      /* text on the accent */
+  --danger: #f8616d;         /* close, and what is urgent or wrong */
+  --warning: #fde047;        /* minimize */
+  --success: #a3e635;        /* maximize */
+  --capture: #f8616d;        /* the screen is being captured */
+  /* Glass: the surface, at as much of itself as text on it needs to be
+   * read over anything. Nothing here is glass until what it costs has
+   * been measured; `menu { background: var(--glass-thick); backdrop-filter:
+   * blur(32px); }` makes a menu glass. Give the surface another colour,
+   * and these too. */
+  --glass-thin: rgba(20, 28, 56, 0.7);    /* the panel: text on it, never dim */
+  --glass-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
+  --glass-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
 }
 
 /* Colours take a moment to change when a part's state does. To have them
@@ -517,21 +530,20 @@ This is the whole built-in theme, which is also every part there is:
 desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state.
- * Its shadow says it floats over the desktop, and how far: the window
+ * Its edge is a hairline with focus or without, as programs that draw
+ * their own draw it: focus is in the titlebar, and in the shadow. The
+ * shadow says the window floats over the desktop, and how far: the one
  * with focus is lifted higher. A shadow is black and falls straight down;
  * `box-shadow: none` does without it. */
 window {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
   /* What is behind a program, blurred where it asks to be see-through.
    * `backdrop-filter: none` gives programs no blur. */
   backdrop-filter: blur(24px);
 }
-window:focus {
-  border-color: var(--border-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-}
+window:focus { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
 
 /* The line between windows that share a workspace. */
 tile-line { color: var(--border); }
@@ -541,6 +553,7 @@ tile-line { color: var(--border); }
 offer {
   color: var(--text-dim);
   border: 1px solid var(--border);
+  border-radius: 10px;
 }
 offer:hover { color: var(--text); }
 
@@ -557,12 +570,11 @@ titlebar:focus {
 /* A title in a titlebar. Where there are several, the border on the left
  * is the line between one tab and the next. */
 tab {
-  padding: 0 10px;
+  padding: 0 12px;
   background: var(--surface-dim);
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
-tab:focus { border-left-color: var(--border-strong); }
 tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
   background: var(--surface);
@@ -582,10 +594,10 @@ button-close, button-maximize, button-minimize {
   background: var(--border);
   color: transparent;
 }
-button-close { margin-left: 10px; }
-button-close:focus, button-close:hover { background: #e06c75; }
-button-maximize:focus, button-maximize:hover { background: #98c379; }
-button-minimize:focus, button-minimize:hover { background: #e5c07b; }
+button-close { margin-left: 12px; }
+button-close:focus, button-close:hover { background: var(--danger); }
+button-maximize:focus, button-maximize:hover { background: var(--success); }
+button-minimize:focus, button-minimize:hover { background: var(--warning); }
 button-close:hover, button-maximize:hover, button-minimize:hover {
   color: var(--background);
 }
@@ -595,34 +607,34 @@ menu {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
+  border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 menu-item {
   height: 28px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--text);
 }
-menu-item:hover {
-  background: var(--accent);
-  color: var(--background);
-}
+menu-item:hover { background: var(--surface-raised); }
 menu-separator { color: var(--border); }
 
+/* What is wrong with the configuration, when it was last read. */
 notice {
-  padding: 10px;
+  padding: 12px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
-notice-heading { color: var(--accent); }
+notice-heading { color: var(--danger); }
 
 tooltip {
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 
@@ -630,7 +642,7 @@ tooltip {
 capture {
   background: var(--background);
   color: var(--capture);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 /* The line round a screen or a window while it is shared or recorded,
@@ -639,25 +651,26 @@ capture-border { border: 2px solid var(--capture); }
 
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
- * from the edges of the screen. */
+ * from the edges of the screen. All that is written on it is in the full
+ * colour of text, as it is to be when it is thin glass. */
 panel {
   height: 28px;
-  background: var(--surface-dim);
-  color: var(--text-dim);
+  background: var(--surface);
+  color: var(--text);
 }
 workspace, task {
-  padding: 0 10px;
-  color: var(--text-dim);
+  padding: 0 12px;
+  color: var(--text);
 }
 workspace { min-width: 28px; }
 task { max-width: 240px; }
 workspace:active, task:active {
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--text);
   border-bottom: 2px solid var(--accent);
 }
 clock {
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--text);
 }
 
@@ -665,34 +678,34 @@ clock {
  * launcher is as wide as its min-width. */
 launcher {
   min-width: 480px;
-  padding: 8px;
+  padding: 12px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 launcher-input {
   height: 32px;
   margin: 0 0 8px 0;
-  padding: 0 10px;
-  background: var(--surface-dim);
+  padding: 0 8px;
+  background: var(--surface-raised);
   color: var(--text);
   border-radius: 6px;
 }
 launcher-item {
   height: 28px;
-  padding: 0 10px;
+  padding: 0 8px;
   color: var(--text);
   border-radius: 6px;
 }
 launcher-item:active {
   background: var(--accent);
-  color: var(--background);
+  color: var(--on-accent);
 }
 /* What a program says of itself, where the launcher is set to show it. */
 launcher-description { color: var(--text-dim); }
-launcher-description:active { color: var(--background); }
+launcher-description:active { color: var(--on-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }
@@ -703,18 +716,18 @@ launcher-backdrop { background: transparent; }
 notification {
   min-width: 340px;
   margin: 8px;
-  padding: 10px 12px;
+  padding: 12px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
-notification:hover { border-color: var(--accent); }
-notification:urgent { border-color: #e06c75; }
+notification:hover { border-color: var(--border-strong); }
+notification:urgent { border-color: var(--danger); }
 notification-title {
   color: var(--text);
-  font-weight: bold;
+  font-weight: 600;
 }
 notification-body { color: var(--text-dim); }
 /* How full something a notification tells of is, such as the volume: the
@@ -723,17 +736,17 @@ notification-level {
   margin-top: 8px;
   background: var(--border);
   color: var(--accent);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
-/* What the portals ask: whether an application may see the screen. The
- * button that gives is :active. The border is also the ring of the loupe
- * a colour on the screen is picked with. */
+/* What the portals ask: whether an application may see the screen, and
+ * what asks for a password. The button that gives is :active. The border
+ * is also the ring of the loupe a colour on the screen is picked with. */
 question {
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
 question-detail { color: var(--text-dim); }
@@ -742,24 +755,26 @@ question-button {
   color: var(--text);
   border-radius: 6px;
 }
-question-button:hover { background: var(--surface); }
+question-button:hover { background: var(--surface-raised); }
 question-button:active {
   background: var(--accent);
-  color: var(--background);
+  color: var(--on-accent);
 }
+/* What the keyboard is on has a ring in the colour of text, which shows on
+ * a button filled with the accent as well as on one that is not. */
 question-button:focus { border: 2px solid var(--text); }
 question-input {
-  padding: 6px;
-  background: var(--background);
+  padding: 8px;
+  background: var(--surface-raised);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 question-input:focus { border-color: var(--accent); }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
 question-input:active {
   background: var(--accent);
-  color: var(--background);
+  color: var(--on-accent);
 }
 
 /* The switcher on Alt+Tab: the box in the middle of the screen, each
@@ -776,10 +791,10 @@ switcher-item {
   min-width: 200px;
   padding: 8px;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 switcher-item:active {
-  background: var(--surface-dim);
+  background: var(--surface-raised);
   border-color: var(--accent);
 }
 switcher-title { color: var(--text); }

@@ -247,7 +247,7 @@ mod tests {
             decoration: Metrics {
                 border: 1,
                 titlebar: 28,
-                buttons: [26, 20, 20],
+                buttons: [28, 20, 20],
             },
         };
         assert_eq!(settings(&Config::default()), expected);
@@ -285,7 +285,7 @@ mod tests {
                 decoration: Metrics {
                     border: 1,
                     titlebar: 28,
-                    buttons: [26, 20, 20],
+                    buttons: [28, 20, 20],
                 },
             }
         );

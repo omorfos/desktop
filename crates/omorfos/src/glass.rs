@@ -683,7 +683,9 @@ impl Glass {
 
 impl Picture {
     /// A picture to draw what is behind glass into, of `area` of the screen,
-    /// to be blurred by `blur`; none if the renderer cannot make one.
+    /// to be blurred by `blur`; none if the renderer cannot make one, or the
+    /// area has nothing in it, as a screen that is not there yet has none:
+    /// a picture of nothing is read back as memory that is not there.
     fn new<R, P>(
         renderer: &mut R,
         (area, blur): (Rectangle<i32, Physical>, Blur),
@@ -693,6 +695,9 @@ impl Picture {
         R: Offscreen<P>,
         P: std::fmt::Debug + 'static,
     {
+        if area.is_empty() {
+            return None;
+        }
         let size = Size::<i32, Buffer>::from((area.size.w, area.size.h));
         let target = renderer.create_buffer(Fourcc::Abgr8888, size).ok();
         target.map(|target| Self {

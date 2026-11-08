@@ -979,7 +979,7 @@ fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
     let mut lock = awake(&mut session, there.path(), &[Way::Password]);
     // Once the helper asks, the field has a line where the next character
     // goes, at its start.
-    let (start, plain) = (167, 200);
+    let (start, plain) = (169, 200);
     let caret = |session: &mut Session| {
         let row = field(session);
         row[start] != row[plain]
