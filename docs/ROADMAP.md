@@ -1190,9 +1190,17 @@ the first than on the last.
       built-in theme brings windows, menus, the notice, tooltips, the
       components' panels and the lock screen's question in over 180 ms
       and takes them out over 120 ms, as DESIGN.md's "Movement" has it.
-- [ ] What arrives grown from 96% of its size and leaves shrunk to 98%,
-      as DESIGN.md's "Movement" has it; and how a part looks while it is
-      `:closing`, of which only its transition is taken so far.
+- [x] What arrives grown from 96% of its size and leaves shrunk to 98%,
+      as DESIGN.md's "Movement" has it: `@starting-style` and `scale`,
+      as CSS has them, and how see-through and how large a part is while
+      it is `:closing`, drawn as a picture made larger or smaller, its
+      shadow and glass with it (ADR 25).
+- [ ] Known gaps in coming and going: a part's colours stay as they are
+      while it is `:closing`; `scale` only as a part comes and goes, not
+      at rest; the tooltip and the switcher appear and go at once; the
+      corners of a part's glass are as round at every size; and
+      `appearance.reduce_motion`, to have things fade alone, as
+      DESIGN.md's "Movement" says, worked out where `Seen` is.
 - [x] The inner hairline of light along the top of glass: a sharp
       `inset` shadow in `box-shadow`, beside the one cast, and
       `--glass-rim` for it in the built-in theme, white at 6% in the dark

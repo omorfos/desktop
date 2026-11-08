@@ -3146,6 +3146,22 @@ pub(crate) fn between(color: u32, one: u32, other: u32) -> bool {
     within && color != one && color != other
 }
 
+/// Lets the compositor carry on until something is so, without time
+/// passing for it: for what the clock goes by, as how often an X server
+/// may be started again does, or what changes over time and is to be seen
+/// from its start.
+pub(crate) fn wait(session: &mut Session, so: impl Fn(&Session) -> bool) {
+    for _ in 0..20_000 {
+        session.step();
+        if so(session) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let problems = session.compositor().problems();
+    unreachable!("what was waited for never came about: {problems:?}");
+}
+
 /// The graphics card to try the tests that need one with, and its device
 /// number. Those tests are ignored unless asked for, as CI, which has no
 /// card, does not ask; one asked for where this user may use no card

@@ -43,6 +43,7 @@ mod recording;
 mod restarts;
 mod reveal;
 mod roles;
+mod scaling;
 mod sealed;
 mod seat;
 mod session;

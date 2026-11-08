@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use omorfos_config::{Part, State, States, Style, Theme};
+use omorfos_config::{Part, Presence, State, States, Style, Theme};
 
 /// The parts being drawn, and how far each has got towards the look of
 /// the state it is in.
@@ -39,6 +39,50 @@ struct Changing {
     from: Option<(Style, Duration)>,
     /// Whether it is in the picture being drawn.
     seen: bool,
+}
+
+/// How much of a part there is to see, and how large it is drawn, as it
+/// comes and goes: each a share of how it is once there.
+///
+/// This is the one place both are worked out, from what the theme says a
+/// part arrives as and leaves as.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Seen {
+    /// From 0, none of it, to 1, as much as there is once it is there.
+    pub opacity: f32,
+    /// How large it is, 1 being its size once there.
+    pub scale: f32,
+}
+
+impl Seen {
+    /// All of it, as large as it is.
+    pub const WHOLE: Self = Self {
+        opacity: 1.0,
+        scale: 1.0,
+    };
+
+    /// `share` of the way from the look `from` to `to`, of a part that is
+    /// `there` once it has arrived.
+    fn between(from: Presence, to: Presence, there: Presence, share: f32) -> Self {
+        let between = |from: f32, to: f32| from + (to - from) * share;
+        let opacity = between(f32::from(from.opacity), f32::from(to.opacity));
+        let scale = between(f32::from(from.scale), f32::from(to.scale));
+        Self {
+            // Drawn over a part as faint as it is once there.
+            opacity: (opacity / f32::from(there.opacity.max(1))).min(1.0),
+            scale: scale / f32::from(Presence::WHOLE.scale),
+        }
+    }
+
+    /// This, and `other` as well: what has gone while it was still coming,
+    /// which leaves from as much of it as had come.
+    #[must_use]
+    pub fn and(self, other: Self) -> Self {
+        Self {
+            opacity: self.opacity * other.opacity,
+            scale: self.scale * other.scale,
+        }
+    }
 }
 
 /// The look a part has at `now`, on its way to `to`.
@@ -74,20 +118,23 @@ impl Motion {
     }
 
     /// How much of the `part` that goes by `key` there is to see in the
-    /// picture being drawn: from 0, nothing, when it is first in a picture,
-    /// to 1, all of it, once the time the theme gives the part's colours to
-    /// change has gone by.
+    /// picture being drawn, and how large it is: as its theme's
+    /// `@starting-style` says when it is first in a picture, and as it is
+    /// once there after the time the theme gives the part's colours to
+    /// change.
     ///
     /// It is asked of whatever comes and goes, in every picture it is in.
     /// Something left out of a picture comes in afresh the next time.
-    pub fn presence(&mut self, theme: &Theme, part: Part, key: u64) -> f32 {
+    pub fn presence(&mut self, theme: &Theme, part: Part, key: u64) -> Seen {
         let now = self.now;
         let (since, seen) = self.present.entry((part, key)).or_insert((Some(now), true));
         *seen = true;
-        let coming = theme.style(part, States::NONE).transition;
+        let settled = theme.style(part, States::NONE);
+        let coming = settled.transition;
         let share = since.map_or(1.0, |since| coming.progress(now.saturating_sub(since)));
         self.moving |= share < 1.0;
-        share
+        let settled = settled.presence;
+        Seen::between(theme.starting(part), settled, settled, share)
     }
 
     /// Takes the `part` that goes by `key` to have been in the picture all
@@ -126,19 +173,20 @@ impl Motion {
     }
 
     /// How much there is still to see of a `part` that went from the
-    /// picture at `since`: from 1, all of it, at that moment, to 0 once the
-    /// time the theme gives the part to leave in, its transition when it
-    /// is `:closing`, has gone by.
+    /// picture at `since`, and how large it is: all of it at that moment,
+    /// on its way to how it is when it is `:closing`, and nothing once the
+    /// time the theme gives the part to leave in, its transition then, has
+    /// gone by.
     ///
-    /// Whoever asks keeps drawing what has gone, this much of it, and stops
-    /// asking when there is nothing left.
-    pub fn leaving(&mut self, theme: &Theme, part: Part, since: Duration) -> f32 {
-        let going = theme
-            .style(part, States::NONE.with(State::Closing))
-            .transition;
-        let left = 1.0 - going.progress(self.now.saturating_sub(since));
-        self.moving |= left > 0.0;
-        left
+    /// Whoever asks keeps drawing what has gone, as it says, and stops
+    /// asking once it is no more.
+    pub fn leaving(&mut self, theme: &Theme, part: Part, since: Duration) -> Option<Seen> {
+        let closing = theme.style(part, States::NONE.with(State::Closing));
+        let share = closing.transition.progress(self.now.saturating_sub(since));
+        let left = share < 1.0;
+        self.moving |= left;
+        let settled = theme.style(part, States::NONE).presence;
+        left.then(|| Seen::between(settled, closing.presence, settled, share))
     }
 
     /// Ends the picture, forgetting the parts that were not in it. Returns
@@ -179,8 +227,11 @@ mod tests {
     fn theme() -> Theme {
         let stylesheet = "task { background: #f00; transition: 100ms linear; }
                           task:hover { background: #00f; }
+                          task:closing { opacity: 0; scale: 50%; }
                           clock { background: #f00; transition: none; }
-                          clock:hover { background: #00f; }";
+                          clock:hover { background: #00f; }
+                          clock:closing { opacity: 0; }
+                          @starting-style { task, clock { opacity: 0; scale: 80% } }";
         Theme::parse(stylesheet).unwrap()
     }
 
@@ -286,14 +337,19 @@ mod tests {
         assert_eq!(motion.deadline(), None, "it has arrived");
     }
 
+    /// A share in hundredths.
+    fn hundredths(share: f32) -> i32 {
+        #[expect(clippy::cast_possible_truncation, reason = "it is from 0 to 200")]
+        let hundredths = (share * 100.0).round() as i32;
+        hundredths
+    }
+
     /// How much of one part there is to see in a picture drawn at `now`,
     /// in hundredths, and whether the picture has to be drawn again.
     fn present(motion: &mut Motion, part: Part, now: u64) -> (i32, bool) {
         motion.begin(millis(now));
-        let share = motion.presence(&theme(), part, 7);
-        #[expect(clippy::cast_possible_truncation, reason = "it is from 0 to 100")]
-        let hundredths = (share * 100.0).round() as i32;
-        (hundredths, motion.end())
+        let seen = motion.presence(&theme(), part, 7);
+        (hundredths(seen.opacity), motion.end())
     }
 
     #[test]
@@ -322,8 +378,8 @@ mod tests {
         let mut motion = Motion::new();
         motion.begin(millis(1000));
         motion.arrived(Part::Task, 7);
-        let share = motion.presence(&theme(), Part::Task, 7);
-        assert!((share - 1.0).abs() < f32::EPSILON, "{share}");
+        let seen = motion.presence(&theme(), Part::Task, 7);
+        assert_eq!(seen, Seen::WHOLE);
         assert!(!motion.end(), "nothing on its way");
         // Once it is in the picture, it is there as anything else is.
         assert_eq!(present(&mut motion, Part::Task, 1010), (100, false));
@@ -336,48 +392,98 @@ mod tests {
     }
 
     #[test]
-    fn something_that_has_gone_is_seen_less_and_less_until_nothing_is_left() {
+    fn something_comes_from_its_starting_style_to_how_it_is_once_there() {
+        let (theme, mut motion) = (theme(), Motion::new());
+        let mut seen = |now: u64| {
+            motion.begin(millis(now));
+            let seen = motion.presence(&theme, Part::Task, 7);
+            (hundredths(seen.opacity), hundredths(seen.scale))
+        };
+        assert_eq!(seen(0), (0, 80));
+        assert_eq!(seen(50), (50, 90));
+        assert_eq!(seen(100), (100, 100));
+        // Without one, it is there as it is from the first.
+        let plain = Theme::parse("task { transition: 100ms linear; }").unwrap();
+        let mut motion = Motion::new();
+        motion.begin(millis(0));
+        assert_eq!(motion.presence(&plain, Part::Task, 7), Seen::WHOLE);
+        // One that is faint once there comes from nothing to that, and is
+        // drawn as a share of it.
+        let faint = "task { opacity: 0.5; transition: 100ms linear; }\n\
+                     @starting-style { task { opacity: 0 } }";
+        let faint = Theme::parse(faint).unwrap();
+        motion.begin(millis(50));
+        let seen = motion.presence(&faint, Part::Task, 8);
+        motion.begin(millis(100));
+        let half = motion.presence(&faint, Part::Task, 8).opacity;
+        assert_eq!((hundredths(seen.opacity), hundredths(half)), (0, 50));
+    }
+
+    #[test]
+    fn something_that_has_gone_goes_to_how_it_is_closing_and_is_then_no_more() {
         let (theme, mut motion) = (theme(), Motion::new());
         let mut left = |now: u64| {
             motion.begin(millis(now));
             let left = motion.leaving(&theme, Part::Task, millis(1000));
+            let left = left.map(|seen| (hundredths(seen.opacity), hundredths(seen.scale)));
             (left, motion.end())
         };
-        let (all, moving) = left(1000);
-        assert!((all - 1.0).abs() < 0.01 && moving);
-        let (half, moving) = left(1050);
-        assert!((half - 0.5).abs() < 0.01 && moving);
-        let (none, moving) = left(1100);
-        assert!(none.abs() < f32::EPSILON && !moving);
+        assert_eq!(left(1000), (Some((100, 100)), true));
+        assert_eq!(left(1050), (Some((50, 75)), true));
+        assert_eq!(left(1100), (None, false));
+        // However much of it is seen as it is closing.
+        let kept = Theme::parse("task { transition: 100ms linear; }").unwrap();
+        let mut motion = Motion::new();
+        motion.begin(millis(1050));
+        let seen = motion.leaving(&kept, Part::Task, millis(1000));
+        assert_eq!(seen, Some(Seen::WHOLE));
+        motion.begin(millis(1100));
+        assert_eq!(motion.leaving(&kept, Part::Task, millis(1000)), None);
+    }
+
+    #[test]
+    fn what_went_while_it_was_still_coming_goes_from_where_it_had_got_to() {
+        let half = Seen {
+            opacity: 0.5,
+            scale: 0.9,
+        };
+        let going = Seen {
+            opacity: 0.5,
+            scale: 0.5,
+        };
+        let both = half.and(going);
+        assert_eq!((hundredths(both.opacity), hundredths(both.scale)), (25, 45));
     }
 
     #[test]
     fn something_leaves_over_the_time_its_theme_gives_it_closing() {
         let theme = Theme::parse(
             "launcher { transition: 200ms linear; }\n\
-             launcher:closing { transition: 50ms linear; }",
+             launcher:closing { transition: 50ms linear; opacity: 0; }\n\
+             @starting-style { launcher { opacity: 0 } }",
         )
         .unwrap();
         let mut motion = Motion::new();
         motion.begin(millis(0));
-        assert!(motion.presence(&theme, Part::Launcher, 1).abs() < f32::EPSILON);
+        let none = motion.presence(&theme, Part::Launcher, 1).opacity;
+        assert_eq!(hundredths(none), 0);
         motion.begin(millis(100));
-        let half = motion.presence(&theme, Part::Launcher, 1);
-        assert!((half - 0.5).abs() < 0.01, "comes over 200ms: {half}");
+        let half = motion.presence(&theme, Part::Launcher, 1).opacity;
+        assert_eq!(hundredths(half), 50, "comes over 200ms");
         let mut left = |now: u64| {
             motion.begin(millis(now));
-            motion.leaving(&theme, Part::Launcher, millis(1000))
+            let left = motion.leaving(&theme, Part::Launcher, millis(1000));
+            left.map(|seen| hundredths(seen.opacity))
         };
-        assert!((left(1025) - 0.5).abs() < 0.01, "and goes over 50ms");
-        assert!(left(1050).abs() < f32::EPSILON);
+        assert_eq!(left(1025), Some(50), "and goes over 50ms");
+        assert_eq!(left(1050), None);
     }
 
     #[test]
     fn something_whose_theme_gives_it_no_time_has_gone_at_once() {
         let mut motion = Motion::new();
         motion.begin(millis(1000));
-        let left = motion.leaving(&theme(), Part::Clock, millis(1000));
-        assert!(left.abs() < f32::EPSILON);
+        assert_eq!(motion.leaving(&theme(), Part::Clock, millis(1000)), None);
         assert!(!motion.end());
     }
 

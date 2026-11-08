@@ -41,6 +41,7 @@ use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, T
 use crate::capture::Held;
 use crate::compositor::{Element, View, color};
 use crate::corners::{self, Names, Strip};
+use crate::scaling::{self, Around};
 
 /// What blurs what is behind glass, for a renderer `R` that draws what is
 /// behind into a `P` (ADR 33). There are two: [`Software`], which is the
@@ -430,6 +431,26 @@ impl Pane {
         }
     }
 
+    /// The same, made as large as `around` says about its point, as its
+    /// part is as it comes and goes. Its corners are rounded as much, which
+    /// at the sizes a part passes through does not show.
+    pub(crate) fn scaled(self, around: Around) -> Self {
+        let shape = match self.shape {
+            Shape::Asked(strips) => {
+                let strips = strips
+                    .into_iter()
+                    .map(|strip| scaling::scaled(strip, around));
+                Shape::Asked(strips.collect())
+            }
+            rounded @ Shape::Rounded { .. } => rounded,
+        };
+        Self {
+            area: scaling::scaled(self.area, around),
+            shape,
+            ..self
+        }
+    }
+
     /// The same, told apart by `from` from the sheet it was while what it
     /// is the glass of was there, so that something fading out as another
     /// like it comes in keeps its own picture.
@@ -748,5 +769,44 @@ impl Picture {
                 (changed || unseen) && frosting.blur(renderer, (target, size), blur, made)
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use omorfos_config::Color;
+
+    use super::*;
+    use crate::Scale;
+
+    #[test]
+    fn glass_made_smaller_with_its_part_is_smaller_about_the_same_point() {
+        let view = View {
+            origin: Point::from((0, 0)),
+            scale: Scale::ONE,
+        };
+        let halved = (Point::from((100, 100)), 0.5);
+        let strips = vec![Rectangle::new((0, 0).into(), (200, 100).into())];
+        let asked = Pane::behind(strips, (24, view), (1, 0, 0), 1.0).unwrap();
+        let asked = asked.scaled(halved);
+        let half = Rectangle::new((50, 50).into(), (100, 50).into());
+        assert_eq!(asked.area, half);
+        assert_eq!(asked.shape.strips(asked.area), [half]);
+        let style = Style {
+            background: Color::rgba(0, 0, 0, 128),
+            blur: 24,
+            radius: 8,
+            ..Style::NONE
+        };
+        let area = Rectangle::new((0, 0).into(), (200, 100).into());
+        let tinted = Pane::of(&style, (area, view), (2, 0, 0), 1.0).unwrap();
+        let tinted = tinted.scaled(halved);
+        assert_eq!(tinted.area, half);
+        let rounded = corners::rounded(half, 8);
+        assert_eq!(
+            tinted.shape.strips(tinted.area),
+            rounded,
+            "as round as before"
+        );
     }
 }

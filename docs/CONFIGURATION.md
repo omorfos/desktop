@@ -536,14 +536,31 @@ This is the whole built-in theme, which is also every part there is:
 
 /* What comes onto the screen takes a little longer than a colour does to
  * change, and leaves quicker than it came, so that what has been dismissed
- * is not in the way of what is next: it comes over its own transition, and
- * goes over the one it has :closing. */
+ * is not in the way of what is next: it comes over its own transition,
+ * from how it is in @starting-style, a little small and not yet seen; and
+ * it goes over the one it has :closing, to how it is then, a little less
+ * small. `scale` is only for this: how large a part is drawn as it comes
+ * and goes. */
 window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
   transition: 180ms ease-out;
 }
 window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
 notification:closing, launcher:closing, switcher:closing, question:closing {
   transition: 120ms ease-in;
+  scale: 98%;
+  opacity: 0;
+}
+@starting-style {
+  window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+    scale: 96%;
+    opacity: 0;
+  }
+}
+/* What dims the screen behind the launcher only fades, being as large as
+ * the screen. */
+launcher-backdrop:closing { opacity: 0; }
+@starting-style {
+  launcher-backdrop { opacity: 0; }
 }
 
 desktop { background: var(--background); }
@@ -920,11 +937,31 @@ has), `:active` (the tab or workspace being shown, or the task of the
 window with focus, or the program the launcher would start), `:hover` (the
 pointer is over it), `:urgent` (a notification its sender marked as
 critical) and `:closing` (it is going from the screen). A part can be in
-several: `tab:active:focus`. A part that comes and goes, as a window, a
-menu or a notification does, comes over its own `transition` and leaves
-over the one it has `:closing`, so that it can leave quicker than it came:
-`menu { transition: 180ms ease-out; } menu:closing { transition: 120ms
-ease-in; }`. Only its transition is taken from `:closing` so far.
+several: `tab:active:focus`.
+
+**Coming and going.** A part that comes and goes, as a window, the menu,
+the notice or a component's panel, notification or launcher does, comes
+over its own `transition`, from how it is in `@starting-style`, and leaves
+over the one it has `:closing`, for how it is then; so that it can leave
+quicker than it came:
+
+```css
+menu { transition: 180ms ease-out; }
+menu:closing { transition: 120ms ease-in; scale: 98%; opacity: 0; }
+@starting-style {
+  menu { scale: 96%; opacity: 0; }
+}
+```
+
+Of each, only how see-through the part is (`opacity`) and how large it is
+drawn (`scale`) are taken so far: its colours stay as they are while it
+comes and goes. What it draws is made larger or smaller about its middle,
+its shadow and its glass with it. A part with no `@starting-style` is there
+at once, as in CSS, and one whose `:closing` look can be seen stays as it
+is until its time to leave is up. The built-in theme gives both to the
+parts that come and go, as above, and has `launcher-backdrop` fade in and
+out without changing size, so yours keeps them unless it says otherwise.
+`@starting-style` holds rules for parts in no state, and nothing else.
 
 **Every part is a box.** From the outside in it has a margin, which is room
 kept clear around it; a border; padding, which is room between the border
@@ -936,6 +973,7 @@ is measured to the outside of its border.
 | `background` | a colour, a gradient, or a colour and a gradient over it | what the part is filled with; what it leaves out is none, as in CSS, so a gradient alone has no colour under it. `background-color` gives the colour alone and `background-image` the gradient alone, or `none` |
 | `color` | a color | text; for `menu-separator` and `tile-line`, the line |
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
+| `scale` | `0` to `2`, or `0%` to `200%` | how large the part is drawn as it comes and goes, as a share of its size: in `@starting-style`, and while it is `:closing`, and nowhere else |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |
 | `outline` | a width, `solid` or `none`, a color | a line round the outside of the box, any of them in any order; its corners are rounded by as much more than the box's as it is out, unless the box's are square. A ring round what the keyboard is on, as `question-button:focus` has it; the eye in the password field has its ring close round it, there being no room to stand off |

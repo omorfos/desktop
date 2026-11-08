@@ -41,6 +41,20 @@ from when it has drawn something, not from when it asked for a place.
 
 **The built-in theme's 120ms applies**, since it is given to every part.
 
+**What a thing comes in as, and goes out as, is its theme's, in the words
+CSS has for it** (added 2026-11-08, after ADR 26). It comes from how its
+part is in `@starting-style`, and goes to how its part is `:closing`, of
+which the compositor draws how see-through it is (`opacity`) and how large
+(`scale`, which is for nothing else). The built-in theme has the parts that
+come and go arrive from 96% of their size and nothing to see, and leave
+for 98% and nothing, as DESIGN.md's "Movement" says. What a thing draws is
+made larger or smaller as a picture is, about the middle of what it drew,
+with its shadow and its glass: nothing of it is drawn again, nor its shadow
+cast again, at each size it passes through. A fixed effect was the other
+way, with nothing to learn and nothing to tune; and `scale` given on
+`:closing` alone, a thing arriving from the look it leaves for, was less
+to read but not CSS, and could not arrive from smaller than it leaves.
+
 **Tests under the built-in theme let time pass.** The test session's rule
 that nothing takes time (ADR 24) does not reach a session whose theme is
 broken, which runs on the built-in one: those tests step once, so that what
@@ -59,6 +73,16 @@ is new is seen, and then a second on.
 - One time serves a part's colours and its coming in. A theme that wants
   them different cannot have it yet; a property of its own would be the
   way.
+- A part a theme gives no `@starting-style` is there at once, as in CSS,
+  and one whose `:closing` look can be seen stays as it is until its time
+  to leave is up, then goes. The built-in theme gives both to every part
+  that comes and goes, so a theme of one's own keeps them unless it says
+  otherwise.
+- While a glass thing is larger or smaller than it is over windows, what
+  is behind it is blurred again each frame, at each size it passes
+  through, where at one size the picture is kept until what is behind it
+  changes; over the desktop alone, whose blur is kept for the whole
+  screen, nothing more is done. That lasts as long as the transition.
 - A notification that arrives while others are showing is there at once:
   the surface it is drawn on is already on the screen. Fading it is the
   notifier's to do.

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use smithay::input::keyboard::Keycode;
 
-use crate::common::{Event, Session, between, half_way, key};
+use crate::common::{Event, Session, WIDTH, between, half_way, key};
 use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
@@ -212,6 +212,53 @@ fn the_menu_goes_from_the_screen_over_the_time_the_theme_gives() {
     assert_eq!(session.draw().at(510, 255), BACKGROUND, "gone");
     session.step();
     assert!(!session.draw().damaged, "and not drawn again");
+}
+
+#[test]
+fn the_menu_grows_into_its_place_as_it_comes_and_shrinks_as_it_goes() {
+    // Seen whole as it comes and goes, so that only its size changes, and
+    // with no shadow, so that its edge is its own.
+    let theme = "menu { transition: 100ms linear; box-shadow: none; }\n\
+                 menu:closing { opacity: 1; scale: 50%; }\n\
+                 @starting-style { menu { opacity: 1; } }\n";
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    open_menu(&mut session);
+    session.step();
+    session.advance(Duration::from_millis(100));
+    // The last column of the menu, once it is there, along the separator.
+    let picture = session.draw();
+    let edge = (300..WIDTH)
+        .take_while(|x| picture.at(*x, 233) != BACKGROUND)
+        .last()
+        .unwrap();
+    let middle = i32::midpoint(300, edge);
+    assert!(edge > 400, "{edge}");
+
+    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    open_menu(&mut session);
+    session.step();
+    let picture = session.draw();
+    assert_eq!(picture.at(edge - 2, 233), BACKGROUND, "96% of its size");
+    assert_ne!(picture.at(middle, 233), BACKGROUND);
+    session.advance(Duration::from_millis(100));
+    assert_ne!(session.draw().at(edge - 2, 233), BACKGROUND, "all of it");
+
+    for pressed in [true, false] {
+        let code = key::ESCAPE;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    // Three quarters as far from its middle.
+    let shrunk = edge - (edge - middle) / 4;
+    assert_eq!(picture.at(shrunk + 3, 233), BACKGROUND, "75% of it");
+    assert_ne!(picture.at(shrunk - 3, 233), BACKGROUND);
+    assert_ne!(picture.at(middle, 233), BACKGROUND);
+    session.advance(Duration::from_millis(50));
+    assert_eq!(session.draw().at(middle, 233), BACKGROUND, "gone");
 }
 
 #[test]

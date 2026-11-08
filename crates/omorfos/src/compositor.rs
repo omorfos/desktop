@@ -24,6 +24,7 @@ use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Showing,
     Standing, WindowId, WorkspaceId,
 };
+use omorfos_ui::Seen;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
 use smithay::backend::allocator::Format;
@@ -125,6 +126,7 @@ use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
+use crate::scaling::{self, Boxed};
 use crate::sealed::Seal;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
@@ -2366,12 +2368,12 @@ impl Compositor {
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     let private = self.desktop.private(*id);
-                    let opacity = presence(motion, &config.theme, (&frame.tabs, *id), sliding);
+                    let seen = presence(motion, &config.theme, (&frame.tabs, *id), sliding);
                     scene.push((
                         order,
                         Shown {
                             id: *id,
-                            opacity,
+                            seen,
                             shaded: frame.standing.shaded,
                             over: frame.home != Home::Desktop,
                             window: window.clone(),
@@ -2453,7 +2455,7 @@ impl Compositor {
                 outer: frame.geometry,
                 origin: (frame.client.origin.x, frame.client.origin.y).into(),
                 // Nothing fades into a picture.
-                opacity: 1.0,
+                seen: Seen::WHOLE,
                 shaded: frame.standing.shaded,
                 chrome,
                 veil: None,
@@ -2496,16 +2498,16 @@ impl Compositor {
                     let size = layers.layer_geometry(layer).unwrap_or_default().size;
                     let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
                     let shadow = animation.shades.cast(&style, head.scale, area, had);
-                    let share = if fades(part) {
+                    let seen = if fades(part) {
                         animation.motion.presence(theme, part, key)
                     } else {
-                        1.0
+                        Seen::WHOLE
                     };
                     Present {
                         surface: surface.clone(),
                         part,
                         layer: layer.layer(),
-                        share,
+                        seen,
                         shadow,
                         place: Rectangle::new(at, size),
                     }
@@ -2521,8 +2523,8 @@ impl Compositor {
             let gone = pieces.flatten().map(|pieces| Gone {
                 part: was.part,
                 since: animation.clock,
-                from: was.share,
-                opacity: was.share,
+                from: was.seen,
+                seen: was.seen,
                 level: Level::Layer(was.layer),
                 what: What::Surface(None, pieces, was.shadow, Some(was.place)),
                 private: false,
@@ -2576,7 +2578,7 @@ impl Compositor {
         };
         let notice = self.notice.as_ref();
         let share = notice.map(|_| self.animation.motion.presence(theme, Part::Notice, 0));
-        self.animation.notice_opacity = share.unwrap_or(1.0);
+        self.animation.notice_seen = share.unwrap_or(Seen::WHOLE);
 
         // Repaint the menu if it, how its rows look, or the theme changed
         // since it was drawn.
@@ -2608,7 +2610,7 @@ impl Compositor {
             (_, None) => None,
         };
         let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
-        self.animation.menu_opacity = share.unwrap_or(1.0);
+        self.animation.menu_seen = share.unwrap_or(Seen::WHOLE);
         self.repaint_switcher();
         let locked = self.is_locked();
         self.animation.fade_out(theme, &self.scene, locked);
@@ -3336,13 +3338,19 @@ impl Compositor {
             elements.extend(prompt.pixels.element(renderer, at, view, 1.0));
         }
         if let Some(notice) = &self.notice {
-            let opacity = self.animation.notice_opacity;
-            notice.elements(renderer, view, opacity, (&mut elements, &mut panes));
+            let seen = self.animation.notice_seen;
+            let drawn = (&mut elements, &mut panes);
+            Self::sized(view, seen, drawn, |drawn| {
+                notice.elements(renderer, view, seen.opacity, drawn);
+            });
         }
         self.switcher_elements(renderer, output, view, (&mut elements, &mut panes));
         if let Some(chrome) = &self.menu_chrome {
-            let opacity = self.animation.menu_opacity;
-            chrome.elements(renderer, view, opacity, (&mut elements, &mut panes));
+            let seen = self.animation.menu_seen;
+            let drawn = (&mut elements, &mut panes);
+            Self::sized(view, seen, drawn, |drawn| {
+                chrome.elements(renderer, view, seen.opacity, drawn);
+            });
         }
         self.palette_elements(renderer, view, (&mut elements, &mut panes));
         self.gone_elements(
@@ -3506,7 +3514,8 @@ impl Compositor {
         let shown = |gone: &&Gone| gone.level == level && (seen || !gone.private);
         let theme = &self.config().theme;
         for gone in gone.filter(shown) {
-            let opacity = gone.opacity;
+            let opacity = gone.seen.opacity;
+            let first = elements.len();
             // Its glass fades with it, kept apart from that of anything like
             // it that has come since.
             let mut glass = Vec::new();
@@ -3541,9 +3550,34 @@ impl Compositor {
                     notice.elements(renderer, view, opacity, (elements, &mut glass));
                 }
             }
+            let factor = view.scale.factor().into();
+            let around =
+                scaling::around(gone.seen.scale, || scaling::middle(elements, first, factor));
+            scaling::scale(elements, first, around);
+            scaling::scale_panes(&mut glass, 0, around);
             let apart = |pane: Pane| pane.apart(&(gone.since, gone.part.name()));
             panes.extend(glass.into_iter().map(apart));
         }
+    }
+
+    /// Has `draw` add a part's elements and its glass, and then has them
+    /// drawn as large as `seen` says, about the middle of what it drew: a
+    /// part on its way in.
+    fn sized<R>(
+        view: View,
+        seen: Seen,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+        draw: impl FnOnce((&mut Vec<Element<R>>, &mut Vec<Pane>)),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let (first, glass) = (elements.len(), panes.len());
+        draw((&mut *elements, &mut *panes));
+        let factor = view.scale.factor().into();
+        let around = scaling::around(seen.scale, || scaling::middle(elements, first, factor));
+        scaling::scale(elements, first, around);
+        scaling::scale_panes(panes, glass, around);
     }
 
     /// Adds the frames that are, or are not, fullscreen, topmost first.
@@ -3574,6 +3608,7 @@ impl Compositor {
                 elements.push(Element::Solid(blank));
                 continue;
             }
+            let first = elements.len();
             // Round a window that is shared, a line over its frame, which
             // is no more in a picture than the one round a screen is.
             let corner = Point::<i32, Logical>::from((shown.outer.origin.x, shown.outer.origin.y));
@@ -3589,7 +3624,7 @@ impl Compositor {
             let mut glass = Vec::new();
             if let Some(chrome) = &shown.chrome {
                 let drawn = (&mut *elements, &mut glass);
-                Self::chrome_elements(renderer, view, chrome, shown.opacity, drawn);
+                Self::chrome_elements(renderer, view, chrome, shown.seen.opacity, drawn);
             }
             if shown.shaded {
                 // Rolled up into its titlebar, none of the window is
@@ -3608,8 +3643,14 @@ impl Compositor {
                 .as_ref()
                 .and_then(|chrome| chrome.shadow.as_ref());
             if let Some(shadow) = shadow {
-                shadow.elements(renderer, shown.opacity, view, elements);
+                shadow.elements(renderer, shown.seen.opacity, view, elements);
             }
+            let factor = view.scale.factor().into();
+            let around = scaling::around(shown.seen.scale, || {
+                scaling::middle(elements, first, factor)
+            });
+            scaling::scale(elements, first, around);
+            scaling::scale_panes(&mut glass, 0, around);
             // What is behind its glass begins under its shadow.
             let under = elements.len();
             panes.extend(glass.into_iter().map(|pane| pane.under(under)));
@@ -3697,7 +3738,7 @@ impl Compositor {
                     renderer,
                     view.pixel(location.to_f64()),
                     scale,
-                    shown.opacity,
+                    shown.seen.opacity,
                 );
             for surface in &surfaces {
                 noting.add(surface, noting.paint(surface.texture()));
@@ -3714,7 +3755,7 @@ impl Compositor {
                 popup.wl_surface(),
                 view.pixel(at.to_f64()),
                 scale,
-                shown.opacity,
+                shown.seen.opacity,
                 Kind::Unspecified,
             );
             for surface in &picture {
@@ -3728,7 +3769,7 @@ impl Compositor {
                 &shown.surface,
                 view.pixel(location.to_f64()),
                 scale,
-                shown.opacity,
+                shown.seen.opacity,
                 Kind::Unspecified,
             );
             for picture in whole {
@@ -3772,7 +3813,7 @@ impl Compositor {
             &shown.surface,
             (origin, view),
             Some(&bounds),
-            (at, shown.opacity),
+            (at, shown.seen.opacity),
         )
     }
 
@@ -3813,6 +3854,7 @@ impl Compositor {
         let mut shadows = Vec::new();
         let mut glass = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
+            let (first, cast, laid) = (elements.len(), shadows.len(), glass.len());
             // A panel is placed within its own output.
             let at = layer_origin(&layers, surface) + view.origin;
             // A panel of a shell component may be coming in, and what it
@@ -3823,7 +3865,7 @@ impl Compositor {
                 renderer,
                 view.pixel(at.to_f64()),
                 smithay::utils::Scale::from(view.scale.factor()),
-                known.map_or(1.0, |known| known.share),
+                known.map_or(1.0, |known| known.seen.opacity),
             );
             if let Some(known) = known.filter(|known| fades(known.part)) {
                 let mut noting = self.noting(view, known.part);
@@ -3835,7 +3877,8 @@ impl Compositor {
             elements.extend(surfaces.into_iter().map(Element::Surface));
             // The shadow its part casts, and its glass, which is under it and
             // over the shadows of the others.
-            let shadow = known.and_then(|known| Some(known.share).zip(known.shadow.as_ref()));
+            let shadow =
+                known.and_then(|known| Some(known.seen.opacity).zip(known.shadow.as_ref()));
             if let Some((share, shadow)) = shadow {
                 shadow.elements(renderer, share, view, &mut shadows);
             }
@@ -3844,17 +3887,27 @@ impl Compositor {
             let theme = &self.config().theme;
             // A panel its part makes glass has that, whatever its program
             // asks; else what is behind it is blurred where it asks.
-            let share = known.map_or(1.0, |known| known.share);
-            let laid = known.and_then(|known| {
+            let share = known.map_or(1.0, |known| known.seen.opacity);
+            let pane = known.and_then(|known| {
                 let style = theme.style(known.part, States::NONE);
                 let key = glass::key(&known.surface.id());
                 let at = (key, elements.len(), 0);
-                Pane::of(&style, (place, view), at, known.share)
+                Pane::of(&style, (place, view), at, share)
             });
-            glass.extend(laid.or_else(|| {
+            glass.extend(pane.or_else(|| {
                 let placed = (at, view);
                 self.backdrop(surface.wl_surface(), placed, None, (elements.len(), share))
             }));
+            // Its shadow is made larger or smaller with it, though it is
+            // drawn under all of them.
+            let scale = known.map_or(1.0, |known| known.seen.scale);
+            let around = scaling::around(scale, || {
+                let middle = at + Point::from((size.w / 2, size.h / 2));
+                view.pixel(middle.to_f64())
+            });
+            scaling::scale(elements, first, around);
+            scaling::scale(&mut shadows, cast, around);
+            scaling::scale_panes(&mut glass, laid, around);
         }
         elements.append(&mut shadows);
         // What is behind each begins under all of their shadows.
@@ -4118,6 +4171,7 @@ render_elements! {
     Texture=TextureRenderElement<<R as RendererSuper>::TextureId>,
     Frosted=Strip<Frosted<R>>,
     Tinted=Strip<SolidColorRenderElement>,
+    Scaled=RescaleRenderElement<Boxed<R>>,
 }
 
 /// The widest the problem notice gets, and its distance from the edges of
@@ -4547,9 +4601,9 @@ pub(crate) struct Animation {
     clock: Duration,
     epoch: Option<Instant>,
     /// How much of the menu and of the notice there is to see while each
-    /// is coming in, from 0 to 1.
-    menu_opacity: f32,
-    notice_opacity: f32,
+    /// is coming in, and how large each is.
+    menu_seen: Seen,
+    notice_seen: Seen,
     /// The panels of shell components that are on the screen, and those
     /// that were when this was last worked out.
     layers: Vec<Present>,
@@ -4576,8 +4630,8 @@ struct Present {
     /// The part of the theme it is named after.
     part: Part,
     layer: Layer,
-    /// How much of it there is to see, from 0 to 1.
-    share: f32,
+    /// How much of it there is to see, and how large it is.
+    seen: Seen,
     /// The shadow it casts, if the theme gives its part one.
     shadow: Option<Shadowing>,
     /// Where it is on the screens, for its glass as it fades out.
@@ -4596,11 +4650,12 @@ fn fades(part: Part) -> bool {
 struct Gone {
     /// The part of the theme whose time it takes.
     part: Part,
-    /// When it went, and how much of it there was to see then.
+    /// When it went, and how much of it there was to see then and how
+    /// large it was.
     since: Duration,
-    from: f32,
-    /// How much of it there is to see now.
-    opacity: f32,
+    from: Seen,
+    /// How much of it there is to see now, and how large it is.
+    seen: Seen,
     /// Where among what is drawn it belongs.
     level: Level,
     what: What,
@@ -4643,8 +4698,8 @@ impl Animation {
             portraits: Vec::new(),
             clock: Duration::ZERO,
             epoch: None,
-            menu_opacity: 1.0,
-            notice_opacity: 1.0,
+            menu_seen: Seen::WHOLE,
+            notice_seen: Seen::WHOLE,
             layers: Vec::new(),
             before: Vec::new(),
             drawn: RefCell::new(Vec::new()),
@@ -4685,8 +4740,8 @@ impl Animation {
             let gone = pieces.flatten().map(|pieces| Gone {
                 part: Part::Window,
                 since: self.clock,
-                from: shown.opacity,
-                opacity: shown.opacity,
+                from: shown.seen,
+                seen: shown.seen,
                 level: Level::Frames(shown.over),
                 private: shown.private,
                 what: What::Surface(shown.chrome.map(Box::new), pieces, None, None),
@@ -4700,14 +4755,14 @@ impl Animation {
         // How much of it there was to see was worked out when it was
         // last there.
         let from = match what {
-            What::Notice(_) => self.notice_opacity,
-            What::Menu(_) | What::Surface(..) => self.menu_opacity,
+            What::Notice(_) => self.notice_seen,
+            What::Menu(_) | What::Surface(..) => self.menu_seen,
         };
         Gone {
             part,
             since: self.clock,
             from,
-            opacity: from,
+            seen: from,
             level: Level::Over,
             what,
             private: false,
@@ -4719,10 +4774,14 @@ impl Animation {
     /// anything that is neither on the screen, as `scene` has it, nor
     /// fading. Nothing of the session lingers once it is `locked`.
     fn fade_out(&mut self, theme: &Theme, scene: &[Shown], locked: bool) {
-        for gone in &mut self.gone {
-            gone.opacity = gone.from * self.motion.leaving(theme, gone.part, gone.since);
-        }
-        self.gone.retain(|gone| gone.opacity > 0.0 && !locked);
+        let motion = &mut self.motion;
+        self.gone.retain_mut(|gone| {
+            // What went while it was still coming leaves from as much of it
+            // as had come.
+            let left = motion.leaving(theme, gone.part, gone.since);
+            gone.seen = left.map_or(gone.seen, |left| gone.from.and(left));
+            left.is_some() && !locked
+        });
         let layers = &self.layers;
         self.drawn.get_mut().retain(|(surface, _)| {
             let window = scene.iter().any(|shown| shown.surface == *surface);
@@ -5005,7 +5064,8 @@ pub(crate) fn layer_origin(layers: &LayerMap, layer: &LayerSurface) -> Point<i32
     all.loc - layer.bbox().loc
 }
 
-/// How much there is to see of the window `id` of a frame with `tabs`.
+/// How much there is to see of the window `id` of a frame with `tabs`, and
+/// how large it is.
 /// Every window of the frame is in the picture, so that showing another of
 /// its tabs is not a coming in; and what is `sliding` into view with its
 /// workspace was there all along.
@@ -5014,18 +5074,18 @@ fn presence(
     theme: &Theme,
     (tabs, id): (&[WindowId], WindowId),
     sliding: bool,
-) -> f32 {
-    let mut opacity = 1.0;
+) -> Seen {
+    let mut seen = Seen::WHOLE;
     for tab in tabs {
         if sliding {
             motion.arrived(Part::Window, tab.raw());
         }
-        let share = motion.presence(theme, Part::Window, tab.raw());
+        let now = motion.presence(theme, Part::Window, tab.raw());
         if *tab == id {
-            opacity = share;
+            seen = now;
         }
     }
-    opacity
+    seen
 }
 
 /// A window on screen: where it is and the decoration drawn around it.
@@ -5042,8 +5102,9 @@ pub(crate) struct Shown {
     pub(crate) outer: Rect,
     /// Where the window's visible geometry starts.
     pub(crate) origin: Point<i32, Logical>,
-    /// How much of it there is to see while it is coming in, from 0 to 1.
-    opacity: f32,
+    /// How much of it there is to see, and how large it is, while it is
+    /// coming in.
+    seen: Seen,
     /// Whether it is rolled up into its titlebar, with none of the window
     /// showing.
     pub(crate) shaded: bool,

@@ -301,7 +301,9 @@ fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
 
 #[test]
 fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
-    let theme = "window { transition: 100ms linear; }\n";
+    // As large as it is all the while, for its edges to be where they are.
+    let theme = "window { transition: 100ms linear; }\n\
+                 @starting-style { window { scale: 1 } }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     // The titlebar, the border down the left and the window itself.
@@ -332,10 +334,30 @@ fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
 }
 
 #[test]
+fn a_window_and_its_frame_grow_into_their_place_as_they_come() {
+    // Seen whole as it comes, so that only its size changes.
+    let theme = "window { transition: 100ms linear; box-shadow: none; }\n\
+                 @starting-style { window { opacity: 1; scale: 50% } }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    // Near the right of the titlebar, and the middle of the window.
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        [picture.at(190, 14), picture.at(100, 80)]
+    };
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    assert_eq!(seen(&mut session), [BACKGROUND, RED], "half as large");
+    session.advance(Duration::from_millis(100));
+    assert_eq!(seen(&mut session), [FOCUSED_TITLEBAR, RED], "all of it");
+}
+
+#[test]
 fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     use omorfos_config::Action;
 
-    let theme = "window { transition: 100ms linear; }\n";
+    // As large as it is all the while, for its edges to be where they are.
+    let theme = "window { transition: 100ms linear; }\n\
+                 window:closing { scale: 1 }\n";
     let mut session =
         Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();

@@ -29,7 +29,7 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
-use crate::common::{Client, HEIGHT, Session, WIDTH, key};
+use crate::common::{Client, HEIGHT, Session, WIDTH, key, wait};
 use crate::relayed::relayed;
 use crate::versions::updated;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
@@ -663,21 +663,6 @@ fn server(session: &Session) -> Option<u32> {
     let mut processes = std::fs::read_dir("/proc").unwrap().flatten();
     let process = processes.find(ours)?;
     process.file_name().to_str()?.parse().ok()
-}
-
-/// Lets the compositor carry on until something is so, without time
-/// passing for it: how often an X server may be started again goes by
-/// the clock.
-fn wait(session: &mut Session, so: impl Fn(&Session) -> bool) {
-    for _ in 0..20_000 {
-        session.step();
-        if so(session) {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    let problems = session.compositor().problems();
-    unreachable!("what was waited for never came about: {problems:?}");
 }
 
 /// Kills the session's X server, and waits for it to be gone.

@@ -21,7 +21,7 @@ use omorfos_launcher::{App, Launcher, Picker};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH, half_way, key};
+use crate::common::{Event, HEIGHT, Session, WIDTH, between, half_way, key, wait};
 use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
@@ -447,6 +447,38 @@ fn the_rest_of_the_screen_can_be_dimmed_while_the_launcher_is_open() {
         surface(),
         "the box is over it"
     );
+}
+
+#[test]
+fn the_dim_behind_the_launcher_fades_in_and_out_with_it() {
+    let theme = "launcher-backdrop { background: #0000ff; transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    let blue = 0xff00_00ff;
+    let corner = |session: &mut Session| session.draw().at(5, 5);
+    assert_eq!(corner(&mut session), BACKGROUND, "not there yet");
+    session.advance(Duration::from_millis(50));
+    let half = corner(&mut session);
+    assert!(between(half, BACKGROUND, blue), "{half:#x}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(corner(&mut session), blue);
+
+    // Gone once the launcher is, which is once its connection is closed:
+    // seen to set out, without the clock moving on.
+    press(&mut session, key::ESCAPE);
+    assert!(settle(&mut session, &mut launcher), "closed");
+    assert_eq!(session.compositor().deadline(), None, "at rest");
+    drop(launcher);
+    wait(&mut session, |session| {
+        session.compositor().deadline().is_some()
+    });
+    assert_eq!(corner(&mut session), blue, "setting out");
+    session.advance(Duration::from_millis(50));
+    let half = corner(&mut session);
+    assert!(between(half, BACKGROUND, blue), "{half:#x}");
+    session.advance(Duration::from_millis(50));
+    assert_eq!(corner(&mut session), BACKGROUND, "gone");
 }
 
 #[test]
