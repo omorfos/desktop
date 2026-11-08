@@ -1023,8 +1023,9 @@ Not every part uses every property yet:
   rules without a state, since a window does not change size when it gains
   focus.
 - Layout (`display`, `position`, `flex`), `radial-gradient()`, more than
-  one background, more than one shadow and a shadow `inset` are not
-  there, and nor are `steps()` or `@keyframes`.
+  one background, more than one shadow cast or inside, and a shadow
+  inside with a soft edge or a spread are not there, and nor are
+  `steps()` or `@keyframes`.
 
 Nothing is passed over in silence: a part, state, property or value that
 is not understood is a mistake, reported with its line and column, and the
