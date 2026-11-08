@@ -1919,6 +1919,8 @@ name = "omorfos-config"
 version = "0.1.0"
 dependencies = [
  "inotify",
+ "jiff",
+ "rustix 1.1.6",
  "schemars",
  "serde",
  "serde-saphyr",

@@ -18,6 +18,7 @@ mod bounded;
 mod color;
 mod config;
 mod css;
+mod daylight;
 mod debounce;
 mod diagnostic;
 mod general;
@@ -41,6 +42,7 @@ pub use action::{Action, Command, Half, MAX_WORKSPACES, Role, Started, Workspace
 pub use bounded::Bounded;
 pub use color::Color;
 pub use config::{Config, FILES, MAX_FILE_SIZE};
+pub use daylight::{Day, Location};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
@@ -54,7 +56,7 @@ pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
 pub use paths::{cache_dir, config_dir};
 pub use rules::{Match, Rule, Rules};
-pub use scheme::{Accent, Scheme};
+pub use scheme::{Accent, Scheme, SchemeChoice};
 pub use store::Store;
 pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};

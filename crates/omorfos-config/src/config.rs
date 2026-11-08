@@ -3,10 +3,12 @@
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
+use std::time::SystemTime;
 
+use jiff::Zoned;
 use serde::de::DeserializeOwned;
 
-use crate::{Appearance, Diagnostic, General, Keys, Menu, Rules, Theme};
+use crate::{Accent, Diagnostic, General, Keys, Menu, Rules, Scheme, Theme};
 
 /// The files that make up the configuration, relative to its directory.
 ///
@@ -41,6 +43,12 @@ pub struct Config {
     pub theme: Theme,
     /// The root menu, from `menu.yaml`.
     pub menu: Menu,
+    /// The scheme the theme was built in, which `appearance.scheme` says
+    /// or the time of day does.
+    pub scheme: Scheme,
+    /// When the scheme may next change, if it goes by the time of day: the
+    /// configuration is to be loaded again then.
+    pub changes: Option<SystemTime>,
 }
 
 impl Config {
@@ -58,17 +66,33 @@ impl Config {
     /// in effect when reloading.
     #[must_use]
     pub fn load(directory: &Path, fallback: &Self) -> (Self, Vec<Diagnostic>) {
+        Self::load_at(directory, fallback, &Zoned::now())
+    }
+
+    /// Loads the configuration in `directory` as [`Config::load`] does, as
+    /// it is at `now`: the scheme goes by the time of day if
+    /// `appearance.scheme` is `auto`.
+    #[must_use]
+    pub fn load_at(directory: &Path, fallback: &Self, now: &Zoned) -> (Self, Vec<Diagnostic>) {
         let mut diagnostics = Vec::new();
         let general: General = section(directory, GENERAL, &fallback.general, &mut diagnostics);
         // The theme is built in the scheme and with the accent `config.yaml`
         // says, so it is read after it.
         let appearance = general.appearance;
+        let (scheme, changes) = appearance.scheme_at(now);
         let config = Self {
             keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
             rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: theme(directory, appearance, fallback, &mut diagnostics),
+            theme: theme(
+                directory,
+                (scheme, appearance.accent),
+                fallback,
+                &mut diagnostics,
+            ),
             menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
             general,
+            scheme,
+            changes,
         };
         (config, diagnostics)
     }
@@ -97,7 +121,7 @@ where
 /// built-in theme in the scheme chosen now.
 fn theme(
     directory: &Path,
-    appearance: Appearance,
+    (scheme, accent): (Scheme, Accent),
     fallback: &Config,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Theme {
@@ -109,7 +133,7 @@ fn theme(
     }
     let path = directory.join(THEME);
     let loaded = read(&path).and_then(|text| {
-        let parsed = Theme::parse_in(&text, appearance.scheme, appearance.accent);
+        let parsed = Theme::parse_in(&text, scheme, accent);
         parsed.map_err(|error| Diagnostic {
             file: path.clone(),
             position: error.position,
@@ -118,10 +142,9 @@ fn theme(
     });
     loaded.unwrap_or_else(|diagnostic| {
         diagnostics.push(diagnostic);
-        let built_in =
-            |appearance: Appearance| Theme::built_in(appearance.scheme, appearance.accent);
-        if fallback.theme == built_in(fallback.general.appearance) {
-            built_in(appearance)
+        let kept = fallback.general.appearance.accent;
+        if fallback.theme == Theme::built_in(fallback.scheme, kept) {
+            Theme::built_in(scheme, accent)
         } else {
             fallback.theme.clone()
         }
@@ -246,6 +269,38 @@ mod tests {
         assert_eq!(desktop.background, Color::rgb(0x10, 0x20, 0x30));
         let picker = config.theme.style(Part::Picker, States::NONE);
         assert_eq!(picker.border.top.color, Color::rgb(0xb8, 0x4a, 0x0e));
+    }
+
+    /// A moment of 10 March 2026 an hour east of UTC.
+    fn at(hour: i8) -> Zoned {
+        let zone = jiff::tz::TimeZone::fixed(jiff::tz::offset(1));
+        let moment = jiff::civil::date(2026, 3, 10).at(hour, 0, 0, 0);
+        moment.to_zoned(zone).unwrap()
+    }
+
+    #[test]
+    fn a_scheme_that_goes_by_the_time_of_day_is_light_by_day_and_says_when_it_changes() {
+        let directory = directory(&[("config.yaml", "appearance: { scheme: auto }\n")]);
+        let fallback = Config::default();
+        let (noon, diagnostics) = Config::load_at(directory.path(), &fallback, &at(12));
+        assert_eq!(diagnostics, []);
+        assert_eq!(noon.scheme, Scheme::Light);
+        assert!(!noon.theme.dark());
+        let evening = at(19).timestamp();
+        assert_eq!(noon.changes, Some(evening.into()));
+        let (night, _) = Config::load_at(directory.path(), &noon, &at(22));
+        assert_eq!(night.scheme, Scheme::Dark);
+        assert!(night.theme.dark());
+        // Loaded again before it changes, it is as it was.
+        let (later, _) = Config::load_at(directory.path(), &noon, &at(13));
+        assert_eq!(later, noon);
+        // One that does not, never changes by itself.
+        let (fixed, _) = load(&[("config.yaml", "appearance: { scheme: light }\n")]);
+        assert_eq!((fixed.scheme, fixed.changes), (Scheme::Light, None));
+        assert_eq!(
+            (Config::default().scheme, Config::default().changes),
+            (Scheme::Dark, None)
+        );
     }
 
     #[test]

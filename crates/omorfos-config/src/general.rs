@@ -2,7 +2,12 @@
 
 use serde::Deserialize;
 
-use crate::{Accent, Bounded, Command, MAX_WORKSPACES, Scheme, Started, Wallpaper};
+use std::time::SystemTime;
+
+use jiff::Zoned;
+
+use crate::daylight::{self, Day, Location};
+use crate::{Accent, Bounded, Command, MAX_WORKSPACES, Scheme, SchemeChoice, Started, Wallpaper};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -280,14 +285,38 @@ impl Default for Notifications {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Appearance {
-    /// Whether the built-in theme is dark or light.
-    pub scheme: Scheme,
+    /// Whether the built-in theme is dark or light, or which the time of
+    /// day says.
+    pub scheme: SchemeChoice,
+    /// Where the user is, for `scheme: auto` to be light from sunrise to
+    /// sunset there. It is not told to any program.
+    pub location: Option<Location>,
+    /// The hours `scheme: auto` is light between where no location is given.
+    pub day: Day,
     /// The colour the built-in theme picks out what has focus with: one
     /// that comes with omorfos, by its name, or any other.
     pub accent: Accent,
     /// Whether every surface the theme makes glass is solid in its colour,
     /// with nothing behind it blurred or seen through.
     pub reduce_transparency: bool,
+}
+
+impl Appearance {
+    /// The scheme the desktop is in at `now`, and, if it goes by the time
+    /// of day, when it is next to be asked again.
+    #[must_use]
+    pub fn scheme_at(&self, now: &Zoned) -> (Scheme, Option<SystemTime>) {
+        let fixed = match self.scheme {
+            SchemeChoice::Dark => Scheme::Dark,
+            SchemeChoice::Light => Scheme::Light,
+            SchemeChoice::Auto => {
+                let (light, next) = daylight::light_at(now, self.location, self.day);
+                let scheme = if light { Scheme::Light } else { Scheme::Dark };
+                return (scheme, Some(next.into()));
+            }
+        };
+        (fixed, None)
+    }
 }
 
 /// The launcher that comes with omorfos: what it shows of each program
@@ -1018,22 +1047,40 @@ mod tests {
         let appearance = General::default().appearance;
         assert_eq!(
             (appearance.scheme, appearance.accent),
-            (Scheme::Dark, Accent::Cyan)
+            (SchemeChoice::Dark, Accent::Cyan)
         );
         let chosen = parse("appearance: { scheme: light, accent: purple }").unwrap();
         let appearance = chosen.appearance;
         assert_eq!(
             (appearance.scheme, appearance.accent),
-            (Scheme::Light, Accent::Purple)
+            (SchemeChoice::Light, Accent::Purple)
         );
         let own = parse("appearance: { accent: '#3584e4' }").unwrap();
         assert_eq!(
             own.appearance.accent,
             Accent::Own(Color::rgb(0x35, 0x84, 0xe4))
         );
-        assert!(parse("appearance: { scheme: auto }").is_err(), "not yet");
         let error = parse("appearance:\n  accent: green\n").unwrap_err();
         assert!(error.contains("invalid accent `green`"), "{error}");
+    }
+
+    #[test]
+    fn the_scheme_may_follow_the_sun_where_the_user_is_or_the_hours_of_the_day() {
+        let auto = parse("appearance: { scheme: auto }").unwrap().appearance;
+        assert_eq!(auto.scheme, SchemeChoice::Auto);
+        assert_eq!((auto.location, auto.day), (None, Day::default()));
+        let placed = "appearance:\n  scheme: auto\n  location: { latitude: 52.23, longitude: 21.01 }\n\
+                      \x20 day: { from: '06:30', to: '21:00' }\n";
+        let placed = parse(placed).unwrap().appearance;
+        assert!(placed.location.is_some());
+        assert_ne!(placed.day, Day::default());
+        let error = parse("appearance:\n  location: { latitude: 91, longitude: 0 }\n").unwrap_err();
+        assert!(error.contains("from -90 to 90"), "{error}");
+        assert!(error.contains("line 2"), "{error}");
+        let error = parse("appearance: { day: { from: '19:00', to: '19:00' } }").unwrap_err();
+        assert!(error.contains("is not a day"), "{error}");
+        assert!(parse("appearance: { location: { latitude: 1 } }").is_err());
+        assert!(parse("appearance: { scheme: sometimes }").is_err());
     }
 
     #[test]

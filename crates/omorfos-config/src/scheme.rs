@@ -24,6 +24,22 @@ pub enum Scheme {
     Light,
 }
 
+/// Whether the desktop is dark or light, as `appearance.scheme` chooses: one
+/// of them, or whichever the time of day says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SchemeChoice {
+    /// Always dark.
+    #[default]
+    Dark,
+    /// Always light.
+    Light,
+    /// Light from sunrise to sunset where `appearance.location` says, or
+    /// between the hours of `appearance.day`, and dark the rest of the time.
+    Auto,
+}
+
 /// The one colour that says what has focus and what will happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(try_from = "String")]

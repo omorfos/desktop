@@ -2,12 +2,19 @@
 
 use std::ffi::OsStr;
 use std::io;
-use std::os::fd::{AsFd, BorrowedFd};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use inotify::{EventMask, Inotify, WatchMask};
+use rustix::event::epoll;
+use rustix::io::Errno;
+use rustix::time::{
+    Itimerspec, TimerfdClockId, TimerfdFlags, TimerfdTimerFlags, Timespec, timerfd_create,
+    timerfd_settime,
+};
 
-use crate::FILES;
+use crate::{FILES, Store};
 
 /// Watches the configuration directory for changes to its files.
 ///
@@ -22,10 +29,17 @@ use crate::FILES;
 ///
 /// A file that is a symbolic link is only seen to change when the link
 /// itself is replaced, not when its target is edited in place.
+///
+/// It also wakes when it is told to, as though a file had changed: when the
+/// scheme goes by the time of day, at the time it may change.
 #[derive(Debug)]
 pub struct Watcher {
     inotify: Inotify,
     buffer: Vec<u8>,
+    /// Readable once the time it was told to wake at has come.
+    timer: OwnedFd,
+    /// Readable when either of them is.
+    either: OwnedFd,
 }
 
 impl Watcher {
@@ -47,18 +61,101 @@ impl Watcher {
             | WatchMask::MOVED_TO
             | WatchMask::ONLYDIR;
         Inotify::init().and_then(|inotify| {
-            inotify
-                .watches()
-                .add(directory, mask)
-                .map(|_| Self { inotify, buffer })
+            let watched = inotify.watches().add(directory, mask);
+            watched.and_then(|_| {
+                // Woken by the time of day, and woken again if the clock is
+                // set, as after a suspend, for the time to be asked anew.
+                let flags = TimerfdFlags::NONBLOCK | TimerfdFlags::CLOEXEC;
+                let timer = timerfd_create(TimerfdClockId::Realtime, flags);
+                let either = epoll::create(epoll::CreateFlags::CLOEXEC);
+                let both = timer.and_then(|timer| {
+                    either.and_then(|either| {
+                        let readable = epoll::EventFlags::IN;
+                        let first = epoll::EventData::new_u64(0);
+                        let second = epoll::EventData::new_u64(1);
+                        let added = epoll::add(&either, &inotify, first, readable);
+                        let added =
+                            added.and_then(|()| epoll::add(&either, &timer, second, readable));
+                        added.map(|()| (timer, either))
+                    })
+                });
+                both.map_err(io::Error::from).map(|(timer, either)| Self {
+                    inotify,
+                    buffer,
+                    timer,
+                    either,
+                })
+            })
         })
+    }
+
+    /// Starts watching the directory `store` loads from, to wake when it is
+    /// due to be loaded again as well as when a file in it changes.
+    ///
+    /// # Errors
+    ///
+    /// As [`Watcher::new`].
+    pub fn of(store: &Store) -> io::Result<Self> {
+        Self::new(store.directory()).map(|mut watcher| {
+            watcher.wake_at(store.due());
+            watcher
+        })
+    }
+
+    /// Consumes what is pending, as [`Watcher::drain`] does, and if a file
+    /// changed or `store` is due, loads it again and wakes when it is next
+    /// due. Returns whether the configuration in effect changed.
+    ///
+    /// # Errors
+    ///
+    /// As [`Watcher::drain`].
+    pub fn refresh(&mut self, store: &mut Store) -> io::Result<bool> {
+        self.drain().map(|changed| {
+            let reloaded = changed && store.reload();
+            if changed {
+                self.wake_at(store.due());
+            }
+            reloaded
+        })
+    }
+
+    /// Has it wake at `at`, as though a file had changed, in place of any
+    /// time it was told before; or not by the clock at all, if at none. A
+    /// time the kernel cannot be told of is not waited for.
+    pub fn wake_at(&mut self, at: Option<SystemTime>) {
+        let since = at.map(|at| {
+            let since = at
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default();
+            // To the kernel no time at all is never.
+            since.max(Duration::from_nanos(1))
+        });
+        let at = since.map_or(Timespec::default(), |since| Timespec {
+            tv_sec: i64::try_from(since.as_secs()).unwrap_or(i64::MAX),
+            tv_nsec: i64::from(since.subsec_nanos()),
+        });
+        let when = Itimerspec {
+            it_interval: Timespec::default(),
+            it_value: at,
+        };
+        let flags = TimerfdTimerFlags::ABSTIME | TimerfdTimerFlags::CANCEL_ON_SET;
+        let _told = timerfd_settime(&self.timer, flags, &when);
+    }
+
+    /// Whether the time it was told to wake at has come, or the clock was
+    /// set since, which is reason enough to ask the time again.
+    fn rang(&self) -> bool {
+        let mut count = [0; 8];
+        let read = rustix::io::read(&self.timer, &mut count);
+        read.map_or_else(|error| error != Errno::AGAIN, |_| true)
     }
 
     /// Consumes all pending events without blocking.
     ///
-    /// Returns `true` if any of them concerned a configuration file, meaning
-    /// a reload is worthwhile. Changes to other files in the directory, such
-    /// as editor swap files, are ignored.
+    /// Returns `true` if any of them concerned a configuration file, or it
+    /// is the time it was told to wake at, meaning a reload is worthwhile.
+    /// Changes to other files in the directory, such as editor swap files,
+    /// are ignored.
     ///
     /// # Errors
     ///
@@ -72,7 +169,9 @@ impl Watcher {
                         changed |= is_relevant(event.mask, event.name);
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(changed),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    return Ok(changed | self.rang());
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -81,7 +180,7 @@ impl Watcher {
 
 impl AsFd for Watcher {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inotify.as_fd()
+        self.either.as_fd()
     }
 }
 
@@ -95,8 +194,7 @@ fn is_relevant(mask: EventMask, name: Option<&OsStr>) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::thread::sleep;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     use tempfile::TempDir;
 
@@ -176,15 +274,77 @@ mod tests {
         assert!(!is_relevant(EventMask::IGNORED, None));
     }
 
+    /// Whether the watcher's descriptor becomes readable within `millis`.
+    fn readable(watcher: &Watcher, millis: i32) -> bool {
+        use rustix::event::{PollFd, PollFlags, Timespec, poll};
+        let mut sources = [PollFd::new(watcher, PollFlags::IN)];
+        let wait = Timespec {
+            tv_sec: i64::from(millis / 1000),
+            tv_nsec: i64::from(millis % 1000) * 1_000_000,
+        };
+        poll(&mut sources, Some(&wait)).unwrap() > 0
+    }
+
     #[test]
     fn the_descriptor_becomes_readable_when_something_changes() {
         let directory = TempDir::new().unwrap();
-        let watcher = Watcher::new(directory.path()).unwrap();
-        let mut reader = fs::File::from(watcher.as_fd().try_clone_to_owned().unwrap());
+        let mut watcher = Watcher::new(directory.path()).unwrap();
+        assert!(!readable(&watcher, 0));
         fs::write(directory.path().join("config.yaml"), "").unwrap();
-        sleep(Duration::from_millis(10));
-        let mut buffer = [0; 1024];
-        assert!(io::Read::read(&mut reader, &mut buffer).unwrap() > 0);
+        assert!(readable(&watcher, 100));
+        assert!(changed(&mut watcher));
+        assert!(!readable(&watcher, 0), "and is quiet once drained");
+    }
+
+    #[test]
+    fn it_wakes_at_the_time_it_is_told_as_though_something_had_changed() {
+        let directory = TempDir::new().unwrap();
+        let mut watcher = Watcher::new(directory.path()).unwrap();
+        let soon = SystemTime::now() + Duration::from_millis(30);
+        watcher.wake_at(Some(soon));
+        assert!(!changed(&mut watcher), "not yet");
+        assert!(readable(&watcher, 1000));
+        assert!(SystemTime::now() >= soon);
+        assert!(changed(&mut watcher));
+        assert!(!changed(&mut watcher), "once");
+        assert!(!readable(&watcher, 0));
+    }
+
+    #[test]
+    fn a_store_whose_scheme_goes_by_the_time_of_day_is_loaded_again_when_it_is_due() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path());
+        let mut watcher = Watcher::of(&store).unwrap();
+        assert!(!readable(&watcher, 20), "nothing is due");
+        assert!(!watcher.refresh(&mut store).unwrap());
+        fs::write(
+            directory.path().join("config.yaml"),
+            "appearance: { scheme: auto }\n",
+        )
+        .unwrap();
+        assert!(watcher.refresh(&mut store).unwrap(), "a file changed");
+        assert!(store.due().is_some());
+        assert!(!readable(&watcher, 20), "and it is woken when it is due");
+        // Due at once, whatever it is next due at it is woken then.
+        watcher.wake_at(Some(SystemTime::UNIX_EPOCH));
+        assert!(!watcher.refresh(&mut store).unwrap(), "nothing changed");
+        assert!(!readable(&watcher, 20));
+        let watcher = Watcher::of(&store).unwrap();
+        assert!(!readable(&watcher, 20));
+    }
+
+    #[test]
+    fn a_time_gone_by_wakes_it_at_once_and_none_at_all_does_not() {
+        let directory = TempDir::new().unwrap();
+        let mut watcher = Watcher::new(directory.path()).unwrap();
+        watcher.wake_at(Some(SystemTime::UNIX_EPOCH));
+        assert!(readable(&watcher, 100));
+        assert!(changed(&mut watcher));
+        let soon = SystemTime::now() + Duration::from_millis(20);
+        watcher.wake_at(Some(soon));
+        watcher.wake_at(None);
+        assert!(!readable(&watcher, 60), "told of no time after all");
+        assert!(!changed(&mut watcher));
     }
 
     #[test]

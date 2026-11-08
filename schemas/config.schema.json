@@ -62,14 +62,29 @@
           "$ref": "#/$defs/Accent",
           "description": "The colour the built-in theme picks out what has focus with: one\nthat comes with omorfos, by its name, or any other."
         },
+        "day": {
+          "$ref": "#/$defs/Day",
+          "description": "The hours `scheme: auto` is light between where no location is given."
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Location"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Where the user is, for `scheme: auto` to be light from sunrise to\nsunset there. It is not told to any program."
+        },
         "reduce_transparency": {
           "default": false,
           "description": "Whether every surface the theme makes glass is solid in its colour,\nwith nothing behind it blurred or seen through.",
           "type": "boolean"
         },
         "scheme": {
-          "$ref": "#/$defs/Scheme",
-          "description": "Whether the built-in theme is dark or light."
+          "$ref": "#/$defs/SchemeChoice",
+          "description": "Whether the built-in theme is dark or light, or which the time of\nday says."
         }
       },
       "type": "object"
@@ -121,6 +136,25 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "Day": {
+      "additionalProperties": false,
+      "description": "The hours of the day the desktop is light where no location is given,\nfrom `from` until `to`, in minutes after midnight, local time. One that\nends earlier than it begins runs through midnight.",
+      "properties": {
+        "from": {
+          "description": "When the desktop turns light, as `\"07:00\"`.",
+          "type": "string"
+        },
+        "to": {
+          "description": "When it turns dark, as `\"19:00\"`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
       "type": "object"
     },
     "Fit": {
@@ -285,6 +319,27 @@
           "type": "boolean"
         }
       },
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "description": "Where on Earth the user is, for when the sun is up there. Kept in\nmillionths of a degree, so that the configuration can be compared.",
+      "properties": {
+        "latitude": {
+          "description": "From -90 at the South Pole to 90 at the North.",
+          "format": "double",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "From -180 to 180, east of Greenwich being above 0.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude"
+      ],
       "type": "object"
     },
     "Lock": {
@@ -667,17 +722,22 @@
         }
       ]
     },
-    "Scheme": {
-      "description": "Whether the desktop is dark or light.",
+    "SchemeChoice": {
+      "description": "Whether the desktop is dark or light, as `appearance.scheme` chooses: one\nof them, or whichever the time of day says.",
       "oneOf": [
         {
           "const": "dark",
-          "description": "Light writing on navy.",
+          "description": "Always dark.",
           "type": "string"
         },
         {
           "const": "light",
-          "description": "Dark writing on a warm cream.",
+          "description": "Always light.",
+          "type": "string"
+        },
+        {
+          "const": "auto",
+          "description": "Light from sunrise to sunset where `appearance.location` says, or\nbetween the hours of `appearance.day`, and dark the rest of the time.",
           "type": "string"
         }
       ]

@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::{Config, Diagnostic};
 
@@ -46,6 +47,14 @@ impl Store {
     #[must_use]
     pub const fn current(&self) -> &Arc<Config> {
         &self.current
+    }
+
+    /// When the configuration is to be loaded again, whether or not a file
+    /// changes: when the scheme may next change, if it goes by the time of
+    /// day.
+    #[must_use]
+    pub fn due(&self) -> Option<SystemTime> {
+        self.current.changes
     }
 
     /// The problems found by the most recent load. Empty when every file
@@ -117,6 +126,23 @@ mod tests {
             Placement::Cascade,
             "snapshots are not mutated"
         );
+    }
+
+    #[test]
+    fn it_is_due_again_when_the_scheme_may_change_and_never_if_it_cannot() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path());
+        assert_eq!(store.due(), None);
+        write(&directory, "config.yaml", "appearance: { scheme: auto }\n");
+        let mut store = Store::open(directory.path());
+        let due = store.due().unwrap();
+        // By midnight, at the latest.
+        let day = std::time::Duration::from_hours(24);
+        assert!(due <= SystemTime::now() + day, "{due:?}");
+        assert!(due > SystemTime::now());
+        write(&directory, "config.yaml", "appearance: { scheme: dark }\n");
+        store.reload();
+        assert_eq!(store.due(), None);
     }
 
     #[test]
