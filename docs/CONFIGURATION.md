@@ -1029,8 +1029,12 @@ Not every part uses every property yet:
 
 Nothing is passed over in silence: a part, state, property or value that
 is not understood is a mistake, reported with its line and column, and the
-previous theme stays in use. A `theme.yaml` from an earlier version is no
-longer read, and omorfos says so while it is there.
+previous theme stays in use, in the scheme and with the accent it was in:
+an `appearance.scheme` or `appearance.accent` changed meanwhile waits until
+the theme is put right. Where there was no theme of yours to keep, as when
+the session starts with one that is wrong, it is the built-in theme in the
+scheme and with the accent `config.yaml` gives. A `theme.yaml` from an
+earlier version is no longer read, and omorfos says so while it is there.
 
 ## `menu.yaml`
 

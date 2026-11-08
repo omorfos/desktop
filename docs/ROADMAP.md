@@ -1173,9 +1173,11 @@ the first than on the last.
       variables, under the user's own theme; each accent that comes with
       omorfos held to the contrast in both schemes, and programs told
       the scheme and the accent through the settings portal.
-- [ ] A theme that is wrong keeps the scheme and the accent it was last
+- [x] A theme that is wrong keeps the scheme and the accent it was last
       built with until it is mended, as the whole of it is kept: a new
-      scheme in `config.yaml` meanwhile waits for it.
+      scheme in `config.yaml` meanwhile waits for it. Where nothing of the
+      user's was kept, as at startup, it is the built-in theme in the
+      scheme chosen.
 - [x] The ring round what the keyboard is on, two pixels of the accent
       two pixels out from it (`outline`, `outline-offset`), on the
       prompts' buttons; close round the eye in the password field, which

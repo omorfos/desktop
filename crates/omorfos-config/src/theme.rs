@@ -97,10 +97,7 @@ impl std::error::Error for ThemeError {}
 impl Default for Theme {
     /// The built-in theme.
     fn default() -> Self {
-        let table = build(&built_in(Scheme::Dark, Accent::Cyan), &Sheet::default());
-        Self {
-            table: Arc::new(table.unwrap_or_default()),
-        }
+        Self::built_in(Scheme::Dark, Accent::Cyan)
     }
 }
 
@@ -123,6 +120,15 @@ impl Theme {
     /// not understood is an error.
     pub fn parse(stylesheet: &str) -> Result<Self, ThemeError> {
         Self::parse_in(stylesheet, Scheme::Dark, Accent::Cyan)
+    }
+
+    /// The built-in theme in `scheme`, picking things out with `accent`.
+    #[must_use]
+    pub fn built_in(scheme: Scheme, accent: Accent) -> Self {
+        let table = build(&built_in(scheme, accent), &Sheet::default());
+        Self {
+            table: Arc::new(table.unwrap_or_default()),
+        }
     }
 
     /// The theme that `stylesheet` makes when laid over the built-in one in

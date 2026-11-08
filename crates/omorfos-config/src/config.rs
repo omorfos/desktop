@@ -66,7 +66,7 @@ impl Config {
         let config = Self {
             keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
             rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: theme(directory, appearance, &fallback.theme, &mut diagnostics),
+            theme: theme(directory, appearance, fallback, &mut diagnostics),
             menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
             general,
         };
@@ -90,10 +90,15 @@ where
 /// Loads the theme, which is a stylesheet and not YAML like the rest, laid
 /// over the built-in one in the scheme and with the accent `appearance`
 /// says.
+///
+/// One that is wrong is the theme of `fallback`, in the scheme it was built
+/// in, until it is mended; but where that is the built-in theme alone, as
+/// it is at startup, there is nothing of the user's to keep, and it is the
+/// built-in theme in the scheme chosen now.
 fn theme(
     directory: &Path,
     appearance: Appearance,
-    fallback: &Theme,
+    fallback: &Config,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Theme {
     let old = directory.join(OLD_THEME);
@@ -113,7 +118,13 @@ fn theme(
     });
     loaded.unwrap_or_else(|diagnostic| {
         diagnostics.push(diagnostic);
-        fallback.clone()
+        let built_in =
+            |appearance: Appearance| Theme::built_in(appearance.scheme, appearance.accent);
+        if fallback.theme == built_in(fallback.general.appearance) {
+            built_in(appearance)
+        } else {
+            fallback.theme.clone()
+        }
     })
 }
 
@@ -156,7 +167,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{Color, FocusModel, Part, Position, States};
+    use crate::{Accent, Color, FocusModel, Part, Position, Scheme, States};
 
     fn directory(files: &[(&str, &str)]) -> TempDir {
         let directory = TempDir::new().unwrap();
@@ -235,6 +246,41 @@ mod tests {
         assert_eq!(desktop.background, Color::rgb(0x10, 0x20, 0x30));
         let picker = config.theme.style(Part::Picker, States::NONE);
         assert_eq!(picker.border.top.color, Color::rgb(0xb8, 0x4a, 0x0e));
+    }
+
+    #[test]
+    fn a_wrong_theme_keeps_the_scheme_it_was_built_in_until_it_is_mended() {
+        let own = "clock { color: #ff0000; }\n";
+        let broken = "clock { color: huge; }\n";
+        let light = "appearance: { scheme: light, accent: orange }\n";
+        // A scheme chosen while the theme is wrong waits for it.
+        let kept = directory(&[("theme.css", own)]);
+        let (dark, _) = Config::load(kept.path(), &Config::default());
+        fs::write(kept.path().join("config.yaml"), light).unwrap();
+        fs::write(kept.path().join("theme.css"), broken).unwrap();
+        let (waiting, diagnostics) = Config::load(kept.path(), &dark);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(waiting.theme, dark.theme);
+        // Mended, it is in the scheme chosen.
+        fs::write(kept.path().join("theme.css"), own).unwrap();
+        let (mended, diagnostics) = Config::load(kept.path(), &waiting);
+        assert_eq!(diagnostics, []);
+        assert!(!mended.theme.dark());
+        let clock = mended.theme.style(Part::Clock, States::NONE);
+        assert_eq!(clock.color, Color::rgb(255, 0, 0));
+
+        // Where there was nothing of the user's, there is nothing to keep:
+        // wrong from the start, or after there was no theme, it is the
+        // built-in theme in the scheme chosen.
+        let (started, diagnostics) = load(&[("config.yaml", light), ("theme.css", broken)]);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert!(!started.theme.dark());
+        let orange = Theme::built_in(Scheme::Light, Accent::Orange);
+        assert_eq!(started.theme, orange);
+        let (built_in, _) = load(&[]);
+        let fresh = directory(&[("config.yaml", light), ("theme.css", broken)]);
+        let (after, _) = Config::load(fresh.path(), &built_in);
+        assert_eq!(after.theme, orange);
     }
 
     #[test]
