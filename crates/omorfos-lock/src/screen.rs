@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Color, Fit, Part, States, Store, Style, Theme, Transition};
+use omorfos_config::{Color, Fit, Part, State, States, Store, Style, Theme, Transition};
 use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
@@ -555,7 +555,7 @@ impl Shell {
         let shift = elapsed.map_or(0, shaken);
         // Coming into view or going, likewise, for as long as the theme
         // says.
-        let moves = theme.style(Part::Question, States::NONE).transition;
+        let moves = moves(&theme, self.view == View::Resting);
         let share = self.share(moves);
         let lasts = moves.lasts();
         let done = |elapsed: &u32| Duration::from_millis(u64::from(*elapsed)) >= lasts;
@@ -673,12 +673,13 @@ impl Shell {
     }
 
     /// Has the view begin to move the other way from where it is, unless the
-    /// theme has nothing move.
+    /// theme has nothing move that way.
     fn move_from_here(&mut self) {
         let theme = &self.store.current().theme;
-        let moves = theme.style(Part::Question, States::NONE).transition;
-        if moves.duration > 0 {
-            self.from = self.share(moves);
+        let going = self.view == View::Resting;
+        let (here, next) = (moves(theme, going), moves(theme, !going));
+        if next.duration > 0 {
+            self.from = self.share(here);
             self.moving = Some((None, 0));
         }
     }
@@ -963,7 +964,7 @@ fn paint_field(
     ((typed, marked), asks): ((usize, bool), bool),
 ) {
     let states = if asks {
-        States::NONE.with(omorfos_config::State::Focused)
+        States::NONE.with(State::Focused)
     } else {
         States::NONE
     };
@@ -979,10 +980,7 @@ fn paint_field(
     let ink = if marked {
         // All of it chosen: the dots on what the theme marks it with.
         let chosen = theme
-            .style(
-                Part::QuestionInput,
-                states.with(omorfos_config::State::Active),
-            )
+            .style(Part::QuestionInput, states.with(State::Active))
             .blended(&Style::NONE, share);
         canvas.fill((left_in, top_in, wide, tall), chosen.ground());
         chosen.color
@@ -1043,13 +1041,13 @@ fn paint_power(
     for (button, wide) in buttons.into_iter().zip(wide) {
         let mut states = States::NONE;
         if matches!(button, Button::Yes(_)) {
-            states = states.with(omorfos_config::State::Active);
+            states = states.with(State::Active);
         }
         if hovered == Some(button) {
-            states = states.with(omorfos_config::State::Hovered);
+            states = states.with(State::Hovered);
         }
         if focused == Some(button) {
-            states = states.with(omorfos_config::State::Focused);
+            states = states.with(State::Focused);
         }
         let style = theme
             .style(Part::QuestionButton, states)
@@ -1349,6 +1347,13 @@ delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
 delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(Shell: ext_session_lock_manager_v1::ExtSessionLockManagerV1);
+
+/// How who is to unlock, the field and the rest move: coming into view as
+/// the question comes onto the screen, or `going` as it leaves.
+fn moves(theme: &Theme, going: bool) -> Transition {
+    let states = States::NONE.when(State::Closing, going);
+    theme.style(Part::Question, states).transition
+}
 
 #[cfg(test)]
 mod tests {

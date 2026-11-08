@@ -1036,20 +1036,45 @@ mod tests {
     }
 
     #[test]
-    fn colours_take_a_moment_to_change_unless_a_theme_says_otherwise() {
-        let gentle = Transition {
-            duration: 120,
+    fn what_comes_onto_the_screen_takes_longer_than_a_colour_and_leaves_quicker() {
+        let at = |duration, easing| Transition {
+            duration,
             delay: 0,
-            easing: Easing::EaseOut,
+            easing,
         };
+        let (gentle, coming, going) = (
+            at(120, Easing::EaseOut),
+            at(180, Easing::EaseOut),
+            at(120, Easing::EaseIn),
+        );
+        let comes_and_goes = [
+            Part::Window,
+            Part::Menu,
+            Part::Notice,
+            Part::Tooltip,
+            Part::Panel,
+            Part::Notification,
+            Part::Launcher,
+            Part::Switcher,
+            Part::Question,
+        ];
+        let closing = States::NONE.with(State::Closing);
         let theme = Theme::default();
         for part in Part::ALL {
-            assert_eq!(theme.style(part, States::NONE).transition, gentle);
-            assert_eq!(theme.style(part, HOVERED).transition, gentle);
+            let style = |states| theme.style(part, states).transition;
+            if comes_and_goes.contains(&part) {
+                assert_eq!(style(States::NONE), coming, "{part:?}");
+                assert_eq!(style(closing), going, "{part:?}");
+            } else {
+                assert_eq!(style(States::NONE), gentle, "{part:?}");
+                assert_eq!(style(HOVERED), gentle, "{part:?}");
+                assert_eq!(style(closing), gentle, "{part:?}");
+            }
         }
         let still = Theme::parse("* { transition: none; }").unwrap();
         for part in Part::ALL {
             assert_eq!(still.style(part, FOCUSED).transition, Transition::NONE);
+            assert_eq!(still.style(part, closing).transition, Transition::NONE);
         }
     }
 

@@ -209,7 +209,8 @@ impl<'a> Reader<'a> {
             let known = State::ALL.into_iter().find(|state| state.name() == name);
             let unknown = || {
                 let message = format!(
-                    "`:{name}` is not a state; the states are :focus, :active, :hover and :urgent"
+                    "`:{name}` is not a state; the states are :focus, :active, :hover, :urgent \
+                     and :closing"
                 );
                 Fault::new(start, message)
             };

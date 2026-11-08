@@ -16,7 +16,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{
-    Action, Config, Debouncer, Half, Part, States, Store, Style, Theme, Watcher, WorkspaceNumber,
+    Action, Config, Debouncer, Half, Part, State, States, Store, Style, Theme, Watcher,
+    WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
@@ -3778,7 +3779,8 @@ impl Compositor {
     /// Begins noting what something is drawn from, if it is a `part` that
     /// takes time to go.
     fn noting<T: Clone + 'static>(&self, view: View, part: Part) -> Noting<T> {
-        let going = self.config().theme.style(part, States::NONE).transition;
+        let closing = States::NONE.with(State::Closing);
+        let going = self.config().theme.style(part, closing).transition;
         Noting::new(!going.lasts().is_zero(), view.origin, view.scale.factor())
     }
 

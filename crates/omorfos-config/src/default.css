@@ -37,6 +37,18 @@
   transition: 120ms ease-out;
 }
 
+/* What comes onto the screen takes a little longer than a colour does to
+ * change, and leaves quicker than it came, so that what has been dismissed
+ * is not in the way of what is next: it comes over its own transition, and
+ * goes over the one it has :closing. */
+window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+  transition: 180ms ease-out;
+}
+window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
+notification:closing, launcher:closing, switcher:closing, question:closing {
+  transition: 120ms ease-in;
+}
+
 desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state.

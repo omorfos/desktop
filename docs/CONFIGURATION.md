@@ -529,6 +529,18 @@ This is the whole built-in theme, which is also every part there is:
   transition: 120ms ease-out;
 }
 
+/* What comes onto the screen takes a little longer than a colour does to
+ * change, and leaves quicker than it came, so that what has been dismissed
+ * is not in the way of what is next: it comes over its own transition, and
+ * goes over the one it has :closing. */
+window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+  transition: 180ms ease-out;
+}
+window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
+notification:closing, launcher:closing, switcher:closing, question:closing {
+  transition: 120ms ease-in;
+}
+
 desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state.
@@ -900,8 +912,13 @@ and `sealed`. `*` is every part. Several can share a rule:
 **States** follow a part: `:focus` (it has the keyboard, or its window
 has), `:active` (the tab or workspace being shown, or the task of the
 window with focus, or the program the launcher would start), `:hover` (the
-pointer is over it) and `:urgent` (a notification its sender marked as
-critical). A part can be in several: `tab:active:focus`.
+pointer is over it), `:urgent` (a notification its sender marked as
+critical) and `:closing` (it is going from the screen). A part can be in
+several: `tab:active:focus`. A part that comes and goes, as a window, a
+menu or a notification does, comes over its own `transition` and leaves
+over the one it has `:closing`, so that it can leave quicker than it came:
+`menu { transition: 180ms ease-out; } menu:closing { transition: 120ms
+ease-in; }`. Only its transition is taken from `:closing` so far.
 
 **Every part is a box.** From the outside in it has a margin, which is room
 kept clear around it; a border; padding, which is room between the border

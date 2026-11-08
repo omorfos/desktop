@@ -98,7 +98,13 @@ not worth having before the bar and the dock, so it is put with the
 look.
 
 **Movement is short and can be turned off.** Nothing over 300 ms; leaving
-quicker than arriving; nothing holds input up.
+quicker than arriving; nothing holds input up. A theme says how quickly a
+part leaves with a state of its own, `:closing`, whose transition it
+leaves over, as a part comes over its own and a change of state takes the
+transition of the state it goes to; CSS gives what is going a class of
+its own for the same. Leaving in a fixed share of the time a part comes
+in, the other way considered, would need nothing new written, but no
+theme could change it.
 
 **Reduced motion, reduced transparency and high contrast are settings
 from the first day** of the look being built, and each part says what it

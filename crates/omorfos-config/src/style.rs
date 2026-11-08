@@ -233,11 +233,21 @@ pub enum State {
     Hovered,
     /// It wants attention now, as a notification marked critical does.
     Urgent,
+    /// It is going from the screen. A part comes onto the screen over its
+    /// own transition and leaves over the one it has in this state, so
+    /// that what leaves can go quicker than it came.
+    Closing,
 }
 
 impl State {
     /// Every state there is.
-    pub const ALL: [Self; 4] = [Self::Focused, Self::Active, Self::Hovered, Self::Urgent];
+    pub const ALL: [Self; 5] = [
+        Self::Focused,
+        Self::Active,
+        Self::Hovered,
+        Self::Urgent,
+        Self::Closing,
+    ];
 
     /// What the state is called in a stylesheet, after a `:`.
     #[must_use]
@@ -247,6 +257,7 @@ impl State {
             Self::Active => "active",
             Self::Hovered => "hover",
             Self::Urgent => "urgent",
+            Self::Closing => "closing",
         }
     }
 
@@ -703,7 +714,7 @@ mod tests {
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();
-        assert_eq!(states, ["focus", "active", "hover", "urgent"]);
+        assert_eq!(states, ["focus", "active", "hover", "urgent", "closing"]);
         // The table of looks is laid out by a part's place in the list.
         for (index, part) in Part::ALL.into_iter().enumerate() {
             assert_eq!(part as usize, index);

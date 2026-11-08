@@ -1183,9 +1183,16 @@ the first than on the last.
 - [x] The session blurred as well as dimmed under the prompt that asks
       for a password (`sealed`'s `backdrop-filter`), by default; the dim
       alone where blur cannot be drawn.
+- [x] What arrives taking longer than what leaves: a part comes over
+      its own `transition` and goes over the one it has `:closing`; the
+      built-in theme brings windows, menus, the notice, tooltips, the
+      components' panels and the lock screen's question in over 180 ms
+      and takes them out over 120 ms, as DESIGN.md's "Movement" has it.
+- [ ] What arrives grown from 96% of its size and leaves shrunk to 98%,
+      as DESIGN.md's "Movement" has it; and how a part looks while it is
+      `:closing`, of which only its transition is taken so far.
 - [ ] What the design language has that a theme cannot draw yet: the
-      inner hairline of light along the top of glass; and what arrives
-      taking longer than what leaves.
+      inner hairline of light along the top of glass.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
       out from a latitude and longitude the user gives, or fixed hours
       without one.

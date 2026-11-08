@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use omorfos_config::{Part, States, Style, Theme};
+use omorfos_config::{Part, State, States, Style, Theme};
 
 /// The parts being drawn, and how far each has got towards the look of
 /// the state it is in.
@@ -127,12 +127,15 @@ impl Motion {
 
     /// How much there is still to see of a `part` that went from the
     /// picture at `since`: from 1, all of it, at that moment, to 0 once the
-    /// time the theme gives the part's colours to change has gone by.
+    /// time the theme gives the part to leave in, its transition when it
+    /// is `:closing`, has gone by.
     ///
     /// Whoever asks keeps drawing what has gone, this much of it, and stops
     /// asking when there is nothing left.
     pub fn leaving(&mut self, theme: &Theme, part: Part, since: Duration) -> f32 {
-        let going = theme.style(part, States::NONE).transition;
+        let going = theme
+            .style(part, States::NONE.with(State::Closing))
+            .transition;
         let left = 1.0 - going.progress(self.now.saturating_sub(since));
         self.moving |= left > 0.0;
         left
@@ -346,6 +349,27 @@ mod tests {
         assert!((half - 0.5).abs() < 0.01 && moving);
         let (none, moving) = left(1100);
         assert!(none.abs() < f32::EPSILON && !moving);
+    }
+
+    #[test]
+    fn something_leaves_over_the_time_its_theme_gives_it_closing() {
+        let theme = Theme::parse(
+            "launcher { transition: 200ms linear; }\n\
+             launcher:closing { transition: 50ms linear; }",
+        )
+        .unwrap();
+        let mut motion = Motion::new();
+        motion.begin(millis(0));
+        assert!(motion.presence(&theme, Part::Launcher, 1).abs() < f32::EPSILON);
+        motion.begin(millis(100));
+        let half = motion.presence(&theme, Part::Launcher, 1);
+        assert!((half - 0.5).abs() < 0.01, "comes over 200ms: {half}");
+        let mut left = |now: u64| {
+            motion.begin(millis(now));
+            motion.leaving(&theme, Part::Launcher, millis(1000))
+        };
+        assert!((left(1025) - 0.5).abs() < 0.01, "and goes over 50ms");
+        assert!(left(1050).abs() < f32::EPSILON);
     }
 
     #[test]
