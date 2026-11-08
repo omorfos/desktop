@@ -84,13 +84,15 @@ impl Notifier {
         connection.map_err(Failure::from).map(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
+            let store = Store::open(config);
+            let watcher = Watcher::of(&store).ok();
             Self {
                 connection,
                 queue,
-                shell: Shell::new(Store::open(config), icons),
+                shell: Shell::new(store, icons),
                 bus,
                 news,
-                watcher: Watcher::new(config).ok(),
+                watcher,
             }
         })
     }
@@ -200,9 +202,9 @@ impl Notifier {
             .extend(expired.into_iter().map(|id| (id, Reason::Expired)));
 
         let watcher = self.watcher.as_mut();
-        let changed = watcher.map_or(Ok(false), Watcher::drain);
+        let changed = watcher.map_or(Ok(false), |watcher| watcher.refresh(&mut shell.store));
         let reloaded = changed.map(|changed| {
-            if changed && shell.store.reload() {
+            if changed {
                 shell.settle();
             }
         });

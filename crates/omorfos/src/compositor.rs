@@ -1270,6 +1270,12 @@ impl Compositor {
 
     fn apply_config(&mut self, mut problems: Vec<String>) {
         let config = Arc::clone(self.store.current());
+        // Read again when the scheme may change, if it goes by the time of
+        // day, as though a file had changed.
+        let due = self.store.due();
+        self.watcher
+            .iter_mut()
+            .for_each(|watcher| watcher.wake_at(due));
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
         problems.extend(crate::outputs::misplaced(&config.general));
 

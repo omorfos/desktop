@@ -242,6 +242,29 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
 }
 
 #[test]
+fn a_scheme_that_goes_by_the_sun_is_light_where_it_is_noon_and_dark_where_it_is_midnight() {
+    // On the equator, as far round as it is noon now by the sun, and as
+    // far round again as it is midnight.
+    let now = std::time::SystemTime::now();
+    let seconds = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    #[expect(clippy::cast_precision_loss, reason = "the seconds of a day")]
+    let hours = (seconds % 86_400) as f64 / 3600.0;
+    let noon = (12.0 - hours) * 15.0;
+    let midnight = if noon > 0.0 {
+        noon - 180.0
+    } else {
+        noon + 180.0
+    };
+    for (longitude, behind) in [(noon, 0xfffc_f7e3), (midnight, 0xff0c_1226)] {
+        let auto = format!(
+            "appearance: {{ scheme: auto, location: {{ latitude: 0, longitude: {longitude:.3} }} }}\n"
+        );
+        let mut session = Session::with_config(&[("config.yaml", &auto)]);
+        assert_eq!(session.draw().at(600, 400), behind, "at {longitude}");
+    }
+}
+
+#[test]
 fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
     let mut session = Session::new();
     let mut client = session.connect();

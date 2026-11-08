@@ -74,7 +74,9 @@ cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
 appearance:
-  scheme: dark            # dark | light
+  scheme: dark            # dark | light | auto, light by day
+  # location: { latitude: 52.23, longitude: 21.01 } # for auto: light from sunrise to sunset there
+  # day: { from: '07:00', to: '19:00' } # for auto without a location: light between these hours
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
 launcher:
@@ -894,6 +896,21 @@ out from it more. Your own theme is laid over all of this, and has the
 last word: a `--background` of yours is the background in either scheme.
 A change of either is drawn as soon as `config.yaml` is saved, and
 applications that follow the desktop are told it.
+
+With `appearance.scheme: auto` the desktop is light by day and dark by
+night. Given an `appearance.location`, your latitude and longitude in
+degrees, north and east above 0, day is from sunrise to sunset there,
+worked out to within a minute or two; where the sun does not set or does
+not rise that day, it is light or dark all day. Without one, day is the
+hours of `appearance.day`, `07:00` to `19:00` unless you say otherwise, in
+the time zone of the system; a day that ends earlier than it begins runs
+through midnight. Every part of the desktop changes at the moment it
+turns, applications that follow the desktop are told it, and each part
+asks again by every midnight, and when the clock is set, as after a
+suspend. The location is only read here, never told to any program. A
+change of time zone is seen at the next of these, not at once; and the
+lock screen and the box that asks for a password stay in the scheme they
+were opened in.
 
 The quickest change is to give the built-in theme's variables other
 values:

@@ -1205,9 +1205,14 @@ the first than on the last.
       `inset` shadow in `box-shadow`, beside the one cast, and
       `--glass-rim` for it in the built-in theme, white at 6% in the dark
       scheme and none in the light; on nothing until glass is.
-- [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
+- [x] `appearance.scheme: auto`: light from sunrise to sunset, worked
       out from a latitude and longitude the user gives, or fixed hours
-      without one.
+      without one (ADR 65). Each program works it out, and wakes to load
+      the configuration again when it may change.
+- [ ] Known gaps in `scheme: auto`: the lock screen, the box that asks for
+      a password and the launcher keep the scheme they were opened in; a
+      change of time zone is only seen at the next midnight or the next
+      change; and 07:00 to 19:00 is a default to review.
 - [ ] The default font and icons, and a pointer that is the same size
       everywhere, including over programs written for X11.
 - [ ] A pointer of our own, built in as shapes so that it is sharp at any

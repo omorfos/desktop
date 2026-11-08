@@ -86,16 +86,12 @@ impl Wallpaper {
         connection.map(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
+            let store = Store::open(config);
             Self {
                 connection,
                 queue,
-                shell: Shell::new(
-                    Store::open(config),
-                    Cache::new(cache),
-                    (home, unnamed),
-                    seed,
-                ),
-                watcher: Watcher::new(config).ok(),
+                watcher: Watcher::of(&store).ok(),
+                shell: Shell::new(store, Cache::new(cache), (home, unnamed), seed),
                 pictures: Watch::new().ok(),
             }
         })
@@ -234,9 +230,10 @@ impl Wallpaper {
     /// Takes in the configuration if it changed.
     fn learn(&mut self) -> io::Result<()> {
         let watcher = self.watcher.as_mut();
-        let changed = watcher.map_or(Ok(false), Watcher::drain);
+        let store = &mut self.shell.store;
+        let changed = watcher.map_or(Ok(false), |watcher| watcher.refresh(store));
         changed.map(|changed| {
-            if changed && self.shell.store.reload() {
+            if changed {
                 self.shell.stale = true;
                 // What is drawn from it now is kept at once.
                 let faces = self

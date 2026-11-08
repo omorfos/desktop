@@ -84,12 +84,14 @@ impl Panel {
         connection.map(|(connection, (news, commands))| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
+            let store = Store::open(config);
+            let watcher = Watcher::of(&store).ok();
             Self {
                 connection,
                 queue,
-                shell: Shell::new(Store::open(config), commands),
+                shell: Shell::new(store, commands),
                 news,
-                watcher: Watcher::new(config).ok(),
+                watcher,
             }
         })
     }
@@ -191,9 +193,9 @@ impl Panel {
         let answered = shell.commands.hear(now, drop);
         let sent = mem::replace(&mut shell.sent, Ok(()));
         let watcher = self.watcher.as_mut();
-        let changed = watcher.map_or(Ok(false), Watcher::drain);
+        let changed = watcher.map_or(Ok(false), |watcher| watcher.refresh(&mut shell.store));
         heard.and(answered).and(sent).and(changed).map(|changed| {
-            if changed && shell.store.reload() {
+            if changed {
                 shell.rethemed();
             }
         })

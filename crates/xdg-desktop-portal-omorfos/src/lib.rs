@@ -845,7 +845,10 @@ fn serve(
 ) -> Failure {
     // A folder that is not there cannot be watched for what is put in it.
     let _ = fs::create_dir_all(config);
-    let mut watcher = Watcher::new(config).ok();
+    // Its own, for the watcher to wake when the scheme may change, if it
+    // goes by the time of day: what it looks is read afresh each time.
+    let mut store = Store::open(config);
+    let mut watcher = Watcher::of(&store).ok();
     let mut last = look(config);
     let mut backend = Backend {
         portal,
@@ -909,7 +912,7 @@ fn serve(
         }
         // What is said to have changed is read, so that it is not said
         // again. Whether anything did is seen by looking.
-        let changed = watcher.as_mut().map(Watcher::drain);
+        let changed = watcher.as_mut().map(|watcher| watcher.refresh(&mut store));
         if changed.is_some_and(|changed| changed.unwrap_or(false)) {
             backend.desk.reread();
         }
