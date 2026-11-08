@@ -270,9 +270,13 @@ question-button:active {
   background: var(--accent);
   color: var(--on-accent);
 }
-/* What the keyboard is on has a ring in the colour of text, which shows on
- * a button filled with the accent as well as on one that is not. */
-question-button:focus { border: 2px solid var(--text); }
+/* What the keyboard is on has a ring of the accent, a little way out from
+ * it, which shows round a button filled with the accent as well as round
+ * one that is not. */
+question-button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 question-input {
   padding: 8px;
   background: var(--surface-raised);

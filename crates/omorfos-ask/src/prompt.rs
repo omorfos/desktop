@@ -277,10 +277,12 @@ pub fn paint(
     };
     if !asking.open {
         paint_eye(&mut canvas, (along(EYE, by), scale), field.color, open);
-        // The keyboard on the eye rings it as it would a button.
+        // The keyboard on the eye rings it as it would a button, but close
+        // round it: it is in the field, with no room to stand off from it.
         let ringed = theme.style(Part::QuestionButton, on_it(Button::Show, States::NONE));
         let ring = Style {
             border: ringed.border,
+            outline: ringed.outline,
             radius: ringed.radius,
             ..Style::NONE
         };

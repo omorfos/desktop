@@ -921,20 +921,21 @@ fn the_eye_says_what_it_does_when_the_pointer_rests_on_it() {
 }
 
 /// Whether the keyboard is on the button in `area` of the prompt, by the
-/// colour of its top edge.
+/// colour of the ring round it, just above its top: close round the eye,
+/// which is in the field, and a little way out from the others.
 fn ringed(session: &mut Session, (x, y, across, _): (i32, i32, u32, u32)) -> bool {
     let colour = Theme::default()
         .style(
             Part::QuestionButton,
             States::NONE.with(omorfos_config::State::Focused),
         )
-        .border
-        .top
+        .outline
         .color;
     let ring = u32::from_be_bytes([colour.alpha, colour.red, colour.green, colour.blue]);
-    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + x;
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + x + across.cast_signed() / 2;
     let top = (HEIGHT - SIZE.1.cast_signed()) / 2 + y;
-    session.draw().at(left + across.cast_signed() / 2, top) == ring
+    let picture = session.draw();
+    (1..=4).any(|up| picture.at(left, top - up) == ring)
 }
 
 /// Presses Tab with Shift held.

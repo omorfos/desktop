@@ -599,22 +599,28 @@ fn powered(session: &mut Session, there: &Path, offered: &str) -> Lock {
     lock
 }
 
-/// The middle of each power button on the first screen, from the left.
+/// The middle of each power button on the first screen, from the left. The
+/// ring round the one the keyboard is on, a little way out from it, is
+/// taken to be part of it.
 fn buttons(session: &mut Session) -> Vec<f64> {
     let row = row(session, BUTTONS_ROW);
-    let mut middles = Vec::new();
+    let mut runs: Vec<(usize, usize)> = Vec::new();
     let mut start = None;
     for (x, pixel) in row.iter().chain([&BACKGROUND]).enumerate() {
         match (start, *pixel == BACKGROUND) {
             (None, false) => start = Some(x),
             (Some(from), true) => {
-                middles.push(f64::from(u32::try_from(from + x).unwrap()) / 2.0);
+                match runs.last_mut() {
+                    Some((_, end)) if from - *end <= 2 => *end = x,
+                    _ => runs.push((from, x)),
+                }
                 start = None;
             }
             _ => {}
         }
     }
-    middles
+    let middle = |(from, to): (usize, usize)| f64::from(u32::try_from(from + to).unwrap()) / 2.0;
+    runs.into_iter().map(middle).collect()
 }
 
 /// Lets the lock screen and the compositor talk until `count` buttons are

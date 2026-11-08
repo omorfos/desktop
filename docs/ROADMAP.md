@@ -1176,11 +1176,13 @@ the first than on the last.
 - [ ] A theme that is wrong keeps the scheme and the accent it was last
       built with until it is mended, as the whole of it is kept: a new
       scheme in `config.yaml` meanwhile waits for it.
-- [ ] What the design language has that a theme cannot draw yet: the ring
-      round what the keyboard is on, two pixels out from it (it is a
-      border of the colour of text, which shows on the accent as well);
-      the inner hairline of light along the top of glass; and what
-      arrives taking longer than what leaves.
+- [x] The ring round what the keyboard is on, two pixels of the accent
+      two pixels out from it (`outline`, `outline-offset`), on the
+      prompts' buttons; close round the eye in the password field, which
+      has no room round it.
+- [ ] What the design language has that a theme cannot draw yet: the
+      inner hairline of light along the top of glass; and what arrives
+      taking longer than what leaves.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
       out from a latitude and longitude the user gives, or fixed hours
       without one.

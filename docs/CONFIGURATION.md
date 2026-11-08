@@ -762,9 +762,13 @@ question-button:active {
   background: var(--accent);
   color: var(--on-accent);
 }
-/* What the keyboard is on has a ring in the colour of text, which shows on
- * a button filled with the accent as well as on one that is not. */
-question-button:focus { border: 2px solid var(--text); }
+/* What the keyboard is on has a ring of the accent, a little way out from
+ * it, which shows round a button filled with the accent as well as round
+ * one that is not. */
+question-button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 question-input {
   padding: 8px;
   background: var(--surface-raised);
@@ -907,6 +911,8 @@ is measured to the outside of its border.
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |
+| `outline` | a width, `solid` or `none`, a color | a line round the outside of the box, any of them in any order; its corners are rounded by as much more than the box's as it is out, unless the box's are square. A ring round what the keyboard is on, as `question-button:focus` has it; the eye in the password field has its ring close round it, there being no room to stand off |
+| `outline-color`, `outline-width`, `outline-offset` | a color; `0` to `16px`; `0` to `16px` | how far out the outline is, with nothing drawn between |
 | `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |

@@ -229,6 +229,9 @@ enum Setting {
     Opacity(u8),
     BorderColor(Option<Side>, Color),
     BorderWidth(Option<Side>, u32),
+    OutlineColor(Color),
+    OutlineWidth(u32),
+    OutlineOffset(u32),
     Padding(Option<Side>, u32),
     Margin(Option<Side>, u32),
     Radius(u32),
@@ -250,7 +253,8 @@ enum Setting {
 /// The properties a stylesheet can give, as it is told when it gives
 /// another.
 const PROPERTIES: &str = "background, background-color, background-image, color, opacity, border, border-color, border-width, \
-                          border-radius, padding, margin, height, min-width, max-width, \
+                          border-radius, outline, outline-color, outline-width, \
+                          outline-offset, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
                           transition-duration, transition-delay, transition-timing-function, \
                           box-shadow and \
@@ -374,6 +378,9 @@ impl Look {
             Setting::BorderWidth(side, width) => {
                 on(&mut style.border, *side, |line| line.width = *width);
             }
+            Setting::OutlineColor(color) => style.outline.color = *color,
+            Setting::OutlineWidth(width) => style.outline.width = *width,
+            Setting::OutlineOffset(offset) => style.outline_offset = *offset,
             Setting::Padding(side, room) => on(&mut style.padding, *side, |edge| *edge = *room),
             Setting::Margin(side, room) => on(&mut style.margin, *side, |edge| *edge = *room),
             Setting::Radius(radius) => style.radius = *radius,
@@ -409,6 +416,7 @@ impl Look {
         faded(&mut style.color);
         faded(&mut style.shadow.color);
         on(&mut style.border, None, |line| faded(&mut line.color));
+        faded(&mut style.outline.color);
     }
 }
 
@@ -430,11 +438,19 @@ fn settings(
         ("background-image", None) => one(image(value).map(Setting::Gradient)),
         ("color", None) => one(color(value).map(Setting::Color)),
         ("opacity", None) => one(opacity(value)),
-        ("border", side) => border(value, side),
+        ("border", side) => line(
+            value,
+            |width| Setting::BorderWidth(side, width),
+            |color| Setting::BorderColor(side, color),
+        ),
         ("border-color", side) => one(color(value).map(|color| Setting::BorderColor(side, color))),
         ("border-width", side) => {
             one(size(value, "px", 0, 16).map(|width| Setting::BorderWidth(side, width)))
         }
+        ("outline", None) => line(value, Setting::OutlineWidth, Setting::OutlineColor),
+        ("outline-color", None) => one(color(value).map(Setting::OutlineColor)),
+        ("outline-width", None) => one(size(value, "px", 0, 16).map(Setting::OutlineWidth)),
+        ("outline-offset", None) => one(size(value, "px", 0, 16).map(Setting::OutlineOffset)),
         ("border-radius", None) => one(size(value, "px", 0, 32).map(Setting::Radius)),
         ("padding", side) => around(value, side, Setting::Padding),
         ("margin", side) => around(value, side, Setting::Margin),
@@ -518,18 +534,22 @@ fn opacity(value: &str) -> Result<Setting, String> {
     share.ok_or_else(|| format!("`{value}` is not an opacity from 0 to 1, or from 0% to 100%"))
 }
 
-/// A border all at once: a width, `solid` or `none`, and a colour, any of
-/// them and in any order.
-fn border(value: &str, side: Option<Side>) -> Result<Vec<Setting>, String> {
+/// A border or an outline all at once: a width, `solid` or `none`, and a
+/// colour, any of them and in any order, made the settings `width` and
+/// `colored` make of each.
+fn line(
+    value: &str,
+    width: impl Fn(u32) -> Setting,
+    colored: impl Fn(Color) -> Setting,
+) -> Result<Vec<Setting>, String> {
     let understood = words(value).into_iter().map(|word| match word {
         // The only kind of line there is.
         "solid" => Ok(None),
-        "none" | "hidden" => Ok(Some(Setting::BorderWidth(side, 0))),
+        "none" | "hidden" => Ok(Some(width(0))),
         sized if sized.starts_with(|first: char| first.is_ascii_digit()) => {
-            let width = size(sized, "px", 0, 16);
-            width.map(|width| Some(Setting::BorderWidth(side, width)))
+            size(sized, "px", 0, 16).map(|sized| Some(width(sized)))
         }
-        other => color(other).map(|color| Some(Setting::BorderColor(side, color))),
+        other => color(other).map(|color| Some(colored(color))),
     });
     let understood: Result<Vec<Option<Setting>>, String> = understood.collect();
     understood.map(|settings| settings.into_iter().flatten().collect())
@@ -1189,6 +1209,10 @@ mod tests {
                 style(Part::Picker, States::NONE).border.top.color,
                 background,
             ),
+            (
+                style(Part::QuestionButton, FOCUSED).outline.color,
+                style(Part::Question, States::NONE).background,
+            ),
         ];
         for (index, (edge, under)) in edges.into_iter().enumerate() {
             let ratio = edge.contrast(under);
@@ -1585,6 +1609,8 @@ mod tests {
                transition: 80ms linear;\n\
                box-shadow: 1px 2px 3px 4px #050505;\n\
                backdrop-filter: blur(24px);\n\
+               outline: 3px solid #080808;\n\
+               outline-offset: 2px;\n\
              }",
         );
         let style = theme.unwrap().style(Part::Task, States::NONE);
@@ -1597,6 +1623,8 @@ mod tests {
                 bottom: line(Color::rgb(6, 6, 6), 7),
                 ..Edges::all(side)
             },
+            outline: line(Color::rgb(8, 8, 8), 3),
+            outline_offset: 2,
             padding: Edges {
                 top: 1,
                 right: 2,
@@ -1688,12 +1716,54 @@ mod tests {
     }
 
     #[test]
+    fn an_outline_is_given_all_at_once_or_a_property_at_a_time() {
+        let task = styled(Part::Task, "task { outline: 2px solid red; }");
+        assert_eq!((task.outline, task.outline_offset), (line(RED, 2), 0));
+        let task = styled(
+            Part::Task,
+            "task { outline: red 3px; outline-offset: 4px; outline-width: 1px; }",
+        );
+        assert_eq!((task.outline, task.outline_offset), (line(RED, 1), 4));
+        let task = styled(
+            Part::Task,
+            "task { outline-color: red; outline-width: 2px; outline: none; }",
+        );
+        assert_eq!(task.outline, line(RED, 0));
+        assert_eq!(task.border, Edges::all(Line::NONE), "it is no border");
+
+        let message = problem("task { outline-offset: 17px; }");
+        assert!(message.contains("from 0px to 16px"), "{message}");
+        let message = problem("task { outline-top: 1px solid red; }");
+        assert!(message.contains("is not a property"), "{message}");
+        let message = problem("task { outline: 1px dashed red; }");
+        assert!(message.contains("`dashed` is not a color"), "{message}");
+    }
+
+    #[test]
+    fn what_the_keyboard_is_on_has_a_ring_of_the_accent_a_little_way_out() {
+        let theme = Theme::default();
+        let on = States::NONE.with(State::Focused);
+        for states in [on, on.with(State::Active)] {
+            let button = theme.style(Part::QuestionButton, states);
+            assert_eq!(button.outline, line(ACCENT, 2));
+            assert_eq!(button.outline_offset, 2);
+            assert_eq!(button.border, Edges::all(Line::NONE), "within it, nothing");
+        }
+        let off = theme.style(Part::QuestionButton, States::NONE);
+        assert_eq!(off.outline.width, 0);
+    }
+
+    #[test]
     fn opacity_makes_everything_of_a_part_see_through() {
-        let theme = Theme::parse("panel { opacity: 0.5; border: 1px solid #fff; }").unwrap();
+        let theme = Theme::parse(
+            "panel { opacity: 0.5; border: 1px solid #fff; outline: 1px solid #fff; }",
+        )
+        .unwrap();
         let panel = theme.style(Part::Panel, States::NONE);
         assert_eq!(panel.background.alpha, 128);
         assert_eq!(panel.color.alpha, 128);
         assert_eq!(panel.border.top.color, Color::rgba(255, 255, 255, 128));
+        assert_eq!(panel.outline.color, Color::rgba(255, 255, 255, 128));
         // It is the part's alone.
         assert_eq!(theme.style(Part::Clock, States::NONE).color.alpha, 255);
 

@@ -431,6 +431,12 @@ pub struct Style {
     pub color: Color,
     /// The line along each side.
     pub border: Edges<Line>,
+    /// The line round the outside, as far out as `outline_offset`, its
+    /// corners as round as the part's are and more by as far as it is
+    /// out. A ring round what the keyboard is on.
+    pub outline: Line,
+    /// How far out from the part its outline is, in units of layout.
+    pub outline_offset: u32,
     /// The room between its border and what it holds.
     pub padding: Edges<u32>,
     /// The room kept clear around it.
@@ -459,6 +465,8 @@ impl Style {
         gradient: None,
         color: CLEAR,
         border: Edges::all(Line::NONE),
+        outline: Line::NONE,
+        outline_offset: 0,
         padding: Edges::NONE,
         margin: Edges::NONE,
         radius: 0,

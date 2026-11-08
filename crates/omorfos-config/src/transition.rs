@@ -196,6 +196,7 @@ impl Style {
                 bottom: line(from.border.bottom, self.border.bottom),
                 left: line(from.border.left, self.border.left),
             },
+            outline: line(from.outline, self.outline),
             shadow: self.shadow.blended(&from.shadow, share),
             ..*self
         }
@@ -367,6 +368,7 @@ mod tests {
             background: RED,
             color: RED,
             border: Edges::all(line(RED, 1)),
+            outline: line(RED, 1),
             radius: 2,
             ..Style::NONE
         };
@@ -374,6 +376,7 @@ mod tests {
             background: BLUE,
             color: BLUE,
             border: Edges::all(line(BLUE, 3)),
+            outline: line(BLUE, 2),
             radius: 8,
             ..Style::NONE
         };
@@ -381,6 +384,7 @@ mod tests {
         let between = new.blended(&old, 0.5);
         assert_eq!((between.background, between.color), (purple, purple));
         assert_eq!(between.border, Edges::all(line(purple, 3)));
+        assert_eq!(between.outline, line(purple, 2));
         assert_eq!(between.radius, 8);
         assert_eq!(new.blended(&old, 0.0).background, RED);
         assert_eq!(new.blended(&old, 1.0), new);

@@ -131,8 +131,33 @@ impl Canvas {
     ///
     /// Where two sides with borders meet at a rounded corner, the border
     /// goes round it as thick as the thicker of the two and in its colour.
+    ///
+    /// Its outline is drawn round it, as far out as the style says and
+    /// with nothing between, its corners rounded by as much more as it is
+    /// out, unless the box's are square.
     pub fn draw_box(&mut self, area: Area, style: &Style) {
         self.draw_box_within(area, style, (area, 0));
+        let reach = style.outline_offset.saturating_add(style.outline.width);
+        let out = reach.cast_signed();
+        let (left, top, width, height) = area;
+        let around = (
+            left.saturating_sub(out),
+            top.saturating_sub(out),
+            width.saturating_add(reach * 2),
+            height.saturating_add(reach * 2),
+        );
+        let radius = if style.radius == 0 {
+            0
+        } else {
+            style.radius.saturating_add(reach)
+        };
+        // A ring is a box that is all border.
+        let ring = Style {
+            border: Edges::all(style.outline),
+            radius,
+            ..Style::NONE
+        };
+        self.draw_box_within(around, &ring, (around, 0));
     }
 
     /// Draws a part as a box filling `area`, as [`Canvas::draw_box`] does,
@@ -1144,6 +1169,36 @@ mod tests {
         let mut canvas = Canvas::new(10, 10);
         canvas.draw_box((0, 0, 10, 10), &alone);
         assert_ne!(canvas.at(5, 5), 0);
+    }
+
+    #[test]
+    fn an_outline_is_drawn_round_a_box_as_far_out_as_it_is_offset() {
+        let style = Style {
+            background: WHITE,
+            outline: line(RED, 2),
+            outline_offset: 2,
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((10, 10, 20, 10), &style);
+        assert_eq!(canvas.at(20, 10), argb(WHITE), "the box");
+        assert_eq!(canvas.at(20, 9), 0, "nothing between");
+        assert_eq!(canvas.at(20, 8), 0);
+        assert_eq!(canvas.at(20, 7), argb(RED), "the outline");
+        assert_eq!(canvas.at(20, 6), argb(RED));
+        assert_eq!(canvas.at(20, 5), 0, "nothing beyond it");
+        assert_eq!(canvas.at(33, 15), argb(RED), "round every side");
+        assert_eq!(canvas.at(20, 23), argb(RED));
+        assert_eq!(canvas.at(6, 15), argb(RED));
+        assert_eq!(canvas.at(6, 6), argb(RED), "square, as the box is");
+
+        // Round a round box, rounder by as far as it is out.
+        let round = Style { radius: 4, ..style };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((10, 10, 20, 10), &round);
+        assert_eq!(canvas.at(20, 6), argb(RED));
+        assert_eq!(canvas.at(6, 6), 0, "outside its curve");
+        assert_ne!(canvas.at(8, 8), 0, "along it");
     }
 
     #[test]
