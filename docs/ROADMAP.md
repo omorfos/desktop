@@ -1191,8 +1191,10 @@ the first than on the last.
 - [ ] What arrives grown from 96% of its size and leaves shrunk to 98%,
       as DESIGN.md's "Movement" has it; and how a part looks while it is
       `:closing`, of which only its transition is taken so far.
-- [ ] What the design language has that a theme cannot draw yet: the
-      inner hairline of light along the top of glass.
+- [x] The inner hairline of light along the top of glass: a sharp
+      `inset` shadow in `box-shadow`, beside the one cast, and
+      `--glass-rim` for it in the built-in theme, white at 6% in the dark
+      scheme and none in the light; on nothing until glass is.
 - [ ] `appearance.scheme: auto`: light from sunrise to sunset, worked
       out from a latitude and longitude the user gives, or fixed hours
       without one.

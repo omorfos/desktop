@@ -198,6 +198,7 @@ impl Style {
             },
             outline: line(from.outline, self.outline),
             shadow: self.shadow.blended(&from.shadow, share),
+            inset: self.inset.blended(&from.inset, share),
             ..*self
         }
     }
@@ -385,6 +386,15 @@ mod tests {
         assert_eq!((between.background, between.color), (purple, purple));
         assert_eq!(between.border, Edges::all(line(purple, 3)));
         assert_eq!(between.outline, line(purple, 2));
+        let rim = |color| Style {
+            inset: Shadow {
+                y: 1,
+                color,
+                ..Shadow::NONE
+            },
+            ..new
+        };
+        assert_eq!(rim(BLUE).blended(&rim(RED), 0.5).inset.color, purple);
         assert_eq!(between.radius, 8);
         assert_eq!(new.blended(&old, 0.0).background, RED);
         assert_eq!(new.blended(&old, 1.0), new);

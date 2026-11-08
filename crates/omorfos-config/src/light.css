@@ -18,4 +18,5 @@
   --glass-thin: rgba(255, 253, 244, 0.7);
   --glass-thick: rgba(255, 253, 244, 0.9);
   --glass-sealed: rgba(255, 253, 244, 0.95);
+  --glass-rim: transparent; /* light on cream is not seen */
 }

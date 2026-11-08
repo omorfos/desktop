@@ -124,6 +124,7 @@ pub(crate) fn titlebar(
     let within = Style {
         background: looks.titlebar.background,
         gradient: looks.titlebar.gradient,
+        inset: looks.titlebar.inset,
         ..Style::NONE
     };
     let inside = (edge, edge, inner_width, inner_height.saturating_add(below));

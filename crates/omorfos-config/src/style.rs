@@ -464,6 +464,11 @@ pub struct Style {
     pub transition: Transition,
     /// The shadow it casts.
     pub shadow: Shadow,
+    /// The shadow inside it (`inset`): a sharp line inside its border
+    /// along the edges it falls from, as wide as it falls, following the
+    /// curve of its corners. Light along the top, as on the rim of a sheet
+    /// of glass, is one that falls a pixel down.
+    pub inset: Shadow,
     /// How far what is behind it is blurred, in units of layout, where its
     /// background lets it be seen (`backdrop-filter`); 0 for not at all.
     pub blur: u32,
@@ -486,6 +491,7 @@ impl Style {
         max_width: 0,
         transition: Transition::NONE,
         shadow: Shadow::NONE,
+        inset: Shadow::NONE,
         blur: 0,
     };
 

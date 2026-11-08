@@ -15,7 +15,7 @@ use crate::css::{self, Declaration, Selector, Sheet};
 use crate::scheme;
 use crate::style::CLEAR;
 use crate::value::{
-    backdrop, color, cubic_bezier, fraction, gradient, image, shadow, size, time, words,
+    backdrop, color, cubic_bezier, fraction, gradient, image, shadows, size, time, words,
 };
 use crate::{
     Accent, Bounded, Color, Easing, Edges, Gradient, Part, Position, Scheme, Shadow, States, Style,
@@ -247,6 +247,7 @@ enum Setting {
     TransitionDelay(u32),
     TransitionEasing(Easing),
     Shadow(Shadow),
+    Inset(Shadow),
     Blur(u32),
 }
 
@@ -395,6 +396,7 @@ impl Look {
             Setting::TransitionDelay(millis) => style.transition.delay = *millis,
             Setting::TransitionEasing(easing) => style.transition.easing = *easing,
             Setting::Shadow(shadow) => style.shadow = *shadow,
+            Setting::Inset(shadow) => style.inset = *shadow,
             Setting::Blur(blur) => style.blur = *blur,
         }
     }
@@ -415,6 +417,7 @@ impl Look {
         });
         faded(&mut style.color);
         faded(&mut style.shadow.color);
+        faded(&mut style.inset.color);
         on(&mut style.border, None, |line| faded(&mut line.color));
         faded(&mut style.outline.color);
     }
@@ -465,7 +468,9 @@ fn settings(
         ("transition-duration", None) => one(lasting(value).map(Setting::TransitionDuration)),
         ("transition-delay", None) => one(lasting(value).map(Setting::TransitionDelay)),
         ("transition-timing-function", None) => one(easing(value).map(Setting::TransitionEasing)),
-        ("box-shadow", None) => one(shadow(value).map(Setting::Shadow)),
+        ("box-shadow", None) => {
+            shadows(value).map(|(cast, inset)| vec![Setting::Shadow(cast), Setting::Inset(inset)])
+        }
         ("backdrop-filter", None) => one(backdrop(value).map(Setting::Blur)),
         _ => {
             let name = &declaration.name;
@@ -899,17 +904,50 @@ mod tests {
     }
 
     #[test]
+    fn a_part_has_a_line_inside_it_where_a_shadow_inside_falls_from() {
+        let both = styled(
+            Part::Menu,
+            "menu { box-shadow: 0 12px 32px black, inset 0 1px 0 rgba(255, 255, 255, 0.06); }",
+        );
+        assert_eq!((both.shadow.y, both.shadow.blur), (12, 32));
+        let rim = Shadow {
+            y: 1,
+            color: Color::rgba(255, 255, 255, 15),
+            ..Shadow::NONE
+        };
+        assert_eq!(both.inset, rim);
+        // `inset` may be last, and on its own leaves nothing cast.
+        let alone = styled(Part::Menu, "menu { box-shadow: 0 1px #ffffff0f inset; }");
+        assert_eq!((alone.inset, alone.shadow), (rim, Shadow::NONE));
+        // Another `box-shadow` takes the place of both, as in CSS.
+        let after = styled(
+            Part::Menu,
+            "menu { box-shadow: inset 0 1px white; box-shadow: 0 2px black; }",
+        );
+        assert_eq!(after.inset, Shadow::NONE);
+        let faded = styled(
+            Part::Menu,
+            "menu { box-shadow: inset 0 1px white; opacity: 0.5; }",
+        );
+        assert_eq!(faded.inset.color.alpha, 0x80);
+        assert_eq!(styled(Part::Menu, "").inset, Shadow::NONE, "none built in");
+    }
+
+    #[test]
     fn a_shadow_the_theme_cannot_cast_is_said_not_to_be_one() {
         for value in [
             "8px",
             "0 8px 24px",
-            "inset 0 8px black",
             "0 100px black",
             "0 8px -1px black",
             "0 8px 24px 1px 2px black",
             "0 8px 24px 40px black",
             "0 8px 24px black, 0 1px red",
             "0 8px 24px nothing",
+            "inset 0 1px 2px white",
+            "inset 0 1px 0 1px white",
+            "inset 0 1px white, inset 0 2px white",
+            "inset",
         ] {
             let said = problem(&format!("window {{ box-shadow: {value}; }}"));
             assert!(said.contains("shadow"), "{value}: {said}");
@@ -1632,7 +1670,7 @@ mod tests {
                min-width: 40px;\n\
                max-width: 400px;\n\
                transition: 80ms linear;\n\
-               box-shadow: 1px 2px 3px 4px #050505;\n\
+               box-shadow: 1px 2px 3px 4px #050505, inset 0 1px #090909;\n\
                backdrop-filter: blur(24px);\n\
                outline: 3px solid #080808;\n\
                outline-offset: 2px;\n\
@@ -1677,6 +1715,11 @@ mod tests {
                 blur: 3,
                 spread: 4,
                 color: Color::rgb(5, 5, 5),
+            },
+            inset: Shadow {
+                y: 1,
+                color: Color::rgb(9, 9, 9),
+                ..Shadow::NONE
             },
             blur: 24,
         };

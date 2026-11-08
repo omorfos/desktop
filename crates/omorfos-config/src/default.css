@@ -20,13 +20,18 @@
   --success: #a3e635;        /* maximize */
   --capture: #f8616d;        /* the screen is being captured */
   /* Glass: the surface, at as much of itself as text on it needs to be
-   * read over anything. Nothing here is glass until what it costs has
-   * been measured; `menu { background: var(--glass-thick); backdrop-filter:
-   * blur(32px); }` makes a menu glass. Give the surface another colour,
-   * and these too. */
+   * read over anything, and light along its top as on the rim of a sheet.
+   * Nothing here is glass until what it costs has been measured;
+   *   menu {
+   *     background: var(--glass-thick);
+   *     backdrop-filter: blur(32px);
+   *     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
+   *   }
+   * makes a menu glass. Give the surface another colour, and these too. */
   --glass-thin: rgba(20, 28, 56, 0.7);    /* the panel: text on it, never dim */
   --glass-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
   --glass-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
+  --glass-rim: rgba(255, 255, 255, 0.06); /* the light along the top */
 }
 
 /* Colours take a moment to change when a part's state does. To have them

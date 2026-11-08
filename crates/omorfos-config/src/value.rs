@@ -345,28 +345,59 @@ pub(crate) fn backdrop(value: &str) -> Result<u32, String> {
     })
 }
 
-/// A shadow (`box-shadow`): `none`, or how far it falls across and down,
-/// perhaps how soft its edge is and how far it spreads, in pixels, then its
-/// colour. One only, and not inside the part.
-pub(crate) fn shadow(value: &str) -> Result<Shadow, String> {
+/// The shadows of a part (`box-shadow`): `none`, or the one it casts, the
+/// one inside it (`inset`), or both, apart by a comma. The one cast is
+/// how far it falls across and down, perhaps how soft its edge is and how
+/// far it spreads, in pixels, then its colour; the one inside is a sharp
+/// line along the edges it falls from, as wide as it falls, so has
+/// neither. Each is [`Shadow::NONE`] if it is not given.
+pub(crate) fn shadows(value: &str) -> Result<(Shadow, Shadow), String> {
     let value = value.trim();
-    if value == "none" {
-        return Ok(Shadow::NONE);
-    }
     let wrong = |why: &str| {
         format!(
             "`{value}` is not a shadow{why}; write `none`, or how far it falls across and down, \
              perhaps how soft and how far it spreads, in px, then a color, as in \
-             `0 8px 24px rgba(0, 0, 0, 0.28)`"
+             `0 8px 24px rgba(0, 0, 0, 0.28)`; and perhaps, after a comma, a line inside \
+             the part, as in `inset 0 1px 0 rgba(255, 255, 255, 0.06)`"
         )
     };
     let mut depth = 0_i32;
-    let several = value.chars().any(|letter| {
+    let items = value.split(|letter| {
         depth += i32::from(letter == '(') - i32::from(letter == ')');
         letter == ',' && depth == 0
     });
-    if several {
-        return Err(wrong(": a part casts one"));
+    let (mut cast, mut inset) = (None, None);
+    for item in items {
+        let words: Vec<&str> = item.split_whitespace().collect();
+        let inside = words.first() == Some(&"inset") || words.last() == Some(&"inset");
+        let rest: Vec<&str> = words.into_iter().filter(|word| *word != "inset").collect();
+        let one = shadow(&rest.join(" ")).map_err(|why| wrong(&why))?;
+        let sharp = one.blur == 0 && one.spread == 0;
+        let (kept, was) = if inside {
+            (
+                &mut inset,
+                sharp.then_some(one).ok_or_else(|| wrong(INSET))?,
+            )
+        } else {
+            (&mut cast, one)
+        };
+        if kept.replace(was).is_some() {
+            return Err(wrong(": a part casts one, and has one inside it"));
+        }
+    }
+    let none = |shadow: Option<Shadow>| shadow.unwrap_or(Shadow::NONE);
+    Ok((none(cast), none(inset)))
+}
+
+/// Why a shadow inside a part is not one.
+const INSET: &str = ": one inside the part is a sharp line, with neither a soft edge nor a spread";
+
+/// One shadow: `none`, or how far it falls across and down, perhaps how
+/// soft its edge is and how far it spreads, in pixels, then its colour; or
+/// why it is not one, to be said after what it is not.
+fn shadow(value: &str) -> Result<Shadow, String> {
+    if value == "none" {
+        return Ok(Shadow::NONE);
     }
     let length = |word: &str| word.strip_suffix("px").unwrap_or(word).parse::<i32>().ok();
     let mut words = value.split_whitespace().peekable();
@@ -376,7 +407,7 @@ pub(crate) fn shadow(value: &str) -> Result<Shadow, String> {
         words.next();
     }
     let rest: Vec<&str> = words.collect();
-    let color = color(&rest.join(" ")).map_err(|_| wrong(" with a color last"))?;
+    let color = color(&rest.join(" ")).map_err(|_| " with a color last".to_owned())?;
     let within = |found: i32, least: i32, most: i32| (least..=most).contains(&found);
     let shadow = match lengths[..] {
         [x, y, ref more @ ..] if more.len() <= 2 => {
@@ -397,10 +428,9 @@ pub(crate) fn shadow(value: &str) -> Result<Shadow, String> {
         _ => None,
     };
     shadow.ok_or_else(|| {
-        wrong(
-            ": two to four lengths, across and down from -64px to 64px, how soft from 0 to 64px, \
-             how far it spreads from -32px to 32px",
-        )
+        ": two to four lengths, across and down from -64px to 64px, how soft from 0 to 64px, \
+         how far it spreads from -32px to 32px"
+            .to_owned()
     })
 }
 

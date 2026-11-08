@@ -172,7 +172,8 @@ impl Canvas {
         let border = style.border;
         let lines = [border.top, border.right, border.bottom, border.left];
         let widths = lines.map(|line| pixels(line.width));
-        if style.background.alpha == 0 && style.gradient.is_none() && widths == [0; 4] {
+        let nothing = style.background.alpha == 0 && style.gradient.is_none();
+        if nothing && widths == [0; 4] && style.inset.color.alpha == 0 {
             return;
         }
         let shape = Shape {
@@ -210,6 +211,20 @@ impl Canvas {
         let over = style
             .gradient
             .map(|gradient| (gradient, gradient.run(room)));
+        // The shadow inside: where what is inside the border, moved as far
+        // as the shadow falls, does not reach.
+        let inset = style.inset;
+        let falls = |units: i32| {
+            let far = pixels(units.unsigned_abs()).cast_signed();
+            if units < 0 { -far } else { far }
+        };
+        let (across_by, down_by) = (falls(inset.x), falls(inset.y));
+        let moved_in = |(x, y): (u32, u32)| {
+            let x = u32::try_from(i64::from(x) - i64::from(across_by)).ok();
+            let y = u32::try_from(i64::from(y) - i64::from(down_by)).ok();
+            let at = x.zip(y).filter(|(x, y)| *x < width && *y < height);
+            at.map_or(0, |at| shape.at(at).2)
+        };
         let columns = visible(left, width, self.width);
         for row in visible(top, height, self.height) {
             for column in columns.clone() {
@@ -232,6 +247,12 @@ impl Canvas {
                     );
                     let color = gradient.at(run.along(point));
                     self.blend(column, row, color, share_of(fill, kept));
+                }
+                if inset.color.alpha > 0 {
+                    let left_out = u32::from(u8::MAX - moved_in(inside));
+                    let band = u32::from(fill) * left_out / u32::from(u8::MAX);
+                    let band = u8::try_from(band).unwrap_or(u8::MAX);
+                    self.blend(column, row, inset.color, share_of(band, kept));
                 }
             }
         }
@@ -918,6 +939,8 @@ fn visible(start: i32, length: u32, limit: u32) -> std::ops::Range<i32> {
 
 #[cfg(test)]
 mod tests {
+    use omorfos_config::Shadow;
+
     use super::*;
 
     const RED: Color = Color::rgb(255, 0, 0);
@@ -1199,6 +1222,53 @@ mod tests {
         assert_eq!(canvas.at(20, 6), argb(RED));
         assert_eq!(canvas.at(6, 6), 0, "outside its curve");
         assert_ne!(canvas.at(8, 8), 0, "along it");
+    }
+
+    #[test]
+    fn a_shadow_inside_a_box_is_a_line_inside_its_border_along_the_side_it_falls_from() {
+        let shadow = |x, y| Shadow {
+            x,
+            y,
+            color: GREEN,
+            ..Shadow::NONE
+        };
+        let style = Style {
+            background: WHITE,
+            border: Edges::all(line(RED, 1)),
+            inset: shadow(0, 1),
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((10, 10, 20, 10), &style);
+        assert_eq!(canvas.at(20, 10), argb(RED), "the border");
+        assert_eq!(canvas.at(20, 11), argb(GREEN), "the line, inside it");
+        assert_eq!(canvas.at(20, 12), argb(WHITE), "a pixel wide");
+        assert_eq!(canvas.at(20, 18), argb(WHITE), "and along the top only");
+        assert_eq!(canvas.at(11, 15), argb(WHITE));
+
+        // Falling to the left, it is along the right.
+        let style = Style {
+            inset: shadow(-2, 0),
+            ..style
+        };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((10, 10, 20, 10), &style);
+        assert_eq!(
+            (canvas.at(28, 15), canvas.at(27, 15)),
+            (argb(GREEN), argb(GREEN))
+        );
+        assert_eq!(canvas.at(26, 15), argb(WHITE));
+        assert_eq!(canvas.at(11, 15), argb(WHITE));
+
+        // On a box with nothing else, it is all there is.
+        let alone = Style {
+            inset: shadow(0, 1),
+            ..Style::NONE
+        };
+        let mut canvas = Canvas::new(40, 30);
+        canvas.draw_box((10, 10, 20, 10), &alone);
+        assert_eq!(canvas.at(20, 10), argb(GREEN));
+        assert_eq!(canvas.at(20, 11), 0);
     }
 
     #[test]
