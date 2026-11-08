@@ -44,14 +44,31 @@
 
 /* What comes onto the screen takes a little longer than a colour does to
  * change, and leaves quicker than it came, so that what has been dismissed
- * is not in the way of what is next: it comes over its own transition, and
- * goes over the one it has :closing. */
+ * is not in the way of what is next: it comes over its own transition,
+ * from how it is in @starting-style, a little small and not yet seen; and
+ * it goes over the one it has :closing, to how it is then, a little less
+ * small. `scale` is only for this: how large a part is drawn as it comes
+ * and goes. */
 window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
   transition: 180ms ease-out;
 }
 window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
 notification:closing, launcher:closing, switcher:closing, question:closing {
   transition: 120ms ease-in;
+  scale: 98%;
+  opacity: 0;
+}
+@starting-style {
+  window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+    scale: 96%;
+    opacity: 0;
+  }
+}
+/* What dims the screen behind the launcher only fades, being as large as
+ * the screen. */
+launcher-backdrop:closing { opacity: 0; }
+@starting-style {
+  launcher-backdrop { opacity: 0; }
 }
 
 desktop { background: var(--background); }

@@ -472,6 +472,29 @@ pub struct Style {
     /// How far what is behind it is blurred, in units of layout, where its
     /// background lets it be seen (`backdrop-filter`); 0 for not at all.
     pub blur: u32,
+    /// How see-through and how large it is drawn as a whole: what it goes
+    /// to as it leaves, while it is `:closing`.
+    pub presence: Presence,
+}
+
+/// How see-through and how large a part is drawn as a whole: once it is
+/// there, as it arrives (`@starting-style`), and as it leaves (`:closing`),
+/// from one to the other over its transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Presence {
+    /// How much of it is seen, from 0 for nothing to 255 for all of it.
+    /// Where it is there, this is already in its colours.
+    pub opacity: u8,
+    /// How large it is, in thousandths of its size once there.
+    pub scale: u16,
+}
+
+impl Presence {
+    /// All of it, as large as it is.
+    pub const WHOLE: Self = Self {
+        opacity: u8::MAX,
+        scale: 1000,
+    };
 }
 
 impl Style {
@@ -493,6 +516,7 @@ impl Style {
         shadow: Shadow::NONE,
         inset: Shadow::NONE,
         blur: 0,
+        presence: Presence::WHOLE,
     };
 
     /// Whether what is behind it can be seen through its background: its

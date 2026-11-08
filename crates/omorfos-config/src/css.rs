@@ -80,6 +80,9 @@ pub(crate) struct Sheet {
     /// What `:root` rules declare: names beginning `--` and their values.
     pub(crate) variables: Vec<Declaration>,
     pub(crate) rules: Vec<Rule>,
+    /// What `@starting-style` gives: how parts look as they arrive, from
+    /// which they change to how they look once there.
+    pub(crate) starting: Vec<Rule>,
 }
 
 impl Sheet {
@@ -95,6 +98,8 @@ impl Sheet {
             if reader.take(":root") {
                 let declared = reader.block()?;
                 sheet.variables.extend(variables(declared)?);
+            } else if reader.rest().starts_with('@') {
+                sheet.starting.extend(reader.starting()?);
             } else {
                 let selectors = reader.selectors()?;
                 let declarations = reader.block()?;
@@ -219,6 +224,52 @@ impl<'a> Reader<'a> {
         Ok(Selector { part, states })
     }
 
+    /// Reads `@starting-style` and the rules it holds, the one at-rule
+    /// there is. Its rules are for parts as they arrive, which they do in
+    /// no state, and hold nothing else: no rule is in more than one.
+    fn starting(&mut self) -> Result<Vec<Rule>, Fault> {
+        let start = self.at;
+        self.take("@");
+        let name = self.name();
+        if name != "starting-style" {
+            let message = format!(
+                "`@{name}` is not understood; the one at-rule there is is `@starting-style`"
+            );
+            return Err(Fault::new(start, message));
+        }
+        self.skip_blank()?;
+        if !self.take("{") {
+            return Err(self.fault("expected `{` here, to begin the rules"));
+        }
+        let mut rules = Vec::new();
+        loop {
+            self.skip_blank()?;
+            if self.take("}") {
+                return Ok(rules);
+            }
+            if self.rest().is_empty() {
+                let message = "this `@starting-style` is never closed with `}`";
+                return Err(Fault::new(start, message));
+            }
+            if self.rest().starts_with([':', '@']) {
+                let message = "`@starting-style` holds rules for parts, as they arrive";
+                return Err(self.fault(message));
+            }
+            let at = self.at;
+            let selectors = self.selectors()?;
+            if selectors.iter().any(|one| one.states != States::NONE) {
+                let message =
+                    "a part arrives in no state, so a rule in `@starting-style` names none";
+                return Err(Fault::new(at, message));
+            }
+            let declarations = self.block()?;
+            rules.push(Rule {
+                selectors,
+                declarations,
+            });
+        }
+    }
+
     /// Reads what is between `{` and `}`: properties and their values.
     fn block(&mut self) -> Result<Vec<Declaration>, Fault> {
         self.skip_blank()?;
@@ -327,6 +378,21 @@ mod tests {
     }
 
     #[test]
+    fn starting_style_holds_how_parts_look_as_they_arrive() {
+        let source = "menu { scale: 1 }\n@starting-style {\n  menu, tooltip { scale: 96% }\n  /* and */ notice{opacity:0}\n}\n@starting-style{}";
+        let sheet = Sheet::parse(source).unwrap();
+        assert_eq!(sheet.rules.len(), 1, "a rule outside it is a rule");
+        let parts: Vec<Vec<Option<Part>>> = sheet
+            .starting
+            .iter()
+            .map(|rule| rule.selectors.iter().map(|one| one.part).collect())
+            .collect();
+        let (menu, tooltip, notice) = (Some(Part::Menu), Some(Part::Tooltip), Some(Part::Notice));
+        assert_eq!(parts, [vec![menu, tooltip], vec![notice]]);
+        assert_eq!(sheet.starting[0].declarations[0].value, "96%");
+    }
+
+    #[test]
     fn comments_and_blank_space_may_be_anywhere_between_things() {
         let source = "/* a theme */\n\n tab /* the tabs */ {\n  /* ink */ color /**/ : /**/ #fff ;\n}\n/* end */";
         let sheet = Sheet::parse(source).unwrap();
@@ -365,6 +431,46 @@ mod tests {
             ("tab { color: #fff", 1, 18, "expected `;` or `}`"),
             ("tab { color: #fff { } }", 1, 19, "expected `;` or `}`"),
             ("tab {", 1, 6, "expected a property, or `}`"),
+            ("@media screen { }", 1, 1, "`@media` is not understood"),
+            (
+                "@starting-style menu { }",
+                1,
+                17,
+                "expected `{` here, to begin the rules",
+            ),
+            ("@starting-style {\n  menu { }", 1, 1, "never closed"),
+            (
+                "@starting-style { :root { } }",
+                1,
+                19,
+                "holds rules for parts",
+            ),
+            (
+                "@starting-style { @starting-style { } }",
+                1,
+                19,
+                "holds rules for parts",
+            ),
+            (
+                "@starting-style { menu:focus { } }",
+                1,
+                19,
+                "arrives in no state",
+            ),
+            ("@starting-style /* never", 1, 17, "never closed"),
+            ("@starting-style { /* never", 1, 19, "never closed"),
+            (
+                "@starting-style { nope { } }",
+                1,
+                19,
+                "`nope` is not a part",
+            ),
+            (
+                "@starting-style { menu { color } }",
+                1,
+                32,
+                "expected `:` after `color`",
+            ),
         ];
         for (source, line, column, expected) in cases {
             let (at_line, at_column, message) = fault(source);

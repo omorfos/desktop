@@ -307,6 +307,22 @@ pub(crate) fn fraction(text: &str) -> Option<u8> {
         .map(|share| byte(share * 255.0))
 }
 
+/// A share of a size from 0 to 2, or a percentage up to 200%, in
+/// thousandths.
+pub(crate) fn thousandths(text: &str) -> Option<u16> {
+    let share = match text.strip_suffix('%') {
+        Some(percent) => number(percent).map(|value| value / 100.0),
+        None => number(text),
+    };
+    let share = share.filter(|share| (0.0..=2.0).contains(share));
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "from 0 to 2000"
+    )]
+    share.map(|share| (share * 1000.0).round() as u16)
+}
+
 /// The nearest byte to a value from 0 to 255.
 pub(crate) fn byte(value: f32) -> u8 {
     #[expect(

@@ -56,7 +56,7 @@ pub use paths::{cache_dir, config_dir};
 pub use rules::{Match, Rule, Rules};
 pub use scheme::{Accent, Scheme};
 pub use store::Store;
-pub use style::{Edges, Line, Part, Shadow, State, States, Style};
+pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
 pub use transition::{Easing, Transition};
 pub use wallpaper::{

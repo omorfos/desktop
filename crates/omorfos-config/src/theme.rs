@@ -11,15 +11,16 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::css::{self, Declaration, Selector, Sheet};
+use crate::css::{self, Declaration, Rule, Selector, Sheet};
 use crate::scheme;
 use crate::style::CLEAR;
 use crate::value::{
-    backdrop, color, cubic_bezier, fraction, gradient, image, shadows, size, time, words,
+    backdrop, color, cubic_bezier, fraction, gradient, image, shadows, size, thousandths, time,
+    words,
 };
 use crate::{
-    Accent, Bounded, Color, Easing, Edges, Gradient, Part, Position, Scheme, Shadow, States, Style,
-    Transition,
+    Accent, Bounded, Color, Easing, Edges, Gradient, Part, Position, Presence, Scheme, Shadow,
+    State, States, Style, Transition,
 };
 
 /// The stylesheet every theme starts from.
@@ -66,6 +67,8 @@ struct Table {
     looks: Vec<Look>,
     /// The font of a part that is not in the table, which there is none of.
     spare: Font,
+    /// How each part arrives, part by part.
+    starting: Vec<Presence>,
 }
 
 /// How one part looks in one combination of states.
@@ -175,6 +178,15 @@ impl Theme {
         look.map_or(Style::NONE, |look| look.style)
     }
 
+    /// How `part` is drawn as it arrives, from which it changes to how it
+    /// is once there over its transition: as `@starting-style` says, and
+    /// otherwise as it is once there.
+    #[must_use]
+    pub fn starting(&self, part: Part) -> Presence {
+        let starting = self.table.starting.get(part as usize).copied();
+        starting.unwrap_or(Presence::WHOLE)
+    }
+
     /// The font `part` is written in while it is in `states`.
     #[must_use]
     pub fn font(&self, part: Part, states: States) -> &Font {
@@ -255,6 +267,7 @@ enum Setting {
     Shadow(Shadow),
     Inset(Shadow),
     Blur(u32),
+    Scale(u16),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
@@ -264,8 +277,7 @@ const PROPERTIES: &str = "background, background-color, background-image, color,
                           outline-offset, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
                           transition-duration, transition-delay, transition-timing-function, \
-                          box-shadow and \
-                          backdrop-filter; \
+                          box-shadow, backdrop-filter and scale; \
                           border, padding and margin may name a side, as in \
                           border-bottom-color";
 
@@ -289,6 +301,10 @@ struct Ranked<'a> {
     settings: &'a [Setting],
 }
 
+/// The rules of a stylesheet understood: for each, whether it is the
+/// user's, what it applies to, and the settings it makes.
+type Understood<'a> = Vec<(bool, &'a [Selector], Vec<Setting>)>;
+
 /// Works a theme out from the built-in stylesheet and the user's.
 ///
 /// The work is in proportion to the size of the stylesheets: each variable
@@ -299,17 +315,70 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     // a later one an earlier.
     let declared = declared(built_in, false).chain(declared(own, true));
     let variables: Variables = declared.map(|one| (one.name, one)).collect();
+    let rules = [(false, &built_in.rules[..]), (true, &own.rules[..])];
+    let resting = understand(rules, &variables, false)?;
+    let rules = [(false, &built_in.starting[..]), (true, &own.starting[..])];
+    let arriving = understand(rules, &variables, true)?;
+    let (resting, arriving) = (ranked(&resting), ranked(&arriving));
 
-    let mut understood: Vec<(bool, &[Selector], Vec<Setting>)> = Vec::new();
-    for (by_user, sheet) in [(false, built_in), (true, own)] {
-        for rule in &sheet.rules {
-            let mut all = Vec::new();
-            for declaration in &rule.declarations {
-                all.extend(settings(declaration, by_user, &variables)?);
+    let mut looks = Vec::with_capacity(Part::ALL.len() * States::COMBINATIONS);
+    let mut starting = Vec::with_capacity(Part::ALL.len());
+    for part in Part::ALL {
+        for states in States::every() {
+            let mut look = Look {
+                style: Style::NONE,
+                font: Font::default(),
+            };
+            let mut opacity = u8::MAX;
+            look.apply(&resting, (part, states), &mut opacity);
+            look.fade(opacity);
+            if states == States::NONE {
+                starting.push(look.arriving(&arriving, part));
             }
-            understood.push((by_user, &rule.selectors, all));
+            looks.push(look);
         }
     }
+    Ok(Table {
+        looks,
+        spare: Font::default(),
+        starting,
+    })
+}
+
+/// Understands the rules of each stylesheet, the user's or not, those of
+/// `@starting-style` if `starting`.
+fn understand<'a>(
+    sheets: [(bool, &'a [Rule]); 2],
+    variables: &Variables,
+    starting: bool,
+) -> Result<Understood<'a>, Problem> {
+    let mut understood = Vec::new();
+    for (by_user, rules) in sheets {
+        for rule in rules {
+            // A part is only drawn larger or smaller as it comes and goes.
+            let closing = States::NONE.with(State::Closing);
+            let selectors = rule.selectors.iter();
+            let resting = !starting && selectors.clone().any(|one| !closing.within(one.states));
+            let mut all = Vec::new();
+            for declaration in &rule.declarations {
+                let settings = settings(declaration, by_user, variables)?;
+                if resting && settings.iter().any(|one| matches!(one, Setting::Scale(_))) {
+                    let message = "`scale` is how large a part is drawn as it comes and goes: \
+                                   give it in `@starting-style`, or to a part that is \
+                                   `:closing`";
+                    return Err((by_user.then_some(declaration.at), message.to_owned()));
+                }
+                all.extend(settings);
+            }
+            understood.push((by_user, &rule.selectors[..], all));
+        }
+    }
+    Ok(understood)
+}
+
+/// Each selector of each rule understood, in the order they are applied:
+/// the one that ranks highest last.
+fn ranked<'a>(understood: &'a Understood) -> Vec<Ranked<'a>> {
     let ranked = understood
         .iter()
         .flat_map(|(by_user, selectors, settings)| {
@@ -322,32 +391,7 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     let mut ranked: Vec<Ranked> = ranked.collect();
     // The sort is stable, so among equals the later rule is applied later.
     ranked.sort_by_key(|rule| rule.rank);
-
-    let mut looks = Vec::with_capacity(Part::ALL.len() * States::COMBINATIONS);
-    for part in Part::ALL {
-        for states in States::every() {
-            let mut look = Look {
-                style: Style::NONE,
-                font: Font::default(),
-            };
-            let mut opacity = u8::MAX;
-            let applies = |rule: &&Ranked| {
-                let selector = rule.selector;
-                selector.part.is_none_or(|named| named == part) && selector.states.within(states)
-            };
-            for rule in ranked.iter().filter(applies) {
-                for setting in rule.settings {
-                    look.set(setting, &mut opacity);
-                }
-            }
-            look.fade(opacity);
-            looks.push(look);
-        }
-    }
-    Ok(Table {
-        looks,
-        spare: Font::default(),
-    })
+    ranked
 }
 
 /// Applies `change` to the side named, or to every side.
@@ -372,6 +416,32 @@ fn on<T>(edges: &mut Edges<T>, side: Option<Side>, mut change: impl FnMut(&mut T
 }
 
 impl Look {
+    /// Makes what each of `ranked` that applies to `part` in `states` says.
+    fn apply(&mut self, ranked: &[Ranked], (part, states): (Part, States), opacity: &mut u8) {
+        let applies = |rule: &&Ranked| {
+            let selector = rule.selector;
+            selector.part.is_none_or(|named| named == part) && selector.states.within(states)
+        };
+        for rule in ranked.iter().filter(applies) {
+            for setting in rule.settings {
+                self.set(setting, opacity);
+            }
+        }
+    }
+
+    /// How the part that looks like this once there arrives: as it is, but
+    /// for what `arriving` changes, of which only how see-through and how
+    /// large it is are drawn.
+    fn arriving(&self, arriving: &[Ranked], part: Part) -> Presence {
+        let mut look = self.clone();
+        let mut opacity = look.style.presence.opacity;
+        look.apply(arriving, (part, States::NONE), &mut opacity);
+        Presence {
+            opacity,
+            ..look.style.presence
+        }
+    }
+
     fn set(&mut self, setting: &Setting, opacity: &mut u8) {
         let style = &mut self.style;
         match setting {
@@ -404,6 +474,7 @@ impl Look {
             Setting::Shadow(shadow) => style.shadow = *shadow,
             Setting::Inset(shadow) => style.inset = *shadow,
             Setting::Blur(blur) => style.blur = *blur,
+            Setting::Scale(scale) => style.presence.scale = *scale,
         }
     }
 
@@ -426,6 +497,7 @@ impl Look {
         faded(&mut style.inset.color);
         on(&mut style.border, None, |line| faded(&mut line.color));
         faded(&mut style.outline.color);
+        style.presence.opacity = opacity;
     }
 }
 
@@ -478,6 +550,7 @@ fn settings(
             shadows(value).map(|(cast, inset)| vec![Setting::Shadow(cast), Setting::Inset(inset)])
         }
         ("backdrop-filter", None) => one(backdrop(value).map(Setting::Blur)),
+        ("scale", None) => one(scale(value)),
         _ => {
             let name = &declaration.name;
             let message = format!("`{name}` is not a property; the properties are {PROPERTIES}");
@@ -537,6 +610,13 @@ fn resolve(
     }
     let message = "this variable stands for itself, by way of others or directly";
     Err((origin, message.to_owned()))
+}
+
+/// How large a part is drawn as it comes and goes: from `0` to `2`, or a
+/// percentage.
+fn scale(value: &str) -> Result<Setting, String> {
+    let scale = thousandths(value).map(Setting::Scale);
+    scale.ok_or_else(|| format!("`{value}` is not a scale from 0 to 2, or from 0% to 200%"))
 }
 
 /// How see-through a part is: from `0` to `1`, or a percentage.
@@ -958,6 +1038,83 @@ mod tests {
             let said = problem(&format!("window {{ box-shadow: {value}; }}"));
             assert!(said.contains("shadow"), "{value}: {said}");
         }
+    }
+
+    #[test]
+    fn a_part_arrives_as_its_starting_style_says_and_goes_as_it_is_closing() {
+        let closing = States::NONE.with(State::Closing);
+        let theme = Theme::parse(
+            "@starting-style { clock { scale: 96%; opacity: 0 } }\n\
+             clock:closing { scale: 0.98; opacity: 50% }",
+        )
+        .unwrap();
+        let whole = Presence::WHOLE;
+        assert_eq!(
+            whole,
+            Presence {
+                opacity: 255,
+                scale: 1000
+            }
+        );
+        let arriving = theme.starting(Part::Clock);
+        assert_eq!(
+            arriving,
+            Presence {
+                opacity: 0,
+                scale: 960
+            }
+        );
+        let gone = theme.style(Part::Clock, closing).presence;
+        assert_eq!(
+            gone,
+            Presence {
+                opacity: 128,
+                scale: 980
+            }
+        );
+        assert_eq!(theme.style(Part::Clock, States::NONE).presence, whole);
+        // Without one, a part arrives as it is, however see-through that is.
+        assert_eq!(theme.starting(Part::Workspace), whole);
+        let faint = Theme::parse("workspace { opacity: 0.5 }").unwrap();
+        let faint = faint.starting(Part::Workspace);
+        assert_eq!(
+            faint,
+            Presence {
+                opacity: 128,
+                scale: 1000
+            }
+        );
+        // It is ranked as any rule is, and its variables are the theme's.
+        let ranked = Theme::parse(
+            ":root { --from: 90% }\n\
+             @starting-style { * { scale: 50% } clock { scale: var(--from) } }",
+        )
+        .unwrap();
+        assert_eq!(ranked.starting(Part::Clock).scale, 900);
+        assert_eq!(ranked.starting(Part::Workspace).scale, 500);
+    }
+
+    #[test]
+    fn a_scale_is_from_none_to_twice_the_size_and_only_as_a_part_comes_and_goes() {
+        let scaled = |value: &str| {
+            let theme = format!("@starting-style {{ clock {{ scale: {value} }} }}");
+            Theme::parse(&theme).map(|theme| theme.starting(Part::Clock).scale)
+        };
+        assert_eq!(scaled("0"), Ok(0));
+        assert_eq!(scaled("200%"), Ok(2000));
+        assert_eq!(scaled("1.5"), Ok(1500));
+        for wrong in ["-1", "201%", "2.1", "1 1", "big", "%"] {
+            let message = scaled(wrong).unwrap_err().message;
+            assert!(
+                message.contains("not a scale from 0 to 2"),
+                "{wrong}: {message}"
+            );
+        }
+        let message = problem("clock {\n  scale: 96%;\n}");
+        assert!(message.starts_with("2:3: "), "{message}");
+        assert!(message.contains("as it comes and goes"), "{message}");
+        assert!(problem("clock, menu:closing { scale: 1 }").contains("comes and goes"));
+        assert!(Theme::parse("clock:closing, menu:hover:closing { scale: 1 }").is_ok());
     }
 
     #[test]
@@ -1728,6 +1885,7 @@ mod tests {
                 ..Shadow::NONE
             },
             blur: 24,
+            presence: Presence::WHOLE,
         };
         assert_eq!(style, expected);
     }
