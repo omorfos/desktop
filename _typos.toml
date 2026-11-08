@@ -7,4 +7,5 @@ datas = "datas"
 fpr = "fpr"
 
 [files]
-extend-exclude = ["Cargo.lock"]
+# The time zone database's table of places, as it comes, abbreviations and all.
+extend-exclude = ["Cargo.lock", "crates/omorfos-config/src/zone1970.tab"]

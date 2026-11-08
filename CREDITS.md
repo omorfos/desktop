@@ -13,6 +13,7 @@ by `cargo deny list`, and are checked against the licences allowed in
 
 | What | By | Licence | Used for |
 |---|---|---|---|
+| The [time zone database](https://www.iana.org/time-zones)'s `zone1970.tab`, from tzdata 2026f | Paul Eggert and the tz contributors | Public domain | Where the principal city of each time zone is, for `appearance.location` to name a time zone and for the system's to be where the sun is watched |
 | [Lucide](https://lucide.dev) icons | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT | The signs of the interface: only the ones used, as shapes. Chosen in [ADR 32](docs/adr/0032-the-design-language.md); none is built in yet. |
 
 ## Used to make what is shipped

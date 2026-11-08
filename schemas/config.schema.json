@@ -63,7 +63,14 @@
           "description": "The colour the built-in theme picks out what has focus with: one\nthat comes with omorfos, by its name, or any other."
         },
         "day": {
-          "$ref": "#/$defs/Day",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Day"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "The hours `scheme: auto` is light between where no location is given."
         },
         "location": {
@@ -75,7 +82,7 @@
               "type": "null"
             }
           ],
-          "description": "Where the user is, for `scheme: auto` to be light from sunrise to\nsunset there. It is not told to any program."
+          "description": "Where the user is, for `scheme: auto` to be light from sunrise to\nsunset there: a latitude and longitude, a time zone, or `system`, the\ntime zone the system is set to, which is where they are taken to be\nunless hours of the `day` are given. It is not told to any program."
         },
         "reduce_transparency": {
           "default": false,
@@ -154,6 +161,27 @@
       "required": [
         "from",
         "to"
+      ],
+      "type": "object"
+    },
+    "Degrees": {
+      "additionalProperties": false,
+      "description": "A place as degrees north and east, south and west being below 0.",
+      "properties": {
+        "latitude": {
+          "description": "From -90 at the South Pole to 90 at the North.",
+          "format": "double",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "From -180 to 180, east of Greenwich being above 0.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude"
       ],
       "type": "object"
     },
@@ -322,25 +350,15 @@
       "type": "object"
     },
     "Location": {
-      "additionalProperties": false,
-      "description": "Where on Earth the user is, for when the sun is up there. Kept in\nmillionths of a degree, so that the configuration can be compared.",
-      "properties": {
-        "latitude": {
-          "description": "From -90 at the South Pole to 90 at the North.",
-          "format": "double",
-          "type": "number"
+      "anyOf": [
+        {
+          "type": "string"
         },
-        "longitude": {
-          "description": "From -180 to 180, east of Greenwich being above 0.",
-          "format": "double",
-          "type": "number"
+        {
+          "$ref": "#/$defs/Degrees"
         }
-      },
-      "required": [
-        "latitude",
-        "longitude"
       ],
-      "type": "object"
+      "description": "Where on Earth the user is, for when the sun is up there."
     },
     "Lock": {
       "additionalProperties": false,

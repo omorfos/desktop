@@ -11,18 +11,37 @@ use std::f64::consts::TAU;
 use jiff::{Timestamp, Zoned};
 use serde::Deserialize;
 
-/// Where on Earth the user is, for when the sun is up there. Kept in
-/// millionths of a degree, so that the configuration can be compared.
+/// Where on Earth the user is, for when the sun is up there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(try_from = "Degrees")]
-pub struct Location {
+#[serde(try_from = "Written")]
+pub enum Location {
+    /// A latitude and longitude, given or of a time zone named.
+    At(Coordinates),
+    /// The principal place of the time zone the system is set to.
+    System,
+}
+
+/// A place on Earth, in millionths of a degree north and east, so that the
+/// configuration can be compared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Coordinates {
     latitude: i32,
     longitude: i32,
 }
 
-/// A place as it is written: degrees north and east, south and west being
-/// below 0.
+/// A place as it is written: `system`, a time zone by its name in the time
+/// zone database, as `Europe/London`, or degrees north and east.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(untagged)]
+enum Written {
+    Named(String),
+    Degrees(Degrees),
+}
+
+/// A place as degrees north and east, south and west being below 0.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -33,7 +52,24 @@ struct Degrees {
     longitude: f64,
 }
 
-impl TryFrom<Degrees> for Location {
+impl TryFrom<Written> for Location {
+    type Error = String;
+
+    fn try_from(written: Written) -> Result<Self, Self::Error> {
+        match written {
+            Written::Named(name) if name == "system" => Ok(Self::System),
+            Written::Named(name) => zone(&name).map(Self::At).ok_or_else(|| {
+                format!(
+                    "`{name}` is not a time zone the time zone database has a place for; \
+                     write one as `Europe/London`, or `system`, or a latitude and longitude"
+                )
+            }),
+            Written::Degrees(degrees) => Coordinates::try_from(degrees).map(Self::At),
+        }
+    }
+}
+
+impl TryFrom<Degrees> for Coordinates {
     type Error = String;
 
     fn try_from(degrees: Degrees) -> Result<Self, Self::Error> {
@@ -54,6 +90,52 @@ impl TryFrom<Degrees> for Location {
                 "a latitude is from -90 to 90 and a longitude from -180 to 180".to_owned()
             })
     }
+}
+
+/// The time zone database's table of the principal place of each time
+/// zone, as tzdata 2026f has it.
+const ZONES: &str = include_str!("zone1970.tab");
+
+/// The principal place of the time zone `name`, as the time zone database
+/// has it, if it has one.
+fn zone(name: &str) -> Option<Coordinates> {
+    let rows = ZONES.lines().filter(|line| !line.starts_with('#'));
+    rows.map(|row| row.split('\t').skip(1))
+        .find_map(|mut columns| {
+            let at = columns.next().unwrap_or_default();
+            let zone = columns.next().unwrap_or_default();
+            (zone == name).then(|| place(at)).flatten()
+        })
+}
+
+/// The place ISO 6709 writes as `+DDMM+DDDMM`, perhaps with seconds after
+/// the minutes of each: latitude, then longitude.
+fn place(written: &str) -> Option<Coordinates> {
+    let east = written.get(1..)?.find(['+', '-'])? + 1;
+    let (latitude, longitude) = written.split_at(east);
+    Some(Coordinates {
+        latitude: angle(latitude, 2)?,
+        longitude: angle(longitude, 3)?,
+    })
+}
+
+/// An angle in millionths of a degree, as ISO 6709 writes it: a sign,
+/// `wide` digits of degrees, two of minutes, and perhaps two of seconds.
+fn angle(written: &str, wide: usize) -> Option<i32> {
+    let digits = written.get(1..).unwrap_or_default();
+    let number = |from: usize, to: usize| {
+        let digits = digits.get(from..to);
+        digits.and_then(|digits| digits.parse::<i32>().ok())
+    };
+    let degrees = number(0, wide)?;
+    let minutes = number(wide, wide + 2)?;
+    let seconds = number(wide + 2, wide + 4).unwrap_or(0);
+    let millionths = degrees * 1_000_000 + minutes * 1_000_000 / 60 + seconds * 1_000_000 / 3600;
+    Some(if written.starts_with('-') {
+        -millionths
+    } else {
+        millionths
+    })
 }
 
 /// The hours of the day the desktop is light where no location is given,
@@ -119,13 +201,28 @@ impl TryFrom<Hours> for Day {
 /// Whether it is light at `now`, and when that next changes, or the
 /// latest it is to be asked again: by the next midnight, so that a day
 /// the sun never sets is followed by one it does.
-pub(crate) fn light_at(now: &Zoned, location: Option<Location>, day: Day) -> (bool, Timestamp) {
+///
+/// It goes by the sun at `location`, or where hours of the `day` are given
+/// and no location is, by them. Without either it goes by the sun at the
+/// principal place of the time zone `system` is the name of, which is
+/// what `location: system` says too; and where that has no place, by the
+/// hours of the day.
+pub(crate) fn light_at(
+    now: &Zoned,
+    (location, day): (Option<Location>, Option<Day>),
+    system: Option<&str>,
+) -> (bool, Timestamp) {
     let midnight = now.date().tomorrow().ok();
     let midnight = midnight.and_then(|date| date.to_zoned(now.time_zone().clone()).ok());
     let midnight = midnight.map_or(now.timestamp(), |midnight| midnight.timestamp());
-    let (light, next) = match location {
-        Some(location) => by_the_sun(&now.timestamp(), location),
-        None => by_the_clock(now, day),
+    let place = match (location, day) {
+        (Some(Location::At(at)), _) => Some(at),
+        (Some(Location::System), _) | (None, None) => system.and_then(zone),
+        (None, Some(_)) => None,
+    };
+    let (light, next) = match place {
+        Some(place) => by_the_sun(&now.timestamp(), place),
+        None => by_the_clock(now, day.unwrap_or_default()),
     };
     (light, next.map_or(midnight, |next| next.min(midnight)))
 }
@@ -142,7 +239,7 @@ enum Sun {
     Never,
 }
 
-fn sun(of: i16, location: Location) -> Sun {
+fn sun(of: i16, location: Coordinates) -> Sun {
     let angle = TAU / 365.0 * f64::from(of - 1);
     let (once, twice, thrice) = (angle, 2.0 * angle, 3.0 * angle);
     // How far the sun is ahead of noon by the clock, in minutes, and how
@@ -175,7 +272,7 @@ fn sun(of: i16, location: Location) -> Sun {
 
 /// Whether the sun is up at `now`, and when it next rises or sets, if it
 /// does in the day either side.
-fn by_the_sun(now: &Timestamp, location: Location) -> (bool, Option<Timestamp>) {
+fn by_the_sun(now: &Timestamp, location: Coordinates) -> (bool, Option<Timestamp>) {
     let today = now.as_second().div_euclid(DAY) * DAY;
     let days = [today - DAY, today, today + DAY].map(|midnight| {
         let of = Timestamp::from_second(midnight).ok();
@@ -235,12 +332,16 @@ mod tests {
 
     use super::*;
 
-    fn place(latitude: f64, longitude: f64) -> Location {
-        Location::try_from(Degrees {
+    fn degrees(latitude: f64, longitude: f64) -> Location {
+        Location::try_from(Written::Degrees(Degrees {
             latitude,
             longitude,
-        })
+        }))
         .unwrap()
+    }
+
+    fn named(name: &str) -> Result<Location, String> {
+        Location::try_from(Written::Named(name.to_owned()))
     }
 
     /// A moment, written in UTC.
@@ -252,7 +353,7 @@ mod tests {
     /// When the sun is next to rise or set after `now`, as `"HH:MM"` UTC,
     /// and whether it is up.
     fn sun_at(now: &Zoned, location: Location) -> (bool, String) {
-        let (light, next) = light_at(now, Some(location), Day::default());
+        let (light, next) = light_at(now, (Some(location), None), None);
         let next = next.to_zoned(TimeZone::UTC);
         (light, format!("{:02}:{:02}", next.hour(), next.minute()))
     }
@@ -271,7 +372,7 @@ mod tests {
 
     #[test]
     fn in_warsaw_the_sun_rises_and_sets_as_the_almanac_says_in_summer_and_winter() {
-        let warsaw = place(52.23, 21.01);
+        let warsaw = degrees(52.23, 21.01);
         let (dark, rise) = sun_at(&utc(2026, 6, 21, 1, 0), warsaw);
         assert!(!dark && near(&rise, "02:14", 2), "{rise}");
         let (light, set) = sun_at(&utc(2026, 6, 21, 12, 0), warsaw);
@@ -284,12 +385,12 @@ mod tests {
 
     #[test]
     fn far_east_of_greenwich_the_morning_is_the_evening_before_by_utc() {
-        let singapore = place(1.29, 103.85);
+        let singapore = degrees(1.29, 103.85);
         let (light, set) = sun_at(&utc(2026, 3, 20, 6, 0), singapore);
         assert!(light && near(&set, "11:15", 2), "{set}");
         let (dark, rise) = sun_at(&utc(2026, 3, 20, 20, 0), singapore);
         assert!(!dark && near(&rise, "23:09", 2), "{rise}");
-        let sydney = place(-33.87, 151.21);
+        let sydney = degrees(-33.87, 151.21);
         let (dark, rise) = sun_at(&utc(2026, 11, 8, 12, 0), sydney);
         assert!(!dark && near(&rise, "18:48", 2), "{rise}");
         let (light, set) = sun_at(&utc(2026, 11, 8, 0, 0), sydney);
@@ -298,7 +399,7 @@ mod tests {
 
     #[test]
     fn where_the_sun_never_sets_or_never_rises_it_is_asked_again_by_midnight() {
-        let longyearbyen = place(78.22, 15.65);
+        let longyearbyen = degrees(78.22, 15.65);
         for hour in [0, 6, 12, 18, 23] {
             let summer = sun_at(&utc(2026, 6, 21, hour, 30), longyearbyen);
             assert_eq!(summer, (true, "00:00".to_owned()), "at {hour}");
@@ -308,7 +409,7 @@ mod tests {
         // And by the next midnight where the user is, not where UTC is.
         let oslo = TimeZone::fixed(jiff::tz::offset(2));
         let evening = utc(2026, 6, 21, 20, 0).with_time_zone(oslo);
-        let (_, next) = light_at(&evening, Some(longyearbyen), Day::default());
+        let (_, next) = light_at(&evening, (Some(longyearbyen), None), None);
         assert_eq!(next, utc(2026, 6, 21, 22, 0).timestamp());
     }
 
@@ -325,43 +426,107 @@ mod tests {
             let next = next.to_zoned(zone.clone());
             (next.day(), next.hour(), next.minute())
         };
-        let day = Day::default();
-        let (light, next) = light_at(&at(6, 59), None, day);
+        // Where neither a place nor a time zone with one is known.
+        let hours = |hour, minute| light_at(&at(hour, minute), (None, None), None);
+        let (light, next) = hours(6, 59);
         assert_eq!((light, local(next)), (false, (10, 7, 0)));
-        let (light, next) = light_at(&at(7, 0), None, day);
+        let (light, next) = hours(7, 0);
         assert_eq!((light, local(next)), (true, (10, 19, 0)));
-        let (light, next) = light_at(&at(19, 0), None, day);
+        let (light, next) = hours(19, 0);
         assert_eq!((light, local(next)), (false, (11, 0, 0)), "by midnight");
         // A day through midnight.
-        let night = Day {
+        let night = Some(Day {
             from: 22 * 60,
             to: 6 * 60,
-        };
-        let (light, next) = light_at(&at(23, 0), None, night);
+        });
+        let (light, next) = light_at(&at(23, 0), (None, night), None);
         assert_eq!((light, local(next)), (true, (11, 0, 0)));
-        let (light, next) = light_at(&at(3, 0), None, night);
+        let (light, next) = light_at(&at(3, 0), (None, night), None);
         assert_eq!((light, local(next)), (true, (10, 6, 0)));
-        let (light, next) = light_at(&at(12, 0), None, night);
+        let (light, next) = light_at(&at(12, 0), (None, night), None);
         assert_eq!((light, local(next)), (false, (10, 22, 0)));
     }
 
     #[test]
+    fn a_time_zone_is_where_its_principal_place_is() {
+        let london = Coordinates {
+            latitude: 51_508_333,
+            longitude: -125_277,
+        };
+        assert_eq!(named("Europe/London"), Ok(Location::At(london)));
+        assert_eq!(named("system"), Ok(Location::System));
+        for wrong in ["Europe/Atlantis", "UTC", "europe/london", ""] {
+            let message = named(wrong).unwrap_err();
+            let said = format!("`{wrong}` is not a time zone");
+            assert!(message.contains(&said), "{message}");
+        }
+        // Every place in the table can be read, south and west too.
+        let rows = ZONES.lines().filter(|line| !line.starts_with('#'));
+        let places: Vec<_> = rows.map(|row| row.split('\t').nth(1).unwrap()).collect();
+        assert!(places.len() > 300);
+        assert!(places.iter().all(|at| place(at).is_some()), "{places:?}");
+        let sydney = place("-3352+15113").unwrap();
+        let wanted = Coordinates {
+            latitude: -33_866_666,
+            longitude: 151_216_666,
+        };
+        assert_eq!(sydney, wanted);
+        for wrong in [
+            "",
+            "+",
+            "+5130",
+            "+51-",
+            "+5a30-00007",
+            "+5130-0a007",
+            "+5-00007",
+        ] {
+            assert_eq!(place(wrong), None, "{wrong}");
+        }
+    }
+
+    #[test]
+    fn a_place_given_wins_over_hours_and_hours_over_the_system_time_zone() {
+        // Noon in winter in London, where the sun is up; and midnight.
+        let noon = utc(2026, 12, 21, 12, 0);
+        let midnight = utc(2026, 12, 21, 0, 0);
+        let london = Some("Europe/London");
+        let long_night = Some(Day {
+            from: 13 * 60,
+            to: 14 * 60,
+        });
+        let polar = Some(degrees(78.22, 15.65));
+        let light = |now: &Zoned, place, zone| light_at(now, place, zone).0;
+        assert!(light(&noon, (None, None), london), "where the system is");
+        assert!(!light(&midnight, (None, None), london));
+        assert!(light(&noon, (Some(Location::System), long_night), london));
+        assert!(!light(&noon, (None, long_night), london), "the hours given");
+        assert!(!light(&noon, (polar, None), london), "the place given");
+        // A system without a time zone with a place goes by the hours.
+        assert!(light(&noon, (Some(Location::System), None), None));
+        assert!(!light(
+            &midnight,
+            (Some(Location::System), None),
+            Some("UTC")
+        ));
+    }
+
+    #[test]
     fn a_place_or_hours_that_cannot_be_are_refused() {
-        let place = |latitude, longitude| {
-            Location::try_from(Degrees {
+        let given = |latitude, longitude| {
+            Location::try_from(Written::Degrees(Degrees {
                 latitude,
                 longitude,
-            })
+            }))
         };
         assert_eq!(
-            place(-90.0, 180.0),
-            Ok(Location {
+            given(-90.0, 180.0),
+            Ok(Location::At(Coordinates {
                 latitude: -90_000_000,
                 longitude: 180_000_000
-            })
+            }))
         );
         for (latitude, longitude) in [(90.5, 0.0), (0.0, -180.5), (f64::NAN, 0.0)] {
-            let message = place(latitude, longitude).unwrap_err();
+            let message = given(latitude, longitude).unwrap_err();
             assert!(message.contains("from -90 to 90"), "{message}");
         }
         let day = |from: &str, to: &str| {

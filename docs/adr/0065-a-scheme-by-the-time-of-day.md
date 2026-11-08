@@ -43,6 +43,17 @@ of the day, comes from `jiff`, which was already in the tree.
 **The location stays in `config.yaml`.** It is read to work out when the
 sun rises, and is told to no program.
 
+**Where the user is, unless they say, is their time zone.** A location
+may name a time zone, or `system`, and is then where the time zone
+database's `zone1970.tab` puts the zone's principal city; with neither a
+location nor hours given, it is the system's. So `scheme: auto` alone
+follows the sun, within some minutes for most of a zone, with nothing to
+set. The table is built in, a copy of tzdata's, so that a name is checked
+as the configuration is read and the tests do not hang on what is
+installed: it changes only when a zone is added, and a stale copy only
+lacks the newest. A system whose zone has no city, as `UTC`, goes by the
+hours of the day.
+
 ## Alternatives
 
 - **Our programs follow the portal**, as other programs do. One place

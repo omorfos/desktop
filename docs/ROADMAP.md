@@ -1209,10 +1209,19 @@ the first than on the last.
       out from a latitude and longitude the user gives, or fixed hours
       without one (ADR 65). Each program works it out, and wakes to load
       the configuration again when it may change.
+- [x] `scheme: auto` where the user is without being told: a location
+      may be a time zone by name, or `system`, the place of its principal
+      city, and is the system's unless a location or hours are given.
 - [ ] Known gaps in `scheme: auto`: the lock screen, the box that asks for
       a password and the launcher keep the scheme they were opened in; a
       change of time zone is only seen at the next midnight or the next
-      change; and 07:00 to 19:00 is a default to review.
+      change; the built-in table of time zones is tzdata 2026f's, to be
+      brought up to date with tzdata; and the system's time zone as where
+      the user is, and 07:00 to 19:00 where it has no place, are defaults
+      to review.
+- [ ] Day turning to night as a transition: at sunrise and sunset every
+      part changes colour over a minute or so rather than at once, and
+      programs that follow the desktop are told as it begins.
 - [ ] The default font and icons, and a pointer that is the same size
       everywhere, including over programs written for X11.
 - [ ] A pointer of our own, built in as shapes so that it is sharp at any

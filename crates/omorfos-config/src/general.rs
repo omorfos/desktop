@@ -289,10 +289,12 @@ pub struct Appearance {
     /// day says.
     pub scheme: SchemeChoice,
     /// Where the user is, for `scheme: auto` to be light from sunrise to
-    /// sunset there. It is not told to any program.
+    /// sunset there: a latitude and longitude, a time zone, or `system`, the
+    /// time zone the system is set to, which is where they are taken to be
+    /// unless hours of the `day` are given. It is not told to any program.
     pub location: Option<Location>,
     /// The hours `scheme: auto` is light between where no location is given.
-    pub day: Day,
+    pub day: Option<Day>,
     /// The colour the built-in theme picks out what has focus with: one
     /// that comes with omorfos, by its name, or any other.
     pub accent: Accent,
@@ -310,7 +312,8 @@ impl Appearance {
             SchemeChoice::Dark => Scheme::Dark,
             SchemeChoice::Light => Scheme::Light,
             SchemeChoice::Auto => {
-                let (light, next) = daylight::light_at(now, self.location, self.day);
+                let place = (self.location, self.day);
+                let (light, next) = daylight::light_at(now, place, now.time_zone().iana_name());
                 let scheme = if light { Scheme::Light } else { Scheme::Dark };
                 return (scheme, Some(next.into()));
             }
@@ -1068,12 +1071,27 @@ mod tests {
     fn the_scheme_may_follow_the_sun_where_the_user_is_or_the_hours_of_the_day() {
         let auto = parse("appearance: { scheme: auto }").unwrap().appearance;
         assert_eq!(auto.scheme, SchemeChoice::Auto);
-        assert_eq!((auto.location, auto.day), (None, Day::default()));
+        assert_eq!((auto.location, auto.day), (None, None));
         let placed = "appearance:\n  scheme: auto\n  location: { latitude: 52.23, longitude: 21.01 }\n\
                       \x20 day: { from: '06:30', to: '21:00' }\n";
         let placed = parse(placed).unwrap().appearance;
         assert!(placed.location.is_some());
-        assert_ne!(placed.day, Day::default());
+        assert!(placed.day.is_some_and(|day| day != Day::default()));
+        let zoned = parse("appearance: { location: Europe/Warsaw }")
+            .unwrap()
+            .appearance;
+        // A place, not the system's.
+        assert!(zoned.location.is_some());
+        assert_ne!(zoned.location, Some(Location::System));
+        let system = parse("appearance: { location: system }")
+            .unwrap()
+            .appearance;
+        assert_eq!(system.location, Some(Location::System));
+        let error = parse("appearance:\n  location: Mars/Olympus\n").unwrap_err();
+        assert!(
+            error.contains("`Mars/Olympus` is not a time zone"),
+            "{error}"
+        );
         let error = parse("appearance:\n  location: { latitude: 91, longitude: 0 }\n").unwrap_err();
         assert!(error.contains("from -90 to 90"), "{error}");
         assert!(error.contains("line 2"), "{error}");

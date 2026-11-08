@@ -42,7 +42,7 @@ pub use action::{Action, Command, Half, MAX_WORKSPACES, Role, Started, Workspace
 pub use bounded::Bounded;
 pub use color::Color;
 pub use config::{Config, FILES, MAX_FILE_SIZE};
-pub use daylight::{Day, Location};
+pub use daylight::{Coordinates, Day, Location};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{

@@ -74,9 +74,9 @@ cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
 appearance:
-  scheme: dark            # dark | light | auto, light by day
-  # location: { latitude: 52.23, longitude: 21.01 } # for auto: light from sunrise to sunset there
-  # day: { from: '07:00', to: '19:00' } # for auto without a location: light between these hours
+  scheme: dark            # dark | light | auto, light from sunrise to sunset
+  # location: system      # for auto: where the sun is watched; or Europe/London, or { latitude: 51.5, longitude: -0.13 }
+  # day: { from: '07:00', to: '19:00' } # for auto: light between these hours instead
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
 launcher:
@@ -898,13 +898,18 @@ A change of either is drawn as soon as `config.yaml` is saved, and
 applications that follow the desktop are told it.
 
 With `appearance.scheme: auto` the desktop is light by day and dark by
-night. Given an `appearance.location`, your latitude and longitude in
-degrees, north and east above 0, day is from sunrise to sunset there,
-worked out to within a minute or two; where the sun does not set or does
-not rise that day, it is light or dark all day. Without one, day is the
-hours of `appearance.day`, `07:00` to `19:00` unless you say otherwise, in
-the time zone of the system; a day that ends earlier than it begins runs
-through midnight. Every part of the desktop changes at the moment it
+night: from sunrise to sunset, worked out to within a minute or two,
+where `appearance.location` says. That is the time zone the system is set
+to, `system`, unless you say otherwise: a time zone by its name, as
+`Europe/London`, or your latitude and longitude in degrees, north and east
+above 0. A time zone is taken to be where the time zone database puts its
+principal city, which for most of a zone is within some minutes of the
+sun there. Where the sun does not set or does not rise that day, it is
+light or dark all day. Given `appearance.day` and no location, day is
+those hours instead, as `{ from: '07:00', to: '19:00' }`, in the time zone
+of the system; a day that ends earlier than it begins runs through
+midnight. A system whose time zone has no city, as `UTC`, goes by the
+hours, `07:00` to `19:00` unless you say otherwise. Every part of the desktop changes at the moment it
 turns, applications that follow the desktop are told it, and each part
 asks again by every midnight, and when the clock is set, as after a
 suspend. The location is only read here, never told to any program. A
