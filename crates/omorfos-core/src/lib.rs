@@ -14,6 +14,7 @@
 //! - [`Switcher`] and [`Used`] are the switcher on `Alt+Tab` and the order
 //!   of use it goes by.
 
+mod credits;
 mod decoration;
 mod desktop;
 pub mod geometry;
@@ -23,6 +24,7 @@ mod placement;
 mod rules;
 mod switcher;
 
+pub use credits::{Credit, Credits, credits};
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
 pub use desktop::{
     Arrangement, Desk, Desktop, Frame, Half, Home, Kept, Line, Listed, Offer, Opening, Place,

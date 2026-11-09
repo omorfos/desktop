@@ -464,6 +464,13 @@ impl Compositor {
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
             }
+            // "About" is put away by Escape; every other key is the
+            // window's that has focus, as it was.
+            if compositor.cards.about.0.is_some() && keysym == Keysym::Escape {
+                compositor.cards.about.0 = None;
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
+            }
             // An open menu is steered by the arrows and Enter, which no
             // client or binding then sees.
             let steer = menu_key(keysym, bridge::modifiers(held));
@@ -545,8 +552,9 @@ impl Compositor {
             return;
         }
 
-        if self.over_notice() {
-            // The notice is ours; nothing underneath sees the pointer.
+        if self.over_notice() || self.cards.about.0.is_some() {
+            // The notice is ours, and "About" has the pointer while it is
+            // shown, like the menu; nothing underneath sees it.
             self.move_pointer(None, time);
             return;
         }
@@ -689,6 +697,7 @@ impl Compositor {
         let ours = self.drag.is_some()
             || self.menu.is_some()
             || self.over_notice()
+            || self.cards.about.0.is_some()
             || self.over_line().is_some()
             || self.over_palette()
             || self.over_offer().is_some();
@@ -738,7 +747,8 @@ impl Compositor {
             Some(Drag::Line { across, .. }) => return Look::Icon(line_icon(across)),
             None => {}
         }
-        if self.over_notice() || self.menu.is_some() || self.over_palette() {
+        let about = self.cards.about.0.is_some();
+        if self.over_notice() || about || self.menu.is_some() || self.over_palette() {
             return Look::Icon(CursorIcon::Default);
         }
         if let Some((.., across)) = self.over_line() {
@@ -765,9 +775,17 @@ impl Compositor {
         }
     }
 
+    /// Whether the pointer is on "About".
+    fn over_about(&self) -> bool {
+        let position = self.pointer_position();
+        let about = self.cards.about.1.as_ref();
+        about.is_some_and(|about| about.area.contains(position))
+    }
+
     fn over_notice(&self) -> bool {
         let position = self.pointer_position();
-        self.notice
+        self.cards
+            .notice
             .as_ref()
             .is_some_and(|notice| notice.area.contains(position))
     }
@@ -939,10 +957,20 @@ impl Compositor {
             }
             return;
         }
+        if self.cards.about.0.is_some() {
+            // "About" has the pointer while it is shown: a press on its
+            // button or beside it puts it away, and is no window's.
+            let close = self.cards.about.1.as_ref();
+            let on_close = close.is_some_and(|about| about.close.contains(position));
+            if pressed && (on_close || !self.over_about()) {
+                self.cards.about.0 = None;
+            }
+            return;
+        }
         if self.over_notice() {
             // A click on the notice dismisses it, until what it says changes.
             if pressed {
-                self.dismissed = self.said().into_owned();
+                self.cards.dismissed = self.said().into_owned();
             }
             return;
         }

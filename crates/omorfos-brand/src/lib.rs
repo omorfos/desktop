@@ -514,6 +514,23 @@ pub fn draw(svg: &str, size: (u32, u32)) -> Option<Vec<u8>> {
     render(svg, size).and_then(|canvas| canvas.encode_png().ok())
 }
 
+/// Draws `svg` at `width` by `height` pixels, as [`draw`] does, and
+/// returns its pixels, row by row from the top, each blue, green, red and
+/// opacity, the colours multiplied by the opacity: what renderers call
+/// `Argb8888`. Or nothing, if it cannot be read or has no size.
+#[must_use]
+pub(crate) fn pixels(svg: &str, size: (u32, u32)) -> Option<Vec<u8>> {
+    render(svg, size).map(|canvas| {
+        let mut bytes = canvas.take();
+        // tiny-skia's red, green, blue and opacity, as blue, green, red
+        // and opacity.
+        for pixel in bytes.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+        }
+        bytes
+    })
+}
+
 /// Draws `svg` at `width` by `height` pixels, stretched to them; or
 /// nothing, if it cannot be read or has no size.
 fn render(svg: &str, (width, height): (u32, u32)) -> Option<tiny_skia::Pixmap> {
@@ -828,6 +845,19 @@ mod tests {
             once,
             draw(&wallpaper(Design::Prism, Scheme::Light, size), size)
         );
+    }
+
+    #[test]
+    fn the_mark_is_given_as_pixels_blue_first_for_a_renderer() {
+        let bytes = pixels(&mark(Scheme::Dark), (300, 300)).unwrap();
+        assert_eq!(bytes.len(), 300 * 300 * 4);
+        let middle = (150 * 300 + 150) * 4;
+        let [blue, green, red, opacity] = [0, 1, 2, 3].map(|at| bytes[middle + at]);
+        assert!(
+            near([red, green, blue, opacity], SPECTRUM[2]),
+            "yellow in the middle"
+        );
+        assert_eq!(pixels("<svg", (10, 10)), None);
     }
 
     #[test]

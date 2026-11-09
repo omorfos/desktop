@@ -347,12 +347,10 @@ pub struct Compositor {
     /// Popups, such as menus, that asked to be dismissed when the user
     /// clicks away from them, oldest first.
     pub(crate) grabbed_popups: Vec<PopupSurface>,
-    /// The on-screen notice of what is wrong, while there is something.
-    pub(crate) notice: Option<Notice>,
+    /// The notice of what is wrong, and "About".
+    pub(crate) cards: Cards,
     /// How the screens stand for now, as the display key has them.
     pub(crate) interim: Interim,
-    /// The problems the user has clicked away, hidden until they change.
-    pub(crate) dismissed: Vec<String>,
     pub(crate) text: Text,
 
     pub(crate) store: Store,
@@ -537,9 +535,8 @@ impl Compositor {
                     menu_chrome: None,
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
-                    notice: None,
+                    cards: Cards::default(),
                     interim: Interim::default(),
-                    dismissed: Vec::new(),
                     text: Text::new(),
                     store,
                     watcher,
@@ -1402,6 +1399,12 @@ impl Compositor {
             }
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
+            Action::About => {
+                // Asked again, it goes; and it is not shown on a locked
+                // session.
+                let open = self.cards.about.0.is_none() && !self.is_locked();
+                self.cards.about.0 = open.then_some(self.pointer_location);
+            }
             Action::Lock => self.start_locker(),
             Action::StayAwake => self.stay_awake(None),
             Action::StayAwakeFor(seconds) => self.stay_awake(Some(seconds.get())),
@@ -2569,6 +2572,50 @@ impl Compositor {
         animation.before = before;
     }
 
+    /// Brings "About" up to date: shown in the middle of the screen it was
+    /// asked for on, or of the first if that has gone, while it is to be,
+    /// and painted again only if how it would look has changed.
+    fn repaint_about(&mut self, config: &Config) {
+        let (theme, scheme) = (&config.theme, config.scheme);
+        let asked = self.cards.about.0;
+        let screen = asked.and_then(|at| self.head_at(at).or(self.primary_head()));
+        let within = screen.map(Head::area).unwrap_or_default();
+        let scale = screen.map_or(Scale::ONE, |screen| screen.scale);
+        let wanted = screen.is_some();
+        // One that is no longer wanted fades out as it was.
+        let had = self.cards.about.1.take();
+        let pointer = self.pointer_position();
+        let hovered = had
+            .as_ref()
+            .is_some_and(|about| about.close.contains(pointer));
+        let (had, closed) = if wanted { (had, None) } else { (None, had) };
+        let closed = closed.map(|about| self.animation.closing(Part::About, What::About(about)));
+        self.animation.gone.extend(closed);
+        let current = had.filter(|about| {
+            about.theme == *theme
+                && about.scheme == scheme
+                && about.within == within
+                && about.scale == scale
+                && about.hovered == hovered
+        });
+        self.cards.about.1 = match (current, wanted) {
+            (Some(about), _) => Some(about),
+            (None, true) => {
+                let tools = (&mut self.text, &mut self.animation.shades);
+                Some(About::paint(
+                    tools,
+                    (theme, scheme),
+                    within,
+                    (scale, hovered),
+                ))
+            }
+            (None, false) => None,
+        };
+        let about = self.cards.about.1.as_ref();
+        let share = about.map(|_| self.animation.motion.presence(theme, Part::About, 0));
+        self.animation.about_seen = share.unwrap_or(Seen::WHOLE);
+    }
+
     /// Brings the problem notice and the root menu up to date, repainting
     /// each only when what it shows would differ.
     fn repaint_overlays(&mut self) {
@@ -2579,20 +2626,20 @@ impl Compositor {
         let shown_elsewhere = self.problems_shown_elsewhere();
         let said = said(&self.problems, &self.events);
         if said.is_empty() {
-            self.dismissed.clear();
+            self.cards.dismissed.clear();
         }
         // What is wrong, and what has just happened, is shown here only if
         // no program is showing it: the notifications that come with
         // omorfos do, among what other programs have to say, where neither
         // covers the other.
-        let wanted = !said.is_empty() && *said != *self.dismissed && !shown_elsewhere;
+        let wanted = !said.is_empty() && *said != *self.cards.dismissed && !shown_elsewhere;
         // The notice is on the output that comes first, which is where a
         // session with one screen has it.
         let first = self.primary_head();
         let within = first.map(Head::area).unwrap_or_default();
         let scale = first.map_or(Scale::ONE, |head| head.scale);
         // One that is no longer wanted fades out as it was.
-        let had = self.notice.take();
+        let had = self.cards.notice.take();
         let (had, closed) = if wanted { (had, None) } else { (None, had) };
         let closed =
             closed.map(|notice| self.animation.closing(Part::Notice, What::Notice(notice)));
@@ -2603,7 +2650,7 @@ impl Compositor {
                 && notice.within == within
                 && notice.scale == scale
         });
-        self.notice = match (current, wanted) {
+        self.cards.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
             (None, true) => {
                 let tools = (&mut self.text, &mut self.animation.shades);
@@ -2611,9 +2658,10 @@ impl Compositor {
             }
             (None, false) => None,
         };
-        let notice = self.notice.as_ref();
+        let notice = self.cards.notice.as_ref();
         let share = notice.map(|_| self.animation.motion.presence(theme, Part::Notice, 0));
         self.animation.notice_seen = share.unwrap_or(Seen::WHOLE);
+        self.repaint_about(&config);
 
         // Repaint the menu if it, how its rows look, or the theme changed
         // since it was drawn.
@@ -3372,7 +3420,14 @@ impl Compositor {
             let at = prompt.at.to_f64();
             elements.extend(prompt.pixels.element(renderer, at, view, 1.0));
         }
-        if let Some(notice) = &self.notice {
+        if let Some(about) = &self.cards.about.1 {
+            let seen = self.animation.about_seen;
+            let drawn = (&mut elements, &mut panes);
+            Self::sized(view, seen, drawn, |drawn| {
+                about.elements(renderer, view, seen.opacity, drawn);
+            });
+        }
+        if let Some(notice) = &self.cards.notice {
             let seen = self.animation.notice_seen;
             let drawn = (&mut elements, &mut panes);
             Self::sized(view, seen, drawn, |drawn| {
@@ -3583,6 +3638,9 @@ impl Compositor {
                 }
                 What::Notice(notice) => {
                     notice.elements(renderer, view, opacity, (elements, &mut glass));
+                }
+                What::About(about) => {
+                    about.elements(renderer, view, opacity, (elements, &mut glass));
                 }
             }
             let factor = view.scale.factor().into();
@@ -4301,6 +4359,117 @@ impl Notice {
     }
 }
 
+/// The widest "About" gets, in units of layout.
+const ABOUT_WIDTH: u32 = 640;
+
+/// What `CREDITS.md` said as omorfos was built, for "About" to show.
+const CREDITS: &str = include_str!("../../../CREDITS.md");
+
+/// The cards the compositor shows over everything: the notice of what is
+/// wrong, and "About".
+#[derive(Debug, Default)]
+pub(crate) struct Cards {
+    /// The notice of what is wrong, while there is something.
+    pub(crate) notice: Option<Notice>,
+    /// The problems the user has clicked away, hidden until they change.
+    pub(crate) dismissed: Vec<String>,
+    /// Where the pointer was when "About" was asked for, while it is to
+    /// be shown, on the screen that was there; and it, as it is shown.
+    pub(crate) about: (Option<Point<f64, Logical>>, Option<About>),
+}
+
+/// "About omorfos", as it is shown.
+#[derive(Debug)]
+pub(crate) struct About {
+    theme: Theme,
+    scheme: Scheme,
+    /// The output it is in the middle of.
+    within: Rectangle<i32, Logical>,
+    scale: Scale,
+    /// Where it is, and its button that closes it.
+    pub(crate) area: Rect,
+    pub(crate) close: Rect,
+    /// Whether the pointer was on the button as it was painted.
+    hovered: bool,
+    pixels: Painted,
+    shadow: Option<Shadowing>,
+}
+
+impl About {
+    fn paint(
+        (text, shades): (&mut Text, &mut Shades),
+        (theme, scheme): (&Theme, Scheme),
+        within: Rectangle<i32, Logical>,
+        (scale, hovered): (Scale, bool),
+    ) -> Self {
+        let (wide, high) = (within.size.w.unsigned_abs(), within.size.h.unsigned_abs());
+        let width = ABOUT_WIDTH.min(wide.saturating_sub(NOTICE_MARGIN * 2));
+        // The mark as large as it is drawn, in pixels, in the scheme.
+        let side = scale.pixels(paint::ABOUT_MARK.cast_signed()).unsigned_abs();
+        let brand = match scheme {
+            Scheme::Dark => omorfos_brand::Scheme::Dark,
+            Scheme::Light => omorfos_brand::Scheme::Light,
+        };
+        let drawn = omorfos_brand::draw(&omorfos_brand::mark(brand), (side, side));
+        let mark = drawn.and_then(|png| omorfos_icons::decode_png(&png));
+        let credits = omorfos_core::credits(CREDITS);
+        let version = env!("CARGO_PKG_VERSION");
+        let said = (mark.as_slice(), version);
+        let (canvas, close) = paint::about(text, theme, said, &credits, (width, scale, hovered));
+        let (across, down) = canvas.units();
+        let left = wide.saturating_sub(across) / 2;
+        let top = high.saturating_sub(down) / 2;
+        let area = Rect::new(
+            DomainPoint::new(
+                within.loc.x + left.cast_signed(),
+                within.loc.y + top.cast_signed(),
+            ),
+            DomainSize::new(across, down),
+        );
+        let (x, y, wide, high) = close;
+        let close = Rect::new(
+            DomainPoint::new(area.origin.x + x, area.origin.y + y),
+            DomainSize::new(wide, high),
+        );
+        let style = theme.style(Part::About, States::NONE);
+        let placed = (area.origin.x, area.origin.y, across, down);
+        Self {
+            theme: theme.clone(),
+            scheme,
+            within,
+            scale,
+            area,
+            close,
+            hovered,
+            pixels: Painted::new(&canvas),
+            shadow: shades.cast(&style, scale, placed, None),
+        }
+    }
+
+    /// It, then the shadow under it, as see-through as `opacity` says;
+    /// and its glass, if the theme makes it glass.
+    fn elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        opacity: f32,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let at = Point::<i32, Logical>::from((self.area.origin.x, self.area.origin.y));
+        elements.extend(self.pixels.element(renderer, at.to_f64(), view, opacity));
+        let glass = elements.len();
+        if let Some(shadow) = &self.shadow {
+            shadow.elements(renderer, opacity, view, elements);
+        }
+        let style = self.theme.style(Part::About, States::NONE);
+        let at = (glass::key(&"about"), glass, elements.len());
+        panes.extend(Pane::of(&style, (logical(self.area), view), at, opacity));
+    }
+}
+
 /// What the program running as the process numbered `pid` is called: the
 /// name of its file, which it cannot choose as it can a title.
 fn program(pid: Option<u32>) -> String {
@@ -4656,6 +4825,7 @@ pub(crate) struct Animation {
     /// is coming in, and how large each is.
     menu_seen: Seen,
     notice_seen: Seen,
+    about_seen: Seen,
     /// The panels of shell components that are on the screen, and those
     /// that were when this was last worked out.
     layers: Vec<Present>,
@@ -4740,6 +4910,7 @@ enum What {
     ),
     Menu(MenuChrome),
     Notice(Notice),
+    About(About),
 }
 
 impl Animation {
@@ -4752,6 +4923,7 @@ impl Animation {
             epoch: None,
             menu_seen: Seen::WHOLE,
             notice_seen: Seen::WHOLE,
+            about_seen: Seen::WHOLE,
             layers: Vec::new(),
             before: Vec::new(),
             drawn: RefCell::new(Vec::new()),
@@ -4808,6 +4980,7 @@ impl Animation {
         // last there.
         let from = match what {
             What::Notice(_) => self.notice_seen,
+            What::About(_) => self.about_seen,
             What::Menu(_) | What::Surface(..) => self.menu_seen,
         };
         Gone {

@@ -201,6 +201,11 @@
           "type": "string"
         },
         {
+          "const": "about",
+          "description": "Show \"About omorfos\": its version, and what it is made with that is\nsomeone else's. Asked again while it is shown, it goes.",
+          "type": "string"
+        },
+        {
           "const": "lock",
           "description": "Lock the session, with the program `locker` in config.yaml names.",
           "type": "string"

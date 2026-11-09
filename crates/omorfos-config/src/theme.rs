@@ -1335,6 +1335,7 @@ mod tests {
             Part::Launcher,
             Part::Switcher,
             Part::Question,
+            Part::About,
         ];
         let closing = States::NONE.with(State::Closing);
         let theme = Theme::default();
@@ -1439,6 +1440,9 @@ mod tests {
             (style(Part::MenuItem, hovered), None),
             (style(Part::Notice, States::NONE), None),
             (style(Part::NoticeHeading, States::NONE), Some(Part::Notice)),
+            (style(Part::About, States::NONE), None),
+            (style(Part::AboutHeading, States::NONE), Some(Part::About)),
+            (style(Part::AboutDetail, States::NONE), Some(Part::About)),
             (style(Part::Tooltip, States::NONE), None),
             (style(Part::Panel, States::NONE), None),
             (style(Part::Workspace, States::NONE), Some(Part::Panel)),
@@ -1720,12 +1724,13 @@ mod tests {
             assert_eq!(font.family, "Inter, sans-serif", "{part:?}");
             assert_eq!(font.size, Font::default().size, "{part:?}");
         }
-        // Only a notification's title is heavier than the rest.
+        // Only a notification's title, and the headings of "About", are
+        // heavier than the rest.
         let heavy = Part::ALL.into_iter();
         let heavy: Vec<Part> = heavy
             .filter(|part| theme.font(*part, States::NONE).weight != 400)
             .collect();
-        assert_eq!(heavy, [Part::NotificationTitle]);
+        assert_eq!(heavy, [Part::NotificationTitle, Part::AboutHeading]);
         let theme = Theme::parse(
             "* { font-family: \"DejaVu Sans\"; }\n\
              panel { font-size: 9pt; }\n\

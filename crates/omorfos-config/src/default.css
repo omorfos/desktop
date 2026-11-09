@@ -21,7 +21,8 @@
   --capture: #f8616d;        /* the screen is being captured */
   /* Glass: the surface, at as much of itself as text on it needs to be
    * read over anything, and light along its top as on the rim of a sheet.
-   * Nothing here is glass until what it costs has been measured;
+   * Nothing here is glass until what it costs has been measured, but for
+   * "About", which is seldom shown;
    *   menu {
    *     background: var(--glass-thick);
    *     backdrop-filter: blur(32px);
@@ -53,17 +54,17 @@
  * it goes over the one it has :closing, to how it is then, a little less
  * small. `scale` is only for this: how large a part is drawn as it comes
  * and goes. */
-window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
   transition: 180ms ease-out;
 }
 window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
-notification:closing, launcher:closing, switcher:closing, question:closing {
+notification:closing, launcher:closing, switcher:closing, question:closing, about:closing {
   transition: 120ms ease-in;
   scale: 98%;
   opacity: 0;
 }
 @starting-style {
-  window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+  window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
     scale: 96%;
     opacity: 0;
   }
@@ -365,3 +366,21 @@ sealed {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(24px);
 }
+
+/* "About omorfos", from the root menu: the name and version, and what is
+ * someone else's under its headings, whose each is dimmer. It is glass,
+ * as glass is drawn everywhere; and it is closed by a window's button. */
+about {
+  padding: 20px;
+  background: var(--glass-thick);
+  backdrop-filter: blur(32px);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
+}
+about-heading {
+  color: var(--text);
+  font-weight: 600;
+}
+about-detail { color: var(--text-dim); }

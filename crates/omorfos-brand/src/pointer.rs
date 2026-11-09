@@ -13,7 +13,7 @@
 
 use std::fmt::Write as _;
 
-use crate::{CREAM, NAVY, NAVY_3, SPECTRUM, Scheme, render};
+use crate::{CREAM, NAVY, NAVY_3, SPECTRUM, Scheme};
 
 /// How many units across and down every shape is drawn in: a pointer 24
 /// pixels large is drawn a pixel a unit.
@@ -604,13 +604,7 @@ pub struct Drawn {
 pub fn pointer(shape: Shape, scheme: Scheme, pixels: u32) -> Option<Drawn> {
     let margin = (MARGIN * pixels).div_ceil(GRID);
     let across = pixels + 2 * margin;
-    let canvas = render(&shape.svg(scheme, (pixels, margin)), (across, across))?;
-    let mut bytes = canvas.take();
-    // tiny-skia's red, green, blue and opacity, as blue, green, red and
-    // opacity.
-    for pixel in bytes.as_chunks_mut::<4>().0 {
-        pixel.swap(0, 2);
-    }
+    let bytes = crate::pixels(&shape.svg(scheme, (pixels, margin)), (across, across))?;
     let (across_tip, down_tip) = shape.hotspot();
     let at = |tenths: u32| margin + (tenths * pixels / (GRID * 10)).min(pixels.saturating_sub(1));
     Some(Drawn {

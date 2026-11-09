@@ -4,6 +4,7 @@
 //! Everything runs on one thread. The tests step the client and the
 //! compositor by hand, so each exchange is deterministic.
 
+mod about;
 mod actions;
 mod activation;
 mod ask;

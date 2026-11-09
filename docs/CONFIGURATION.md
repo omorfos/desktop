@@ -471,6 +471,7 @@ not begin with keys you have bound on their own.
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
+| `about` | Show "About omorfos" in the middle of the screen the pointer is on: its version and licence, and what it is made with that is someone else's, as `CREDITS.md` lists it. Its close button, which is a window's, Escape, a click beside it, or `about` again puts it away. It is glass, as the theme's `about` has it. The root menu offers it. |
 | `reload_config` | Re-read the configuration. |
 | `restart_compositor` | Start the compositor again without logging out, with the newest version installed. Programs stay open through it, their windows where and as they were, those in a sandbox and those started with a role among them, as do the panel, the wallpaper, the notifications and the portal, but for programs written for X11, which close with their X server; the session stays locked if it was, programs written for X11 started again find their X server under the same number, and what starts with the session is not started a second time. Only where omorfos is the whole session, under `omorfos-hold`; elsewhere it is refused, with a notice. No key is bound to it. |
 | `quit` | End the session. The programs started in it are asked to close first, as any desktop asks them, and given two seconds to; asked again meanwhile, it ends at once. |
@@ -546,7 +547,8 @@ This is the whole built-in theme, which is also every part there is:
   --capture: #f8616d;        /* the screen is being captured */
   /* Glass: the surface, at as much of itself as text on it needs to be
    * read over anything, and light along its top as on the rim of a sheet.
-   * Nothing here is glass until what it costs has been measured;
+   * Nothing here is glass until what it costs has been measured, but for
+   * "About", which is seldom shown;
    *   menu {
    *     background: var(--glass-thick);
    *     backdrop-filter: blur(32px);
@@ -578,17 +580,17 @@ This is the whole built-in theme, which is also every part there is:
  * it goes over the one it has :closing, to how it is then, a little less
  * small. `scale` is only for this: how large a part is drawn as it comes
  * and goes. */
-window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
   transition: 180ms ease-out;
 }
 window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
-notification:closing, launcher:closing, switcher:closing, question:closing {
+notification:closing, launcher:closing, switcher:closing, question:closing, about:closing {
   transition: 120ms ease-in;
   scale: 98%;
   opacity: 0;
 }
 @starting-style {
-  window, menu, notice, tooltip, panel, notification, launcher, switcher, question {
+  window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
     scale: 96%;
     opacity: 0;
   }
@@ -890,6 +892,24 @@ sealed {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(24px);
 }
+
+/* "About omorfos", from the root menu: the name and version, and what is
+ * someone else's under its headings, whose each is dimmer. It is glass,
+ * as glass is drawn everywhere; and it is closed by a window's button. */
+about {
+  padding: 20px;
+  background: var(--glass-thick);
+  backdrop-filter: blur(32px);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
+}
+about-heading {
+  color: var(--text);
+  font-weight: 600;
+}
+about-detail { color: var(--text-dim); }
 ```
 
 That is the theme in its dark scheme. With `appearance.scheme: light` in
@@ -985,8 +1005,8 @@ workspace:active, task:active { border-bottom: none; }
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
-`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`, `picker`
-and `sealed`. `*` is every part. Several can share a rule:
+`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`, `picker`,
+`sealed`, `about`, `about-heading` and `about-detail`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
 **States** follow a part: `:focus` (it has the keyboard, or its window

@@ -30,6 +30,7 @@ impl Default for Menu {
                 MenuItem::Separator,
                 entry("Stay awake", Action::StayAwake),
                 entry("Reload configuration", Action::ReloadConfig),
+                entry("About omorfos", Action::About),
                 entry("Quit", Action::Quit),
             ],
         }
@@ -127,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn the_built_in_menu_starts_programs_keeps_the_session_awake_and_ends_it() {
+    fn the_built_in_menu_starts_programs_keeps_the_session_awake_says_what_it_is_and_ends_it() {
         let menu = Menu::default();
         let labels: Vec<&str> = menu
             .items
@@ -144,6 +145,7 @@ mod tests {
                 "Run\u{2026}",
                 "Stay awake",
                 "Reload configuration",
+                "About omorfos",
                 "Quit"
             ]
         );

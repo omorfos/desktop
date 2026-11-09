@@ -128,11 +128,20 @@ pub enum Part {
     /// What the compositor dims the session with while a prompt asks for a
     /// secret, such as the administrator's password: its background.
     Sealed,
+    /// "About omorfos", over everything in the middle of the screen: the
+    /// mark, the version, and what omorfos is made with that is someone
+    /// else's, in its text colour.
+    About,
+    /// The name and version at the top of "About", and the heading of each
+    /// list of what is someone else's.
+    AboutHeading,
+    /// Whose each thing is, under it.
+    AboutDetail,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 42] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -172,6 +181,9 @@ impl Part {
         Self::SwitcherTitle,
         Self::Picker,
         Self::Sealed,
+        Self::About,
+        Self::AboutHeading,
+        Self::AboutDetail,
     ];
 
     /// What the part is called in a stylesheet.
@@ -217,6 +229,9 @@ impl Part {
             Self::SwitcherTitle => "switcher-title",
             Self::Picker => "picker",
             Self::Sealed => "sealed",
+            Self::About => "about",
+            Self::AboutHeading => "about-heading",
+            Self::AboutDetail => "about-detail",
         }
     }
 }
@@ -740,7 +755,10 @@ mod tests {
                 "switcher-item",
                 "switcher-title",
                 "picker",
-                "sealed"
+                "sealed",
+                "about",
+                "about-heading",
+                "about-detail"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();

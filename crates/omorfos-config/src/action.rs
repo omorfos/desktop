@@ -108,6 +108,9 @@ pub enum Action {
     ShowMenu,
     /// Open the launcher, to start a program by typing its name.
     ShowLauncher,
+    /// Show "About omorfos": its version, and what it is made with that is
+    /// someone else's. Asked again while it is shown, it goes.
+    About,
     /// Lock the session, with the program `locker` in config.yaml names.
     Lock,
     /// Keep the session from locking, the screens from going off and the
@@ -374,6 +377,7 @@ mod tests {
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
+        assert_eq!(parse("about"), Ok(Action::About));
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
         assert_eq!(parse("tile: bottom"), Ok(Action::Tile(Half::Bottom)));
         assert!(parse("tile: middle").is_err());

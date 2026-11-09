@@ -1257,7 +1257,15 @@ the first than on the last.
 - [x] Packages carry the licence texts `CREDITS.md` names, Space
       Grotesk's OFL among them, and those of the crates omorfos is built
       from, gathered by cargo-about as it is packaged (ADR 67).
-- [ ] "About" shows `CREDITS.md`.
+- [x] "About" shows `CREDITS.md`: `about`, in the root menu, shows a
+      panel in the middle of the screen with the mark, the version and
+      the licence, and each thing of someone else's with its licence and
+      whose it is, as `CREDITS.md` was when omorfos was built; glass, and
+      put away by a window's close button, Escape, a click beside it, or
+      `about` again.
+- [ ] Known gaps in "About": it does not scroll, so a screen less tall
+      than it, some 450 units, cuts it short; and keys other than Escape
+      go on to the window with focus while it is shown.
 - [ ] Icons in menus: a glyph before each entry of the titlebar's menu
       and of the root menu (a program's own icon there), and a tick
       beside what is on in place of wording that changes. It waits for
@@ -1425,7 +1433,11 @@ decision of stage 2.
       switch and each off unless turned on: the program's, everything
       the machine plays, and the microphone. Sound comes from PipeWire.
       What is being recorded, and which sounds, is shown the whole time.
-- [ ] About: what the system is, shown from the bar's menu.
+- [ ] What the system is, in "About" (stage 4 made it): the processor,
+      the memory, the graphics card, the storage, the version of the
+      kernel and of omorfos, and the screens; and "About" opened from
+      the bar's menu as well as the root menu. It may need to scroll, or
+      to go in two columns, by then.
 - [ ] **On-screen keyboard**, for accessibility, and for a touch screen
       with no keyboard, shown and hidden by the keyboard's own key for
       it where there is one. Above every window and panel by default, and

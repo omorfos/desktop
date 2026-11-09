@@ -347,6 +347,115 @@ pub(crate) fn notice(
     canvas
 }
 
+/// How tall a line of "About" is, in units of layout.
+const ABOUT_ROW: u32 = 20;
+/// How large the mark is at the top of "About", and the room between it
+/// and the name beside it.
+pub(crate) const ABOUT_MARK: u32 = 56;
+/// The room after the mark, and after each list of what is someone else's.
+const ABOUT_GAP: u32 = 12;
+/// Paints "About omorfos", `width` across, and says where on it the button
+/// that closes it is: `mark`, which is empty if it could not be drawn, and
+/// beside it the name,
+/// `version` and the licence; then each list of `credits` under its
+/// heading, each thing's name and its licence, and under them whose it is.
+pub(crate) fn about(
+    text: &mut Text,
+    theme: &Theme,
+    (mark, version): (&[Image], &str),
+    credits: &[omorfos_core::Credits],
+    (width, scale, hovered): (u32, Scale, bool),
+) -> (Canvas, Area) {
+    let style = theme.style(Part::About, States::NONE);
+    // Each line below the mark: what is written, in which part, then what
+    // follows it in the dimmer one; and how tall it is, a gap being a
+    // line with nothing in it.
+    let mut lines: Vec<(Part, String, String, u32)> = Vec::new();
+    for section in credits {
+        let heading = section.heading.clone();
+        lines.push((Part::AboutHeading, heading, String::new(), ABOUT_ROW));
+        for credit in &section.credits {
+            let licence = format!(" \u{b7} {}", credit.licence);
+            lines.push((Part::About, credit.what.clone(), licence, ABOUT_ROW));
+            lines.push((
+                Part::AboutDetail,
+                credit.by.clone(),
+                String::new(),
+                ABOUT_ROW,
+            ));
+        }
+        lines.push((Part::About, String::new(), String::new(), ABOUT_GAP));
+    }
+    let below: u32 = lines.iter().map(|(.., tall)| tall).sum();
+    let height = style.inset().down() + ABOUT_MARK + ABOUT_GAP + below;
+    let whole = (0, 0, width, height);
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box(whole, &style);
+    let (left, top, room, _) = inset(whole, style.inset());
+    let looks = |part| {
+        (
+            theme.style(part, States::NONE).color,
+            theme.font(part, States::NONE),
+        )
+    };
+
+    let size = ABOUT_MARK.cast_signed();
+    for mark in mark {
+        canvas.draw_image((left, top, ABOUT_MARK, ABOUT_MARK), mark);
+    }
+    // A window's button that closes it, as it is on a window with focus,
+    // in the top right corner.
+    let states = States::NONE.with(State::Focused);
+    let button = theme.style(Part::ButtonClose, states.when(State::Hovered, hovered));
+    let across = button.min_width;
+    let close = (
+        left + room.saturating_sub(across).cast_signed(),
+        top,
+        across,
+        across,
+    );
+    canvas.draw_box(close, &button);
+    sign(&mut canvas, Button::Close, close, button.color);
+    let beside = left + size + ABOUT_GAP.cast_signed();
+    let narrower = room.saturating_sub(ABOUT_MARK + ABOUT_GAP + across);
+    let titles = [
+        (Part::AboutHeading, "omorfos".to_owned()),
+        (Part::AboutDetail, format!("Version {version}")),
+        (Part::AboutDetail, "Under the MIT licence".to_owned()),
+    ];
+    let mut at = top + (size - (3 * ABOUT_ROW).cast_signed()) / 2;
+    for (part, line) in titles {
+        let (ink, font) = looks(part);
+        text.draw(
+            &mut canvas,
+            &line,
+            (beside, at, narrower, ABOUT_ROW),
+            ink,
+            font,
+        );
+        at += ABOUT_ROW.cast_signed();
+    }
+
+    let (dim, dim_font) = looks(Part::AboutDetail);
+    let mut at = top + size + ABOUT_GAP.cast_signed();
+    for (part, line, after, tall) in lines {
+        let (ink, font) = looks(part);
+        let wide = text.measure(&line, font).min(room);
+        text.draw(&mut canvas, &line, (left, at, wide, tall), ink, font);
+        let after_left = left + wide.cast_signed();
+        let rest = room - wide;
+        text.draw(
+            &mut canvas,
+            &after,
+            (after_left, at, rest, tall),
+            dim,
+            dim_font,
+        );
+        at += tall.cast_signed();
+    }
+    (canvas, close)
+}
+
 /// Paints the question whether to keep the screens as they stand now,
 /// saying what that is, and how many seconds are `left` before they go
 /// back as they were.
