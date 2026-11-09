@@ -1254,8 +1254,10 @@ the first than on the last.
       `XCURSOR_THEME` or `Xcursor.theme` as it started keeps the scheme
       it started in; and its shapes are to be looked at again on real
       hardware, at 24 pixels and at a scale of 1.25, the hands most.
-- [ ] "About" shows `CREDITS.md`, and packages carry the licence texts
-      it names.
+- [x] Packages carry the licence texts `CREDITS.md` names, Space
+      Grotesk's OFL among them, and those of the crates omorfos is built
+      from, gathered by cargo-about as it is packaged (ADR 67).
+- [ ] "About" shows `CREDITS.md`.
 - [ ] Icons in menus: a glyph before each entry of the titlebar's menu
       and of the root menu (a program's own icon there), and a tick
       beside what is on in place of wording that changes. It waits for

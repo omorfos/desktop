@@ -38,6 +38,10 @@ PICTURES = $(BUILT)/share
 WALLPAPERS = prism spill horizon facets ground
 # The pointer it draws, as a cursor theme dark and another light.
 POINTERS = omorfos-dark omorfos-light
+# The licences CREDITS.md names, which go with every package; and those of
+# the crates omorfos is built from, gathered by cargo-about.
+LICENSES = LICENSE LICENSE-pictures LICENSE-space-grotesk
+CRATES = $(BUILT)/LICENSE-crates
 
 .PHONY: all nightly build install uninstall
 
@@ -48,7 +52,11 @@ nightly:
 
 build:
 	cargo build --profile $(PROFILE) --locked $(addprefix -p ,$(PROGRAMS)) -p omorfos-brand
-	$(MAKE) $(PICTURES).drawn
+	$(MAKE) $(PICTURES).drawn $(CRATES)
+
+# Gathered again only when the crates, or what is said of them, change.
+$(CRATES): Cargo.lock about.toml about.hbs
+	cargo about generate --workspace --all-features --frozen about.hbs -o "$@"
 
 # Drawn again only when the program that draws them has changed.
 $(PICTURES).drawn: $(BUILT)/omorfos-brand
@@ -64,6 +72,7 @@ install:
 		}; \
 	done
 	@[ -e "$(PICTURES).drawn" ] || { echo "$(PICTURES) is not drawn: run make$(if $(filter nightly,$(PROFILE)), nightly,) first, as yourself" >&2; exit 1; }
+	@[ -e "$(CRATES)" ] || { echo "$(CRATES) is not gathered: run make$(if $(filter nightly,$(PROFILE)), nightly,) first, as yourself" >&2; exit 1; }
 	install -d "$(DESTDIR)$(BINDIR)"
 	install -m755 $(addprefix $(BUILT)/,$(INSTALLED)) "$(DESTDIR)$(BINDIR)/"
 	install -Dm644 packaging/omorfos.desktop "$(DESTDIR)$(DATADIR)/wayland-sessions/omorfos.desktop"
@@ -73,7 +82,7 @@ install:
 	install -Dm644 README.md "$(DESTDIR)$(DOC_DIR)/README.md"
 	install -Dm644 docs/CONFIGURATION.md "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md"
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
-	install -Dm644 LICENSE-pictures "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
+	install -Dm644 $(LICENSES) $(CRATES) -t "$(DESTDIR)$(DOC_DIR)/"
 	cd "$(PICTURES)" && find icons backgrounds -type f -exec install -Dm644 {} "$(DESTDIR)$(SHARE_DIR)/{}" \;
 	@# The older names of the pointer's shapes, which are links to them.
 	cd "$(PICTURES)" && find icons -type l -exec sh -c 'ln -sfn "$$(readlink "$$1")" "$$2/$$1"' link {} "$(DESTDIR)$(SHARE_DIR)" \;
@@ -94,7 +103,8 @@ uninstall:
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/portals/omorfos.portal"
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
-	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css" "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
+	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
+	rm -f $(foreach l,$(LICENSES) LICENSE-crates,"$(DESTDIR)$(DOC_DIR)/$(l)")
 	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg
 	rm -f $(foreach w,$(WALLPAPERS),"$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-dark.png" "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-light.png")
 	rm -rf $(foreach p,$(POINTERS),"$(DESTDIR)$(SHARE_DIR)/icons/$(p)")

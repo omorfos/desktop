@@ -10,7 +10,8 @@ Rust. It needs `pkg-config`, `clang` and the development files for
 libxkbcommon, pixman, udev, libinput, libseat, GBM, PipeWire (1.4 or
 later) and PAM to build, and `dbus-daemon`, `pipewire`, `setpriv`, `Xwayland` and
 `pam_wrapper` and GnuPG (`gpg`, `gpg-agent`) to run the tests. `Xwayland` needs `libEGL` to start at all,
-which its package only recommends.
+which its package only recommends. `make`, which packages are built
+by, needs cargo-about as well, for the licences of the crates.
 It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 

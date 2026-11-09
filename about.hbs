@@ -1,0 +1,15 @@
+The crates omorfos is built from, and their licences
+====================================================
+
+omorfos itself is under the MIT licence, in LICENSE. It is built from the
+crates below, each under the licence it is listed with; the text of each
+licence follows, once, with the crates under it.
+{{#each licenses}}
+
+----------------------------------------------------------------------
+{{{name}}}
+
+Used by:{{#each used_by}} {{{crate.name}}} {{{crate.version}}}{{#unless @last}},{{/unless}}{{/each}}
+
+{{{text}}}
+{{/each}}

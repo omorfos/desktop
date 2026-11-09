@@ -12,7 +12,7 @@ url='https://github.com/omorfos/desktop'
 license=('MIT' 'CC-BY-SA-4.0')
 depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire>=1.4' 'libxkbcommon' 'mesa' 'pam'
          'seatd' 'systemd-libs' 'ttf-font')
-makedepends=('cargo' 'clang')
+makedepends=('cargo' 'cargo-about' 'clang')
 # How the lock screen asks PAM, the system's to change once installed.
 backup=('etc/pam.d/omorfos-lock' 'etc/pam.d/omorfos-lock-fingerprint' 'etc/pam.d/omorfos-lock-key')
 optdepends=('foot: the terminal started by the default key bindings'
@@ -43,12 +43,16 @@ build() {
   cargo build --frozen --release -p omorfos -p omorfos-hold -p omorfos-relay -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos -p omorfos-brand
   # The icon and the wallpapers, drawn as omorfos is built.
   target/release/omorfos-brand target/release/share
+  # The licences of the crates it is built from, for this machine's, as
+  # only those were fetched.
+  cargo about generate --workspace --all-features --frozen \
+    --target "$(rustc -vV | sed -n 's/host: //p')" about.hbs -o target/release/LICENSE-crates
 }
 
 package() {
   cd "desktop-$pkgver"
   install -Dm755 target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
-  install -Dm644 LICENSE LICENSE-pictures -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 LICENSE LICENSE-pictures LICENSE-space-grotesk target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
   cp -r target/release/share/icons target/release/share/backgrounds "$pkgdir/usr/share/"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"

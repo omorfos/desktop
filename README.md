@@ -111,6 +111,13 @@ sudo apt install pkg-config libxkbcommon-dev libpixman-1-dev libudev-dev \
   libclang-dev clang
 ```
 
+`make` also gathers the licences of the crates it is built from, for the
+packages to carry, with cargo-about:
+
+```sh
+cargo install --locked --features cli cargo-about@0.9.3
+```
+
 To run: EGL and OpenGL ES (`libegl1 libgles2`), and a seat from logind or
 seatd. The rest is wanted, and done without if it is not there:
 

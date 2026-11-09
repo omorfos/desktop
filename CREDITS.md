@@ -7,7 +7,9 @@ goes in, and each licence's text is carried by the packages.
 
 The Rust crates omorfos is built from are listed, with their licences,
 by `cargo deny list`, and are checked against the licences allowed in
-[deny.toml](deny.toml).
+[deny.toml](deny.toml). As it is packaged, `cargo about` gathers the text
+of each into `LICENSE-crates`, with the crates under it, which the
+packages carry beside the others.
 
 ## Built in
 
@@ -20,7 +22,7 @@ by `cargo deny list`, and are checked against the licences allowed in
 
 | What | By | Licence | Used for |
 |---|---|---|---|
-| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Florian Karsten and the Space Grotesk project authors | SIL Open Font Licence 1.1 | The name beside the mark, drawn once as outlines; the font itself is neither shipped nor needed |
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Florian Karsten and the Space Grotesk project authors | SIL Open Font Licence 1.1, in [LICENSE-space-grotesk](LICENSE-space-grotesk) | The name beside the mark, drawn once as outlines; the font itself is neither shipped nor needed |
 
 omorfos's own pictures, its mark, its name as drawn, its icon and its
 wallpapers, are under [CC BY-SA 4.0](LICENSE-pictures), and the
