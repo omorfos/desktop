@@ -81,9 +81,9 @@ Small, independent, and each an improvement the day it lands.
       natural way by default and the mouse does not, each with its own
       setting.
 - [x] Pointer speed and acceleration, for the mouse and for the touchpad.
-- [x] Titlebar buttons: close, maximize, minimize, at the left, coloured,
-      each a part of the theme (wish 3). Double-click on a titlebar
-      maximizes.
+- [x] Titlebar buttons: close, maximize, minimize, coloured, each a part
+      of the theme (wish 3), at the right since ADR 68. Double-click on a
+      titlebar maximizes.
 - [x] A menu on a right click of the titlebar (wish 3): the same three,
       and shade (roll the window up into its titlebar), keep above the
       others, show on every workspace, send to a workspace (ADR 31). The
@@ -1266,6 +1266,19 @@ the first than on the last.
 - [ ] Known gaps in "About": it does not scroll, so a screen less tall
       than it, some 450 units, cuts it short; and keys other than Escape
       go on to the window with focus while it is shown.
+- [x] Titlebar buttons at the right, close outermost, as most desktops
+      have them; and programs that draw their own titlebars told the
+      same: GNOME's `button-layout` through the settings portal, which
+      GTK, libadwaita and Qt's Adwaita titlebars read, in Flatpak too,
+      and `Gtk/DecorationLayout` in the settings programs written for
+      X11 follow. A button the theme leaves out is left out of both
+      (ADR 68).
+- [ ] Known gaps in where titlebar buttons stand: programs that draw a
+      titlebar of their own making, as Electron's do, are not told; nor,
+      it is thought, GTK 3 under Wayland outside a sandbox, which reads
+      GNOME's settings itself. freedesktop's own setting for it, a draft
+      in xdg-desktop-portal (pull request 1821), is to be served too
+      once it is agreed.
 - [ ] Icons in menus: a glyph before each entry of the titlebar's menu
       and of the root menu (a program's own icon there), and a tick
       beside what is on in place of wording that changes. It waits for

@@ -131,7 +131,7 @@ tab:active:focus {
   border-bottom-color: var(--accent);
 }
 
-/* The buttons at the left of a titlebar: close, maximize, minimize. Each
+/* The buttons at the right of a titlebar: minimize, maximize, close. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
  * are :focus with their frame and :hover under the pointer. Give one a
@@ -143,7 +143,7 @@ button-close, button-maximize, button-minimize {
   background: var(--border);
   color: transparent;
 }
-button-close { margin-left: 12px; }
+button-close { margin-right: 12px; }
 button-close:focus, button-close:hover { background: var(--danger); }
 button-maximize:focus, button-maximize:hover { background: var(--success); }
 button-minimize:focus, button-minimize:hover { background: var(--warning); }

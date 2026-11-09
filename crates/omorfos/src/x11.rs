@@ -319,6 +319,9 @@ struct Told {
     font: String,
     /// The name of the icon theme.
     icons: String,
+    /// Where the buttons of a titlebar stand, for toolkits that draw their
+    /// own, as GNOME writes it.
+    buttons: String,
 }
 
 /// The X server and what the compositor keeps as its window manager.
@@ -516,6 +519,7 @@ impl Compositor {
             },
             font: config.theme.font_name(),
             icons: config.general.icons.theme.clone(),
+            buttons: config.theme.button_layout(),
         };
         if self.x11.wm.is_none() || self.x11.told.as_ref() == Some(&told) {
             return;
@@ -525,6 +529,7 @@ impl Compositor {
             cursor,
             font,
             icons,
+            buttons,
             ..
         } = told;
         self.size_x11_pixels(scale);
@@ -553,6 +558,7 @@ impl Compositor {
             ("Gtk/CursorThemeName", cursor.theme.clone()),
             ("Gtk/FontName", font),
             ("Net/IconThemeName", icons),
+            ("Gtk/DecorationLayout", buttons),
         ];
         let named = named.map(|(name, value)| (name.to_owned(), Value::from(value)));
         let settings = settings.into_iter().chain(named);

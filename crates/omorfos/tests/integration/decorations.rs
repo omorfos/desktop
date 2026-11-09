@@ -275,7 +275,7 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
         .input(omorfos::Input::Motion { x: 600.0, y: 400.0 }, 0);
 
     let picture = session.draw();
-    assert_eq!(picture.at(190, 14), UNFOCUSED_TITLEBAR);
+    assert_eq!(picture.at(120, 14), UNFOCUSED_TITLEBAR);
     assert_eq!(picture.at(0, 100), HAIRLINE);
 }
 
@@ -564,9 +564,9 @@ const BUTTONS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
 const PLAIN_BUTTON: u32 = 0xff2b_3a6b;
 
 /// The middle of each button of a frame whose corner is at the screen's.
-const CLOSE: (i32, i32) = (18, 14);
-const MAXIMIZE: (i32, i32) = (38, 14);
-const MINIMIZE: (i32, i32) = (58, 14);
+const CLOSE: (i32, i32) = (184, 14);
+const MAXIMIZE: (i32, i32) = (164, 14);
+const MINIMIZE: (i32, i32) = (144, 14);
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -692,7 +692,7 @@ fn a_button_is_coloured_under_the_pointer_whether_or_not_its_frame_has_focus() {
     session.step();
     let buttons = |session: &mut Session| {
         let picture = session.draw();
-        [(13, 14), (33, 14), (53, 14)].map(|(x, y)| picture.at(x, y))
+        [(179, 14), (159, 14), (139, 14)].map(|(x, y)| picture.at(x, y))
     };
     assert_eq!(buttons(&mut session), [PLAIN_BUTTON; 3]);
 

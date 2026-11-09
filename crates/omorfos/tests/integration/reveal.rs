@@ -46,16 +46,21 @@ fn fullscreen() -> (Session, Client) {
     (session, client)
 }
 
-/// What is at the right of the screen where the top panel is, just under
-/// it where a titlebar would be, and where the bottom panel is.
+/// What is towards the right of the screen, clear of a titlebar's buttons,
+/// where the top panel is, just under it where a titlebar would be, and
+/// where the bottom panel is.
 fn seen(session: &mut Session) -> [u32; 3] {
     let picture = session.draw();
     [
-        picture.at(600, 10),
-        picture.at(600, 34),
-        picture.at(600, 470),
+        picture.at(400, 10),
+        picture.at(400, 34),
+        picture.at(400, 470),
     ]
 }
+
+/// Across the screen, the middle of the middle button of a titlebar as
+/// wide as the screen.
+const MIDDLE_BUTTON: i32 = 602;
 
 fn point(session: &mut Session, x: i32, y: i32) {
     let position = Input::Motion {
@@ -166,7 +171,7 @@ fn windows_that_share_a_workspace_keep_their_titlebars_and_only_the_panel_hides(
     // being asked, and is told the room under it; the panel is not shown.
     let titlebars = |session: &mut Session| {
         let picture = session.draw();
-        [picture.at(600, 14), picture.at(600, 254)]
+        [picture.at(400, 14), picture.at(400, 254)]
     };
     let shown = titlebars(&mut session);
     assert_ne!(shown[0], BACKGROUND, "the upper window's");
@@ -180,19 +185,19 @@ fn windows_that_share_a_workspace_keep_their_titlebars_and_only_the_panel_hides(
     // titlebar included: those were not brought back, and do not keep it.
     point(&mut session, 600, 0);
     session.advance(REST);
-    assert_eq!(session.draw().at(600, 10), GREEN);
+    assert_eq!(session.draw().at(400, 10), GREEN);
     point(&mut session, 600, 254);
     session.advance(Duration::from_secs(1));
-    assert_eq!(session.draw().at(600, 10), shown[0]);
+    assert_eq!(session.draw().at(400, 10), shown[0]);
     assert_eq!(
         titlebars(&mut session),
         shown,
         "and the titlebars are as they were"
     );
 
-    // The second button of the lower one takes it back to the desktop,
+    // The middle button of the lower one takes it back to the desktop,
     // and the view with it.
-    click(&mut session, 36, 254);
+    click(&mut session, MIDDLE_BUTTON, 254);
     assert_eq!(session.compositor().desktop().active_workspace(), 0);
     assert_eq!(session.compositor().desktop().frames().count(), 1);
 }
@@ -204,8 +209,8 @@ fn the_titlebar_that_is_brought_back_works_as_a_titlebar_does() {
     point(&mut session, 600, 0);
     session.advance(REST);
 
-    // Its second button is the way out of fullscreen.
-    click(&mut session, 36, 34);
+    // Its middle button is the way out of fullscreen.
+    click(&mut session, MIDDLE_BUTTON, 34);
     assert_eq!(places(&session), 1);
     let mut frames = session.compositor().desktop().frames();
     assert!(!frames.next().unwrap().fullscreen);

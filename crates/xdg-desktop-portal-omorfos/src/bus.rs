@@ -44,6 +44,11 @@ pub const LOOKS: &str = "org.freedesktop.appearance";
 /// are in a sandbox, of which the pointer's are given.
 pub const INTERFACE: &str = "org.gnome.desktop.interface";
 
+/// The settings of GNOME's for windows, of which where the buttons of a
+/// titlebar stand is given: GTK, libadwaita and Qt's Adwaita titlebars
+/// read it, there being no setting of freedesktop's for it yet.
+pub const WINDOWS: &str = "org.gnome.desktop.wm.preferences";
+
 /// The interface a picture of the screen is asked for by.
 pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
 
@@ -461,8 +466,9 @@ fn lost(message: &Message) -> bool {
 /// How the desktop looks, as the settings applications read, each in its
 /// group: whether it is dark, the colour that picks things out, and
 /// whether contrast is to be higher than usual, which it is not; and the
-/// pointer's theme and size, the font text is written in, and the icons.
-fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 8] {
+/// pointer's theme and size, the font text is written in, the icons, and
+/// where the buttons of a titlebar stand.
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 9] {
     let (red, green, blue) = look.accent;
     let (theme, size) = look.pointer.clone();
     [
@@ -482,6 +488,7 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
             Value::from(look.monospace.clone()),
         ),
         (INTERFACE, "icon-theme", Value::from(look.icons.clone())),
+        (WINDOWS, "button-layout", Value::from(look.buttons.clone())),
     ]
 }
 
@@ -774,6 +781,7 @@ pub(crate) mod tests {
             font: "Inter, sans-serif 11".to_owned(),
             monospace: "JetBrains Mono, monospace 11".to_owned(),
             icons: "Adwaita".to_owned(),
+            buttons: ":minimize,maximize,close".to_owned(),
         }
     }
 
@@ -835,6 +843,15 @@ pub(crate) mod tests {
             .try_into()
             .unwrap();
         assert_eq!(icons, "Adwaita");
+        // Where the buttons of a titlebar stand, for programs that draw
+        // their own, as GTK does.
+        let told = read_all(&peer, &[WINDOWS]);
+        let buttons: String = told[WINDOWS]["button-layout"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(buttons, ":minimize,maximize,close");
         let reply = peer.call_method(
             Some(NAME),
             PATH,
@@ -871,7 +888,9 @@ pub(crate) mod tests {
         let both = read_all(&peer, &[INTERFACE, LOOKS]);
         assert!(both.contains_key(LOOKS) && both.contains_key(INTERFACE));
         let gnome = read_all(&peer, &["org.gnome.*"]);
-        assert_eq!(gnome.keys().collect::<Vec<_>>(), [INTERFACE]);
+        let mut groups: Vec<&String> = gnome.keys().collect();
+        groups.sort();
+        assert_eq!(groups, [INTERFACE, WINDOWS]);
         assert_eq!(read_all(&peer, &["org.kde.*"]), Told::new());
     }
 

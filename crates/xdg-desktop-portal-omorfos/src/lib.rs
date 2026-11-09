@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 pub use appearance::Appearance;
 pub use bus::{
     Asked, INTERFACE, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS,
+    WINDOWS,
 };
 use card::Card;
 pub use feed::{Feed, Seen};

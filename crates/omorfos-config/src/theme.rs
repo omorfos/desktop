@@ -210,6 +210,25 @@ impl Theme {
         format!("{} {size}", self.table.monospace)
     }
 
+    /// The buttons of a titlebar as GNOME's `button-layout` setting writes
+    /// them, which programs that draw their own titlebars read to put
+    /// theirs where omorfos puts its own: none at the left, and at the
+    /// right, from the left, those the theme gives a width,
+    /// `:minimize,maximize,close`.
+    #[must_use]
+    pub fn button_layout(&self) -> String {
+        let buttons = [
+            (Part::ButtonMinimize, "minimize"),
+            (Part::ButtonMaximize, "maximize"),
+            (Part::ButtonClose, "close"),
+        ];
+        let shown = buttons
+            .into_iter()
+            .filter(|(part, _)| self.style(*part, States::NONE).min_width > 0)
+            .map(|(_, name)| name);
+        format!(":{}", shown.collect::<Vec<_>>().join(","))
+    }
+
     /// The font `part` is written in while it is in `states`.
     #[must_use]
     pub fn font(&self, part: Part, states: States) -> &Font {
@@ -1179,6 +1198,16 @@ mod tests {
         assert!(message.contains("--font-monospace"), "{message}");
         assert!(message.contains("needs a name"), "{message}");
         assert!(problem(":root { --font-monospace: var(--gone) }").contains("no variable"));
+    }
+
+    #[test]
+    fn programs_are_told_the_buttons_of_a_titlebar_stand_at_the_right_as_the_theme_has_them() {
+        assert_eq!(Theme::default().button_layout(), ":minimize,maximize,close");
+        let without = Theme::parse("button-maximize { min-width: 0 }").unwrap();
+        assert_eq!(without.button_layout(), ":minimize,close", "not there");
+        let none = "button-close, button-maximize, button-minimize { min-width: 0 }";
+        let none = Theme::parse(none).unwrap();
+        assert_eq!(none.button_layout(), ":", "none at all");
     }
 
     #[test]

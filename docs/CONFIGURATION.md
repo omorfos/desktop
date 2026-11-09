@@ -657,7 +657,7 @@ tab:active:focus {
   border-bottom-color: var(--accent);
 }
 
-/* The buttons at the left of a titlebar: close, maximize, minimize. Each
+/* The buttons at the right of a titlebar: minimize, maximize, close. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
  * are :focus with their frame and :hover under the pointer. Give one a
@@ -669,7 +669,7 @@ button-close, button-maximize, button-minimize {
   background: var(--border);
   color: transparent;
 }
-button-close { margin-left: 12px; }
+button-close { margin-right: 12px; }
 button-close:focus, button-close:hover { background: var(--danger); }
 button-maximize:focus, button-maximize:hover { background: var(--success); }
 button-minimize:focus, button-minimize:hover { background: var(--warning); }
@@ -1128,7 +1128,8 @@ Not every part uses every property yet:
   titlebar, which is how one is made smaller than the titlebar is tall).
 - The buttons of a titlebar are drawn from `background`, `border`,
   `border-radius` and `color`, which is the colour of the sign on each: a
-  cross, a plus and a bar. They stand at the left in that order.
+  cross, a plus and a bar. They stand at the right, the cross outermost,
+  and programs that draw their own titlebars are told the same.
 - `padding` is honoured by `tab`, `menu-item`, `notice`, `panel`,
   `workspace`, `task` and `clock`.
 - `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
@@ -2069,8 +2070,8 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 
 | To | Do this |
 |---|---|
-| Close a window, make it fullscreen, or minimize it | Click the first, second or third button at the left of its titlebar |
-| Put two windows side by side | Rest the pointer on the second button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
+| Close a window, make it fullscreen, or minimize it | Click the outermost, middle or innermost button at the right of its titlebar |
+| Put two windows side by side | Rest the pointer on the middle button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
 | Put a window in a half or a quarter of the screen | Drag it by its titlebar to an edge of the screen, or to an edge near a corner, and let go |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
 | Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |

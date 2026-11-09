@@ -1103,13 +1103,14 @@ mod tests {
     }
 
     /// The colours the built-in theme gives the buttons of a frame with
-    /// focus, from the left, and the one it gives them all without.
+    /// focus, from the right, and the one it gives them all without.
     const BUTTON_COLORS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
     const BUTTON_PLAIN: u32 = 0xff2b_3a6b;
 
-    /// The middle of each button under the built-in theme: twelve across
-    /// with room around them, the first further in than the others.
-    const BUTTON_MIDDLES: [u32; 3] = [18, 38, 58];
+    /// The middle of each button, from the right, under the built-in
+    /// theme: twelve across with room around them, the outermost further
+    /// in from the edge than the others are from each other.
+    const BUTTON_MIDDLES: [u32; 3] = [382, 362, 342];
 
     /// A frame with room for the buttons the built-in theme has.
     fn buttoned() -> Decoration {
@@ -1122,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn a_titlebar_has_three_round_buttons_at_its_left_coloured_when_it_has_focus() {
+    fn a_titlebar_has_three_round_buttons_at_its_right_coloured_when_it_has_focus() {
         let theme = Theme::default();
         let mut text = Text::new();
         let frame = buttoned();
@@ -1142,7 +1143,7 @@ mod tests {
         }
         // The titlebar shows between them, and no title is written there.
         let background = argb(palette(&theme).focused.titlebar);
-        for between in [26, 46] {
+        for between in [350, 370] {
             assert_eq!(focused.at(between, 14), background);
         }
     }
@@ -1174,20 +1175,20 @@ mod tests {
 
         // A cross of two diagonals six long, a plus of two bars, and a bar.
         let close = hovering(Some(Button::Close), true);
-        assert_eq!(count(&close, 18), 12);
-        assert_eq!(close.at(15, 11), ink, "from one corner");
-        assert_eq!(close.at(20, 11), ink, "and from the other");
-        assert_eq!(count(&close, 38), 0, "and on no other button");
+        assert_eq!(count(&close, 382), 12);
+        assert_eq!(close.at(379, 11), ink, "from one corner");
+        assert_eq!(close.at(384, 11), ink, "and from the other");
+        assert_eq!(count(&close, 362), 0, "and on no other button");
         let maximize = hovering(Some(Button::Maximize), true);
-        assert_eq!(count(&maximize, 38), 11);
+        assert_eq!(count(&maximize, 362), 11);
         let minimize = hovering(Some(Button::Minimize), true);
-        assert_eq!(count(&minimize, 58), 6);
+        assert_eq!(count(&minimize, 342), 6);
 
         // Pointed at, a button has its colour whether or not its frame
         // has focus.
         let unfocused = hovering(Some(Button::Close), false);
-        assert_eq!(unfocused.at(13, 14), BUTTON_COLORS[0]);
-        assert_eq!(unfocused.at(38, 14), BUTTON_PLAIN);
+        assert_eq!(unfocused.at(377, 14), BUTTON_COLORS[0]);
+        assert_eq!(unfocused.at(362, 14), BUTTON_PLAIN);
     }
 
     #[test]

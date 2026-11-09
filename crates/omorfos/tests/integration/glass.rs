@@ -332,8 +332,8 @@ fn a_titlebars_glass_is_rounded_above_as_its_window_is_and_square_below() {
     assert_eq!(picture.at(32, 59), 0xffff_ffff, "square below");
     assert_eq!(picture.at(32, 60), BLUE, "the window under it");
     // What is drawn on the titlebar is over its glass: the button that
-    // closes the window, in its colour, in the middle of it.
-    assert_eq!(picture.at(48, 46), 0xfff8_616d, "the close button over it");
+    // closes the window, in its colour, at its right-hand end.
+    assert_eq!(picture.at(414, 46), 0xfff8_616d, "the close button over it");
 }
 
 #[test]

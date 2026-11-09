@@ -340,8 +340,8 @@ fn clicking_a_tab_shows_it() {
     session.roundtrip(&mut client);
 
     // Two tabs share what the buttons leave of the 202 pixel titlebar,
-    // from 66 across: the editor's is the left half of that.
-    move_to(&mut session, 100, 10);
+    // the 134 at its left: the editor's is the left half of that.
+    move_to(&mut session, 30, 10);
     press(&mut session, LEFT);
     release(&mut session, LEFT);
     session.roundtrip(&mut client);
@@ -360,7 +360,7 @@ fn a_tab_dropped_away_from_any_titlebar_gets_its_own_frame() {
     session.roundtrip(&mut client);
     assert_eq!(tab_counts(&session), [2]);
 
-    drag(&mut session, MIDDLE, (150, 10), (500, 400));
+    drag(&mut session, MIDDLE, (100, 10), (500, 400));
     session.roundtrip(&mut client);
 
     assert_eq!(tab_counts(&session), [1, 1]);
@@ -373,7 +373,7 @@ fn a_tab_dropped_back_on_its_own_titlebar_stays_where_it_was() {
     let mut client = session.connect();
     decorated(&mut session, &mut client, "editor");
 
-    drag(&mut session, MIDDLE, (100, 10), (190, 10));
+    drag(&mut session, MIDDLE, (100, 10), (130, 10));
 
     assert_eq!(tab_counts(&session), [1]);
     assert_eq!(frames(&session), [rect(0, 0, 202, 129)]);

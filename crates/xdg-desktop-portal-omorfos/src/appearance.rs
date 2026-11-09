@@ -20,6 +20,9 @@ pub struct Appearance {
     pub monospace: String,
     /// The name of the icon theme.
     pub icons: String,
+    /// Where the buttons of a titlebar stand, as GNOME writes it, for
+    /// programs that draw their own titlebars.
+    pub buttons: String,
 }
 
 impl Appearance {
@@ -28,6 +31,7 @@ impl Appearance {
     /// A row under the pointer is not the accent but raised, as the design
     /// language has it.
     /// The pointer is `cursor` in a scheme, and the icons are `icons`.
+    /// The buttons of a titlebar are as [`Theme::button_layout`] has them.
     #[must_use]
     pub fn of(theme: &Theme, (cursor, scheme): (&Cursor, Scheme), icons: &Icons) -> Self {
         let picked = theme.style(Part::LauncherItem, States::NONE.with(State::Active));
@@ -41,6 +45,7 @@ impl Appearance {
             font: theme.font_name(),
             monospace: theme.monospace_font_name(),
             icons: icons.theme.clone(),
+            buttons: theme.button_layout(),
         }
     }
 
@@ -65,6 +70,7 @@ mod tests {
         assert!(appearance.dark);
         assert_eq!(appearance.pointer, ("omorfos-dark".to_owned(), 24));
         assert_eq!(appearance.monospace, "JetBrains Mono, monospace 11");
+        assert_eq!(appearance.buttons, ":minimize,maximize,close");
         assert_eq!(appearance.scheme(), 1);
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);

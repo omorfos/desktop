@@ -57,7 +57,7 @@ pub fn settings(config: &Config) -> Settings {
     }
 }
 
-/// The buttons of a titlebar, from the left, and the part of the theme
+/// The buttons of a titlebar, from the right, and the part of the theme
 /// that says how each looks.
 pub(crate) const BUTTONS: [(Button, Part); 3] = [
     (Button::Close, Part::ButtonClose),

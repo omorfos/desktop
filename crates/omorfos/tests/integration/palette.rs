@@ -302,7 +302,7 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
     );
     // Beside it the window shows, and above it the titlebar, in the shadow
     // the pictures cast.
-    let beside = picture.at(middle + 40, foot + 3);
+    let beside = picture.at(middle - 40, foot + 3);
     assert!(shaded(beside, RED), "only under the button: {beside:#x}");
     let above = picture.at(middle, foot - 1);
     assert!(
