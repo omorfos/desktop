@@ -10,6 +10,7 @@ use cosmic_text::{
     Attrs, Buffer, Ellipsize, EllipsizeHeightLimit, Family, FontSystem, Metrics, Shaping,
     Style as Slant, SwashCache, Weight, Wrap,
 };
+use std::collections::HashMap;
 use std::ops::Range;
 
 use omorfos_config::{Color, Edges, Font, Style};
@@ -839,6 +840,62 @@ fn ring_coverage(x: u32, y: u32, outer: u32, inner: u32) -> u32 {
 pub struct Text {
     fonts: FontSystem,
     glyphs: SwashCache,
+    /// What each list of families came to, the first of them installed,
+    /// so that the fonts are looked through once for each.
+    chosen: HashMap<String, Chosen>,
+}
+
+/// The family text is set in, of those a font names.
+enum Chosen {
+    /// `sans-serif`, `serif` or `monospace`, which there always is.
+    Generic(Family<'static>),
+    /// One installed, by its name.
+    Named(String),
+}
+
+impl Chosen {
+    fn family(&self) -> Family<'_> {
+        match self {
+            Self::Generic(family) => *family,
+            Self::Named(name) => Family::Name(name),
+        }
+    }
+}
+
+/// The family `list` comes to, as CSS has it: the first it names that is a
+/// generic one or is installed in `fonts`, and `sans-serif` if none is.
+fn choose(fonts: &FontSystem, list: &str) -> Chosen {
+    let installed = |name: &str| {
+        let mut faces = fonts.db().faces();
+        faces.any(|face| {
+            face.families
+                .iter()
+                .any(|(family, _)| family.eq_ignore_ascii_case(name))
+        })
+    };
+    let mut found = list
+        .split(',')
+        .map(str::trim)
+        .filter_map(|name| match name {
+            "sans-serif" => Some(Chosen::Generic(Family::SansSerif)),
+            "serif" => Some(Chosen::Generic(Family::Serif)),
+            "monospace" => Some(Chosen::Generic(Family::Monospace)),
+            name => installed(name).then(|| Chosen::Named(name.to_owned())),
+        });
+    found.next().unwrap_or(Chosen::Generic(Family::SansSerif))
+}
+
+/// The family `list` comes to, from what it was found to come to before,
+/// or found now and kept.
+fn chosen<'a>(
+    chosen: &'a mut HashMap<String, Chosen>,
+    fonts: &FontSystem,
+    list: &str,
+) -> Family<'a> {
+    if !chosen.contains_key(list) {
+        chosen.insert(list.to_owned(), choose(fonts, list));
+    }
+    chosen.get(list).map_or(Family::SansSerif, Chosen::family)
 }
 
 impl std::fmt::Debug for Text {
@@ -860,6 +917,7 @@ impl Text {
         Self {
             fonts: FontSystem::new(),
             glyphs: SwashCache::new(),
+            chosen: HashMap::new(),
         }
     }
 
@@ -878,7 +936,8 @@ impl Text {
         let size = points * 96.0 / 72.0 * scale;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, size));
         buffer.set_wrap(Wrap::None);
-        buffer.set_text(text, &attributes(font), Shaping::Advanced, None);
+        let family = chosen(&mut self.chosen, &self.fonts, &font.family);
+        buffer.set_text(text, &attributes(font, family), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.fonts, false);
         let widest = buffer.layout_runs().map(|run| run.line_w);
         #[expect(
@@ -957,7 +1016,8 @@ impl Text {
         buffer.set_wrap(Wrap::None);
         buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(1)));
         buffer.set_size(Some(float(width)), Some(float(height)));
-        buffer.set_text(text, &attributes(font), Shaping::Advanced, None);
+        let family = chosen(&mut self.chosen, &self.fonts, &font.family);
+        buffer.set_text(text, &attributes(font, family), Shaping::Advanced, None);
         let ink = cosmic_text::Color::rgba(color.red, color.green, color.blue, color.alpha);
         buffer.draw(
             &mut self.fonts,
@@ -987,27 +1047,16 @@ fn scale_of(canvas: &Canvas) -> f32 {
     scale
 }
 
-/// How text in a font is to be set: its family, its weight and whether it
-/// slants.
-fn attributes(font: &Font) -> Attrs<'_> {
+/// How text in a font is to be set, in the `family` chosen of those it
+/// names: its weight and whether it slants.
+fn attributes<'a>(font: &Font, family: Family<'a>) -> Attrs<'a> {
     let slant = if font.italic {
         Slant::Italic
     } else {
         Slant::Normal
     };
-    let attributes = Attrs::new().family(family(font));
+    let attributes = Attrs::new().family(family);
     attributes.weight(Weight(font.weight)).style(slant)
-}
-
-/// The font family a font names: one of the generic ones, or a family by
-/// its own name.
-fn family(font: &Font) -> Family<'_> {
-    match font.family.as_str() {
-        "sans-serif" => Family::SansSerif,
-        "serif" => Family::Serif,
-        "monospace" => Family::Monospace,
-        name => Family::Name(name),
-    }
 }
 
 /// The part of the span `start..start + length` that lies within
@@ -2050,6 +2099,45 @@ mod tests {
         text.draw(&mut canvas, long, (0, 0, 80, 28), RED, &Font::default());
         assert!(inked(&canvas, 0..80, 0) > 20);
         assert_eq!(inked(&canvas, 90..300, 0), 0);
+    }
+
+    #[test]
+    fn text_in_a_list_of_families_is_set_in_the_first_that_is_installed() {
+        let mut text = Text::new();
+        let mut drawn = |family: &str| {
+            let mut canvas = Canvas::new(100, 28);
+            text.draw(&mut canvas, "Abc", (0, 0, 100, 28), RED, &font(family));
+            canvas
+        };
+        let sans = drawn("sans-serif");
+        let missing = "A Font That Is Not Installed, sans-serif";
+        assert!(drawn(missing) == sans, "past one not installed");
+        assert!(
+            drawn("Not This, Nor This, serif") == drawn("serif"),
+            "past two"
+        );
+        assert!(
+            drawn("Not This,monospace") == drawn("monospace"),
+            "without a space"
+        );
+        // With none of them, what the system has for `sans-serif`.
+        assert!(drawn("Not This, Nor This") == sans, "none of them");
+        // Asked again, it is as it was.
+        assert!(drawn(missing) == sans, "again");
+        // A family that is installed is used, wherever it is in the list.
+        let installed = text.fonts.db().faces().next().unwrap().families[0]
+            .0
+            .clone();
+        let mut drawn = |family: &str| {
+            let mut canvas = Canvas::new(100, 28);
+            text.draw(&mut canvas, "Abc", (0, 0, 100, 28), RED, &font(family));
+            canvas
+        };
+        let alone = drawn(&installed);
+        assert!(
+            drawn(&format!("Not This, {installed}, serif")) == alone,
+            "{installed}"
+        );
     }
 
     #[test]
