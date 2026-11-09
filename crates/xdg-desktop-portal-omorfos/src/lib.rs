@@ -52,7 +52,8 @@ fn look(config: &Path) -> Appearance {
     let store = Store::open(config);
     let config = store.current();
     let general = &config.general;
-    Appearance::of(&config.theme, &general.cursor, &general.icons)
+    let cursor = (&general.cursor, config.scheme);
+    Appearance::of(&config.theme, cursor, &general.icons)
 }
 
 /// Answers the portals for the session the environment describes, until

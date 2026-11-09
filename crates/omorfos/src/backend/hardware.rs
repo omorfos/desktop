@@ -15,6 +15,7 @@
 use std::cell::RefCell;
 use std::env;
 use std::error::Error;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Write, stderr};
 use std::os::fd::{AsFd, OwnedFd};
@@ -602,13 +603,16 @@ fn set_components(compositor: &mut Compositor) {
 /// was pending for it. What the session is told of is handed to the shell
 /// as arguments, never as text for the shell to read.
 fn announce_session(compositor: &mut Compositor) {
+    let told = compositor.environment_to_tell().unwrap_or_default();
     // Started again in the same login, D-Bus and systemd have been told of
     // the session already, under the same names, and the services of the
-    // graphical session are running.
+    // graphical session are running; but what they were told may not be
+    // what this compositor says, as after it is installed anew.
     if compositor.started_again() {
+        tell_environment(compositor, told);
         return;
     }
-    let told = compositor.session_environment().into_iter();
+    let told = told.into_iter();
     let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
     let script = "dbus-update-activation-environment --systemd \"$@\"; \
                   systemctl --user restart omorfos-session.target; \
@@ -620,6 +624,17 @@ fn announce_session(compositor: &mut Compositor) {
         .into_iter()
         .chain(told);
     if let Some(tell) = Command::new("sh", arguments) {
+        compositor.perform(&Action::Spawn(tell.into()));
+    }
+}
+
+/// Tells D-Bus and systemd the session's environment `told`, for the
+/// programs they start from now on, as it has changed.
+fn tell_environment(compositor: &mut Compositor, told: Vec<(&'static str, OsString)>) {
+    let told = told.into_iter();
+    let told = told.map(|(name, value)| format!("{name}={}", value.to_string_lossy()));
+    let arguments = std::iter::once("--systemd".to_owned()).chain(told);
+    if let Some(tell) = Command::new("dbus-update-activation-environment", arguments) {
         compositor.perform(&Action::Spawn(tell.into()));
     }
 }
@@ -647,6 +662,9 @@ fn turn(
 ) -> Result<(), Box<dyn Error>> {
     let mut now = hardware.borrow_mut();
     now.report_problems(compositor);
+    if let Some(told) = compositor.environment_to_tell() {
+        tell_environment(compositor, told);
+    }
     if let Some(terminal) = compositor.take_terminal_switch() {
         let _ = now.seat.change_vt(terminal);
     }

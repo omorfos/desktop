@@ -16,9 +16,6 @@ use crate::bridge::BUTTONS;
 /// The width set aside on a menu row for the arrow that marks a submenu.
 const ARROW: u32 = 14;
 
-/// The height of the pointer arrow, in pixels.
-const POINTER: u32 = 16;
-
 /// Paints the border where it turns a bottom corner of a frame: a quarter
 /// ring `radius` across and `border` thick, smooth at both edges. It is the
 /// left-hand corner, or the right-hand one if `mirrored`.
@@ -662,25 +659,6 @@ pub(crate) fn capture_mark(theme: &Theme, scale: Scale, signs: Signs) -> Canvas 
     canvas
 }
 
-/// Paints the pointer: a white arrow with a dark outline, whose tip is the
-/// top-left pixel, so that it shows on any background.
-pub(crate) fn pointer(scale: Scale) -> Canvas {
-    let outline = Color::rgb(0x14, 0x16, 0x1b);
-    let inside = Color::rgb(0xff, 0xff, 0xff);
-    // The arrow widens by a pixel a row down its left edge, then closes
-    // twice as fast.
-    let width = |row: u32| (row + 1).min((POINTER - row) * 2);
-    let mut canvas = Canvas::scaled(POINTER * 3 / 4, POINTER, scale);
-    for row in 0..POINTER {
-        canvas.fill((0, row.cast_signed(), width(row), 1), outline);
-    }
-    for row in 2..POINTER - 2 {
-        let inner = width(row).min(width(row + 1)).saturating_sub(2);
-        canvas.fill((1, row.cast_signed(), inner, 1), inside);
-    }
-    canvas
-}
-
 #[cfg(test)]
 mod tests {
     use omorfos_core::Metrics as FrameMetrics;
@@ -746,19 +724,6 @@ mod tests {
 
     fn argb(color: Color) -> u32 {
         u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
-    }
-
-    #[test]
-    fn the_pointer_is_a_light_arrow_with_a_dark_edge_and_its_tip_at_the_corner() {
-        let arrow = pointer(Scale::ONE);
-        let dark = 0xff14_161b;
-        assert_eq!(arrow.at(0, 0), dark, "the tip");
-        assert_eq!(arrow.at(0, 8), dark, "its left edge");
-        assert_eq!(arrow.at(2, 8), 0xffff_ffff, "its inside");
-        assert_eq!(arrow.at(8, 8), dark, "its slanted edge");
-        assert_eq!(arrow.at(9, 8), 0, "clear beyond it");
-        assert_eq!(arrow.at(5, 2), 0, "clear above the slant");
-        assert_eq!(arrow.at(1, 15), dark, "closed at the bottom");
     }
 
     #[test]

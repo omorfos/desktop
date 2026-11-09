@@ -1,6 +1,8 @@
 //! What the pointer looks like: shapes from the cursor theme, and what
 //! applications ask for.
 
+use std::ffi::OsString;
+
 use omorfos::{Input, Scale};
 use omorfos_config::Action;
 use serde_json::json;
@@ -16,6 +18,10 @@ const CYAN: u32 = 0xff00_ffff;
 const WHITE: u32 = 0xffff_ffff;
 const ORANGE: u32 = 0xffff_8000;
 const GREY: u32 = 0xff80_8080;
+const NAVY: u32 = 0xff0c_1226;
+/// The inside of the pointer in the dark scheme.
+const NAVY_3: u32 = 0xff24_3364;
+const CREAM: u32 = 0xfffc_f7e3;
 
 /// A session that draws its own pointer from a theme of coloured squares,
 /// 8 pixels across: a different colour for each shape.
@@ -273,9 +279,9 @@ fn the_menu_and_the_notice_have_the_ordinary_pointer() {
 #[test]
 fn the_theme_and_size_come_from_the_configuration_and_the_scale() {
     let mut session = Session::new();
-    session.install_cursors("default", &[("default", 24, GREEN)]);
     session.install_cursors("big", &[("default", 48, BLUE)]);
-    let themes = session.install_cursors("fine", &[("default", 12, YELLOW)]);
+    session.install_cursors("fine", &[("default", 12, YELLOW)]);
+    let themes = session.install_cursors("default", &[("default", 24, GREEN)]);
     session.compositor_mut().set_cursor_themes(themes);
     session.compositor_mut().show_pointer();
     assert_eq!(pointer_at(&mut session, 300, 300), GREEN);
@@ -296,6 +302,35 @@ fn the_theme_and_size_come_from_the_configuration_and_the_scale() {
     assert_eq!(screen.at(312, 312), BACKGROUND, "still 12 pixels across");
 }
 
+/// Inside omorfos's own arrow, and on its rim, when the pointer is at
+/// `(300, 300)`: 24 pixels large, its tip is 2 across and 2 down, 9
+/// across and down is inside it, and 4 across and 9 down the rim of its
+/// left side.
+fn own_arrow(session: &mut Session) -> (u32, u32) {
+    pointer_at(session, 300, 300);
+    let screen = session.draw();
+    (screen.at(307, 307), screen.at(302, 307))
+}
+
+#[test]
+fn the_pointer_is_omorfoss_own_navy_rimmed_with_cream_and_cream_rimmed_with_navy_when_light() {
+    let mut session = Session::new();
+    session.compositor_mut().show_pointer();
+    assert_eq!(own_arrow(&mut session), (NAVY_3, CREAM));
+    session.write_config("config.yaml", "appearance: { scheme: light }\n");
+    session.compositor_mut().reload_config();
+    assert_eq!(own_arrow(&mut session), (CREAM, NAVY));
+}
+
+#[test]
+fn a_shape_no_theme_has_nor_their_ordinary_pointer_is_omorfoss_own() {
+    let mut session = Session::new();
+    let themes = session.install_cursors("sparse", &[("text", 8, BLUE)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    assert_eq!(own_arrow(&mut session), (NAVY_3, CREAM));
+}
+
 #[test]
 fn programs_started_are_told_the_cursor_theme_and_size() {
     let mut session =
@@ -308,4 +343,35 @@ fn programs_started_are_told_the_cursor_theme_and_size() {
     let spawn: Action = serde_json::from_value(json!({ "spawn": ["sh", "-c", script] })).unwrap();
     session.compositor_mut().perform(&spawn);
     session.eventually(|_| std::fs::read_to_string(&marker).unwrap_or_default() == "Fancy 32");
+}
+
+#[test]
+fn d_bus_and_systemd_are_told_the_pointer_first_and_again_only_when_it_changes() {
+    let mut session = Session::new();
+    let told_theme = |session: &mut Session| {
+        let told = session.compositor_mut().environment_to_tell();
+        told.map(|told| told.into_iter().find(|(name, _)| *name == "XCURSOR_THEME"))
+    };
+    let theme = |name: &str| Some(Some(("XCURSOR_THEME", OsString::from(name))));
+    assert_eq!(told_theme(&mut session), theme("omorfos-dark"));
+    assert_eq!(told_theme(&mut session), None, "told already");
+    session.compositor_mut().reload_config();
+    assert_eq!(told_theme(&mut session), None, "as it was");
+    session.write_config("config.yaml", "appearance: { scheme: light }\n");
+    session.compositor_mut().reload_config();
+    assert_eq!(told_theme(&mut session), theme("omorfos-light"));
+}
+
+#[test]
+fn programs_started_look_for_cursor_themes_where_the_compositor_found_them() {
+    let mut session = Session::new();
+    let themes = session.install_cursors("default", &[("default", 8, GREEN)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    let icons = session.config.path().join("icons");
+    let marker = session.config.path().join("spawned");
+    let script = format!("printf '%s' \"$XCURSOR_PATH\" > '{}'", marker.display());
+    let spawn: Action = serde_json::from_value(json!({ "spawn": ["sh", "-c", script] })).unwrap();
+    session.compositor_mut().perform(&spawn);
+    let told = icons.to_str().unwrap();
+    session.eventually(|_| std::fs::read_to_string(&marker).unwrap_or_default() == told);
 }

@@ -2,6 +2,7 @@
 
 use serde::Deserialize;
 
+use std::borrow::Cow;
 use std::time::SystemTime;
 
 use jiff::Zoned;
@@ -342,8 +343,9 @@ pub struct Launcher {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Cursor {
-    /// The name of an installed cursor theme, such as `Adwaita`. `default`
-    /// is whichever the system has set up as its default.
+    /// `omorfos`, for omorfos's own pointer, dark or light as the desktop
+    /// is; or the name of an installed cursor theme, such as `Adwaita`.
+    /// `default` is whichever the system has set up as its default.
     #[serde(deserialize_with = "theme_name")]
     pub theme: String,
     /// The size of the pointer, before scaling.
@@ -394,10 +396,38 @@ fn theme_name<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Strin
     }
 }
 
+impl Cursor {
+    /// Whether the pointer is omorfos's own, which the compositor draws as
+    /// shapes at whatever size it needs.
+    #[must_use]
+    pub fn is_own(&self) -> bool {
+        self.theme == OWN_POINTER
+    }
+
+    /// The cursor theme programs are told to read in `scheme`: the one
+    /// named, or omorfos's own as it is installed, `omorfos-dark` or
+    /// `omorfos-light`.
+    #[must_use]
+    pub fn theme_in(&self, scheme: Scheme) -> Cow<'_, str> {
+        if self.is_own() {
+            let scheme = match scheme {
+                Scheme::Dark => "dark",
+                Scheme::Light => "light",
+            };
+            Cow::Owned(format!("{OWN_POINTER}-{scheme}"))
+        } else {
+            Cow::Borrowed(&self.theme)
+        }
+    }
+}
+
+/// What `cursor.theme` is for omorfos's own pointer.
+const OWN_POINTER: &str = "omorfos";
+
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            theme: "default".to_owned(),
+            theme: OWN_POINTER.to_owned(),
             size: Bounded::clamped(24),
         }
     }
@@ -1074,8 +1104,23 @@ mod tests {
     use crate::Color;
 
     #[test]
-    fn the_pointer_is_the_systems_default_unless_a_theme_and_size_are_named() {
-        assert_eq!(General::default().cursor.theme, "default");
+    fn the_pointer_is_omorfoss_own_dark_or_light_as_the_scheme_is_unless_another_is_named() {
+        let own = General::default().cursor;
+        assert!(own.is_own());
+        assert_eq!(own.theme_in(Scheme::Dark), "omorfos-dark");
+        assert_eq!(own.theme_in(Scheme::Light), "omorfos-light");
+        let named = parse("cursor: { theme: Adwaita }").unwrap().cursor;
+        assert!(!named.is_own());
+        assert_eq!(named.theme_in(Scheme::Light), "Adwaita");
+        // The theme it is installed as, named, is that theme, whatever the
+        // scheme.
+        let dark = parse("cursor: { theme: omorfos-dark }").unwrap().cursor;
+        assert!(!dark.is_own());
+        assert_eq!(dark.theme_in(Scheme::Light), "omorfos-dark");
+    }
+
+    #[test]
+    fn the_pointer_is_24_large_unless_a_theme_and_size_are_named() {
         assert_eq!(General::default().cursor.size.get(), 24);
         let cursor = parse("cursor: { theme: Adwaita, size: 32 }")
             .unwrap()

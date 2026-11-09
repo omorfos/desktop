@@ -343,9 +343,10 @@ impl Session {
 
     /// Installs a cursor theme called `name` whose shapes are plain
     /// squares, one per `(shape, size, colour)`, with the hotspot one pixel
-    /// in from the corner. Returns where themes are then to be found.
+    /// in from the corner, and names it in `config.yaml` as the pointer's.
+    /// Returns where themes are then to be found.
     pub(crate) fn install_cursors(
-        &self,
+        &mut self,
         name: &str,
         shapes: &[(&str, u32, u32)],
     ) -> omorfos::Themes {
@@ -363,6 +364,8 @@ impl Session {
             bytes.extend(word(*color).repeat(pixels));
             std::fs::write(folder.join(shape), bytes).unwrap();
         }
+        self.write_config("config.yaml", &format!("cursor: {{ theme: {name} }}\n"));
+        self.compositor_mut().reload_config();
         omorfos::Themes::new(vec![themes])
     }
 

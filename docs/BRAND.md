@@ -146,6 +146,36 @@ wallpaper looks for them, each as a pair, as `spill-dark.png` and
 `spill-light.png`, so that the directory, named as the picture, shows them
 in turn as the theme is.
 
+## The pointer
+
+Every shape a program can ask for, by its name in CSS: 36, of which
+`move` and `all-resize` are the same. Each is drawn on a grid of 24, so
+that a pointer 24 pixels large has a unit a pixel, from a few plain
+parts: the arrow, a dart on the mark's angle with its corners rounded as
+the mark's frame is, so that it is not taken for any other theme's, with
+a badge at its lower right where it says more (a
+menu, a question, a plus, a bent arrow, a ring struck through, a small
+ring); a hand pointing, open or closed; the bar across text; crosses;
+arrows to an edge, to a corner, both ways and four ways; a lens; a ring.
+
+| Scheme | Inside | Rim |
+|---|---|---|
+| Dark | Navy-3, as the ground's own navy is black at the size of a pointer | Cream |
+| Light | Cream | Navy |
+
+The rim is a stroke 2.4 wide under the parts of a shape together, so
+that half of it, 1.2, shows outside them and none between them; what is
+drawn on a part, the lines of a menu or the question, is in the colour
+of the rim. The quarter of the ring of waiting, the one thing that is
+to move, is orange. Where the pointer is, its hot spot, is the tip of
+the arrow or the finger, the middle of the lens, and the middle of the
+rest.
+
+The compositor draws it at the size it needs. It is also installed as two
+cursor themes, `omorfos-dark` and `omorfos-light` in `share/icons/`, each
+shape at 24, 32, 48, 64 and 96 pixels, with the older names X11 programs
+ask for, such as `left_ptr` and `xterm`, as links to the shapes.
+
 ## The terminal
 
 omorfos recommends foot, and the brand has colours for it. The spectrum

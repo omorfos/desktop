@@ -1845,6 +1845,7 @@ dependencies = [
  "cosmic-text",
  "inotify",
  "omorfos-ask",
+ "omorfos-brand",
  "omorfos-clipboard",
  "omorfos-config",
  "omorfos-core",
@@ -1902,6 +1903,7 @@ version = "0.1.0"
 dependencies = [
  "resvg",
  "tempfile",
+ "xcursor",
 ]
 
 [[package]]

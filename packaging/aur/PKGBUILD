@@ -18,7 +18,6 @@ backup=('etc/pam.d/omorfos-lock' 'etc/pam.d/omorfos-lock-fingerprint' 'etc/pam.d
 optdepends=('foot: the terminal started by the default key bindings'
             'inter-font: the font of the interface'
             'ttf-jetbrains-mono: the monospaced font of the design'
-            'adwaita-cursors: the pointer, drawn at every size'
             'adwaita-icon-theme: the icons programs name without bringing their own'
             'xorg-xwayland: to run programs written for X11'
             'xdg-desktop-portal: so applications follow the look of the desktop and can ask for screenshots'

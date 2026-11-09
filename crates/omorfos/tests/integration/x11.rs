@@ -1199,7 +1199,7 @@ fn on_a_dense_screen_a_program_written_for_x11_draws_with_as_many_pixels_as_it_h
 
 /// What programs written for X11 are told on a screen of two pixels to a
 /// unit, with the pointer as it is by default.
-const POINTER_AT_TWO: &str = "Xft.dpi:\t192\nXcursor.size:\t48\nXcursor.theme:\tdefault\n";
+const POINTER_AT_TWO: &str = "Xft.dpi:\t192\nXcursor.size:\t48\nXcursor.theme:\tomorfos-dark\n";
 
 #[test]
 fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it_was() {
@@ -1213,6 +1213,24 @@ fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it
         }
     }
     assert_eq!(told, POINTER_AT_TWO);
+
+    // omorfos's own pointer is told as the theme it is installed as in
+    // the scheme, which is told again when the scheme changes.
+    let light = format!("{NATIVE}appearance: {{ scheme: light }}\n");
+    session.write_config("config.yaml", &light);
+    session.compositor_mut().reload_config();
+    session.step();
+    for _ in 0..5000 {
+        told = resources(&mut session, &program);
+        if told.contains("light") {
+            break;
+        }
+    }
+    assert_eq!(
+        told,
+        "Xft.dpi:\t192\nXcursor.size:\t48\nXcursor.theme:\tomorfos-light\n"
+    );
+    assert!(has(&settings(&mut session, &program), b"omorfos-light"));
 
     let larger =
         format!("{NATIVE}cursor: {{ theme: Adwaita, size: 32 }}\nicons: {{ theme: Papirus }}\n");
@@ -1294,7 +1312,7 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
             break;
         }
     }
-    let pointer = "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tdefault\n";
+    let pointer = "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tomorfos-dark\n";
     assert_eq!(told, format!("Other.thing:\t1\n{pointer}"));
     assert_eq!(size_of(&mut session, &program, window), (100, 50));
     session.roundtrip(&mut other);
@@ -1317,7 +1335,7 @@ fn programs_written_for_x11_are_stretched_to_size_unless_asked_to_draw_for_the_s
     let told = resources(&mut session, &program);
     assert_eq!(
         told,
-        "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tdefault\n"
+        "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tomorfos-dark\n"
     );
 }
 

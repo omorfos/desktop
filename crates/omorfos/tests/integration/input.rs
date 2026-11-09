@@ -9,6 +9,8 @@ use crate::common::{Event, HEIGHT, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
+/// Inside omorfos's own arrow, in the dark scheme.
+const NAVY: u32 = 0xff24_3364;
 
 fn press(session: &mut Session, code: Keycode) {
     session.compositor_mut().input(
@@ -219,9 +221,10 @@ fn a_mouse_moves_the_pointer_by_a_distance_and_stops_at_the_edges() {
         },
         5,
     );
+    // omorfos's own arrow is navy 4 right of where it points and 4 down.
     assert_eq!(
-        session.draw().at(WIDTH - 5, HEIGHT - 17),
-        0xffff_ffff,
+        session.draw().at(WIDTH - 2, HEIGHT - 17),
+        NAVY,
         "the pointer is five to the left of the last column and twenty above the last row"
     );
 }
@@ -237,8 +240,8 @@ fn the_pointer_is_drawn_only_for_a_backend_that_asks() {
     session.compositor_mut().show_pointer();
     session.step();
     let picture = session.draw();
-    assert_eq!(picture.at(301, 203), 0xffff_ffff, "inside the arrow");
-    assert_eq!(picture.at(299, 203), background, "left of its tip");
+    assert_eq!(picture.at(304, 204), NAVY, "inside the arrow");
+    assert_eq!(picture.at(297, 203), background, "left of its tip");
     assert_eq!(picture.at(330, 203), background, "right of it");
 
     // It follows the pointer.
@@ -252,8 +255,8 @@ fn the_pointer_is_drawn_only_for_a_backend_that_asks() {
         2,
     );
     let picture = session.draw();
-    assert_eq!(picture.at(301, 203), background);
-    assert_eq!(picture.at(351, 203), 0xffff_ffff);
+    assert_eq!(picture.at(304, 204), background);
+    assert_eq!(picture.at(354, 204), NAVY);
 }
 
 #[test]

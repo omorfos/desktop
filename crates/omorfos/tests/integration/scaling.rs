@@ -6,7 +6,8 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 use crate::common::{Event, HEIGHT, Session, Told, WIDTH};
 use crate::windows::{BACKGROUND, RED, shaded};
 
-const WHITE: u32 = 0xffff_ffff;
+/// Inside omorfos's own arrow, in the dark scheme.
+const NAVY: u32 = 0xff24_3364;
 
 /// A session on a screen that the backend says suits a scale of `factor`.
 fn at_scale(factor: f64) -> Session {
@@ -200,13 +201,16 @@ fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
             .contains(&Event::PointerEnter { x: 60.0, y: 20.0 }),
         "the application is told where in its own units"
     );
+    // At 48 pixels the arrow's tip is 5 across and 5 down; 6 right of it
+    // and 6 down is inside the arrow, and so is 23 right and 14 down,
+    // which at 24 pixels would be off it.
     let picture = session.draw();
     assert_eq!(
-        picture.at(123, 46),
-        WHITE,
+        picture.at(126, 46),
+        NAVY,
         "the arrow, at twice the position"
     );
-    assert_eq!(picture.at(123, 49), WHITE, "and twice the size");
+    assert_eq!(picture.at(143, 54), NAVY, "and twice the size");
     assert_eq!(picture.at(110, 46), RED);
 
     // The edge it stops at is the screen's, in units.
@@ -229,8 +233,8 @@ fn the_pointer_moves_in_units_and_is_drawn_at_the_scale() {
         3,
     );
     assert_eq!(
-        session.draw().at(WIDTH - 2 - 8, HEIGHT - 2 - 40 + 12),
-        WHITE,
+        session.draw().at(WIDTH - 2 - 10 + 6, HEIGHT - 2 - 40 + 6),
+        NAVY,
         "five units, so ten pixels, from the last column"
     );
 }
@@ -268,5 +272,5 @@ fn what_is_already_on_screen_is_repainted_when_the_scale_changes() {
         BACKGROUND,
         "the notice, now most of the width"
     );
-    assert_eq!(after.at(83, 86), WHITE, "the pointer, twice as large");
+    assert_eq!(after.at(86, 86), NAVY, "the pointer, twice as large");
 }

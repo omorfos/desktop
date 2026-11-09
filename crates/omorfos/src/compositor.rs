@@ -15,8 +15,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use omorfos_brand::pointer::Shape;
 use omorfos_config::{
-    Action, Config, Debouncer, Half, Part, State, States, Store, Style, Theme, Watcher,
+    Action, Config, Debouncer, Half, Part, Scheme, State, States, Store, Style, Theme, Watcher,
     WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
@@ -866,6 +867,7 @@ impl Compositor {
     /// are none, and the pointer is a plain arrow.
     pub fn set_cursor_themes(&mut self, themes: Themes) {
         self.themes = themes;
+        self.autostarted.environment.1 = false;
         self.pointer_images = PointerImages::default();
     }
 
@@ -885,17 +887,19 @@ impl Compositor {
             return;
         }
         self.shown = self.cursor_wanted();
-        let theme = &self.store.current().general.cursor;
+        let config = self.store.current();
+        let (theme, scheme) = (&config.general.cursor, config.scheme);
         let scale = self.pointer_scale();
         let images = &mut self.pointer_images;
         let loaded = &mut images.loaded;
         let mut ready = |kept: Option<PointerImage>, icon| {
             let current = kept.filter(|image| {
-                image.icon == icon && image.scale == scale && image.theme == *theme
+                let looks = image.theme == *theme && image.scheme == scheme;
+                image.icon == icon && image.scale == scale && looks
             });
             current.unwrap_or_else(|| {
                 *loaded += 1;
-                PointerImage::load(&self.themes, theme, icon, scale, *loaded)
+                PointerImage::load(&self.themes, (theme, scheme), icon, scale, *loaded)
             })
         };
         match self.shown {
@@ -1315,6 +1319,8 @@ impl Compositor {
         problems.extend(screens.map(|(_, said)| said.clone()));
         self.problems = problems;
         self.tell_backdrops();
+        // The pointer's theme may be another, by a file or by the scheme.
+        self.autostarted.environment.1 = false;
     }
 
     // --- Actions -------------------------------------------------------------
@@ -2256,13 +2262,17 @@ impl Compositor {
     /// programs on the user's behalf.
     #[must_use]
     pub fn session_environment(&self) -> Vec<(&'static str, OsString)> {
-        let cursor = &self.store.current().general.cursor;
+        let config = self.store.current();
+        let cursor = &config.general.cursor;
         let display = self.socket_name.clone();
         let socket = self.ipc_path().map(|path| path.as_os_str().to_owned());
         let fixed = [
             ("XDG_SESSION_TYPE", OsString::from("wayland")),
             ("XDG_CURRENT_DESKTOP", OsString::from(DESKTOP_NAME)),
-            ("XCURSOR_THEME", OsString::from(&cursor.theme)),
+            (
+                "XCURSOR_THEME",
+                OsString::from(&*cursor.theme_in(config.scheme)),
+            ),
             (
                 "XCURSOR_SIZE",
                 OsString::from(cursor.size.get().to_string()),
@@ -2275,11 +2285,27 @@ impl Compositor {
             ("WAYLAND_DISPLAY", display),
             ("OMORFOS_SOCKET", socket),
             ("DISPLAY", self.x11.display()),
+            // Where the compositor found cursor themes, which may be where
+            // programs that read them would not look, as /usr/local.
+            ("XCURSOR_PATH", self.themes.search_path()),
         ];
         let located = located
             .into_iter()
             .filter_map(|(name, value)| value.map(|value| (name, value)));
         located.chain(fixed).collect()
+    }
+
+    /// The session's environment, if D-Bus and systemd are to be told it:
+    /// the first time, and whenever it has changed since, as when the X
+    /// server has started or the pointer's theme is another. It is then
+    /// taken to have been told.
+    pub fn environment_to_tell(&mut self) -> Option<Vec<(&'static str, OsString)>> {
+        if std::mem::replace(&mut self.autostarted.environment.1, true) {
+            return None;
+        }
+        let now = self.session_environment();
+        let told = &mut self.autostarted.environment.0;
+        (told.as_ref() != Some(&now)).then(|| told.insert(now).clone())
     }
 
     /// Whether `surface` is the main surface of a window or panel that is
@@ -4065,6 +4091,8 @@ pub(crate) struct PointerImage {
     icon: CursorIcon,
     scale: Scale,
     theme: omorfos_config::Cursor,
+    /// The scheme omorfos's own pointer is drawn in.
+    scheme: Scheme,
     picture: Painted,
     /// Where in the picture the pointer's position is.
     hotspot: Point<f64, Logical>,
@@ -4074,33 +4102,45 @@ pub(crate) struct PointerImage {
 }
 
 impl PointerImage {
-    /// Finds the shape in the cursor theme at the size the scale calls
-    /// for. A shape no theme has is shown as the ordinary pointer, and if
-    /// there is not even that, as an arrow painted here.
+    /// Draws omorfos's own pointer in `scheme`, or finds the shape in the
+    /// cursor theme, at the size the scale calls for. A shape no theme has
+    /// is shown as the theme's ordinary pointer, and if there is not even
+    /// that, as omorfos's own.
     fn load(
         themes: &Themes,
-        theme: &omorfos_config::Cursor,
+        (theme, scheme): (&omorfos_config::Cursor, Scheme),
         icon: CursorIcon,
         scale: Scale,
         serial: u64,
     ) -> Self {
         let pixels = scale.pixels(theme.size.get().cast_signed()).unsigned_abs();
-        let found = [icon, CursorIcon::Default]
-            .into_iter()
-            .find_map(|icon| themes.load(&theme.theme, icon, pixels));
-        let image = found.unwrap_or_else(|| {
-            let canvas = paint::pointer(scale);
-            cursor::Image {
-                pixels: canvas.bytes().to_vec(),
-                size: (canvas.width(), canvas.height()),
-                hotspot: (0, 0),
-            }
+        let named = (!theme.is_own()).then(|| {
+            [icon, CursorIcon::Default]
+                .into_iter()
+                .find_map(|icon| themes.load(&theme.theme, icon, pixels))
         });
+        let image = named.flatten().or_else(|| {
+            // Every shape a program can name is one of omorfos's.
+            let shape = Shape::named(icon.name()).unwrap_or(Shape::Default);
+            let scheme = match scheme {
+                Scheme::Dark => omorfos_brand::Scheme::Dark,
+                Scheme::Light => omorfos_brand::Scheme::Light,
+            };
+            let drawn = omorfos_brand::pointer::pointer(shape, scheme, pixels);
+            drawn.map(|drawn| cursor::Image {
+                pixels: drawn.pixels,
+                size: (drawn.size, drawn.size),
+                hotspot: drawn.hotspot,
+            })
+        });
+        // Nothing, at a size of no pixels.
+        let image = image.unwrap_or_default();
         let hotspot = (f64::from(image.hotspot.0), f64::from(image.hotspot.1));
         Self {
             icon,
             scale,
             theme: theme.clone(),
+            scheme,
             picture: Painted::from_image(&image, scale),
             hotspot: Point::<f64, Physical>::from(hotspot).to_logical(scale.factor()),
             given: Given {
@@ -4318,6 +4358,9 @@ pub(crate) struct Autostarted {
     scoper: Option<PathBuf>,
     /// Where the journal takes what programs write, once known.
     journal: Option<PathBuf>,
+    /// The session's environment as D-Bus and systemd were last told it,
+    /// for the programs they start; and whether it is still as it was.
+    pub(crate) environment: (Option<Vec<(&'static str, OsString)>>, bool),
 }
 
 /// The program and arguments that start `program` with `arguments`: by

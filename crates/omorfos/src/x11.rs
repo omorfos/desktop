@@ -313,7 +313,7 @@ const TRYING_AGAIN: Duration = Duration::from_millis(50);
 struct Told {
     /// How many pixels they draw to a unit of layout.
     scale: f64,
-    /// Their pointer.
+    /// Their pointer, its theme named as it is installed.
     cursor: Cursor,
     /// The font to write in, as GTK writes one.
     font: String,
@@ -476,6 +476,8 @@ impl Compositor {
         // It is to know how many of its pixels there are to a unit of
         // layout before any program draws with it.
         self.x11.told = None;
+        // And programs others start, where it is.
+        self.autostarted.environment.1 = false;
         self.size_x11_pixels(self.x11_scale());
     }
 
@@ -508,7 +510,10 @@ impl Compositor {
         let config = self.config();
         let told = Told {
             scale,
-            cursor: config.general.cursor.clone(),
+            cursor: Cursor {
+                theme: config.general.cursor.theme_in(config.scheme).into_owned(),
+                ..config.general.cursor.clone()
+            },
             font: config.theme.font_name(),
             icons: config.general.icons.theme.clone(),
         };

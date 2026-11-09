@@ -1232,15 +1232,25 @@ the first than on the last.
       installed, `font-family` taking a list of families as CSS does;
       told to programs in the settings toolkits follow under X11 and
       through the settings portal; and recommended by the packages, with
-      JetBrains Mono and the Adwaita cursors.
+      JetBrains Mono.
 - [x] The icon theme: `icons.theme`, Adwaita unless another is named,
       used for the icons omorfos looks up, then the themes it inherits
       from, then `hicolor`, as the icon theme specification has it; and
       told to programs as the font is.
 - [ ] Programs told the monospaced font, JetBrains Mono, which the
       packages recommend but nothing names yet.
-- [ ] A pointer of our own, built in as shapes so that it is sharp at any
-      size and there when no cursor theme is installed.
+- [x] A pointer of our own, built in as shapes so that it is sharp at any
+      size and there when no cursor theme is installed: `cursor.theme:
+      omorfos`, the default, navy or cream as the scheme is, and
+      installed as the cursor themes `omorfos-dark` and `omorfos-light`
+      for programs that draw their own (ADR 66), which are told in
+      `XCURSOR_PATH` where to find them.
+- [ ] Known gaps in the pointer: the ring of waiting does not turn,
+      neither drawn by the compositor nor in the themes on disk, which
+      hold one picture of each shape; a program that read
+      `XCURSOR_THEME` or `Xcursor.theme` as it started keeps the scheme
+      it started in; and its shapes are to be looked at again on real
+      hardware, at 24 pixels and at a scale of 1.25, the hands most.
 - [ ] "About" shows `CREDITS.md`, and packages carry the licence texts
       it names.
 - [ ] Icons in menus: a glyph before each entry of the titlebar's menu

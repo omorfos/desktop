@@ -138,8 +138,8 @@
           "type": "integer"
         },
         "theme": {
-          "default": "default",
-          "description": "The name of an installed cursor theme, such as `Adwaita`. `default`\nis whichever the system has set up as its default.",
+          "default": "omorfos",
+          "description": "`omorfos`, for omorfos's own pointer, dark or light as the desktop\nis; or the name of an installed cursor theme, such as `Adwaita`.\n`default` is whichever the system has set up as its default.",
           "type": "string"
         }
       },

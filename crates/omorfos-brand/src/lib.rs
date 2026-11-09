@@ -15,10 +15,15 @@ use std::{fs, io};
 
 use resvg::{tiny_skia, usvg};
 
+pub mod pointer;
+
 /// The dark ground, and the inside of the mark on it.
 const NAVY: &str = "#0c1226";
 /// What is raised on the dark ground.
 const NAVY_2: &str = "#141c38";
+/// What is chosen or pressed on the dark ground, and the inside of the
+/// pointer on it: a navy that is seen to be one where it is small.
+const NAVY_3: &str = "#243364";
 /// The frame of the mark on dark grounds.
 const PAPER: &str = "#f3f5fb";
 /// The light ground, and the inside of the mark on it.
@@ -505,10 +510,16 @@ fn line(svg: &mut String, canvas: Canvas) {
 /// Draws `svg` at `width` by `height` pixels, stretched to them, and
 /// returns it as PNG; or nothing, if it cannot be read or has no size.
 #[must_use]
-pub fn draw(svg: &str, (width, height): (u32, u32)) -> Option<Vec<u8>> {
+pub fn draw(svg: &str, size: (u32, u32)) -> Option<Vec<u8>> {
+    render(svg, size).and_then(|canvas| canvas.encode_png().ok())
+}
+
+/// Draws `svg` at `width` by `height` pixels, stretched to them; or
+/// nothing, if it cannot be read or has no size.
+fn render(svg: &str, (width, height): (u32, u32)) -> Option<tiny_skia::Pixmap> {
     let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).ok();
     let canvas = tiny_skia::Pixmap::new(width, height);
-    tree.zip(canvas).and_then(|(tree, mut canvas)| {
+    tree.zip(canvas).map(|(tree, mut canvas)| {
         let drawing = tree.size();
         #[expect(
             clippy::cast_precision_loss,
@@ -518,7 +529,7 @@ pub fn draw(svg: &str, (width, height): (u32, u32)) -> Option<Vec<u8>> {
         let scale =
             tiny_skia::Transform::from_scale(across / drawing.width(), down / drawing.height());
         resvg::render(&tree, scale, &mut canvas.as_mut());
-        canvas.encode_png().ok()
+        canvas
     })
 }
 
@@ -533,6 +544,21 @@ pub enum Picture {
     Icon(u32),
     /// A wallpaper, dark or light, at this size.
     Wallpaper(Design, Scheme, (u32, u32)),
+    /// What says that the pointer, dark or light, is a cursor theme.
+    Pointers(Scheme),
+    /// A shape of the pointer, dark or light, as a cursor theme's file.
+    Pointer(pointer::Shape, Scheme),
+    /// An older name of a shape, as X11 knows it, in a cursor theme.
+    Older(&'static str, pointer::Shape, Scheme),
+}
+
+/// What is written for a picture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Contents {
+    /// A file, holding this.
+    File(Vec<u8>),
+    /// A link to the file of this name beside it.
+    Link(&'static str),
 }
 
 impl Picture {
@@ -548,19 +574,37 @@ impl Picture {
                 let (design, scheme) = (design.name(), scheme.name());
                 format!("backgrounds/omorfos/{design}-{scheme}.png").into()
             }
+            Self::Pointers(scheme) => {
+                format!("icons/{}/index.theme", pointer::theme(scheme)).into()
+            }
+            Self::Pointer(shape, scheme) => pointer_file(shape.name(), scheme),
+            Self::Older(name, _, scheme) => pointer_file(name, scheme),
         }
     }
 
-    /// What the file holds; or nothing, if it cannot be drawn.
+    /// What is written; or nothing, if it cannot be drawn.
     #[must_use]
-    pub fn contents(self) -> Option<Vec<u8>> {
+    pub fn contents(self) -> Option<Contents> {
         match self {
-            Self::Mark => Some(mark(Scheme::Dark).into_bytes()),
-            Self::Mono => Some(mono().into_bytes()),
-            Self::Icon(side) => draw(&icon(Scheme::Dark), (side, side)),
-            Self::Wallpaper(design, scheme, size) => draw(&wallpaper(design, scheme, size), size),
+            Self::Mark => Some(Contents::File(mark(Scheme::Dark).into_bytes())),
+            Self::Mono => Some(Contents::File(mono().into_bytes())),
+            Self::Icon(side) => draw(&icon(Scheme::Dark), (side, side)).map(Contents::File),
+            Self::Wallpaper(design, scheme, size) => {
+                draw(&wallpaper(design, scheme, size), size).map(Contents::File)
+            }
+            Self::Pointers(scheme) => Some(Contents::File(pointer::index(scheme).into_bytes())),
+            Self::Pointer(shape, scheme) => {
+                Some(Contents::File(pointer::theme_file(shape, scheme)))
+            }
+            Self::Older(_, shape, _) => Some(Contents::Link(shape.name())),
         }
     }
+}
+
+/// Where the file of the shape called `name` is in the cursor theme of
+/// `scheme`.
+fn pointer_file(name: &str, scheme: Scheme) -> PathBuf {
+    format!("icons/{}/cursors/{name}", pointer::theme(scheme)).into()
 }
 
 /// Every picture that is installed.
@@ -570,10 +614,20 @@ pub fn everything() -> Vec<Picture> {
     let wallpapers = DESIGNS.into_iter().flat_map(|design| {
         [Scheme::Dark, Scheme::Light].map(|scheme| Picture::Wallpaper(design, scheme, WALLPAPER))
     });
+    let pointers = [Scheme::Dark, Scheme::Light]
+        .into_iter()
+        .flat_map(|scheme| {
+            let shapes = pointer::Shape::ALL.map(|shape| Picture::Pointer(shape, scheme));
+            let older = pointer::OLDER.map(|(name, shape)| Picture::Older(name, shape, scheme));
+            std::iter::once(Picture::Pointers(scheme))
+                .chain(shapes)
+                .chain(older)
+        });
     [Picture::Mark, Picture::Mono]
         .into_iter()
         .chain(icons)
         .chain(wallpapers)
+        .chain(pointers)
         .collect()
 }
 
@@ -589,7 +643,10 @@ pub fn write(out: &Path, pictures: &[Picture]) -> io::Result<()> {
             .contents()
             .ok_or_else(|| io::Error::other(format!("{} could not be drawn", path.display())))?;
         let made = path.parent().map_or(Ok(()), fs::create_dir_all);
-        made.and_then(|()| fs::write(&path, contents))
+        made.and_then(|()| match contents {
+            Contents::File(bytes) => fs::write(&path, bytes),
+            Contents::Link(to) => std::os::unix::fs::symlink(to, &path),
+        })
     })
 }
 
@@ -782,7 +839,11 @@ mod tests {
     #[test]
     fn everything_is_installed_where_the_icon_theme_and_the_wallpaper_look() {
         let paths: Vec<PathBuf> = everything().into_iter().map(Picture::path).collect();
-        assert_eq!(paths.len(), 2 + ICONS.len() + 2 * DESIGNS.len());
+        let pointers = 1 + pointer::Shape::ALL.len() + pointer::OLDER.len();
+        assert_eq!(
+            paths.len(),
+            2 + ICONS.len() + 2 * DESIGNS.len() + 2 * pointers
+        );
         for path in [
             "icons/hicolor/scalable/apps/omorfos.svg",
             "icons/hicolor/symbolic/apps/omorfos-symbolic.svg",
@@ -794,6 +855,11 @@ mod tests {
             "backgrounds/omorfos/horizon-light.png",
             "backgrounds/omorfos/facets-dark.png",
             "backgrounds/omorfos/ground-light.png",
+            "icons/omorfos-dark/index.theme",
+            "icons/omorfos-light/index.theme",
+            "icons/omorfos-dark/cursors/default",
+            "icons/omorfos-light/cursors/nwse-resize",
+            "icons/omorfos-dark/cursors/left_ptr",
         ] {
             assert!(paths.contains(&PathBuf::from(path)), "{path}");
         }
@@ -834,6 +900,53 @@ mod tests {
         assert_eq!(pixel(&read(Picture::Icon(16)), (8, 8))[3], 255);
         let wallpaper = tiny_skia::Pixmap::decode_png(&read(pictures[3])).unwrap();
         assert_eq!((wallpaper.width(), wallpaper.height()), (96, 54));
+    }
+
+    #[test]
+    fn the_makefile_takes_away_both_themes_of_the_pointer() {
+        let makefile = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Makefile");
+        let makefile = fs::read_to_string(makefile).unwrap();
+        let listed = makefile
+            .lines()
+            .find_map(|line| line.strip_prefix("POINTERS = "));
+        let themes = [Scheme::Dark, Scheme::Light].map(pointer::theme);
+        assert_eq!(
+            listed.map(|listed| listed.split(' ').map(str::to_owned).collect::<Vec<_>>()),
+            Some(themes.to_vec())
+        );
+    }
+
+    #[test]
+    fn the_pointer_is_written_as_a_cursor_theme_with_its_older_names_as_links() {
+        let out = tempfile::TempDir::new().unwrap();
+        let (shape, scheme) = (pointer::Shape::Text, Scheme::Light);
+        let pictures = [
+            Picture::Pointers(scheme),
+            Picture::Pointer(shape, scheme),
+            Picture::Older("xterm", shape, scheme),
+        ];
+        write(out.path(), &pictures).unwrap();
+        let theme = out.path().join("icons/omorfos-light");
+        let index = fs::read_to_string(theme.join("index.theme")).unwrap();
+        assert!(
+            index.starts_with("[Icon Theme]\nName=omorfos light\n"),
+            "{index}"
+        );
+        let file = fs::read(theme.join("cursors/text")).unwrap();
+        assert_eq!(file, pointer::theme_file(shape, scheme));
+        let link = fs::read_link(theme.join("cursors/xterm")).unwrap();
+        assert_eq!(link, Path::new("text"));
+        // Written again where it already is, a link is not made twice.
+        assert!(write(out.path(), &pictures[2..]).is_err());
+    }
+
+    #[test]
+    fn every_older_name_is_one_shape_s_and_none_is_a_shape_s_own() {
+        let older = pointer::OLDER.map(|(name, _)| name);
+        for (at, name) in older.iter().enumerate() {
+            assert!(!older[at + 1..].contains(name), "{name} twice");
+            assert_eq!(pointer::Shape::named(name), None, "{name}");
+        }
     }
 
     #[test]

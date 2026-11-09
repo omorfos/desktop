@@ -36,6 +36,8 @@ PICTURES = $(BUILT)/share
 # The wallpapers it draws, each dark and light, as omorfos_brand::DESIGNS
 # has them.
 WALLPAPERS = prism spill horizon facets ground
+# The pointer it draws, as a cursor theme dark and another light.
+POINTERS = omorfos-dark omorfos-light
 
 .PHONY: all nightly build install uninstall
 
@@ -73,6 +75,8 @@ install:
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
 	install -Dm644 LICENSE-pictures "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
 	cd "$(PICTURES)" && find icons backgrounds -type f -exec install -Dm644 {} "$(DESTDIR)$(SHARE_DIR)/{}" \;
+	@# The older names of the pointer's shapes, which are links to them.
+	cd "$(PICTURES)" && find icons -type l -exec sh -c 'ln -sfn "$$(readlink "$$1")" "$$2/$$1"' link {} "$(DESTDIR)$(SHARE_DIR)" \;
 	@# The PAM services are the system's once installed, and an
 	@# administrator's changes to them are kept.
 	@for service in $(PAM_SERVICES); do \
@@ -93,6 +97,7 @@ uninstall:
 	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css" "$(DESTDIR)$(DOC_DIR)/LICENSE-pictures"
 	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg
 	rm -f $(foreach w,$(WALLPAPERS),"$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-dark.png" "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-light.png")
+	rm -rf $(foreach p,$(POINTERS),"$(DESTDIR)$(SHARE_DIR)/icons/$(p)")
 	@# Left if there is anything else in it, as a wallpaper someone put there.
 	-rmdir "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos" 2>/dev/null
 	@echo "The PAM services in $(DESTDIR)$(PAM_DIR) are left, as an administrator may have changed them: $(PAM_SERVICES)"

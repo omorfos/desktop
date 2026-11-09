@@ -16,7 +16,8 @@ use crate::common::{Client, Event, HEIGHT, LayerShape, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const BLACK: u32 = 0xff00_0000;
-const WHITE: u32 = 0xffff_ffff;
+/// Inside omorfos's own arrow, in the dark scheme.
+const NAVY: u32 = 0xff24_3364;
 const LEFT_BUTTON: u32 = 0x110;
 
 /// A session with a second output, 800 by 600, to the right of the first.
@@ -171,36 +172,36 @@ fn the_pointer_crosses_where_outputs_meet_and_stops_at_their_other_edges() {
         );
         session.step();
     };
-    // The painted arrow is white a little inside its tip.
-    let arrow_at = |session: &mut Session, screen, x, y| session.draw_on(screen).at(x + 1, y + 3);
+    // omorfos's own arrow is navy 4 right of its tip and 4 down.
+    let arrow_at = |session: &mut Session, screen, x, y| session.draw_on(screen).at(x + 4, y + 4);
 
     pointer_to(&mut session, WIDTH - 20, 100);
     by(&mut session, 50.0, 0.0);
-    assert_eq!(arrow_at(&mut session, 1, 30, 100), WHITE, "onto the second");
+    assert_eq!(arrow_at(&mut session, 1, 30, 100), NAVY, "onto the second");
     assert_eq!(session.draw_on(0).at(WIDTH - 19, 103), BACKGROUND);
 
     by(&mut session, 5000.0, 5000.0);
     assert_eq!(
-        arrow_at(&mut session, 1, 799 - 4, 599 - 4),
+        session.draw_on(1).at(799 - 4, 599 - 4),
         BACKGROUND,
         "the arrow hangs off the corner it stopped at"
     );
     by(&mut session, -10.0, -10.0);
-    assert_eq!(arrow_at(&mut session, 1, 789, 589), WHITE);
+    assert_eq!(arrow_at(&mut session, 1, 789, 589), NAVY);
 
     // The second output is taller. Below the first there is nothing, so
     // the pointer runs along the edge instead of leaving.
     by(&mut session, -5000.0, 0.0);
     assert_eq!(
         arrow_at(&mut session, 1, 0, 589),
-        WHITE,
+        NAVY,
         "stopped at the edge"
     );
     by(&mut session, 0.0, -200.0);
     by(&mut session, -30.0, 0.0);
     assert_eq!(
         arrow_at(&mut session, 0, WIDTH - 30, 389),
-        WHITE,
+        NAVY,
         "and across"
     );
 }
@@ -343,7 +344,7 @@ fn unplugging_an_output_moves_what_was_on_it_to_the_first() {
         },
         0,
     );
-    assert_eq!(session.draw().at(WIDTH - 11 + 1, 200 + 3), WHITE);
+    assert_eq!(session.draw().at(WIDTH - 11 + 4, 200 + 4), NAVY);
 
     // What is said about an output that has gone changes nothing.
     let compositor = session.compositor_mut();

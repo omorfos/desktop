@@ -7,7 +7,7 @@
 //! with the same suspicion as configuration: sizes are capped and a file
 //! that does not parse is simply not used.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -29,7 +29,7 @@ const MAX_THEMES: usize = 8;
 const FALLBACK: &str = "default";
 
 /// One shape of the pointer at one size.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Image {
     /// The pixels, row by row from the top: ARGB with premultiplied alpha,
     /// in the byte order renderers call `Argb8888`.
@@ -65,12 +65,30 @@ impl Themes {
                     .map(Path::new)
                     .into_iter()
                     .flat_map(|home| [home.join(".local/share/icons"), home.join(".icons")]);
-                let shared = ["/usr/local/share/icons", "/usr/share/icons"];
+                // Where libXcursor looks, and /usr/local, where omorfos's
+                // own are installed when it is built by hand.
+                let shared = [
+                    "/usr/local/share/icons",
+                    "/usr/share/icons",
+                    "/usr/share/pixmaps",
+                ];
                 own.chain(shared.map(PathBuf::from)).collect()
             },
             |path| std::env::split_paths(path).collect(),
         );
         Self { directories }
+    }
+
+    /// Where programs that read cursor themes themselves are to look for
+    /// them, as `XCURSOR_PATH` says: where these are looked for. Nothing if
+    /// that is nowhere, or a place whose name has a `:` in it, which the
+    /// list cannot say.
+    #[must_use]
+    pub fn search_path(&self) -> Option<OsString> {
+        let somewhere = !self.directories.is_empty();
+        somewhere
+            .then(|| std::env::join_paths(&self.directories).ok())
+            .flatten()
     }
 
     /// Finds the picture for `icon` in `theme`, or failing that in the
@@ -352,6 +370,21 @@ mod tests {
     }
 
     #[test]
+    fn programs_are_told_to_look_where_the_themes_are_looked_for() {
+        let themes = Themes::conventional(None, Some(OsStr::new("/home/user")));
+        assert_eq!(
+            themes.search_path(),
+            Some(OsString::from(
+                "/home/user/.local/share/icons:/home/user/.icons:/usr/local/share/icons:\
+                 /usr/share/icons:/usr/share/pixmaps"
+            ))
+        );
+        assert_eq!(Themes::default().search_path(), None, "nowhere, not told");
+        let odd = Themes::new(vec![PathBuf::from("/a:b")]);
+        assert_eq!(odd.search_path(), None, "nor what cannot be said");
+    }
+
+    #[test]
     fn themes_are_looked_for_in_the_conventional_places() {
         let home = OsStr::new("/home/user");
         assert_eq!(
@@ -361,12 +394,18 @@ mod tests {
                 "/home/user/.icons",
                 "/usr/local/share/icons",
                 "/usr/share/icons",
+                "/usr/share/pixmaps",
             ]
             .map(PathBuf::from)
         );
         assert_eq!(
             Themes::conventional(Some(OsStr::new("")), None).directories,
-            ["/usr/local/share/icons", "/usr/share/icons"].map(PathBuf::from),
+            [
+                "/usr/local/share/icons",
+                "/usr/share/icons",
+                "/usr/share/pixmaps"
+            ]
+            .map(PathBuf::from),
             "an empty list is no list, and without a home there is only the system"
         );
         assert_eq!(

@@ -71,7 +71,7 @@ lock:                     # how omorfos-lock may be unlocked besides the passwor
   key: true               # a security key, through omorfos-lock-key
   power: true             # Sleep, Restart, Shut Down and Log Out without unlocking
 cursor:
-  theme: default          # a cursor theme by name
+  theme: omorfos          # omorfos's own, or a cursor theme by name
   size: 24                # 8 to 128
 icons:
   theme: Adwaita          # an icon theme by name
@@ -146,20 +146,29 @@ graphical session, so that it is stopped when you log out, as a program
 that does not show windows is otherwise not: one left over would still be
 running at your next login, and some refuse to start twice.
 
-`cursor.theme` names a cursor theme installed in `~/.local/share/icons`,
-`~/.icons` or `/usr/share/icons` (or the directories in `XCURSOR_PATH`).
-Shapes the theme lacks come from the themes it inherits from and then from
-`default`. If no theme has a shape, omorfos draws a plain arrow of its own.
-It is the name of the theme's directory, with no `/` in it and no `.` to
-begin it. The theme and `cursor.size` are told to every program, so that
+`cursor.theme` is `omorfos` for omorfos's own pointer, navy rimmed with
+cream in the dark scheme and cream rimmed with navy in the light one. The
+compositor draws it as shapes, sharp at any size and scale, and programs
+are told it as the cursor theme `omorfos-dark` or `omorfos-light`, which
+come with omorfos, as the scheme is. Or it names a cursor theme installed
+in `~/.local/share/icons`, `~/.icons` or `/usr/share/icons` (or the
+directories in `XCURSOR_PATH`), `default` being the one the system has
+set up. Shapes the theme lacks come from the themes it inherits from and
+then from `default`; failing those, the pointer is the theme's ordinary
+arrow, and failing that, omorfos's own. It is the name of the
+theme's directory, with no `/` in it and no `.` to begin it. The theme
+and `cursor.size` are told to every program, so that
 the pointer is as large over each as it is over the desktop: in
-`XCURSOR_THEME` and `XCURSOR_SIZE`; to programs written for X11 in the
+`XCURSOR_THEME` and `XCURSOR_SIZE`, with where to find themes in
+`XCURSOR_PATH`, the places above, so that a program finds those
+installed in `/usr/local` too; to programs written for X11 in the
 settings their toolkits follow and in the X server's resources
 (`Xcursor.theme`, `Xcursor.size`), as many of the X server's pixels as
 it takes; and through the settings portal, as `cursor-theme` and
 `cursor-size`, which GTK reads in a sandbox. A change is told as soon as
-`config.yaml` is saved, though a program that read it once as it started
-keeps what it read.
+`config.yaml` is saved, or with `scheme: auto` as the scheme changes, to
+D-Bus and systemd too for the programs they start, though a program that
+read it once as it started keeps what it read.
 
 `icons.theme` names the icon theme the icons programs name are looked up
 in, for windows, the launcher and notifications: in it, then in the

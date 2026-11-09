@@ -286,16 +286,18 @@ else's is built in before it is in that file.
 
 The cursor theme and size are settings (`cursor.theme`, `cursor.size`),
 24 by default and the same over every program, including those written
-for X11. Packages recommend the Adwaita cursors, which are drawn at every
-size needed.
+for X11.
 
-omorfos is to have a pointer of its own in time (stage 4), built in and
-used when no theme is named. It would be drawn as shapes and not as
-pictures, so that it is sharp at any size and any scale, which pictures
-at a few fixed sizes are not, and so that a session with no cursor theme
-installed still has every pointer. It is some thirty shapes with their
-hot spots, and one that turns: work for the look, not a risk. Until then
-the user's theme is used as now.
+The pointer is omorfos's own unless another theme is named: the 36
+shapes a program can ask for, drawn as shapes and not as pictures, so
+that it is sharp at any size and any scale, and there when no cursor
+theme is installed. It is navy rimmed with cream in the dark scheme, a
+navy lighter than the ground's so that it is seen to be navy, and cream
+rimmed with navy in the light one, so that it shows on any ground,
+and changes with the scheme; the quarter of the ring of waiting is
+orange. [BRAND.md](BRAND.md) says how it is drawn, and
+[ADR 66](adr/0066-a-pointer-of-our-own.md) how programs that draw their
+own are given it. The ring does not turn yet.
 
 ## Settings for those who need them
 
