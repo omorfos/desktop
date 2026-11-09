@@ -134,6 +134,22 @@ fn unlock(session: &mut Session, lock: &mut Lock) {
 }
 
 /// How much of the first screen is not the desktop's colour.
+/// The rows something is drawn in, as bands of rows next to each other,
+/// from the top: each from its first row to the one after its last.
+fn bands(session: &mut Session) -> Vec<(i32, i32)> {
+    let picture = session.draw();
+    let inked = |y: i32| (0..WIDTH).any(|x| picture.at(x, y) != BACKGROUND);
+    let rows: Vec<i32> = (0..HEIGHT).filter(|y| inked(*y)).collect();
+    let mut bands: Vec<(i32, i32)> = Vec::new();
+    for y in rows {
+        match bands.last_mut() {
+            Some(band) if band.1 == y => band.1 = y + 1,
+            _ => bands.push((y, y + 1)),
+        }
+    }
+    bands
+}
+
 fn drawn(session: &mut Session) -> usize {
     let picture = session.draw();
     let places = (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| (x, y)));
@@ -416,7 +432,9 @@ fn only_the_time_is_shown_until_a_key_or_a_button_is_pressed_and_again_after_a_w
     });
     settle(&mut session, &mut lock);
     assert!(drawn(&mut session) > 0, "the time");
-    for y in [FACE_ROW, NAME_ROW, FIELD_ROW] {
+    // In one band, as tall as the time is in whatever font it is in.
+    assert_eq!(bands(&mut session).len(), 1, "nothing but the time");
+    for y in [NAME_ROW, FIELD_ROW] {
         assert!(!inked(&mut session, y), "nothing else, at {y}");
     }
     // The key that shows the rest types nothing.
