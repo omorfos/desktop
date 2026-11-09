@@ -1197,6 +1197,44 @@ fn on_a_dense_screen_a_program_written_for_x11_draws_with_as_many_pixels_as_it_h
     }
 }
 
+/// What programs written for X11 are told on a screen of two pixels to a
+/// unit, with the pointer as it is by default.
+const POINTER_AT_TWO: &str = "Xft.dpi:\t192\nXcursor.size:\t48\nXcursor.theme:\tdefault\n";
+
+#[test]
+fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it_was() {
+    let (mut session, program) = session_with(NATIVE);
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let mut told = String::new();
+    for _ in 0..5000 {
+        told = resources(&mut session, &program);
+        if !told.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(told, POINTER_AT_TWO);
+
+    let larger = format!("{NATIVE}cursor: {{ theme: Adwaita, size: 32 }}\n");
+    session.write_config("config.yaml", &larger);
+    session.compositor_mut().reload_config();
+    session.step();
+    for _ in 0..5000 {
+        told = resources(&mut session, &program);
+        if told.contains("Adwaita") {
+            break;
+        }
+    }
+    assert_eq!(
+        told,
+        "Xft.dpi:\t192\nXcursor.size:\t64\nXcursor.theme:\tAdwaita\n"
+    );
+    let followed = settings(&mut session, &program);
+    assert!(
+        has(&followed, b"Adwaita"),
+        "the theme's name, in the settings"
+    );
+}
+
 #[test]
 fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_changes() {
     let (mut session, program) = session_with(NATIVE);
@@ -1210,7 +1248,8 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
             break;
         }
     }
-    assert_eq!(told, "Xft.dpi:\t192\n");
+    // And the pointer, as large in their pixels as it is everywhere else.
+    assert_eq!(told, POINTER_AT_TWO);
     // Toolkits follow it as it changes.
     let followed = settings(&mut session, &program);
     let names = [
@@ -1218,6 +1257,7 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
         "Gdk/WindowScalingFactor",
         "Gdk/UnscaledDPI",
         "Gtk/CursorThemeSize",
+        "Gtk/CursorThemeName",
     ];
     for name in names {
         assert!(has(&followed, name.as_bytes()), "{name}");
@@ -1249,7 +1289,8 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
             break;
         }
     }
-    assert_eq!(told, "Other.thing:\t1\nXft.dpi:\t96\n");
+    let pointer = "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tdefault\n";
+    assert_eq!(told, format!("Other.thing:\t1\n{pointer}"));
     assert_eq!(size_of(&mut session, &program, window), (100, 50));
     session.roundtrip(&mut other);
 }
@@ -1268,7 +1309,11 @@ fn programs_written_for_x11_are_stretched_to_size_unless_asked_to_draw_for_the_s
     for _ in 0..50 {
         session.step();
     }
-    assert_eq!(resources(&mut session, &program), "Xft.dpi:\t96\n");
+    let told = resources(&mut session, &program);
+    assert_eq!(
+        told,
+        "Xft.dpi:\t96\nXcursor.size:\t24\nXcursor.theme:\tdefault\n"
+    );
 }
 
 #[test]

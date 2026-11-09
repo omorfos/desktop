@@ -28,7 +28,9 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
 
 pub use appearance::Appearance;
-pub use bus::{Asked, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS};
+pub use bus::{
+    Asked, INTERFACE, LOOKS, Look, NAME, PATH, Portal, REQUEST, Response, SCREENSHOT, SETTINGS,
+};
 use card::Card;
 pub use feed::{Feed, Seen};
 pub use inhibit::{INHIBIT, Keep, SCREENSAVER};
@@ -47,7 +49,9 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 
 /// How the desktop whose configuration is in a folder looks.
 fn look(config: &Path) -> Appearance {
-    Appearance::of(&Store::open(config).current().theme)
+    let store = Store::open(config);
+    let config = store.current();
+    Appearance::of(&config.theme, &config.general.cursor)
 }
 
 /// Answers the portals for the session the environment describes, until
@@ -917,7 +921,7 @@ fn serve(
             backend.desk.reread();
         }
         let now = look(config);
-        portal.changed(last, now);
+        portal.changed(&last, &now);
         last = now;
     }
 }

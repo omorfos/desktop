@@ -40,6 +40,9 @@ pub const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
 
 /// The group of settings that say how the desktop looks.
 pub const LOOKS: &str = "org.freedesktop.appearance";
+/// The settings of GNOME's that toolkits read through the portal when they
+/// are in a sandbox, of which the pointer's are given.
+pub const INTERFACE: &str = "org.gnome.desktop.interface";
 
 /// The interface a picture of the screen is asked for by.
 pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
@@ -378,12 +381,12 @@ impl Portal {
     /// Tells applications what of the desktop's look has changed, if
     /// anything has. If the bus has gone they cannot be told, which shows
     /// by what this is becoming readable.
-    pub fn changed(&self, from: Appearance, to: Appearance) {
+    pub fn changed(&self, from: &Appearance, to: &Appearance) {
         let was = settings(from).into_iter();
-        for ((key, now), (_, before)) in settings(to).into_iter().zip(was) {
+        for ((group, key, now), (_, _, before)) in settings(to).into_iter().zip(was) {
             if now != before {
                 let nobody = None::<&str>;
-                let body = (LOOKS, key, now);
+                let body = (group, key, now);
                 let _ =
                     self.connection
                         .emit_signal(nobody, PATH, SETTINGS, "SettingChanged", &body);
@@ -455,28 +458,33 @@ fn lost(message: &Message) -> bool {
         .is_ok_and(|name| name == NAME)
 }
 
-/// How the desktop looks, as the settings applications read: whether it
-/// is dark, the colour that picks things out, and whether contrast is to
-/// be higher than usual, which it is not.
-fn settings(look: Appearance) -> [(&'static str, Value<'static>); 3] {
+/// How the desktop looks, as the settings applications read, each in its
+/// group: whether it is dark, the colour that picks things out, and
+/// whether contrast is to be higher than usual, which it is not; and the
+/// pointer's theme and size.
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 5] {
     let (red, green, blue) = look.accent;
+    let (theme, size) = look.pointer.clone();
     [
-        ("color-scheme", Value::U32(look.scheme())),
+        (LOOKS, "color-scheme", Value::U32(look.scheme())),
         (
+            LOOKS,
             "accent-color",
             Value::Structure(Structure::from((red, green, blue))),
         ),
-        ("contrast", Value::U32(0)),
+        (LOOKS, "contrast", Value::U32(0)),
+        (INTERFACE, "cursor-size", Value::I32(size)),
+        (INTERFACE, "cursor-theme", Value::from(theme)),
     ]
 }
 
-/// Whether a list of groups of settings asks for how the desktop looks:
-/// one of them is that group, or stands for it by ending in `*`, or the
-/// list is empty, which asks for everything.
-fn asked(groups: &[String]) -> bool {
+/// Whether a list of groups of settings asks for `ours`: one of them is
+/// it, or stands for it by ending in `*`, or the list is empty, which asks
+/// for everything.
+fn asked(groups: &[String], ours: &str) -> bool {
     let stands = |group: &String| {
         let start = group.strip_suffix('*');
-        group == LOOKS || start.is_some_and(|start| LOOKS.starts_with(start))
+        group == ours || start.is_some_and(|start| ours.starts_with(start))
     };
     groups.is_empty() || groups.iter().any(stands)
 }
@@ -529,17 +537,21 @@ fn answer(
     let sent = match called {
         (SETTINGS, Some("ReadAll")) => match body.deserialize::<Vec<String>>() {
             Ok(groups) => {
-                let looks = asked(&groups).then(|| (LOOKS, HashMap::from(settings(look()))));
-                let all: HashMap<&str, HashMap<&str, Value<'_>>> = looks.into_iter().collect();
+                let wanted = settings(&look()).into_iter();
+                let wanted = wanted.filter(|(group, _, _)| asked(&groups, group));
+                let mut all: HashMap<&str, HashMap<&str, Value<'_>>> = HashMap::new();
+                for (group, key, value) in wanted {
+                    all.entry(group).or_default().insert(key, value);
+                }
                 connection.reply(&header, &all)
             }
             Err(_) => malformed(),
         },
         (SETTINGS, Some("Read")) => match body.deserialize::<(String, String)>() {
             Ok((group, key)) => {
-                let mut settings = settings(look()).into_iter();
-                let setting = settings.find(|(name, _)| group == LOOKS && *name == key);
-                if let Some((_, value)) = setting {
+                let mut settings = settings(&look()).into_iter();
+                let setting = settings.find(|(of, name, _)| *of == group && *name == key);
+                if let Some((_, _, value)) = setting {
                     connection.reply(&header, &value)
                 } else {
                     let name = "org.freedesktop.portal.Error.NotFound";
@@ -734,34 +746,41 @@ pub(crate) mod tests {
         MessageIterator::from(peer)
     }
 
-    /// The next setting the service says has changed, and what to.
-    pub(crate) fn next_change(heard: &mut MessageIterator) -> (String, OwnedValue) {
+    /// The next setting the service says has changed, its group, and what
+    /// to.
+    pub(crate) fn next_change(heard: &mut MessageIterator) -> (String, String, OwnedValue) {
         let signals = heard.map_while(Result::ok);
         let mut changes = signals.filter(|message| {
             let member = message.header().member().map(ToString::to_string);
             member.as_deref() == Some("SettingChanged")
         });
         let change = changes.next().unwrap();
-        let (group, key, value): (String, String, OwnedValue) =
-            change.body().deserialize().unwrap();
-        assert_eq!(group, LOOKS);
-        (key, value)
+        change.body().deserialize().unwrap()
     }
 
-    const DARK: Appearance = Appearance {
-        dark: true,
-        accent: (0.25, 0.5, 1.0),
-    };
+    /// A dark desktop, its pointer as it is by default.
+    pub(crate) fn dark() -> Appearance {
+        Appearance {
+            dark: true,
+            accent: (0.25, 0.5, 1.0),
+            pointer: ("default".to_owned(), 24),
+        }
+    }
 
     /// The service on a bus, saying the desktop looks as given.
     fn service(daemon: &Daemon, look: Appearance) -> Portal {
-        Portal::open(Some(&daemon.address), Box::new(move || look), keeper().0).unwrap()
+        Portal::open(
+            Some(&daemon.address),
+            Box::new(move || look.clone()),
+            keeper().0,
+        )
+        .unwrap()
     }
 
     #[test]
     fn an_application_is_told_how_the_desktop_looks() {
         let daemon = Daemon::start();
-        let _portal = service(&daemon, DARK);
+        let _portal = service(&daemon, dark());
         let peer = daemon.peer();
 
         let told = read_all(&peer, &[LOOKS]);
@@ -770,6 +789,30 @@ pub(crate) mod tests {
         let accent: (f64, f64, f64) = accent.try_clone().unwrap().try_into().unwrap();
         assert_eq!(accent, (0.25, 0.5, 1.0));
         assert_eq!(told[LOOKS]["contrast"].downcast_ref::<u32>().unwrap(), 0);
+        // And the pointer, for toolkits that draw it themselves, as GTK
+        // does in a sandbox.
+        let told = read_all(&peer, &[INTERFACE]);
+        assert_eq!(
+            told[INTERFACE]["cursor-size"]
+                .downcast_ref::<i32>()
+                .unwrap(),
+            24
+        );
+        let theme: String = told[INTERFACE]["cursor-theme"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(theme, "default");
+        let reply = peer.call_method(
+            Some(NAME),
+            PATH,
+            Some(SETTINGS),
+            "Read",
+            &(INTERFACE, "cursor-size"),
+        );
+        let value: OwnedValue = reply.unwrap().body().deserialize().unwrap();
+        assert_eq!(value.downcast_ref::<i32>().unwrap(), 24);
 
         // One setting by itself is the same.
         let reply = peer
@@ -788,24 +831,23 @@ pub(crate) mod tests {
     #[test]
     fn what_is_asked_for_by_group_is_what_is_given() {
         let daemon = Daemon::start();
-        let _portal = service(&daemon, DARK);
+        let _portal = service(&daemon, dark());
         let peer = daemon.peer();
         // Nothing named asks for everything, and a group can be named
         // by how it begins.
         assert!(read_all(&peer, &[]).contains_key(LOOKS));
         assert!(read_all(&peer, &["org.freedesktop.*"]).contains_key(LOOKS));
-        assert!(read_all(&peer, &["org.gnome.desktop.interface", LOOKS]).contains_key(LOOKS));
-        assert_eq!(read_all(&peer, &["org.gnome.*"]), Told::new());
-        assert_eq!(
-            read_all(&peer, &["org.gnome.desktop.interface"]),
-            Told::new()
-        );
+        let both = read_all(&peer, &[INTERFACE, LOOKS]);
+        assert!(both.contains_key(LOOKS) && both.contains_key(INTERFACE));
+        let gnome = read_all(&peer, &["org.gnome.*"]);
+        assert_eq!(gnome.keys().collect::<Vec<_>>(), [INTERFACE]);
+        assert_eq!(read_all(&peer, &["org.kde.*"]), Told::new());
     }
 
     #[test]
     fn what_does_not_exist_or_is_asked_wrongly_is_answered_with_an_error() {
         let daemon = Daemon::start();
-        let _portal = service(&daemon, DARK);
+        let _portal = service(&daemon, dark());
         let peer = daemon.peer();
         let named = |result: zbus::Result<Message>| result.unwrap_err().to_string();
         let settings = Some(SETTINGS);
@@ -838,7 +880,7 @@ pub(crate) mod tests {
     #[test]
     fn it_says_which_version_it_speaks_and_how_it_is_used() {
         let daemon = Daemon::start();
-        let _portal = service(&daemon, DARK);
+        let _portal = service(&daemon, dark());
         let peer = daemon.peer();
         let properties = Some("org.freedesktop.DBus.Properties");
         let reply = peer
@@ -873,7 +915,7 @@ pub(crate) mod tests {
     #[test]
     fn the_version_of_each_interface_is_its_own() {
         let daemon = Daemon::start();
-        let _portal = service(&daemon, DARK);
+        let _portal = service(&daemon, dark());
         let peer = daemon.peer();
         let properties = Some("org.freedesktop.DBus.Properties");
         let get = |interface: &str| {
@@ -944,7 +986,7 @@ pub(crate) mod tests {
     #[test]
     fn a_colour_asked_for_waits_on_the_user_and_is_answered_with_it() {
         let daemon = Daemon::start();
-        let portal = service(&daemon, DARK);
+        let portal = service(&daemon, dark());
         let peer = daemon.peer();
         let request = "/org/freedesktop/portal/desktop/request/1/colour";
         let asking = ask_for(&peer, request, "PickColor");
@@ -960,7 +1002,7 @@ pub(crate) mod tests {
     #[test]
     fn a_picture_asked_for_waits_on_the_user_and_is_answered_when_they_have() {
         let daemon = Daemon::start();
-        let portal = service(&daemon, DARK);
+        let portal = service(&daemon, dark());
         let peer = daemon.peer();
         let asking = ask_for_picture(&peer, "/org/freedesktop/portal/desktop/request/1/a");
 
@@ -996,7 +1038,7 @@ pub(crate) mod tests {
     #[test]
     fn the_portal_can_say_it_no_longer_wants_what_it_asked_for() {
         let daemon = Daemon::start();
-        let portal = service(&daemon, DARK);
+        let portal = service(&daemon, dark());
         let peer = daemon.peer();
         let request = "/org/freedesktop/portal/desktop/request/1/c";
         peer.call_method(Some(NAME), request, Some(REQUEST), "Close", &())
@@ -1024,7 +1066,7 @@ pub(crate) mod tests {
     #[test]
     fn a_screen_to_share_is_asked_about_and_its_session_ended() {
         let daemon = Daemon::start();
-        let portal = service(&daemon, DARK);
+        let portal = service(&daemon, dark());
         let peer = daemon.peer();
         let none: HashMap<&str, Value<'_>> = HashMap::new();
         let request = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/1/s").unwrap();
@@ -1062,32 +1104,46 @@ pub(crate) mod tests {
     #[test]
     fn applications_are_told_what_has_changed_and_nothing_that_has_not() {
         let daemon = Daemon::start();
-        let portal = service(&daemon, DARK);
+        let portal = service(&daemon, dark());
         let peer = daemon.peer();
         let mut heard = listen_for_changes(&peer);
 
         let light = Appearance {
             dark: false,
-            ..DARK
+            ..dark()
         };
         // Nothing changed, nothing said; then light, which is all that is.
-        portal.changed(DARK, DARK);
-        portal.changed(DARK, light);
-        let (key, value) = next_change(&mut heard);
+        portal.changed(&dark(), &dark());
+        portal.changed(&dark(), &light);
+        let (group, key, value) = next_change(&mut heard);
         assert_eq!(
-            (key.as_str(), value.downcast_ref::<u32>().unwrap()),
-            ("color-scheme", 2)
+            (
+                group.as_str(),
+                key.as_str(),
+                value.downcast_ref::<u32>().unwrap()
+            ),
+            (LOOKS, "color-scheme", 2)
         );
 
         let red = Appearance {
             accent: (1.0, 0.0, 0.0),
-            ..light
+            ..light.clone()
         };
-        portal.changed(light, red);
-        let (key, value) = next_change(&mut heard);
+        portal.changed(&light, &red);
+        let (_, key, value) = next_change(&mut heard);
         assert_eq!(key, "accent-color");
         let accent: (f64, f64, f64) = value.try_into().unwrap();
         assert_eq!(accent, (1.0, 0.0, 0.0));
+
+        // A larger pointer is said in the group toolkits read it from.
+        let larger = Appearance {
+            pointer: ("default".to_owned(), 32),
+            ..red.clone()
+        };
+        portal.changed(&red, &larger);
+        let (group, key, value) = next_change(&mut heard);
+        assert_eq!((group.as_str(), key.as_str()), (INTERFACE, "cursor-size"));
+        assert_eq!(value.downcast_ref::<i32>().unwrap(), 32);
     }
 
     #[test]
@@ -1095,10 +1151,10 @@ pub(crate) mod tests {
         use rustix::event::{PollFd, PollFlags, poll};
 
         let daemon = Daemon::start();
-        let first = service(&daemon, DARK);
+        let first = service(&daemon, dark());
         let light = Appearance {
             dark: false,
-            ..DARK
+            ..dark()
         };
         let _second = service(&daemon, light);
         // The first has stopped answering, which shows as it does when
@@ -1113,18 +1169,14 @@ pub(crate) mod tests {
         holder
             .request_name_with_flags(NAME, RequestNameFlags::DoNotQueue.into())
             .unwrap();
-        let refused = Portal::open(Some(&other.address), Box::new(|| DARK), keeper().0);
+        let refused = Portal::open(Some(&other.address), Box::new(dark), keeper().0);
         let said = refused.unwrap_err().to_string();
         assert!(said.contains("will not give it up"), "{said}");
     }
 
     #[test]
     fn a_bus_that_is_not_there_cannot_be_joined() {
-        let nowhere = Portal::open(
-            Some("unix:path=/nowhere/bus"),
-            Box::new(|| DARK),
-            keeper().0,
-        );
+        let nowhere = Portal::open(Some("unix:path=/nowhere/bus"), Box::new(dark), keeper().0);
         assert!(nowhere.is_err());
     }
 }

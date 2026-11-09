@@ -15,7 +15,7 @@ use std::os::fd::OwnedFd;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use omorfos_config::X11Scaling;
+use omorfos_config::{Cursor, X11Scaling};
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Desktop, WindowId};
 use smithay::backend::input::KeyState;
@@ -268,13 +268,14 @@ fn rounded(value: f64) -> i32 {
     rounded
 }
 
-/// Leaves how many dots there are to an inch, `Xft.dpi`, among the
-/// resources the X server at `display` keeps for programs to read, in
-/// place of what was there for it and beside whatever else is.
+/// Leaves `resources`, how many dots there are to an inch (`Xft.dpi`) and
+/// the pointer's size and theme (`Xcursor.size`, `Xcursor.theme`), among
+/// the resources the X server at `display` keeps for programs to read, in
+/// place of what was there for them and beside whatever else is.
 ///
 /// Nothing depends on this having worked: a program that is not told
 /// draws small.
-fn set_density(display: &str, density: i32) {
+fn set_resources(display: &str, resources: &[(&str, String); 3]) {
     let (kind, text) = (AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING);
     let connected = RustConnection::connect(Some(display)).ok();
     let _ = connected.and_then(|(server, screen)| {
@@ -284,9 +285,15 @@ fn set_density(display: &str, density: i32) {
             let had = had.ok().and_then(|had| had.reply().ok());
             let had = had.map(|had| String::from_utf8_lossy(&had.value).into_owned());
             let had = had.unwrap_or_default();
-            let ours = format!("Xft.dpi:\t{density}");
-            let others = had.lines().filter(|line| !line.starts_with("Xft.dpi"));
-            let lines: Vec<&str> = others.chain([ours.as_str()]).collect();
+            let ours = resources
+                .each_ref()
+                .map(|(name, value)| format!("{name}:\t{value}"));
+            let theirs = |line: &&str| {
+                let name = line.split(':').next().unwrap_or_default();
+                resources.iter().all(|(ours, _)| name != *ours)
+            };
+            let others = had.lines().filter(theirs);
+            let lines: Vec<&str> = others.chain(ours.iter().map(String::as_str)).collect();
             let resources = format!("{}\n", lines.join("\n"));
             let set =
                 server.change_property8(PropMode::REPLACE, root, kind, text, resources.as_bytes());
@@ -309,9 +316,9 @@ pub(crate) struct X11 {
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
-    /// How dense programs written for X11 have been told the screen is,
-    /// once the X server could be told.
-    told: Option<f64>,
+    /// How dense programs written for X11 have been told the screen is, and
+    /// what their pointer is, once the X server could be told.
+    told: Option<(f64, Cursor)>,
     /// An X server that has stopped and is to be replaced, once its window
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
@@ -478,16 +485,19 @@ impl Compositor {
         let _ = known.map(|known| known.compositor_state.set_client_scale(scale));
     }
 
-    /// Tells programs written for X11 how dense the screen is, when the X
-    /// server is first there to tell and whenever it changes. They are
-    /// told in the two places such programs look: the settings toolkits
-    /// follow as they change, and the resources older programs read once.
+    /// Tells programs written for X11 how dense the screen is, and what
+    /// their pointer is, when the X server is first there to tell and
+    /// whenever either changes. They are told in the two places such
+    /// programs look: the settings toolkits follow as they change, and the
+    /// resources older programs read once.
     fn scale_x11(&mut self) {
         let scale = self.x11_scale();
-        if self.x11.wm.is_none() || self.x11.told == Some(scale) {
+        let cursor = self.config().general.cursor.clone();
+        let told = Some((scale, cursor.clone()));
+        if self.x11.wm.is_none() || self.x11.told == told {
             return;
         }
-        self.x11.told = Some(scale);
+        self.x11.told = told;
         self.size_x11_pixels(scale);
         // Windows that are there already are as large as they were, which
         // is now a different number of the X server's pixels.
@@ -500,7 +510,7 @@ impl Compositor {
         // by the rest.
         let whole = scale.floor().max(1.0);
         let dots = 96.0 * 1024.0;
-        let pointer = f64::from(self.config().general.cursor.size.get());
+        let pointer = f64::from(cursor.size.get());
         let settings = [
             ("Xft/DPI", dots * scale),
             ("Gdk/UnscaledDPI", dots * scale / whole),
@@ -510,20 +520,30 @@ impl Compositor {
             ("Gtk/CursorThemeSize", pointer * scale),
         ];
         let settings = settings.map(|(name, value)| (name.to_owned(), Value::from(rounded(value))));
+        let named = (
+            "Gtk/CursorThemeName".to_owned(),
+            Value::from(cursor.theme.clone()),
+        );
+        let settings = settings.into_iter().chain([named]);
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {
-            let _ = manager.set_xsettings(settings.into_iter());
+            let _ = manager.set_xsettings(settings);
             sent(manager);
         });
-        let density = rounded(96.0 * scale);
+        let resources = [
+            ("Xft.dpi", rounded(96.0 * scale).to_string()),
+            ("Xcursor.size", rounded(pointer * scale).to_string()),
+            ("Xcursor.theme", cursor.theme),
+        ];
         let display = self
             .x11
             .display()
             .and_then(|display| display.into_string().ok());
         // Asked of the X server from a thread of its own: it may not
         // answer until it has had an answer from here.
-        let _ = display.map(|display| std::thread::spawn(move || set_density(&display, density)));
+        let _ =
+            display.map(|display| std::thread::spawn(move || set_resources(&display, &resources)));
     }
 
     /// What a step that can fail came to, the failure being told to the

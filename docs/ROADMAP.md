@@ -1222,8 +1222,15 @@ the first than on the last.
 - [ ] Day turning to night as a transition: at sunrise and sunset every
       part changes colour over a minute or so rather than at once, and
       programs that follow the desktop are told as it begins.
-- [ ] The default font and icons, and a pointer that is the same size
-      everywhere, including over programs written for X11.
+- [x] A pointer that is the same size everywhere, including over
+      programs written for X11: its theme and size in the X server's
+      resources as well as in the settings toolkits follow, told again
+      when the cursor changes and not only the scale; and through the
+      settings portal's `org.gnome.desktop.interface`, for GTK in a
+      sandbox. A cursor theme is a directory's name.
+- [ ] The default font and icons: Inter in the built-in theme, told to
+      programs with the icon theme, and recommended by the packages
+      with JetBrains Mono.
 - [ ] A pointer of our own, built in as shapes so that it is sharp at any
       size and there when no cursor theme is installed.
 - [ ] "About" shows `CREDITS.md`, and packages carry the licence texts

@@ -219,17 +219,13 @@ mod tests {
     use zbus::zvariant::{ObjectPath, OwnedValue};
 
     use super::*;
-    use crate::bus::tests::{Daemon, keeper};
-    use crate::{Appearance, NAME, PATH, Portal};
+    use crate::bus::tests::{Daemon, dark, keeper};
+    use crate::{NAME, PATH, Portal};
 
     /// The service on a bus of its own, and what it tells of what is held.
     fn service(daemon: &Daemon) -> (Portal, Receiver<(bool, bool)>) {
         let (keep, told) = keeper();
-        let look = Appearance {
-            dark: true,
-            accent: (0.0, 0.0, 0.0),
-        };
-        let portal = Portal::open(Some(&daemon.address), Box::new(move || look), keep);
+        let portal = Portal::open(Some(&daemon.address), Box::new(dark), keep);
         (portal.unwrap(), told)
     }
 
