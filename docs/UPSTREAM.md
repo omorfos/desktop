@@ -89,6 +89,29 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'randr\|primary' "$S"/src/xwayland/xwm/mod.rs` for
   a request that does not wait for its answer.
 
+### The X11 window manager keeps its event loop, and with it the X server
+
+- **Wrong:** `X11Wm::start_wm` (`src/xwayland/xwm/mod.rs`) puts in the
+  event loop a source whose callback holds a `LoopHandle` of that loop,
+  and keeps no token to take it out again. calloop 0.14 does not let go
+  of its sources when the `EventLoop` is dropped, so the loop holds
+  itself, and nothing in it is ever dropped: a compositor's display,
+  with every program's connection, the X server's among them. The X
+  server runs on until the process ends, and Smithay's thread that
+  reads its events and the one that waits for it with it. A compositor
+  runs once a process, but the tests start hundreds: each X server kept
+  a display number of the 33 Smithay tries, and the tests ran out.
+- **Meanwhile:** `Session`'s `Drop` (`crates/omorfos/src/session.rs`)
+  takes the display's own source out of the loop, which drops it, so
+  the X server's connection closes and it ends. The loop itself, with
+  the window manager's source, is still never dropped: an event loop and
+  a thread a session with an X server, in the tests.
+- **Check:** `grep -n -B2 -A8 'let event_handle = handle.clone()' "$S"/src/xwayland/xwm/mod.rs`
+  shows the callback holding the handle; and calloop's `EventLoop`
+  having a `Drop` that clears its sources would mend it as well. To be
+  sure, take the `Drop` out and run
+  `cargo test -p omorfos --test integration x11::an_x_server_ends_with_its_session`.
+
 ### Xwayland cannot be started when first asked for
 
 - **Wrong:** Smithay makes the X sockets itself, privately, as it starts

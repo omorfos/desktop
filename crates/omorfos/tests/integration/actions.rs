@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use omorfos_config::{Action, Command, WorkspaceNumber};
 
-use crate::common::{Event, Session};
+use crate::common::{Event, Session, wait};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 fn focused_app(session: &Session) -> Option<String> {
@@ -183,7 +183,12 @@ fn the_programs_started_in_the_session_are_asked_to_end_before_it_does() {
     session.compositor_mut().perform(&Action::Quit);
     assert!(session.compositor().is_running(), "waiting for it");
     let asked = session.config.path().join("asked");
-    session.eventually(|session| !session.compositor().is_running());
+    // Waited for in real time only: the clock moving on would end the
+    // session at the end of the while it gives programs, which, at 200
+    // milliseconds a turn of `eventually`, is a few milliseconds, too few
+    // for a shell to answer on a busy machine. With the clock still, only
+    // the program ending ends it.
+    wait(&mut session, |session| !session.compositor().is_running());
     assert!(asked.exists(), "it was asked");
 }
 

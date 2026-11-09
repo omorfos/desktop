@@ -19,7 +19,9 @@ use omorfos_ipc::hold::{self, Told};
 use omorfos_ipc::relay::{Hand, Received};
 
 use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
+use smithay::reexports::calloop::{
+    EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
+};
 use smithay::reexports::wayland_server::{Display, ListeningSocket};
 
 use crate::Compositor;
@@ -38,6 +40,22 @@ const KEPT_FOR_A_PROGRAM: usize = 1 << 20;
 pub struct Session {
     event_loop: EventLoop<'static, Compositor>,
     compositor: Compositor,
+    /// The event source that holds the display, which holds every
+    /// program's connection.
+    clients: RegistrationToken,
+}
+
+/// Ending a session ends the connections of the programs it served.
+///
+/// The event loop does not let go of what is in it when it is dropped,
+/// and Smithay's window manager for X11 puts in it a source that holds
+/// the loop itself, so nothing in it would ever be dropped: the display,
+/// with every program's connection, the X server's among them, which runs
+/// on until the process ends. Its source is taken out first.
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.event_loop.handle().remove(self.clients);
+    }
 }
 
 impl Session {
@@ -87,9 +105,10 @@ impl Session {
                             })
                             .map_err(Box::from)
                     })
-                    .map(|_| Self {
+                    .map(|clients| Self {
                         event_loop,
                         compositor,
+                        clients,
                     })
             })
     }

@@ -269,6 +269,24 @@ fn click(session: &mut Session, x: i32, y: i32) {
 }
 
 #[test]
+fn an_x_server_ends_with_its_session() {
+    let (session, program) = session();
+    drop(session);
+    // Its programs' connections end with it: it has gone, and its number
+    // is free for the next. One that ran on until the tests did took one
+    // of the 33 numbers there are each, and the tests ran out of them.
+    let mut ended = false;
+    for _ in 0..5000 {
+        ended = program.poll_for_event().is_err();
+        if ended {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ended, "the X server is still there");
+}
+
+#[test]
 fn a_window_of_a_program_written_for_x11_is_a_window_like_any_other() {
     let (mut session, program) = session();
     assert_eq!(session.draw().at(100, 80), BACKGROUND);
