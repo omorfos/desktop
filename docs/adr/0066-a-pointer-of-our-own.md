@@ -61,7 +61,7 @@ those on disk a little less sharp over those that read it.
 
 ## Consequences
 
-- The packages install about 5 MB more, before compression, most of it
+- The packages install about 8 MB more, 0.6 MB compressed, most of it
   flat colour, and no longer recommend the Adwaita cursors, which are
   wanted only to be named.
 - D-Bus and systemd, which start programs too, are told the session's

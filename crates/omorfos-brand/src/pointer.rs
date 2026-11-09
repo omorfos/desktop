@@ -23,6 +23,14 @@ const GRID: u32 = 24;
 /// outside the shape.
 const RIM: f32 = 2.4;
 
+/// How far round the grid each picture reaches, in units, for the shadow
+/// to be drawn whole.
+const MARGIN: u32 = 3;
+
+/// The shadow the pointer casts, so that it keeps an edge on a ground as
+/// light as its rim: black at 35%, a unit down and blurred by 1.2.
+const SHADOW: (&str, &str, &str) = ("0.35", "1", "1.2");
+
 /// What turns: the quarter of the ring of waiting.
 const TURNING: &str = SPECTRUM[3];
 
@@ -429,13 +437,37 @@ impl Shape {
         }
     }
 
-    /// The shape as SVG, in the colours of `scheme`.
-    fn svg(self, scheme: Scheme) -> String {
+    /// The shape as SVG, in the colours of `scheme`, to be drawn `pixels`
+    /// large with `margin` pixels round it for its shadow.
+    fn svg(self, scheme: Scheme, (pixels, margin): (u32, u32)) -> String {
         let (body, rim) = colours(scheme);
+        let unit = f64::from(pixels) / f64::from(GRID);
+        let start = -f64::from(margin) / unit;
+        let side = f64::from(pixels + 2 * margin) / unit;
+        let (opacity, down, blur) = SHADOW;
         let mut svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {GRID} {GRID}" width="{GRID}" height="{GRID}">"#
+            concat!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{start} {start} {side} {side}" width="{side}" height="{side}">"#,
+                r#"<defs><filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="{blur}"/></filter></defs>"#,
+                r#"<g filter="url(#shadow)" opacity="{opacity}" transform="translate(0 {down})">"#,
+            ),
+            start = start,
+            side = side,
+            blur = blur,
+            opacity = opacity,
+            down = down,
         );
-        for layer in self.layers() {
+        let layers = self.layers();
+        for layer in &layers {
+            let _ = write!(
+                svg,
+                r#"<g fill="black" stroke="black" stroke-width="{width}" stroke-linejoin="round">{solids}</g>"#,
+                width = RIM + layer.softened,
+                solids = layer.solids,
+            );
+        }
+        svg.push_str("</g>");
+        for layer in layers {
             let marks = layer.marks.replace("TURNING", TURNING);
             let _ = write!(
                 svg,
@@ -557,29 +589,35 @@ pub struct Drawn {
     /// opacity, with the colours already multiplied by the opacity: what
     /// renderers call `Argb8888`, and what a cursor file holds.
     pub pixels: Vec<u8>,
-    /// How many pixels across and down it is.
+    /// How large it is: how many pixels across and down its grid is.
     pub size: u32,
+    /// How many pixels across and down the picture is: its grid, and the
+    /// room round it its shadow is cast in.
+    pub across: u32,
     /// The pixel that is where the pointer is.
     pub hotspot: (u32, u32),
 }
 
-/// `shape` in the colours of `scheme`, `pixels` across and down; or
-/// nothing, at no size.
+/// `shape` in the colours of `scheme`, `pixels` large, with its shadow
+/// round it; or nothing, at no size.
 #[must_use]
 pub fn pointer(shape: Shape, scheme: Scheme, pixels: u32) -> Option<Drawn> {
-    let canvas = render(&shape.svg(scheme), (pixels, pixels))?;
+    let margin = (MARGIN * pixels).div_ceil(GRID);
+    let across = pixels + 2 * margin;
+    let canvas = render(&shape.svg(scheme, (pixels, margin)), (across, across))?;
     let mut bytes = canvas.take();
     // tiny-skia's red, green, blue and opacity, as blue, green, red and
     // opacity.
     for pixel in bytes.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
-    let (across, down) = shape.hotspot();
-    let at = |tenths: u32| (tenths * pixels / (GRID * 10)).min(pixels.saturating_sub(1));
+    let (across_tip, down_tip) = shape.hotspot();
+    let at = |tenths: u32| margin + (tenths * pixels / (GRID * 10)).min(pixels.saturating_sub(1));
     Some(Drawn {
         pixels: bytes,
         size: pixels,
-        hotspot: (at(across), at(down)),
+        across,
+        hotspot: (at(across_tip), at(down_tip)),
     })
 }
 
@@ -613,13 +651,23 @@ fn xcursor(images: &[Drawn]) -> Vec<u8> {
     let mut at = HEADER + 12 * count;
     for image in images {
         file.extend(words(&[IMAGE, image.size, at]));
-        at += IMAGE_HEADER + 4 * image.size * image.size;
+        at += IMAGE_HEADER + 4 * image.across * image.across;
     }
     for image in images {
         let (x, y) = image.hotspot;
-        let size = image.size;
+        let (size, across) = (image.size, image.across);
         // Its version, then no delay, as it does not change.
-        file.extend(words(&[IMAGE_HEADER, IMAGE, size, 1, size, size, x, y, 0]));
+        file.extend(words(&[
+            IMAGE_HEADER,
+            IMAGE,
+            size,
+            1,
+            across,
+            across,
+            x,
+            y,
+            0,
+        ]));
         file.extend(&image.pixels);
     }
     file
@@ -631,7 +679,7 @@ mod tests {
 
     /// The opacity of the pixel at `(x, y)`.
     fn opacity(drawn: &Drawn, (x, y): (u32, u32)) -> u8 {
-        let at = usize::try_from((y * drawn.size + x) * 4 + 3).unwrap();
+        let at = usize::try_from((y * drawn.across + x) * 4 + 3).unwrap();
         drawn.pixels[at]
     }
 
@@ -642,17 +690,17 @@ mod tests {
                 for size in [16, 24, 30, 48, 100] {
                     let drawn = pointer(shape, scheme, size).unwrap();
                     assert_eq!(drawn.size, size);
-                    assert_eq!(
-                        drawn.pixels.len(),
-                        usize::try_from(size * size * 4).unwrap()
-                    );
+                    // An eighth of it round each side, for the shadow.
+                    let margin = (size * 3).div_ceil(24);
+                    assert_eq!(drawn.across, size + 2 * margin);
+                    let across = usize::try_from(drawn.across).unwrap();
+                    assert_eq!(drawn.pixels.len(), across * across * 4);
                     let tip = drawn.hotspot;
-                    assert!(tip.0 < size && tip.1 < size, "{shape:?} {size}");
+                    let on_grid = |at: u32| (margin..margin + size).contains(&at);
+                    assert!(on_grid(tip.0) && on_grid(tip.1), "{shape:?} {size}");
                     // The ring of waiting is where it is from its middle,
-                    // which is clear.
-                    let hollow = shape == Shape::Wait;
-                    let inked = opacity(&drawn, tip) > 0;
-                    assert_eq!(inked, !hollow, "{shape:?} {size}: {tip:?}");
+                    // which its shadow falls in.
+                    assert!(opacity(&drawn, tip) > 0, "{shape:?} {size}: {tip:?}");
                 }
             }
         }
@@ -660,12 +708,13 @@ mod tests {
 
     #[test]
     fn the_arrow_points_from_the_top_left_and_its_hotspot_is_its_tip() {
+        // Its grid begins 6 pixels in, round which its shadow is cast.
         let drawn = pointer(Shape::Default, Scheme::Dark, 48).unwrap();
-        assert_eq!(drawn.hotspot, (5, 5));
+        assert_eq!(drawn.hotspot, (11, 11));
         assert_eq!(opacity(&drawn, (1, 1)), 0, "nothing above and left of it");
-        assert_eq!(opacity(&drawn, (40, 4)), 0, "nor to its right");
+        assert_eq!(opacity(&drawn, (46, 10)), 0, "nor to its right");
         assert_eq!(
-            opacity(&drawn, (18, 18)),
+            opacity(&drawn, (24, 24)),
             255,
             "its body, along the mark's angle"
         );
@@ -675,19 +724,34 @@ mod tests {
     fn it_is_navy_rimmed_with_cream_when_dark_and_cream_rimmed_with_navy_when_light() {
         // Blue, green and red of the pixel at `at`.
         let colour = |drawn: &Drawn, (x, y): (u32, u32)| {
-            let at = usize::try_from((y * drawn.size + x) * 4).unwrap();
+            let at = usize::try_from((y * drawn.across + x) * 4).unwrap();
             [drawn.pixels[at + 2], drawn.pixels[at + 1], drawn.pixels[at]]
         };
         let (navy, navy_3, cream) = ([0x0c, 0x12, 0x26], [0x24, 0x33, 0x64], [0xfc, 0xf7, 0xe3]);
         let dark = pointer(Shape::Default, Scheme::Dark, 96).unwrap();
         let light = pointer(Shape::Default, Scheme::Light, 96).unwrap();
         // Inside the arrow, along the mark's angle from its tip, and on the
-        // rim of its left edge.
-        let (inside, rim) = ((36, 36), (19, 40));
+        // rim of its left edge, its grid beginning 12 pixels in.
+        let (inside, rim) = ((48, 48), (31, 52));
         assert_eq!(colour(&dark, inside), navy_3);
         assert_eq!(colour(&dark, rim), cream);
         assert_eq!(colour(&light, inside), cream);
         assert_eq!(colour(&light, rim), navy);
+    }
+
+    #[test]
+    fn it_casts_a_soft_black_shadow_down_and_hardly_up() {
+        let drawn = pointer(Shape::Default, Scheme::Light, 96).unwrap();
+        let pixel = |(x, y): (u32, u32)| {
+            let at = usize::try_from((y * drawn.across + x) * 4).unwrap();
+            [0, 1, 2, 3].map(|channel| drawn.pixels[at + channel])
+        };
+        // Just under the rim of its lower wing, and as far over its tip.
+        let (under, over) = ((52, 96), (26, 16));
+        let [blue, green, red, opacity] = pixel(under);
+        assert_eq!([blue, green, red], [0, 0, 0], "black");
+        assert!(opacity > 30 && opacity < 90, "and soft: {opacity}");
+        assert!(pixel(over)[3] < opacity / 4, "fainter over it");
     }
 
     #[test]
@@ -724,7 +788,7 @@ mod tests {
         assert_eq!(sizes, SIZES);
         for image in images {
             let drawn = pointer(Shape::Pointer, Scheme::Light, image.size).unwrap();
-            assert_eq!((image.width, image.height), (drawn.size, drawn.size));
+            assert_eq!((image.width, image.height), (drawn.across, drawn.across));
             assert_eq!((image.xhot, image.yhot), drawn.hotspot);
             assert_eq!(image.pixels_rgba, drawn.pixels, "as the file holds them");
         }

@@ -294,8 +294,8 @@ that it is sharp at any size and any scale, and there when no cursor
 theme is installed. It is navy rimmed with cream in the dark scheme, a
 navy lighter than the ground's so that it is seen to be navy, and cream
 rimmed with navy in the light one, so that it shows on any ground,
-and changes with the scheme; the quarter of the ring of waiting is
-orange. [BRAND.md](BRAND.md) says how it is drawn, and
+and changes with the scheme, with a soft shadow under it for the grounds
+as light as its rim; the quarter of the ring of waiting is orange. [BRAND.md](BRAND.md) says how it is drawn, and
 [ADR 66](adr/0066-a-pointer-of-our-own.md) how programs that draw their
 own are given it. The ring does not turn yet.
 

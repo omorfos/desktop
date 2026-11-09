@@ -4129,7 +4129,7 @@ impl PointerImage {
             let drawn = omorfos_brand::pointer::pointer(shape, scheme, pixels);
             drawn.map(|drawn| cursor::Image {
                 pixels: drawn.pixels,
-                size: (drawn.size, drawn.size),
+                size: (drawn.across, drawn.across),
                 hotspot: drawn.hotspot,
             })
         });

@@ -171,6 +171,12 @@ to move, is orange. Where the pointer is, its hot spot, is the tip of
 the arrow or the finger, the middle of the lens, and the middle of the
 rest.
 
+Every shape casts a soft shadow, black at 35%, a unit down and blurred
+by 1.2, so that it keeps an edge on a ground as light as its rim, as the
+dark scheme's cream rim is on white; on navy it is all but unseen. Each
+picture is an eighth of its size larger on every side, for the shadow to
+be drawn whole.
+
 The compositor draws it at the size it needs. It is also installed as two
 cursor themes, `omorfos-dark` and `omorfos-light` in `share/icons/`, each
 shape at 24, 32, 48, 64 and 96 pixels, with the older names X11 programs
