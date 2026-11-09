@@ -342,9 +342,33 @@ pub struct Launcher {
 pub struct Cursor {
     /// The name of an installed cursor theme, such as `Adwaita`. `default`
     /// is whichever the system has set up as its default.
+    #[serde(deserialize_with = "cursor_theme")]
     pub theme: String,
     /// The size of the pointer, before scaling.
     pub size: Bounded<8, 128>,
+}
+
+/// A cursor theme's name, which is the name of the directory it is in:
+/// something, with no `/` or `\\` and nothing that cannot be seen in it, and
+/// no `.` to begin it, so that it names one directory where cursor themes
+/// are kept and no other. It is told to programs too, in the X server's
+/// resources, which are lines of text.
+fn cursor_theme<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let name = String::deserialize(deserializer)?;
+    let plain = !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains(['/', '\\'])
+        && !name.chars().any(char::is_control);
+    if plain {
+        Ok(name)
+    } else {
+        let message = format!(
+            "`{}` is not the name of a cursor theme, which is a directory's: no `/`, nothing \
+             unseen, and no `.` to begin it",
+            name.escape_debug()
+        );
+        Err(serde::de::Error::custom(message))
+    }
 }
 
 impl Default for Cursor {
@@ -1035,6 +1059,29 @@ mod tests {
             .cursor;
         assert_eq!((cursor.theme.as_str(), cursor.size.get()), ("Adwaita", 32));
         assert!(parse("cursor: { size: 4 }").is_err());
+        let named = parse("cursor: { theme: Bibata-Modern Classic_2.0 }").unwrap();
+        assert_eq!(named.cursor.theme, "Bibata-Modern Classic_2.0");
+    }
+
+    #[test]
+    fn a_cursor_theme_is_named_as_one_directory_and_no_other() {
+        for wrong in [
+            "''",
+            "../../etc",
+            ".hidden",
+            "a/b",
+            "a\\\\b",
+            "\"a\\nb\"",
+            "\"a\\tb\"",
+        ] {
+            let error = parse(&format!("cursor:\n  theme: {wrong}\n")).unwrap_err();
+            assert!(
+                error.contains("is not the name of a cursor theme"),
+                "{wrong}: {error}"
+            );
+            assert!(error.contains("line 2"), "{wrong}: {error}");
+        }
+        assert!(parse("cursor: { theme: [Adwaita] }").is_err());
     }
 
     #[test]
