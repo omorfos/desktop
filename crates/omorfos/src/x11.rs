@@ -49,6 +49,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use crate::compositor::{Compositor, Mapped, logical_size, set};
+use crate::handlers::{Offer, hand_over};
 use crate::input::Wanted;
 use crate::restarts::Restarts;
 use crate::tiles;
@@ -930,10 +931,21 @@ impl XwmHandler for Compositor {
     fn send_selection(&mut self, _: XwmId, which: SelectionTarget, kind: String, to: OwnedFd) {
         // A program written for X11 is pasting what a program written for
         // Wayland copied, which that program is asked for. If it has gone,
-        // there is nothing to paste.
+        // there is nothing to paste. What the compositor copied itself, it
+        // writes.
         match which {
             SelectionTarget::Clipboard => {
-                let _ = request_data_device_client_selection(&self.seat, kind, to);
+                // Smithay's own borrow of what is on offer ends here, before
+                // it is asked for again.
+                let offer = current_data_device_selection_userdata::<Self>(&self.seat)
+                    .as_deref()
+                    .cloned();
+                match offer {
+                    Some(Offer::Text(text)) => hand_over(&text, to),
+                    _ => {
+                        let _ = request_data_device_client_selection(&self.seat, kind, to);
+                    }
+                }
             }
             SelectionTarget::Primary => {
                 let _ = request_primary_client_selection(&self.seat, kind, to);
@@ -950,9 +962,11 @@ impl XwmHandler for Compositor {
         };
         match which {
             SelectionTarget::Clipboard => {
-                set_data_device_selection(&self.display, &self.seat, kinds, ());
+                set_data_device_selection(&self.display, &self.seat, kinds, Offer::X11);
             }
-            SelectionTarget::Primary => set_primary_selection(&self.display, &self.seat, kinds, ()),
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display, &self.seat, kinds, Offer::X11);
+            }
         }
     }
 
@@ -963,11 +977,15 @@ impl XwmHandler for Compositor {
             self.offer_to_x11(which, Some(back));
             return;
         }
-        // It is taken back only if it is still what is on offer: a
-        // selection of ours is one made on behalf of the X server.
+        // It is taken back only if it is still what is on offer: one made
+        // on behalf of the X server, and not text of the compositor's own.
         match which {
             SelectionTarget::Clipboard => {
-                let ours = current_data_device_selection_userdata(&self.seat).is_some();
+                // Smithay's own borrow of what is on offer is let go of
+                // before it is cleared.
+                let offer = current_data_device_selection_userdata::<Self>(&self.seat);
+                let ours = matches!(offer.as_deref(), Some(Offer::X11));
+                drop(offer);
                 let _ = ours.then(|| clear_data_device_selection(&self.display, &self.seat));
             }
             SelectionTarget::Primary => {

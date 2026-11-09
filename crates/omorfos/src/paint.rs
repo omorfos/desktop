@@ -355,6 +355,15 @@ pub(crate) const ABOUT_MARK: u32 = 56;
 /// The room after the mark, and after each list of what is someone else's.
 const ABOUT_GAP: u32 = 12;
 
+/// A button of "About".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AboutButton {
+    /// Puts it away.
+    Close,
+    /// Copies what the computer is, as text.
+    Copy,
+}
+
 /// How tall "About" is but for what it lists: its padding and border, and
 /// the mark with the room below it.
 pub(crate) fn about_head(theme: &Theme) -> u32 {
@@ -362,59 +371,97 @@ pub(crate) fn about_head(theme: &Theme) -> u32 {
     style.inset().down() + ABOUT_MARK + ABOUT_GAP
 }
 
+/// A line of what "About" lists: what is first on it, in its part; then
+/// what follows it, in its own, from `column` across where the line is
+/// one of a table, or straight after where it is not; and how tall it is.
+struct Row {
+    first: (Part, String),
+    then: (Part, String),
+    column: Option<u32>,
+    tall: u32,
+}
+
+impl Row {
+    /// A line with `text` alone on it, in `part`.
+    const fn alone(part: Part, text: String, tall: u32) -> Self {
+        Self {
+            first: (part, text),
+            then: (Part::About, String::new()),
+            column: None,
+            tall,
+        }
+    }
+}
+
 /// What "About" lists, `room` across and as tall as all of it is, on
-/// nothing, to be shown on it through a window that scrolls: each list of
-/// `credits` under its heading, each thing's name and its licence, and
-/// under them whose it is.
+/// nothing, to be shown on it through a window that scrolls: what the
+/// computer is, `system`, in a table of each kind of thing and what there
+/// is of it; then each list of `credits` under its heading, each thing's
+/// name and its licence, and under them whose it is.
 pub(crate) fn about_list(
     text: &mut Text,
     theme: &Theme,
-    credits: &[omorfos_core::Credits],
+    (system, credits): (&omorfos_core::System, &[omorfos_core::Credits]),
     (room, scale): (u32, Scale),
 ) -> Canvas {
-    // Each line: what is written, in which part, then what follows it in
-    // the dimmer one; and how tall it is, a gap being a line with nothing
-    // in it.
-    let mut lines: Vec<(Part, String, String, u32)> = Vec::new();
+    let mut lines: Vec<Row> = Vec::new();
+    // What it is goes after the widest of the kinds, and a little room.
+    let kind = theme.font(Part::AboutDetail, States::NONE);
+    let widest = system
+        .things
+        .iter()
+        .map(|(name, _)| text.measure(name, kind));
+    let column = widest.max().unwrap_or_default() + ABOUT_GAP;
+    let heading = "This computer".to_owned();
+    lines.push(Row::alone(Part::AboutHeading, heading, ABOUT_ROW));
+    for (name, things) in &system.things {
+        for (index, thing) in things.iter().enumerate() {
+            // The kind is said once, beside the first of its things.
+            let name = if index == 0 { *name } else { "" };
+            lines.push(Row {
+                first: (Part::AboutDetail, name.to_owned()),
+                then: (Part::About, thing.clone()),
+                column: Some(column),
+                tall: ABOUT_ROW,
+            });
+        }
+    }
+    lines.push(Row::alone(Part::About, String::new(), ABOUT_GAP));
     for section in credits {
         let heading = section.heading.clone();
-        lines.push((Part::AboutHeading, heading, String::new(), ABOUT_ROW));
+        lines.push(Row::alone(Part::AboutHeading, heading, ABOUT_ROW));
         for credit in &section.credits {
             let licence = format!(" \u{b7} {}", credit.licence);
-            lines.push((Part::About, credit.what.clone(), licence, ABOUT_ROW));
-            lines.push((
-                Part::AboutDetail,
-                credit.by.clone(),
-                String::new(),
-                ABOUT_ROW,
-            ));
+            lines.push(Row {
+                first: (Part::About, credit.what.clone()),
+                then: (Part::AboutDetail, licence),
+                column: None,
+                tall: ABOUT_ROW,
+            });
+            let by = credit.by.clone();
+            lines.push(Row::alone(Part::AboutDetail, by, ABOUT_ROW));
         }
-        lines.push((Part::About, String::new(), String::new(), ABOUT_GAP));
+        lines.push(Row::alone(Part::About, String::new(), ABOUT_GAP));
     }
-    let height: u32 = lines.iter().map(|(.., tall)| tall).sum();
+    let height: u32 = lines.iter().map(|line| line.tall).sum();
     let mut canvas = Canvas::scaled(room, height, scale);
-    let dim = Part::AboutDetail;
-    let (dim, dim_font) = (
-        theme.style(dim, States::NONE).color,
-        theme.font(dim, States::NONE),
-    );
-    let mut at = 0;
-    for (part, line, after, tall) in lines {
-        let (ink, font) = (
+    let looks = |part| {
+        (
             theme.style(part, States::NONE).color,
             theme.font(part, States::NONE),
-        );
-        let wide = text.measure(&line, font).min(room);
-        text.draw(&mut canvas, &line, (0, at, wide, tall), ink, font);
-        let rest = room - wide;
-        text.draw(
-            &mut canvas,
-            &after,
-            (wide.cast_signed(), at, rest, tall),
-            dim,
-            dim_font,
-        );
-        at += tall.cast_signed();
+        )
+    };
+    let mut at = 0;
+    for line in lines {
+        let ((part, first), (then_part, then)) = (line.first, line.then);
+        let (ink, font) = looks(part);
+        let wide = text.measure(&first, font).min(room);
+        text.draw(&mut canvas, &first, (0, at, wide, line.tall), ink, font);
+        let after = line.column.unwrap_or(wide).min(room);
+        let (ink, font) = looks(then_part);
+        let rest = (after.cast_signed(), at, room - after, line.tall);
+        text.draw(&mut canvas, &then, rest, ink, font);
+        at += line.tall.cast_signed();
     }
     canvas
 }
@@ -422,14 +469,15 @@ pub(crate) fn about_list(
 /// Paints "About omorfos", `width` across, with room `list` tall below the
 /// mark for what it lists, which is drawn on it apart: `mark`, which is
 /// empty if it could not be drawn, and beside it the name, `version` and
-/// the licence. Says where on it the button that closes it is, and where
-/// what it lists goes.
+/// the licence; and its buttons, the one `hovered` under the pointer. Says
+/// where on it the button that closes it is and the one that copies, and
+/// where what it lists goes.
 pub(crate) fn about(
     text: &mut Text,
     theme: &Theme,
     (mark, version): (&[Image], &str),
-    (width, list, scale, hovered): (u32, u32, Scale, bool),
-) -> (Canvas, Area, Area) {
+    (width, list, scale, hovered): (u32, u32, Scale, Option<AboutButton>),
+) -> (Canvas, (Area, Area), Area) {
     let style = theme.style(Part::About, States::NONE);
     let height = about_head(theme) + list;
     let whole = (0, 0, width, height);
@@ -443,8 +491,9 @@ pub(crate) fn about(
     }
     // A window's button that closes it, as it is on a window with focus,
     // in the top right corner.
-    let states = States::NONE.with(State::Focused);
-    let button = theme.style(Part::ButtonClose, states.when(State::Hovered, hovered));
+    let under = |button| States::NONE.when(State::Hovered, hovered == Some(button));
+    let states = under(AboutButton::Close).with(State::Focused);
+    let button = theme.style(Part::ButtonClose, states);
     let across = button.min_width;
     let close = (
         left + room.saturating_sub(across).cast_signed(),
@@ -454,8 +503,28 @@ pub(crate) fn about(
     );
     canvas.draw_box(close, &button);
     sign(&mut canvas, Button::Close, close, button.color);
+    // The one that copies, at the foot of the mark, under it.
+    let states = under(AboutButton::Copy);
+    let (button, font) = (
+        theme.style(Part::AboutButton, states),
+        theme.font(Part::AboutButton, states),
+    );
+    let word = "Copy";
+    let padding = button.inset();
+    let wide = text.measure(word, font) + padding.across();
+    let high = ABOUT_ROW + padding.down();
+    let copy = (
+        left + room.saturating_sub(wide).cast_signed(),
+        top + size - high.cast_signed(),
+        wide,
+        high,
+    );
+    canvas.draw_box(copy, &button);
+    let (ink, inside) = (button.color, inset(copy, padding));
+    text.draw(&mut canvas, word, inside, ink, font);
+
     let beside = left + size + ABOUT_GAP.cast_signed();
-    let narrower = room.saturating_sub(ABOUT_MARK + ABOUT_GAP + across);
+    let narrower = room.saturating_sub(ABOUT_MARK + ABOUT_GAP + wide);
     let titles = [
         (Part::AboutHeading, "omorfos".to_owned()),
         (Part::AboutDetail, format!("Version {version}")),
@@ -475,7 +544,7 @@ pub(crate) fn about(
         at += ABOUT_ROW.cast_signed();
     }
     let below = (left, top + size + ABOUT_GAP.cast_signed(), room, list);
-    (canvas, close, below)
+    (canvas, (close, copy), below)
 }
 
 /// Paints the question whether to keep the screens as they stand now,

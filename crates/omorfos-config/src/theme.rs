@@ -1472,6 +1472,8 @@ mod tests {
             (style(Part::About, States::NONE), None),
             (style(Part::AboutHeading, States::NONE), Some(Part::About)),
             (style(Part::AboutDetail, States::NONE), Some(Part::About)),
+            (style(Part::AboutButton, States::NONE), None),
+            (style(Part::AboutButton, hovered), None),
             (style(Part::Tooltip, States::NONE), None),
             (style(Part::Panel, States::NONE), None),
             (style(Part::Workspace, States::NONE), Some(Part::Panel)),

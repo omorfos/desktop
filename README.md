@@ -134,6 +134,7 @@ seatd. The rest is wanted, and done without if it is not there:
 | PipeWire, 1.4 or later | Sharing the screen in a browser or a call |
 | `wpctl` (WirePlumber) | The volume keys |
 | `wl-copy` and `wl-paste` (`wl-clipboard`) | Copying and pasting in an editor in a terminal, such as Neovim, which otherwise goes through X11 and cannot read what programs written for Wayland copy |
+| The list of PCI devices (`pci.ids`; `hwdata` on Arch and Fedora) | Naming the graphics card in "About"; without it, its numbers |
 
 To run the tests as well: `dbus-daemon`, `pipewire`, and `Xwayland`,
 which needs `libEGL`; `setpriv` (`util-linux`), which stops a test's

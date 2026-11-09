@@ -1130,6 +1130,82 @@ fn what_any_other_program_copies_or_selects_can_be_pasted_by_one_written_for_x11
 }
 
 #[test]
+fn what_about_copies_can_be_pasted_by_a_program_written_for_x11() {
+    let (mut session, program) = session();
+    let mut client = session.connect();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    session.compositor_mut().perform(&Action::About);
+    session.settle();
+    copy_about(&mut session);
+    session.settle();
+
+    let names = ["CLIPBOARD", "UTF8_STRING", "PASTED"];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    held(&mut session, &program, names[0]);
+    let pasted = std::thread::scope(|scope| {
+        let fetching = scope.spawn(|| fetch(&program, window, names));
+        until(&mut session, &mut client, |_, _| fetching.is_finished());
+        fetching.join().unwrap()
+    });
+    let pasted = pasted.unwrap_or_default();
+    assert!(pasted.starts_with("omorfos "), "{pasted}");
+}
+
+/// Clicks the button of "About" that copies.
+fn copy_about(session: &mut Session) {
+    let (x, y) = crate::about::COPY;
+    let (x, y) = (f64::from(x), f64::from(y));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    for pressed in [true, false] {
+        let click = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(click, 0);
+    }
+}
+
+#[test]
+fn what_about_copied_stays_on_the_clipboard_when_a_program_written_for_x11_lets_go_of_its_own() {
+    let (mut session, program) = session();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let names = ["CLIPBOARD", "TARGETS", "UTF8_STRING"];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    let stop = AtomicBool::new(false);
+
+    std::thread::scope(|scope| {
+        let holding = scope.spawn(|| hold(&program, window, names, "from x11", &stop));
+        let mut client = session.connect();
+        session.open(&mut client, "app", (50, 50), GREEN);
+        until(&mut session, &mut client, |_, client| {
+            offered(client, false)
+        });
+        session.compositor_mut().perform(&Action::About);
+        session.settle();
+
+        // The program lets go of what it copied, and before the compositor
+        // has heard so, "About" copies.
+        stop.store(true, Ordering::Relaxed);
+        while !holding.is_finished() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        copy_about(&mut session);
+        session.settle();
+        session.roundtrip(&mut client);
+
+        let mut pipe = client.paste().unwrap();
+        let reading = scope.spawn(move || {
+            let mut pasted = String::new();
+            pipe.read_to_string(&mut pasted).unwrap();
+            pasted
+        });
+        until(&mut session, &mut client, |_, _| reading.is_finished());
+        let pasted = reading.join().unwrap();
+        assert!(pasted.starts_with("omorfos "), "{pasted}");
+    });
+}
+
+#[test]
 fn a_program_written_for_x11_without_the_keyboard_is_not_given_what_was_copied() {
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);

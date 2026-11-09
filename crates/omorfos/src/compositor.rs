@@ -22,8 +22,8 @@ use omorfos_config::{
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
-    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Showing,
-    Standing, WindowId, WorkspaceId,
+    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Monitor, Place, Screen,
+    Showing, Standing, System, WindowId, WorkspaceId,
 };
 use omorfos_ui::{Area, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -84,7 +84,8 @@ use smithay::wayland::idle_notify::IdleNotifierState;
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::presentation::PresentationState;
 use smithay::wayland::security_context::SecurityContextState;
-use smithay::wayland::selection::data_device::DataDeviceState;
+use smithay::wayland::selection::SelectionTarget;
+use smithay::wayland::selection::data_device::{DataDeviceState, set_data_device_selection};
 use smithay::wayland::selection::ext_data_control::DataControlState;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
 use smithay::wayland::session_lock::SessionLockManagerState;
@@ -111,6 +112,7 @@ use crate::gestures::Gestures;
 use crate::ghost::{Ghost, Noted, Noting};
 use crate::glass::{self, Frosted, Frosting, Glass, Pane, Scene};
 use crate::gpu;
+use crate::handlers::{self, Offer};
 use crate::hold::Holder;
 use crate::holding::Holding;
 use crate::icons::WindowIcons;
@@ -120,7 +122,7 @@ use crate::ipc::Server;
 use crate::kept::Parts;
 use crate::lock::{Awake, Lock, Presence};
 use crate::outputs::{Aside, Head};
-use crate::paint::{self, Motion, Text};
+use crate::paint::{self, AboutButton, Motion, Text};
 use crate::palette::{self, Palette};
 use crate::presentation::Feedback;
 use crate::recording::Recorded;
@@ -132,6 +134,7 @@ use crate::sealed::Seal;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
 use crate::switcher::Switch;
+use crate::system;
 use crate::tiles::Lines;
 use crate::typing::Typing;
 use crate::versions::{InUse, Own, Versions};
@@ -1402,8 +1405,13 @@ impl Compositor {
             Action::About => {
                 // Asked again, it goes; and it is not shown on a locked
                 // session.
-                let open = self.cards.about.0.is_none() && !self.is_locked();
-                self.cards.about.0 = open.then_some(self.pointer_location);
+                let open = self.cards.about.asked.is_none() && !self.is_locked();
+                self.cards.about.asked = open.then_some(self.pointer_location);
+                // What the computer is, as it opens.
+                if open {
+                    let said = system::said(Path::new("/"), self.monitors());
+                    self.cards.about.system = System::of(&said);
+                }
             }
             Action::Lock => self.start_locker(),
             Action::StayAwake => self.stay_awake(None),
@@ -2577,19 +2585,17 @@ impl Compositor {
     /// and painted again only if how it would look has changed.
     fn repaint_about(&mut self, config: &Config) {
         let (theme, scheme) = (&config.theme, config.scheme);
-        let asked = self.cards.about.0;
+        let asked = self.cards.about.asked;
         let screen = asked.and_then(|at| self.head_at(at).or(self.primary_head()));
         let within = screen.map(Head::area).unwrap_or_default();
         let scale = screen.map_or(Scale::ONE, |screen| screen.scale);
         let wanted = screen.is_some();
         // One that is no longer wanted fades out as it was; one painted
         // again is scrolled as far as it was.
-        let had = self.cards.about.1.take();
+        let had = self.cards.about.shown.take();
         let scrolled = had.as_ref().map_or(0.0, |about| about.scrolled);
         let pointer = self.pointer_position();
-        let hovered = had
-            .as_ref()
-            .is_some_and(|about| about.close.contains(pointer));
+        let hovered = had.as_ref().and_then(|about| about.button_at(pointer));
         let (had, closed) = if wanted { (had, None) } else { (None, had) };
         let closed = closed.map(|about| self.animation.closing(Part::About, What::About(about)));
         self.animation.gone.extend(closed);
@@ -2600,19 +2606,47 @@ impl Compositor {
                 && about.scale == scale
                 && about.hovered == hovered
         });
-        self.cards.about.1 = match (current, wanted) {
+        self.cards.about.shown = match (current, wanted) {
             (Some(about), _) => Some(about),
             (None, true) => {
                 let tools = (&mut self.text, &mut self.animation.shades);
-                let mut about = About::paint(tools, (theme, scheme), within, (scale, hovered));
+                let what = (theme, scheme, &self.cards.about.system);
+                let mut about = About::paint(tools, what, within, (scale, hovered));
                 about.scroll(scrolled);
                 Some(about)
             }
             (None, false) => None,
         };
-        let about = self.cards.about.1.as_ref();
+        let about = self.cards.about.shown.as_ref();
         let share = about.map(|_| self.animation.motion.presence(theme, Part::About, 0));
         self.animation.about_seen = share.unwrap_or(Seen::WHOLE);
+    }
+
+    /// Puts what the computer is, as "About" shows it, on the clipboard as
+    /// text, for any program to paste: those written for X11 are told of
+    /// it as well, since the compositor setting it is not a program doing
+    /// so, which is what tells them otherwise.
+    pub(crate) fn copy_about(&mut self) {
+        let text = self.cards.about.system.text(env!("CARGO_PKG_VERSION"));
+        let kinds: Vec<String> = handlers::TEXT.map(str::to_owned).into();
+        let offer = Offer::Text(text.into());
+        set_data_device_selection(&self.display, &self.seat, kinds.clone(), offer);
+        self.offer_to_x11(SelectionTarget::Clipboard, Some(kinds));
+    }
+
+    /// The screens that stand in the space, as "About" tells of them.
+    fn monitors(&self) -> Vec<Monitor> {
+        let monitor = |head: &Head| {
+            let pixels = head.pixels();
+            let refresh = head.output.current_mode().map_or(0, |mode| mode.refresh);
+            Monitor {
+                name: head.output.name(),
+                pixels: (pixels.w, pixels.h),
+                refresh,
+                scale: head.scale.factor(),
+            }
+        };
+        self.heads.iter().map(monitor).collect()
     }
 
     /// Brings the problem notice and the root menu up to date, repainting
@@ -3419,7 +3453,7 @@ impl Compositor {
             let at = prompt.at.to_f64();
             elements.extend(prompt.pixels.element(renderer, at, view, 1.0));
         }
-        if let Some(about) = &self.cards.about.1 {
+        if let Some(about) = &self.cards.about.shown {
             let seen = self.animation.about_seen;
             let drawn = (&mut elements, &mut panes);
             Self::sized(view, seen, drawn, |drawn| {
@@ -4372,9 +4406,21 @@ pub(crate) struct Cards {
     pub(crate) notice: Option<Notice>,
     /// The problems the user has clicked away, hidden until they change.
     pub(crate) dismissed: Vec<String>,
-    /// Where the pointer was when "About" was asked for, while it is to
-    /// be shown, on the screen that was there; and it, as it is shown.
-    pub(crate) about: (Option<Point<f64, Logical>>, Option<About>),
+    /// "About".
+    pub(crate) about: AboutCard,
+}
+
+/// "About": whether it is to be shown, what the computer was as it was
+/// asked for, and it as it is shown.
+#[derive(Debug, Default)]
+pub(crate) struct AboutCard {
+    /// Where the pointer was when it was asked for, while it is to be
+    /// shown, on the screen that was there.
+    pub(crate) asked: Option<Point<f64, Logical>>,
+    /// What the computer was as it was asked for: read once, and not
+    /// again each time it is painted.
+    pub(crate) system: System,
+    pub(crate) shown: Option<About>,
 }
 
 /// "About omorfos", as it is shown.
@@ -4385,11 +4431,13 @@ pub(crate) struct About {
     /// The output it is in the middle of.
     within: Rectangle<i32, Logical>,
     scale: Scale,
-    /// Where it is, and its button that closes it.
+    /// Where it is, and its buttons: the one that closes it and the one
+    /// that copies what the computer is.
     pub(crate) area: Rect,
-    pub(crate) close: Rect,
-    /// Whether the pointer was on the button as it was painted.
-    hovered: bool,
+    close: Rect,
+    copy: Rect,
+    /// The button the pointer was on as it was painted.
+    hovered: Option<AboutButton>,
     pixels: Painted,
     shadow: Option<Shadowing>,
     /// What it lists, all of it, and where on the screen it is shown.
@@ -4402,9 +4450,9 @@ pub(crate) struct About {
 impl About {
     fn paint(
         (text, shades): (&mut Text, &mut Shades),
-        (theme, scheme): (&Theme, Scheme),
+        (theme, scheme, system): (&Theme, Scheme, &System),
         within: Rectangle<i32, Logical>,
-        (scale, hovered): (Scale, bool),
+        (scale, hovered): (Scale, Option<AboutButton>),
     ) -> Self {
         let (wide, high) = (within.size.w.unsigned_abs(), within.size.h.unsigned_abs());
         let width = ABOUT_WIDTH.min(wide.saturating_sub(NOTICE_MARGIN * 2));
@@ -4419,7 +4467,7 @@ impl About {
         let credits = omorfos_core::credits(CREDITS);
         let style = theme.style(Part::About, States::NONE);
         let room = width.saturating_sub(style.inset().across());
-        let list = paint::about_list(text, theme, &credits, (room, scale));
+        let list = paint::about_list(text, theme, (system, &credits), (room, scale));
         // As much of it as there is room for on the screen, within the
         // margins, which is all of it on most screens.
         let tallest = high.saturating_sub(NOTICE_MARGIN * 2);
@@ -4428,7 +4476,7 @@ impl About {
         let version = env!("CARGO_PKG_VERSION");
         let said = (mark.as_slice(), version);
         let looks = (width, length, scale, hovered);
-        let (canvas, close, shown) = paint::about(text, theme, said, looks);
+        let (canvas, (close, copy), shown) = paint::about(text, theme, said, looks);
         let (across, down) = canvas.units();
         let left = wide.saturating_sub(across) / 2;
         let top = high.saturating_sub(down) / 2;
@@ -4453,6 +4501,7 @@ impl About {
             scale,
             area,
             close: on(close),
+            copy: on(copy),
             hovered,
             pixels: Painted::new(&canvas),
             shadow: shades.cast(&style, scale, placed, None),
@@ -4460,6 +4509,16 @@ impl About {
             shown: on(shown),
             scrolled: 0.0,
         }
+    }
+
+    /// The button of it at `point`, if there is one there.
+    pub(crate) fn button_at(&self, point: DomainPoint) -> Option<AboutButton> {
+        let buttons = [
+            (AboutButton::Close, self.close),
+            (AboutButton::Copy, self.copy),
+        ];
+        let mut under = buttons.into_iter().filter(|(_, at)| at.contains(point));
+        under.next().map(|(button, _)| button)
     }
 
     /// Scrolls what it lists `by` units of layout further down, or up if

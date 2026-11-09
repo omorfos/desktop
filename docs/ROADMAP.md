@@ -1449,11 +1449,19 @@ decision of stage 2.
       switch and each off unless turned on: the program's, everything
       the machine plays, and the microphone. Sound comes from PipeWire.
       What is being recorded, and which sounds, is shown the whole time.
-- [ ] What the system is, in "About" (stage 4 made it): the processor,
-      the memory, the graphics card, the storage, the version of the
-      kernel and of omorfos, and the screens; and "About" opened from
-      the bar's menu as well as the root menu. It may need to scroll, or
-      to go in two columns, by then.
+- [x] What the computer is, in "About" (stage 4 made it): the
+      processor, the memory, each graphics card and internal disk, the
+      system and the kernel, and the screens, read once as it opens; and
+      a button that copies it as text, which programs written for X11
+      can paste too (ADR 69).
+- [ ] "About" opened from the bar's menu as well as the root menu, once
+      the bar has one.
+- [ ] Known gaps in what "About" says of the computer: a graphics card
+      is named as `pci.ids` names it, which is its chip and, for most,
+      the family it is sold under, not the name on its box ("Radeon
+      780M"), which only the graphics driver knows; screens are named
+      by their connector, as no screen's own name (EDID) is read yet;
+      nothing says the text was copied; and Ctrl+C does not copy it.
 - [ ] **On-screen keyboard**, for accessibility, and for a touch screen
       with no keyboard, shown and hidden by the keyboard's own key for
       it where there is one. Above every window and panel by default, and

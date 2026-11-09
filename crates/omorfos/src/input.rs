@@ -16,7 +16,7 @@ use smithay::wayland::shell::xdg::PopupSurface;
 use crate::bridge::{self, Chord};
 use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
-use crate::paint;
+use crate::paint::{self, AboutButton};
 use crate::reveal::Placing;
 use omorfos_core::KeyOutcome;
 
@@ -377,8 +377,13 @@ impl Compositor {
             Placed::Button { button, pressed } => self.button(button, pressed, time),
             // "About" has the pointer while it is shown, and is scrolled
             // by it.
-            Placed::Scroll { vertical, .. } if self.cards.about.0.is_some() => {
-                let _ = self.cards.about.1.as_mut().map(|it| it.scroll(vertical));
+            Placed::Scroll { vertical, .. } if self.cards.about.asked.is_some() => {
+                let _ = self
+                    .cards
+                    .about
+                    .shown
+                    .as_mut()
+                    .map(|it| it.scroll(vertical));
             }
             Placed::Scroll {
                 horizontal,
@@ -490,15 +495,8 @@ impl Compositor {
             // away, and the arrows, the keys of a page, space, Home and
             // End scroll it. Nothing else of it reaches a window; a
             // binding still does what it is bound to.
-            let about = compositor.cards.about.0.is_some();
-            if about && keysym == Keysym::Escape {
-                compositor.cards.about.0 = None;
-                compositor.suppressed_keys.push(code);
-                return FilterResult::Intercept(None);
-            }
-            let page = compositor.cards.about.1.as_ref().map_or(0.0, About::page);
-            if let Some(by) = about_scroll(keysym, page).filter(|_| about) {
-                let _ = compositor.cards.about.1.as_mut().map(|it| it.scroll(by));
+            let about = compositor.cards.about.asked.is_some();
+            if about && compositor.about_key(keysym) {
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
             }
@@ -587,7 +585,7 @@ impl Compositor {
             return;
         }
 
-        if self.over_notice() || self.cards.about.0.is_some() {
+        if self.over_notice() || self.cards.about.asked.is_some() {
             // The notice is ours, and "About" has the pointer while it is
             // shown, like the menu; nothing underneath sees it.
             self.move_pointer(None, time);
@@ -732,7 +730,7 @@ impl Compositor {
         let ours = self.drag.is_some()
             || self.menu.is_some()
             || self.over_notice()
-            || self.cards.about.0.is_some()
+            || self.cards.about.asked.is_some()
             || self.over_line().is_some()
             || self.over_palette()
             || self.over_offer().is_some();
@@ -782,7 +780,7 @@ impl Compositor {
             Some(Drag::Line { across, .. }) => return Look::Icon(line_icon(across)),
             None => {}
         }
-        let about = self.cards.about.0.is_some();
+        let about = self.cards.about.asked.is_some();
         if self.over_notice() || about || self.menu.is_some() || self.over_palette() {
             return Look::Icon(CursorIcon::Default);
         }
@@ -810,10 +808,38 @@ impl Compositor {
         }
     }
 
+    /// What a key does to "About" while it is shown, and whether it did
+    /// anything: Escape puts it away, and the keys `about_scroll` knows
+    /// scroll it.
+    fn about_key(&mut self, keysym: Keysym) -> bool {
+        if keysym == Keysym::Escape {
+            self.cards.about.asked = None;
+            return true;
+        }
+        let shown = self.cards.about.shown.as_mut();
+        let page = shown.as_deref().map_or(0.0, About::page);
+        let by = about_scroll(keysym, page);
+        let _ = shown.zip(by).map(|(about, by)| about.scroll(by));
+        by.is_some()
+    }
+
+    /// A press while "About" is shown: on the button that closes it, or
+    /// beside it, it puts it away; on the one that copies, it copies what
+    /// the computer is. None is any window's.
+    fn press_about(&mut self, position: DomainPoint) {
+        let about = self.cards.about.shown.as_ref();
+        match about.and_then(|about| about.button_at(position)) {
+            Some(AboutButton::Copy) => self.copy_about(),
+            Some(AboutButton::Close) => self.cards.about.asked = None,
+            None if !self.over_about() => self.cards.about.asked = None,
+            None => {}
+        }
+    }
+
     /// Whether the pointer is on "About".
     fn over_about(&self) -> bool {
         let position = self.pointer_position();
-        let about = self.cards.about.1.as_ref();
+        let about = self.cards.about.shown.as_ref();
         about.is_some_and(|about| about.area.contains(position))
     }
 
@@ -992,13 +1018,10 @@ impl Compositor {
             }
             return;
         }
-        if self.cards.about.0.is_some() {
-            // "About" has the pointer while it is shown: a press on its
-            // button or beside it puts it away, and is no window's.
-            let close = self.cards.about.1.as_ref();
-            let on_close = close.is_some_and(|about| about.close.contains(position));
-            if pressed && (on_close || !self.over_about()) {
-                self.cards.about.0 = None;
+        if self.cards.about.asked.is_some() {
+            // "About" has the pointer while it is shown.
+            if pressed {
+                self.press_about(position);
             }
             return;
         }

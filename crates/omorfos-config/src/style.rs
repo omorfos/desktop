@@ -135,13 +135,17 @@ pub enum Part {
     /// The name and version at the top of "About", and the heading of each
     /// list of what is someone else's.
     AboutHeading,
-    /// Whose each thing is, under it.
+    /// Whose each thing is, under it, and the kind of each thing the
+    /// computer has.
     AboutDetail,
+    /// The button of "About" that copies what the computer is, `:hover`
+    /// under the pointer.
+    AboutButton,
 }
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 43] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -184,6 +188,7 @@ impl Part {
         Self::About,
         Self::AboutHeading,
         Self::AboutDetail,
+        Self::AboutButton,
     ];
 
     /// What the part is called in a stylesheet.
@@ -232,6 +237,7 @@ impl Part {
             Self::About => "about",
             Self::AboutHeading => "about-heading",
             Self::AboutDetail => "about-detail",
+            Self::AboutButton => "about-button",
         }
     }
 }
@@ -758,7 +764,8 @@ mod tests {
                 "sealed",
                 "about",
                 "about-heading",
-                "about-detail"
+                "about-detail",
+                "about-button"
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();

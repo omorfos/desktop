@@ -26,7 +26,8 @@ optdepends=('foot: the terminal started by the default key bindings'
             'dbus: to tell D-Bus of the session (dbus-update-activation-environment)'
             'pipewire>=1.4: to share the screen in a browser or a call'
             'wireplumber: for the volume keys (wpctl)'
-            'wl-clipboard: for an editor in a terminal, such as Neovim, to copy and paste')
+            'wl-clipboard: for an editor in a terminal, such as Neovim, to copy and paste'
+            'hwdata: to name the graphics card in About (pci.ids)')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 

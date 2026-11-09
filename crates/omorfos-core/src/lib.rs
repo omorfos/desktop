@@ -23,6 +23,7 @@ mod menu;
 mod placement;
 mod rules;
 mod switcher;
+mod system;
 
 pub use credits::{Credit, Credits, credits};
 pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
@@ -35,3 +36,4 @@ pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Rule, resolve};
 pub use switcher::{Switcher, SwitcherLayout, SwitcherMetrics, Used};
+pub use system::{Card, Disk, Monitor, Said, System};

@@ -1,8 +1,10 @@
 //! "About omorfos": shown in the middle of the screen when asked for, over
 //! everything, and put away by Escape, a click beside it, or asking again;
 //! no taller than its screen, what it lists scrolled by the wheel and the
-//! keys, which no window sees while it is shown.
+//! keys, which no window sees while it is shown; what the computer is,
+//! which its button copies for any program to paste.
 
+use std::io::Read;
 use std::time::Duration;
 
 use omorfos::Input;
@@ -358,4 +360,62 @@ fn about_does_not_outlast_the_session_being_locked() {
     session.roundtrip(&mut locker);
     session.settle();
     assert_eq!(session.draw().at(GROUND.0, GROUND.1), BACKGROUND);
+}
+
+/// The middle of the button that copies, on a screen 640 by 480. "About"
+/// is as tall as that screen lets it be, its top 12 units down; the button
+/// is at the foot of the mark, at the right, inside the border and padding
+/// of 21; and it is 28 tall, and wider than this is in.
+pub(crate) const COPY: (i32, i32) = (WIDTH - 12 - 21 - 6, 12 + 21 + 56 - 14);
+
+/// What a program pasting gets, once it has asked.
+fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
+    let pipe = client.paste();
+    session.roundtrip(client);
+    // Nothing on offer is nothing pasted, which the test finds wanting.
+    let mut text = String::new();
+    let _ = pipe.map(|mut pipe| pipe.read_to_string(&mut text));
+    text
+}
+
+#[test]
+fn about_says_what_the_computer_is_and_its_button_copies_it_for_a_window_to_paste() {
+    let mut session = unblurred();
+    // A second screen, beside the first, for there to be two of a kind.
+    session.add_output((WIDTH, HEIGHT));
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (100, 50), GREEN);
+    about(&mut session);
+    let plain = session.draw().at(COPY.0, COPY.1);
+    assert_ne!(plain, UNBLURRED, "a button");
+    let position = Input::Motion {
+        x: f64::from(COPY.0),
+        y: f64::from(COPY.1),
+    };
+    session.compositor_mut().input(position, 0);
+    session.settle();
+    assert_ne!(
+        session.draw().at(COPY.0, COPY.1),
+        plain,
+        "raised under the pointer"
+    );
+
+    click(&mut session, COPY);
+    assert_eq!(
+        session.draw().at(GROUND.0, GROUND.1),
+        UNBLURRED,
+        "still shown"
+    );
+    session.roundtrip(&mut client);
+    let text = pasted(&mut session, &mut client);
+    assert!(text.starts_with("omorfos "), "{text}");
+    // What every computer has, and the screen of the tests, as it is.
+    for kind in ["Processor", "Memory", "System"] {
+        assert!(text.contains(&format!("\n{kind}: ")), "{kind} in {text}");
+    }
+    for name in ["test-0", "test-1"] {
+        let screen = format!("\nScreens: {name} \u{b7} 640\u{d7}480 at 60 Hz \u{b7} scale 1\n");
+        assert!(text.contains(&screen), "{text}");
+    }
+    drop(window);
 }

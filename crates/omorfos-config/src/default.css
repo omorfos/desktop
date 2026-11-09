@@ -367,9 +367,10 @@ sealed {
   backdrop-filter: blur(24px);
 }
 
-/* "About omorfos", from the root menu: the name and version, and what is
- * someone else's under its headings, whose each is dimmer. It is glass,
- * as glass is drawn everywhere; and it is closed by a window's button. */
+/* "About omorfos", from the root menu: the name and version, what the
+ * computer is, and what is someone else's under its headings, whose each
+ * is dimmer. It is glass, as glass is drawn everywhere; it is closed by a
+ * window's button, and its own button copies what the computer is. */
 about {
   padding: 20px;
   background: var(--glass-thick);
@@ -384,3 +385,10 @@ about-heading {
   font-weight: 600;
 }
 about-detail { color: var(--text-dim); }
+about-button {
+  padding: 4px 12px;
+  background: var(--surface-dim);
+  color: var(--text);
+  border-radius: 6px;
+}
+about-button:hover { background: var(--surface-raised); }
