@@ -16,6 +16,8 @@ pub struct Appearance {
     pub pointer: (String, i32),
     /// The font most text is written in, as GTK writes one.
     pub font: String,
+    /// The monospaced font, for code and terminals, written so too.
+    pub monospace: String,
     /// The name of the icon theme.
     pub icons: String,
 }
@@ -37,6 +39,7 @@ impl Appearance {
             accent: (share(accent.red), share(accent.green), share(accent.blue)),
             pointer: (cursor.theme_in(scheme).into_owned(), size),
             font: theme.font_name(),
+            monospace: theme.monospace_font_name(),
             icons: icons.theme.clone(),
         }
     }
@@ -61,6 +64,7 @@ mod tests {
         let appearance = Appearance::of(&Theme::default(), cursor, &Icons::default());
         assert!(appearance.dark);
         assert_eq!(appearance.pointer, ("omorfos-dark".to_owned(), 24));
+        assert_eq!(appearance.monospace, "JetBrains Mono, monospace 11");
         assert_eq!(appearance.scheme(), 1);
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);

@@ -1237,8 +1237,11 @@ the first than on the last.
       used for the icons omorfos looks up, then the themes it inherits
       from, then `hicolor`, as the icon theme specification has it; and
       told to programs as the font is.
-- [ ] Programs told the monospaced font, JetBrains Mono, which the
-      packages recommend but nothing names yet.
+- [x] Programs told the monospaced font, JetBrains Mono: the built-in
+      theme's `--font-monospace`, told through the settings portal's
+      `monospace-font-name`, which libadwaita and the editors and
+      terminals built on it read. Programs written for X11 are not told,
+      as no setting of theirs says it.
 - [x] A pointer of our own, built in as shapes so that it is sharp at any
       size and there when no cursor theme is installed: `cursor.theme:
       omorfos`, the default, navy or cream as the scheme is, and

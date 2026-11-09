@@ -462,7 +462,7 @@ fn lost(message: &Message) -> bool {
 /// group: whether it is dark, the colour that picks things out, and
 /// whether contrast is to be higher than usual, which it is not; and the
 /// pointer's theme and size, the font text is written in, and the icons.
-fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 7] {
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 8] {
     let (red, green, blue) = look.accent;
     let (theme, size) = look.pointer.clone();
     [
@@ -476,6 +476,11 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
         (INTERFACE, "cursor-size", Value::I32(size)),
         (INTERFACE, "cursor-theme", Value::from(theme)),
         (INTERFACE, "font-name", Value::from(look.font.clone())),
+        (
+            INTERFACE,
+            "monospace-font-name",
+            Value::from(look.monospace.clone()),
+        ),
         (INTERFACE, "icon-theme", Value::from(look.icons.clone())),
     ]
 }
@@ -767,6 +772,7 @@ pub(crate) mod tests {
             accent: (0.25, 0.5, 1.0),
             pointer: ("default".to_owned(), 24),
             font: "Inter, sans-serif 11".to_owned(),
+            monospace: "JetBrains Mono, monospace 11".to_owned(),
             icons: "Adwaita".to_owned(),
         }
     }
@@ -808,6 +814,15 @@ pub(crate) mod tests {
             .try_into()
             .unwrap();
         assert_eq!(theme, "default");
+        let monospace: String = told[INTERFACE]["monospace-font-name"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(
+            monospace, "JetBrains Mono, monospace 11",
+            "for code and terminals"
+        );
         let font: String = told[INTERFACE]["font-name"]
             .try_clone()
             .unwrap()

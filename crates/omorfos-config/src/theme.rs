@@ -71,6 +71,9 @@ struct Table {
     spare: Font,
     /// How each part arrives, part by part.
     starting: Vec<Presence>,
+    /// The families of the monospaced font programs are told, which the
+    /// desktop does not write in itself.
+    monospace: String,
 }
 
 /// How one part looks in one combination of states.
@@ -198,6 +201,15 @@ impl Theme {
         format!("{} {}", font.family, font.size.get())
     }
 
+    /// The monospaced font programs are to write code and terminals in, as
+    /// `--font-monospace` names it, at the size of [`Theme::font_name`]'s:
+    /// `JetBrains Mono, monospace 11`.
+    #[must_use]
+    pub fn monospace_font_name(&self) -> String {
+        let size = self.font(Part::MenuItem, States::NONE).size.get();
+        format!("{} {size}", self.table.monospace)
+    }
+
     /// The font `part` is written in while it is in `states`.
     #[must_use]
     pub fn font(&self, part: Part, states: States) -> &Font {
@@ -228,6 +240,9 @@ struct Variable<'a> {
     value: &'a str,
     origin: Option<usize>,
 }
+
+/// The variable that names the monospaced font programs are told.
+const MONOSPACE: &str = "--font-monospace";
 
 /// The variables in effect, by name.
 type Variables<'a> = HashMap<&'a str, Variable<'a>>;
@@ -331,6 +346,12 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     let rules = [(false, &built_in.starting[..]), (true, &own.starting[..])];
     let arriving = understand(rules, &variables, true)?;
     let (resting, arriving) = (ranked(&resting), ranked(&arriving));
+    // The built-in stylesheet names it, so it is always there.
+    let monospace = variables.get(MONOSPACE).map(|found| {
+        let (value, origin) = resolve(found.value, found.origin, &variables)?;
+        family(&value).map_err(|message| (origin, format!("`{MONOSPACE}`: {message}")))
+    });
+    let monospace = monospace.transpose()?.unwrap_or_default();
 
     let mut looks = Vec::with_capacity(Part::ALL.len() * States::COMBINATIONS);
     let mut starting = Vec::with_capacity(Part::ALL.len());
@@ -353,6 +374,7 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
         looks,
         spare: Font::default(),
         starting,
+        monospace,
     })
 }
 
@@ -1139,6 +1161,24 @@ mod tests {
         assert_eq!(Theme::default().font_name(), "Inter, sans-serif 11");
         let theme = Theme::parse("menu-item { font-family: Cantarell; font-size: 10pt }").unwrap();
         assert_eq!(theme.font_name(), "Cantarell 10");
+    }
+
+    #[test]
+    fn programs_are_told_a_monospaced_font_as_the_theme_names_it_at_the_size_of_the_rest() {
+        let built_in = Theme::default();
+        assert_eq!(
+            built_in.monospace_font_name(),
+            "JetBrains Mono, monospace 11"
+        );
+        let own = ":root { --font-monospace: 'Fira Code', var(--plain) ; --plain: monospace }\n\
+                   menu-item { font-size: 10pt }";
+        let theme = Theme::parse(own).unwrap();
+        assert_eq!(theme.monospace_font_name(), "Fira Code, monospace 10");
+        let message = problem("\n:root { --font-monospace: , ; }");
+        assert!(message.starts_with("2:"), "{message}");
+        assert!(message.contains("--font-monospace"), "{message}");
+        assert!(message.contains("needs a name"), "{message}");
+        assert!(problem(":root { --font-monospace: var(--gone) }").contains("no variable"));
     }
 
     #[test]
