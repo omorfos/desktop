@@ -29,7 +29,9 @@ const BUILT_IN: &str = include_str!("default.css");
 /// A font: a family and a size.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Font {
-    /// A font family name, or a generic one such as `sans-serif`.
+    /// A font family name, or a generic one such as `sans-serif`; or a
+    /// list of them apart by commas, of which the first that is installed
+    /// is used, as `Inter, sans-serif`.
     pub family: String,
     /// Size in points.
     pub size: Bounded<6, 72>,
@@ -185,6 +187,15 @@ impl Theme {
     pub fn starting(&self, part: Part) -> Presence {
         let starting = self.table.starting.get(part as usize).copied();
         starting.unwrap_or(Presence::WHOLE)
+    }
+
+    /// The font most of what the desktop writes is written in, a row of a
+    /// menu's, as programs are told it: its families and its size in
+    /// points, as GTK and Pango write a font, `Inter, sans-serif 11`.
+    #[must_use]
+    pub fn font_name(&self) -> String {
+        let font = self.font(Part::MenuItem, States::NONE);
+        format!("{} {}", font.family, font.size.get())
     }
 
     /// The font `part` is written in while it is in `states`.
@@ -797,9 +808,15 @@ fn transition(value: &str) -> Result<Vec<Setting>, String> {
 
 /// The name of a font family, with or without quotation marks.
 fn family(value: &str) -> Result<String, String> {
-    let name = value.trim_matches(['"', '\'']).trim();
-    let named = (!name.is_empty()).then(|| name.to_owned());
-    named.ok_or_else(|| "a font family needs a name".to_owned())
+    // A list, as CSS has it, of which the first that is installed is used.
+    let names = value
+        .split(',')
+        .map(|name| name.trim().trim_matches(['"', '\'']).trim());
+    let names: Vec<&str> = names.collect();
+    let all_named = names.iter().all(|name| !name.is_empty());
+    all_named
+        .then(|| names.join(", "))
+        .ok_or_else(|| "a font family needs a name".to_owned())
 }
 
 #[cfg(test)]
@@ -1115,6 +1132,26 @@ mod tests {
         assert!(message.contains("as it comes and goes"), "{message}");
         assert!(problem("clock, menu:closing { scale: 1 }").contains("comes and goes"));
         assert!(Theme::parse("clock:closing, menu:hover:closing { scale: 1 }").is_ok());
+    }
+
+    #[test]
+    fn programs_are_told_the_font_most_text_is_written_in_as_gtk_writes_one() {
+        assert_eq!(Theme::default().font_name(), "Inter, sans-serif 11");
+        let theme = Theme::parse("menu-item { font-family: Cantarell; font-size: 10pt }").unwrap();
+        assert_eq!(theme.font_name(), "Cantarell 10");
+    }
+
+    #[test]
+    fn a_font_family_may_be_a_list_of_them_in_the_order_they_are_wanted() {
+        let family = |stylesheet: &str| {
+            let theme = Theme::parse(stylesheet).unwrap();
+            theme.font(Part::Clock, States::NONE).family.clone()
+        };
+        assert_eq!(
+            family("clock { font-family: \"Inter Display\",Inter ,  'DejaVu Sans', sans-serif }"),
+            "Inter Display, Inter, DejaVu Sans, sans-serif"
+        );
+        assert_eq!(family("clock { font-family: monospace }"), "monospace");
     }
 
     #[test]
@@ -1639,7 +1676,8 @@ mod tests {
         let theme = Theme::default();
         for part in Part::ALL {
             let font = theme.font(part, States::NONE);
-            assert_eq!(font.family, Font::default().family, "{part:?}");
+            // Inter where it is installed, and otherwise what the system has.
+            assert_eq!(font.family, "Inter, sans-serif", "{part:?}");
             assert_eq!(font.size, Font::default().size, "{part:?}");
         }
         // Only a notification's title is heavier than the rest.
@@ -2028,6 +2066,8 @@ mod tests {
             ("* { font-weight: heavy }", "`heavy` is not a font weight"),
             ("* { font-style: wobbly }", "`wobbly` is not a font style"),
             ("* { font-family: \"\" }", "needs a name"),
+            ("* { font-family: Inter, , sans-serif }", "needs a name"),
+            ("* { font-family: Inter, }", "needs a name"),
         ];
         for (stylesheet, expected) in cases {
             let message = problem(stylesheet);

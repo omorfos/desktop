@@ -37,7 +37,7 @@
 /* Colours take a moment to change when a part's state does. To have them
  * change at once, write `* { transition: none; }` in your theme. */
 * {
-  font-family: sans-serif;
+  font-family: Inter, sans-serif; /* Inter where it is installed */
   font-size: 11pt;
   transition: 120ms ease-out;
 }

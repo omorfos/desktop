@@ -35,7 +35,7 @@ depends = "$auto, libegl1, libgles2, libpipewire-0.3-0t64 (>= 1.4)"
 # whose `wpctl` the volume keys set the volume with; and `wl-clipboard`,
 # which an editor in a terminal, Neovim among them, copies and pastes
 # with, since through X11 it cannot read what Wayland programs copy.
-recommends = "foot, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire (>= 1.4), wireplumber, wl-clipboard"
+recommends = "foot, fonts-inter, fonts-jetbrains-mono, adwaita-icon-theme, fonts-dejavu-core | fonts-noto-core, xwayland, xdg-desktop-portal, xdg-desktop-portal-gtk, libglib2.0-bin, dbus-bin | dbus, pipewire (>= 1.4), wireplumber, wl-clipboard"
 assets = [
         ["target/release/omorfos", "usr/bin/", "755"],
     ["target/release/omorfos-hold", "usr/bin/", "755"],

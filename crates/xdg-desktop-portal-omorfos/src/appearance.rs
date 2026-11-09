@@ -14,6 +14,8 @@ pub struct Appearance {
     /// The pointer: the name of its theme, and how large it is, in units
     /// of layout, for toolkits that draw it themselves.
     pub pointer: (String, i32),
+    /// The font most text is written in, as GTK writes one.
+    pub font: String,
 }
 
 impl Appearance {
@@ -32,6 +34,7 @@ impl Appearance {
             dark: theme.dark(),
             accent: (share(accent.red), share(accent.green), share(accent.blue)),
             pointer: (cursor.theme.clone(), size),
+            font: theme.font_name(),
         }
     }
 

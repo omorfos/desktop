@@ -316,9 +316,10 @@ pub(crate) struct X11 {
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
-    /// How dense programs written for X11 have been told the screen is, and
-    /// what their pointer is, once the X server could be told.
-    told: Option<(f64, Cursor)>,
+    /// How dense programs written for X11 have been told the screen is,
+    /// what their pointer is and what font to write in, once the X server
+    /// could be told.
+    told: Option<(f64, Cursor, String)>,
     /// An X server that has stopped and is to be replaced, once its window
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
@@ -493,7 +494,8 @@ impl Compositor {
     fn scale_x11(&mut self) {
         let scale = self.x11_scale();
         let cursor = self.config().general.cursor.clone();
-        let told = Some((scale, cursor.clone()));
+        let font = self.config().theme.font_name();
+        let told = Some((scale, cursor.clone(), font.clone()));
         if self.x11.wm.is_none() || self.x11.told == told {
             return;
         }
@@ -520,11 +522,12 @@ impl Compositor {
             ("Gtk/CursorThemeSize", pointer * scale),
         ];
         let settings = settings.map(|(name, value)| (name.to_owned(), Value::from(rounded(value))));
-        let named = (
-            "Gtk/CursorThemeName".to_owned(),
-            Value::from(cursor.theme.clone()),
-        );
-        let settings = settings.into_iter().chain([named]);
+        let named = [
+            ("Gtk/CursorThemeName", cursor.theme.clone()),
+            ("Gtk/FontName", font),
+        ];
+        let named = named.map(|(name, value)| (name.to_owned(), Value::from(value)));
+        let settings = settings.into_iter().chain(named);
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {

@@ -1228,9 +1228,15 @@ the first than on the last.
       when the cursor changes and not only the scale; and through the
       settings portal's `org.gnome.desktop.interface`, for GTK in a
       sandbox. A cursor theme is a directory's name.
-- [ ] The default font and icons: Inter in the built-in theme, told to
-      programs with the icon theme, and recommended by the packages
-      with JetBrains Mono.
+- [x] The default font: Inter in the built-in theme where it is
+      installed, `font-family` taking a list of families as CSS does;
+      told to programs in the settings toolkits follow under X11 and
+      through the settings portal; and recommended by the packages, with
+      JetBrains Mono and the Adwaita cursors.
+- [ ] The icon theme: a setting, used for the icons omorfos looks up
+      ahead of `hicolor`, and told to programs as the font is.
+- [ ] Programs told the monospaced font, JetBrains Mono, which the
+      packages recommend but nothing names yet.
 - [ ] A pointer of our own, built in as shapes so that it is sharp at any
       size and there when no cursor theme is installed.
 - [ ] "About" shows `CREDITS.md`, and packages carry the licence texts

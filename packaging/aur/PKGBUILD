@@ -16,6 +16,9 @@ makedepends=('cargo' 'clang')
 # How the lock screen asks PAM, the system's to change once installed.
 backup=('etc/pam.d/omorfos-lock' 'etc/pam.d/omorfos-lock-fingerprint' 'etc/pam.d/omorfos-lock-key')
 optdepends=('foot: the terminal started by the default key bindings'
+            'inter-font: the font of the interface'
+            'ttf-jetbrains-mono: the monospaced font of the design'
+            'adwaita-cursors: the pointer, drawn at every size'
             'xorg-xwayland: to run programs written for X11'
             'xdg-desktop-portal: so applications follow the look of the desktop and can ask for screenshots'
             'xdg-desktop-portal-gtk: to choose files, which omorfos leaves to it'

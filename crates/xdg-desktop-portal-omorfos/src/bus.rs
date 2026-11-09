@@ -461,8 +461,8 @@ fn lost(message: &Message) -> bool {
 /// How the desktop looks, as the settings applications read, each in its
 /// group: whether it is dark, the colour that picks things out, and
 /// whether contrast is to be higher than usual, which it is not; and the
-/// pointer's theme and size.
-fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 5] {
+/// pointer's theme and size, and the font text is written in.
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 6] {
     let (red, green, blue) = look.accent;
     let (theme, size) = look.pointer.clone();
     [
@@ -475,6 +475,7 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
         (LOOKS, "contrast", Value::U32(0)),
         (INTERFACE, "cursor-size", Value::I32(size)),
         (INTERFACE, "cursor-theme", Value::from(theme)),
+        (INTERFACE, "font-name", Value::from(look.font.clone())),
     ]
 }
 
@@ -764,6 +765,7 @@ pub(crate) mod tests {
             dark: true,
             accent: (0.25, 0.5, 1.0),
             pointer: ("default".to_owned(), 24),
+            font: "Inter, sans-serif 11".to_owned(),
         }
     }
 
@@ -804,6 +806,12 @@ pub(crate) mod tests {
             .try_into()
             .unwrap();
         assert_eq!(theme, "default");
+        let font: String = told[INTERFACE]["font-name"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(font, "Inter, sans-serif 11");
         let reply = peer.call_method(
             Some(NAME),
             PATH,

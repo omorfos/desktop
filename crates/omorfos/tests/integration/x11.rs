@@ -1233,6 +1233,7 @@ fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it
         has(&followed, b"Adwaita"),
         "the theme's name, in the settings"
     );
+    assert!(has(&followed, b"Inter, sans-serif 11"), "and the font");
 }
 
 #[test]
@@ -1258,6 +1259,7 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
         "Gdk/UnscaledDPI",
         "Gtk/CursorThemeSize",
         "Gtk/CursorThemeName",
+        "Gtk/FontName",
     ];
     for name in names {
         assert!(has(&followed, name.as_bytes()), "{name}");

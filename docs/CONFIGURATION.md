@@ -541,7 +541,7 @@ This is the whole built-in theme, which is also every part there is:
 /* Colours take a moment to change when a part's state does. To have them
  * change at once, write `* { transition: none; }` in your theme. */
 * {
-  font-family: sans-serif;
+  font-family: Inter, sans-serif; /* Inter where it is installed */
   font-size: 11pt;
   transition: 120ms ease-out;
 }
@@ -1014,7 +1014,7 @@ is measured to the outside of its border.
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |
 | `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
-| `font-family`, `font-size` | a name; `6pt` to `72pt` | a generic name such as `sans-serif` works |
+| `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu-item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name` |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |
 | `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`. After a comma, or alone, one `inset`: a sharp line inside the border along the side it falls from, as wide as it falls, following the corners, as `inset 0 1px rgba(255, 255, 255, 0.06)` is light along the top, with neither a soft edge nor a spread; drawn wherever the part is drawn as a box, its titlebar among them. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice` and `tooltip`; by `switcher`, under the switcher on Alt+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
