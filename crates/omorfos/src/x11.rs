@@ -308,6 +308,19 @@ const TAKING_AGAIN: Duration = Duration::from_secs(5);
 /// How long after finding the number held it is tried again.
 const TRYING_AGAIN: Duration = Duration::from_millis(50);
 
+/// What programs written for X11 are told of how things are to look.
+#[derive(Debug, Clone, PartialEq)]
+struct Told {
+    /// How many pixels they draw to a unit of layout.
+    scale: f64,
+    /// Their pointer.
+    cursor: Cursor,
+    /// The font to write in, as GTK writes one.
+    font: String,
+    /// The name of the icon theme.
+    icons: String,
+}
+
 /// The X server and what the compositor keeps as its window manager.
 #[derive(Debug)]
 pub(crate) struct X11 {
@@ -316,10 +329,9 @@ pub(crate) struct X11 {
     server: Option<Server>,
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
-    /// How dense programs written for X11 have been told the screen is,
-    /// what their pointer is and what font to write in, once the X server
+    /// What programs written for X11 have been told, once the X server
     /// could be told.
-    told: Option<(f64, Cursor, String)>,
+    told: Option<Told>,
     /// An X server that has stopped and is to be replaced, once its window
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
@@ -493,13 +505,23 @@ impl Compositor {
     /// resources older programs read once.
     fn scale_x11(&mut self) {
         let scale = self.x11_scale();
-        let cursor = self.config().general.cursor.clone();
-        let font = self.config().theme.font_name();
-        let told = Some((scale, cursor.clone(), font.clone()));
-        if self.x11.wm.is_none() || self.x11.told == told {
+        let config = self.config();
+        let told = Told {
+            scale,
+            cursor: config.general.cursor.clone(),
+            font: config.theme.font_name(),
+            icons: config.general.icons.theme.clone(),
+        };
+        if self.x11.wm.is_none() || self.x11.told.as_ref() == Some(&told) {
             return;
         }
-        self.x11.told = told;
+        self.x11.told = Some(told.clone());
+        let Told {
+            cursor,
+            font,
+            icons,
+            ..
+        } = told;
         self.size_x11_pixels(scale);
         // Windows that are there already are as large as they were, which
         // is now a different number of the X server's pixels.
@@ -525,6 +547,7 @@ impl Compositor {
         let named = [
             ("Gtk/CursorThemeName", cursor.theme.clone()),
             ("Gtk/FontName", font),
+            ("Net/IconThemeName", icons),
         ];
         let named = named.map(|(name, value)| (name.to_owned(), Value::from(value)));
         let settings = settings.into_iter().chain(named);

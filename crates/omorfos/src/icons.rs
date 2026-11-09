@@ -115,6 +115,11 @@ impl std::fmt::Debug for Textures {
 }
 
 impl WindowIcons {
+    /// Looks icons up in the theme called `theme` from now on.
+    pub(crate) fn set_theme(&mut self, theme: &str) {
+        self.icons.set_theme(theme);
+    }
+
     /// The icons installed under `data`, the user's own first (see
     /// [`omorfos_icons::data_directories`]).
     pub(crate) fn new(data: Vec<PathBuf>) -> Self {

@@ -51,7 +51,8 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 fn look(config: &Path) -> Appearance {
     let store = Store::open(config);
     let config = store.current();
-    Appearance::of(&config.theme, &config.general.cursor)
+    let general = &config.general;
+    Appearance::of(&config.theme, &general.cursor, &general.icons)
 }
 
 /// Answers the portals for the session the environment describes, until

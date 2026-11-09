@@ -46,8 +46,8 @@ pub use daylight::{Coordinates, Day, Location};
 pub use debounce::Debouncer;
 pub use diagnostic::{Diagnostic, Position};
 pub use general::{
-    Acceleration, Align, Appearance, Clipboard, Cursor, Focus, FocusModel, General, Idle, Kept,
-    Keyboard, Launcher, Lock, Mouse, NamedOutput, Notifications, OfferedMode, Offset, Output,
+    Acceleration, Align, Appearance, Clipboard, Cursor, Focus, FocusModel, General, Icons, Idle,
+    Kept, Keyboard, Launcher, Lock, Mouse, NamedOutput, Notifications, OfferedMode, Offset, Output,
     OutputScale, Outputs, Panel, Place, Placement, Portals, Rotation, ScreenMode, Screenshots,
     Speed, Touchpad, Update, Workspaces, X11Scaling, Xwayland,
 };

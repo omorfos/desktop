@@ -316,8 +316,9 @@ type Globals<'a> = (
 );
 
 impl Shell {
-    fn new(store: Store, icons: Icons) -> Self {
+    fn new(store: Store, mut icons: Icons) -> Self {
         let usual = store.current().general.notifications.timeout.get();
+        icons.set_theme(&store.current().general.icons.theme);
         Self {
             compositor: None,
             shm: None,
@@ -340,8 +341,9 @@ impl Shell {
 
     /// Takes in a configuration that changed.
     fn settle(&mut self) {
-        let usual = self.store.current().general.notifications.timeout.get();
-        self.stack.set_usual(usual);
+        let general = &self.store.current().general;
+        self.stack.set_usual(general.notifications.timeout.get());
+        self.icons.set_theme(&general.icons.theme);
         self.stale = true;
     }
 

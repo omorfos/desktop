@@ -82,6 +82,8 @@ impl Launcher {
             let store = Store::open(config);
             let config = store.current();
             let picker = Picker::new(apps, config.general.launcher);
+            let mut icons = icons;
+            icons.set_theme(&config.general.icons.theme);
             Self {
                 connection,
                 queue,

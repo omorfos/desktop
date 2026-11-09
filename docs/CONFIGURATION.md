@@ -73,6 +73,8 @@ lock:                     # how omorfos-lock may be unlocked besides the passwor
 cursor:
   theme: default          # a cursor theme by name
   size: 24                # 8 to 128
+icons:
+  theme: Adwaita          # an icon theme by name
 appearance:
   scheme: dark            # dark | light | auto, light from sunrise to sunset
   # location: system      # for auto: where the sun is watched; or Europe/London, or { latitude: 51.5, longitude: -0.13 }
@@ -158,6 +160,16 @@ it takes; and through the settings portal, as `cursor-theme` and
 `cursor-size`, which GTK reads in a sandbox. A change is told as soon as
 `config.yaml` is saved, though a program that read it once as it started
 keeps what it read.
+
+`icons.theme` names the icon theme the icons programs name are looked up
+in, for windows, the launcher and notifications: in it, then in the
+themes its `index.theme` says it inherits from, then in `hicolor`, where
+programs install their own, each in `~/.local/share/icons` before the
+system's; and then among pictures with no theme, as in
+`/usr/share/pixmaps`. It is a directory's name, as a cursor theme's is,
+and is told to programs as the font is: in the settings toolkits follow
+under X11, `Net/IconThemeName`, and through the settings portal's
+`icon-theme`.
 
 With more than one screen, they are placed side by side from left to
 right in the order they were plugged in, a laptop's own first. To say

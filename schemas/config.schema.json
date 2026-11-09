@@ -246,6 +246,18 @@
         }
       ]
     },
+    "Icons": {
+      "additionalProperties": false,
+      "description": "The icons programs are shown by, where a program names an icon rather\nthan giving its pixels.",
+      "properties": {
+        "theme": {
+          "default": "Adwaita",
+          "description": "The name of an installed icon theme, such as `Papirus`: icons are\nlooked for in it, then in those it inherits from, then in\n`hicolor`, where programs install their own.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Idle": {
       "additionalProperties": false,
       "description": "What happens when the user is away.",
@@ -1019,6 +1031,10 @@
     "focus": {
       "$ref": "#/$defs/Focus",
       "description": "How windows gain focus."
+    },
+    "icons": {
+      "$ref": "#/$defs/Icons",
+      "description": "The icons programs are shown by."
     },
     "idle": {
       "$ref": "#/$defs/Idle",

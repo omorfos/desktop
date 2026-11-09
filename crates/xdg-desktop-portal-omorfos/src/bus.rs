@@ -461,8 +461,8 @@ fn lost(message: &Message) -> bool {
 /// How the desktop looks, as the settings applications read, each in its
 /// group: whether it is dark, the colour that picks things out, and
 /// whether contrast is to be higher than usual, which it is not; and the
-/// pointer's theme and size, and the font text is written in.
-fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 6] {
+/// pointer's theme and size, the font text is written in, and the icons.
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 7] {
     let (red, green, blue) = look.accent;
     let (theme, size) = look.pointer.clone();
     [
@@ -476,6 +476,7 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
         (INTERFACE, "cursor-size", Value::I32(size)),
         (INTERFACE, "cursor-theme", Value::from(theme)),
         (INTERFACE, "font-name", Value::from(look.font.clone())),
+        (INTERFACE, "icon-theme", Value::from(look.icons.clone())),
     ]
 }
 
@@ -766,6 +767,7 @@ pub(crate) mod tests {
             accent: (0.25, 0.5, 1.0),
             pointer: ("default".to_owned(), 24),
             font: "Inter, sans-serif 11".to_owned(),
+            icons: "Adwaita".to_owned(),
         }
     }
 
@@ -812,6 +814,12 @@ pub(crate) mod tests {
             .try_into()
             .unwrap();
         assert_eq!(font, "Inter, sans-serif 11");
+        let icons: String = told[INTERFACE]["icon-theme"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(icons, "Adwaita");
         let reply = peer.call_method(
             Some(NAME),
             PATH,

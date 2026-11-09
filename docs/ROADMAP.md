@@ -1233,8 +1233,10 @@ the first than on the last.
       told to programs in the settings toolkits follow under X11 and
       through the settings portal; and recommended by the packages, with
       JetBrains Mono and the Adwaita cursors.
-- [ ] The icon theme: a setting, used for the icons omorfos looks up
-      ahead of `hicolor`, and told to programs as the font is.
+- [x] The icon theme: `icons.theme`, Adwaita unless another is named,
+      used for the icons omorfos looks up, then the themes it inherits
+      from, then `hicolor`, as the icon theme specification has it; and
+      told to programs as the font is.
 - [ ] Programs told the monospaced font, JetBrains Mono, which the
       packages recommend but nothing names yet.
 - [ ] A pointer of our own, built in as shapes so that it is sharp at any

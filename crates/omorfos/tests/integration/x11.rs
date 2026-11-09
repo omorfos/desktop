@@ -1214,7 +1214,8 @@ fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it
     }
     assert_eq!(told, POINTER_AT_TWO);
 
-    let larger = format!("{NATIVE}cursor: {{ theme: Adwaita, size: 32 }}\n");
+    let larger =
+        format!("{NATIVE}cursor: {{ theme: Adwaita, size: 32 }}\nicons: {{ theme: Papirus }}\n");
     session.write_config("config.yaml", &larger);
     session.compositor_mut().reload_config();
     session.step();
@@ -1234,6 +1235,7 @@ fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it
         "the theme's name, in the settings"
     );
     assert!(has(&followed, b"Inter, sans-serif 11"), "and the font");
+    assert!(has(&followed, b"Papirus"), "and the icons");
 }
 
 #[test]
@@ -1260,6 +1262,7 @@ fn programs_written_for_x11_are_told_how_dense_the_screen_is_and_when_that_chang
         "Gtk/CursorThemeSize",
         "Gtk/CursorThemeName",
         "Gtk/FontName",
+        "Net/IconThemeName",
     ];
     for name in names {
         assert!(has(&followed, name.as_bytes()), "{name}");

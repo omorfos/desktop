@@ -32,7 +32,7 @@ wallpapers, are under [CC BY-SA 4.0](LICENSE-pictures), and the
 |---|---|---|---|
 | [Inter](https://rsms.me/inter/) | Rasmus Andersson and the Inter project authors | SIL Open Font Licence 1.1 | The font of the interface |
 | [JetBrains Mono](https://www.jetbrains.com/lp/mono/) | JetBrains and the JetBrains Mono project authors | SIL Open Font Licence 1.1 | The monospaced font |
-| Adwaita cursors | The GNOME project | CC BY-SA 3.0 or LGPL 3 | The pointer, until omorfos has its own |
+| Adwaita cursors and icons | The GNOME project | CC BY-SA 3.0 or LGPL 3 | The pointer, until omorfos has its own; and the icons programs name, unless another theme is chosen |
 
 ## Thanks
 

@@ -119,7 +119,7 @@ seatd. The rest is wanted, and done without if it is not there:
 | `Xwayland` | Programs written for X11 |
 | `foot` | The terminal the default keys start |
 | Inter and JetBrains Mono (`fonts-inter`, `fonts-jetbrains-mono`) | The fonts of the design; without them the system's `sans-serif` is used |
-| The Adwaita cursors (`adwaita-icon-theme`) | The pointer, drawn at every size it is wanted |
+| The Adwaita cursors and icons (`adwaita-icon-theme`) | The pointer, drawn at every size it is wanted, and the icons programs name without bringing their own |
 | A D-Bus session, and `dbus-update-activation-environment` | Notifications, and telling D-Bus and systemd of the session |
 | `xdg-desktop-portal` | Applications following the look of the desktop, and asking for screenshots |
 | `xdg-desktop-portal-gtk` | Choosing files, which omorfos leaves to it |

@@ -22,10 +22,22 @@ const LARGEST_FILE: u64 = 2 * 1024 * 1024;
 /// The most pixels an icon may have along a side.
 const LARGEST_SIDE: u32 = 1024;
 
-/// The themes icons are looked for in: the one every program's own icon is
-/// installed in, and then the one that has the icons programs name without
-/// bringing their own, such as `dialog-information`.
-const THEMES: [&str; 2] = ["hicolor", "Adwaita"];
+/// The theme icons are looked for in unless another is chosen: the one that
+/// has the icons programs name without bringing their own, such as
+/// `dialog-information`.
+const THEME: &str = "Adwaita";
+
+/// The theme every program's own icon is installed in, which every theme
+/// comes back to.
+const HICOLOR: &str = "hicolor";
+
+/// The most themes icons are looked for in: the one chosen, those it
+/// inherits from, and `hicolor`. Themes are other programs' files, and one
+/// may name more, or name one that names it back.
+const MOST_THEMES: usize = 8;
+
+/// The most of a theme's `index.theme` that is read, in bytes.
+const LONGEST_INDEX: u64 = 64 * 1024;
 
 /// The kinds of icon a theme sorts its pictures into, each a directory.
 const KINDS: [&str; 8] = [
@@ -44,24 +56,45 @@ const KINDS: [&str; 8] = [
 const SHAPE: &str = "-symbolic";
 
 /// The icons there are, and those that have been looked up so far.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Icons {
     /// Where icons are installed, the user's own first.
     directories: Vec<PathBuf>,
+    /// The themes icons are looked for in, in order.
+    themes: Vec<String>,
     /// What each name came to at each size it was wanted at.
     found: HashMap<(String, u32, Color), Option<Image>>,
+}
+
+impl Default for Icons {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
 }
 
 impl Icons {
     /// The icons installed in `directories`, the first of which counts
     /// where several have one of the same name. A directory holds themes
     /// (`hicolor/48x48/apps/name.png`), or pictures directly (`name.png`).
+    ///
+    /// They are looked for in Adwaita's theme until another is chosen.
     #[must_use]
     pub fn new(directories: Vec<PathBuf>) -> Self {
+        let themes = chain(THEME, &directories);
         Self {
             directories,
+            themes,
             found: HashMap::new(),
         }
+    }
+
+    /// Looks icons up in the theme called `theme` from now on: in it, then
+    /// in the themes its `index.theme` says it inherits from, then in
+    /// `hicolor`, each in every directory before the next. What was found
+    /// in the theme before is forgotten.
+    pub fn set_theme(&mut self, theme: &str) {
+        self.themes = chain(theme, &self.directories);
+        self.found.clear();
     }
 
     /// Where icons are installed: the `icons` directory of `data_home`
@@ -87,10 +120,10 @@ impl Icons {
     /// found, drawn in `ink`.
     pub fn get(&mut self, name: &str, pixels: u32, ink: Color) -> Option<&Image> {
         let known = self.found.entry((name.to_owned(), pixels, ink));
-        let directories = &self.directories;
+        let (directories, themes) = (&self.directories, &self.themes);
         known
             .or_insert_with(|| {
-                let file = locate(directories, name, pixels);
+                let file = locate((directories, themes), name, pixels);
                 file.and_then(|file| {
                     let stem = file.file_stem().unwrap_or_default().to_string_lossy();
                     let image = load(&file, pixels);
@@ -179,16 +212,16 @@ fn entry_says(app_id: &str, directories: &[PathBuf], key: &str) -> Option<String
         let read = file.and_then(|file| file.take(LONGEST_ENTRY).read_to_string(&mut entry).ok());
         read.map(|_| entry)
     });
-    read.find_map(|entry| value(&entry, key))
+    read.find_map(|entry| value(&entry, "[Desktop Entry]", key))
 }
 
-/// What a desktop entry gives for `key`, untranslated, in its
-/// `[Desktop Entry]`, if it is not empty.
-fn value(entry: &str, key: &str) -> Option<String> {
+/// What a desktop entry, or a theme's index, gives for `key`, untranslated,
+/// in its `section`, if it is not empty.
+fn value(entry: &str, section: &str, key: &str) -> Option<String> {
     let mut inside = false;
     entry.lines().map(str::trim).find_map(|line| {
         if line.starts_with('[') {
-            inside = line == "[Desktop Entry]";
+            inside = line == section;
         }
         let named = line.split_once('=').filter(|_| inside);
         let named = named.filter(|(given, _)| given.trim() == key);
@@ -204,9 +237,67 @@ pub fn decode_png(bytes: &[u8]) -> Option<Image> {
     png(bytes)
 }
 
+/// The themes icons are looked for in when `theme` is chosen: it, then
+/// those it inherits from as its `index.theme` in the first of `directories`
+/// that has one says, each before what it inherits from in turn, and then
+/// `hicolor`; each once, no more than [`MOST_THEMES`], and only those whose
+/// names name one directory where themes are.
+fn chain(theme: &str, directories: &[PathBuf]) -> Vec<String> {
+    let mut themes: Vec<String> = Vec::new();
+    let mut waiting = vec![theme.to_owned()];
+    while let Some(name) = waiting.pop() {
+        if themes.len() + 1 >= MOST_THEMES {
+            break;
+        }
+        if name == HICOLOR || themes.contains(&name) || !plain(&name) {
+            continue;
+        }
+        let inherits = inherits(&name, directories);
+        waiting.extend(inherits.into_iter().rev());
+        themes.push(name);
+    }
+    themes.push(HICOLOR.to_owned());
+    themes
+}
+
+/// Whether `name` names one directory and no other: something, with no
+/// `/` or `\\` or anything unseen in it, and no `.` to begin it.
+fn plain(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains(['/', '\\'])
+        && !name.chars().any(char::is_control)
+}
+
+/// The themes the theme called `name` says it inherits from, in the first
+/// of `directories` that has it.
+fn inherits(name: &str, directories: &[PathBuf]) -> Vec<String> {
+    let indexes = directories
+        .iter()
+        .map(|directory| directory.join(name).join("index.theme"));
+    let mut read = indexes.filter_map(|path| {
+        let mut index = String::new();
+        let file = File::open(path).ok();
+        let read = file.and_then(|file| file.take(LONGEST_INDEX).read_to_string(&mut index).ok());
+        read.map(|_| index)
+    });
+    let index = read.next().unwrap_or_default();
+    let named = value(&index, "[Icon Theme]", "Inherits").unwrap_or_default();
+    let named = named
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    named.map(str::to_owned).collect()
+}
+
 /// Finds the file of the icon called `name` that suits `pixels` best: the
-/// icon itself if any directory has it, and failing that its shape.
-fn locate(directories: &[PathBuf], name: &str, pixels: u32) -> Option<PathBuf> {
+/// icon itself if any theme has it, in the order of `themes`, or a picture
+/// with no theme does, and failing that its shape.
+fn locate(
+    (directories, themes): (&[PathBuf], &[String]),
+    name: &str,
+    pixels: u32,
+) -> Option<PathBuf> {
     let given = Path::new(name);
     if given.is_absolute() {
         return given.is_file().then(|| given.to_owned());
@@ -216,18 +307,29 @@ fn locate(directories: &[PathBuf], name: &str, pixels: u32) -> Option<PathBuf> {
     }
     let wanted = [name.to_owned(), format!("{name}{SHAPE}")];
     wanted.iter().find_map(|name| {
-        let mut places = directories.iter();
-        places.find_map(|directory| within(directory, name, pixels))
+        let mut places = themes.iter().flat_map(|theme| {
+            directories
+                .iter()
+                .map(move |directory| directory.join(theme))
+        });
+        let found = places.find_map(|theme| within(&theme, name, pixels));
+        // Pictures with no theme lie in a directory as they are.
+        found.or_else(|| {
+            let files = ["png", "svg"].map(|extension| format!("{name}.{extension}"));
+            let mut loose = directories
+                .iter()
+                .flat_map(|directory| files.iter().map(move |file| directory.join(file)));
+            loose.find(|file| file.is_file())
+        })
     })
 }
 
-/// Finds the file of the icon called `name` in one directory of icons.
-fn within(directory: &Path, name: &str, pixels: u32) -> Option<PathBuf> {
+/// Finds the file of the icon called `name` in one theme, in one directory
+/// of icons.
+fn within(theme: &Path, name: &str, pixels: u32) -> Option<PathBuf> {
     let files = ["png", "svg"].map(|extension| format!("{name}.{extension}"));
-    let themes = THEMES
-        .iter()
-        .flat_map(|theme| sizes(&directory.join(theme)));
-    let sorted = themes.flat_map(|(size, folder)| {
+    let themes = sizes(theme);
+    let sorted = themes.into_iter().flat_map(|(size, folder)| {
         let kinds = KINDS.iter().map(move |kind| folder.join(kind));
         // A drawing does for any size, however its directory is named.
         let sized = [size, u32::MAX];
@@ -238,12 +340,7 @@ fn within(directory: &Path, name: &str, pixels: u32) -> Option<PathBuf> {
                 .map(move |(file, size)| (size, kind.join(file)))
         })
     });
-    // Pictures with no theme lie in the directory as they are.
-    let loose = files.iter().map(|file| (0, directory.join(file)));
-    let mut candidates: Vec<(u32, PathBuf)> = sorted
-        .chain(loose)
-        .filter(|(_, file)| file.is_file())
-        .collect();
+    let mut candidates: Vec<(u32, PathBuf)> = sorted.filter(|(_, file)| file.is_file()).collect();
     // The smallest that is large enough, and failing that the largest. One
     // that draws at any size counts as the largest of all.
     candidates.sort_by_key(|(size, _)| (*size < pixels, size.abs_diff(pixels)));
@@ -353,7 +450,7 @@ mod tests {
 
     #[test]
     fn an_application_is_named_by_its_desktop_entry() {
-        let named = |entry: &str| value(entry, "Name");
+        let named = |entry: &str| value(entry, "[Desktop Entry]", "Name");
         let entry = "[Desktop Entry]\nType=Application\nName[pl]=Przykład\nName = Example \n";
         assert_eq!(named(entry).as_deref(), Some("Example"), "not translated");
         let elsewhere = "[Desktop Action new]\nName=New Window\n[Desktop Entry]\nName=Main\n";
@@ -561,6 +658,86 @@ mod tests {
         assert_eq!(icons.get("theirs", 32, INK).unwrap().size().0, 30);
         assert_eq!(icons.get("loose", 32, INK).unwrap().size().0, 29);
         assert_eq!(icons.get("drawn", 32, INK).unwrap().size().0, 32);
+    }
+
+    #[test]
+    fn the_theme_chosen_comes_first_then_what_it_inherits_then_hicolor() {
+        let root = tempfile::TempDir::new().unwrap();
+        let (own, system) = (root.path().join("own"), root.path().join("system"));
+        // Papirus inherits from Breeze, which inherits from what it names.
+        write(
+            &system,
+            "Papirus/index.theme",
+            b"[Icon Theme]\nName=Papirus\nInherits=breeze,hicolor\n",
+        );
+        write(
+            &system,
+            "breeze/index.theme",
+            b"[Icon Theme]\nInherits=../../escape, .hidden\n",
+        );
+        write(
+            &system,
+            "Papirus/32x32/apps/tool.png",
+            &png_of(32, [1, 1, 1, 255]),
+        );
+        write(&system, "breeze/32x32/apps/tool.png", &png_of(31, [0; 4]));
+        write(
+            &system,
+            "breeze/32x32/apps/only-breeze.png",
+            &png_of(30, [0; 4]),
+        );
+        write(
+            &system,
+            "hicolor/32x32/apps/everywhere.png",
+            &png_of(29, [0; 4]),
+        );
+        // A theme of the user's own, under the same name, comes first.
+        write(&own, "Papirus/32x32/apps/mine.png", &png_of(28, [0; 4]));
+        write(&system, "Papirus/32x32/apps/mine.png", &png_of(27, [0; 4]));
+        write(&system, "hicolor/32x32/apps/mine.png", &png_of(26, [0; 4]));
+        // What would be outside the icons is never looked at.
+        write(
+            root.path(),
+            "escape/32x32/apps/away.png",
+            &png_of(25, [0; 4]),
+        );
+        let mut icons = Icons::new(vec![own, system]);
+        icons.set_theme("Papirus");
+        let side = |icons: &mut Icons, name| icons.get(name, 32, INK).map(|icon| icon.size().0);
+        assert_eq!(side(&mut icons, "tool"), Some(32));
+        assert_eq!(side(&mut icons, "only-breeze"), Some(30));
+        assert_eq!(side(&mut icons, "everywhere"), Some(29));
+        assert_eq!(side(&mut icons, "mine"), Some(28));
+        assert_eq!(side(&mut icons, "away"), None);
+        // Another theme, and what was found under the last is forgotten.
+        icons.set_theme("breeze");
+        assert_eq!(side(&mut icons, "tool"), Some(31));
+        assert_eq!(side(&mut icons, "mine"), Some(26));
+        // One that is not there is as good as hicolor alone.
+        icons.set_theme("Missing");
+        assert_eq!(side(&mut icons, "tool"), None);
+        assert_eq!(side(&mut icons, "everywhere"), Some(29));
+    }
+
+    #[test]
+    fn themes_that_inherit_from_each_other_without_end_are_followed_only_so_far() {
+        let root = tempfile::TempDir::new().unwrap();
+        write(root.path(), "a/index.theme", b"[Icon Theme]\nInherits=b\n");
+        write(root.path(), "b/index.theme", b"[Icon Theme]\nInherits=a\n");
+        let mut many = String::from("[Icon Theme]\nInherits=");
+        many.push_str(
+            &(0..40)
+                .map(|n| format!("t{n}"))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        write(root.path(), "wide/index.theme", many.as_bytes());
+        let directories = vec![root.path().to_owned()];
+        assert_eq!(chain("a", &directories), ["a", "b", "hicolor"]);
+        let wide = chain("wide", &directories);
+        assert_eq!(wide.len(), MOST_THEMES);
+        assert_eq!(wide.last().map(String::as_str), Some("hicolor"));
+        assert_eq!(chain("hicolor", &directories), ["hicolor"]);
     }
 
     #[test]

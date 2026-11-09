@@ -47,6 +47,8 @@ pub struct General {
     pub wallpaper: Wallpaper,
     /// The pointer.
     pub cursor: Cursor,
+    /// The icons programs are shown by.
+    pub icons: Icons,
     /// How what the desktop draws looks, whatever the theme.
     pub appearance: Appearance,
     /// The launcher that comes with omorfos.
@@ -342,18 +344,39 @@ pub struct Launcher {
 pub struct Cursor {
     /// The name of an installed cursor theme, such as `Adwaita`. `default`
     /// is whichever the system has set up as its default.
-    #[serde(deserialize_with = "cursor_theme")]
+    #[serde(deserialize_with = "theme_name")]
     pub theme: String,
     /// The size of the pointer, before scaling.
     pub size: Bounded<8, 128>,
 }
 
-/// A cursor theme's name, which is the name of the directory it is in:
-/// something, with no `/` or `\\` and nothing that cannot be seen in it, and
-/// no `.` to begin it, so that it names one directory where cursor themes
-/// are kept and no other. It is told to programs too, in the X server's
-/// resources, which are lines of text.
-fn cursor_theme<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+/// The icons programs are shown by, where a program names an icon rather
+/// than giving its pixels.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Icons {
+    /// The name of an installed icon theme, such as `Papirus`: icons are
+    /// looked for in it, then in those it inherits from, then in
+    /// `hicolor`, where programs install their own.
+    #[serde(deserialize_with = "theme_name")]
+    pub theme: String,
+}
+
+impl Default for Icons {
+    fn default() -> Self {
+        Self {
+            theme: "Adwaita".to_owned(),
+        }
+    }
+}
+
+/// A theme's name, of cursors or of icons, which is the name of the
+/// directory it is in: something, with no `/` or `\\` and nothing that
+/// cannot be seen in it, and no `.` to begin it, so that it names one
+/// directory where themes are kept and no other. It is told to programs
+/// too, in the X server's resources, which are lines of text.
+fn theme_name<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
     let name = String::deserialize(deserializer)?;
     let plain = !name.is_empty()
         && !name.starts_with('.')
@@ -363,8 +386,8 @@ fn cursor_theme<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Str
         Ok(name)
     } else {
         let message = format!(
-            "`{}` is not the name of a cursor theme, which is a directory's: no `/`, nothing \
-             unseen, and no `.` to begin it",
+            "`{}` is not the name of a theme, which is a directory's: no `/`, nothing unseen, \
+             and no `.` to begin it",
             name.escape_debug()
         );
         Err(serde::de::Error::custom(message))
@@ -1064,6 +1087,17 @@ mod tests {
     }
 
     #[test]
+    fn icons_are_adwaitas_unless_another_theme_is_named_as_one_directory() {
+        assert_eq!(General::default().icons.theme, "Adwaita");
+        let papirus = parse("icons: { theme: Papirus-Dark }").unwrap();
+        assert_eq!(papirus.icons.theme, "Papirus-Dark");
+        let error = parse("icons:\n  theme: ../up\n").unwrap_err();
+        assert!(error.contains("is not the name of a theme"), "{error}");
+        assert!(error.contains("line 2"), "{error}");
+        assert!(parse("icons: { size: 4 }").is_err());
+    }
+
+    #[test]
     fn a_cursor_theme_is_named_as_one_directory_and_no_other() {
         for wrong in [
             "''",
@@ -1076,7 +1110,7 @@ mod tests {
         ] {
             let error = parse(&format!("cursor:\n  theme: {wrong}\n")).unwrap_err();
             assert!(
-                error.contains("is not the name of a cursor theme"),
+                error.contains("is not the name of a theme"),
                 "{wrong}: {error}"
             );
             assert!(error.contains("line 2"), "{wrong}: {error}");

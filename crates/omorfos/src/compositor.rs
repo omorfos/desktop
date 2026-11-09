@@ -875,6 +875,8 @@ impl Compositor {
     /// have only the icons their programs give as pixels.
     pub fn set_data_directories(&mut self, data: Vec<PathBuf>) {
         self.switch.icons = WindowIcons::new(data);
+        let theme = &self.store.current().general.icons.theme;
+        self.switch.icons.set_theme(theme);
     }
 
     /// Works out what the pointer looks like now and readies its picture.
@@ -1276,6 +1278,7 @@ impl Compositor {
         self.watcher
             .iter_mut()
             .for_each(|watcher| watcher.wake_at(due));
+        self.switch.icons.set_theme(&config.general.icons.theme);
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
         problems.extend(crate::outputs::misplaced(&config.general));
 
