@@ -144,10 +144,15 @@ pub(crate) mod key {
     pub(crate) const ALT: Keycode = Keycode::new(64);
     pub(crate) const X: Keycode = Keycode::new(53);
     pub(crate) const F2: Keycode = Keycode::new(68);
+    pub(crate) const SPACE: Keycode = Keycode::new(65);
+    pub(crate) const HOME: Keycode = Keycode::new(110);
     pub(crate) const UP: Keycode = Keycode::new(111);
+    pub(crate) const PAGE_UP: Keycode = Keycode::new(112);
     pub(crate) const LEFT: Keycode = Keycode::new(113);
     pub(crate) const RIGHT: Keycode = Keycode::new(114);
+    pub(crate) const END: Keycode = Keycode::new(115);
     pub(crate) const DOWN: Keycode = Keycode::new(116);
+    pub(crate) const PAGE_DOWN: Keycode = Keycode::new(117);
     pub(crate) const SUPER: Keycode = Keycode::new(133);
     /// The key a laptop has for its screens, `XF86Display`.
     pub(crate) const DISPLAY: Keycode = Keycode::new(235);

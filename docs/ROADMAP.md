@@ -1263,9 +1263,12 @@ the first than on the last.
       whose it is, as `CREDITS.md` was when omorfos was built; glass, and
       put away by a window's close button, Escape, a click beside it, or
       `about` again.
-- [ ] Known gaps in "About": it does not scroll, so a screen less tall
-      than it, some 450 units, cuts it short; and keys other than Escape
-      go on to the window with focus while it is shown.
+- [x] "About" on a screen too short for it: no taller than the screen
+      within its margins, what it lists scrolled by the wheel, the
+      touchpad, the arrows, the keys of a page, space, Home and End,
+      without being painted again. It has the keyboard while it is
+      shown: no window sees a key, a binding still works; and it is put
+      away when the session is locked.
 - [x] Titlebar buttons at the right, close outermost, as most desktops
       have them; and programs that draw their own titlebars told the
       same: GNOME's `button-layout` through the settings portal, which

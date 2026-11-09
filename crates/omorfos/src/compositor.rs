@@ -25,7 +25,7 @@ use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Place, Screen, Showing,
     Standing, WindowId, WorkspaceId,
 };
-use omorfos_ui::Seen;
+use omorfos_ui::{Area, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
 use smithay::backend::allocator::Format;
@@ -2582,8 +2582,10 @@ impl Compositor {
         let within = screen.map(Head::area).unwrap_or_default();
         let scale = screen.map_or(Scale::ONE, |screen| screen.scale);
         let wanted = screen.is_some();
-        // One that is no longer wanted fades out as it was.
+        // One that is no longer wanted fades out as it was; one painted
+        // again is scrolled as far as it was.
         let had = self.cards.about.1.take();
+        let scrolled = had.as_ref().map_or(0.0, |about| about.scrolled);
         let pointer = self.pointer_position();
         let hovered = had
             .as_ref()
@@ -2602,12 +2604,9 @@ impl Compositor {
             (Some(about), _) => Some(about),
             (None, true) => {
                 let tools = (&mut self.text, &mut self.animation.shades);
-                Some(About::paint(
-                    tools,
-                    (theme, scheme),
-                    within,
-                    (scale, hovered),
-                ))
+                let mut about = About::paint(tools, (theme, scheme), within, (scale, hovered));
+                about.scroll(scrolled);
+                Some(about)
             }
             (None, false) => None,
         };
@@ -4393,6 +4392,11 @@ pub(crate) struct About {
     hovered: bool,
     pixels: Painted,
     shadow: Option<Shadowing>,
+    /// What it lists, all of it, and where on the screen it is shown.
+    list: Painted,
+    shown: Rect,
+    /// How far down what it lists has been scrolled, in units of layout.
+    scrolled: f64,
 }
 
 impl About {
@@ -4413,9 +4417,18 @@ impl About {
         let drawn = omorfos_brand::draw(&omorfos_brand::mark(brand), (side, side));
         let mark = drawn.and_then(|png| omorfos_icons::decode_png(&png));
         let credits = omorfos_core::credits(CREDITS);
+        let style = theme.style(Part::About, States::NONE);
+        let room = width.saturating_sub(style.inset().across());
+        let list = paint::about_list(text, theme, &credits, (room, scale));
+        // As much of it as there is room for on the screen, within the
+        // margins, which is all of it on most screens.
+        let tallest = high.saturating_sub(NOTICE_MARGIN * 2);
+        let room = tallest.saturating_sub(paint::about_head(theme));
+        let length = list.units().1.min(room);
         let version = env!("CARGO_PKG_VERSION");
         let said = (mark.as_slice(), version);
-        let (canvas, close) = paint::about(text, theme, said, &credits, (width, scale, hovered));
+        let looks = (width, length, scale, hovered);
+        let (canvas, close, shown) = paint::about(text, theme, said, looks);
         let (across, down) = canvas.units();
         let left = wide.saturating_sub(across) / 2;
         let top = high.saturating_sub(down) / 2;
@@ -4426,12 +4439,12 @@ impl About {
             ),
             DomainSize::new(across, down),
         );
-        let (x, y, wide, high) = close;
-        let close = Rect::new(
-            DomainPoint::new(area.origin.x + x, area.origin.y + y),
-            DomainSize::new(wide, high),
-        );
-        let style = theme.style(Part::About, States::NONE);
+        let on = |(x, y, wide, high): Area| {
+            Rect::new(
+                DomainPoint::new(area.origin.x + x, area.origin.y + y),
+                DomainSize::new(wide, high),
+            )
+        };
         let placed = (area.origin.x, area.origin.y, across, down);
         Self {
             theme: theme.clone(),
@@ -4439,11 +4452,28 @@ impl About {
             within,
             scale,
             area,
-            close,
+            close: on(close),
             hovered,
             pixels: Painted::new(&canvas),
             shadow: shades.cast(&style, scale, placed, None),
+            list: Painted::new(&list),
+            shown: on(shown),
+            scrolled: 0.0,
         }
+    }
+
+    /// Scrolls what it lists `by` units of layout further down, or up if
+    /// less than nothing: no further than its end, nor back past its top.
+    pub(crate) fn scroll(&mut self, by: f64) {
+        let hidden = self.list.height().saturating_sub(self.shown.size.height);
+        self.scrolled = (self.scrolled + by).clamp(0.0, f64::from(hidden));
+    }
+
+    /// How far a page of what it lists is: all that is shown of it, less a
+    /// line, so that the last line of one page is the first of the next.
+    pub(crate) fn page(&self) -> f64 {
+        let lines = self.shown.size.height.saturating_sub(paint::ABOUT_ROW);
+        f64::from(lines.max(paint::ABOUT_ROW))
     }
 
     /// It, then the shadow under it, as see-through as `opacity` says;
@@ -4458,6 +4488,10 @@ impl About {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
+        let shown = self.shown;
+        let at = Point::<i32, Logical>::from((shown.origin.x, shown.origin.y));
+        let rows = (self.scrolled, shown.size.height);
+        elements.extend(self.list.rows(renderer, at.to_f64(), rows, view, opacity));
         let at = Point::<i32, Logical>::from((self.area.origin.x, self.area.origin.y));
         elements.extend(self.pixels.element(renderer, at.to_f64(), view, opacity));
         let glass = elements.len();
@@ -5225,6 +5259,39 @@ impl Painted {
             view,
             (opacity, Kind::Unspecified),
         )
+    }
+
+    /// The rows of the painting from `from` units down from its top and
+    /// `tall` units tall, placed at `at` as [`Painted::element`] places all
+    /// of it. Where they begin is a whole pixel, so that what is drawn is
+    /// as sharp as all of it.
+    pub(crate) fn rows<R>(
+        &self,
+        renderer: &mut R,
+        at: Point<f64, Logical>,
+        (from, tall): (f64, u32),
+        view: View,
+        opacity: f32,
+    ) -> Option<Element<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let across = self.whole.size.w;
+        let pixels = self.whole.size.h / f64::from(self.size.h.max(1));
+        let top = (from * pixels).round();
+        let part = Rectangle::new((0.0, top).into(), (across, f64::from(tall) * pixels).into());
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            view.pixel(at).to_f64(),
+            &self.pixels,
+            Some(opacity),
+            Some(part),
+            Some((self.size.w, tall.cast_signed()).into()),
+            Kind::Unspecified,
+        )
+        .ok()
+        .map(Element::Memory)
     }
 
     /// The painting placed at `at` as [`Painted::element`] places it, but

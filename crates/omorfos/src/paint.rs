@@ -348,28 +348,33 @@ pub(crate) fn notice(
 }
 
 /// How tall a line of "About" is, in units of layout.
-const ABOUT_ROW: u32 = 20;
+pub(crate) const ABOUT_ROW: u32 = 20;
 /// How large the mark is at the top of "About", and the room between it
 /// and the name beside it.
 pub(crate) const ABOUT_MARK: u32 = 56;
 /// The room after the mark, and after each list of what is someone else's.
 const ABOUT_GAP: u32 = 12;
-/// Paints "About omorfos", `width` across, and says where on it the button
-/// that closes it is: `mark`, which is empty if it could not be drawn, and
-/// beside it the name,
-/// `version` and the licence; then each list of `credits` under its
-/// heading, each thing's name and its licence, and under them whose it is.
-pub(crate) fn about(
+
+/// How tall "About" is but for what it lists: its padding and border, and
+/// the mark with the room below it.
+pub(crate) fn about_head(theme: &Theme) -> u32 {
+    let style = theme.style(Part::About, States::NONE);
+    style.inset().down() + ABOUT_MARK + ABOUT_GAP
+}
+
+/// What "About" lists, `room` across and as tall as all of it is, on
+/// nothing, to be shown on it through a window that scrolls: each list of
+/// `credits` under its heading, each thing's name and its licence, and
+/// under them whose it is.
+pub(crate) fn about_list(
     text: &mut Text,
     theme: &Theme,
-    (mark, version): (&[Image], &str),
     credits: &[omorfos_core::Credits],
-    (width, scale, hovered): (u32, Scale, bool),
-) -> (Canvas, Area) {
-    let style = theme.style(Part::About, States::NONE);
-    // Each line below the mark: what is written, in which part, then what
-    // follows it in the dimmer one; and how tall it is, a gap being a
-    // line with nothing in it.
+    (room, scale): (u32, Scale),
+) -> Canvas {
+    // Each line: what is written, in which part, then what follows it in
+    // the dimmer one; and how tall it is, a gap being a line with nothing
+    // in it.
     let mut lines: Vec<(Part, String, String, u32)> = Vec::new();
     for section in credits {
         let heading = section.heading.clone();
@@ -386,18 +391,51 @@ pub(crate) fn about(
         }
         lines.push((Part::About, String::new(), String::new(), ABOUT_GAP));
     }
-    let below: u32 = lines.iter().map(|(.., tall)| tall).sum();
-    let height = style.inset().down() + ABOUT_MARK + ABOUT_GAP + below;
+    let height: u32 = lines.iter().map(|(.., tall)| tall).sum();
+    let mut canvas = Canvas::scaled(room, height, scale);
+    let dim = Part::AboutDetail;
+    let (dim, dim_font) = (
+        theme.style(dim, States::NONE).color,
+        theme.font(dim, States::NONE),
+    );
+    let mut at = 0;
+    for (part, line, after, tall) in lines {
+        let (ink, font) = (
+            theme.style(part, States::NONE).color,
+            theme.font(part, States::NONE),
+        );
+        let wide = text.measure(&line, font).min(room);
+        text.draw(&mut canvas, &line, (0, at, wide, tall), ink, font);
+        let rest = room - wide;
+        text.draw(
+            &mut canvas,
+            &after,
+            (wide.cast_signed(), at, rest, tall),
+            dim,
+            dim_font,
+        );
+        at += tall.cast_signed();
+    }
+    canvas
+}
+
+/// Paints "About omorfos", `width` across, with room `list` tall below the
+/// mark for what it lists, which is drawn on it apart: `mark`, which is
+/// empty if it could not be drawn, and beside it the name, `version` and
+/// the licence. Says where on it the button that closes it is, and where
+/// what it lists goes.
+pub(crate) fn about(
+    text: &mut Text,
+    theme: &Theme,
+    (mark, version): (&[Image], &str),
+    (width, list, scale, hovered): (u32, u32, Scale, bool),
+) -> (Canvas, Area, Area) {
+    let style = theme.style(Part::About, States::NONE);
+    let height = about_head(theme) + list;
     let whole = (0, 0, width, height);
     let mut canvas = Canvas::scaled(width, height, scale);
     canvas.draw_box(whole, &style);
     let (left, top, room, _) = inset(whole, style.inset());
-    let looks = |part| {
-        (
-            theme.style(part, States::NONE).color,
-            theme.font(part, States::NONE),
-        )
-    };
 
     let size = ABOUT_MARK.cast_signed();
     for mark in mark {
@@ -425,7 +463,8 @@ pub(crate) fn about(
     ];
     let mut at = top + (size - (3 * ABOUT_ROW).cast_signed()) / 2;
     for (part, line) in titles {
-        let (ink, font) = looks(part);
+        let ink = theme.style(part, States::NONE).color;
+        let font = theme.font(part, States::NONE);
         text.draw(
             &mut canvas,
             &line,
@@ -435,25 +474,8 @@ pub(crate) fn about(
         );
         at += ABOUT_ROW.cast_signed();
     }
-
-    let (dim, dim_font) = looks(Part::AboutDetail);
-    let mut at = top + size + ABOUT_GAP.cast_signed();
-    for (part, line, after, tall) in lines {
-        let (ink, font) = looks(part);
-        let wide = text.measure(&line, font).min(room);
-        text.draw(&mut canvas, &line, (left, at, wide, tall), ink, font);
-        let after_left = left + wide.cast_signed();
-        let rest = room - wide;
-        text.draw(
-            &mut canvas,
-            &after,
-            (after_left, at, rest, tall),
-            dim,
-            dim_font,
-        );
-        at += tall.cast_signed();
-    }
-    (canvas, close)
+    let below = (left, top + size + ABOUT_GAP.cast_signed(), room, list);
+    (canvas, close, below)
 }
 
 /// Paints the question whether to keep the screens as they stand now,

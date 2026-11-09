@@ -1,5 +1,7 @@
 //! "About omorfos": shown in the middle of the screen when asked for, over
-//! everything, and put away by Escape, a click beside it, or asking again.
+//! everything, and put away by Escape, a click beside it, or asking again;
+//! no taller than its screen, what it lists scrolled by the wheel and the
+//! keys, which no window sees while it is shown.
 
 use std::time::Duration;
 
@@ -210,4 +212,150 @@ fn the_button_that_closes_about_shows_its_cross_under_the_pointer_and_closes_it(
     assert_ne!(crossed, red, "its cross: {crossed:#x}");
     click(&mut session, (x, y));
     assert_eq!(session.draw().at(GROUND.0, GROUND.1), BACKGROUND, "closed");
+}
+
+/// A session whose screen is half as large in units of layout, its scale
+/// being 2: too short for all that "About" lists. Its "About" has neither
+/// blur nor shadow, so that its ground is one colour all over.
+fn short(more: &[(&str, &str)]) -> Session {
+    let theme = "about { backdrop-filter: none; box-shadow: none; }\n";
+    let mut files = vec![
+        ("theme.css", theme),
+        ("config.yaml", "output: { scale: 2 }\n"),
+    ];
+    files.extend_from_slice(more);
+    Session::with_config(&files)
+}
+
+fn scroll(session: &mut Session, by: f64) {
+    let input = Input::Scroll {
+        horizontal: 0.0,
+        vertical: by,
+    };
+    session.compositor_mut().input(input, 0);
+    session.settle();
+}
+
+/// Each row of the screen, from the top.
+fn seen(session: &mut Session) -> Vec<Vec<u32>> {
+    let screen = session.draw();
+    let row = |y| (0..WIDTH).map(|x| screen.at(x, y)).collect();
+    (0..HEIGHT).map(row).collect()
+}
+
+/// Where "About" on a short screen has nothing drawn on its ground, in
+/// pixels: inside its left edge, which is 12 units in from the screen's.
+const LEFT_SIDE: i32 = 40;
+
+/// The rows of "About" that do not scroll, in pixels: from its top, 12
+/// units down, past the mark, 20 units below that.
+const HEAD: std::ops::Range<usize> = 24..176;
+
+#[test]
+fn about_on_a_screen_too_short_for_it_keeps_inside_it_and_scrolls_what_it_lists() {
+    let mut session = short(&[]);
+    about(&mut session);
+    let screen = session.draw();
+    // From 12 units below the top of the screen to 12 above its foot.
+    let side = |y| screen.at(LEFT_SIDE, y);
+    assert_eq!(side(20), BACKGROUND, "above it");
+    assert_eq!(side(28), SURFACE, "its top");
+    assert_eq!(side(HEIGHT - 30), SURFACE, "its foot");
+    assert_eq!(side(HEIGHT - 20), BACKGROUND, "below it");
+
+    let top = seen(&mut session);
+    scroll(&mut session, 15.0);
+    let on = seen(&mut session);
+    assert_ne!(on, top, "what it lists moves up");
+    assert_eq!(on[HEAD], top[HEAD], "and the mark stays where it is");
+    assert_eq!(on[..24], top[..24], "as does what is above it");
+
+    scroll(&mut session, 100_000.0);
+    let end = seen(&mut session);
+    assert_ne!(end, on);
+    scroll(&mut session, 15.0);
+    assert_eq!(seen(&mut session), end, "no further than its end");
+    scroll(&mut session, -100_000.0);
+    assert_eq!(seen(&mut session), top, "nor back past its top");
+}
+
+#[test]
+fn about_has_the_keyboard_its_keys_scroll_it_and_a_window_sees_none_but_bindings_work() {
+    let keys = (
+        "keys.yaml",
+        "bindings:\n  - { keys: Super+F2, action: about }\n",
+    );
+    let mut session = short(&[keys]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (100, 50), GREEN);
+    session.roundtrip(&mut client);
+    client.take_events();
+    about(&mut session);
+    let top = seen(&mut session);
+
+    tap(&mut session, key::A);
+    assert_eq!(seen(&mut session), top, "a letter does nothing");
+    tap(&mut session, key::DOWN);
+    let down = seen(&mut session);
+    assert_ne!(down, top, "an arrow scrolls a line");
+    tap(&mut session, key::PAGE_DOWN);
+    let page = seen(&mut session);
+    assert!(page != down && page != top, "a page further");
+    tap(&mut session, key::END);
+    let end = seen(&mut session);
+    scroll(&mut session, 15.0);
+    assert_eq!(seen(&mut session), end, "the end");
+    tap(&mut session, key::UP);
+    assert_ne!(seen(&mut session), end);
+    tap(&mut session, key::SPACE);
+    assert_eq!(seen(&mut session), end, "space is a page down too");
+    tap(&mut session, key::PAGE_UP);
+    assert_ne!(seen(&mut session), end, "a page back");
+    tap(&mut session, key::HOME);
+    assert_eq!(seen(&mut session), top, "and home its top");
+
+    session.roundtrip(&mut client);
+    let typed = |events: Vec<Event>| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Key { .. }))
+    };
+    assert!(!typed(client.take_events()), "nothing reached the window");
+
+    // A binding still does what it is bound to: here, puts "About" away.
+    for pressed in [true, false] {
+        let codes = if pressed {
+            [key::SUPER, key::F2]
+        } else {
+            [key::F2, key::SUPER]
+        };
+        for code in codes {
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+    }
+    session.settle();
+    let screen = session.draw();
+    assert_eq!(screen.at(LEFT_SIDE, HEIGHT - 30), BACKGROUND, "put away");
+    session.roundtrip(&mut client);
+    client.take_events();
+    tap(&mut session, key::A);
+    session.roundtrip(&mut client);
+    assert!(
+        typed(client.take_events()),
+        "and the window has the keys again"
+    );
+    drop(window);
+}
+
+#[test]
+fn about_does_not_outlast_the_session_being_locked() {
+    let mut session = unblurred();
+    about(&mut session);
+    let (mut locker, lock, _surface) = crate::lock::lock(&mut session);
+    lock.unlock_and_destroy();
+    session.roundtrip(&mut locker);
+    session.settle();
+    assert_eq!(session.draw().at(GROUND.0, GROUND.1), BACKGROUND);
 }

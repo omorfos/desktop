@@ -14,8 +14,9 @@ use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
-use crate::compositor::{Compositor, Look};
+use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
+use crate::paint;
 use crate::reveal::Placing;
 use omorfos_core::KeyOutcome;
 
@@ -131,6 +132,22 @@ pub enum Gesture {
         /// Whether they moved rather than lifted.
         cancelled: bool,
     },
+}
+
+/// How far a key scrolls "About", in units of layout, a page being `page`
+/// of them: a line for an arrow, a page for the keys of a page and for
+/// space, and all the way for Home and End. None for any other key.
+fn about_scroll(keysym: Keysym, page: f64) -> Option<f64> {
+    let line = f64::from(paint::ABOUT_ROW);
+    match keysym {
+        Keysym::Down | Keysym::KP_Down => Some(line),
+        Keysym::Up | Keysym::KP_Up => Some(-line),
+        Keysym::Page_Down | Keysym::KP_Page_Down | Keysym::space => Some(page),
+        Keysym::Page_Up | Keysym::KP_Page_Up => Some(-page),
+        Keysym::End | Keysym::KP_End => Some(f64::INFINITY),
+        Keysym::Home | Keysym::KP_Home => Some(f64::NEG_INFINITY),
+        _ => None,
+    }
 }
 
 /// What a key means to an open menu, if anything. A key pressed with a
@@ -358,6 +375,11 @@ impl Compositor {
             Placed::Key { code, pressed } => self.key(code, pressed, time),
             Placed::Motion { x, y } => self.motion(x, y, time),
             Placed::Button { button, pressed } => self.button(button, pressed, time),
+            // "About" has the pointer while it is shown, and is scrolled
+            // by it.
+            Placed::Scroll { vertical, .. } if self.cards.about.0.is_some() => {
+                let _ = self.cards.about.1.as_mut().map(|it| it.scroll(vertical));
+            }
             Placed::Scroll {
                 horizontal,
                 vertical,
@@ -464,10 +486,19 @@ impl Compositor {
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
             }
-            // "About" is put away by Escape; every other key is the
-            // window's that has focus, as it was.
-            if compositor.cards.about.0.is_some() && keysym == Keysym::Escape {
+            // "About" has the keyboard while it is shown: Escape puts it
+            // away, and the arrows, the keys of a page, space, Home and
+            // End scroll it. Nothing else of it reaches a window; a
+            // binding still does what it is bound to.
+            let about = compositor.cards.about.0.is_some();
+            if about && keysym == Keysym::Escape {
                 compositor.cards.about.0 = None;
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
+            }
+            let page = compositor.cards.about.1.as_ref().map_or(0.0, About::page);
+            if let Some(by) = about_scroll(keysym, page).filter(|_| about) {
+                let _ = compositor.cards.about.1.as_mut().map(|it| it.scroll(by));
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
             }
@@ -488,15 +519,19 @@ impl Compositor {
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a
                 // step in a chain.
-                return FilterResult::Forward;
+                if !about {
+                    return FilterResult::Forward;
+                }
+                compositor.suppressed_keys.push(code);
+                return FilterResult::Intercept(None);
             }
             let chord = Chord {
                 modifiers: bridge::modifiers(held),
                 keysym: keysym.raw(),
             };
             let action = match compositor.bindings.press(chord) {
-                KeyOutcome::Unbound => return FilterResult::Forward,
-                KeyOutcome::Pending | KeyOutcome::Cancelled => None,
+                KeyOutcome::Unbound if !about => return FilterResult::Forward,
+                KeyOutcome::Unbound | KeyOutcome::Pending | KeyOutcome::Cancelled => None,
                 KeyOutcome::Triggered(action) => Some(action.clone()),
             };
             compositor.suppressed_keys.push(code);
