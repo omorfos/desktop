@@ -1201,7 +1201,7 @@ struct Set {
     desk: WorkspaceId,
     /// Set while a fullscreen window's titlebar is asked for: how far
     /// down from the top of the output it is laid over the window.
-    revealed: Option<u32>,
+    revealed: Option<i32>,
     /// How far right the workspace shown is drawn, in units of layout,
     /// while the workspaces are slid across: see [`Desktop::slide`].
     slid: i32,
@@ -2518,12 +2518,13 @@ impl Desktop {
 
     /// Asks for the titlebar of whatever fullscreen window an output is
     /// showing to be laid over it, `down` from the top of the output, or
-    /// with `None` for it to be taken away again. Counted in the order the
+    /// above it by as much where that is less than nothing, as it is while
+    /// it slides in, or with `None` for it to be taken away again. Counted in the order the
     /// outputs were given; an output that is not there is not asked.
     ///
     /// The window is not told to be any other size. A window that draws
     /// its own titlebar is given none.
-    pub fn reveal(&mut self, output: usize, down: Option<u32>) {
+    pub fn reveal(&mut self, output: usize, down: Option<i32>) {
         if let Some(set) = self.sets.get_mut(output) {
             set.revealed = down;
         }
@@ -2997,9 +2998,12 @@ impl Desktop {
         let down = down.filter(|_| group.fullscreen && group.decorated())?;
         let size = Size::new(
             geometry.size.width,
-            geometry.size.height.saturating_sub(down),
+            geometry
+                .size
+                .height
+                .saturating_sub(down.max(0).unsigned_abs()),
         );
-        let within = Rect::new(geometry.origin.offset(0, down.cast_signed()), size);
+        let within = Rect::new(geometry.origin.offset(0, down), size);
         let metrics = Metrics {
             border: 0,
             ..self.settings.decoration
@@ -3821,6 +3825,13 @@ mod tests {
         assert_eq!(decoration.titlebar(), bar, "across the top, so far down");
         assert_eq!(shown.geometry, SCREEN);
         assert_eq!(shown.client(), SCREEN, "and takes no room from the window");
+
+        // On its way in from above the screen, part of it is above it.
+        desktop.reveal(0, Some(-10));
+        let shown = frame(&desktop, video);
+        let bar = Rect::new(Point::new(0, -10), Size::new(1920, METRICS.titlebar));
+        assert_eq!(shown.decoration.unwrap().titlebar(), bar, "partly above");
+        assert_eq!(shown.client(), SCREEN);
 
         desktop.reveal(0, None);
         assert_eq!(frame(&desktop, video).decoration, None);

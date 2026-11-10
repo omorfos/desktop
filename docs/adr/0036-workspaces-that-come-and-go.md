@@ -162,6 +162,21 @@ as resting does not, until the pointer has left the edge and come
 again. A pointer moved to a place, as a tablet or a test does, cannot
 push, and still has resting.
 
+What comes back slid in later, with the rest of "Movement" (ADR 71):
+the panels along the edge and, at the top, the titlebar under them, as
+one, from beyond the edge, and out again the same way. They take the
+time the theme gives a panel to come in and to go, `panel`'s transition
+and `panel:closing`'s, 180 ms easing out and 120 ms easing in in the
+built-in theme, rather than the 240 ms of a window sent somewhere: they
+are coming onto the screen and leaving it, and leaving is quicker, so
+that what was sent away is out of the way of what is next. Sent away on
+their way in, or brought back on their way out, they turn back from
+where they had got to. A panel coming in is there for the pointer
+where it is going from the moment it sets out, so that nothing waits on
+it, and one going takes no click; the titlebar, which is the window's,
+is wherever it is drawn, on its way out too. A theme whose panels change at once, and reduced motion, have
+them there and gone at once, as before.
+
 A titlebar is laid over a fullscreen window only if omorfos draws that
 window's titlebar on a desktop. A program that draws its own has its own
 way out.

@@ -36,6 +36,9 @@ for it; for them, it is the movement that has to go, not the change.
   takes the room of one that goes, by gliding there over 240 ms; with
   the setting, it jumps, as it does where the theme has notifications
   change at once.
+- **What is brought back at an edge appears.** On a workspace made for a
+  fullscreen window, the panels and the titlebar come and go at once,
+  where they would slide in from the edge and out again.
 - **Nothing shakes.** The box that asks for a password and the lock
   screen's field keep still at a wrong one, and say so in words, as they
   did besides shaking.

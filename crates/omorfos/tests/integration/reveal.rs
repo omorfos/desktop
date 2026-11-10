@@ -35,7 +35,12 @@ fn panel(edge: Anchor) -> LayerShape {
 /// on drawing itself 200 by 100, so the rest of the screen says what else
 /// is there.
 fn fullscreen() -> (Session, Client) {
-    let mut session = Session::new();
+    fullscreen_with(&[])
+}
+
+/// The same, with `files` in its configuration.
+fn fullscreen_with(files: &[(&str, &str)]) -> (Session, Client) {
+    let mut session = Session::with_config(files);
     let mut client = session.connect();
     session.open_layer(&mut client, &panel(Anchor::Top), (640, 20), GREEN);
     session.open_layer(&mut client, &panel(Anchor::Bottom), (640, 20), BLUE);
@@ -436,4 +441,136 @@ fn leaving_fullscreen_puts_the_panels_back_where_they_are() {
     let picture = session.draw();
     assert_eq!(picture.at(600, 10), GREEN);
     assert_eq!(picture.at(600, 470), BLUE);
+}
+
+/// A theme in which panels come in and go as the built-in theme has them.
+const SLIDING: (&str, &str) = (
+    "theme.css",
+    "panel { transition: 180ms ease-out; }\npanel:closing { transition: 120ms ease-in; }\n",
+);
+
+/// How far down from the top of the screen, and up from the bottom, what
+/// was brought back reaches, towards the right of the screen where the
+/// window does not.
+fn reached(session: &mut Session) -> (usize, usize) {
+    let picture = session.draw();
+    let there = |y: &i32| picture.at(400, *y) != BACKGROUND;
+    let down = (0..480).take_while(there).count();
+    let up = (0..480).rev().take_while(there).count();
+    (down, up)
+}
+
+#[test]
+fn what_is_brought_back_slides_in_from_its_edge_and_out_again() {
+    let (mut session, _client) = fullscreen_with(&[SLIDING]);
+    let step = Duration::from_millis(60);
+
+    // In from above the screen, the panel with the titlebar under it,
+    // fast at first, over the time the theme brings a panel in.
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    assert_eq!(reached(&mut session), (0, 0), "setting out from above");
+    let due = session.compositor().deadline();
+    assert!(due.is_some_and(|due| due <= session.now + step), "{due:?}");
+    session.advance(step);
+    let (early, _) = reached(&mut session);
+    session.advance(step);
+    let (later, _) = reached(&mut session);
+    session.advance(step);
+    let (whole, _) = reached(&mut session);
+    assert!(
+        0 < early && early < later && later < whole,
+        "{early} {later} {whole}"
+    );
+    assert!(
+        early > whole - later,
+        "fast at first: {early} {later} {whole}"
+    );
+    assert!(whole > 20, "the panel and the titlebar under it: {whole}");
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+    assert_eq!(session.compositor().deadline(), None, "and there it stays");
+
+    // Out again the way it came, over the time the theme takes one out.
+    point(&mut session, 600, 200);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(reached(&mut session), (whole, 0), "setting out from there");
+    session.advance(step);
+    let (going, _) = reached(&mut session);
+    assert!(0 < going && going < whole, "{going} {whole}");
+    session.advance(step);
+    assert_eq!(seen(&mut session), [BACKGROUND; 3]);
+    assert_eq!(session.compositor().deadline(), None);
+
+    // The bottom's, up from below the screen.
+    point(&mut session, 600, 479);
+    session.advance(REST);
+    assert_eq!(reached(&mut session), (0, 0));
+    session.advance(step);
+    let (_, rising) = reached(&mut session);
+    assert!(0 < rising && rising < 20, "{rising}");
+    session.advance(step * 2);
+    assert_eq!(reached(&mut session), (0, 20));
+
+    // Sent away halfway out, it goes back from where it had got to.
+    point(&mut session, 600, 300);
+    session.advance(Duration::from_secs(1));
+    session.advance(step);
+    let (_, sinking) = reached(&mut session);
+    point(&mut session, 600, 479);
+    session.advance(REST);
+    let (_, back) = reached(&mut session);
+    assert!(0 < back && back < 20, "{sinking} {back}");
+}
+
+#[test]
+fn a_panel_on_its_way_out_is_not_there_to_be_clicked() {
+    let (mut session, mut client) = fullscreen_with(&[SLIDING]);
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    session.advance(Duration::from_millis(180));
+    point(&mut session, 600, 10);
+    for pressed in [true, false] {
+        let code = key::A;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.advance(Duration::from_millis(30));
+    assert_eq!(seen(&mut session)[0], GREEN, "still on its way");
+
+    client.take_events();
+    click(&mut session, 600, 10);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    let clicked = events
+        .iter()
+        .any(|event| matches!(event, Event::PointerButton { .. }));
+    assert!(!clicked, "{events:?}");
+}
+
+#[test]
+fn leaving_fullscreen_while_they_slide_puts_the_panels_back_where_they_are() {
+    let (mut session, _client) = fullscreen_with(&[SLIDING]);
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    session.advance(Duration::from_millis(60));
+    assert_ne!(session.draw().at(600, 0), BACKGROUND, "on its way");
+
+    session.compositor_mut().perform(&Action::Fullscreen);
+    session.step();
+    let picture = session.draw();
+    assert_eq!((picture.at(600, 0), picture.at(600, 19)), (GREEN, GREEN));
+    assert_eq!(picture.at(600, 470), BLUE);
+}
+
+#[test]
+fn with_motion_reduced_what_is_brought_back_is_there_at_once() {
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let (mut session, _client) = fullscreen_with(&[SLIDING, reduced]);
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    assert_eq!(seen(&mut session), [GREEN, TITLEBAR, BACKGROUND]);
+    point(&mut session, 600, 200);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(seen(&mut session), [BACKGROUND; 3]);
 }

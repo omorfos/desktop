@@ -2529,8 +2529,9 @@ impl Compositor {
         let animation = &mut self.animation;
         std::mem::swap(&mut animation.layers, &mut animation.before);
         animation.layers.clear();
-        for head in &self.heads {
+        for (index, head) in self.heads.iter().enumerate() {
             let layers = layer_map_for_output(&head.output);
+            let height = head.area().size.h;
             for layer in layers.layers() {
                 let surface = layer.wl_surface();
                 // Until it has drawn something it is not in the picture.
@@ -2548,8 +2549,13 @@ impl Compositor {
                         .iter_mut()
                         .find(|was| was.surface == *surface);
                     let had = had.and_then(|was| was.shadow.take());
-                    let at = layer_origin(&layers, layer) + head.area().loc;
-                    let size = layers.layer_geometry(layer).unwrap_or_default().size;
+                    let placed = layers.layer_geometry(layer).unwrap_or_default();
+                    let off = self
+                        .hover
+                        .reveal
+                        .off(index, (layer.layer(), placed), height);
+                    let at = layer_origin(&layers, layer) + head.area().loc + Point::from((0, off));
+                    let size = placed.size;
                     let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
                     let shadow = animation.shades.cast(&style, head.scale, area, had);
                     let seen = if fades(part) {
@@ -4025,14 +4031,22 @@ impl Compositor {
         let wanted = |surface: &&LayerSurface| {
             let area = layers.layer_geometry(surface).unwrap_or_default();
             let sealed = sealed.as_ref() == Some(surface.wl_surface());
-            self.standing(index, layer, area) == standing && !sealed
+            // What is on its way out is drawn with what has been brought
+            // back.
+            let placing = self.standing(index, layer, area);
+            let going = placing == Placing::Going && standing == Placing::Raised;
+            (placing == standing || going) && !sealed
         };
+        let height = self.heads.get(index).map_or(0, |head| head.area().size.h);
         let mut shadows = Vec::new();
         let mut glass = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             let (first, cast, laid) = (elements.len(), shadows.len(), glass.len());
-            // A panel is placed within its own output.
-            let at = layer_origin(&layers, surface) + view.origin;
+            // A panel is placed within its own output, and drawn as far
+            // from there as it has to come yet.
+            let area = layers.layer_geometry(surface).unwrap_or_default();
+            let off = self.hover.reveal.off(index, (layer, area), height);
+            let at = layer_origin(&layers, surface) + view.origin + Point::from((0, off));
             // A panel of a shell component may be coming in, and what it
             // is drawn from is noted, to fade it out by when it goes.
             let mut known = self.animation.layers.iter();

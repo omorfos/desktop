@@ -1312,8 +1312,14 @@ the first than on the last.
         jumped: each glides to its new place over 240 ms, as DESIGN.md
         has something moving to where it was sent, unless the theme has
         notifications change at once or motion is to be reduced.
-  - [ ] The panels and the titlebar sliding in from the edge they are
-        brought back at on a fullscreen workspace, and out again.
+  - [x] The panels and the titlebar sliding in from the edge they are
+        brought back at on a fullscreen workspace, and out again: as one,
+        over the theme's `panel` transitions in and out, 180 ms and 120 ms
+        in the built-in theme, and at once with motion reduced (ADR 36).
+  - [ ] Known gaps in what slides in at an edge: with a screen above
+        another, what slides in from the top of the lower one is seen for
+        a moment at the bottom of the upper; and the titlebar on its way
+        out can still be clicked, where the panels on theirs cannot.
   - [ ] A window that changes size, by its edge, by the line between
         parts, by being tiled, maximized or given the room of one that
         closed, changing it smoothly: its frame and the line gliding with

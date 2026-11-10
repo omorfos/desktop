@@ -8,13 +8,19 @@
 //! told to be any other size, and go again when the pointer leaves them or
 //! a key is pressed.
 //!
+//! They slide in from the edge they are brought back at, the titlebar
+//! with the panels above it, over the time the theme gives a panel to
+//! come in, and out the same way over the time it gives one to go. With
+//! `appearance.reduce_motion` they are there at once, and gone at once.
+//!
 //! All of it is the compositor's doing. A fullscreen program can draw what
 //! looks like a desktop; it cannot answer the pointer resting against an
 //! edge. See `docs/adr/0036-workspaces-that-come-and-go.md`.
 
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Part, States};
+use omorfos_config::{Part, State, States, Transition};
+use omorfos_ui::Motion;
 use smithay::desktop::layer_map_for_output;
 use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::shell::wlr_layer::Layer;
@@ -48,6 +54,26 @@ const SETTLE: u32 = 150;
 /// titlebar half a screen from the edge that brought it back is reached.
 const LINGER: Duration = Duration::from_secs(1);
 
+/// A panel's layer, and where it is on its output.
+type Placed = (Layer, Rectangle<i32, Logical>);
+
+/// Whether a panel at `area`, on an output `height` high, is along `side`.
+const fn along(side: Side, area: Rectangle<i32, Logical>, height: i32) -> bool {
+    match side {
+        Side::Top => area.loc.y <= 0,
+        Side::Bottom => area.loc.y + area.size.h >= height,
+    }
+}
+
+/// The whole number nearest to `length`, a length on a screen.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a length on a screen is far within an i32"
+)]
+fn whole(length: f64) -> i32 {
+    length.round() as i32
+}
+
 /// An edge of an output that answers to the pointer resting against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Side {
@@ -62,8 +88,28 @@ pub(crate) enum Placing {
     Usual,
     /// Brought back over a fullscreen window.
     Raised,
+    /// Brought back over a fullscreen window and sent away again, and on
+    /// its way out: drawn, but not there to be pointed at.
+    Going,
     /// Not shown, the output being given over to a fullscreen window.
     Hidden,
+}
+
+/// What was brought back at an edge, on its way in or out, or in.
+#[derive(Debug, Clone, Copy)]
+struct Sliding {
+    output: usize,
+    side: Side,
+    /// Whether it is coming in, or going.
+    coming: bool,
+    /// How far in it was when it set out, and when that was.
+    from: f32,
+    since: Instant,
+    /// How far in it is: from 0, out of sight, to 1, all of it in.
+    share: f32,
+    /// How far it is drawn from where it is once in, in units of layout,
+    /// up being less.
+    off: i32,
 }
 
 /// What has been brought back over a fullscreen window, and what is about
@@ -90,6 +136,10 @@ pub(crate) struct Reveal {
     /// When what was brought back goes, the pointer having stopped
     /// somewhere else.
     until: Option<Instant>,
+    /// What is on its way in or out, or in.
+    slides: Vec<Sliding>,
+    /// When it is drawn again, while anything is on its way.
+    again: Option<Instant>,
 }
 
 impl Reveal {
@@ -97,7 +147,11 @@ impl Reveal {
     /// anything.
     pub(crate) fn deadline(&self) -> Option<Instant> {
         let waiting = self.resting.filter(|_| self.shown.is_none() && !self.quiet);
-        waiting.map(|(.., since)| since + REST).or(self.until)
+        let waiting = waiting.map(|(.., since)| since + REST);
+        [waiting, self.until, self.again]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
     /// Notes how far the pointer would have gone past the top or the bottom
@@ -135,6 +189,66 @@ impl Reveal {
             Side::Top => self.pushed.0,
             Side::Bottom => self.pushed.1,
         }
+    }
+
+    /// How far a panel of an output, at `area` on an output `height` high,
+    /// is drawn from where it is, in units of layout, while what was
+    /// brought back along its edge slides.
+    pub(crate) fn off(&self, output: usize, (layer, area): Placed, height: i32) -> i32 {
+        self.slid(output, (layer, area), height)
+            .map_or(0, |slid| slid.off)
+    }
+
+    /// What is sliding, or in, along the edge of an output that a panel on
+    /// `layer` at `area` is along, if anything is: only panels in front of
+    /// the windows are brought back.
+    fn slid(&self, output: usize, (layer, area): Placed, height: i32) -> Option<&Sliding> {
+        let mut slides = self.slides.iter();
+        slides.find(|slid| {
+            let here = slid.output == output && layer == Layer::Top;
+            here && along(slid.side, area, height)
+        })
+    }
+
+    /// Sets each edge sliding in that has been brought back, and out that
+    /// has been sent away, and works out how far in each is at `now`:
+    /// `coming` and `going` are how long they take, and how.
+    fn slide(&mut self, now: Instant, (coming, going): (Transition, Transition)) {
+        let mut slides = self.slides.iter();
+        let new = self
+            .shown
+            .filter(|edge| !slides.any(|slid| (slid.output, slid.side) == *edge));
+        let new = new.map(|(output, side)| Sliding {
+            output,
+            side,
+            coming: true,
+            from: 0.0,
+            since: now,
+            share: 0.0,
+            off: 0,
+        });
+        self.slides.extend(new);
+        let shown = self.shown;
+        for slid in &mut self.slides {
+            let coming_in = shown == Some((slid.output, slid.side));
+            if coming_in != slid.coming {
+                *slid = Sliding {
+                    coming: coming_in,
+                    from: slid.share,
+                    since: now,
+                    ..*slid
+                };
+            }
+            let gone = now.saturating_duration_since(slid.since);
+            slid.share = if slid.coming {
+                (1.0 - slid.from).mul_add(coming.progress(gone), slid.from)
+            } else {
+                slid.from * (1.0 - going.progress(gone))
+            };
+        }
+        self.slides.retain(|slid| slid.coming || slid.share > 0.0);
+        let moving = self.slides.iter().any(|slid| slid.share < 1.0);
+        self.again = moving.then(|| now + Motion::FRAME);
     }
 
     /// Sends away what was brought back, as a key does, and a press in a
@@ -226,11 +340,39 @@ impl Compositor {
         self.hover.reveal.pushed = against.map_or((0.0, 0.0), |_| self.hover.reveal.pushed);
         self.hover.reveal.pressed = self.hover.reveal.pressed.filter(|_| against.is_some());
         self.hover.reveal.held = self.hover.reveal.held.filter(|_| against.is_some());
+        // They slide, as the theme brings a panel in and takes one out,
+        // unless motion is to be reduced; and are gone with the window they
+        // were over.
+        let theme = &self.config().theme;
+        let times = if self.config().general.appearance.reduce_motion {
+            (Transition::NONE, Transition::NONE)
+        } else {
+            let closing = States::NONE.with(State::Closing);
+            let coming = theme.style(Part::Panel, States::NONE).transition;
+            (coming, theme.style(Part::Panel, closing).transition)
+        };
+        let mut slides = std::mem::take(&mut self.hover.reveal.slides);
+        slides.retain(|slid| self.given_over(slid.output));
+        self.hover.reveal.slides = slides;
+        self.hover.reveal.slide(now, times);
+        // As far as it reaches, out of sight, and none of the way once in.
+        let mut slides = std::mem::take(&mut self.hover.reveal.slides);
+        for slid in &mut slides {
+            let hidden = f64::from(1.0 - slid.share) * self.reach(slid.output, slid.side);
+            let hidden = whole(hidden);
+            slid.off = if slid.side == Side::Top {
+                -hidden
+            } else {
+                hidden
+            };
+        }
+        self.hover.reveal.slides = slides;
         // The titlebar is laid over the window under whatever panels are
-        // along the top.
+        // along the top, and slides with them.
         for output in 0..self.heads.len() {
-            let top = self.hover.reveal.shown == Some((output, Side::Top));
-            let down = top.then(|| self.extent(output, Side::Top));
+            let mut slides = self.hover.reveal.slides.iter();
+            let top = slides.find(|slid| (slid.output, slid.side) == (output, Side::Top));
+            let down = top.map(|slid| self.extent(output, Side::Top).cast_signed() + slid.off);
             self.desktop.reveal(output, down);
         }
     }
@@ -279,12 +421,15 @@ impl Compositor {
             return Placing::Usual;
         }
         let height = self.heads[output].area().size.h;
-        let along = |side: Side| match side {
-            Side::Top => area.loc.y <= 0,
-            Side::Bottom => area.loc.y + area.size.h >= height,
-        };
         let shown = self.hover.reveal.shown;
-        let shown = shown.filter(|(on, side)| *on == output && along(*side));
-        shown.map_or(Placing::Hidden, |_| Placing::Raised)
+        let shown = shown.filter(|(on, side)| *on == output && along(*side, area, height));
+        let slid = self.hover.reveal.slid(output, (layer, area), height);
+        if shown.is_some() {
+            Placing::Raised
+        } else if slid.is_some() {
+            Placing::Going
+        } else {
+            Placing::Hidden
+        }
     }
 }

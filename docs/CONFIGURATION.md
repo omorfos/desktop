@@ -389,8 +389,12 @@ good way, and whatever panels are along the top come back at once. A
 quick flick at the top and away brings nothing. Where
 one window has the workspace to itself its titlebar comes back under
 them: its buttons, its menu, and the second button to leave fullscreen. Against the bottom, the panels along the
-bottom come back. They are laid over the window, which does not change
-size. They stay while the pointer is on them or still moving, so that a
+bottom come back. They slide in from that edge, the titlebar with the
+panels, over the time the theme's `panel` transition gives one to come
+in, and out the same way over the time `panel:closing` gives one to go:
+180 ms and 120 ms in the built-in theme. With `panel { transition: none;
+}`, or `reduce_motion`, they are there and gone at once. They are laid
+over the window, which does not change size. They stay while the pointer is on them or still moving, so that a
 titlebar further down the screen can be reached, and go a second after
 the pointer has stopped somewhere else, or when a key is pressed or a
 button is pressed in a window. This is
