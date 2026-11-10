@@ -136,6 +136,8 @@ fn a_window_that_resizes_itself_keeps_that_size_when_restored_from_maximized() {
     session.roundtrip(&mut client);
     window.role.set_maximized();
     session.roundtrip(&mut client);
+    client.fill(&window.surface, (WIDTH, HEIGHT), RED);
+    session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     client.take_events();
 

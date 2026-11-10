@@ -321,7 +321,7 @@ fn two_windows_share_a_workspace_made_for_them_side_by_side() {
 
     let mut session = Session::new();
     let mut client = session.connect();
-    session.open(&mut client, "editor", (200, 100), RED);
+    let editor = session.open(&mut client, "editor", (200, 100), RED);
     let half = omorfos_config::Half::Left;
     session.compositor_mut().perform(&Action::Tile(half));
     session.roundtrip(&mut client);
@@ -333,6 +333,7 @@ fn two_windows_share_a_workspace_made_for_them_side_by_side() {
     assert!(states.contains(&State::TiledLeft) && states.contains(&State::TiledBottom));
     assert!(!states.contains(&State::Fullscreen));
     assert_eq!(session.compositor().desktop().active_workspace(), 1);
+    editor.surface.commit();
 
     // The next window to open there has the other half.
     let mut other = session.connect();

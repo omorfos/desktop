@@ -2407,7 +2407,7 @@ impl Compositor {
                 fullscreen: frame.fullscreen && frame.home == Home::Solo,
                 tiled: frame.fullscreen && frame.home == Home::Shared,
             });
-            role.arrange(Some(*id) == focused, placed);
+            role.arrange(Some(*id) == focused, placed, window.geometry().size);
             match frame {
                 Some((order, frame)) => {
                     let chrome = frame.decoration.map(|decoration| {

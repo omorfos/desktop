@@ -1320,13 +1320,21 @@ the first than on the last.
         another, what slides in from the top of the lower one is seen for
         a moment at the bottom of the upper; and the titlebar on its way
         out can still be clicked, where the panels on theirs cannot.
-  - [ ] A window that changes size, by its edge, by the line between
-        parts, by being tiled, maximized or given the room of one that
-        closed, changing it smoothly: its frame and the line gliding with
-        the pointer or easing to where they go, and the window's last
-        picture stretched to the frame until its program has drawn the
-        new size, then faded into it. Programs are still asked a size only
-        once they have drawn the last, so a slow one is not flooded.
+  - A window that changes size, by its edge, by the line between
+    parts, by being tiled, maximized or given the room of one that
+    closed, changing it smoothly, in this order (ADR 72):
+    - [x] A program told nothing new about its window until it has drawn
+          what it was told last, and then the latest, so that a slow one
+          is not asked every size an edge is dragged through.
+    - [ ] The window's last picture stretched to its frame until its
+          program has drawn the new size, then faded into it.
+    - [ ] Tiling, maximizing and filling the room of a window that closed
+          easing the frame there over 240 ms.
+    - [ ] The line between parts easing when it moves by itself: put back
+          in the middle, or a part closing.
+    - [ ] A program written for X11 told at once still: it could be asked
+          to say when it has drawn (`_NET_WM_SYNC_REQUEST`) once Smithay's
+          window manager offers it.
   - [ ] A window that goes to the dock when minimized, once there is a
         dock (stage 5).
 - [ ] To be tried once there are effects: on a shared workspace, the

@@ -171,6 +171,8 @@ fn the_space_is_given_back_when_the_panel_goes_away() {
     let window = session.open(&mut client, "app", (200, 100), RED);
     window.role.set_maximized();
     session.roundtrip(&mut client);
+    window.surface.commit();
+    session.roundtrip(&mut client);
     client.take_events();
 
     role.destroy();

@@ -182,8 +182,46 @@ fn a_client_can_maximize_and_restore_its_window() {
         client.last_configure(),
         ((WIDTH, HEIGHT), vec![State::Maximized, State::Activated])
     );
+    client.fill(&window.surface, (WIDTH, HEIGHT), RED);
 
     window.role.unset_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(
+        client.last_configure(),
+        ((200, 100), vec![State::Activated])
+    );
+}
+
+#[test]
+fn a_window_is_told_nothing_new_until_its_program_has_drawn_what_it_was_told_last() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    window.role.set_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let maximized = ((WIDTH, HEIGHT), vec![State::Maximized, State::Activated]);
+    assert_eq!(client.last_configure(), maximized);
+
+    // Restored before it has drawn itself maximized, the window is as it
+    // was at once, and its program is not told yet.
+    window.role.unset_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert_eq!(
+        frame.client().size,
+        omorfos_core::geometry::Size::new(200, 100)
+    );
+    let events = client.take_events();
+    let told = events
+        .iter()
+        .any(|event| matches!(event, Event::Configure { .. }));
+    assert!(!told, "not told yet: {events:?}");
+
+    // Once it has drawn what it was told, it is told how it is to be now.
+    client.fill(&window.surface, (WIDTH, HEIGHT), RED);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     assert_eq!(
@@ -206,6 +244,7 @@ fn a_client_can_enter_and_leave_fullscreen() {
         client.last_configure(),
         ((WIDTH, HEIGHT), vec![State::Fullscreen, State::Activated])
     );
+    client.fill(&window.surface, (WIDTH, HEIGHT), RED);
 
     window.role.unset_fullscreen();
     session.roundtrip(&mut client);
@@ -223,6 +262,8 @@ fn a_maximized_window_follows_the_output_when_it_is_resized() {
     assert_eq!(client.state.outputs, 1);
     let window = session.open(&mut client, "app", (200, 100), RED);
     window.role.set_maximized();
+    session.roundtrip(&mut client);
+    client.fill(&window.surface, (WIDTH, HEIGHT), RED);
     session.roundtrip(&mut client);
     client.take_events();
 

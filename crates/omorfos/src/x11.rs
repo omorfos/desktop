@@ -27,7 +27,8 @@ use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle};
-use smithay::utils::{IsAlive, Logical, Rectangle, Serial};
+use smithay::utils::{IsAlive, Logical, Rectangle, Serial, Size};
+use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::selection::data_device::{
@@ -38,7 +39,7 @@ use smithay::wayland::selection::primary_selection::{
     clear_primary_selection, current_primary_selection_userdata, request_primary_client_selection,
     set_primary_selection,
 };
-use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, XwmId};
@@ -97,9 +98,25 @@ impl Role {
     /// Tells the program whether its window has focus and, if it is being
     /// shown, where it is and in what state. Nothing is said that the
     /// program already knows.
-    pub(crate) fn arrange(&self, activated: bool, placed: Option<Placed>) {
+    ///
+    /// A program written for Wayland is told anything new only once it has
+    /// drawn what it was told last, `shown` being the size of what it
+    /// shows: while it is still drawing one size, what it is to be waits,
+    /// and it is told the latest when it is done, so that one that is slow
+    /// to draw is not asked for every size a window passes through as its
+    /// edge is dragged. Its states wait with its size, which they go with:
+    /// told it is no longer maximized, it is told the size it is to be.
+    pub(crate) fn arrange(
+        &self,
+        activated: bool,
+        placed: Option<Placed>,
+        shown: Size<i32, Logical>,
+    ) {
         match self {
             Self::Xdg(toplevel) => {
+                if !drawn(toplevel, shown) {
+                    return;
+                }
                 toplevel.with_pending_state(|state| {
                     set(&mut state.states, ToplevelState::Activated, activated);
                     if let Some(placed) = placed {
@@ -153,6 +170,22 @@ impl Role {
             }
         }
     }
+}
+
+/// Whether the program has drawn its window at the last size it was
+/// asked: it has acknowledged it and drawn since, or what it shows, at
+/// `shown`, is that size already, as when it is asked to stay as large as
+/// it is and need not draw again. One whose state cannot be read is taken
+/// to have.
+fn drawn(toplevel: &ToplevelSurface, shown: Size<i32, Logical>) -> bool {
+    with_states(toplevel.wl_surface(), |states| {
+        let data = states.data_map.get::<XdgToplevelSurfaceData>();
+        let attributes = data.and_then(|data| data.lock().ok());
+        attributes.is_none_or(|attributes| {
+            let asked = attributes.current_server_state().size;
+            attributes.current.size == asked || asked == Some(shown)
+        })
+    })
 }
 
 /// What has the keyboard.
