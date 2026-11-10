@@ -471,7 +471,7 @@ not begin with keys you have bound on their own.
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
-| `about` | Show "About omorfos" in the middle of the screen the pointer is on: its version and licence; what the computer is, its processor, memory, graphics cards, disks, system and kernel, and screens, as they were when it opened, with a Copy button that puts that on the clipboard as text, for a bug report; and what it is made with that is someone else's, as `CREDITS.md` lists it. Its close button, which is a window's, Escape, a click beside it, or `about` again puts it away. On a screen too short for all of it, what it lists scrolls, by the wheel or the touchpad, the arrows, Page Up and Page Down, space, Home and End. While it is shown it has the keyboard: no window sees a key, though a binding still does what it is bound to. It is glass, as the theme's `about` has it. The root menu offers it. |
+| `about` | Show "About omorfos" in the middle of the screen the pointer is on: its version and licence; what the computer is, its processor, memory, graphics cards, disks, system and kernel, and screens, as they were when it opened, with a Copy button that puts that on the clipboard as text, for a bug report, and turns green with a tick for a moment once it has; and what it is made with that is someone else's, as `CREDITS.md` lists it. Its close button, which is a window's, Escape, a click beside it, or `about` again puts it away. On a screen too short for all of it, what it lists scrolls, by the wheel or the touchpad, the arrows, Page Up and Page Down, space, Home and End. While it is shown it has the keyboard: no window sees a key, though a binding still does what it is bound to. It is glass, as the theme's `about` has it. The root menu offers it. |
 | `reload_config` | Re-read the configuration. |
 | `restart_compositor` | Start the compositor again without logging out, with the newest version installed. Programs stay open through it, their windows where and as they were, those in a sandbox and those started with a role among them, as do the panel, the wallpaper, the notifications and the portal, but for programs written for X11, which close with their X server; the session stays locked if it was, programs written for X11 started again find their X server under the same number, and what starts with the session is not started a second time. Only where omorfos is the whole session, under `omorfos-hold`; elsewhere it is refused, with a notice. No key is bound to it. |
 | `quit` | End the session. The programs started in it are asked to close first, as any desktop asks them, and given two seconds to; asked again meanwhile, it ends at once. |
@@ -918,6 +918,12 @@ about-button {
   border-radius: 6px;
 }
 about-button:hover { background: var(--surface-raised); }
+/* For a moment once it has copied, it says so, in the colour of what is
+ * done, with a tick. */
+about-button:active {
+  background: var(--success);
+  color: var(--background);
+}
 ```
 
 That is the theme in its dark scheme. With `appearance.scheme: light` in

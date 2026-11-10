@@ -52,12 +52,16 @@ each, after the version of omorfos.
   the compositor only of selections programs make.
 - **The button** is the theme's `about-button`, under the close button at
   the foot of the mark, where it does not scroll with what is listed.
+  Once it has copied, it says so for a second and a half: green, as
+  `about-button:active`, with a tick drawn on it over 300 milliseconds
+  and "Copied", sized from the first for both, so that it does not change
+  size. It is drawn apart from the rest of "About", so that only it is
+  painted again as it changes; and the pointer over it is a hand.
 
 ## Consequences
 
 - A fault report can carry what it was found on in two clicks.
 - `pci.ids` is recommended by the packages; without it a card is its
   numbers.
-- Nothing says the text was copied, and Ctrl+C does not copy it; both
-  are on the roadmap, with the cards' names from the driver and the
-  screens' names from their EDID.
+- Ctrl+C does not copy it; that is on the roadmap, with the cards'
+  names from the driver and the screens' names from their EDID.

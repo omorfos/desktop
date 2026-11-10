@@ -5,7 +5,7 @@
 //! code runs on a GPU and in tests, and it only happens when what is drawn
 //! changes, not every frame.
 
-use omorfos_config::{Color, Edges, Line, Part, State, States, Style, Theme};
+use omorfos_config::{Color, Edges, Font, Line, Part, State, States, Style, Theme};
 use omorfos_core::{Button, Decoration, Item, Menu, Panel, SwitcherLayout};
 use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
@@ -477,6 +477,7 @@ pub(crate) fn about(
     theme: &Theme,
     (mark, version): (&[Image], &str),
     (width, list, scale, hovered): (u32, u32, Scale, Option<AboutButton>),
+    copy: (u32, u32),
 ) -> (Canvas, (Area, Area), Area) {
     let style = theme.style(Part::About, States::NONE);
     let height = about_head(theme) + list;
@@ -503,25 +504,15 @@ pub(crate) fn about(
     );
     canvas.draw_box(close, &button);
     sign(&mut canvas, Button::Close, close, button.color);
-    // The one that copies, at the foot of the mark, under it.
-    let states = under(AboutButton::Copy);
-    let (button, font) = (
-        theme.style(Part::AboutButton, states),
-        theme.font(Part::AboutButton, states),
-    );
-    let word = "Copy";
-    let padding = button.inset();
-    let wide = text.measure(word, font) + padding.across();
-    let high = ABOUT_ROW + padding.down();
+    // The place of the one that copies, `copy` large, at the foot of the
+    // mark, under it. It is drawn apart, as it changes.
+    let (wide, high) = copy;
     let copy = (
         left + room.saturating_sub(wide).cast_signed(),
         top + size - high.cast_signed(),
         wide,
         high,
     );
-    canvas.draw_box(copy, &button);
-    let (ink, inside) = (button.color, inset(copy, padding));
-    text.draw(&mut canvas, word, inside, ink, font);
 
     let beside = left + size + ABOUT_GAP.cast_signed();
     let narrower = room.saturating_sub(ABOUT_MARK + ABOUT_GAP + wide);
@@ -545,6 +536,70 @@ pub(crate) fn about(
     }
     let below = (left, top + size + ABOUT_GAP.cast_signed(), room, list);
     (canvas, (close, copy), below)
+}
+
+/// What the button of "About" that copies says, before and once it has.
+const COPY: &str = "Copy";
+const COPIED: &str = "Copied";
+/// How large the tick it shows once it has copied is, and the room after
+/// it.
+const TICK: u32 = 14;
+
+/// How large the button of "About" that copies is: as wide as the wider
+/// of what it says before and once it has, so that it stays the size it
+/// is.
+pub(crate) fn about_copy_size(text: &mut Text, theme: &Theme) -> (u32, u32) {
+    let (style, font) = (
+        theme.style(Part::AboutButton, States::NONE),
+        theme.font(Part::AboutButton, States::NONE),
+    );
+    let before = text.measure(COPY, font);
+    let after = TICK + TICK / 2 + text.measure(COPIED, font);
+    let padding = style.inset();
+    (
+        before.max(after) + padding.across(),
+        ABOUT_ROW + padding.down(),
+    )
+}
+
+/// Paints the button of "About" that copies, `size` large, looking as
+/// `style` and `font` say: what it does; or, once it has copied, a tick as
+/// much of it drawn as `tick` says, from 0 to 1, and that it has.
+pub(crate) fn about_copy(
+    text: &mut Text,
+    (style, font): (&Style, &Font),
+    (size, scale): ((u32, u32), Scale),
+    tick: Option<f64>,
+) -> Canvas {
+    let (wide, high) = size;
+    let mut canvas = Canvas::scaled(wide, high, scale);
+    canvas.draw_box((0, 0, wide, high), style);
+    let (left, top, room, tall) = inset((0, 0, wide, high), style.inset());
+    let said = if tick.is_some() { COPIED } else { COPY };
+    // What it says, and the tick before it once there is one, in the
+    // middle of it.
+    let ticked = tick.map_or(0, |_| TICK + TICK / 2);
+    let words = text.measure(said, font);
+    let start = left + (room.saturating_sub(ticked + words) / 2).cast_signed();
+    if let Some(share) = tick {
+        let (x, y) = (
+            f64::from(start),
+            f64::from(top) + f64::from(tall.saturating_sub(TICK)) / 2.0,
+        );
+        let at =
+            |(across, down): (f64, f64)| (x + across * f64::from(TICK), y + down * f64::from(TICK));
+        let points = [at((0.1, 0.55)), at((0.38, 0.82)), at((0.9, 0.2))];
+        canvas.draw_stroke(&points, 2.0, style.color, share);
+    }
+    let after = start + ticked.cast_signed();
+    text.draw(
+        &mut canvas,
+        said,
+        (after, top, words, tall),
+        style.color,
+        font,
+    );
+    canvas
 }
 
 /// Paints the question whether to keep the screens as they stand now,

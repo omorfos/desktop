@@ -392,3 +392,9 @@ about-button {
   border-radius: 6px;
 }
 about-button:hover { background: var(--surface-raised); }
+/* For a moment once it has copied, it says so, in the colour of what is
+ * done, with a tick. */
+about-button:active {
+  background: var(--success);
+  color: var(--background);
+}

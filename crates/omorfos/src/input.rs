@@ -781,6 +781,12 @@ impl Compositor {
             None => {}
         }
         let about = self.cards.about.asked.is_some();
+        // The buttons of "About" are pointed at with a hand.
+        let shown = self.cards.about.shown.as_ref().filter(|_| about);
+        let position = self.pointer_position();
+        if shown.and_then(|about| about.button_at(position)).is_some() {
+            return Look::Icon(CursorIcon::Pointer);
+        }
         if self.over_notice() || about || self.menu.is_some() || self.over_palette() {
             return Look::Icon(CursorIcon::Default);
         }

@@ -411,6 +411,62 @@ impl Canvas {
         }
     }
 
+    /// Draws a stroke `width` units wide along `points`, in units of
+    /// layout, with round ends and joins and smoothed edges: as much of it
+    /// as `share` of its length, from 0, none of it, to 1, all of it,
+    /// starting at its first point. Drawn again with more of it each time,
+    /// it is seen being drawn.
+    pub fn draw_stroke(&mut self, points: &[(f64, f64)], width: f64, color: Color, share: f64) {
+        let factor = self.scale.factor();
+        let points: Vec<(f64, f64)> = points
+            .iter()
+            .map(|&(x, y)| (x * factor, y * factor))
+            .collect();
+        let lengths: Vec<f64> = points
+            .windows(2)
+            .map(|pair| distance(pair[0], pair[1]))
+            .collect();
+        let share = share.clamp(0.0, 1.0);
+        let mut left = lengths.iter().sum::<f64>() * share;
+        // Each line of it, as far along it as is drawn.
+        let mut lines = Vec::new();
+        for (pair, length) in points.windows(2).zip(&lengths) {
+            if left < 0.0 || share <= 0.0 {
+                break;
+            }
+            // Of a line of no length, which divides nothing by nothing, all
+            // of it is drawn, as `min` takes it: a dot.
+            let along = (left / length).min(1.0);
+            let ((x, y), (to_x, to_y)) = (pair[0], pair[1]);
+            lines.push(((x, y), (x + (to_x - x) * along, y + (to_y - y) * along)));
+            left -= length;
+        }
+        let radius = width * factor / 2.0;
+        let ends = lines.iter().flat_map(|&(from, to)| [from, to]);
+        let (low, high) = ends.fold(
+            (
+                (f64::INFINITY, f64::INFINITY),
+                (f64::NEG_INFINITY, f64::NEG_INFINITY),
+            ),
+            |((low_x, low_y), (high_x, high_y)), (x, y)| {
+                ((low_x.min(x), low_y.min(y)), (high_x.max(x), high_y.max(y)))
+            },
+        );
+        let reach = radius + 1.0;
+        for y in whole(low.1 - reach)..whole(high.1 + reach) {
+            for x in whole(low.0 - reach)..whole(high.0 + reach) {
+                let middle = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let near = lines
+                    .iter()
+                    .map(|&(from, to)| from_line(middle, (from, to)));
+                let near = near.fold(f64::INFINITY, f64::min);
+                // A pixel half in is half covered.
+                let covered = (radius + 0.5 - near).clamp(0.0, 1.0);
+                self.blend(x, y, color, share_byte(covered));
+            }
+        }
+    }
+
     /// The pixel at `(x, y)`, counted in pixels, as `0xAARRGGBB`, or nothing
     /// (transparent) off the canvas. Meant for tests that check what was
     /// drawn.
@@ -1065,6 +1121,48 @@ fn visible(start: i32, length: u32, limit: u32) -> Range<i32> {
     let clamp = |position: i64| i32::try_from(position.clamp(0, i64::from(limit))).unwrap_or(0);
     let start = i64::from(start);
     clamp(start)..clamp(start + i64::from(length))
+}
+
+/// How far apart two points are.
+fn distance((x, y): (f64, f64), (to_x, to_y): (f64, f64)) -> f64 {
+    (to_x - x).hypot(to_y - y)
+}
+
+/// How far `point` is from the nearest point of the line from `from` to
+/// `to`.
+fn from_line(point: (f64, f64), (from, to): ((f64, f64), (f64, f64))) -> f64 {
+    let (across, down) = (to.0 - from.0, to.1 - from.1);
+    let along = (point.0 - from.0) * across + (point.1 - from.1) * down;
+    // How far along the line the nearest point is, from 0 to 1: its start,
+    // for a line of no length.
+    let square = across * across + down * down;
+    let along = if square > 0.0 {
+        (along / square).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    distance(point, (from.0 + across * along, from.1 + down * along))
+}
+
+/// The whole number of pixels `value` is, or the nearest there can be.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "clamped to what an i32 holds first"
+)]
+fn whole(value: f64) -> i32 {
+    value
+        .floor()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
+/// A share from 0 to 1 as the byte a coverage is, from 0 to 255.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a share is from 0 to 1, so the byte is from 0 to 255"
+)]
+fn share_byte(share: f64) -> u8 {
+    (share.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 #[cfg(test)]
@@ -2153,5 +2251,67 @@ mod tests {
             text.draw(&mut canvas, "Abc", (0, 0, 100, 28), RED, &font(family));
             assert!(inked(&canvas, 0..100, 0) > 5, "{family} drew nothing");
         }
+    }
+
+    /// The rows and columns of a canvas where anything is drawn.
+    fn drawn(canvas: &Canvas) -> Vec<(u32, u32)> {
+        let all = (0..canvas.height()).flat_map(|y| (0..canvas.width()).map(move |x| (x, y)));
+        all.filter(|&(x, y)| canvas.at(x, y) != 0).collect()
+    }
+
+    #[test]
+    fn a_stroke_is_as_wide_as_it_is_said_with_round_ends_and_smoothed_edges() {
+        let mut canvas = Canvas::new(12, 12);
+        canvas.draw_stroke(&[(2.0, 6.0), (10.0, 6.0)], 2.0, RED, 1.0);
+        // Its middle, and a pixel either side of it, a pixel being half
+        // in on each side of the line through the middle of the stroke.
+        assert_eq!(canvas.at(6, 5), argb(RED));
+        assert_eq!(canvas.at(6, 6), argb(RED));
+        assert_eq!(canvas.at(6, 4), 0, "and no further");
+        assert_eq!(canvas.at(6, 7), 0);
+        // Its ends are round: a pixel past its end, and one at its corner,
+        // are partly covered, or not at all.
+        let past = canvas.at(10, 6);
+        assert!(past != 0 && past != argb(RED), "{past:#x}");
+        assert_eq!(canvas.at(11, 4), 0, "the corner");
+        assert_eq!(canvas.at(0, 6), 0);
+    }
+
+    #[test]
+    fn a_share_of_a_stroke_is_drawn_from_its_start_round_its_corners() {
+        let path = [(2.0, 2.0), (10.0, 2.0), (10.0, 10.0)];
+        let share = |share| {
+            let mut canvas = Canvas::new(14, 14);
+            canvas.draw_stroke(&path, 2.0, BLUE, share);
+            canvas
+        };
+        assert!(drawn(&share(0.0)).is_empty(), "none of it");
+        let half = share(0.5);
+        assert_eq!(half.at(9, 2), argb(BLUE), "the first line, all of it");
+        assert_eq!(half.at(10, 6), 0, "and none of the second");
+        let most = share(0.75);
+        assert_eq!(most.at(10, 5), argb(BLUE), "half of the second");
+        assert_eq!(most.at(10, 9), 0);
+        let all = share(1.0);
+        assert_eq!(all.at(10, 9), argb(BLUE));
+        assert_eq!(drawn(&share(2.0)), drawn(&all), "and no more than all");
+    }
+
+    #[test]
+    fn a_stroke_is_drawn_with_as_many_pixels_as_the_scale_gives_a_unit() {
+        let mut canvas = Canvas::scaled(6, 6, Scale::new(2.0));
+        canvas.draw_stroke(&[(1.0, 3.0), (5.0, 3.0)], 1.0, RED, 1.0);
+        assert_eq!(canvas.at(5, 5), argb(RED));
+        assert_eq!(canvas.at(5, 6), argb(RED));
+        assert_eq!(canvas.at(5, 4), 0, "a unit wide, two pixels");
+        assert_eq!(canvas.at(5, 7), 0);
+    }
+
+    #[test]
+    fn a_stroke_of_no_length_is_a_dot() {
+        let mut canvas = Canvas::new(8, 8);
+        canvas.draw_stroke(&[(4.0, 4.0), (4.0, 4.0)], 4.0, RED, 1.0);
+        assert_eq!(canvas.at(4, 4), argb(RED));
+        assert_eq!(canvas.at(0, 4), 0);
     }
 }

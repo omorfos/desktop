@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use omorfos_brand::pointer::Shape;
 use omorfos_config::{
-    Action, Config, Debouncer, Half, Part, Scheme, State, States, Store, Style, Theme, Watcher,
-    WorkspaceNumber,
+    Action, Config, Debouncer, Font, Half, Part, Scheme, State, States, Store, Style, Theme,
+    Watcher, WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
@@ -1159,6 +1159,7 @@ impl Compositor {
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         [
+            self.about_due(),
             self.debouncer.deadline(),
             self.ipc.as_ref().and_then(|server| server.retry),
             self.x11.deadline(),
@@ -1411,6 +1412,7 @@ impl Compositor {
                 if open {
                     let said = system::said(Path::new("/"), self.monitors());
                     self.cards.about.system = System::of(&said);
+                    self.cards.about.copied = None;
                 }
             }
             Action::Lock => self.start_locker(),
@@ -2595,9 +2597,13 @@ impl Compositor {
         let had = self.cards.about.shown.take();
         let scrolled = had.as_ref().map_or(0.0, |about| about.scrolled);
         let pointer = self.pointer_position();
-        let hovered = had.as_ref().and_then(|about| about.button_at(pointer));
+        let under = had.as_ref().and_then(|about| about.button_at(pointer));
+        let hovered = under == Some(AboutButton::Close);
         let (had, closed) = if wanted { (had, None) } else { (None, had) };
-        let closed = closed.map(|about| self.animation.closing(Part::About, What::About(about)));
+        let closed = closed.map(|about| {
+            self.animation
+                .closing(Part::About, What::About(Box::new(about)))
+        });
         self.animation.gone.extend(closed);
         let current = had.filter(|about| {
             about.theme == *theme
@@ -2617,9 +2623,41 @@ impl Compositor {
             }
             (None, false) => None,
         };
+        // Its button that copies: under the pointer, or, for a while once
+        // it has copied, saying so, with a tick drawn on it.
+        let clock = self.animation.clock;
+        let since = self.cards.about.copied.map(|at| clock.saturating_sub(at));
+        let since = since.filter(|since| *since < COPIED_FOR);
+        self.cards.about.copied = self.cards.about.copied.filter(|_| since.is_some());
+        let tick = since.map(|since| (since.as_secs_f64() / TICK_DRAWN.as_secs_f64()).min(1.0));
+        let states = States::NONE
+            .when(State::Hovered, under == Some(AboutButton::Copy))
+            .when(State::Active, tick.is_some());
+        if let Some(about) = self.cards.about.shown.as_mut() {
+            let style = self
+                .animation
+                .motion
+                .style(theme, Part::AboutButton, 0, states);
+            let font = theme.font(Part::AboutButton, states);
+            about.dress(&mut self.text, (style, font), tick);
+        }
         let about = self.cards.about.shown.as_ref();
         let share = about.map(|_| self.animation.motion.presence(theme, Part::About, 0));
         self.animation.about_seen = share.unwrap_or(Seen::WHOLE);
+    }
+
+    /// When "About" is to be drawn again of itself: a frame on, while the
+    /// tick on its button that copies is being drawn, then when the button
+    /// is to be as it was.
+    fn about_due(&self) -> Option<Instant> {
+        let at = self.cards.about.copied?;
+        let clock = self.animation.clock;
+        let next = if clock.saturating_sub(at) < TICK_DRAWN {
+            clock + Motion::FRAME
+        } else {
+            at + COPIED_FOR
+        };
+        self.animation.epoch.map(|epoch| epoch + next)
     }
 
     /// Puts what the computer is, as "About" shows it, on the clipboard as
@@ -2631,6 +2669,8 @@ impl Compositor {
         let kinds: Vec<String> = handlers::TEXT.map(str::to_owned).into();
         let offer = Offer::Text(text.into());
         set_data_device_selection(&self.display, &self.seat, kinds.clone(), offer);
+        // Its button says so for a while.
+        self.cards.about.copied = Some(self.animation.clock);
         self.offer_to_x11(SelectionTarget::Clipboard, Some(kinds));
     }
 
@@ -4420,8 +4460,17 @@ pub(crate) struct AboutCard {
     /// What the computer was as it was asked for: read once, and not
     /// again each time it is painted.
     pub(crate) system: System,
+    /// When it last copied, on the clock of what moves, while its button
+    /// still says so.
+    pub(crate) copied: Option<Duration>,
     pub(crate) shown: Option<About>,
 }
+
+/// How long the tick takes to be drawn on the button of "About" that
+/// copies, and how long the button says it has copied before it is as
+/// it was.
+const TICK_DRAWN: Duration = Duration::from_millis(300);
+const COPIED_FOR: Duration = Duration::from_millis(1500);
 
 /// "About omorfos", as it is shown.
 #[derive(Debug)]
@@ -4436,10 +4485,14 @@ pub(crate) struct About {
     pub(crate) area: Rect,
     close: Rect,
     copy: Rect,
-    /// The button the pointer was on as it was painted.
-    hovered: Option<AboutButton>,
+    /// Whether the pointer was on the button that closes it as it was
+    /// painted.
+    hovered: bool,
     pixels: Painted,
     shadow: Option<Shadowing>,
+    /// The button that copies, drawn apart, as it changes: how it looked,
+    /// and how much of its tick there was, when it was last painted.
+    button: Option<(Style, Option<f64>, Painted)>,
     /// What it lists, all of it, and where on the screen it is shown.
     list: Painted,
     shown: Rect,
@@ -4452,7 +4505,7 @@ impl About {
         (text, shades): (&mut Text, &mut Shades),
         (theme, scheme, system): (&Theme, Scheme, &System),
         within: Rectangle<i32, Logical>,
-        (scale, hovered): (Scale, Option<AboutButton>),
+        (scale, hovered): (Scale, bool),
     ) -> Self {
         let (wide, high) = (within.size.w.unsigned_abs(), within.size.h.unsigned_abs());
         let width = ABOUT_WIDTH.min(wide.saturating_sub(NOTICE_MARGIN * 2));
@@ -4475,8 +4528,9 @@ impl About {
         let length = list.units().1.min(room);
         let version = env!("CARGO_PKG_VERSION");
         let said = (mark.as_slice(), version);
-        let looks = (width, length, scale, hovered);
-        let (canvas, (close, copy), shown) = paint::about(text, theme, said, looks);
+        let looks = (width, length, scale, hovered.then_some(AboutButton::Close));
+        let copy = paint::about_copy_size(text, theme);
+        let (canvas, (close, copy), shown) = paint::about(text, theme, said, looks, copy);
         let (across, down) = canvas.units();
         let left = wide.saturating_sub(across) / 2;
         let top = high.saturating_sub(down) / 2;
@@ -4505,10 +4559,28 @@ impl About {
             hovered,
             pixels: Painted::new(&canvas),
             shadow: shades.cast(&style, scale, placed, None),
+            button: None,
             list: Painted::new(&list),
             shown: on(shown),
             scrolled: 0.0,
         }
+    }
+
+    /// Paints its button that copies again if it is to look otherwise:
+    /// as `look` says, with as much of its tick as `tick` says once it has
+    /// copied.
+    fn dress(&mut self, text: &mut Text, look: (Style, &Font), tick: Option<f64>) {
+        let (style, font) = look;
+        let same = self
+            .button
+            .as_ref()
+            .is_some_and(|(was, ticked, _)| *was == style && *ticked == tick);
+        if same {
+            return;
+        }
+        let size = (self.copy.size.width, self.copy.size.height);
+        let canvas = paint::about_copy(text, (&style, font), (size, self.scale), tick);
+        self.button = Some((style, tick, Painted::new(&canvas)));
     }
 
     /// The button of it at `point`, if there is one there.
@@ -4551,6 +4623,11 @@ impl About {
         let at = Point::<i32, Logical>::from((shown.origin.x, shown.origin.y));
         let rows = (self.scrolled, shown.size.height);
         elements.extend(self.list.rows(renderer, at.to_f64(), rows, view, opacity));
+        let copy = Point::<i32, Logical>::from((self.copy.origin.x, self.copy.origin.y));
+        let button = self.button.as_ref().map(|(.., button)| button);
+        let button =
+            button.and_then(|button| button.element(renderer, copy.to_f64(), view, opacity));
+        elements.extend(button);
         let at = Point::<i32, Logical>::from((self.area.origin.x, self.area.origin.y));
         elements.extend(self.pixels.element(renderer, at.to_f64(), view, opacity));
         let glass = elements.len();
@@ -5003,7 +5080,7 @@ enum What {
     ),
     Menu(MenuChrome),
     Notice(Notice),
-    About(About),
+    About(Box<About>),
 }
 
 impl Animation {

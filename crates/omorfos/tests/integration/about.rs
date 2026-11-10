@@ -419,3 +419,104 @@ fn about_says_what_the_computer_is_and_its_button_copies_it_for_a_window_to_past
     }
     drop(window);
 }
+
+/// The colour of what is done, the background of the button that copies
+/// once it has, in the dark scheme.
+const DONE: u32 = 0xffa3_e635;
+
+/// Inside the button that copies, at its right, where nothing is written.
+const COPY_SIDE: (i32, i32) = (WIDTH - 12 - 21 - 3, COPY.1);
+
+/// The pixels of the button that copies and a little round it, row by row.
+fn copy_button(session: &mut Session) -> Vec<u32> {
+    let screen = session.draw();
+    let (rows, columns) = (
+        COPY.1 - 16..COPY.1 + 16,
+        WIDTH - 12 - 21 - 80..WIDTH - 12 - 21,
+    );
+    let rows: Vec<Vec<u32>> = rows
+        .map(|y| columns.clone().map(|x| screen.at(x, y)).collect())
+        .collect();
+    rows.concat()
+}
+
+/// How many pixels of two pictures differ.
+fn differ(one: &[u32], other: &[u32]) -> usize {
+    one.iter()
+        .zip(other)
+        .filter(|(one, other)| one != other)
+        .count()
+}
+
+#[test]
+fn the_button_that_copies_turns_green_draws_a_tick_and_is_as_it_was_a_moment_later() {
+    let mut session = unblurred();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (100, 50), GREEN);
+    about(&mut session);
+    let plain = copy_button(&mut session);
+    // Pressed, then the pointer moves off it, so that it is not raised.
+    let (x, y) = (f64::from(COPY.0), f64::from(COPY.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    for pressed in [true, false] {
+        let click = Input::Button {
+            button: LEFT_BUTTON,
+            pressed,
+        };
+        session.compositor_mut().input(click, 0);
+    }
+    let (x, y) = (f64::from(GROUND.0), f64::from(GROUND.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.step();
+    let copied = copy_button(&mut session);
+    assert_eq!(session.draw().at(COPY_SIDE.0, COPY_SIDE.1), DONE, "green");
+    // Drawn again a frame on, while its tick is being drawn.
+    let now = session.now;
+    let due = session.compositor().deadline();
+    assert!(
+        due.is_some_and(|due| due <= now + Duration::from_millis(20)),
+        "{due:?}"
+    );
+
+    session.advance(Duration::from_millis(150));
+    let part = copy_button(&mut session);
+    session.advance(Duration::from_millis(200));
+    let whole = copy_button(&mut session);
+    let (some, all) = (differ(&copied, &part), differ(&copied, &whole));
+    assert!(
+        some > 0 && all > some,
+        "the tick drawn bit by bit: {some}, then {all}"
+    );
+    // Then nothing moves until it is to be as it was.
+    let due = session.compositor().deadline();
+    let later = session.now + Duration::from_secs(1);
+    assert!(due.is_some_and(|due| due > later), "{due:?}");
+
+    session.advance(Duration::from_millis(1200));
+    assert_eq!(copy_button(&mut session), plain, "as it was");
+    assert_eq!(
+        session.compositor().deadline(),
+        None,
+        "and nothing more to draw"
+    );
+    drop(window);
+}
+
+#[test]
+fn the_buttons_of_about_are_pointed_at_with_a_hand() {
+    const YELLOW: u32 = 0xffff_ff00;
+    let mut session = unblurred();
+    let themes =
+        session.install_cursors("default", &[("default", 8, GREEN), ("pointer", 8, YELLOW)]);
+    session.compositor_mut().set_cursor_themes(themes);
+    session.compositor_mut().show_pointer();
+    about(&mut session);
+    assert_eq!(
+        crate::cursors::pointer_at(&mut session, COPY.0, COPY.1),
+        YELLOW
+    );
+    assert_eq!(
+        crate::cursors::pointer_at(&mut session, GROUND.0, GROUND.1),
+        GREEN
+    );
+}

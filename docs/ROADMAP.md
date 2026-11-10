@@ -1461,7 +1461,10 @@ decision of stage 2.
       the family it is sold under, not the name on its box ("Radeon
       780M"), which only the graphics driver knows; screens are named
       by their connector, as no screen's own name (EDID) is read yet;
-      nothing says the text was copied; and Ctrl+C does not copy it.
+      and Ctrl+C does not copy it.
+- [x] The button of "About" that copies says it has: green, the theme's
+      `about-button:active`, with a tick drawn on it and "Copied", for a
+      second and a half; and About's buttons are pointed at with a hand.
 - [ ] **On-screen keyboard**, for accessibility, and for a touch screen
       with no keyboard, shown and hidden by the keyboard's own key for
       it where there is one. Above every window and panel by default, and
