@@ -241,27 +241,78 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
     assert_eq!(picture.at(0, 60), 0xffe4_ddc4, "its hairline");
 }
 
-#[test]
-fn a_scheme_that_goes_by_the_sun_is_light_where_it_is_noon_and_dark_where_it_is_midnight() {
-    // On the equator, as far round as it is noon now by the sun, and as
-    // far round again as it is midnight.
+/// `config.yaml` going by the sun on the equator, as far round as it is
+/// noon now, or as far round again as it is midnight.
+pub(crate) fn by_the_sun(noon: bool) -> String {
     let now = std::time::SystemTime::now();
     let seconds = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     #[expect(clippy::cast_precision_loss, reason = "the seconds of a day")]
     let hours = (seconds % 86_400) as f64 / 3600.0;
-    let noon = (12.0 - hours) * 15.0;
-    let midnight = if noon > 0.0 {
-        noon - 180.0
+    let noon_here = (12.0 - hours) * 15.0;
+    // Half way round from noon, within the same 360 degrees.
+    let longitude = if noon {
+        noon_here
     } else {
-        noon + 180.0
+        (noon_here + 360.0) % 360.0 - 180.0
     };
-    for (longitude, behind) in [(noon, 0xfffc_f7e3), (midnight, 0xff0c_1226)] {
-        let auto = format!(
-            "appearance: {{ scheme: auto, location: {{ latitude: 0, longitude: {longitude:.3} }} }}\n"
-        );
-        let mut session = Session::with_config(&[("config.yaml", &auto)]);
-        assert_eq!(session.draw().at(600, 400), behind, "at {longitude}");
+    format!(
+        "appearance: {{ scheme: auto, location: {{ latitude: 0, longitude: {longitude:.3} }} }}\n"
+    )
+}
+
+/// The desktop's cream by day and navy by night.
+const DAY: u32 = 0xfffc_f7e3;
+const NIGHT: u32 = 0xff0c_1226;
+
+#[test]
+fn a_scheme_that_goes_by_the_sun_is_light_where_it_is_noon_and_dark_where_it_is_midnight() {
+    for (noon, behind) in [(true, DAY), (false, NIGHT)] {
+        let mut session = Session::with_config(&[("config.yaml", &by_the_sun(noon))]);
+        assert_eq!(session.draw().at(600, 400), behind, "at noon: {noon}");
     }
+}
+
+#[test]
+fn day_turns_into_night_over_a_minute_and_a_scheme_changed_by_hand_at_once() {
+    let mut session = Session::with_config(&[("config.yaml", &by_the_sun(true))]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "foot", (200, 100), RED);
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        (picture.at(600, 400), picture.at(120, 14))
+    };
+    let (desktop, titlebar) = seen(&mut session);
+    assert_eq!(desktop, DAY);
+
+    session.write_config("config.yaml", &by_the_sun(false));
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(seen(&mut session), (DAY, titlebar), "drawn from the day");
+    // A step on, and no sooner.
+    let now = session.now;
+    let due = session.compositor().deadline();
+    let step = omorfos_config::STEP;
+    assert!(
+        due.is_some_and(|due| due > now && due <= now + step),
+        "{due:?}"
+    );
+
+    session.advance(Duration::from_secs(30));
+    let (half, half_titlebar) = seen(&mut session);
+    assert!(between(half, DAY, NIGHT), "{half:#x}");
+    assert!(
+        between(half_titlebar, titlebar, FOCUSED_TITLEBAR),
+        "{half_titlebar:#x}"
+    );
+    session.advance(Duration::from_secs(31));
+    assert_eq!(seen(&mut session), (NIGHT, FOCUSED_TITLEBAR), "and night");
+    assert_eq!(session.compositor().deadline(), None, "and no more to draw");
+
+    // A scheme asked for by hand is there at once.
+    session.write_config("config.yaml", "appearance: { scheme: light }\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(seen(&mut session), (DAY, titlebar));
 }
 
 #[test]

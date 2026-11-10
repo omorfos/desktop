@@ -118,6 +118,26 @@ impl PartialEq for Theme {
 impl Eq for Theme {}
 
 impl Theme {
+    /// This theme with every part's colours, in every state, `share` of
+    /// the way from those it has in `from` to its own: as the desktop looks
+    /// while one theme turns into the other. Everything else is its own.
+    #[must_use]
+    pub fn blended(&self, from: &Self, share: f32) -> Self {
+        let looks = self.table.looks.iter().zip(&from.table.looks);
+        let looks = looks.map(|(to, from)| Look {
+            style: to.style.blended(&from.style, share),
+            font: to.font.clone(),
+        });
+        Self {
+            table: Arc::new(Table {
+                looks: looks.collect(),
+                spare: self.table.spare.clone(),
+                starting: self.table.starting.clone(),
+                monospace: self.table.monospace.clone(),
+            }),
+        }
+    }
+
     /// The theme that `stylesheet` makes when laid over the built-in one.
     /// An empty stylesheet makes the built-in theme.
     ///
@@ -1713,6 +1733,41 @@ mod tests {
         assert_eq!(notice.padding, Edges::all(12));
         let heading = theme.style(Part::NoticeHeading, States::NONE);
         assert_eq!(heading.color, DANGER);
+    }
+
+    #[test]
+    fn a_theme_turning_into_another_has_its_colours_on_their_way_and_all_else_its_own() {
+        let dark = Theme::built_in(Scheme::Dark, Accent::Cyan);
+        let light = Theme::built_in(Scheme::Light, Accent::Cyan);
+        let look = |theme: &Theme| theme.style(Part::Titlebar, FOCUSED);
+        let colours = |theme: &Theme| (look(theme).background, look(theme).color);
+        assert_eq!(
+            colours(&light.blended(&dark, 0.0)),
+            colours(&dark),
+            "none of the way"
+        );
+        assert_eq!(
+            colours(&light.blended(&dark, 1.0)),
+            colours(&light),
+            "all of it"
+        );
+        let half = light.blended(&dark, 0.5);
+        let between = look(&half).background;
+        let (from, to) = (look(&dark).background, look(&light).background);
+        let channels = [
+            (between.red, from.red, to.red),
+            (between.green, from.green, to.green),
+            (between.blue, from.blue, to.blue),
+        ];
+        for (between, from, to) in channels {
+            assert!((from.min(to)..=from.max(to)).contains(&between));
+        }
+        assert!(between != from && between != to, "{between:?}");
+        assert_eq!(
+            half.font(Part::Titlebar, FOCUSED),
+            light.font(Part::Titlebar, FOCUSED)
+        );
+        assert_eq!(look(&half).height, look(&light).height, "sizes are its own");
     }
 
     #[test]

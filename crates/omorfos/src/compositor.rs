@@ -1158,7 +1158,11 @@ impl Compositor {
         let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
+        // As is the next step of day turning into night.
+        let turning = self.store.turns().zip(self.animation.epoch);
+        let turning = turning.map(|(due, epoch)| epoch + due);
         [
+            turning,
             self.about_due(),
             self.debouncer.deadline(),
             self.ipc.as_ref().and_then(|server| server.retry),
@@ -1212,6 +1216,9 @@ impl Compositor {
         if self.debouncer.fire(now) {
             self.reload_config();
         }
+        // Day turning into night, or night into day, is drawn over a minute;
+        // whatever compares the theme it was drawn in is drawn again.
+        let _ = self.store.at(self.animation.clock);
         self.settle_recording(now);
         self.settle_capture(now);
         self.wait_for_relay(now);

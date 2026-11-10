@@ -28,7 +28,7 @@ use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 use zbus::zvariant::Value;
 
-use crate::common::{HEIGHT, Session, WIDTH, half_way};
+use crate::common::{HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, shaded};
 
 const LEFT: u32 = 0x110;
@@ -547,6 +547,47 @@ fn notifications_follow_the_theme_and_the_scale_of_their_screen() {
         session.step();
     }
     assert_eq!(session.draw().at(INSIDE.0, 110), 0xff00_00ff);
+}
+
+#[test]
+fn a_notification_turns_from_day_to_night_over_a_minute() {
+    use crate::decorations::by_the_sun;
+    let daemon = Daemon::start();
+    let mut session = Session::with_config(&[("config.yaml", &by_the_sun(true))]);
+    let mut notifier = notifier(&mut session, &daemon);
+    notify(&daemon.peer(), "Turning", 0, HashMap::new());
+    let inside = |session: &mut Session| session.draw().at(INSIDE.0, INSIDE.1);
+    let light = Theme::built_in(omorfos_config::Scheme::Light, omorfos_config::Accent::Cyan);
+    let day = argb(light.style(Part::Notification, States::NONE).background);
+    let night = surface();
+    until(&mut session, &mut notifier, Duration::ZERO, |session| {
+        inside(session) == day
+    });
+
+    session.write_config("config.yaml", &by_the_sun(false));
+    // Heard of, as the file changes, and begun as they are next drawn.
+    let step = omorfos_config::STEP;
+    let heard = (0..5000).any(|_| {
+        notifier.turn(Duration::ZERO).unwrap();
+        session.step();
+        std::thread::sleep(Duration::from_millis(1));
+        notifier.deadline() == Some(step)
+    });
+    assert!(heard, "a step on");
+    assert_eq!(inside(&mut session), day, "from the day");
+    until(
+        &mut session,
+        &mut notifier,
+        Duration::from_secs(30),
+        |session| between(inside(session), day, night),
+    );
+    until(
+        &mut session,
+        &mut notifier,
+        Duration::from_secs(61),
+        |session| inside(session) == night,
+    );
+    assert_eq!(notifier.deadline(), None, "and at rest");
 }
 
 #[test]

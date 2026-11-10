@@ -144,7 +144,8 @@ impl Panel {
 
     /// When there will next be something to do without anything having
     /// happened, other than the time changing: when a button that is
-    /// changing colour is due to be drawn again.
+    /// changing colour is due to be drawn again, or the next step of day
+    /// turning into night.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let faces = self
@@ -152,7 +153,8 @@ impl Panel {
             .screens
             .iter()
             .filter_map(|screen| screen.face.as_ref());
-        faces.filter_map(|face| face.motion.deadline()).min()
+        let moving = faces.filter_map(|face| face.motion.deadline());
+        moving.chain(self.shell.store.turns()).min()
     }
 
     /// Sleeps until one of the connections has something to read, the
@@ -194,6 +196,9 @@ impl Panel {
         let sent = mem::replace(&mut shell.sent, Ok(()));
         let watcher = self.watcher.as_mut();
         let changed = watcher.map_or(Ok(false), |watcher| watcher.refresh(&mut shell.store));
+        // Day turning into night, or night into day, changes only colours,
+        // a step at a time: the bars are drawn again, not opened anew.
+        shell.stale |= shell.store.at(now);
         heard.and(answered).and(sent).and(changed).map(|changed| {
             if changed {
                 shell.rethemed();
@@ -273,7 +278,7 @@ struct Face {
     /// How many pixels the screen has to a unit.
     scale: Scale,
     /// What is on it now.
-    shown: Option<(Bar, Scale)>,
+    shown: Option<(Bar, Scale, Theme)>,
     /// The buttons that are on their way from one look to another.
     motion: Motion,
     /// The picture of that, which the compositor is reading from.
@@ -409,7 +414,7 @@ impl Shell {
             let screens = screens.filter(|screen| screen.global == global);
             let faces = screens.filter_map(|screen| screen.face.as_ref());
             let mut bars = faces.filter_map(|face| face.shown.as_ref());
-            bars.find_map(|(bar, _)| bar.click(whole(along)))
+            bars.find_map(|(bar, ..)| bar.click(whole(along)))
         });
         let now = self.now;
         let sent = request.map_or(Ok(()), |request| self.commands.send(&request, now));
@@ -514,13 +519,14 @@ impl Face {
         }
         let (state, times) = (tools.state, (tools.time, tools.awake, tools.radios));
         let bar = Bar::new(state, name, self.width, times, tools.theme, tools.text);
-        let wanted = (bar, self.scale);
+        // In the colours it is drawn in, which may change alone.
+        let wanted = (bar, self.scale, tools.theme.clone());
         // The same bar is drawn again while a button on it changes colour.
         let again = self.motion.due(tools.now);
         if self.shown.as_ref() == Some(&wanted) && !again {
             return Ok(());
         }
-        let (bar, scale) = &wanted;
+        let (bar, scale, _) = &wanted;
         self.motion.begin(tools.now);
         let canvas = bar.paint(tools.text, tools.theme, *scale, &mut self.motion);
         self.motion.end();

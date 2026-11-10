@@ -1219,9 +1219,15 @@ the first than on the last.
       brought up to date with tzdata; and the system's time zone as where
       the user is, and 07:00 to 19:00 where it has no place, are defaults
       to review.
-- [ ] Day turning to night as a transition: at sunrise and sunset every
-      part changes colour over a minute or so rather than at once, and
-      programs that follow the desktop are told as it begins.
+- [x] Day turning to night as a transition: at sunrise and sunset the
+      colours of what the compositor, the panel and the notifications draw
+      change over a minute, a step a quarter of a second, rather than at
+      once; programs that follow the desktop, through the portal, are told
+      as it begins (ADR 65). A scheme changed by hand changes at once.
+- [ ] Known gaps in day turning to night: what goes by the scheme rather
+      than by a colour changes as it begins, the pointer and the mark in
+      "About" among them; and a program that draws itself, as GTK's do,
+      changes at once, as it is told.
 - [x] A pointer that is the same size everywhere, including over
       programs written for X11: its theme and size in the X server's
       resources as well as in the settings toolkits follow, told again

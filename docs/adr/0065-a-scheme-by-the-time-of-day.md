@@ -54,6 +54,24 @@ installed: it changes only when a zone is added, and a stale copy only
 lacks the newest. A system whose zone has no city, as `UTC`, goes by the
 hours of the day.
 
+**Day turns into night over a minute.** A change of scheme that `auto`
+makes, rather than one of the setting, is kept by the configuration's
+`Store` as well as put in effect: the theme it turns from. A program
+that draws asks `Store::at` with its own clock as it draws, and is given
+the configuration with a theme between the two, every part's colours in
+every state blended a step of a quarter of a second at a time over a
+minute from the moment it first asks; and `Store::turns` says when the
+next step is due, for it to wake then. The compositor, the panel and the
+notifications ask, and draw again what compares the theme it was drawn
+in. Only colours are blended: sizes, fonts and the scheme itself are the
+new ones from the start, so what goes by the scheme, the pointer's
+colours and the mark in "About", changes at once. A program that does
+not ask, as the portal does not, has the new scheme at once, so that
+other programs are told as it begins; they change as they are told. A
+quarter of a second is a change too small to see, and keeps what is
+drawn from being drawn again every frame for a minute: two hundred and
+forty times, twice a day.
+
 ## Alternatives
 
 - **Our programs follow the portal**, as other programs do. One place

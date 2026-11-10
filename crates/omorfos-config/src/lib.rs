@@ -57,7 +57,7 @@ pub use menu::{Menu, MenuItem};
 pub use paths::{cache_dir, config_dir};
 pub use rules::{Match, Rule, Rules};
 pub use scheme::{Accent, Scheme, SchemeChoice};
-pub use store::Store;
+pub use store::{STEP, Store, TURNING};
 pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};
 pub use theme::{Font, Theme, ThemeError};
 pub use transition::{Easing, Transition};

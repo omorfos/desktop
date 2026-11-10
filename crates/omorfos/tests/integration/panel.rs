@@ -391,6 +391,58 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
 }
 
 #[test]
+fn the_bar_turns_from_day_to_night_over_a_minute() {
+    use crate::decorations::by_the_sun;
+    let mut session = Session::with_config(&[("config.yaml", &by_the_sun(true))]);
+    let mut panel = panel(&mut session);
+    settle(&mut session, &mut panel);
+    let bar = |session: &mut Session| session.draw().at(WIDTH - 1, HEIGHT - 2);
+    let day = bar(&mut session);
+
+    session.write_config("config.yaml", &by_the_sun(false));
+    // Heard of, as the file changes, and begun as the panel next draws.
+    let panel = RefCell::new(panel);
+    session.eventually(|session| {
+        panel.borrow_mut().turn(TIME, Duration::ZERO).unwrap();
+        session.step();
+        panel.borrow().deadline().is_some()
+    });
+    let mut panel = panel.into_inner();
+    let turn = |session: &mut Session, panel: &mut Panel, now: Duration| {
+        for _ in 0..5 {
+            panel.turn(TIME, now).unwrap();
+            session.step();
+        }
+    };
+    // The bar, opened anew as its file changed, has come onto the screen
+    // in less than a step.
+    let step = omorfos_config::STEP;
+    turn(&mut session, &mut panel, Duration::from_millis(200));
+    assert_eq!(panel.deadline(), Some(step), "a step on");
+    assert_eq!(bar(&mut session), day, "from the day");
+
+    turn(&mut session, &mut panel, Duration::from_secs(61));
+    let night = bar(&mut session);
+    assert_ne!(night, day, "and night");
+    assert_eq!(panel.deadline(), None, "at rest");
+    // Half way, it was between them: tried on a panel that turns again.
+    session.write_config("config.yaml", &by_the_sun(true));
+    let panel = RefCell::new(panel);
+    session.eventually(|session| {
+        panel
+            .borrow_mut()
+            .turn(TIME, Duration::from_secs(100))
+            .unwrap();
+        session.step();
+        panel.borrow().deadline().is_some()
+    });
+    let mut panel = panel.into_inner();
+    turn(&mut session, &mut panel, Duration::from_secs(130));
+    let half = bar(&mut session);
+    assert!(between(half, night, day), "{half:#x}");
+}
+
+#[test]
 fn a_bar_with_a_margin_floats_clear_of_the_edge_and_windows_keep_clear_of_both() {
     let mut session = Session::with_config(&[(
         "theme.css",

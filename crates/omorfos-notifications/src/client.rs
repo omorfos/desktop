@@ -137,13 +137,15 @@ impl Notifier {
     }
 
     /// When there will next be something to do without anything having
-    /// happened: when the next notification's time runs out, or one that
-    /// is changing colour is due to be drawn again.
+    /// happened: when the next notification's time runs out, one that is
+    /// changing colour is due to be drawn again, or the next step of day
+    /// turning into night.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let gone = self.shell.stack.deadline();
         let drawn = self.shell.motion.deadline();
-        gone.into_iter().chain(drawn).min()
+        let turning = self.shell.store.turns();
+        gone.into_iter().chain(drawn).chain(turning).min()
     }
 
     /// Runs the notifications, asleep until there is something to do,
@@ -208,6 +210,8 @@ impl Notifier {
                 shell.settle();
             }
         });
+        // Day turning into night, or night into day, a step at a time.
+        shell.stale |= shell.store.at(now);
         // A click is told of before the notification's going is.
         let mut clicked = mem::take(&mut shell.clicked).into_iter();
         let clicked = clicked.try_for_each(|id| self.bus.clicked(id));

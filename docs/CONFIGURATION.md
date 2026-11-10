@@ -978,10 +978,12 @@ light or dark all day. Given `appearance.day` and no location, day is
 those hours instead, as `{ from: '07:00', to: '19:00' }`, in the time zone
 of the system; a day that ends earlier than it begins runs through
 midnight. A system whose time zone has no city, as `UTC`, goes by the
-hours, `07:00` to `19:00` unless you say otherwise. Every part of the desktop changes at the moment it
-turns, applications that follow the desktop are told it, and each part
-asks again by every midnight, and when the clock is set, as after a
-suspend. The location is only read here, never told to any program. A
+hours, `07:00` to `19:00` unless you say otherwise. As day turns into
+night, or night into day, the colours of what omorfos draws, its panel
+and its notifications change over a minute, and applications that follow
+the desktop are told as it begins. Each part asks again by every midnight,
+and when the clock is set, as after a suspend. A scheme set by hand, as
+`scheme: dark`, changes at once. The location is only read here, never told to any program. A
 change of time zone is seen at the next of these, not at once; and the
 lock screen and the box that asks for a password stay in the scheme they
 were opened in.
