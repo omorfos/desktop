@@ -129,7 +129,7 @@ use crate::recording::Recorded;
 use crate::restarts::Restarts;
 use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
-use crate::scaling::{self, Boxed};
+use crate::scaling::{self, Boxed, Stretch};
 use crate::sealed::Seal;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
@@ -1153,8 +1153,10 @@ impl Compositor {
         let settling = self.protocols.gestures.slide.settling();
         let sliding = self.animation.epoch.filter(|_| settling);
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
-        // And what the screens showed before, while it gives way.
-        let fading = self.animation.epoch.filter(|_| self.is_fading());
+        // And what the screens showed before, while it gives way, and a
+        // window's last picture while it gives way to its new one.
+        let giving = self.scene.iter().any(|shown| shown.giving.is_some());
+        let fading = self.animation.epoch.filter(|_| self.is_fading() || giving);
         let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
@@ -2383,6 +2385,7 @@ impl Compositor {
         motion.begin(self.animation.clock);
         let shades = self.animation.shades.begun();
 
+        let changes = config.theme.style(Part::Window, States::NONE).transition;
         let mut scene = Vec::new();
         for Mapped {
             id,
@@ -2396,20 +2399,15 @@ impl Compositor {
                 .iter()
                 .enumerate()
                 .find(|(_, frame)| frame.shown == *id);
-            // A window rolled up into its titlebar is left the size it
-            // was: it is not shown, but it is not made to be nothing.
-            let unrolled = frame.filter(|(_, frame)| !frame.standing.shaded);
-            let placed = unrolled.map(|(_, frame)| Placed {
-                client: frame.client,
-                maximized: frame.maximized,
-                // A window that shares its workspace fills a part of the
-                // screen and is not fullscreen.
-                fullscreen: frame.fullscreen && frame.home == Home::Solo,
-                tiled: frame.fullscreen && frame.home == Home::Shared,
-            });
+            let placed = frame.and_then(|(_, frame)| frame.placed());
             role.arrange(Some(*id) == focused, placed, window.geometry().size);
             match frame {
                 Some((order, frame)) => {
+                    let before = previous.iter_mut().find(|shown| shown.id == *id);
+                    let sizes = (logical_size(frame.client.size), window.geometry().size);
+                    let noted = (&self.animation.drawn, surface);
+                    let (stretch, giving) =
+                        stretching(role, sizes, before, noted, (changes, self.animation.clock));
                     let chrome = frame.decoration.map(|decoration| {
                         let cached = previous
                             .iter()
@@ -2438,6 +2436,8 @@ impl Compositor {
                             veil: private.then(|| veils.veil(*id, frame.geometry.size)),
                             private,
                             on: frame.on,
+                            stretch,
+                            giving,
                         },
                     ));
                 }
@@ -2515,6 +2515,8 @@ impl Compositor {
                 veil: None,
                 private: false,
                 on: frame.on,
+                stretch: None,
+                giving: None,
             });
         }
         portrayal.end();
@@ -3909,10 +3911,31 @@ impl Compositor {
         } else {
             Noting::new(false, view.origin, view.scale.factor())
         };
+        // Stretched, it is noted as it is drawn, to fade into the picture
+        // its program draws next; over that, the picture it had before,
+        // while it does.
+        let about = view.pixel(shown.origin.to_f64());
+        if let Some(by) = shown.stretch {
+            noting.stretched(shown.origin, by);
+        }
+        if let Some(giving) = &shown.giving {
+            let changes = self
+                .config()
+                .theme
+                .style(Part::Window, States::NONE)
+                .transition;
+            let share = changes.progress(self.animation.clock.saturating_sub(giving.since));
+            let opacity = (1.0 - share) * shown.seen.opacity;
+            let pieces = giving
+                .pieces
+                .elements(view.origin, view.scale.factor(), opacity);
+            elements.extend(pieces.map(Element::Ghost));
+        }
         // A window's surface may start above and left of its visible
         // geometry, where it draws its own shadows.
         let location = shown.origin - shown.window.geometry().loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
+        let first = elements.len();
         let Some(chrome) = rounded else {
             let surfaces = shown
                 .window
@@ -3926,6 +3949,9 @@ impl Compositor {
                 noting.add(surface, noting.paint(surface.texture()));
             }
             elements.extend(surfaces.into_iter().map(Element::Surface));
+            if let Some(by) = shown.stretch {
+                scaling::stretch(elements, first, about, by);
+            }
             self.animation.note(&shown.surface, noting.done());
             return;
         };
@@ -3945,7 +3971,14 @@ impl Compositor {
             }
             elements.extend(picture.into_iter().map(Element::Surface));
         }
-        for (strip, area) in Self::cut(view, chrome).into_iter().enumerate() {
+        // What lands on each strip of the frame, once stretched.
+        let first = elements.len();
+        let cut = Self::cut(view, chrome).into_iter();
+        let cut = cut.map(|area| {
+            let by = shown.stretch.unwrap_or((1.0, 1.0));
+            scaling::unstretched(area, about, by)
+        });
+        for (strip, area) in cut.enumerate() {
             let whole: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
                 renderer,
                 &shown.surface,
@@ -3962,6 +3995,9 @@ impl Compositor {
                     elements.push(Element::Strip(cut));
                 }
             }
+        }
+        if let Some(by) = shown.stretch {
+            scaling::stretch(elements, first, about, by);
         }
         self.animation.note(&shown.surface, noting.done());
     }
@@ -5146,9 +5182,7 @@ impl Animation {
     /// Takes what a window or a panel was last drawn from, if it ever was,
     /// now that it has gone.
     fn noted(&self, surface: &WlSurface) -> Option<Noted> {
-        let mut drawn = self.drawn.borrow_mut();
-        let found = drawn.iter().position(|(known, _)| known == surface);
-        found.map(|index| drawn.swap_remove(index).1.left())
+        taken(&self.drawn, surface)
     }
 
     /// Has the windows that were on the screen and no longer are go on
@@ -5546,6 +5580,42 @@ fn presence(
     seen
 }
 
+/// How a window's picture is drawn, its frame being the first of `sizes`
+/// and what its program shows the second, as `before` it was drawn last:
+/// stretched to fill the frame while the program is behind with it, where
+/// windows change over a time, `changes`; and, once the program has caught
+/// up, with the picture it had while it was, which is in what was `noted`
+/// of what was drawn, fading into the new one from `now`.
+fn stretching(
+    role: &Role,
+    (wanted, drawn): (Size<i32, Logical>, Size<i32, Logical>),
+    before: Option<&mut Shown>,
+    noted: (&RefCell<Vec<(WlSurface, Noted)>>, &WlSurface),
+    (changes, now): (omorfos_config::Transition, Duration),
+) -> (Option<Stretch>, Option<Giving>) {
+    let behind = role.behind(wanted, drawn) && !changes.lasts().is_zero();
+    let stretch = behind.then(|| {
+        let across = f64::from(wanted.w) / f64::from(drawn.w.max(1));
+        (across, f64::from(wanted.h) / f64::from(drawn.h.max(1)))
+    });
+    let before = before.map(|before| (before.stretch, before.giving.take()));
+    let (was, giving) = before.unwrap_or_default();
+    let caught_up = was.is_some() && stretch.is_none();
+    let begun = caught_up.then(|| taken(noted.0, noted.1)).flatten();
+    let begun = begun.map(|pieces| Giving { pieces, since: now });
+    let lasting = |giving: &Giving| now.saturating_sub(giving.since) < changes.lasts();
+    (stretch, begun.or(giving).filter(lasting))
+}
+
+/// Takes what a surface was last drawn from out of what was noted of
+/// everything drawn, if it ever was, for its pieces to be drawn for
+/// themselves.
+fn taken(drawn: &RefCell<Vec<(WlSurface, Noted)>>, surface: &WlSurface) -> Option<Noted> {
+    let mut drawn = drawn.borrow_mut();
+    let found = drawn.iter().position(|(known, _)| known == surface);
+    found.map(|index| drawn.swap_remove(index).1.left())
+}
+
 /// A window on screen: where it is and the decoration drawn around it.
 #[derive(Debug)]
 pub(crate) struct Shown {
@@ -5578,6 +5648,20 @@ pub(crate) struct Shown {
     /// the one shown, while they slide, is gone from without fading once
     /// they settle.
     on: Showing,
+    /// How its picture is stretched to fill its frame, while its program
+    /// has yet to draw the size the frame has.
+    stretch: Option<Stretch>,
+    /// The picture it had while it was stretched, fading into the one its
+    /// program has drawn since.
+    giving: Option<Giving>,
+}
+
+/// A window's last picture before its program drew the size its frame
+/// has, and when it began to give way to the new one.
+#[derive(Debug)]
+struct Giving {
+    pieces: Noted,
+    since: Duration,
 }
 
 /// What stands for private windows in pictures taken of the screen, kept
@@ -5757,6 +5841,20 @@ struct FrameInfo {
 }
 
 impl FrameInfo {
+    /// Where its window is put, and in what state. One rolled up into its
+    /// titlebar is left the size it was: it is not shown, but it is not
+    /// made to be nothing.
+    fn placed(&self) -> Option<Placed> {
+        (!self.standing.shaded).then(|| Placed {
+            client: self.client,
+            maximized: self.maximized,
+            // A window that shares its workspace fills a part of the
+            // screen and is not fullscreen.
+            fullscreen: self.fullscreen && self.home == Home::Solo,
+            tiled: self.fullscreen && self.home == Home::Shared,
+        })
+    }
+
     /// What is known of a frame, drawn at `scale`, with the pointer `over`
     /// a button of some frame's titlebar or of none.
     fn of(frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) -> Self {

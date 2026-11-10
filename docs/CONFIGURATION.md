@@ -1170,6 +1170,15 @@ once, and so does one notification among others that stay, and the
 question an application has asked, whatever `question`'s `transition`, so
 that it is not in the picture of the screen it leads to.
 
+**A window that changes size fills its frame at once.** Until its
+program has drawn it at the size it has been given, by being maximized,
+tiled or dragged larger or smaller by its edge, its last picture is
+stretched to fill the frame; once the program has drawn, that picture
+fades into the new one over `window`'s `transition`. A program that has
+drawn and chosen another size, as a terminal may to fit its lines, is
+shown as it draws. `window { transition: none; }` leaves the picture as
+it is, short of the frame or past it, until the program draws.
+
 Not every part uses every property yet:
 
 - `margin` is honoured by `panel` (it moves the bar in from the edges of

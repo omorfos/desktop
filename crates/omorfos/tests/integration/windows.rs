@@ -457,3 +457,57 @@ fn a_window_may_be_one_pixel_of_a_colour_stretched_to_its_size() {
     assert_eq!(picture.at(0, 0), GREEN);
     assert_eq!(picture.at(WIDTH - 1, HEIGHT - 1), GREEN);
 }
+
+/// A theme in which windows come and go over a time, and so change size
+/// smoothly.
+const MOVING: (&str, &str) = ("theme.css", "window { transition: 180ms ease-out; }\n");
+
+#[test]
+fn a_window_s_last_picture_is_stretched_to_its_frame_until_its_program_draws_the_new_size() {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(5, 5), RED, "come in");
+    assert_eq!(session.draw().at(600, 400), BACKGROUND);
+
+    // Maximized, and not yet drawn so, its picture fills its frame.
+    window.role.set_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let picture = session.draw();
+    assert_eq!((picture.at(5, 5), picture.at(600, 400)), (RED, RED));
+
+    // Once drawn, its new picture shows, and the stretched one fades into
+    // it over the time the theme gives a window to change.
+    client.fill(&window.surface, (WIDTH, HEIGHT), BLUE);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(
+        session.draw().at(600, 400),
+        RED,
+        "setting out from the last"
+    );
+    session.advance(Duration::from_millis(90));
+    let between = session.draw().at(600, 400);
+    assert!(between != RED && between != BLUE, "{between:08x}");
+    session.advance(Duration::from_millis(90));
+    assert_eq!(session.draw().at(600, 400), BLUE);
+    assert_eq!(session.compositor().deadline(), None);
+}
+
+#[test]
+fn a_window_whose_program_draws_another_size_than_asked_is_shown_as_it_draws() {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    window.role.set_maximized();
+    session.roundtrip(&mut client);
+
+    // It has heard, and draws itself as large as it was all the same.
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    let picture = session.draw();
+    assert_eq!((picture.at(5, 5), picture.at(600, 400)), (RED, BACKGROUND));
+}

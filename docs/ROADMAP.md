@@ -1326,8 +1326,14 @@ the first than on the last.
     - [x] A program told nothing new about its window until it has drawn
           what it was told last, and then the latest, so that a slow one
           is not asked every size an edge is dragged through.
-    - [ ] The window's last picture stretched to its frame until its
-          program has drawn the new size, then faded into it.
+    - [x] The window's last picture stretched to its frame until its
+          program has drawn the new size, then faded into it over
+          `window`'s transition, where windows change over a time.
+    - [ ] Known gaps in a stretched picture: the pointer is in the window
+          where it would be unstretched; a program written for X11 is not
+          stretched, nor told in a way that is answered; and a window's
+          pop-ups are stretched with it where its frame is square and not
+          where its corners are round.
     - [ ] Tiling, maximizing and filling the room of a window that closed
           easing the frame there over 240 ms.
     - [ ] The line between parts easing when it moves by itself: put back
@@ -1590,9 +1596,11 @@ Programs written for X11:
 
 Known gaps carried forward:
 
-- [ ] During a resize from the left or top edge, the window's content can
+- [x] During a resize from the left or top edge, the window's content can
       lag the frame by a frame or two, until a window that changes size
-      does so smoothly (stage 4, "Movement").
+      does so smoothly (stage 4, "Movement"): its last picture is now
+      stretched to the frame until it has drawn, where windows change
+      over a time (ADR 72).
 - [ ] Dragging and dropping between applications works through Smithay's
       defaults and has no test.
 - [ ] The nested backend has not been run by hand since the event loop

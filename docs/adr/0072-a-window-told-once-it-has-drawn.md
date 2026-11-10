@@ -51,12 +51,39 @@ new size, then faded into it; tiling, maximizing and filling the room of
 a window that closed easing over 240 ms; and the line between windows
 easing when it moves by itself.
 
+### Stretched until it has drawn
+
+Its last picture is stretched to fill the frame, across and down apart,
+while its program is behind: until the program has drawn since it was
+told the size the frame has. Once it has, the picture it had fades into
+the new one over the time the theme gives a window to come in,
+`window`'s `transition`, 180 ms in the built-in theme, drawn over it
+where it is in the windows' order and cut to the frame's corners as it
+was. The picture is not moved: it is at once where the frame is, which
+is what "Movement never holds input up" asks, and nothing is drawn
+where there is nothing.
+
+- **Behind, not merely another size.** A program that has drawn since it
+  was told, and chose another size, as a terminal may to fit whole lines
+  or a window that cannot be as small as its frame, is drawn as it
+  draws: stretching it for good would blur it.
+- **Where windows change over a time.** With `window { transition:
+  none; }` a picture is drawn as it is, short of the frame or past it,
+  until the program draws, as before: the theme says windows are to
+  change at once, and a stretched picture fading is changing over a
+  time. Reduced motion leaves it, the fade being a change of opacity,
+  which it keeps, at most 120 ms (ADR 71).
+- **The pointer is not stretched.** For as long as the picture is, the
+  pointer is in the window where it would be in the picture
+  unstretched: the program is given where it is in what it drew, and a
+  frame or two later it has drawn the size the frame has.
+
 ## Consequences
 
 - Dragging the edge of a window of a slow program, the frame follows the
   pointer and the program draws as fast as it can, at the size the
   window is each time it is ready, rather than every size in turn.
-- Until a window's picture is stretched to its frame, a program behind
-  leaves a gap in its frame, or reaches past it, for as long as it takes.
+- A program behind no longer leaves a gap in its frame, or reaches past
+  it: its last picture fills it, stretched, until it draws.
 - A test's program has to draw between two changes to be told the
   second, as a real one does.

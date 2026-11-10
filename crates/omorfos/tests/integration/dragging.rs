@@ -5,7 +5,7 @@ use omorfos_core::geometry::{Point, Rect, Size};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::ResizeEdge;
 
 use crate::common::{Client, Event, Session, key};
-use crate::windows::{BLUE, RED};
+use crate::windows::{BACKGROUND, BLUE, RED, shaded};
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -129,6 +129,23 @@ fn dragging_a_border_resizes_the_frame_and_the_window_is_told() {
 
     assert_eq!(frames(&session), [rect(0, 0, 302, 129)]);
     assert_eq!(client.last_configure().0, (300, 100));
+}
+
+#[test]
+fn a_window_dragged_larger_fills_its_frame_until_it_draws_and_keeps_its_corners_round() {
+    let moving = ("theme.css", "window { transition: 180ms ease-out; }\n");
+    let mut session = Session::with_config(&[moving]);
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    session.advance(std::time::Duration::from_secs(1));
+
+    drag(&mut session, LEFT, (201, 60), (301, 60));
+    assert_eq!(frames(&session), [rect(0, 0, 302, 129)]);
+    let picture = session.draw();
+    assert_eq!(picture.at(295, 60), RED, "the window across the frame");
+    assert_eq!(picture.at(295, 122), RED, "down to its rounded corner");
+    let outside = picture.at(301, 128);
+    assert!(shaded(outside, BACKGROUND), "outside it: {outside:#x}");
 }
 
 #[test]

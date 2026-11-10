@@ -172,6 +172,27 @@ impl Role {
     }
 }
 
+impl Role {
+    /// Whether the program is behind with its window, which is `wanted`
+    /// large and which it shows `shown` large: it has not yet drawn since
+    /// it was told that size, and shows another. One that has drawn since,
+    /// at whatever size, is not: it has heard, and chosen. A program
+    /// written for X11 is never taken to be, not being asked in a way that
+    /// is answered.
+    pub(crate) fn behind(&self, wanted: Size<i32, Logical>, shown: Size<i32, Logical>) -> bool {
+        match self {
+            Self::Xdg(toplevel) => with_states(toplevel.wl_surface(), |states| {
+                let data = states.data_map.get::<XdgToplevelSurfaceData>();
+                let attributes = data.and_then(|data| data.lock().ok());
+                let told =
+                    attributes.is_none_or(|attributes| attributes.current.size == Some(wanted));
+                !told && shown != wanted
+            }),
+            Self::X11(_) => false,
+        }
+    }
+}
+
 /// Whether the program has drawn its window at the last size it was
 /// asked: it has acknowledged it and drawn since, or what it shows, at
 /// `shown`, is that size already, as when it is asked to stay as large as

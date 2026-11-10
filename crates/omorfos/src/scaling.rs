@@ -93,6 +93,44 @@ where
     }
 }
 
+/// How much larger or smaller something is drawn across and down: a
+/// window's last picture, stretched to fill its frame while its program
+/// has yet to draw the size the frame has.
+pub(crate) type Stretch = (f64, f64);
+
+/// Has the elements from `first` on drawn stretched `by` from `about`.
+pub(crate) fn stretch<R>(
+    elements: &mut Vec<Element<R>>,
+    first: usize,
+    about: Point<i32, Physical>,
+    (across, down): Stretch,
+) where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: 'static,
+{
+    let made = elements.split_off(first.min(elements.len()));
+    let by = Factor { x: across, y: down };
+    elements.extend(made.into_iter().map(|element| {
+        let boxed = Boxed(Box::new(element));
+        Element::Scaled(RescaleRenderElement::from_element(boxed, about, by))
+    }));
+}
+
+/// What of something stretched `by` from `about` lands on `area`.
+pub(crate) fn unstretched(
+    area: Rectangle<i32, Physical>,
+    about: Point<i32, Physical>,
+    (across, down): Stretch,
+) -> Rectangle<i32, Physical> {
+    let back = |point: Point<i32, Physical>| {
+        let away = (point - about).to_f64();
+        about + Point::from((away.x / across, away.y / down)).to_i32_round()
+    };
+    let from = back(area.loc);
+    let to = back(area.loc + area.size.to_point());
+    Rectangle::new(from, (to - from).to_size())
+}
+
 /// Has the glass from `first` on made as large as `around` says, with the
 /// part it is under.
 pub(crate) fn scale_panes(panes: &mut Vec<Pane>, first: usize, around: Option<Around>) {
@@ -147,5 +185,12 @@ mod tests {
         let larger = scaled(area, (Point::from((100, 100)), 2.0));
         assert_eq!(larger, Rectangle::new((100, 100).into(), (400, 200).into()));
         assert_eq!(scaled(area, (middle, 1.0)), area);
+    }
+
+    #[test]
+    fn what_lands_on_an_area_once_stretched_is_found_back_towards_its_point() {
+        let area = Rectangle::new(Point::from((100, 40)), (400, 200).into());
+        let from = unstretched(area, Point::from((100, 0)), (2.0, 4.0));
+        assert_eq!(from, Rectangle::new((100, 10).into(), (200, 50).into()));
     }
 }

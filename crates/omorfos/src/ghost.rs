@@ -58,6 +58,9 @@ pub(crate) struct Noting<T> {
     /// pixels it has to a unit of layout.
     origin: Point<f64, Logical>,
     scale: f64,
+    /// Where what is noted is stretched from, in the space windows live
+    /// in, and by how much across and down, if it is drawn stretched.
+    stretch: Option<(Point<f64, Logical>, (f64, f64))>,
 }
 
 impl<T: Clone + 'static> Noting<T> {
@@ -68,7 +71,16 @@ impl<T: Clone + 'static> Noting<T> {
             pieces: wanted.then(Vec::new),
             origin: origin.to_f64(),
             scale,
+            stretch: None,
         }
+    }
+
+    /// Notes what is drawn stretched `by`, across and down, from `about`,
+    /// as it is drawn, whether or not it was to be noted otherwise: it is
+    /// to fade into what is drawn after it.
+    pub(crate) fn stretched(&mut self, about: Point<i32, Logical>, by: (f64, f64)) {
+        self.pieces.get_or_insert_with(Vec::new);
+        self.stretch = Some((about.to_f64(), by));
     }
 
     /// What a surface is drawn from, if it is being noted.
@@ -85,6 +97,11 @@ impl<T: Clone + 'static> Noting<T> {
         let pixels = drawn.geometry(scale).to_f64();
         let mut area = pixels.to_logical(scale);
         area.loc += self.origin;
+        if let Some((about, (across, down))) = self.stretch {
+            let away = area.loc - about;
+            area.loc = about + Point::from((away.x * across, away.y * down));
+            area.size = (area.size.w * across, area.size.h * down).into();
+        }
         let piece = paint.map(|paint| Piece {
             paint,
             src: drawn.src(),
