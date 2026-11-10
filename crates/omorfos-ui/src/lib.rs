@@ -8,12 +8,14 @@
 
 mod blur;
 mod canvas;
+mod glide;
 mod motion;
 mod scale;
 mod shadow;
 
 pub use blur::Blur;
 pub use canvas::{Area, Canvas, Image, Text, inset};
+pub use glide::Glide;
 pub use motion::{Motion, Seen};
 pub use scale::Scale;
 pub use shadow::{Cut, Piece, Shade, falls};

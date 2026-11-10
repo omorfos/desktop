@@ -1441,6 +1441,11 @@ without that. Otherwise it goes after as long as its sender asked for, or
 after `notifications.timeout` seconds. One its sender marked as critical
 stays until it is clicked.
 
+Each comes and goes over the theme's `notification` transition, and those
+around it make room for it, or take the room it leaves, by gliding there
+over 240 ms rather than jumping; a theme whose `notification` changes at
+once, or `appearance.reduce_motion`, has them jump.
+
 What omorfos itself has to say is wrong, such as a mistake in a
 configuration file, is shown here too, headed `omorfos` and looking as a
 critical notification does. It is given up to six lines, stays until you

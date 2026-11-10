@@ -941,3 +941,97 @@ fn what_has_happened_in_the_session_is_shown_for_a_while_among_the_notifications
         edge(session) == BACKGROUND
     });
 }
+
+/// How far down the screen the lowest notification ends, looking up from
+/// the bottom of the screen at `INSIDE`'s column.
+fn lowest(session: &mut Session) -> i32 {
+    let picture = session.draw();
+    let last = (0..HEIGHT)
+        .rev()
+        .find(|y| picture.at(INSIDE.0, *y) == surface());
+    last.unwrap() + 1
+}
+
+/// Lets the notifications and the compositor talk from the time `from`
+/// on, both a millisecond further each turn, until `shown` is true of the
+/// screen a second or more after it, when anything on its way has got
+/// where it was going, and whatever was coming has come. Returns the time
+/// it came to.
+fn settled(
+    session: &mut Session,
+    notifier: &mut Notifier,
+    from: Duration,
+    shown: impl Fn(&mut Session) -> bool,
+) -> Duration {
+    let mut now = from;
+    for _ in 0..5000 {
+        notifier.turn(now).unwrap();
+        session.advance(Duration::from_millis(1));
+        if now >= from + Duration::from_secs(1) && shown(session) {
+            return now;
+        }
+        now += Duration::from_millis(1);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    unreachable!("the screen never came to show what was expected");
+}
+
+#[test]
+fn those_below_slide_up_into_the_room_one_leaves_unless_nothing_is_to_move() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // notifications do here.
+    let moving = ("theme.css", "notification { transition: 120ms; }\n");
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let cases: [(&[(&str, &str)], bool); 3] =
+        [(&[moving], true), (&[moving, reduced], false), (&[], false)];
+    for (files, slides) in cases {
+        let daemon = Daemon::start();
+        let mut session = Session::with_config(files);
+        let mut notifier = notifier(&mut session, &daemon);
+        let peer = daemon.peer();
+        notify(&peer, "First", 0, HashMap::new());
+        let now = settled(&mut session, &mut notifier, Duration::ZERO, showing);
+        let alone = lowest(&mut session);
+        let second = notify(&peer, "Second", 0, HashMap::new());
+        let now = settled(&mut session, &mut notifier, now, |session| {
+            lowest(session) > alone
+        });
+        let below = lowest(&mut session);
+        assert!(
+            notifier.deadline().is_none(),
+            "nothing more to do: {files:?}"
+        );
+
+        // The second taken back, the first goes up to where it was: on its
+        // way, it has the notifications woken to move it on.
+        let closed = peer.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &second);
+        closed.unwrap();
+        if slides {
+            until(&mut session, &mut notifier, now, |_| true);
+            for _ in 0..5000 {
+                if notifier.deadline().is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+                notifier.turn(now).unwrap();
+                session.step();
+            }
+            // The compositor's clock goes on beside the notifications', so
+            // that the one taken back has gone from the screen by the end.
+            let at = |session: &mut Session, notifier: &mut Notifier, after: u64| {
+                notifier.turn(now + Duration::from_millis(after)).unwrap();
+                session.advance(Duration::from_millis(120));
+                lowest(session)
+            };
+            assert_eq!(at(&mut session, &mut notifier, 0), below, "setting out");
+            let half = at(&mut session, &mut notifier, 120);
+            assert!(alone < half && half < below, "{alone} < {half} < {below}");
+            assert_eq!(at(&mut session, &mut notifier, 240), alone, "there");
+            assert!(notifier.deadline().is_none(), "and still");
+        } else {
+            settled(&mut session, &mut notifier, now, |session| {
+                lowest(session) == alone
+            });
+        }
+    }
+}

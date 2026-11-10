@@ -1307,9 +1307,11 @@ the first than on the last.
         theme still whatever it says, nothing sliding or shaking, and
         programs told, through the settings portal and to those written
         for X11 (ADR 71).
-  - [ ] A notification that comes in and goes beside others that stay,
-        and those below sliding up into the room one leaves, where now
-        they jump.
+  - [x] A notification that comes in and goes beside others that stay,
+        and those below sliding up into the room one leaves, where they
+        jumped: each glides to its new place over 240 ms, as DESIGN.md
+        has something moving to where it was sent, unless the theme has
+        notifications change at once or motion is to be reduced.
   - [ ] The panels and the titlebar sliding in from the edge they are
         brought back at on a fullscreen workspace, and out again.
   - [ ] A window that changes size, by its edge, by the line between

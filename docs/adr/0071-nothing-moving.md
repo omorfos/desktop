@@ -32,6 +32,10 @@ for it; for them, it is the movement that has to go, not the change.
   Three fingers carry nothing, and change it as they lift if they went
   far enough or fast enough, by the rule they would have slid by, so
   that a swipe still does what it did.
+- **Nothing glides.** A notification makes room for one that comes, or
+  takes the room of one that goes, by gliding there over 240 ms; with
+  the setting, it jumps, as it does where the theme has notifications
+  change at once.
 - **Nothing shakes.** The box that asks for a password and the lock
   screen's field keep still at a wrong one, and say so in words, as they
   did besides shaking.

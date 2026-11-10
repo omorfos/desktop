@@ -12,11 +12,11 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Store, Watcher};
+use omorfos_config::{Part, States, Store, Watcher};
 use omorfos_icons::Icons;
 use omorfos_ipc::{Client as Ipc, Reply, Request, Steady};
 use omorfos_shell::picture;
-use omorfos_ui::{Motion, Scale, Text};
+use omorfos_ui::{Glide, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -122,6 +122,7 @@ impl Notifier {
             .and_then(|()| self.hear(now))
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle(), now);
+                self.shell.glide(now);
                 shown.map_err(Failure::from)
             })
             .and_then(|()| self.connection.flush().map_err(Failure::from))
@@ -138,14 +139,16 @@ impl Notifier {
 
     /// When there will next be something to do without anything having
     /// happened: when the next notification's time runs out, one that is
-    /// changing colour is due to be drawn again, or the next step of day
-    /// turning into night.
+    /// changing colour is due to be drawn again, one on its way to its
+    /// place is to be moved on, or the next step of day turning into night.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let gone = self.shell.stack.deadline();
         let drawn = self.shell.motion.deadline();
+        let gliding = self.shell.gliding;
         let turning = self.shell.store.turns();
-        gone.into_iter().chain(drawn).chain(turning).min()
+        let due = gone.into_iter().chain(drawn).chain(gliding);
+        due.chain(turning).min()
     }
 
     /// Runs the notifications, asleep until there is something to do,
@@ -275,6 +278,8 @@ struct Shell {
     gone: Vec<(u32, Reason)>,
     /// The notifications that are on their way from one look to another.
     motion: Motion,
+    /// When those on their way to their places are next to be moved on.
+    gliding: Option<Duration>,
     /// Whether what is showing may differ from what is on the screen.
     stale: bool,
 }
@@ -289,9 +294,16 @@ struct Face {
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How large the compositor has been asked to make it.
     size: (u32, u32),
-    /// How far from the top and the right of the screen it has been asked
-    /// to put it.
+    /// How far from the top and the right of the screen it is to go.
     margin: (u32, u32),
+    /// How far from the top it is on its way there, once it has been put
+    /// anywhere.
+    top: Glide,
+    /// Whether it has been put anywhere yet.
+    placed: bool,
+    /// How far from the top and the right of the screen the compositor has
+    /// been asked to put it, if it has been.
+    at: Option<(i32, i32)>,
     /// Whether the compositor has agreed to that size.
     ready: bool,
     /// How many pixels the screen has to a unit.
@@ -301,6 +313,19 @@ struct Face {
 }
 
 impl Face {
+    /// Asks the compositor to put the surface where it has got to at `now`
+    /// on its way to its place, if it has not asked that already. Says
+    /// whether it asked.
+    fn place(&mut self, now: Duration) -> bool {
+        let margin = (self.top.now(now), self.margin.1.cast_signed());
+        let moved = Some(margin) != self.at;
+        if moved {
+            self.layer.set_margin(margin.0, margin.1, 0, 0);
+            self.at = Some(margin);
+        }
+        moved
+    }
+
     /// Gives the surface back.
     fn close(self) {
         self.fraction.destroy();
@@ -339,6 +364,7 @@ impl Shell {
             clicked: Vec::new(),
             gone: Vec::new(),
             motion: Motion::new(),
+            gliding: None,
             stale: false,
         }
     }
@@ -398,6 +424,12 @@ impl Shell {
         // only once it can, so that the room is not left bare meanwhile.
         let mut faces = layout.iter().zip(&self.faces);
         let waiting = faces.any(|(place, face)| !face.ready || face.size != place.size);
+        // They glide to their places, unless the theme has them change at
+        // once, which is how a theme turns movement off, or motion is to
+        // be reduced; one new to the screen is put in its place.
+        let config = self.store.current();
+        let changes = theme.style(Part::Notification, States::NONE).transition;
+        let glides = changes.duration > 0 && !config.general.appearance.reduce_motion;
         for (place, face) in layout.iter().zip(&mut self.faces) {
             let margin = (place.top, place.right);
             // The compositor answers a new size by agreeing to it, and only
@@ -410,11 +442,17 @@ impl Shell {
                 face.size = place.size;
             }
             if moved {
-                let (top, right) = (margin.0.cast_signed(), margin.1.cast_signed());
-                face.layer.set_margin(top, right, 0, 0);
+                let top = margin.0.cast_signed();
+                if face.placed {
+                    face.top.go(top, now, glides);
+                } else {
+                    face.top = Glide::at(top);
+                    face.placed = true;
+                }
                 face.margin = margin;
             }
-            if resized || moved {
+            let placed = face.place(now);
+            if resized || placed {
                 face.surface.commit();
             }
         }
@@ -442,6 +480,18 @@ impl Shell {
         });
         motion.end();
         drawn
+    }
+
+    /// Moves each notification that is on its way to its place on to where
+    /// it has got to at `now`, and notes when to move them on again.
+    fn glide(&mut self, now: Duration) {
+        for face in &mut self.faces {
+            if face.place(now) {
+                face.surface.commit();
+            }
+        }
+        let moving = self.faces.iter().any(|face| face.top.moving(now));
+        self.gliding = moving.then(|| now.saturating_add(Motion::FRAME));
     }
 
     /// A surface for the notification `key` is of: in the top right-hand
@@ -475,6 +525,9 @@ impl Shell {
             fraction,
             size: (0, 0),
             margin: (0, 0),
+            top: Glide::at(0),
+            placed: false,
+            at: None,
             ready: false,
             scale: Scale::ONE,
             buffer: None,
