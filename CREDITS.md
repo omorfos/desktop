@@ -16,7 +16,7 @@ packages carry beside the others.
 | What | By | Licence | Used for |
 |---|---|---|---|
 | The [time zone database](https://www.iana.org/time-zones)'s `zone1970.tab`, from tzdata 2026f | Paul Eggert and the tz contributors | Public domain | Where the principal city of each time zone is, for `appearance.location` to name a time zone and for the system's to be where the sun is watched |
-| [Lucide](https://lucide.dev) icons | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT | The signs of the interface: only the ones used, as shapes. Chosen in [ADR 32](docs/adr/0032-the-design-language.md); none is built in yet. |
+| [Lucide](https://lucide.dev) icons, from lucide-static 1.61.0 | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT; both in [LICENSE-lucide](LICENSE-lucide) | The signs of the interface: only the ones used, in [crates/omorfos-icons/signs](crates/omorfos-icons/signs) as Lucide gives them, drawn with thinner lines. Chosen in [ADR 32](docs/adr/0032-the-design-language.md), built in as [ADR 70](docs/adr/0070-signs-and-pictures-in-menus.md) says. |
 
 ## Used to make what is shipped
 

@@ -541,6 +541,7 @@ This is the whole built-in theme, which is also every part there is:
   --border-strong: #7482b3;  /* the edge of what takes input */
   --accent: #22d3ee;         /* what has focus, and what is picked out */
   --on-accent: #0c1226;      /* text on the accent */
+  --accent-tint: rgba(34, 211, 238, 0.2); /* behind what is on, faintly */
   --danger: #f8616d;         /* close, and what is urgent or wrong */
   --warning: #fde047;        /* minimize */
   --success: #a3e635;        /* maximize */
@@ -685,13 +686,26 @@ menu {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
+/* A sign is 8 from the row's start, from its top and bottom, and from its
+ * label. */
 menu-item {
-  height: 28px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 12px 0 8px;
   color: var(--text);
 }
 menu-item:hover { background: var(--surface-raised); }
 menu-separator { color: var(--border); }
+/* What stands before a row's label, in the accent on a faint square of it
+ * while what the row turns on and off is on. */
+menu-sign {
+  padding: 3px;
+  border-radius: 6px;
+  color: var(--text);
+}
+menu-sign:active {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
 
 /* What is wrong with the configuration, when it was last read. */
 notice {
@@ -955,8 +969,9 @@ light:
 }
 ```
 
-`appearance.accent` gives `--accent`, and `--on-accent`, what is written
-on it, in either scheme. Each of `cyan`, `blue`, `teal`, `purple`, `pink`
+`appearance.accent` gives `--accent`, `--on-accent`, what is written on
+it, and `--accent-tint`, the accent faint enough to stand behind what is
+in the accent, in either scheme. Each of `cyan`, `blue`, `teal`, `purple`, `pink`
 and `orange` has a colour for each scheme, deeper in the light one, as a
 colour clear on navy is too pale on cream, and text on it that can be
 read. A colour of your own, as `'#3584e4'`, is the same in both, and what
@@ -1016,7 +1031,7 @@ workspace:active, task:active { border-bottom: none; }
 
 **Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
+`menu-separator`, `menu-sign`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
@@ -1027,7 +1042,8 @@ workspace:active, task:active { border-bottom: none; }
 
 **States** follow a part: `:focus` (it has the keyboard, or its window
 has), `:active` (the tab or workspace being shown, or the task of the
-window with focus, or the program the launcher would start), `:hover` (the
+window with focus, or the program the launcher would start, or the sign of
+a row of the menu whose window or session is so), `:hover` (the
 pointer is over it), `:urgent` (a notification its sender marked as
 critical) and `:closing` (it is going from the screen). A part can be in
 several: `tab:active:focus`.
@@ -1146,10 +1162,11 @@ Not every part uses every property yet:
   `border-radius` and `color`, which is the colour of the sign on each: a
   cross, a plus and a bar. They stand at the right, the cross outermost,
   and programs that draw their own titlebars are told the same.
-- `padding` is honoured by `tab`, `menu-item`, `notice`, `panel`,
-  `workspace`, `task` and `clock`.
+- `padding` is honoured by `tab`, `menu-item`, `menu-sign`, `notice`,
+  `panel`, `workspace`, `task` and `clock`.
 - `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
-  `notice`, `capture`, `panel`, `workspace`, `task` and `clock`.
+  `menu-sign`, `notice`, `capture`, `panel`, `workspace`, `task` and
+  `clock`.
 - A window's border is the same on every side: its `border-top` stands for
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
@@ -1183,6 +1200,31 @@ items:
 
 An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
+
+Before each label stands what it does. An entry that starts a program has
+the program's icon: the one its desktop entry names, found by the name of
+the program's file (`foot` finds `foot.desktop`), or else the icon theme's
+icon of that name. Most others have a sign, such as a magnifying glass
+for `show_launcher`; and one that turns something on and off, such as a
+cup for `stay_awake`, has its sign in the accent on a faint square of it
+while it is on, as `menu-sign:active` in the theme has it. Give an item
+an `icon`, the name of one of the icon theme's icons or the path of a
+picture, to have that instead; a submenu has nothing unless it has one:
+
+```yaml
+items:
+  - { label: Browser, action: { spawn: [flatpak, run, org.mozilla.firefox] }, icon: org.mozilla.firefox }
+  - label: Session
+    icon: system-shutdown
+    items:
+      - { label: Quit, action: quit }
+```
+
+The menu a right click on a titlebar opens is the same: a sign for what
+each row does, those of "Maximize", "Shade", "Keep above" and "Show on
+every workspace" in the accent while the window is so, choosing the row
+again undoing it. A submenu opens beside its row, a little over the edge
+of the menu.
 
 The menu opens with a right click on the desktop or the `show_menu` action
 (`Super+Escape` by default). Click an entry to choose it; click elsewhere or

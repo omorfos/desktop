@@ -61,7 +61,7 @@ fn click(session: &mut Session, button: u32) {
 }
 
 /// Opens the menu with its corner at (300, 200). Its rows are then:
-/// "Second workspace" at y 201..229, the separator, and "More" at 238..266.
+/// "Second workspace" at y 201..233, the separator, and "More" at 242..274.
 fn open_menu(session: &mut Session) {
     move_to(session, 300, 200);
     click(session, RIGHT);
@@ -75,8 +75,8 @@ fn a_right_click_on_the_desktop_opens_the_menu_at_the_pointer() {
     open_menu(&mut session);
 
     let picture = session.draw();
-    assert_eq!(picture.at(510, 220), PANEL, "a panel 220 pixels wide");
-    for x in [521, 299] {
+    assert_eq!(picture.at(530, 220), PANEL, "a panel 240 pixels wide");
+    for x in [541, 299] {
         let beside = picture.at(x, 220);
         assert!(shaded(beside, BACKGROUND), "at {x}: {beside:#x}");
     }
@@ -105,17 +105,17 @@ fn the_row_under_the_pointer_is_highlighted() {
 #[test]
 fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
     // The built-in theme gives the menu a border of 1 and no padding, so
-    // "Second workspace" is at 201..229 and "More" at 238..266, in a
-    // panel 200..267.
+    // "Second workspace" is at 201..233 and "More" at 242..274, in a
+    // panel 200..275.
     let mut session = session();
     open_menu(&mut session);
     move_to(&mut session, 400, 201);
     session.step();
     assert_eq!(session.draw().at(510, 201), RAISED, "under the top border");
-    move_to(&mut session, 400, 265);
+    move_to(&mut session, 400, 273);
     session.step();
-    assert_eq!(session.draw().at(510, 265), RAISED, "over the bottom one");
-    assert_ne!(session.draw().at(510, 266), RAISED, "which is not a row");
+    assert_eq!(session.draw().at(510, 273), RAISED, "over the bottom one");
+    assert_ne!(session.draw().at(510, 274), RAISED, "which is not a row");
 
     // Padded, the rows begin and end that far in, at the sides too.
     let theme = "menu { padding: 6px 8px 10px; }";
@@ -129,11 +129,11 @@ fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
     let picture = session.draw();
     assert_eq!(picture.at(510, 207), RAISED, "the first row");
     assert_eq!(picture.at(304, 207), PANEL, "but for the padding beside it");
-    move_to(&mut session, 400, 271);
+    move_to(&mut session, 400, 279);
     session.step();
     let picture = session.draw();
-    assert_eq!(picture.at(510, 271), RAISED, "the last row");
-    assert_eq!(picture.at(510, 272), PANEL, "and the padding below it");
+    assert_eq!(picture.at(510, 279), RAISED, "the last row");
+    assert_eq!(picture.at(510, 280), PANEL, "and the padding below it");
 }
 
 #[test]
@@ -278,8 +278,8 @@ fn a_submenu_opens_beside_its_row_and_its_entries_can_be_chosen() {
     let mut session = session();
     open_menu(&mut session);
 
-    // The screen is 640 wide and the menu ends at 520, so there is no room
-    // for another 220 pixel panel on the right; it opens on the left.
+    // The screen is 640 wide and the menu ends at 540, so there is no room
+    // for another 240 pixel panel on the right; it opens on the left.
     move_to(&mut session, 400, 255);
     session.step();
     assert_eq!(
@@ -287,7 +287,7 @@ fn a_submenu_opens_beside_its_row_and_its_entries_can_be_chosen() {
         PANEL,
         "a second panel beside the row"
     );
-    let beside = session.draw().at(70, 255);
+    let beside = session.draw().at(50, 255);
     assert!(shaded(beside, BACKGROUND), "{beside:#x}");
 
     move_to(&mut session, 150, 255);
@@ -531,7 +531,7 @@ fn an_action_from_a_key_closes_the_menu_and_does_not_carry_it_along() {
 #[test]
 fn moving_from_row_to_row_draws_the_menu_again_and_not_its_shadow() {
     // The built-in theme's menu casts a shadow 32 pixels soft, round the
-    // panel, which is from 300 to 520 across; its rows are 28 high.
+    // panel, which is from 300 to 540 across; its rows are 32 high.
     let plain = "items:\n  - { label: One, action: quit }\n  - { label: Two, action: quit }\n";
     let mut session = Session::with_config(&[("menu.yaml", plain)]);
     open_menu(&mut session);
@@ -545,6 +545,73 @@ fn moving_from_row_to_row_draws_the_menu_again_and_not_its_shadow() {
     assert!(picture.damaged, "the rows are drawn again");
     for damage in &picture.damage {
         let (left, right) = (damage.loc.x, damage.loc.x + damage.size.w);
-        assert!(left >= 300 && right <= 520, "{damage:?}");
+        assert!(left >= 300 && right <= 540, "{damage:?}");
     }
+}
+
+/// An entry for each kind of thing that can stand before a label.
+const MARKED: &str = "
+items:
+  - { label: Terminal, action: { spawn: [/usr/bin/foot] } }
+  - { label: Files, action: { spawn: [nautilus] }, icon: org.example.Files }
+  - { label: Run, action: show_launcher }
+  - { label: Stay awake, action: stay_awake }
+  - { label: Second workspace, action: { workspace: 2 } }
+";
+
+/// How many pixels of where a sign goes, before the label of the row
+/// `which`, are not the menu's own colour. The menu opened by `open_menu`
+/// has a border of 1 and its rows, 32 tall, a padding of 8 at their start,
+/// so the sign is drawn at 309 to 325 across, and 8 below the top of its
+/// row.
+fn signed(picture: &crate::common::Picture, which: i32) -> usize {
+    let top = 201 + which * 32 + 8;
+    let place = (309..325).flat_map(|x| (top..top + 16).map(move |y| (x, y)));
+    place.filter(|&(x, y)| picture.at(x, y) != PANEL).count()
+}
+
+/// The colour just inside the square round the sign of the row `which`,
+/// which the theme reaches 3 out from the sign.
+fn pressed(picture: &crate::common::Picture, which: i32) -> u32 {
+    picture.at(307, 201 + which * 32 + 16)
+}
+
+#[test]
+fn each_entry_has_a_sign_of_what_it_does_or_the_icon_of_the_program_it_starts() {
+    let (yellow, cyan) = (0xffff_ff00, 0xff00_ffff);
+    let icons = [("org.example.Foot", yellow), ("org.example.Files", cyan)];
+    let data = crate::switcher::installed(&icons, &[("foot", "org.example.Foot")]);
+    let mut session = Session::with_config(&[("menu.yaml", MARKED)]);
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    open_menu(&mut session);
+
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(317, 217),
+        yellow,
+        "the icon the terminal's desktop entry names, found by the program's name"
+    );
+    assert_eq!(picture.at(317, 249), cyan, "the icon the menu names");
+    assert!(signed(&picture, 2) > 10, "a sign for the launcher");
+    assert!(signed(&picture, 3) > 10, "and for staying awake");
+    assert_eq!(
+        pressed(&picture, 3),
+        PANEL,
+        "not pressed in while it may sleep"
+    );
+    assert_eq!(signed(&picture, 4), 0, "and nothing where there is no sign");
+    let gap = (325..333).flat_map(|x| (201..361).map(move |y| (x, y)));
+    let gap: Vec<u32> = gap.map(|(x, y)| picture.at(x, y)).collect();
+    assert!(
+        gap.iter().all(|&pixel| pixel == PANEL),
+        "room before labels"
+    );
+
+    // Kept awake, the entry that lets it sleep again is pressed in.
+    press(&mut session, &[key::ESCAPE]);
+    session.compositor_mut().perform(&Action::StayAwake);
+    open_menu(&mut session);
+    assert_ne!(pressed(&session.draw(), 3), PANEL, "pressed in");
 }

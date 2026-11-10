@@ -9,7 +9,7 @@ pkgrel=1
 pkgdesc='A lightweight Wayland compositor'
 arch=('x86_64' 'aarch64')
 url='https://github.com/omorfos/desktop'
-license=('MIT' 'CC-BY-SA-4.0')
+license=('MIT' 'CC-BY-SA-4.0' 'ISC')
 depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire>=1.4' 'libxkbcommon' 'mesa' 'pam'
          'seatd' 'systemd-libs' 'ttf-font')
 makedepends=('cargo' 'cargo-about' 'clang')
@@ -53,7 +53,7 @@ build() {
 package() {
   cd "desktop-$pkgver"
   install -Dm755 target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
-  install -Dm644 LICENSE LICENSE-pictures LICENSE-space-grotesk target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
   cp -r target/release/share/icons target/release/share/backgrounds "$pkgdir/usr/share/"
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"

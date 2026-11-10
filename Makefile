@@ -40,7 +40,7 @@ WALLPAPERS = prism spill horizon facets ground
 POINTERS = omorfos-dark omorfos-light
 # The licences CREDITS.md names, which go with every package; and those of
 # the crates omorfos is built from, gathered by cargo-about.
-LICENSES = LICENSE LICENSE-pictures LICENSE-space-grotesk
+LICENSES = LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide
 CRATES = $(BUILT)/LICENSE-crates
 
 .PHONY: all nightly build install uninstall

@@ -15,6 +15,7 @@
   --border-strong: #7482b3;  /* the edge of what takes input */
   --accent: #22d3ee;         /* what has focus, and what is picked out */
   --on-accent: #0c1226;      /* text on the accent */
+  --accent-tint: rgba(34, 211, 238, 0.2); /* behind what is on, faintly */
   --danger: #f8616d;         /* close, and what is urgent or wrong */
   --warning: #fde047;        /* minimize */
   --success: #a3e635;        /* maximize */
@@ -159,13 +160,26 @@ menu {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
+/* A sign is 8 from the row's start, from its top and bottom, and from its
+ * label. */
 menu-item {
-  height: 28px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 12px 0 8px;
   color: var(--text);
 }
 menu-item:hover { background: var(--surface-raised); }
 menu-separator { color: var(--border); }
+/* What stands before a row's label, in the accent on a faint square of it
+ * while what the row turns on and off is on. */
+menu-sign {
+  padding: 3px;
+  border-radius: 6px;
+  color: var(--text);
+}
+menu-sign:active {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
 
 /* What is wrong with the configuration, when it was last read. */
 notice {

@@ -22,8 +22,8 @@ use omorfos_config::{
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
-    Button, Decoration, Desktop, Frame, Home, Item, Menu, MenuMetrics, Monitor, Place, Screen,
-    Showing, Standing, System, WindowId, WorkspaceId,
+    Button, Decoration, Desktop, Frame, Home, Item, Mark, Menu, MenuMetrics, Monitor, Place,
+    Screen, Showing, Sign, Standing, System, WindowId, WorkspaceId,
 };
 use omorfos_ui::{Area, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -1439,8 +1439,25 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
-        let items = bridge::menu_items(&config.menu.items);
+        let items = bridge::menu_items(&config.menu.items, self.toggled());
         self.open_menu_of(items);
+    }
+
+    /// What is on, of what the rows of a menu turn on and off: how the
+    /// window with focus stands, and whether the session is kept awake.
+    fn toggled(&self) -> bridge::Toggled {
+        let focused = self.desktop.focused();
+        let frame = self
+            .desktop
+            .frames()
+            .find(|frame| Some(frame.window().id) == focused)
+            .map(|frame| (frame.standing, frame.maximized));
+        let (standing, maximized) = frame.unwrap_or_default();
+        bridge::Toggled {
+            standing,
+            maximized,
+            awake: self.presence.awake.is_some(),
+        }
     }
 
     /// Opens the menu of the window that has focus, at the pointer: what
@@ -1448,21 +1465,14 @@ impl Compositor {
     /// it. A right click on a titlebar opens it, having given that window
     /// focus.
     pub(crate) fn open_window_menu(&mut self) {
-        let focused = self.desktop.focused();
-        let frame = self
-            .desktop
-            .frames()
-            .find(|frame| Some(frame.window().id) == focused)
-            .map(|frame| (frame.standing, frame.maximized));
-        // It is opened by a click on a frame, so there is one.
-        let (standing, maximized) = frame.unwrap_or_default();
+        // Each says what choosing it does, the same whichever way things
+        // are; those that turn something on and off are ticked while it is.
+        let on = self.toggled();
         let entry = |label: &str, action: Action| Item::Entry {
             label: label.to_owned(),
+            mark: bridge::mark(&action, on),
             action,
         };
-        // Each says what choosing it will do, which for those that are
-        // one way or the other is the opposite of how things are.
-        let either = |now: bool, on: &str, off: &str| if now { off } else { on }.to_owned();
         let here = self.desktop.current_output();
         let places = || {
             let places = self.desktop.workspaces();
@@ -1472,6 +1482,7 @@ impl Compositor {
         let send = (1..).zip(desktops).map(|(number, place)| Item::Entry {
             label: self.workspace_name(&place),
             action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
+            mark: Mark::Blank,
         });
         // A workspace made for windows takes another where it has room,
         // unless it is where this window is already.
@@ -1481,6 +1492,7 @@ impl Compositor {
         let join = places().filter(joinable).map(|place| Item::Entry {
             label: format!("Beside {}", self.workspace_name(&place)),
             action: Action::JoinWorkspace(place.id.get()),
+            mark: Mark::Blank,
         });
         let send = send.chain(join).chain([
             Item::Separator,
@@ -1488,10 +1500,7 @@ impl Compositor {
         ]);
         let items = vec![
             entry("Close", Action::Close),
-            Item::Entry {
-                label: either(maximized, "Maximize", "Restore"),
-                action: Action::Maximize,
-            },
+            entry("Maximize", Action::Maximize),
             entry("Minimize", Action::Minimize),
             entry("Fullscreen", Action::Fullscreen),
             Item::Submenu {
@@ -1502,28 +1511,17 @@ impl Compositor {
                     entry("Top half", Action::Tile(Half::Top)),
                     entry("Bottom half", Action::Tile(Half::Bottom)),
                 ],
+                mark: Mark::Sign(Sign::Tile),
             },
             Item::Separator,
-            Item::Entry {
-                label: either(standing.shaded, "Shade", "Unshade"),
-                action: Action::Shade,
-            },
-            Item::Entry {
-                label: either(standing.above, "Keep above", "Stop keeping above"),
-                action: Action::KeepAbove,
-            },
-            Item::Entry {
-                label: either(
-                    standing.sticky,
-                    "Show on every workspace",
-                    "Show on this workspace only",
-                ),
-                action: Action::Stick,
-            },
+            entry("Shade", Action::Shade),
+            entry("Keep above", Action::KeepAbove),
+            entry("Show on every workspace", Action::Stick),
             Item::Separator,
             Item::Submenu {
                 label: "Send to workspace".to_owned(),
                 items: send.collect(),
+                mark: Mark::Sign(Sign::Send),
             },
         ];
         self.open_menu_of(items);
@@ -1562,6 +1560,7 @@ impl Compositor {
             separator: MENU_SEPARATOR,
             above: room.top,
             below: room.bottom,
+            overlap: MENU_OVERLAP,
         };
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
     }
@@ -2767,7 +2766,11 @@ impl Compositor {
             (Some(chrome), _) if unchanged => Some(chrome),
             // Painted anew from what it was, whose shadows it keeps.
             (had, Some((menu, looks))) => {
-                let tools = (&mut self.text, &mut self.animation.shades);
+                let tools = (
+                    &mut self.text,
+                    &mut self.animation.shades,
+                    &mut self.switch.icons,
+                );
                 Some(MenuChrome::paint(tools, theme, (menu, looks), scale, had))
             }
             (_, None) => None,
@@ -4750,8 +4753,12 @@ const RELOCKING: Duration = Duration::from_secs(5);
 pub(crate) const NO_LOCKER: &str = "nothing is set to lock the session with: name a screen \
      locker as `locker` in config.yaml, such as `locker: [swaylock, -f]`";
 
-/// The width of a menu panel, in pixels.
-const MENU_WIDTH: u32 = 220;
+/// The width of a menu panel, in pixels: room for the longest of the
+/// labels of a window's menu, "Show on every workspace", after its sign.
+const MENU_WIDTH: u32 = 240;
+/// How far a submenu lies over the edge of the menu it opens from: a
+/// little, so that the two are seen to belong together.
+const MENU_OVERLAP: u32 = 4;
 /// The height of a separator row in a menu.
 const MENU_SEPARATOR: u32 = 9;
 
@@ -5208,10 +5215,11 @@ struct MenuChrome {
 }
 
 impl MenuChrome {
-    /// Paints `menu`, its rows as `looks` says, keeping the shadows of
-    /// what it was painted as before, `had`, where they are the same.
+    /// Paints `menu`, its rows as `looks` says and their signs and icons
+    /// from `icons`, keeping the shadows of what it was painted as before,
+    /// `had`, where they are the same.
     fn paint(
-        (text, shades): (&mut Text, &mut Shades),
+        (text, shades, icons): (&mut Text, &mut Shades, &mut WindowIcons),
         theme: &Theme,
         (menu, looks): (&Menu<Action>, Vec<Vec<Style>>),
         scale: Scale,
@@ -5222,7 +5230,8 @@ impl MenuChrome {
             .iter()
             .zip(&looks)
             .map(|(panel, looks)| {
-                let canvas = paint::menu_panel(text, theme, menu, panel, looks, scale);
+                let tools = (&mut *text, &mut *icons);
+                let canvas = paint::menu_panel(tools, theme, menu, panel, looks, scale);
                 let origin = menu.panel_rect(panel).origin;
                 (Point::from((origin.x, origin.y)), Painted::new(&canvas))
             })

@@ -1472,14 +1472,26 @@ mod tests {
         }
     }
 
-    /// Asserts that each text of `theme` is at least 4.5 to 1 against what
-    /// it is written on, and each edge that says a state 3 to 1.
-    fn meets_contrast(theme: &Theme, which: &str) {
+    /// What `top` comes to over `under`, which is solid.
+    fn over(top: Color, under: Color) -> Color {
+        let share = u32::from(top.alpha);
+        let mix = |top: u8, under: u8| {
+            let mixed = (u32::from(top) * share + u32::from(under) * (255 - share)) / 255;
+            u8::try_from(mixed).unwrap()
+        };
+        Color::rgb(
+            mix(top.red, under.red),
+            mix(top.green, under.green),
+            mix(top.blue, under.blue),
+        )
+    }
+
+    /// Each text of `theme`, and what it is written on: the part's own
+    /// background, or that of the part it is in where its own is clear.
+    fn written(theme: &Theme) -> Vec<(Style, Option<Part>)> {
         let style = |part, states| theme.style(part, states);
         let hovered = States::NONE.with(State::Hovered);
-        // Text, and what it is written on: the part's own background, or
-        // that of the part it is in where its own is clear.
-        let written = [
+        vec![
             (style(Part::Titlebar, FOCUSED), None),
             (style(Part::Titlebar, States::NONE), None),
             (style(Part::Tab, FOCUSED.with(State::Active)), None),
@@ -1487,6 +1499,7 @@ mod tests {
             (style(Part::Menu, States::NONE), None),
             (style(Part::MenuItem, States::NONE), Some(Part::Menu)),
             (style(Part::MenuItem, hovered), None),
+            (style(Part::MenuSign, States::NONE), Some(Part::Menu)),
             (style(Part::Notice, States::NONE), None),
             (style(Part::NoticeHeading, States::NONE), Some(Part::Notice)),
             (style(Part::About, States::NONE), None),
@@ -1534,8 +1547,15 @@ mod tests {
                 style(Part::SwitcherTitle, States::NONE),
                 Some(Part::Switcher),
             ),
-        ];
-        for (index, (text, within)) in written.into_iter().enumerate() {
+        ]
+    }
+
+    /// Asserts that each text of `theme` is at least 4.5 to 1 against what
+    /// it is written on, and each edge that says a state 3 to 1.
+    fn meets_contrast(theme: &Theme, which: &str) {
+        let style = |part, states| theme.style(part, states);
+        let hovered = States::NONE.with(State::Hovered);
+        for (index, (text, within)) in written(theme).into_iter().enumerate() {
             let under = within.map_or(text.background, |part| {
                 let states = if part == Part::LauncherItem {
                     ACTIVE
@@ -1572,6 +1592,11 @@ mod tests {
             (
                 style(Part::QuestionButton, FOCUSED).outline.color,
                 style(Part::Question, States::NONE).background,
+            ),
+            // A sign that is on, in the accent on a faint square of it.
+            (
+                style(Part::MenuSign, ACTIVE).color,
+                over(style(Part::MenuSign, ACTIVE).background, surface),
             ),
         ];
         for (index, (edge, under)) in edges.into_iter().enumerate() {
@@ -1666,10 +1691,12 @@ mod tests {
         assert_eq!(menu.radius, 10);
         let row = theme.style(Part::MenuItem, States::NONE);
         assert_eq!((row.background, row.color), (CLEAR, TEXT));
-        assert_eq!((row.padding.left, row.padding.right), (12, 12));
+        // A sign at its start is as far from it as from its top and
+        // bottom: 8, in a row 32 tall.
+        assert_eq!((row.padding.left, row.padding.right), (8, 12));
         let under = theme.style(Part::MenuItem, HOVERED);
         assert_eq!((under.background, under.color), (SURFACE_RAISED, TEXT));
-        assert_eq!((row.height, under.height), (28, 28));
+        assert_eq!((row.height, under.height), (32, 32));
         let separator = theme.style(Part::MenuSeparator, States::NONE);
         assert_eq!(separator.color, BORDER);
     }

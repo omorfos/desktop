@@ -132,16 +132,19 @@ impl TryFrom<String> for Accent {
 }
 
 /// What `scheme` and `accent` lay over the built-in theme: the variables
-/// of the scheme, and the accent and what is written on it.
+/// of the scheme, and the accent, what is written on it, and a fifth of it
+/// to stand behind what is written in it.
 pub(crate) fn sheet(scheme: Scheme, accent: Accent) -> String {
     let hex = |color: Color| format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
     let colors = match scheme {
         Scheme::Dark => "",
         Scheme::Light => LIGHT,
     };
+    let color = accent.color(scheme);
+    let tint = format!("rgba({}, {}, {}, 0.2)", color.red, color.green, color.blue);
     format!(
-        "{colors}\n:root {{ --accent: {}; --on-accent: {}; }}\n",
-        hex(accent.color(scheme)),
+        "{colors}\n:root {{ --accent: {}; --on-accent: {}; --accent-tint: {tint}; }}\n",
+        hex(color),
         hex(accent.on(scheme)),
     )
 }
@@ -203,11 +206,17 @@ mod tests {
         let dark = sheet(Scheme::Dark, Accent::Cyan);
         assert!(!dark.contains("--background"), "{dark}");
         assert!(
-            dark.contains("--accent: #22d3ee; --on-accent: #0c1226;"),
+            dark.contains(
+                "--accent: #22d3ee; --on-accent: #0c1226; --accent-tint: rgba(34, 211, 238, 0.2);"
+            ),
             "{dark}"
         );
         let light = sheet(Scheme::Light, Accent::Own(Color::rgb(0xab, 0xcd, 0xef)));
         assert!(light.contains("--background: #fcf7e3;"), "{light}");
         assert!(light.contains("--accent: #abcdef;"), "{light}");
+        assert!(
+            light.contains("--accent-tint: rgba(171, 205, 239, 0.2);"),
+            "{light}"
+        );
     }
 }

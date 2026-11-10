@@ -828,13 +828,16 @@ fn open_window_menu(session: &mut Session, at: (i32, i32)) {
     session.step();
 }
 
+/// How tall a row of a menu is in the default theme.
+const MENU_ROW: i32 = 32;
+
 /// A point on a row of a menu opened at `at`. The rows are: close,
 /// maximize, minimize, fullscreen, tile; then shade, keep above, show on
-/// every workspace; then send to a workspace. Each is 28 tall, inside 4
-/// of padding, and the lines between the three groups take 9 each.
+/// every workspace; then send to a workspace. Each is `MENU_ROW` tall,
+/// inside the menu's border of 1, and the lines between the three groups
+/// take 9 each.
 fn row(at: (i32, i32), which: i32) -> (i32, i32) {
-    let lines = (i32::from(which >= 5) + i32::from(which >= 8)) * 9;
-    (at.0 + 60, at.1 + 4 + which * 28 + lines + 14)
+    (at.0 + 60, row_top(at, which) + MENU_ROW / 2)
 }
 
 /// Chooses a row of the menu of the first window.
@@ -913,6 +916,73 @@ fn a_window_can_be_rolled_up_into_its_titlebar_and_let_down_again() {
     session.step();
     assert!(!first_frame(&session).standing.shaded);
     assert_eq!(session.draw().at(100, 80), RED);
+}
+
+/// Where a row of a menu opened at `at` begins, down the screen.
+fn row_top(at: (i32, i32), which: i32) -> i32 {
+    let lines = (i32::from(which >= 5) + i32::from(which >= 8)) * 9;
+    at.1 + 1 + which * MENU_ROW + lines
+}
+
+/// The colour of a row of a menu opened at `at` at its far end, clear of
+/// any label.
+fn row_colour(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> u32 {
+    picture.at(at.0 + 230, row_top(at, which) + MENU_ROW / 2)
+}
+
+/// How many pixels of where the sign of a row of a menu opened at `at`
+/// goes are not the colour of the row: the 16 across after the menu's
+/// border of 1 and the row's padding of 8 at its start, and the whole of
+/// the row.
+fn signed(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> usize {
+    let (top, plain) = (row_top(at, which), row_colour(picture, at, which));
+    let left = at.0 + 9;
+    let place = (left..left + 16).flat_map(|x| (top..top + MENU_ROW).map(move |y| (x, y)));
+    place.filter(|&(x, y)| picture.at(x, y) != plain).count()
+}
+
+/// Whether the sign of a row of a menu opened at `at` is pressed in: just
+/// inside the square the theme draws 3 out round it, not the row's colour.
+fn pressed(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> bool {
+    let edge = picture.at(at.0 + 7, row_top(at, which) + MENU_ROW / 2);
+    edge != row_colour(picture, at, which)
+}
+
+#[test]
+fn the_menu_of_a_window_signs_what_each_row_does_and_presses_in_what_is_on() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+
+    open_window_menu(&mut session, TITLE);
+    let picture = session.draw();
+    for which in 0..9 {
+        assert!(signed(&picture, TITLE, which) > 10, "a sign on row {which}");
+    }
+    let toggles = [
+        (1, "maximized"),
+        (5, "shaded"),
+        (6, "kept above"),
+        (7, "on every"),
+    ];
+    for (which, what) in toggles {
+        assert!(
+            !pressed(&picture, TITLE, which),
+            "not {what}, so not pressed in"
+        );
+    }
+    click(&mut session, (600, 400));
+
+    choose(&mut session, 6);
+    choose(&mut session, 7);
+    open_window_menu(&mut session, TITLE);
+    let picture = session.draw();
+    assert!(pressed(&picture, TITLE, 6), "kept above, and pressed in");
+    assert!(
+        pressed(&picture, TITLE, 7),
+        "on every workspace, and pressed in"
+    );
+    assert!(!pressed(&picture, TITLE, 5), "but not shaded");
 }
 
 #[test]
@@ -1000,7 +1070,7 @@ fn a_window_can_be_shown_on_every_workspace_or_sent_to_one() {
     let send = row(TITLE, 8);
     point(&mut session, send);
     session.step();
-    click(&mut session, (send.0 + 220, send.1 + 2 * 28));
+    click(&mut session, (send.0 + 220, send.1 + 2 * MENU_ROW));
     assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone from this one");
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.settle();
@@ -1030,7 +1100,7 @@ fn a_window_is_put_in_a_half_of_the_screen_from_the_menu_of_its_titlebar() {
     let tile = row(TITLE, 4);
     point(&mut session, tile);
     session.step();
-    click(&mut session, (tile.0 + 220, tile.1 + 28));
+    click(&mut session, (tile.0 + 220, tile.1 + MENU_ROW));
 
     let frame = first_frame(&session);
     assert_eq!(frame.home, omorfos_core::Home::Shared);
@@ -1056,7 +1126,7 @@ fn a_window_is_put_beside_a_fullscreen_one_from_the_menu_of_its_titlebar() {
     let send = row(TITLE, 8);
     point(&mut session, send);
     session.step();
-    click(&mut session, (send.0 + 220, send.1 + 28));
+    click(&mut session, (send.0 + 220, send.1 + MENU_ROW));
 
     let desktop = session.compositor().desktop();
     assert_eq!(desktop.active_workspace(), 1, "shown, with both on it");
@@ -1080,7 +1150,7 @@ fn a_window_can_be_sent_to_a_new_workspace_from_its_titlebar() {
     let send = row(TITLE, 8);
     point(&mut session, send);
     session.step();
-    click(&mut session, (send.0 + 220, send.1 + 28 + 9));
+    click(&mut session, (send.0 + 220, send.1 + MENU_ROW + 9));
 
     assert_eq!(session.draw().at(100, 80), BACKGROUND, "gone from this one");
     assert_eq!(session.compositor().desktop().workspace_count(), 2);

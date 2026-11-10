@@ -22,6 +22,7 @@ impl Default for Menu {
         let entry = |label: &str, action| MenuItem::Entry {
             label: label.to_owned(),
             action,
+            icon: None,
         };
         Self {
             items: vec![
@@ -40,7 +41,8 @@ impl Default for Menu {
 /// One line of a menu.
 ///
 /// In YAML an item is the word `separator`, or a mapping with a `label` and
-/// either an `action` (an entry) or nested `items` (a submenu).
+/// either an `action` (an entry) or nested `items` (a submenu), and an
+/// `icon` if the one chosen for it is not wanted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuItem {
     /// Runs an action when chosen.
@@ -49,6 +51,10 @@ pub enum MenuItem {
         label: String,
         /// What choosing the entry does.
         action: Action,
+        /// What stands before the text in place of what its action is
+        /// shown by: the name of an icon of the icon theme, or the path of
+        /// a picture.
+        icon: Option<String>,
     },
     /// Opens a nested menu.
     Submenu {
@@ -56,6 +62,9 @@ pub enum MenuItem {
         label: String,
         /// The entries of the nested menu.
         items: Vec<Self>,
+        /// What stands before the text: the name of an icon of the icon
+        /// theme, or the path of a picture. Nothing, unless said.
+        icon: Option<String>,
     },
     /// A dividing line.
     Separator,
@@ -75,6 +84,10 @@ pub(crate) struct RawItem {
     /// A nested menu. Give either this or `action`.
     #[serde(default)]
     items: Option<Vec<MenuItem>>,
+    /// What stands before the label in place of what is chosen for it:
+    /// the name of an icon of the icon theme, or the path of a picture.
+    #[serde(default)]
+    icon: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for MenuItem {
@@ -106,10 +119,12 @@ impl<'de> Visitor<'de> for MenuItemVisitor {
             (Some(action), None) => Ok(MenuItem::Entry {
                 label: raw.label,
                 action,
+                icon: raw.icon,
             }),
             (None, Some(items)) => Ok(MenuItem::Submenu {
                 label: raw.label,
                 items,
+                icon: raw.icon,
             }),
             _ => Err(A::Error::custom(format_args!(
                 "menu item `{}` needs exactly one of `action` or `items`",
@@ -153,28 +168,37 @@ mod tests {
     }
 
     #[test]
-    fn items_are_entries_separators_and_nested_submenus() {
+    fn items_are_entries_separators_and_nested_submenus_with_an_icon_if_one_is_given() {
         let yaml = "
 items:
   - label: Terminal
     action: { spawn: [foot] }
   - separator
   - label: Session
+    icon: system-shutdown
     items:
-      - { label: Quit, action: quit }
+      - { label: Quit, action: quit, icon: /usr/share/pixmaps/quit.png }
 ";
         let menu = parse(yaml).unwrap();
         let quit = MenuItem::Entry {
             label: "Quit".to_owned(),
             action: Action::Quit,
+            icon: Some("/usr/share/pixmaps/quit.png".to_owned()),
         };
         assert_eq!(menu.items.len(), 3);
+        let terminal = MenuItem::Entry {
+            label: "Terminal".to_owned(),
+            action: Action::Spawn(Command::terminal().into()),
+            icon: None,
+        };
+        assert_eq!(menu.items[0], terminal, "an icon only if one is given");
         assert_eq!(menu.items[1], MenuItem::Separator);
         assert_eq!(
             menu.items[2],
             MenuItem::Submenu {
                 label: "Session".to_owned(),
-                items: vec![quit]
+                items: vec![quit],
+                icon: Some("system-shutdown".to_owned()),
             }
         );
     }

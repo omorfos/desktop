@@ -77,7 +77,8 @@ Everything is a multiple of 4 pixels of layout.
 
 | What | Height |
 |---|---|
-| A row: a menu entry, a titlebar, a task | 28 |
+| A row: a titlebar, a task | 28 |
+| A menu entry, with room round its sign | 32 |
 | A control: a field, a button | 32 |
 | The top bar | 28 |
 | The dock | 56, with icons of 40 |
@@ -275,6 +276,15 @@ Two kinds, never mixed in one row.
 
 A sign is always beside words or has a tooltip, except the three buttons
 of a titlebar, whose places are learnt.
+
+In a menu every row keeps room for one, 16 across, as far from its
+label and from the row's start as from its top and bottom, 8 in a row of
+32, so that the labels stand in a line: a sign for what the row does, or
+a program's picture for one that starts it. A row that turns something
+on and off has a sign of its own too, and its words are the same either
+way; while it is on, its sign is in the accent on a faint square of it,
+as a toggle is. A submenu lies 4 over the edge of the menu it opens from
+([ADR 70](adr/0070-signs-and-pictures-in-menus.md)).
 
 What is not ours is credited. Everything drawn or designed by someone
 else that omorfos ships or recommends is named, with its authors and its

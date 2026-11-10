@@ -22,6 +22,7 @@ mod keys;
 mod menu;
 mod placement;
 mod rules;
+mod sign;
 mod switcher;
 mod system;
 
@@ -32,8 +33,9 @@ pub use desktop::{
     Screen, Settings, Showing, Standing, States, Tab, Tile, Window, WindowId, WorkspaceId,
 };
 pub use keys::{KeyChains, KeyOutcome};
-pub use menu::{Item, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
+pub use menu::{Item, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Rule, resolve};
+pub use sign::Sign;
 pub use switcher::{Switcher, SwitcherLayout, SwitcherMetrics, Used};
 pub use system::{Card, Disk, Monitor, Said, System};

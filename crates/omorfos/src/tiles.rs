@@ -72,7 +72,7 @@ fn write(
     let room = line.size.width;
     let states = States::NONE.when(State::Hovered, hovered);
     let ink = config.theme.style(Part::Offer, states).color;
-    let pixels = icon_pixels(scale);
+    let pixels = icon_pixels(paint::LARGE_ICON, scale);
     let mut image = |icon: &Icon| match icon {
         Icon::Named(name) => icons.picture(name, pixels, ink).cloned(),
         Icon::Given(_) => None,
@@ -417,8 +417,14 @@ impl Compositor {
                 let states = States::NONE.when(State::Hovered, hovered);
                 let ink = config.theme.style(Part::Offer, states).color;
                 let mapped = self.mapped(offer.window);
-                let icon = mapped
-                    .and_then(|mapped| icons.of(&mapped.surface, app_id, icon_pixels(scale), ink));
+                let icon = mapped.and_then(|mapped| {
+                    icons.of(
+                        &mapped.surface,
+                        app_id,
+                        icon_pixels(paint::LARGE_ICON, scale),
+                        ink,
+                    )
+                });
                 let private = self.desktop.private(offer.window);
                 let shown = (title, icon, private);
                 (

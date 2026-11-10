@@ -6,15 +6,32 @@
 //! changes, not every frame.
 
 use omorfos_config::{Color, Edges, Font, Line, Part, State, States, Style, Theme};
-use omorfos_core::{Button, Decoration, Item, Menu, Panel, SwitcherLayout};
+use omorfos_core::{Button, Decoration, Item, Mark, Menu, Panel, SwitcherLayout};
 use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
 use crate::Scale;
 use crate::bridge::BUTTONS;
+use crate::icons::{WindowIcons, icon_pixels};
 
 /// The width set aside on a menu row for the arrow that marks a submenu.
 const ARROW: u32 = 14;
+
+/// How large a sign, or a picture, in a row is, as `docs/DESIGN.md` has
+/// it.
+pub(crate) const SIGN: u32 = 16;
+
+/// `area` grown by `edges` on each side.
+const fn outset((x, y, width, height): Area, edges: Edges<u32>) -> Area {
+    (
+        x.saturating_sub_unsigned(edges.left),
+        y.saturating_sub_unsigned(edges.top),
+        width.saturating_add(edges.left).saturating_add(edges.right),
+        height
+            .saturating_add(edges.top)
+            .saturating_add(edges.bottom),
+    )
+}
 
 /// Paints the border where it turns a bottom corner of a frame: a quarter
 /// ring `radius` across and `border` thick, smooth at both edges. It is the
@@ -231,10 +248,11 @@ pub(crate) fn menu_looks<A: Clone>(
 }
 
 /// Paints one panel of an open menu: its rows, each as `looks` has it,
-/// which is how the row under the pointer comes to be highlighted, and an
-/// arrow on rows that open a submenu.
+/// which is how the row under the pointer comes to be highlighted, what
+/// stands before each label, from `icons`, in the room kept for it on every
+/// row, and an arrow on rows that open a submenu.
 pub(crate) fn menu_panel<A: Clone>(
-    text: &mut Text,
+    (text, icons): (&mut Text, &mut WindowIcons),
     theme: &Theme,
     menu: &Menu<A>,
     panel: &Panel<A>,
@@ -262,29 +280,45 @@ pub(crate) fn menu_panel<A: Clone>(
     for (index, ((item, row), style)) in rows.enumerate() {
         let top = row.origin.y - bounds.origin.y;
         let area = (edge, top, inner, row.size.height);
-        let label = match item {
+        let (label, mark) = match item {
             Item::Separator => {
-                // As long as the labels of the rows around it.
+                // From where the signs of the rows around it begin to as
+                // far from the other side.
                 let plain = theme.style(Part::MenuItem, States::NONE);
-                let (left, _, room, _) = inset(area, plain.inset());
+                let (left, _, _, _) = inset(area, plain.inset());
+                let room = inner.saturating_sub(plain.inset().left * 2);
                 let middle = top + (row.size.height / 2).cast_signed();
                 let line = theme.style(Part::MenuSeparator, States::NONE);
                 canvas.fill((left, middle, room, 1), line.color);
                 continue;
             }
-            Item::Entry { label, .. } | Item::Submenu { label, .. } => label,
+            Item::Entry { label, mark, .. } | Item::Submenu { label, mark, .. } => (label, mark),
         };
         let highlighted = panel.highlighted() == Some(index);
         let states = States::NONE.when(State::Hovered, highlighted);
         let font = theme.font(Part::MenuItem, states);
         canvas.draw_box_within(area, style, within);
         let (left, top, room, tall) = inset(area, style.inset());
+        // The sign is in the middle of its row, and as far from its label
+        // as from the row's start. What the theme gives `menu-sign` is
+        // drawn round it, as far out as its padding, and moves nothing.
+        let around = tall.saturating_sub(SIGN) / 2;
+        let place = (left, top.saturating_add_unsigned(around), SIGN, SIGN);
+        let on = matches!(mark, Mark::Toggle(_, true));
+        let sign = theme.style(Part::MenuSign, states.when(State::Active, on));
+        canvas.draw_box(outset(place, sign.inset()), &sign);
+        let pixels = icon_pixels(SIGN, scale);
+        if let Some(image) = icons.mark(mark, pixels, sign.color) {
+            canvas.draw_image(place, image);
+        }
+        let used = SIGN + style.inset().left;
+        let left = left.saturating_add_unsigned(used);
         let arrow = if matches!(item, Item::Submenu { .. }) {
             ARROW
         } else {
             0
         };
-        let room = room.saturating_sub(arrow);
+        let room = room.saturating_sub(used + arrow);
         text.draw(
             &mut canvas,
             label,
@@ -917,6 +951,7 @@ pub(crate) fn capture_mark(theme: &Theme, scale: Scale, signs: Signs) -> Canvas 
 #[cfg(test)]
 mod tests {
     use omorfos_core::Metrics as FrameMetrics;
+    use omorfos_core::Sign;
     use omorfos_core::geometry::{Point, Rect, Size};
 
     use super::*;
@@ -974,7 +1009,8 @@ mod tests {
     /// The first panel of a menu with nothing on its way anywhere.
     fn menu_panel(text: &mut Text, theme: &Theme, menu: &Menu<()>) -> Canvas {
         let looks = menu_looks(theme, &mut Motion::new(), menu);
-        super::menu_panel(text, theme, menu, &menu.panels()[0], &looks[0], Scale::ONE)
+        let tools = (text, &mut WindowIcons::default());
+        super::menu_panel(tools, theme, menu, &menu.panels()[0], &looks[0], Scale::ONE)
     }
 
     fn argb(color: Color) -> u32 {
@@ -1021,11 +1057,13 @@ mod tests {
             Item::Entry {
                 label: "Terminal".to_owned(),
                 action: (),
+                mark: Mark::Blank,
             },
             Item::Separator,
             Item::Submenu {
                 label: "Session".to_owned(),
                 items: Vec::new(),
+                mark: Mark::Sign(Sign::Quit),
             },
         ];
         let metrics = MenuMetrics {
@@ -1034,6 +1072,7 @@ mod tests {
             separator: 9,
             above: 4,
             below: 4,
+            overlap: 0,
         };
         let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
         let mut menu = Menu::open(items, Point::new(300, 200), area, metrics);
@@ -1057,6 +1096,25 @@ mod tests {
             .filter(|(x, y)| plain.at(*x, *y) != argb(colors.focused.titlebar))
             .count();
         assert!(arrow_ink > 3, "the submenu row has an arrow");
+        // A sign is drawn 16 across, after the border of 1 and the row's
+        // padding of 8, and the label 8 after it, in the middle of its row.
+        let background = argb(colors.focused.titlebar);
+        let signed = |rows: std::ops::Range<u32>, columns: std::ops::Range<u32>| {
+            let place = rows.flat_map(|y| columns.clone().map(move |x| (x, y)));
+            place.filter(|&(x, y)| plain.at(x, y) != background).count()
+        };
+        assert!(signed(41..69, 9..25) > 10, "the submenu row's sign");
+        // Below the menu's rounded corner.
+        assert_eq!(
+            signed(12..32, 1..33),
+            0,
+            "none for the other, nor its label"
+        );
+        assert_eq!(
+            signed(41..69, 25..33),
+            0,
+            "room between the sign and the label"
+        );
 
         menu.hover(Point::new(350, 215));
         let lit = menu_panel(&mut text, &theme, &menu);
@@ -1073,6 +1131,62 @@ mod tests {
     }
 
     #[test]
+    fn the_sign_of_what_is_on_is_pressed_in_and_that_of_what_is_off_is_not() {
+        use omorfos_core::MenuMetrics;
+
+        let theme = Theme::default();
+        let colors = palette(&theme);
+        let mut text = Text::new();
+        let entry = |label: &str, on| Item::Entry {
+            label: label.to_owned(),
+            action: (),
+            mark: Mark::Toggle(Sign::Pin, on),
+        };
+        let metrics = MenuMetrics {
+            width: 200,
+            row: 28,
+            separator: 9,
+            above: 4,
+            below: 4,
+            overlap: 0,
+        };
+        let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
+        let items = vec![entry("Keep above", false), entry("Keep above", true)];
+        let menu = Menu::open(items, Point::new(300, 200), area, metrics);
+
+        // Rows: 4..32 and 32..60, each with its sign at 9..25 across, after
+        // the border and the row's padding, and 6 below the row's top; and
+        // round the sign the theme's 3 of padding, at 6..28.
+        let panel = menu_panel(&mut text, &theme, &menu);
+        let background = argb(colors.focused.titlebar);
+        assert_eq!(panel.at(7, 18), background, "off, it is not pressed in");
+        let tint = panel.at(7, 46);
+        assert_ne!(tint, background, "on, it is");
+        assert_eq!(panel.at(27, 46), tint, "all round the sign");
+        assert_eq!(panel.at(29, 46), background, "and no further");
+        // The pin's lines are in the accent, cyan, while it is on, and in the
+        // colour of the text, nearly white, while it is off: bright, and
+        // with as much red as the rest or almost none.
+        let bright = |rows: std::ops::Range<u32>| {
+            let place = (9..25).flat_map(move |x| rows.clone().map(move |y| (x, y)));
+            let pixels = place.map(|(x, y)| panel.at(x, y));
+            pixels
+                .filter(|pixel| pixel >> 8 & 0xff > 150)
+                .collect::<Vec<u32>>()
+        };
+        let (off, on) = (bright(10..26), bright(38..54));
+        assert!(!off.is_empty() && !on.is_empty(), "both are drawn");
+        assert!(
+            off.iter().all(|pixel| pixel >> 16 & 0xff > 150),
+            "off: {off:x?}"
+        );
+        assert!(
+            on.iter().all(|pixel| pixel >> 16 & 0xff < 100),
+            "on: {on:x?}"
+        );
+    }
+
+    #[test]
     fn the_first_and_last_rows_highlighted_keep_to_the_menus_rounded_corners() {
         use omorfos_core::MenuMetrics;
 
@@ -1084,6 +1198,7 @@ mod tests {
         let entry = |label: &str| Item::Entry {
             label: label.to_owned(),
             action: (),
+            mark: Mark::Blank,
         };
         let metrics = MenuMetrics {
             width: 200,
@@ -1091,6 +1206,7 @@ mod tests {
             separator: 9,
             above: 4,
             below: 4,
+            overlap: 0,
         };
         let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
         let items = vec![entry("Terminal"), entry("Files")];

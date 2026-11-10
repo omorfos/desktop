@@ -1288,10 +1288,18 @@ the first than on the last.
       GNOME's settings itself. freedesktop's own setting for it, a draft
       in xdg-desktop-portal (pull request 1821), is to be served too
       once it is agreed.
-- [ ] Icons in menus: a glyph before each entry of the titlebar's menu
-      and of the root menu (a program's own icon there), and a tick
-      beside what is on in place of wording that changes. It waits for
-      the icon set stage 2 chooses.
+- [x] Icons in menus: a sign from Lucide before each entry of the
+      titlebar's menu and of the root menu, a program's own icon before
+      one that starts it, or one `menu.yaml` names; and the sign of what
+      is on in the accent, on a faint square of it, in place of wording
+      that changes; and a submenu lying a little over its menu (ADR 70).
+- [ ] Known gaps in icons in menus: a program started from the menu is
+      found by its file's name, not by the desktop entry whose `Exec`
+      starts it, so that `flatpak run` and Ghostty need an `icon`; a
+      change of icon theme is seen in an open menu only once it is drawn
+      again; and whether the root menu stays something to arrange in
+      `menu.yaml` once the bar has a menu of its own (stage 5) is to be
+      decided, and `icon` with it.
 - [ ] Movement: windows that open and close with a slight change of size
       as well as of opacity, workspaces that slide, a window that goes to
       the dock when minimized, a notification that comes in and goes

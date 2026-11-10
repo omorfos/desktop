@@ -44,6 +44,7 @@ fn every_package_carries_the_licences_credits_names_and_the_crates() {
     for licence in [
         "LICENSE-pictures",
         "LICENSE-space-grotesk",
+        "LICENSE-lucide",
         "LICENSE-crates",
     ] {
         assert!(credits.contains(licence), "CREDITS.md names {licence}");
@@ -56,7 +57,13 @@ fn every_package_carries_the_licences_credits_names_and_the_crates() {
     }
     // Each is a file of the repository but the crates', which is gathered
     // as omorfos is built.
-    for licence in ["LICENSE", "LICENSE-pictures", "LICENSE-space-grotesk"] {
+    let files = [
+        "LICENSE",
+        "LICENSE-pictures",
+        "LICENSE-space-grotesk",
+        "LICENSE-lucide",
+    ];
+    for licence in files {
         assert!(!read(licence).is_empty(), "{licence}");
     }
 }

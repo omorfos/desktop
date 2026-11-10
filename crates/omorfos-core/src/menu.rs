@@ -6,6 +6,7 @@
 //! keyboard goes into it. This module decides layout and behaviour; the
 //! compositor draws the panels and feeds in pointer events and keys.
 
+use crate::Sign;
 use crate::geometry::{Point, Rect, Size};
 
 /// One row of a menu. `A` is whatever an entry does when chosen.
@@ -17,6 +18,8 @@ pub enum Item<A> {
         label: String,
         /// What choosing the entry does.
         action: A,
+        /// What stands before the text.
+        mark: Mark,
     },
     /// Opens a further panel.
     Submenu {
@@ -24,9 +27,29 @@ pub enum Item<A> {
         label: String,
         /// The rows of the further panel.
         items: Vec<Self>,
+        /// What stands before the text.
+        mark: Mark,
     },
     /// A dividing line. Cannot be chosen.
     Separator,
+}
+
+/// What stands before the text of a row: a sign of what it does, or a
+/// picture of the program it starts. A row that turns something on and
+/// off says the same either way, and its sign is pressed in while it is on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mark {
+    /// Nothing.
+    Blank,
+    /// One of the interface's signs.
+    Sign(Sign),
+    /// The icon of the program of this name: the one its desktop entry
+    /// names, or else the one of its own name.
+    Program(String),
+    /// An icon of the icon theme by its name, or a picture by its path.
+    Icon(String),
+    /// The sign of what the row turns on and off, and whether it is on.
+    Toggle(Sign, bool),
 }
 
 /// The sizes a menu is laid out with, in pixels.
@@ -42,6 +65,9 @@ pub struct MenuMetrics {
     pub above: u32,
     /// The room below the last row.
     pub below: u32,
+    /// How far a submenu's panel lies over the edge of the panel it opens
+    /// from, so that the two are seen as one.
+    pub overlap: u32,
 }
 
 /// One column of an open menu.
@@ -228,7 +254,9 @@ impl<A: Clone> Menu<A> {
     /// Opens the panel of `items` beside the row of a panel they belong to.
     fn unfold(&mut self, panel: usize, row: usize, items: Vec<Item<A>>) {
         let beside = self.rows(&self.panels[panel])[row];
-        let width = self.metrics.width.cast_signed();
+        // As far from the row's edge as it lies over it.
+        let width = self.metrics.width.saturating_sub(self.metrics.overlap);
+        let width = width.cast_signed();
         let above = self.metrics.above.cast_signed();
         // Open to the right, or to the left if that would leave the area.
         let fits = beside.right() + i64::from(width) <= self.area.right();
@@ -315,6 +343,7 @@ mod tests {
         separator: 10,
         above: 4,
         below: 4,
+        overlap: 0,
     };
     const AREA: Rect = Rect::new(Point::new(0, 0), Size::new(1000, 800));
 
@@ -322,6 +351,7 @@ mod tests {
         Item::Entry {
             label: label.to_owned(),
             action: Box::leak(label.to_owned().into_boxed_str()),
+            mark: Mark::Blank,
         }
     }
 
@@ -333,6 +363,7 @@ mod tests {
             Item::Submenu {
                 label: "Session".to_owned(),
                 items: vec![entry("Reload"), entry("Quit")],
+                mark: Mark::Blank,
             },
             entry("About"),
         ]
@@ -439,6 +470,28 @@ mod tests {
             menu.panel_rect(&menu.panels()[1]).origin,
             Point::new(590, 130)
         );
+    }
+
+    #[test]
+    fn a_submenu_lies_over_the_edge_of_its_menu_and_has_the_pointer_there() {
+        let metrics = MenuMetrics {
+            overlap: 4,
+            ..METRICS
+        };
+        let mut menu = Menu::open(items(), Point::new(100, 100), AREA, metrics);
+        menu.hover(Point::new(150, 140));
+        let submenu = menu.panel_rect(&menu.panels()[1]);
+        assert_eq!(submenu, rect(296, 130, 200, 48), "over the right edge");
+        // Where both are, the pointer is on the submenu, which is over the
+        // other: on its first row, and not on the row that opened it.
+        menu.hover(Point::new(298, 140));
+        assert_eq!(menu.panels().len(), 2);
+        assert_eq!(menu.panels()[1].highlighted(), Some(0));
+
+        let mut menu = Menu::open(items(), Point::new(790, 100), AREA, metrics);
+        menu.hover(Point::new(850, 140));
+        let submenu = menu.panel_rect(&menu.panels()[1]);
+        assert_eq!(submenu.origin, Point::new(594, 130), "over the left edge");
     }
 
     #[test]

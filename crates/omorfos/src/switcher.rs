@@ -271,7 +271,7 @@ impl Compositor {
         };
         let (metrics, picture) = metrics(&config.theme);
         let layout = switching.switcher.layout(switching.screen, metrics);
-        let pixels = crate::icons::icon_pixels(scale);
+        let pixels = crate::icons::icon_pixels(paint::LARGE_ICON, scale);
         let mut icons = std::mem::take(&mut self.switch.icons);
         let shown: Vec<Shown<Icon>> = layout
             .items

@@ -50,6 +50,11 @@ pub enum Part {
     /// The line between groups of rows in the menu, drawn in its text
     /// colour.
     MenuSeparator,
+    /// What stands before the label of a row of the menu: a sign, drawn in
+    /// its text colour, or a program's icon, inside its padding. It is
+    /// [`State::Hovered`] with its row, and [`State::Active`] while what
+    /// its row turns on and off is on.
+    MenuSign,
     /// The notice that says something is wrong.
     Notice,
     /// The first line of the notice.
@@ -145,7 +150,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 43] = [
+    pub const ALL: [Self; 44] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -158,6 +163,7 @@ impl Part {
         Self::Menu,
         Self::MenuItem,
         Self::MenuSeparator,
+        Self::MenuSign,
         Self::Notice,
         Self::NoticeHeading,
         Self::Capture,
@@ -207,6 +213,7 @@ impl Part {
             Self::Menu => "menu",
             Self::MenuItem => "menu-item",
             Self::MenuSeparator => "menu-separator",
+            Self::MenuSign => "menu-sign",
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
             Self::Capture => "capture",
@@ -735,6 +742,7 @@ mod tests {
                 "menu",
                 "menu-item",
                 "menu-separator",
+                "menu-sign",
                 "notice",
                 "notice-heading",
                 "capture",

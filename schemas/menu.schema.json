@@ -305,6 +305,14 @@
           ],
           "description": "What choosing the item does. Give either this or `items`."
         },
+        "icon": {
+          "default": null,
+          "description": "What stands before the label in place of what is chosen for it:\nthe name of an icon of the icon theme, or the path of a picture.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "items": {
           "description": "A nested menu. Give either this or `action`.",
           "items": {

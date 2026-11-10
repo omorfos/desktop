@@ -98,12 +98,12 @@ fn a_theme_without_shadows_casts_none() {
     assert_ne!(picture.at(x + 330, y + 3), BACKGROUND, "the pictures");
     assert_eq!(shaded_background(&picture), 0);
 
-    // Nor does a menu, which is 220 wide, beside it or under it.
+    // Nor does a menu, which is 240 wide, beside it or under it.
     let mut session = Session::with_config(&[("theme.css", none)]);
     open_menu(&mut session);
     let picture = session.draw();
     assert_ne!(picture.at(200, 110), BACKGROUND, "the menu");
-    assert_eq!(picture.at(322, 110), BACKGROUND, "beside it");
+    assert_eq!(picture.at(342, 110), BACKGROUND, "beside it");
     assert_eq!(picture.at(96, 110), BACKGROUND);
 
     // Nor does the switcher, round it or the windows shown in it.
@@ -122,17 +122,17 @@ fn open_menu(session: &mut Session) {
 
 #[test]
 fn a_menu_casts_the_shadow_its_theme_gives_it() {
-    // Cast to the right, as the menu is 220 wide and its height depends on
+    // Cast to the right, as the menu is 240 wide and its height depends on
     // its rows.
     let theme = "* { transition: none; }\nmenu { box-shadow: 8px 0 8px #000000c0; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     open_menu(&mut session);
     let picture = session.draw();
     assert!(
-        darkness(picture.at(322, 110)) > 0,
+        darkness(picture.at(342, 110)) > 0,
         "beside it, where it falls"
     );
-    assert_eq!(picture.at(360, 110), BACKGROUND, "and no further");
+    assert_eq!(picture.at(380, 110), BACKGROUND, "and no further");
     assert_eq!(picture.at(96, 110), BACKGROUND, "nothing on the other side");
 }
 
@@ -150,7 +150,7 @@ fn what_goes_from_the_screen_takes_its_shadow_with_it_as_it_fades() {
         let picture = session.draw();
         [
             darkness(picture.at(60, BOTTOM + 4)),
-            darkness(picture.at(322, 110)),
+            darkness(picture.at(342, 110)),
         ]
     };
     let [window, menu] = shadows(&mut session);

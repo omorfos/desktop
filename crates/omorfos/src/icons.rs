@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omorfos_config::Color;
+use omorfos_core::Mark;
 use omorfos_icons::Icons;
 use omorfos_ui::{Area, Image};
 use smithay::backend::renderer::element::texture::TextureRenderElement;
@@ -42,7 +43,6 @@ use smithay::wayland::compositor::{Cacheable, with_states};
 
 use crate::Scale;
 use crate::compositor::{Compositor, Element, View};
-use crate::paint;
 
 /// The icon a program gave a window, double-buffered with the window's
 /// surface: the name of one of a theme, and the pixels it gave, each
@@ -163,6 +163,12 @@ impl WindowIcons {
         if let Some(buffer) = given {
             return Some(Icon::Given(buffer));
         }
+        self.application(app_id, pixels, ink).map(Icon::Named)
+    }
+
+    /// The name of the icon of the application `app_id` that a theme has:
+    /// the one its desktop entry names, or else the one of its own name.
+    fn application(&mut self, app_id: &str, pixels: u32, ink: Color) -> Option<String> {
         let data = &self.data;
         let entry = self
             .entries
@@ -170,11 +176,26 @@ impl WindowIcons {
             .or_insert_with(|| omorfos_icons::icon_of(app_id, data))
             .clone();
         let mut found = |name: &str| self.icons.get(name, pixels, ink).is_some();
-        let name = entry
+        entry
             .into_iter()
             .chain([app_id.to_owned()])
-            .find(|name| found(name));
-        name.map(Icon::Named)
+            .find(|name| found(name))
+    }
+
+    /// What stands before the label of a row of a menu, drawn `pixels`
+    /// across beside text of the colour `ink`: a sign, an icon or a
+    /// program's icon. Nothing for a row that has none, or whose icon is
+    /// not installed.
+    pub(crate) fn mark(&mut self, mark: &Mark, pixels: u32, ink: Color) -> Option<&Image> {
+        match mark {
+            Mark::Sign(sign) | Mark::Toggle(sign, _) => self.icons.sign(*sign, pixels, ink),
+            Mark::Icon(name) => self.icons.get(name, pixels, ink),
+            Mark::Program(name) => {
+                let name = self.application(name, pixels, ink)?;
+                self.icons.get(&name, pixels, ink)
+            }
+            Mark::Blank => None,
+        }
     }
 
     /// An icon a program gave as pixels, drawn by the renderer in the middle
@@ -262,10 +283,11 @@ impl Compositor {
     }
 }
 
-/// How many pixels across an icon is looked up at, to be drawn sharp at
-/// `scale` where it is drawn largest.
-pub(crate) fn icon_pixels(scale: Scale) -> u32 {
-    let side = f64::from(paint::LARGE_ICON) * scale.factor();
+/// How many pixels across an icon drawn at most `units` across is looked
+/// up at, to be drawn sharp at `scale`: [`crate::paint::LARGE_ICON`] for a window's,
+/// which is drawn at most that large.
+pub(crate) fn icon_pixels(units: u32, scale: Scale) -> u32 {
+    let side = f64::from(units) * scale.factor();
     // At most a few hundred, so neither negative nor too large.
     #[expect(
         clippy::cast_possible_truncation,

@@ -5,6 +5,9 @@
 //! for each size it comes in, and SVG, which is drawn at whatever size is
 //! wanted. Only so much of a file is read, a picture is only so large, and
 //! one that cannot be made sense of is no icon.
+//!
+//! The signs of the interface are omorfos's own, built in: those of
+//! Lucide that are used, in `signs/` as Lucide gives them (ADR 70).
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -13,6 +16,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use omorfos_config::Color;
+use omorfos_core::Sign;
 use omorfos_ui::Image;
 use resvg::{tiny_skia, usvg};
 
@@ -64,6 +68,8 @@ pub struct Icons {
     themes: Vec<String>,
     /// What each name came to at each size it was wanted at.
     found: HashMap<(String, u32, Color), Option<Image>>,
+    /// Each sign as it was drawn at each size and in each colour.
+    signs: HashMap<(Sign, u32, Color), Option<Image>>,
 }
 
 impl Default for Icons {
@@ -85,6 +91,7 @@ impl Icons {
             directories,
             themes,
             found: HashMap::new(),
+            signs: HashMap::new(),
         }
     }
 
@@ -135,6 +142,53 @@ impl Icons {
                 })
             })
             .as_ref()
+    }
+}
+
+impl Icons {
+    /// The sign `sign`, drawn `pixels` pixels across in `ink`. Each is
+    /// Lucide's drawing, on a grid of 24, with its lines 2.25 wide where
+    /// Lucide has them 2, so that they are 1.5 wide at 16 across, as
+    /// `docs/DESIGN.md` has them. Nothing only if it cannot be drawn,
+    /// which the tests see to for each.
+    pub fn sign(&mut self, sign: Sign, pixels: u32, ink: Color) -> Option<&Image> {
+        let drawn = self.signs.entry((sign, pixels, ink)).or_insert_with(|| {
+            let source = drawing(sign).replacen(LUCIDE_LINE, SIGN_LINE, 1);
+            svg(source.as_bytes(), pixels).map(|shape| shape.tinted(ink))
+        });
+        drawn.as_ref()
+    }
+}
+
+/// How wide Lucide draws its lines, as its drawings say it.
+const LUCIDE_LINE: &str = "stroke-width=\"2\"";
+
+/// How wide the lines of a sign are drawn instead.
+const SIGN_LINE: &str = "stroke-width=\"2.25\"";
+
+/// Lucide's drawing of each sign, as Lucide gives it.
+const fn drawing(sign: Sign) -> &'static str {
+    match sign {
+        Sign::Close => include_str!("../signs/x.svg"),
+        Sign::Minimize => include_str!("../signs/minus.svg"),
+        Sign::Fullscreen => include_str!("../signs/fullscreen.svg"),
+        Sign::Tile => include_str!("../signs/layout-panel-left.svg"),
+        Sign::LeftHalf => include_str!("../signs/panel-left.svg"),
+        Sign::RightHalf => include_str!("../signs/panel-right.svg"),
+        Sign::TopHalf => include_str!("../signs/panel-top.svg"),
+        Sign::BottomHalf => include_str!("../signs/panel-bottom.svg"),
+        Sign::Send => include_str!("../signs/arrow-right-to-line.svg"),
+        Sign::Add => include_str!("../signs/plus.svg"),
+        Sign::Expand => include_str!("../signs/expand.svg"),
+        Sign::Shade => include_str!("../signs/panel-top-close.svg"),
+        Sign::Pin => include_str!("../signs/pin.svg"),
+        Sign::Everywhere => include_str!("../signs/view.svg"),
+        Sign::Awake => include_str!("../signs/coffee.svg"),
+        Sign::Search => include_str!("../signs/search.svg"),
+        Sign::Reload => include_str!("../signs/refresh-cw.svg"),
+        Sign::About => include_str!("../signs/info.svg"),
+        Sign::Quit => include_str!("../signs/log-out.svg"),
+        Sign::Lock => include_str!("../signs/lock.svg"),
     }
 }
 
@@ -538,6 +592,75 @@ mod tests {
         let mut canvas = omorfos_ui::Canvas::new(image.size().0, image.size().1);
         canvas.draw_image((0, 0, image.size().0, image.size().1), image);
         canvas.at(x, y)
+    }
+
+    /// Every sign there is.
+    const SIGNS: [Sign; 20] = [
+        Sign::Close,
+        Sign::Minimize,
+        Sign::Fullscreen,
+        Sign::Tile,
+        Sign::LeftHalf,
+        Sign::RightHalf,
+        Sign::TopHalf,
+        Sign::BottomHalf,
+        Sign::Send,
+        Sign::Add,
+        Sign::Expand,
+        Sign::Shade,
+        Sign::Pin,
+        Sign::Everywhere,
+        Sign::Awake,
+        Sign::Search,
+        Sign::Reload,
+        Sign::About,
+        Sign::Quit,
+        Sign::Lock,
+    ];
+
+    /// How much ink there is down the column `x` of `image` drawn on white,
+    /// in pixels' worth: 1 for each pixel all ink.
+    fn ink_down(image: &Image, x: u32) -> f64 {
+        let (width, height) = image.size();
+        let mut canvas = omorfos_ui::Canvas::new(width, height);
+        canvas.fill((0, 0, width, height), Color::rgb(255, 255, 255));
+        canvas.draw_image((0, 0, width, height), image);
+        let red = (0..height).map(|y| canvas.at(x, y) >> 16 & 0xff);
+        red.map(|red| f64::from(255 - red) / 255.0).sum()
+    }
+
+    #[test]
+    fn every_sign_is_drawn_in_the_colour_of_its_text_with_lines_as_wide_as_the_design_says() {
+        let mut icons = Icons::default();
+        for sign in SIGNS {
+            assert_eq!(drawing(sign).matches(LUCIDE_LINE).count(), 1, "{sign:?}");
+            let drawn = icons.sign(sign, 16, INK).unwrap();
+            assert_eq!(drawn.size(), (16, 16));
+            let mut canvas = omorfos_ui::Canvas::new(16, 16);
+            canvas.fill((0, 0, 16, 16), Color::rgb(255, 255, 255));
+            canvas.draw_image((0, 0, 16, 16), drawn);
+            let pixels: Vec<u32> = (0..16)
+                .flat_map(|y| (0..16).map(move |x| (x, y)))
+                .map(|(x, y)| canvas.at(x, y))
+                .collect();
+            assert!(
+                pixels.iter().any(|&pixel| pixel != 0xffff_ffff),
+                "{sign:?} is drawn"
+            );
+            // Blue on white is white less red and green alike.
+            let inked =
+                |pixel: u32| pixel >> 16 & 0xff == pixel >> 8 & 0xff && pixel & 0xff == 0xff;
+            assert!(
+                pixels.iter().all(|&pixel| inked(pixel)),
+                "{sign:?} is in its ink"
+            );
+        }
+        // The line of the minus goes across the middle, 1.5 wide at 16
+        // across and 3 at 32.
+        let small = ink_down(icons.sign(Sign::Minimize, 16, INK).unwrap(), 8);
+        assert!((small - 1.5).abs() < 0.1, "{small}");
+        let large = ink_down(icons.sign(Sign::Minimize, 32, INK).unwrap(), 16);
+        assert!((large - 3.0).abs() < 0.1, "{large}");
     }
 
     #[test]

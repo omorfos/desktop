@@ -62,6 +62,7 @@ assets = [
     ["../../LICENSE-pictures", "usr/share/doc/omorfos/", "644"],
     # What CREDITS.md names that is someone else's, and the crates'.
     ["../../LICENSE-space-grotesk", "usr/share/doc/omorfos/", "644"],
+    ["../../LICENSE-lucide", "usr/share/doc/omorfos/", "644"],
     ["target/release/LICENSE-crates", "usr/share/doc/omorfos/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
     ["../../packaging/omorfos-session.target", "usr/lib/systemd/user/", "644"],

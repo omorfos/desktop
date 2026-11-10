@@ -9,7 +9,10 @@ use std::path::Path;
 use omorfos_config::{
     Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
 };
-use omorfos_core::{Button, Effects, Item, KeyChains, Metrics, Pattern, Placement, Rule, Settings};
+use omorfos_core::{
+    Button, Effects, Item, KeyChains, Mark, Metrics, Pattern, Placement, Rule, Settings, Sign,
+    Standing,
+};
 use smithay::input::keyboard::{ModifiersState, xkb};
 
 use crate::Scale;
@@ -90,19 +93,71 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
 
 /// Converts the configured root menu into the domain's menu items.
 #[must_use]
-pub fn menu_items(items: &[omorfos_config::MenuItem]) -> Vec<Item<Action>> {
+pub fn menu_items(items: &[omorfos_config::MenuItem], on: Toggled) -> Vec<Item<Action>> {
     let convert = |item: &omorfos_config::MenuItem| match item {
-        omorfos_config::MenuItem::Entry { label, action } => Item::Entry {
+        omorfos_config::MenuItem::Entry {
+            label,
+            action,
+            icon,
+        } => Item::Entry {
             label: label.clone(),
             action: action.clone(),
+            mark: icon.clone().map_or_else(|| mark(action, on), Mark::Icon),
         },
-        omorfos_config::MenuItem::Submenu { label, items } => Item::Submenu {
+        omorfos_config::MenuItem::Submenu { label, items, icon } => Item::Submenu {
             label: label.clone(),
-            items: menu_items(items),
+            items: menu_items(items, on),
+            mark: icon.clone().map_or(Mark::Blank, Mark::Icon),
         },
         omorfos_config::MenuItem::Separator => Item::Separator,
     };
     items.iter().map(convert).collect()
+}
+
+/// What is on, of what the rows of a menu turn on and off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Toggled {
+    /// How the window with focus stands.
+    pub standing: Standing,
+    /// Whether the window with focus is maximized.
+    pub maximized: bool,
+    /// Whether the session is kept awake.
+    pub awake: bool,
+}
+
+/// What stands before the label of a row of a menu that does `action`: a
+/// sign for what it does, pressed in if it turns on what `on` has on, or
+/// the icon of the program it starts. A program is known by the name of
+/// its file, as its desktop entry is.
+#[must_use]
+pub fn mark(action: &Action, on: Toggled) -> Mark {
+    use omorfos_config::Half;
+    match action {
+        Action::Spawn(started) => {
+            let program = started.run.program();
+            let name = program.rsplit('/').next().unwrap_or(program);
+            Mark::Program(name.to_owned())
+        }
+        Action::Maximize => Mark::Toggle(Sign::Expand, on.maximized),
+        Action::Shade => Mark::Toggle(Sign::Shade, on.standing.shaded),
+        Action::KeepAbove => Mark::Toggle(Sign::Pin, on.standing.above),
+        Action::Stick => Mark::Toggle(Sign::Everywhere, on.standing.sticky),
+        Action::StayAwake | Action::StayAwakeFor(_) => Mark::Toggle(Sign::Awake, on.awake),
+        Action::Close => Mark::Sign(Sign::Close),
+        Action::Minimize => Mark::Sign(Sign::Minimize),
+        Action::Fullscreen => Mark::Sign(Sign::Fullscreen),
+        Action::Tile(Half::Left) => Mark::Sign(Sign::LeftHalf),
+        Action::Tile(Half::Right) => Mark::Sign(Sign::RightHalf),
+        Action::Tile(Half::Top) => Mark::Sign(Sign::TopHalf),
+        Action::Tile(Half::Bottom) => Mark::Sign(Sign::BottomHalf),
+        Action::NewWorkspace | Action::MoveToNewWorkspace => Mark::Sign(Sign::Add),
+        Action::ShowLauncher => Mark::Sign(Sign::Search),
+        Action::ReloadConfig => Mark::Sign(Sign::Reload),
+        Action::About => Mark::Sign(Sign::About),
+        Action::Lock => Mark::Sign(Sign::Lock),
+        Action::Quit => Mark::Sign(Sign::Quit),
+        _ => Mark::Blank,
+    }
 }
 
 /// Says which half of the screen the configuration means, as the desktop
@@ -355,7 +410,7 @@ rules:
     }
 
     #[test]
-    fn the_menu_carries_over_with_its_submenus() {
+    fn the_menu_carries_over_with_its_submenus_and_what_stands_before_each_label() {
         let yaml = "
 items:
   - { label: Terminal, action: { spawn: [foot] } }
@@ -363,23 +418,41 @@ items:
   - label: Session
     items:
       - { label: Quit, action: quit }
+      - { label: Away, action: quit, icon: system-suspend }
+  - { label: Places, items: [], icon: folder }
 ";
-        let quit = Item::Entry {
-            label: "Quit".to_owned(),
+        let quit = |label: &str, mark| Item::Entry {
+            label: label.to_owned(),
             action: Action::Quit,
+            mark,
         };
         let spawn = Action::Spawn(Command::terminal().into());
+        let on = Toggled {
+            standing: Standing::default(),
+            maximized: false,
+            awake: false,
+        };
         assert_eq!(
-            menu_items(&config("menu.yaml", yaml).menu.items),
+            menu_items(&config("menu.yaml", yaml).menu.items, on),
             [
                 Item::Entry {
                     label: "Terminal".to_owned(),
-                    action: spawn
+                    action: spawn,
+                    mark: Mark::Program("foot".to_owned()),
                 },
                 Item::Separator,
                 Item::Submenu {
                     label: "Session".to_owned(),
-                    items: vec![quit]
+                    items: vec![
+                        quit("Quit", Mark::Sign(Sign::Quit)),
+                        quit("Away", Mark::Icon("system-suspend".to_owned())),
+                    ],
+                    mark: Mark::Blank,
+                },
+                Item::Submenu {
+                    label: "Places".to_owned(),
+                    items: Vec::new(),
+                    mark: Mark::Icon("folder".to_owned()),
                 },
             ]
         );
@@ -481,6 +554,66 @@ bindings:
             ..Default::default()
         };
         assert_eq!(modifiers(&logo), Modifiers::SUPER);
+    }
+
+    #[test]
+    fn a_menu_row_is_signed_for_what_it_does_and_pressed_in_for_what_is_on() {
+        use omorfos_config::{Bounded, Half, Started};
+
+        let off = Toggled {
+            standing: Standing::default(),
+            maximized: false,
+            awake: false,
+        };
+        let on = Toggled {
+            standing: Standing {
+                shaded: true,
+                above: true,
+                sticky: true,
+            },
+            maximized: true,
+            awake: true,
+        };
+        let toggles = [
+            (Action::Maximize, Sign::Expand),
+            (Action::Shade, Sign::Shade),
+            (Action::KeepAbove, Sign::Pin),
+            (Action::Stick, Sign::Everywhere),
+            (Action::StayAwake, Sign::Awake),
+            (Action::StayAwakeFor(Bounded::clamped(60)), Sign::Awake),
+        ];
+        for (action, sign) in toggles {
+            assert_eq!(mark(&action, off), Mark::Toggle(sign, false), "{action:?}");
+            assert_eq!(mark(&action, on), Mark::Toggle(sign, true), "{action:?}");
+        }
+        let signed = [
+            (Action::Close, Sign::Close),
+            (Action::Minimize, Sign::Minimize),
+            (Action::Fullscreen, Sign::Fullscreen),
+            (Action::Tile(Half::Left), Sign::LeftHalf),
+            (Action::Tile(Half::Right), Sign::RightHalf),
+            (Action::Tile(Half::Top), Sign::TopHalf),
+            (Action::Tile(Half::Bottom), Sign::BottomHalf),
+            (Action::NewWorkspace, Sign::Add),
+            (Action::MoveToNewWorkspace, Sign::Add),
+            (Action::ShowLauncher, Sign::Search),
+            (Action::ReloadConfig, Sign::Reload),
+            (Action::About, Sign::About),
+            (Action::Lock, Sign::Lock),
+            (Action::Quit, Sign::Quit),
+        ];
+        for (action, sign) in signed {
+            assert_eq!(mark(&action, on), Mark::Sign(sign), "{action:?}");
+        }
+        assert_eq!(mark(&Action::FocusNext, on), Mark::Blank, "nothing to show");
+        let started = |program: &str| {
+            let command = Command::new(program, Vec::<String>::new()).unwrap();
+            Action::Spawn(Started::from(command))
+        };
+        for program in ["foot", "/usr/bin/foot"] {
+            let program = mark(&started(program), off);
+            assert_eq!(program, Mark::Program("foot".to_owned()), "by its name");
+        }
     }
 
     #[test]

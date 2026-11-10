@@ -1,6 +1,6 @@
 [package]
 name = "omorfos-icons"
-description = "Finds and reads the icons of programs for the omorfos shell components"
+description = "Finds and reads the icons of programs, and draws the signs of the interface, for the omorfos shell components"
 keywords = ["wayland", "compositor", "icons"]
 categories = ["gui"]
 readme = "../../README.md"
@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 omorfos-config = { path = "../omorfos-config" }
+omorfos-core = { path = "../omorfos-core" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Reads the icons that are PNG.
 png = "0.18.1"
