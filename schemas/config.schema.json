@@ -84,6 +84,11 @@
           ],
           "description": "Where the user is, for `scheme: auto` to be light from sunrise to\nsunset there: a latitude and longitude, a time zone, or `system`, the\ntime zone the system is set to, which is where they are taken to be\nunless hours of the `day` are given. It is not told to any program."
         },
+        "reduce_motion": {
+          "default": false,
+          "description": "Whether nothing moves: what comes and goes only fades, over 120 ms\nat most, workspaces change without sliding, and nothing shakes.\nPrograms are told, to do the same.",
+          "type": "boolean"
+        },
         "reduce_transparency": {
           "default": false,
           "description": "Whether every surface the theme makes glass is solid in its colour,\nwith nothing behind it blurred or seen through.",

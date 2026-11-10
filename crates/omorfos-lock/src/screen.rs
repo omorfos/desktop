@@ -733,11 +733,11 @@ impl Shell {
     }
 
     /// Shakes the field, as a wrong password does, unless the theme has
-    /// nothing move.
+    /// nothing move or motion is to be reduced.
     fn shake(&mut self) {
-        let theme = &self.store.current().theme;
-        let moves = theme.style(Part::Question, States::NONE).transition;
-        if moves.duration > 0 {
+        let config = self.store.current();
+        let moves = config.theme.style(Part::Question, States::NONE).transition;
+        if moves.duration > 0 && !config.general.appearance.reduce_motion {
             self.shaking = Some((None, 0));
         }
     }

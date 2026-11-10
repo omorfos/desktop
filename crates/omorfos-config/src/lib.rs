@@ -59,7 +59,7 @@ pub use rules::{Match, Rule, Rules};
 pub use scheme::{Accent, Scheme, SchemeChoice};
 pub use store::{STEP, Store, TURNING};
 pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};
-pub use theme::{Font, Theme, ThemeError};
+pub use theme::{Font, STILL, Theme, ThemeError};
 pub use transition::{Easing, Transition};
 pub use wallpaper::{
     Fit, Order, Picture, PicturePlace, ScreenWallpaper, Screens, Shown, Wallpaper,

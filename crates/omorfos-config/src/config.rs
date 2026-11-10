@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use jiff::Zoned;
 use serde::de::DeserializeOwned;
 
-use crate::{Accent, Diagnostic, General, Keys, Menu, Rules, Scheme, Theme};
+use crate::{Accent, Appearance, Diagnostic, General, Keys, Menu, Rules, Scheme, Theme};
 
 /// The files that make up the configuration, relative to its directory.
 ///
@@ -83,12 +83,7 @@ impl Config {
         let config = Self {
             keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
             rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: theme(
-                directory,
-                (scheme, appearance.accent),
-                fallback,
-                &mut diagnostics,
-            ),
+            theme: theme(directory, (scheme, appearance), fallback, &mut diagnostics),
             menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
             general,
             scheme,
@@ -113,13 +108,36 @@ where
 
 /// Loads the theme, which is a stylesheet and not YAML like the rest, laid
 /// over the built-in one in the scheme and with the accent `appearance`
-/// says.
+/// says, and still if it says motion is to be reduced.
 ///
 /// One that is wrong is the theme of `fallback`, in the scheme it was built
 /// in, until it is mended; but where that is the built-in theme alone, as
 /// it is at startup, there is nothing of the user's to keep, and it is the
 /// built-in theme in the scheme chosen now.
 fn theme(
+    directory: &Path,
+    (scheme, appearance): (Scheme, Appearance),
+    fallback: &Config,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Theme {
+    let accent = appearance.accent;
+    let loaded = laid(directory, (scheme, accent), fallback, diagnostics);
+    as_moving(loaded, appearance)
+}
+
+/// `theme` as `appearance` has it move: still, if it says motion is to be
+/// reduced.
+fn as_moving(theme: Theme, appearance: Appearance) -> Theme {
+    if appearance.reduce_motion {
+        theme.still()
+    } else {
+        theme
+    }
+}
+
+/// The theme laid over the built-in one in `scheme` with `accent`, or what
+/// stands for it while it is wrong.
+fn laid(
     directory: &Path,
     (scheme, accent): (Scheme, Accent),
     fallback: &Config,
@@ -142,8 +160,9 @@ fn theme(
     });
     loaded.unwrap_or_else(|diagnostic| {
         diagnostics.push(diagnostic);
-        let kept = fallback.general.appearance.accent;
-        if fallback.theme == Theme::built_in(fallback.scheme, kept) {
+        let kept = fallback.general.appearance;
+        let built_in = Theme::built_in(fallback.scheme, kept.accent);
+        if fallback.theme == as_moving(built_in, kept) {
             Theme::built_in(scheme, accent)
         } else {
             fallback.theme.clone()
@@ -301,6 +320,29 @@ mod tests {
             (Config::default().scheme, Config::default().changes),
             (Scheme::Dark, None)
         );
+    }
+
+    #[test]
+    fn with_motion_reduced_the_theme_is_still_and_the_users_own_too() {
+        let reduced = "appearance: { reduce_motion: true }\n";
+        let (config, diagnostics) = load(&[("config.yaml", reduced)]);
+        assert_eq!(diagnostics, [""; 0]);
+        assert!(config.theme == Theme::default().still(), "still");
+        let own = "menu { transition: 1s; }\n";
+        let (config, _) = load(&[("config.yaml", reduced), ("theme.css", own)]);
+        let menu = config.theme.style(Part::Menu, States::NONE);
+        assert_eq!(menu.transition.duration, crate::STILL);
+
+        // A theme that is wrong is still too: the built-in one, where there
+        // was nothing of the user's to keep, in the scheme chosen now.
+        let light = "appearance: { scheme: light, reduce_motion: true }\n";
+        let broken = "clock { color: huge; }\n";
+        let (started, _) = load(&[("config.yaml", reduced)]);
+        let fresh = directory(&[("config.yaml", light), ("theme.css", broken)]);
+        let (after, diagnostics) = Config::load(fresh.path(), &started);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        let light = Theme::built_in(Scheme::Light, Accent::Cyan).still();
+        assert!(after.theme == light, "the built-in theme, still and light");
     }
 
     #[test]

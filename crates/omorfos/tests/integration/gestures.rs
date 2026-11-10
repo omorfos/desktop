@@ -486,3 +486,37 @@ fn what_is_between_windows_that_share_a_workspace_is_not_taken_hold_of_as_it_sli
     assert_eq!(session.compositor().desktop().lines(0), lines);
     assert_eq!(session.compositor().desktop().offers(0), offers);
 }
+
+#[test]
+fn with_motion_reduced_workspaces_change_without_sliding_by_keys_or_fingers() {
+    let config = format!("{FOUR_WORKSPACES}appearance: {{ reduce_motion: true }}\n");
+    let mut session = Session::with_config(&[("config.yaml", &config)]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!((active(&session), slid(&session)), (1, 0), "at once");
+    session.open(&mut client, "second", (200, 100), BLUE);
+    assert_eq!(session.draw().at(5, 5), BLUE);
+
+    // The fingers carry nothing, and a swipe far enough, or quick enough,
+    // changes the workspace as they lift.
+    carry(&mut session, 400.0, 1000);
+    assert_eq!((active(&session), slid(&session)), (1, 0), "not carried");
+    lift(&mut session, false);
+    assert_eq!(
+        (active(&session), slid(&session)),
+        (0, 0),
+        "changed at once"
+    );
+    assert_eq!(session.draw().at(5, 5), RED);
+    assert!(
+        session.compositor().deadline().is_none(),
+        "with nothing to settle"
+    );
+    carry(&mut session, -200.0, 1000);
+    lift(&mut session, false);
+    assert_eq!(active(&session), 0, "not far enough");
+    carry(&mut session, -200.0, 100);
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1, "but quick enough");
+}

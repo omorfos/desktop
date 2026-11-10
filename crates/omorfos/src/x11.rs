@@ -323,6 +323,9 @@ struct Told {
     /// Where the buttons of a titlebar stand, for toolkits that draw their
     /// own, as GNOME writes it.
     buttons: String,
+    /// Whether they may move what they draw, as motion is not to be
+    /// reduced.
+    animated: bool,
 }
 
 /// The X server and what the compositor keeps as its window manager.
@@ -521,6 +524,7 @@ impl Compositor {
             font: config.theme.font_name(),
             icons: config.general.icons.theme.clone(),
             buttons: config.theme.button_layout(),
+            animated: !config.general.appearance.reduce_motion,
         };
         if self.x11.wm.is_none() || self.x11.told.as_ref() == Some(&told) {
             return;
@@ -531,6 +535,7 @@ impl Compositor {
             font,
             icons,
             buttons,
+            animated,
             ..
         } = told;
         self.size_x11_pixels(scale);
@@ -562,7 +567,11 @@ impl Compositor {
             ("Gtk/DecorationLayout", buttons),
         ];
         let named = named.map(|(name, value)| (name.to_owned(), Value::from(value)));
-        let settings = settings.into_iter().chain(named);
+        let animations = (
+            "Gtk/EnableAnimations".to_owned(),
+            Value::from(i32::from(animated)),
+        );
+        let settings = settings.into_iter().chain(named).chain([animations]);
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {

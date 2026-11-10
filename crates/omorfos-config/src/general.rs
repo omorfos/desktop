@@ -304,6 +304,10 @@ pub struct Appearance {
     /// Whether every surface the theme makes glass is solid in its colour,
     /// with nothing behind it blurred or seen through.
     pub reduce_transparency: bool,
+    /// Whether nothing moves: what comes and goes only fades, over 120 ms
+    /// at most, workspaces change without sliding, and nothing shakes.
+    /// Programs are told, to do the same.
+    pub reduce_motion: bool,
 }
 
 impl Appearance {
@@ -1168,7 +1172,19 @@ mod tests {
         assert!(!General::default().appearance.reduce_transparency);
         let reduced = parse("appearance: { reduce_transparency: true }").unwrap();
         assert!(reduced.appearance.reduce_transparency);
-        assert!(parse("appearance: { reduce_motion: true }").is_err());
+        assert!(
+            !reduced.appearance.reduce_motion,
+            "each is a setting of its own"
+        );
+    }
+
+    #[test]
+    fn things_move_unless_motion_is_to_be_reduced() {
+        assert!(!General::default().appearance.reduce_motion);
+        let reduced = parse("appearance: { reduce_motion: true }").unwrap();
+        assert!(reduced.appearance.reduce_motion);
+        assert!(!reduced.appearance.reduce_transparency);
+        assert!(parse("appearance: { reduce_motion: sometimes }").is_err());
     }
 
     #[test]

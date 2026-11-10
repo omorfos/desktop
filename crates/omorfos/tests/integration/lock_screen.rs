@@ -369,9 +369,9 @@ fn field(session: &mut Session) -> Vec<u32> {
 
 /// A locked session whose theme is `stylesheet`, with a wrong password typed
 /// until it has been heard, and the field as it was at rest before.
-fn wrong(stylesheet: &str) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
+fn wrong(files: &[(&str, &str)]) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
     let there = tempfile::TempDir::new().unwrap();
-    let mut session = Session::with_config(&[("theme.css", stylesheet)]);
+    let mut session = Session::with_config(files);
     let mut lock = awake(&mut session, there.path(), &[Way::Password]);
     // As long as it takes to come into view.
     for shown in 1..30 {
@@ -395,7 +395,8 @@ fn wrong(stylesheet: &str) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
 #[test]
 fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
     // The tests' sessions keep still unless a part says otherwise.
-    let (mut session, mut lock, _there, rest) = wrong("question { transition: 120ms; }\n");
+    let theme = "question { transition: 120ms; }\n";
+    let (mut session, mut lock, _there, rest) = wrong(&[("theme.css", theme)]);
     // Frames are shown a sixtieth of a second apart, by the time the
     // compositor tells them at.
     let mut shown = 0;
@@ -413,12 +414,22 @@ fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
 }
 
 #[test]
-fn a_theme_that_moves_nothing_has_the_field_keep_still() {
-    let (mut session, mut lock, _there, rest) = wrong("question { transition: none; }\n");
-    for shown in 1..30 {
-        session.send_frames(Duration::from_millis(shown * 16));
-        settle(&mut session, &mut lock);
-        assert_eq!(field(&mut session), rest);
+fn a_theme_that_moves_nothing_or_motion_reduced_has_the_field_keep_still() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // question does here but for the setting.
+    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let still: [&[(&str, &str)]; 2] = [
+        &[("theme.css", "question { transition: none; }\n")],
+        &[moving, reduced],
+    ];
+    for files in still {
+        let (mut session, mut lock, _there, rest) = wrong(files);
+        for shown in 1..30 {
+            session.send_frames(Duration::from_millis(shown * 16));
+            settle(&mut session, &mut lock);
+            assert!(field(&mut session) == rest, "{files:?}");
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 //! What the desktop looks like, as applications are told it.
 
-use omorfos_config::{Cursor, Icons, Part, Scheme, State, States, Theme};
+use omorfos_config::{General, Part, Scheme, State, States, Theme};
 
 /// What applications are told of how the desktop looks, so that they can
 /// look the same.
@@ -23,6 +23,8 @@ pub struct Appearance {
     /// Where the buttons of a titlebar stand, as GNOME writes it, for
     /// programs that draw their own titlebars.
     pub buttons: String,
+    /// Whether motion is to be reduced, as nothing of the desktop's moves.
+    pub still: bool,
 }
 
 impl Appearance {
@@ -30,10 +32,12 @@ impl Appearance {
     /// things out is what it fills the row chosen in the launcher with.
     /// A row under the pointer is not the accent but raised, as the design
     /// language has it.
-    /// The pointer is `cursor` in a scheme, and the icons are `icons`.
-    /// The buttons of a titlebar are as [`Theme::button_layout`] has them.
+    /// The pointer, the icons and whether motion is to be reduced are as
+    /// `general` has them, the pointer in `scheme`. The buttons of a
+    /// titlebar are as [`Theme::button_layout`] has them.
     #[must_use]
-    pub fn of(theme: &Theme, (cursor, scheme): (&Cursor, Scheme), icons: &Icons) -> Self {
+    pub fn of(theme: &Theme, general: &General, scheme: Scheme) -> Self {
+        let cursor = &general.cursor;
         let picked = theme.style(Part::LauncherItem, States::NONE.with(State::Active));
         let share = |channel: u8| f64::from(channel) / f64::from(u8::MAX);
         let accent = picked.ground();
@@ -44,8 +48,9 @@ impl Appearance {
             pointer: (cursor.theme_in(scheme).into_owned(), size),
             font: theme.font_name(),
             monospace: theme.monospace_font_name(),
-            icons: icons.theme.clone(),
+            icons: general.icons.theme.clone(),
             buttons: theme.button_layout(),
+            still: general.appearance.reduce_motion,
         }
     }
 
@@ -65,13 +70,13 @@ mod tests {
 
     #[test]
     fn the_built_in_theme_is_dark_with_a_cyan_accent() {
-        let cursor = (&Cursor::default(), Scheme::Dark);
-        let appearance = Appearance::of(&Theme::default(), cursor, &Icons::default());
+        let appearance = Appearance::of(&Theme::default(), &General::default(), Scheme::Dark);
         assert!(appearance.dark);
         assert_eq!(appearance.pointer, ("omorfos-dark".to_owned(), 24));
         assert_eq!(appearance.monospace, "JetBrains Mono, monospace 11");
         assert_eq!(appearance.buttons, ":minimize,maximize,close");
         assert_eq!(appearance.scheme(), 1);
+        assert!(!appearance.still, "things move");
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);
         assert!((blue - f64::from(0xee_u8) / 255.0).abs() < 1e-9);
@@ -80,8 +85,7 @@ mod tests {
     #[test]
     fn the_light_scheme_is_told_as_light_with_its_deeper_accent() {
         let theme = Theme::parse_in("", Scheme::Light, Accent::Cyan).unwrap();
-        let cursor = (&Cursor::default(), Scheme::Light);
-        let appearance = Appearance::of(&theme, cursor, &Icons::default());
+        let appearance = Appearance::of(&theme, &General::default(), Scheme::Light);
         assert!(!appearance.dark);
         assert_eq!(
             appearance.pointer.0, "omorfos-light",
@@ -96,13 +100,18 @@ mod tests {
     fn a_theme_that_writes_dark_on_light_is_light() {
         let theme = "menu { background: #ffffff; color: #101010; }\n\
                      launcher-item:active { background: #ff0000; }";
-        let appearance = Appearance::of(
-            &Theme::parse(theme).unwrap(),
-            (&Cursor::default(), Scheme::Dark),
-            &Icons::default(),
-        );
+        let theme = Theme::parse(theme).unwrap();
+        let appearance = Appearance::of(&theme, &General::default(), Scheme::Dark);
         assert!(!appearance.dark);
         assert_eq!(appearance.scheme(), 2);
         assert_eq!(appearance.accent, (1.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn motion_reduced_is_told_as_still() {
+        let mut general = General::default();
+        general.appearance.reduce_motion = true;
+        let appearance = Appearance::of(&Theme::default(), &general, Scheme::Dark);
+        assert!(appearance.still);
     }
 }

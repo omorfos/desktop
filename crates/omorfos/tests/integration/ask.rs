@@ -836,13 +836,22 @@ fn the_box_shakes_when_what_was_typed_was_not_right_and_comes_to_rest() {
 }
 
 #[test]
-fn a_theme_that_moves_nothing_has_the_box_keep_still() {
-    let theme = "question { transition: none; }\n";
-    let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
-    for _ in 0..30 {
-        session.send_frames(std::time::Duration::from_millis(16));
-        assert!(at_rest(&mut session));
-        std::thread::sleep(std::time::Duration::from_millis(10));
+fn a_theme_that_moves_nothing_or_motion_reduced_has_the_box_keep_still() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // question does here but for the setting.
+    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let still: [&[(&str, &str)]; 2] = [
+        &[("theme.css", "question { transition: none; }\n")],
+        &[moving, reduced],
+    ];
+    for files in still {
+        let (mut session, _asker, _answer) = wrong(files);
+        for _ in 0..30 {
+            session.send_frames(std::time::Duration::from_millis(16));
+            assert!(at_rest(&mut session), "{files:?}");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 }
 

@@ -81,6 +81,7 @@ appearance:
   # day: { from: '07:00', to: '19:00' } # for auto: light between these hours instead
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
+  reduce_motion: false    # nothing moves: what comes and goes only fades
 launcher:
   icons: false            # show each program's icon
   descriptions: false     # show, and search, what each program says of itself
@@ -1071,6 +1072,19 @@ is until its time to leave is up. The built-in theme gives both to the
 parts that come and go, as above, and has `launcher-backdrop` fade in and
 out without changing size, so yours keeps them unless it says otherwise.
 `@starting-style` holds rules for parts in no state, and nothing else.
+
+**Nothing moving.** With `appearance.reduce_motion: true` in `config.yaml`,
+whatever the theme says, a part that comes and goes keeps its size and
+only fades, and no change, of a colour or of a part coming and going,
+takes longer than 120 ms. Workspaces change without sliding, whether by
+a key or by three fingers, which change it as they lift if they went far
+enough or fast enough; the box that asks for a password, and the lock
+screen's field, do not shake at a wrong one. Programs are told, to move
+nothing either: through the settings portal's `reduced-motion` and GNOME's
+`enable-animations`, which GTK and libadwaita read, in a sandbox too, and
+as `Gtk/EnableAnimations` to programs written for X11. Day turning into
+night under `scheme: auto` still takes its minute, being a change of
+colour and not a movement.
 
 **Every part is a box.** From the outside in it has a margin, which is room
 kept clear around it; a border; padding, which is room between the border

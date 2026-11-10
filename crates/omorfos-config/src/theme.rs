@@ -76,6 +76,10 @@ struct Table {
     monospace: String,
 }
 
+/// The longest a change takes in a theme with nothing moving, in
+/// milliseconds: see [`Theme::still`].
+pub const STILL: u32 = 120;
+
 /// How one part looks in one combination of states.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Look {
@@ -133,6 +137,37 @@ impl Theme {
                 looks: looks.collect(),
                 spare: self.table.spare.clone(),
                 starting: self.table.starting.clone(),
+                monospace: self.table.monospace.clone(),
+            }),
+        }
+    }
+
+    /// This theme with nothing in it moving, as `appearance.reduce_motion`
+    /// has it: every part comes and goes as large as it is, only fading,
+    /// and no change takes longer than [`STILL`] milliseconds, which is as
+    /// long as a colour takes to change with a state in the built-in theme.
+    /// Everything else is its own.
+    #[must_use]
+    pub fn still(&self) -> Self {
+        let whole = |presence: Presence| Presence {
+            scale: Presence::WHOLE.scale,
+            ..presence
+        };
+        let looks = self.table.looks.iter().map(|look| {
+            let mut style = look.style;
+            style.presence = whole(style.presence);
+            style.transition.duration = style.transition.duration.min(STILL);
+            Look {
+                style,
+                font: look.font.clone(),
+            }
+        });
+        let starting = self.table.starting.iter().copied().map(whole);
+        Self {
+            table: Arc::new(Table {
+                looks: looks.collect(),
+                spare: self.table.spare.clone(),
+                starting: starting.collect(),
                 monospace: self.table.monospace.clone(),
             }),
         }
@@ -1760,6 +1795,49 @@ mod tests {
         assert_eq!(notice.padding, Edges::all(12));
         let heading = theme.style(Part::NoticeHeading, States::NONE);
         assert_eq!(heading.color, DANGER);
+    }
+
+    #[test]
+    fn a_still_theme_only_fades_and_no_quicker_change_is_slowed() {
+        let theme = Theme::parse(
+            "menu { transition: 400ms 50ms ease-out; }\n\
+             menu:closing { scale: 90%; opacity: 0; }\n\
+             menu-item { transition: 80ms linear; }\n\
+             @starting-style { menu { scale: 50%; opacity: 0; } }\n",
+        )
+        .unwrap();
+        let still = theme.still();
+        let menu = still.style(Part::Menu, States::NONE);
+        assert_eq!(menu.transition.duration, 120, "no longer than 120 ms");
+        assert_eq!(menu.transition.delay, 50, "after the same wait");
+        assert_eq!(menu.transition.easing, Easing::EaseOut);
+        let closing = still.style(Part::Menu, States::NONE.with(State::Closing));
+        assert_eq!(
+            closing.presence,
+            Presence {
+                opacity: 0,
+                scale: 1000
+            },
+            "fading alone"
+        );
+        let arriving = still.starting(Part::Menu);
+        assert_eq!(
+            arriving,
+            Presence {
+                opacity: 0,
+                scale: 1000
+            }
+        );
+        let row = still.style(Part::MenuItem, States::NONE);
+        assert_eq!(row.transition.duration, 80, "what was quicker is as it was");
+        // All else is as it was.
+        assert_eq!(
+            menu.background,
+            theme.style(Part::Menu, States::NONE).background
+        );
+        assert_eq!(still.font_name(), theme.font_name());
+        assert_eq!(still.monospace_font_name(), theme.monospace_font_name());
+        assert_eq!(still.still(), still, "and stiller it is not");
     }
 
     #[test]

@@ -464,11 +464,12 @@ fn lost(message: &Message) -> bool {
 }
 
 /// How the desktop looks, as the settings applications read, each in its
-/// group: whether it is dark, the colour that picks things out, and
-/// whether contrast is to be higher than usual, which it is not; and the
-/// pointer's theme and size, the font text is written in, the icons, and
-/// where the buttons of a titlebar stand.
-fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 9] {
+/// group: whether it is dark, the colour that picks things out, whether
+/// contrast is to be higher than usual, which it is not, and whether
+/// motion is to be reduced; and the pointer's theme and size, the font
+/// text is written in, the icons, whether there is to be movement, as GTK
+/// reads it, and where the buttons of a titlebar stand.
+fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>); 11] {
     let (red, green, blue) = look.accent;
     let (theme, size) = look.pointer.clone();
     [
@@ -479,6 +480,7 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
             Value::Structure(Structure::from((red, green, blue))),
         ),
         (LOOKS, "contrast", Value::U32(0)),
+        (LOOKS, "reduced-motion", Value::U32(u32::from(look.still))),
         (INTERFACE, "cursor-size", Value::I32(size)),
         (INTERFACE, "cursor-theme", Value::from(theme)),
         (INTERFACE, "font-name", Value::from(look.font.clone())),
@@ -488,6 +490,7 @@ fn settings(look: &Appearance) -> [(&'static str, &'static str, Value<'static>);
             Value::from(look.monospace.clone()),
         ),
         (INTERFACE, "icon-theme", Value::from(look.icons.clone())),
+        (INTERFACE, "enable-animations", Value::Bool(!look.still)),
         (WINDOWS, "button-layout", Value::from(look.buttons.clone())),
     ]
 }
@@ -782,6 +785,7 @@ pub(crate) mod tests {
             monospace: "JetBrains Mono, monospace 11".to_owned(),
             icons: "Adwaita".to_owned(),
             buttons: ":minimize,maximize,close".to_owned(),
+            still: false,
         }
     }
 
@@ -807,6 +811,8 @@ pub(crate) mod tests {
         let accent: (f64, f64, f64) = accent.try_clone().unwrap().try_into().unwrap();
         assert_eq!(accent, (0.25, 0.5, 1.0));
         assert_eq!(told[LOOKS]["contrast"].downcast_ref::<u32>().unwrap(), 0);
+        let reduced = told[LOOKS]["reduced-motion"].downcast_ref::<u32>();
+        assert_eq!(reduced.unwrap(), 0, "no preference");
         // And the pointer, for toolkits that draw it themselves, as GTK
         // does in a sandbox.
         let told = read_all(&peer, &[INTERFACE]);
@@ -843,6 +849,8 @@ pub(crate) mod tests {
             .try_into()
             .unwrap();
         assert_eq!(icons, "Adwaita");
+        let animated = told[INTERFACE]["enable-animations"].downcast_ref::<bool>();
+        assert!(animated.unwrap(), "as GTK has it");
         // Where the buttons of a titlebar stand, for programs that draw
         // their own, as GTK does.
         let told = read_all(&peer, &[WINDOWS]);
@@ -1194,6 +1202,22 @@ pub(crate) mod tests {
         let (group, key, value) = next_change(&mut heard);
         assert_eq!((group.as_str(), key.as_str()), (INTERFACE, "cursor-size"));
         assert_eq!(value.downcast_ref::<i32>().unwrap(), 32);
+
+        // Motion reduced is said both ways toolkits read it.
+        let still = Appearance {
+            still: true,
+            ..larger.clone()
+        };
+        portal.changed(&larger, &still);
+        let (group, key, value) = next_change(&mut heard);
+        assert_eq!((group.as_str(), key.as_str()), (LOOKS, "reduced-motion"));
+        assert_eq!(value.downcast_ref::<u32>().unwrap(), 1);
+        let (group, key, value) = next_change(&mut heard);
+        assert_eq!(
+            (group.as_str(), key.as_str()),
+            (INTERFACE, "enable-animations")
+        );
+        assert!(!value.downcast_ref::<bool>().unwrap());
     }
 
     #[test]

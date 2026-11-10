@@ -52,9 +52,7 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 fn look(config: &Path) -> Appearance {
     let store = Store::open(config);
     let config = store.current();
-    let general = &config.general;
-    let cursor = (&general.cursor, config.scheme);
-    Appearance::of(&config.theme, cursor, &general.icons)
+    Appearance::of(&config.theme, &config.general, config.scheme)
 }
 
 /// Answers the portals for the session the environment describes, until

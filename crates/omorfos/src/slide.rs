@@ -19,6 +19,11 @@
 //! the side it lies on, with the one it left beside it, however far apart
 //! the two are. A key pressed again before they settle takes them on from
 //! where they are.
+//!
+//! With `appearance.reduce_motion` nothing slides: a key changes the
+//! workspace at once, and the fingers carry nothing, the workspace
+//! changing as they lift if they went far enough, or fast enough, as it
+//! would have.
 
 use std::time::Duration;
 
@@ -84,6 +89,11 @@ fn layout(offset: f64) -> i32 {
 }
 
 impl Compositor {
+    /// Whether nothing is to slide.
+    fn still(&self) -> bool {
+        self.config().general.appearance.reduce_motion
+    }
+
     /// How far a slide goes across: the width of the current output.
     fn slide_width(&self) -> f64 {
         let output = self.desktop.current_output();
@@ -128,7 +138,9 @@ impl Compositor {
             RESISTED
         };
         let offset = moved.mul_add(resisted, from);
-        self.desktop.slide(layout(offset.clamp(-width, width)));
+        if !self.still() {
+            self.desktop.slide(layout(offset.clamp(-width, width)));
+        }
         true
     }
 
@@ -139,7 +151,12 @@ impl Compositor {
         let Some(following) = self.protocols.gestures.slide.following.take() else {
             return false;
         };
-        let offset = f64::from(self.desktop.slid());
+        // Where the fingers took the workspace, or would have.
+        let offset = if self.still() {
+            following.from + following.moved
+        } else {
+            f64::from(self.desktop.slid())
+        };
         let width = self.slide_width();
         let next = offset < 0.0;
         let thrown = following.speed.mul_add(THROW, offset);
@@ -157,6 +174,9 @@ impl Compositor {
                 offset - width
             }
         };
+        if self.still() {
+            return true;
+        }
         self.desktop.slide(layout(from));
         let began = self.clock();
         self.protocols.gestures.slide.settling = Some(Settling { from, began });
@@ -168,7 +188,7 @@ impl Compositor {
     /// the one it was showing, beside it. Nothing slides if the key brought
     /// nothing else.
     pub(crate) fn slide_in(&mut self, was: usize, forwards: bool) {
-        if self.desktop.active_workspace() == was {
+        if self.desktop.active_workspace() == was || self.still() {
             return;
         }
         let width = self.slide_width();

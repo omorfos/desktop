@@ -739,15 +739,11 @@ impl Desk {
 
     /// Shakes the box, as when what was typed was not right; unless the
     /// theme has the question change at once, which is how a theme turns
-    /// movement off.
+    /// movement off, or motion is to be reduced.
     pub fn shake(&mut self) {
-        let moves = self
-            .shell
-            .store
-            .current()
-            .theme
-            .style(Part::Question, States::NONE);
-        if moves.transition.duration > 0 {
+        let config = self.shell.store.current();
+        let moves = config.theme.style(Part::Question, States::NONE);
+        if moves.transition.duration > 0 && !config.general.appearance.reduce_motion {
             self.shell.shaking = Some((None, 0));
             self.shell.stale = true;
         }

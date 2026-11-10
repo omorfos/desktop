@@ -724,8 +724,10 @@ what only games and touchpads need last.
 - [x] The row of workspaces not going round: nothing before the first,
       and after the last only a new one, empty, made when the last has a
       window on it.
-- [ ] Nothing sliding with `reduce_motion`, once `appearance` has it; and
-      whether three fingers or four, which is for the review of the
+- [x] Nothing sliding with `appearance.reduce_motion`: the keys change
+      the workspace at once, and three fingers carry nothing, changing it
+      as they lift if they went far enough or fast enough (ADR 71).
+- [ ] Whether three fingers or four, which is for the review of the
       defaults.
 - [x] The session outliving the compositor (ADR 60), the holder first,
       `omorfos-hold`: a small program that binds the socket and starts
@@ -1197,10 +1199,8 @@ the first than on the last.
       shadow and glass with it (ADR 25).
 - [ ] Known gaps in coming and going: a part's colours stay as they are
       while it is `:closing`; `scale` only as a part comes and goes, not
-      at rest; the tooltip and the switcher appear and go at once; the
-      corners of a part's glass are as round at every size; and
-      `appearance.reduce_motion`, to have things fade alone, as
-      DESIGN.md's "Movement" says, worked out where `Seen` is.
+      at rest; the tooltip and the switcher appear and go at once; and
+      the corners of a part's glass are as round at every size.
 - [x] The inner hairline of light along the top of glass: a sharp
       `inset` shadow in `box-shadow`, beside the one cast, and
       `--glass-rim` for it in the built-in theme, white at 6% in the dark
@@ -1300,20 +1300,27 @@ the first than on the last.
       again; and whether the root menu stays something to arrange in
       `menu.yaml` once the bar has a menu of its own (stage 5) is to be
       decided, and `icon` with it.
-- [ ] Movement: windows that open and close with a slight change of size
-      as well as of opacity, workspaces that slide, a window that goes to
-      the dock when minimized, a notification that comes in and goes
-      beside others that stay, and those below sliding up into the room
-      one leaves, where now they jump; the panels and the titlebar sliding in
-      from the edge they are brought back at on a fullscreen workspace,
-      and out again; and a window that changes size, by its edge, by the
-      line between parts, by being tiled, maximized or given the room of
-      one that closed, changing it smoothly: its frame and the line
-      gliding with the pointer or easing to where they go, and the
-      window's last picture stretched to the frame until its program has
-      drawn the new size, then faded into it. Programs are still asked a
-      size only once they have drawn the last, so a slow one is not
-      flooded. All of it off with one setting.
+- Movement. Windows that open and close with a slight change of size as
+  well as of opacity, and workspaces that slide, were there already
+  (above, and in stage 3). The rest, in this order:
+  - [x] All of it off with one setting: `appearance.reduce_motion`, a
+        theme still whatever it says, nothing sliding or shaking, and
+        programs told, through the settings portal and to those written
+        for X11 (ADR 71).
+  - [ ] A notification that comes in and goes beside others that stay,
+        and those below sliding up into the room one leaves, where now
+        they jump.
+  - [ ] The panels and the titlebar sliding in from the edge they are
+        brought back at on a fullscreen workspace, and out again.
+  - [ ] A window that changes size, by its edge, by the line between
+        parts, by being tiled, maximized or given the room of one that
+        closed, changing it smoothly: its frame and the line gliding with
+        the pointer or easing to where they go, and the window's last
+        picture stretched to the frame until its program has drawn the
+        new size, then faded into it. Programs are still asked a size only
+        once they have drawn the last, so a slow one is not flooded.
+  - [ ] A window that goes to the dock when minimized, once there is a
+        dock (stage 5).
 - [ ] To be tried once there are effects: on a shared workspace, the
       windows without focus drawn a little fainter or blurred, so that
       the one with focus stands out. It has to be weighed against the
