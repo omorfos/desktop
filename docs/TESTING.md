@@ -340,8 +340,9 @@ cargo +nightly-2026-10-01 fuzz run --target x86_64-unknown-linux-gnu ipc -- -max
 
 What makes one fail is kept in `fuzz/artifacts/<target>/`. Turn each into
 a test of what failed before mending it. `configuration` is slow, some
-thirty runs a second, as each load reads the built-in theme's stylesheet
-anew.
+thirty runs a second: a load works out every part of the theme in every
+state, under 1 ms built as the compositor is, and many times that under
+the fuzzer's sanitizer.
 
 ## Flaky tests
 

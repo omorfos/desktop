@@ -1551,9 +1551,16 @@ Security:
       job of its own on a change and for an hour each night, as
       `cargo-fuzz` needs a nightly toolchain and the gates build with the
       stable one.
-- [ ] The built-in theme's stylesheet read once, not at each load of the
-      configuration: it is most of what a load costs, some 1 ms of 1.75,
-      and keeps the `configuration` fuzzer to some thirty runs a second.
+- [x] Whether to read the built-in theme once, rather than at each load
+      of the configuration: not. Measured, a load takes 0.72 ms, of which
+      0.44 ms is the theme, mostly working out every part in every state
+      rather than reading the stylesheet (85 µs); the compositor loads only
+      at startup and as a file changes, and turns between day and night by
+      blending themes it has. A cache would spare under half a millisecond
+      an edit, and could not be bounded, as an accent may be any colour.
+      The `configuration` fuzzer's thirty runs a second are the
+      sanitizer's cost on that work, which a stylesheet given has to do
+      anyway.
 - [x] Sandboxed programs recognised and held to less
       (`security-context-v1`): done in stage 3.
 - [ ] What a sandbox says its program is (the application's name) kept
