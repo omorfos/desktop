@@ -229,7 +229,7 @@ What a change of compositor looks like on the screens, and how the seat
 is kept through it, only real hardware shows (ADR 62, ADR 63). Go through
 this after a change to the hardware backend, the holder, the relay, or how
 the compositor steps down and comes up, and on a machine that is new to
-it. Each step says what to do and what is to be seen; `~/omorfos.log`
+it. Each step says what to do and what is to be seen; the session's log
 says the rest.
 
 To begin, install the build, log out and in again, as the holder and the
@@ -237,7 +237,7 @@ relay start with the login, and watch the log in a terminal:
 
 ```sh
 make nightly && sudo make install PROFILE=nightly
-tail -f ~/omorfos.log
+tail -f ~/.local/state/omorfos/session.log
 ```
 
 The compositor is started anew with `omorfosctl action

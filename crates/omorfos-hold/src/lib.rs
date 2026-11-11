@@ -10,6 +10,7 @@
 //! session has been started. It decides nothing else.
 
 mod exec;
+pub mod logged;
 mod policy;
 pub mod renew;
 mod seat;

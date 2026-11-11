@@ -5,7 +5,7 @@ use std::env;
 use std::io::{self, Write};
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use omorfos_hold::renew::{self, CHECK, TAKING, TAKING_BACK};
@@ -57,12 +57,39 @@ fn hold(err: &mut dyn Write) -> ExitCode {
         let _ = writeln!(err, "omorfos-hold: XDG_RUNTIME_DIR is not set");
         return ExitCode::FAILURE;
     };
+    let state = env::var_os("XDG_STATE_HOME");
+    let home = env::var_os("HOME");
+    let kept = omorfos_ipc::session_log::directory(state.as_deref(), home.as_deref());
+    if let Some(directory) = kept {
+        keep_log(&directory, err);
+    }
     let own = env::current_exe().unwrap_or_default();
     match omorfos_hold::hold(&runtime, own, err) {
         Ok(failed) => ended(failed),
         Err(error) => {
             let _ = writeln!(err, "omorfos-hold: cannot hold the session: {error}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Has what the session says, the holder's and all it starts, written to
+/// a log of this login's in `directory` from now on, saying so on `err`
+/// first, where it would have gone; or, where it cannot be, why not, and
+/// it goes where it would have.
+fn keep_log(directory: &Path, err: &mut dyn Write) {
+    match omorfos_hold::logged::begin(directory) {
+        Ok((log, path)) => {
+            let said = "what the session says is written to";
+            let _ = writeln!(err, "omorfos-hold: {said} {}", path.display());
+            let _ = rustix::stdio::dup2_stderr(&log);
+        }
+        Err(error) => {
+            let _ = writeln!(
+                err,
+                "omorfos-hold: cannot keep a log in {}: {error}",
+                directory.display()
+            );
         }
     }
 }

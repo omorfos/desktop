@@ -1594,7 +1594,10 @@ Reports and recovery:
       gives, gathered into one file for the user to look over before
       handing it on. Titles and paths are left out unless asked for, and
       nothing is sent anywhere. Every report from real hardware so far
-      has needed a log found and sent by hand.
+      has needed a log found and sent by hand. The holder now keeps the
+      session's log, this login's and the one before's, in
+      `~/.local/state/omorfos` (ADR 60), for the report to gather; how
+      large a login's log grows is not bounded yet.
 - [ ] The screen kept lit while the compositor is started again (ADR
       60): the holder holding the screen's device, so that the last frame
       stays until the next compositor draws over it. The hardware

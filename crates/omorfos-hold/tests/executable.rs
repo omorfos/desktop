@@ -277,3 +277,70 @@ fn a_version_handed_nothing_says_so() {
         said(&output)
     );
 }
+
+#[test]
+fn what_a_login_says_is_kept_beside_what_the_one_before_said() {
+    let (place, program) = installed();
+    let state = place.path().join("state");
+    compositor(
+        place.path(),
+        "echo \"compositor run $n\" >&2; printf 'up\\n' >&0; exit 0",
+    );
+    for _ in 0..2 {
+        let mut held = holder(&program, Some(place.path()));
+        let output = held.env("XDG_STATE_HOME", &state).output().unwrap();
+        assert!(output.status.success(), "{}", said(&output));
+        // Where it went is said where it would have been.
+        let kept = state.join("omorfos/session.log");
+        let pointed = format!(
+            "omorfos-hold: what the session says is written to {}\n",
+            kept.display()
+        );
+        assert_eq!(said(&output), pointed);
+    }
+    let kept = fs::read_to_string(state.join("omorfos/session.log")).unwrap();
+    assert!(kept.contains("compositor run 2\n"), "{kept}");
+    assert!(kept.contains("the session has ended"), "{kept}");
+    assert!(!kept.contains("compositor run 1"), "{kept}");
+    let before = fs::read_to_string(state.join("omorfos/session.log.old")).unwrap();
+    assert!(before.contains("compositor run 1\n"), "{before}");
+    let mode = |path: &str| {
+        let metadata = fs::metadata(state.join(path)).unwrap();
+        std::os::unix::fs::PermissionsExt::mode(&metadata.permissions()) & 0o777
+    };
+    assert_eq!(
+        (mode("omorfos"), mode("omorfos/session.log")),
+        (0o700, 0o600),
+        "the user's alone"
+    );
+}
+
+#[test]
+fn without_a_state_directory_given_the_log_is_kept_in_the_home_one() {
+    let (place, program) = installed();
+    compositor(place.path(), "printf 'up\\n' >&0; exit 0");
+    let mut held = holder(&program, Some(place.path()));
+    let output = held.env("HOME", place.path()).output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    let kept = place.path().join(".local/state/omorfos/session.log");
+    assert!(
+        fs::read_to_string(kept)
+            .unwrap()
+            .contains("the session has ended")
+    );
+}
+
+#[test]
+fn where_no_log_can_be_kept_the_session_goes_on_saying_why() {
+    let (place, program) = installed();
+    compositor(place.path(), "printf 'up\\n' >&0; exit 0");
+    let mut held = holder(&program, Some(place.path()));
+    let output = held.env("XDG_STATE_HOME", "/nonexistent").output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    let said = said(&output);
+    assert!(
+        said.contains("omorfos-hold: cannot keep a log in /nonexistent/omorfos: "),
+        "{said}"
+    );
+    assert!(said.contains("the session has ended"), "{said}");
+}

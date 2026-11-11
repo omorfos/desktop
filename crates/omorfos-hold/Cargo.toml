@@ -15,10 +15,11 @@ publish.workspace = true
 # What the holder and the compositor say, and how the socket is handed over.
 omorfos-ipc = { path = "../omorfos-ipc" }
 # Already in the tree through Smithay. Locks the socket's name as every
-# Wayland compositor does (`fs`), and waits on and stops the relay by its
+# Wayland compositor does (`fs`), waits on and stops the relay by its
 # process (`process`), as a version of the holder that takes up another's
-# has it as a child but no handle to it.
-rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "std"] }
+# has it as a child but no handle to it, and points the session's output at
+# its log (`stdio`).
+rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "std", "stdio"] }
 # Already in the tree, as the compositor's. Its libseat session alone: the
 # holder keeps the seat while compositors come and go (ADR 63), and Smithay
 # owns the descriptors libseat gives out, which the holder has no `unsafe`

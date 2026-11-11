@@ -129,6 +129,21 @@ login screen behave the same, as ADR 13 wants, and the session entry
 stays as it is. Nested, in a window of another desktop, there is no
 holder, as before.
 
+**The holder keeps the session's log.** Started for a login, it writes
+everything the session says from then on, its own words and those of the
+relay, the compositors and what they start without a journal, to
+`session.log` in `$XDG_STATE_HOME/omorfos`, or `~/.local/state/omorfos`,
+keeping the login before's as `session.log.old`; one line, where its
+output went before, says so. Where the login put that output differs
+from one login screen to the next, and every report from real hardware
+had needed the log found by hand: kept in one place, `omorfosctl report`
+can gather it. The directory and the logs are the user's alone, as what
+programs say may say what they do. A holder that takes up its own new
+version writes on to the same log, and one that cannot keep it says why
+and writes where it would have. Nothing bounds how large a login's log
+grows: what programs say goes to the journal where there is one, and the
+compositor's own words are few.
+
 It is ordinary, covered code, tested by running it: with stand-ins for
 the compositor, as the tests of ADR 59 run stand-ins for the programs,
 and with the compositor itself for the handing over of the socket.

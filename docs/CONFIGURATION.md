@@ -2107,11 +2107,17 @@ All this needs logind; without it, nothing locks before sleep.
 
 ## What programs say
 
-What omorfos and the programs that come with it say goes where omorfos's
-own output goes: a configuration it cannot read and why, a program it sent
-away for asking what Wayland does not allow, and why. That is a file if
-you start omorfos as `omorfos > ~/omorfos.log 2>&1`, or wherever your login
-screen keeps what a session says.
+What omorfos and the programs that come with it say, a configuration it
+cannot read and why, a program it sent away for asking what Wayland does
+not allow, and why, is kept in `~/.local/state/omorfos/session.log`, or
+under `$XDG_STATE_HOME` if you set it, and what the login before said
+beside it, in `session.log.old`. Only you can read them. Where they cannot
+be written, what omorfos says goes where your login screen keeps what a
+session says, with a line saying why.
+
+```sh
+tail -f ~/.local/state/omorfos/session.log
+```
 
 What the programs started in the session say, those you open and those
 that start with it, is kept in the journal, each under its own name, where
