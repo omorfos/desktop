@@ -79,6 +79,21 @@ GnuPG key's, never one the prompt asked for as anything else.
 `gpg-agent` as the protocol has it, and the field's bytes wiped when the
 prompt goes. One request at a time, after polkit's or before it.
 
+**A confirmation is said no to, and stays so.** `gpg-agent` asks for one
+when a key added with `ssh-add -c` is used, and for a passphrase it thinks
+too weak, among others. Tried against a real `gpg-agent` (2.4), the
+question about an SSH key comes with no `SETKEYINFO`: the key is named
+only in the description, `An ssh process requested the use of key`
+followed by its fingerprint, which is GnuPG's words. And any program can
+have `gpg-agent` ask, with `GET_CONFIRMATION` and words of its own, a
+confirmation that reaches the pinentry exactly as GnuPG's does. So
+neither what is asked nor which key it is about can be told from what
+can be checked, and a prompt of ours saying "allow this key" would rest
+on matching GnuPG's English, which any program can copy. A key added
+with `ssh-add -c` therefore cannot be used while `omorfos-pinentry` is
+GnuPG's pinentry. The same holds for `ssh-agent`, whose `SSH_ASKPASS` is
+given only a program's text, and it is not offered either.
+
 **Where there is no sealed prompt**, outside an omorfos session or with
 `omorfos-ask` not running, the pinentry says so to `gpg-agent` as an error
 and asks nothing: GnuPG then says why, and another pinentry can be named.
@@ -93,6 +108,12 @@ and asks nothing: GnuPG then says why, and another pinentry can be named.
   no trust, so there is nothing to borrow, but anything can draw one, and
   a prompt for credentials that can be imitated is the classic case of
   giving them away.
+- **A confirmation in our words, for SSH only**, shown when the
+  description has the shape of GnuPG's question about an SSH key, with
+  the fingerprint read from it, and every other confirmation said no to.
+  It works for `ssh-add -c`, but whether the prompt is shown, and which
+  key it names, would be decided by text a program can write, which is
+  what this decision keeps out.
 - **The pinentry given the `ask` role** and drawing the prompt itself. The
   compositor gives roles to what it starts or the configuration names;
   `gpg-agent` starts the pinentry, and a role that came with a program's
@@ -104,8 +125,11 @@ and asks nothing: GnuPG then says why, and another pinentry can be named.
   being decrypted, is not on the screen. Which key is.
 - `gpg-agent.conf` names `omorfos-pinentry` as its `pinentry-program`; the
   guide says how, and nothing changes until it does.
+- A key that asks to be confirmed each time it is used, added with
+  `ssh-add -c`, cannot be used with `omorfos-pinentry`; nor is a
+  passphrase GnuPG thinks too weak taken. The guide says so.
 - SSH keys held by `ssh-agent` rather than `gpg-agent` ask through
-  `SSH_ASKPASS`, whose prompt is a program's words too; that is left for
-  now, and is to be done the same way if it is done.
+  `SSH_ASKPASS`, whose prompt is a program's words too, so omorfos offers
+  no `SSH_ASKPASS`.
 - `omorfos-ask` gains a socket and a second kind of request, and keeps
   polkit's as they are.

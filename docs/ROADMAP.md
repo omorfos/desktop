@@ -554,10 +554,10 @@ what only games and touchpads need last.
 - [x] `omorfos-pinentry` for keys and passphrases, GnuPG's and the SSH
       keys `gpg-agent` holds, in the same sealed prompt, in words of
       omorfos's alone, the key named by what GnuPG lists of it (ADR 58).
-- [ ] What `gpg-agent` asks to be confirmed, as a key added with `ssh-add
-      -c` is each time it is used, asked in the sealed prompt in our words,
-      in place of being said no to; and keys held by `ssh-agent`, which ask
-      through `SSH_ASKPASS`, asked the same way.
+- [x] What `gpg-agent` asks to be confirmed, as a key added with `ssh-add
+      -c` is each time it is used: decided to be said no to still, and
+      `SSH_ASKPASS` not offered, as neither says what is asked, or of
+      which key, but in a program's words (ADR 58).
 - [x] The session blurred as well as dimmed behind the sealed prompt,
       once Glass has brought the blur: `sealed`'s `backdrop-filter`
       (stage 4).

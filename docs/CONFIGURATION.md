@@ -2020,10 +2020,13 @@ lists them. What GnuPG gives the box to say is not shown, as any program
 can give it words to say there, such as "Type your login password"; it is
 in the session's log, under `omorfos-ask`, if you want to read it. A wrong
 passphrase is asked for again. Asked to confirm something, it says no,
-for now, and GnuPG goes on as if you had: so a new passphrase GnuPG thinks
-too weak, which it asks you to confirm, is not taken. Choose a stronger
-one, or set `min-passphrase-len` and `min-passphrase-nonalpha` in
-`gpg-agent.conf`.
+and GnuPG goes on as if you had. GnuPG's question gives nothing but its
+own words to say what is to be confirmed, and any program can ask one
+with words of its own, so the box does not ask it. A new passphrase
+GnuPG thinks too weak, which it asks you to confirm, is not taken: choose
+a stronger one, or set `min-passphrase-len` and `min-passphrase-nonalpha`
+in `gpg-agent.conf`. An SSH key added with `ssh-add -c`, which asks to be
+confirmed each time it is used, cannot be used: add it without `-c`.
 
 Outside an omorfos session, or with `omorfos-ask` not running, it asks
 nothing and GnuPG says so; name another pinentry there. Only
