@@ -2,7 +2,10 @@
 //! at, and dragged to give one more room and the other less.
 //!
 //! Where the line is, and how far it may go, is the desktop model's
-//! business. See `docs/adr/0039-windows-sharing-a-workspace.md`.
+//! business. See `docs/adr/0039-windows-sharing-a-workspace.md`. Where it
+//! goes by itself, put back in the middle or cutting more once a part has
+//! closed, it eases there with the frames either side of it, as those do
+//! (`docs/adr/0072-a-window-told-once-it-has-drawn.md`).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +31,7 @@ use crate::icons::{Icon, WindowIcons, icon_pixels};
 use crate::input::Drag;
 use crate::outputs::Head;
 use crate::paint::{self, Text};
+use crate::sent::Way;
 use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
@@ -47,6 +51,9 @@ pub(crate) struct Lines {
     /// as long as neither changes so that a line that has not moved is
     /// not drawn again.
     drawn: Vec<(Rect, Color, SolidColorBuffer)>,
+    /// The lines of every output as they were last laid, each with where
+    /// it is drawn on its way there.
+    laid: Vec<Laid>,
     /// When a line was last pressed on, which is what a second press has
     /// to follow closely to be a double click.
     pub(crate) pressed: Option<u32>,
@@ -196,15 +203,92 @@ struct Written {
     ids: [Id; 2],
 }
 
+/// A line as it was laid: on which output, where the desktop has it, and
+/// where it is drawn on its way there.
+#[derive(Debug)]
+struct Laid {
+    output: usize,
+    line: omorfos_core::Line,
+    way: Way,
+}
+
+impl Lines {
+    /// Whether a line is drawn on its way to where it is, as of `now`.
+    pub(crate) fn going(&self, now: Duration) -> bool {
+        self.laid
+            .iter()
+            .any(|laid| laid.way.now(now) != laid.way.to())
+    }
+}
+
+/// Where each of `lines` is drawn as of `now`, each with the output it is
+/// on: on its way from where the line it was before was drawn, if they
+/// `move`, and otherwise where it is. A line was the same line of the same
+/// output before, lying the same way; or else the nearest of those left
+/// that lay the same way, as the line across half a screen is the one
+/// across all of it once the other half has closed. One that was not there
+/// is there at once.
+fn laid(
+    mut before: Vec<Laid>,
+    lines: Vec<(usize, omorfos_core::Line)>,
+    (now, moves): (Duration, bool),
+) -> Vec<Laid> {
+    let alike = |output: usize, across: bool| {
+        move |was: &Laid| was.output == output && was.line.across == across
+    };
+    // Each finds the same line first, and only then the nearest.
+    let same: Vec<Option<Way>> = lines
+        .iter()
+        .map(|(output, line)| {
+            let alike = alike(*output, line.across);
+            let found = before
+                .iter()
+                .position(|was| alike(was) && was.line.which == line.which);
+            found.map(|index| before.swap_remove(index).way)
+        })
+        .collect();
+    let apart = |one: Rect, other: Rect| {
+        let across = i64::from(one.origin.x) - i64::from(other.origin.x);
+        across.abs() + (i64::from(one.origin.y) - i64::from(other.origin.y)).abs()
+    };
+    same.into_iter()
+        .zip(lines)
+        .map(|(way, (output, line))| {
+            let way = way.or_else(|| {
+                let alike = alike(output, line.across);
+                let near = before.iter().enumerate().filter(|(_, was)| alike(was));
+                let near = near.min_by_key(|(_, was)| apart(was.line.at, line.at));
+                let index = near.map(|(index, _)| index);
+                index.map(|index| before.swap_remove(index).way)
+            });
+            let mut way = way.unwrap_or(Way::at(line.at));
+            way.go(line.at, now, moves);
+            Laid { output, line, way }
+        })
+        .collect()
+}
+
 impl Compositor {
     /// Brings the lines that are drawn up to date with where the desktop
-    /// has them and how the theme has them look.
-    pub(crate) fn lay_lines(&mut self) {
+    /// has them and how the theme has them look: on their way there from
+    /// where they were drawn if they `move`.
+    pub(crate) fn lay_lines(&mut self, moves: bool) {
         let ink = self.config().theme.style(Part::TileLine, States::NONE);
         let ink = ink.color;
         let outputs = 0..self.heads.len();
-        let lines: Vec<_> = outputs
-            .flat_map(|output| self.desktop.lines(output))
+        let lines = outputs.flat_map(|output| {
+            let lines = self.desktop.lines(output).into_iter();
+            lines.map(move |line| (output, line))
+        });
+        let before = std::mem::take(&mut self.hover.lines.laid);
+        let now = self.clock();
+        self.hover.lines.laid = laid(before, lines.collect(), (now, moves));
+        let lines: Vec<Rect> = self
+            .hover
+            .lines
+            .laid
+            .iter()
+            .map(|laid| laid.way.now(now))
             .collect();
         // With them, the part a frame being dragged would be put in if it
         // were let go: a wash of the colour of a focused window's border.
@@ -252,7 +336,7 @@ impl Compositor {
         });
         let lines: Vec<(Rect, Color)> = lines
             .iter()
-            .map(|line| (line.at, ink))
+            .map(|at| (*at, ink))
             .chain(offered)
             .chain(offers)
             .collect();

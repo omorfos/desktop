@@ -707,8 +707,10 @@ fn a_private_window_offered_is_shown_by_its_icon_in_its_blank() {
     assert_eq!(session.draw().at(480, 226), MAGENTA, "its program's own");
 }
 
-#[test]
-fn a_window_given_the_room_of_one_that_closed_eases_into_it() {
+/// A session whose theme has windows change over a time, with two
+/// windows sharing a workspace, the first on the left, both drawn and come
+/// in.
+fn moving() -> (Session, Client, Toplevel, Toplevel) {
     let mut session = Session::with_config(&[MOVING]);
     let mut client = session.connect();
     let first = session.open(&mut client, "first", (200, 100), RED);
@@ -716,6 +718,12 @@ fn a_window_given_the_room_of_one_that_closed_eases_into_it() {
     let second = session.open(&mut client, "second", (200, 100), BLUE);
     drawn(&mut session, &mut client, &[&first, &second]);
     session.advance(Duration::from_secs(1));
+    (session, client, first, second)
+}
+
+#[test]
+fn a_window_given_the_room_of_one_that_closed_eases_into_it() {
+    let (mut session, mut client, _first, second) = moving();
     assert_eq!(session.draw().at(330, 50), BLUE);
 
     // The first is to fill the screen, and sets out from its half.
@@ -735,18 +743,93 @@ fn a_window_given_the_room_of_one_that_closed_eases_into_it() {
 
 #[test]
 fn a_line_dragged_moves_the_windows_either_side_with_it_at_once() {
-    let mut session = Session::with_config(&[MOVING]);
-    let mut client = session.connect();
-    let first = session.open(&mut client, "first", (200, 100), RED);
-    session.compositor_mut().perform(&Action::Tile(Half::Left));
-    let second = session.open(&mut client, "second", (200, 100), BLUE);
-    drawn(&mut session, &mut client, &[&first, &second]);
-    session.advance(Duration::from_secs(1));
-
+    let (mut session, mut client, first, second) = moving();
     point(&mut session, 320, 300);
     button(&mut session, LEFT, true, 1);
     point(&mut session, 200, 300);
     drawn(&mut session, &mut client, &[&first, &second]);
     let picture = session.draw();
     assert_eq!((picture.at(190, 50), picture.at(210, 50)), (RED, BLUE));
+    assert_eq!(picture.at(200, 300), LINE);
+}
+
+#[test]
+fn a_line_put_back_in_the_middle_eases_there_with_the_windows_either_side() {
+    let (mut session, mut client, first, second) = moving();
+    point(&mut session, 320, 300);
+    button(&mut session, LEFT, true, 1);
+    point(&mut session, 200, 300);
+    button(&mut session, LEFT, false, 1);
+    drawn(&mut session, &mut client, &[&first, &second]);
+    session.advance(Duration::from_secs(1));
+
+    button(&mut session, LEFT, true, 2000);
+    button(&mut session, LEFT, false, 2000);
+    button(&mut session, LEFT, true, 2100);
+    button(&mut session, LEFT, false, 2100);
+    assert_eq!(parts(&session)[0], (0, 0, 320, 480));
+    assert_eq!(session.draw().at(200, 300), LINE, "setting out");
+    session.advance(SENT / 2);
+    let picture = session.draw();
+    assert_eq!(picture.at(260, 300), LINE, "half way");
+    assert_eq!((picture.at(250, 50), picture.at(270, 50)), (RED, BLUE));
+    session.advance(SENT / 2);
+    assert_eq!(session.draw().at(320, 300), LINE, "there");
+    assert_eq!(session.compositor().deadline(), None);
+}
+
+#[test]
+fn a_line_that_cuts_more_once_a_part_has_closed_eases_from_where_it_was() {
+    let (mut session, mut client, first, second) = moving();
+    // The second takes the top of the right half, and a third the bottom.
+    session.compositor_mut().perform(&Action::Tile(Half::Top));
+    let third = session.open(&mut client, "third", (200, 100), GREEN);
+    drawn(&mut session, &mut client, &[&first, &second, &third]);
+    session.advance(Duration::from_secs(1));
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(400, 240), picture.at(200, 240)),
+        (LINE, BACKGROUND)
+    );
+
+    // With the left gone, the line across the right cuts the whole.
+    first.role.destroy();
+    first.surface.destroy();
+    session.roundtrip(&mut client);
+    session.advance(SENT / 2);
+    let picture = session.draw();
+    assert_eq!(picture.at(200, 240), LINE);
+    assert_ne!(picture.at(100, 240), LINE, "not yet");
+    session.advance(SENT / 2);
+    assert_eq!(session.draw().at(10, 240), LINE, "there");
+}
+
+#[test]
+fn a_see_through_window_given_more_room_by_the_line_is_drawn_as_it_draws_once_it_has() {
+    // Half see-through red, as a terminal with a background a little
+    // see-through is.
+    const SEE_THROUGH: u32 = 0x8080_0000;
+    let (mut session, mut client, first, second) = moving();
+    client.fill(&first.surface, (320, 480), SEE_THROUGH);
+    session.roundtrip(&mut client);
+    session.advance(Duration::from_secs(1));
+    let still = session.draw().at(100, 300);
+
+    // Its last picture does not fade into the next while the line is
+    // held, which would leave each over the next, nor once it is let go.
+    point(&mut session, 320, 300);
+    button(&mut session, LEFT, true, 1);
+    point(&mut session, 330, 300);
+    session.roundtrip(&mut client);
+    client.fill(&first.surface, (330, 480), SEE_THROUGH);
+    client.fill(&second.surface, (310, 480), BLUE);
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw().at(100, 300), still, "held");
+    point(&mut session, 340, 300);
+    button(&mut session, LEFT, false, 1);
+    session.roundtrip(&mut client);
+    client.fill(&first.surface, (340, 480), SEE_THROUGH);
+    client.fill(&second.surface, (300, 480), BLUE);
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw().at(100, 300), still, "let go");
 }

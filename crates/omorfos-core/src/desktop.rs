@@ -2682,9 +2682,16 @@ impl Desktop {
         let set = &mut self.sets[output];
         let shown = &mut set.workspaces[set.active];
         let frame = least_of(&shown.groups, titlebar);
-        shown.solo = shown
+        let cut = shown
             .solo
             .map(|tiling| tiling.cut(which, point, area, frame));
+        // Put back in the middle, it is sent there, and the frames either
+        // side of it with it; held, it goes where the hand takes it.
+        let put_back = point.is_none() && cut != shown.solo;
+        shown.solo = cut;
+        if put_back {
+            self.sending();
+        }
     }
 
     /// Makes the output at `point` the current one: the one whose focused
@@ -2924,8 +2931,9 @@ impl Desktop {
 
     /// How many times frames have been sent somewhere, as against put
     /// there by hand or by their programs: maximized or restored, tiled,
-    /// arranged, put beside others or changed over with one, or given the
-    /// room of one that closed or left. A frame whose place changes while
+    /// arranged, put beside others or changed over with one, given the
+    /// room of one that closed or left, or moved with the line between
+    /// them put back in the middle. A frame whose place changes while
     /// this does is on its way there, which it may be drawn moving to; one
     /// whose place changes while it does not is there at once. It counts
     /// on from where it was, round to nothing past the largest.
@@ -3922,6 +3930,10 @@ mod tests {
         assert!(sent(&desktop), "changed over where the pointer is");
         desktop.move_line(0, 0, Some(Point::new(700, 500)));
         assert!(!sent(&desktop), "the line held by hand");
+        desktop.move_line(0, 0, None);
+        assert!(sent(&desktop), "the line put back in the middle");
+        desktop.move_line(0, 0, None);
+        assert!(!sent(&desktop), "and where it is already");
         desktop.move_to_workspace(chat, 0);
         assert!(sent(&desktop), "the room of one that left");
         desktop.remove_window(editor);

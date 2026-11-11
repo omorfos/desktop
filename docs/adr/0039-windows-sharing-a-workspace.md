@@ -58,7 +58,8 @@ differently from the right pair.
 - A line is drawn as a hairline, and is taken hold of within a few
   pixels either side, where the pointer shows that it can be.
 - Dragging it gives one side more and the other less, as it is dragged.
-  A double click puts it back in the middle.
+  A double click puts it back in the middle, where it and the windows
+  either side of it ease (ADR 72).
 - No window is made smaller than it says it can be, and none smaller
   than a sixth of the screen: the line stops, and makes room by itself
   for a window that says so later.

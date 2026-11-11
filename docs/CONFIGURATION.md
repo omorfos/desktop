@@ -364,7 +364,9 @@ nothing over it, as fullscreen means.
 
 There is a line wherever two parts meet: drag it to give one more room
 and the other less, down to a sixth of the screen or to the least a
-window says it can be, and double-click it to put it back in the middle.
+window says it can be, and double-click it to put it back in the middle,
+which it and the windows either side of it go to as a window sent
+somewhere does.
 Dragged, it keeps pace with the windows, going on as they have drawn
 themselves the size it gave them, and is let go where the pointer is.
 The theme draws it as `tile-line`, in a window's border colour unless
@@ -1174,7 +1176,9 @@ that it is not in the picture of the screen it leads to.
 program has drawn it at the size it has been given, by being maximized,
 tiled or dragged larger or smaller by its edge, its last picture is
 stretched to fill the frame; once the program has drawn, that picture
-fades into the new one over `window`'s `transition`. A program that has
+fades into the new one over `window`'s `transition`, unless you were
+dragging it, or the line beside it, when the new one is shown at once.
+A program that has
 drawn and chosen another size, as a terminal may to fit its lines, is
 shown as it draws. `window { transition: none; }` leaves the picture as
 it is, short of the frame or past it, until the program draws.

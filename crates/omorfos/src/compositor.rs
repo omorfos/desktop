@@ -1156,11 +1156,12 @@ impl Compositor {
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // And what the screens showed before, while it gives way, a
         // window's last picture while it gives way to its new one, and a
-        // window on its way to where it was sent.
+        // window or a line on its way to where it was sent.
         let giving = self
             .scene
             .iter()
-            .any(|shown| shown.giving.is_some() || shown.going());
+            .any(|shown| shown.giving.is_some() || shown.going())
+            || self.hover.lines.going(self.animation.clock);
         let fading = self.animation.epoch.filter(|_| self.is_fading() || giving);
         let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
@@ -2386,7 +2387,7 @@ impl Compositor {
         // along, and does not come in afresh.
         let sliding = self.desktop.slid() != 0;
         let changes = config.theme.style(Part::Window, States::NONE).transition;
-        let moves = self.sends(changes, sliding);
+        let (moves, held) = self.moving(changes, sliding);
         let text = &mut self.text;
         let motion = &mut self.animation.motion;
         motion.begin(self.animation.clock);
@@ -2415,7 +2416,7 @@ impl Compositor {
                     let (way, sizes) = frame.travel(before.as_deref(), shows, (clock, moves));
                     let noted = (&self.animation.drawn, surface);
                     let (stretch, giving) =
-                        stretching(role, sizes, before, noted, (changes, clock));
+                        stretching(role, sizes, before, noted, (changes, clock, held));
                     let chrome = frame.decoration.map(|decoration| {
                         let cached = painted(&mut previous, &frame.tabs);
                         let tools = (&mut *text, &mut *motion, &mut *shades);
@@ -2451,7 +2452,7 @@ impl Compositor {
         // Mapping raises an element, so mapping bottom to top sets the order.
         scene.sort_by_key(|(order, _)| *order);
         self.scene = scene.into_iter().map(|(_, shown)| shown).collect();
-        self.lay_lines();
+        self.lay_lines(moves);
         for shown in &self.scene {
             self.space
                 .map_element(shown.window.clone(), shown.origin, false);
@@ -2469,15 +2470,19 @@ impl Compositor {
         self.sync_keyboard_focus(focused);
     }
 
-    /// Whether the frames whose places have changed since the last sync
-    /// were sent there, to be drawn easing there: where windows change
-    /// over a time, `changes`, motion is not to be reduced, and nothing
-    /// slides, what slides with its workspace being carried, not sent.
-    fn sends(&mut self, changes: omorfos_config::Transition, sliding: bool) -> bool {
+    /// How the frames whose places have changed since the last sync got
+    /// there: whether they were sent there, to be drawn easing there,
+    /// where windows change over a time, `changes`, motion is not to be
+    /// reduced, and nothing slides, what slides with its workspace being
+    /// carried, not sent; and whether one is held by hand, by its edge or
+    /// by the line between it and another.
+    fn moving(&mut self, changes: omorfos_config::Transition, sliding: bool) -> (bool, bool) {
         let sent = self.desktop.sent() != self.animation.sent;
         self.animation.sent = self.desktop.sent();
         let reduced = self.config().general.appearance.reduce_motion;
-        sent && !sliding && !changes.lasts().is_zero() && !reduced
+        let held = matches!(self.drag, Some(Drag::Resize { .. } | Drag::Line { .. }));
+        let eased = sent && !sliding && !changes.lasts().is_zero() && !reduced;
+        (eased, held)
     }
 
     /// Paints the frames the windows pictures are taken of by themselves
@@ -3931,7 +3936,7 @@ impl Compositor {
         // its program draws next; over that, the picture it had before,
         // while it does.
         let about = view.pixel(shown.origin.to_f64());
-        if let Some(by) = shown.stretch {
+        if let Some(Stretched { by, .. }) = shown.stretch {
             noting.stretched(shown.origin, by);
         }
         if let Some(giving) = &shown.giving {
@@ -3965,7 +3970,7 @@ impl Compositor {
                 noting.add(surface, noting.paint(surface.texture()));
             }
             elements.extend(surfaces.into_iter().map(Element::Surface));
-            if let Some(by) = shown.stretch {
+            if let Some(Stretched { by, .. }) = shown.stretch {
                 scaling::stretch(elements, first, about, by);
             }
             self.animation.note(&shown.surface, noting.done());
@@ -3991,7 +3996,7 @@ impl Compositor {
         let first = elements.len();
         let cut = Self::cut(view, chrome).into_iter();
         let cut = cut.map(|area| {
-            let by = shown.stretch.unwrap_or((1.0, 1.0));
+            let by = shown.stretch.map_or((1.0, 1.0), |stretched| stretched.by);
             scaling::unstretched(area, about, by)
         });
         for (strip, area) in cut.enumerate() {
@@ -4012,7 +4017,7 @@ impl Compositor {
                 }
             }
         }
-        if let Some(by) = shown.stretch {
+        if let Some(Stretched { by, .. }) = shown.stretch {
             scaling::stretch(elements, first, about, by);
         }
         self.animation.note(&shown.surface, noting.done());
@@ -5608,23 +5613,33 @@ fn presence(
 /// with it, where windows change over a time, `changes`; and, once the
 /// program has caught up with a frame that is still, with the picture it
 /// had while it was, which is in what was `noted` of what was drawn,
-/// fading into the new one from `now`.
+/// fading into the new one from `now`. Unless the frame was `held` by hand
+/// while it was stretched, which it is said to have been until it has
+/// caught up: then the program draws at each step, and each picture
+/// fading would leave the one before it over the next, which over a
+/// window that can be seen through shows as one that cannot.
 fn stretching(
     role: &Role,
     (told, wanted, drawn): Sizes,
     before: Option<&mut Shown>,
     noted: (&RefCell<Vec<(WlSurface, Noted)>>, &WlSurface),
-    (changes, now): (omorfos_config::Transition, Duration),
-) -> (Option<Stretch>, Option<Giving>) {
+    (changes, now, held): (omorfos_config::Transition, Duration, bool),
+) -> (Option<Stretched>, Option<Giving>) {
+    // A picture that was stretched only on its way, or while it was held,
+    // is the new one already.
+    let before = before.map(|before| (before.stretch, before.giving.take(), before.going()));
+    let (was, giving, going) = before.unwrap_or_default();
+    let was_held = was.is_some_and(|was| was.held);
     let behind = wanted != told || role.behind(told, drawn);
     let stretch = (behind && !changes.lasts().is_zero()).then(|| {
         let across = f64::from(wanted.w) / f64::from(drawn.w.max(1));
-        (across, f64::from(wanted.h) / f64::from(drawn.h.max(1)))
+        let by = (across, f64::from(wanted.h) / f64::from(drawn.h.max(1)));
+        Stretched {
+            by,
+            held: held || was_held,
+        }
     });
-    // A picture that was stretched only on its way is the new one already.
-    let before = before.map(|before| (before.stretch, before.giving.take(), before.going()));
-    let (was, giving, going) = before.unwrap_or_default();
-    let caught_up = was.is_some() && stretch.is_none() && !going;
+    let caught_up = was.is_some() && stretch.is_none() && !going && !was_held;
     let begun = caught_up.then(|| taken(noted.0, noted.1)).flatten();
     let begun = begun.map(|pieces| Giving { pieces, since: now });
     let lasting = |giving: &Giving| now.saturating_sub(giving.since) < changes.lasts();
@@ -5687,12 +5702,21 @@ pub(crate) struct Shown {
     on: Showing,
     /// How its picture is stretched to fill its frame, while its program
     /// has yet to draw the size the frame has.
-    stretch: Option<Stretch>,
+    stretch: Option<Stretched>,
     /// The picture it had while it was stretched, fading into the one its
     /// program has drawn since.
     giving: Option<Giving>,
     /// Where its frame is drawn, on its way to where it was sent or there.
     way: Way,
+}
+
+/// How a window's picture is stretched to fill its frame, and whether its
+/// frame has been held by hand since it was: one that has is not faded
+/// into the next.
+#[derive(Debug, Clone, Copy)]
+struct Stretched {
+    by: Stretch,
+    held: bool,
 }
 
 /// A window's last picture before its program drew the size its frame

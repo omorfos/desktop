@@ -1338,12 +1338,12 @@ the first than on the last.
           easing the frame there over 240 ms, its program told only where
           it goes, and what is dragged following the hand at once.
     - [ ] Known gaps in a frame easing: going fullscreen and back is not
-          eased, nor is a window sent to another screen; the line between
-          parts is drawn where it goes at once, while the frames either
-          side of it are on their way; and a program that draws on the way
-          is shown at once, not faded into.
-    - [ ] The line between parts easing when it moves by itself: put back
-          in the middle, or a part closing.
+          eased, nor is a window sent to another screen; a program that
+          draws on the way is shown at once, not faded into; and a line
+          is taken hold of where it is going, not where it is drawn.
+    - [x] The line between parts easing when it moves by itself: put back
+          in the middle, with the windows either side of it, or cutting
+          more of the screen once a part has closed.
     - [ ] A program written for X11 told at once still: it could be asked
           to say when it has drawn (`_NET_WM_SYNC_REQUEST`) once Smithay's
           window manager offers it.

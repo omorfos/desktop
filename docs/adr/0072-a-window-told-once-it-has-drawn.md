@@ -73,6 +73,15 @@ where there is nothing.
   change at once, and a stretched picture fading is changing over a
   time. Reduced motion leaves it, the fade being a change of opacity,
   which it keeps, at most 120 ms (ADR 71).
+- **Not faded while held.** A frame held by hand, by its edge or by the
+  line between it and another, has its program draw at each step, a
+  little behind: each picture fading into the next would leave the one
+  before over it for as long as the fade, which over a window that can
+  be seen through, as a terminal's often can, shows as one that cannot,
+  and over any as what it showed a step ago. So a picture stretched
+  while its frame was held is the program's own once it has drawn, as
+  it is on the way to where a frame was sent, until the program has
+  caught up after it is let go.
 - **The pointer is not stretched.** For as long as the picture is, the
   pointer is in the window where it would be in the picture
   unstretched: the program is given where it is in what it drew, and a
@@ -113,6 +122,14 @@ it has got to.
   for the way is the program's own, and does not fade either.
 - **Where windows change over a time**, and motion is not reduced, as
   for the stretched picture: otherwise it is there at once.
+- **The line goes with them.** The line between two parts that moves by
+  itself eases as the frames either side of it do: put back in the
+  middle, which sends them, or cutting more of the screen once a part
+  has closed, as the line across half of it becomes the one across all
+  of it. It is the line it was if it is the same line of the same
+  output lying the same way, and otherwise the nearest that lay the
+  same way; one that was not there is there at once. It is taken hold
+  of where it is going, as the desktop has it.
 
 The titlebar is painted again at each width it passes through, for the
 240 ms; the shadow is laid out again, not painted.
@@ -127,4 +144,5 @@ The titlebar is painted again at each width it passes through, for the
 - A test's program has to draw between two changes to be told the
   second, as a real one does.
 - A window maximized, tiled or given the room of one that closed goes
-  there rather than jumping, and its program is still asked one size.
+  there rather than jumping, and its program is still asked one size;
+  the line between two goes with them.
