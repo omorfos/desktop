@@ -34,11 +34,12 @@ pub struct Rule {
     /// Draw a titlebar and border around the window, or not.
     #[serde(default)]
     pub decorations: Option<bool>,
-    /// Leave the window blank in any picture taken of the screen, or not.
-    /// Unlike the others this holds for as long as the window matches,
-    /// not only when it opens: a title that comes to match hides it.
+    /// Hide the window in any picture taken of the screen, or not: blank,
+    /// or blurred. Unlike the others this holds for as long as the window
+    /// matches, not only when it opens: a title that comes to match hides
+    /// it.
     #[serde(default)]
-    pub private: Option<bool>,
+    pub private: Option<Private>,
     /// Open the window rolled up into its titlebar, or not. A window
     /// without a titlebar is not rolled up.
     #[serde(default)]
@@ -49,6 +50,47 @@ pub struct Rule {
     /// Open the window on every workspace of its screen, or not.
     #[serde(default)]
     pub sticky: Option<bool>,
+}
+
+/// How a window a rule calls private is hidden in pictures of the screen.
+/// Written `true` or `blank`, `blur`, or `false`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "PrivateWritten")]
+pub enum Private {
+    /// It is not hidden.
+    Not,
+    /// It is a blank, in the background colour of the theme's `capture`
+    /// part, and nothing of it can be told.
+    Blank,
+    /// It is blurred, so that what is in it cannot be read, though its
+    /// colours and its larger shapes can be made out.
+    Blur,
+}
+
+/// Whether a window is private as written: yes or no, or how.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PrivateWritten {
+    Said(bool),
+    How(String),
+}
+
+impl TryFrom<PrivateWritten> for Private {
+    type Error = String;
+
+    fn try_from(written: PrivateWritten) -> Result<Self, Self::Error> {
+        match written {
+            PrivateWritten::Said(true) => Ok(Self::Blank),
+            PrivateWritten::Said(false) => Ok(Self::Not),
+            PrivateWritten::How(how) => match how.as_str() {
+                "blank" => Ok(Self::Blank),
+                "blur" => Ok(Self::Blur),
+                _ => Err(format!(
+                    "invalid `private` `{how}`: expected true, false, `blank` or `blur`"
+                )),
+            },
+        }
+    }
 }
 
 /// Selects windows by application and title.
@@ -149,6 +191,23 @@ rules:
         assert_eq!(
             (rule.maximized, rule.fullscreen, rule.decorations),
             (Some(false), Some(true), Some(false))
+        );
+    }
+
+    #[test]
+    fn a_private_window_is_left_blank_or_blurred_as_the_rule_says() {
+        let private = |said: &str| {
+            let yaml = format!("rules:\n  - match: {{ app_id: wallet }}\n    private: {said}\n");
+            parse(&yaml).map(|rules| rules.rules[0].private)
+        };
+        assert_eq!(private("true"), Ok(Some(Private::Blank)));
+        assert_eq!(private("blank"), Ok(Some(Private::Blank)));
+        assert_eq!(private("blur"), Ok(Some(Private::Blur)));
+        assert_eq!(private("false"), Ok(Some(Private::Not)));
+        let error = private("frosted").unwrap_err();
+        assert!(
+            error.contains("invalid `private` `frosted`: expected true, false, `blank` or `blur`"),
+            "{error}"
         );
     }
 

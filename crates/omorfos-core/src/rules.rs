@@ -36,6 +36,17 @@ impl Pattern {
     }
 }
 
+/// How a window is hidden in pictures taken of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Private {
+    /// It is not.
+    Not,
+    /// It is a blank, and nothing of it can be told.
+    Blank,
+    /// It is blurred, so that what is in it cannot be read.
+    Blur,
+}
+
 /// What a rule changes about a new window. `None` leaves a property alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Effects {
@@ -47,9 +58,10 @@ pub struct Effects {
     pub fullscreen: Option<bool>,
     /// Whether the window gets a titlebar and border.
     pub decorations: Option<bool>,
-    /// Whether the window is left out of pictures taken of the screen.
-    /// This is asked of a window as it is now, not only as it opened.
-    pub private: Option<bool>,
+    /// Whether the window is left out of pictures taken of the screen,
+    /// and how. This is asked of a window as it is now, not only as it
+    /// opened.
+    pub private: Option<Private>,
     /// Whether the window opens rolled up into its titlebar. One without a
     /// titlebar cannot be.
     pub shaded: Option<bool>,

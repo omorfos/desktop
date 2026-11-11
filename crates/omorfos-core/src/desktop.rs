@@ -3,7 +3,7 @@
 use crate::decoration::{Decoration, Metrics};
 use crate::geometry::{Point, Rect, Size};
 use crate::placement::{CASCADE_STEP, Placement, place};
-use crate::rules::{Rule, resolve};
+use crate::rules::{Private, Rule, resolve};
 
 /// Identifies a window for as long as it exists. Never reused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -1961,11 +1961,29 @@ impl Desktop {
     /// windows as they are now, so a title that comes to match hides one.
     #[must_use]
     pub fn private(&self, id: WindowId) -> bool {
+        let hidden = |private| matches!(private, Some(Private::Blank | Private::Blur));
+        self.said_private(id).any(hidden)
+    }
+
+    /// Whether a private window is blurred in pictures taken of the
+    /// screen, rather than left blank: a rule says so of it, or of a
+    /// window it shares a frame with, and none says it is to be blank.
+    /// The frame is hidden as much as any window in it is to be.
+    #[must_use]
+    pub fn blurred(&self, id: WindowId) -> bool {
+        let mut said = self.said_private(id).flatten();
+        let blank = said.clone().any(|private| private == Private::Blank);
+        !blank && said.any(|private| private == Private::Blur)
+    }
+
+    /// What the rules say of each window in the frame window `id` is in,
+    /// as it is now, of whether it is private.
+    fn said_private(&self, id: WindowId) -> impl Iterator<Item = Option<Private>> + Clone {
         let frame = self.locate(id);
         let tabs =
             frame.map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs);
         let said = |window: &Window| resolve(&self.rules, &window.app_id, &window.title).private;
-        tabs.is_some_and(|tabs| tabs.iter().any(|window| said(window) == Some(true)))
+        tabs.into_iter().flatten().map(said)
     }
 
     /// Every window on every workspace of every output, in the order frames
@@ -3204,7 +3222,7 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{Effects, Pattern};
+    use crate::rules::{Effects, Pattern, Private};
 
     const SCREEN: Rect = Rect::new(Point::new(0, 0), Size::new(1920, 1080));
     const SECOND_SCREEN: Rect = Rect::new(Point::new(1920, 0), Size::new(1280, 1024));
@@ -3686,7 +3704,7 @@ mod tests {
     fn a_window_is_private_for_as_long_as_a_rule_says_so_of_it_or_its_frame() {
         let mut desktop = decorated_desktop();
         let private = Effects {
-            private: Some(true),
+            private: Some(Private::Blank),
             ..Effects::default()
         };
         let mut by_title = rule("", private);
@@ -3711,13 +3729,43 @@ mod tests {
         assert!(desktop.private(browser));
         // A later rule can say that one is not private after all.
         let shown = Effects {
-            private: Some(false),
+            private: Some(Private::Not),
             ..Effects::default()
         };
         desktop.set_rules(vec![rule("wallet", private), rule("wallet", shown)]);
         assert!(!desktop.private(wallet));
         desktop.remove_window(wallet);
         assert!(!desktop.private(wallet), "nor is one that has gone");
+    }
+
+    #[test]
+    fn a_private_window_is_blurred_only_where_nothing_in_its_frame_is_to_be_blank() {
+        let mut desktop = decorated_desktop();
+        let how = |private| Effects {
+            private: Some(private),
+            ..Effects::default()
+        };
+        desktop.set_rules(vec![
+            rule("photos", how(Private::Blur)),
+            rule("wallet", how(Private::Blank)),
+        ]);
+        let photos = open(&mut desktop, "photos");
+        let wallet = open(&mut desktop, "wallet");
+        let browser = open(&mut desktop, "browser");
+        assert!(desktop.private(photos) && desktop.blurred(photos));
+        assert!(desktop.private(wallet) && !desktop.blurred(wallet));
+        assert!(!desktop.blurred(browser), "nor one that is not private");
+
+        // With a window that is to be blank in its frame, it is blank too;
+        // with one that is not private, it is blurred, and that one with it.
+        desktop.attach(browser, photos);
+        assert!(desktop.blurred(browser) && desktop.blurred(photos));
+        desktop.attach(wallet, photos);
+        assert!(!desktop.blurred(photos));
+        assert!(
+            !desktop.blurred(WindowId::from_raw(999)),
+            "nor one there is not"
+        );
     }
 
     #[test]

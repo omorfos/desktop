@@ -55,7 +55,7 @@ pub use gradient::{Direction, Gradient, Run, Stop};
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
 pub use paths::{cache_dir, config_dir};
-pub use rules::{Match, Rule, Rules};
+pub use rules::{Match, Private, Rule, Rules};
 pub use scheme::{Accent, Scheme, SchemeChoice};
 pub use store::{STEP, Store, TURNING};
 pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};

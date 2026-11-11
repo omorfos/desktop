@@ -929,6 +929,57 @@ fn a_private_window_is_blank_in_a_picture_and_not_on_the_screen() {
     assert_eq!(develop(&mut session, &mut camera), []);
 }
 
+/// Windows called `photos` are private and to be blurred, and what is
+/// blank in a picture is green.
+const BLURRED: [(&str, &str); 2] = [
+    (
+        "rules.yaml",
+        "rules:\n  - match: { app_id: photos }\n    private: blur\n",
+    ),
+    ("theme.css", "capture { background: #00ff00; }"),
+];
+
+#[test]
+fn a_private_window_a_rule_says_to_blur_is_blurred_in_a_picture_and_not_on_the_screen() {
+    let mut session = Session::with_config(&BLURRED);
+    let mut app = session.connect();
+    // Small, so that what is round it is blurred into it.
+    session.open(&mut app, "photos", (20, 20), RED);
+    assert_eq!(session.draw().at(10, 10), RED, "the user sees it as ever");
+
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    let middle = shot.at(10, 10);
+    assert!(
+        crate::common::between(middle, BACKGROUND, RED),
+        "neither it nor a blank: {middle:#x}"
+    );
+    assert_eq!(shot.at(400, 400), BACKGROUND, "and nothing else");
+    assert_eq!(session.draw().at(10, 10), RED);
+
+    // A picture of it by itself, which cannot be blurred, is blank.
+    let mut camera = window_camera(&mut session);
+    let taking = camera.capture_window("photos");
+    let (shot, _) = snap_sized(&mut session, &mut camera, &taking, (20, 20));
+    assert_eq!(shot.at(10, 10), GREEN);
+}
+
+#[test]
+fn a_private_window_to_be_blurred_is_blank_where_nothing_is_blurred() {
+    let solid = ("config.yaml", "appearance: { reduce_transparency: true }\n");
+    let mut session = Session::with_config(&[BLURRED[0], BLURRED[1], solid]);
+    let mut app = session.connect();
+    session.open(&mut app, "photos", (20, 20), RED);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(
+        (shot.at(0, 0), shot.at(10, 10), shot.at(19, 19)),
+        (GREEN, GREEN, GREEN)
+    );
+}
+
 #[test]
 fn a_window_becomes_private_when_its_title_comes_to_say_so() {
     let mut session = Session::with_config(&PRIVATE);

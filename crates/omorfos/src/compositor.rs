@@ -2424,6 +2424,7 @@ impl Compositor {
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
                     let private = self.desktop.private(*id);
+                    let blurred = self.desktop.blurred(*id);
                     let seen = presence(motion, &config.theme, (&frame.tabs, *id), sliding);
                     scene.push((
                         order,
@@ -2437,7 +2438,7 @@ impl Compositor {
                             outer: frame.geometry,
                             origin,
                             chrome,
-                            veil: private.then(|| veils.veil(*id, frame.geometry.size)),
+                            veil: private.then(|| veils.veil(*id, frame.geometry.size, blurred)),
                             private,
                             on: frame.on,
                             stretch,
@@ -3802,7 +3803,8 @@ impl Compositor {
             .rev()
             .filter(|shown| shown.over == fullscreen)
         {
-            if let Some(veil) = shown.veil.as_ref().filter(|_| !seen) {
+            let veil = shown.veil.as_ref().filter(|_| !seen);
+            if let Some(Veil::Blank(veil)) = veil {
                 // In a picture a private window is a blank the size of
                 // its frame: its titlebar says what it is as well.
                 let at = Point::<i32, Logical>::from((shown.outer.origin.x, shown.outer.origin.y));
@@ -3814,6 +3816,15 @@ impl Compositor {
                 continue;
             }
             let first = elements.len();
+            // Or it is under glass that blurs it, frame and all, and is
+            // blank where glass cannot blur.
+            if let Some(Veil::Blurred) = veil {
+                let theme = &self.config().theme;
+                let blank = theme.style(Part::Capture, States::NONE).ground();
+                let key = glass::key(&("private", shown.id));
+                let area = (logical(shown.outer), view);
+                panes.push(Pane::veiling(area, (PRIVATE_BLUR, blank), (key, first)));
+            }
             // Round a window that is shared, a line over its frame, which
             // is no more in a picture than the one round a screen is.
             let corner = Point::<i32, Logical>::from((shown.outer.origin.x, shown.outer.origin.y));
@@ -5700,7 +5711,7 @@ pub(crate) struct Shown {
     /// What is drawn in its place in a picture taken of the screen, if a
     /// rule says it is private. Kept, so that a picture after the first
     /// is not thought to differ where it is.
-    veil: Option<SolidColorBuffer>,
+    veil: Option<Veil>,
     /// Whether a rule calls it private, which it still is once the veil
     /// it was drawn with has gone to the next frame.
     private: bool,
@@ -5747,23 +5758,45 @@ impl Veils {
     /// Takes what stood for the windows of a scene, to be given to those
     /// of the next. They are the colour of the mark of capture.
     fn kept(scene: &mut [Shown], theme: &Theme) -> Self {
-        let kept = scene.iter_mut();
-        let kept = kept.filter_map(|shown| shown.veil.take().map(|veil| (shown.id, veil)));
+        let kept = scene
+            .iter_mut()
+            .filter_map(|shown| match shown.veil.take() {
+                Some(Veil::Blank(veil)) => Some((shown.id, veil)),
+                Some(Veil::Blurred) | None => None,
+            });
         Self {
             kept: kept.collect(),
             color: color(theme.style(Part::Capture, States::NONE).ground()),
         }
     }
 
-    /// What stands for a window whose frame is of a size.
-    fn veil(&mut self, id: WindowId, size: DomainSize) -> SolidColorBuffer {
+    /// What stands for a window whose frame is of a size: blurred if it
+    /// is to be, else a blank.
+    fn veil(&mut self, id: WindowId, size: DomainSize, blurred: bool) -> Veil {
+        if blurred {
+            return Veil::Blurred;
+        }
         let kept = self.kept.iter().position(|(of, _)| *of == id);
         let kept = kept.map(|index| self.kept.swap_remove(index).1);
         let mut veil = kept.unwrap_or_default();
         veil.update(logical_size(size), self.color);
-        veil
+        Veil::Blank(veil)
     }
 }
+
+/// What stands for a private window in a picture of the screen.
+#[derive(Debug)]
+enum Veil {
+    /// A blank the size of its frame, kept from one frame to the next.
+    Blank(SolidColorBuffer),
+    /// Its frame as it is, under glass that blurs it.
+    Blurred,
+}
+
+/// How far a private window to be blurred in pictures is blurred, in units
+/// of layout: twice what the thinnest glass is, which leaves nothing that
+/// is written readable, however large.
+const PRIVATE_BLUR: u32 = 32;
 
 impl Shown {
     /// Whether its frame was drawn on its way to where it was sent.

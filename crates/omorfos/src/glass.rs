@@ -414,6 +414,32 @@ impl Pane {
         })
     }
 
+    /// Glass over the whole of `area` of `view`, which blurs all that is
+    /// under it in what is drawn by `blur` units, and is solid in `color`,
+    /// as wholly as it is given, where it cannot be blurred: what a window
+    /// to be blurred in pictures is under in them, from `at`.
+    pub(crate) fn veiling(
+        (area, view): (Rectangle<i32, Logical>, View),
+        (blur, color): (u32, Color),
+        (key, at): (u64, usize),
+    ) -> Self {
+        let from = view.pixel(area.loc.to_f64());
+        let to = view.pixel((area.loc + area.size.to_point()).to_f64());
+        Self {
+            key,
+            at,
+            under: at,
+            area: Rectangle::new(from, (to - from).to_size()),
+            shape: Shape::Rounded {
+                radius: 0,
+                below: true,
+            },
+            blur: view.scale.pixels(blur.cast_signed()).unsigned_abs(),
+            color: Some(color),
+            opacity: 1.0,
+        }
+    }
+
     /// The same, with what is behind it beginning at `under`.
     pub(crate) fn under(self, under: usize) -> Self {
         Self { under, ..self }

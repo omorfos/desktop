@@ -10,8 +10,8 @@ use omorfos_config::{
     Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
 };
 use omorfos_core::{
-    Button, Effects, Item, KeyChains, Mark, Metrics, Pattern, Placement, Rule, Settings, Sign,
-    Standing,
+    Button, Effects, Item, KeyChains, Mark, Metrics, Pattern, Placement, Private, Rule, Settings,
+    Sign, Standing,
 };
 use smithay::input::keyboard::{ModifiersState, xkb};
 
@@ -68,6 +68,15 @@ pub(crate) const BUTTONS: [(Button, Part); 3] = [
     (Button::Minimize, Part::ButtonMinimize),
 ];
 
+/// How a window a rule calls private is hidden, as the domain has it.
+const fn private(private: omorfos_config::Private) -> Private {
+    match private {
+        omorfos_config::Private::Not => Private::Not,
+        omorfos_config::Private::Blank => Private::Blank,
+        omorfos_config::Private::Blur => Private::Blur,
+    }
+}
+
 /// Converts configured rules into domain rules.
 ///
 /// Workspace numbers count from one in configuration and from zero in the
@@ -82,7 +91,7 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
             maximized: rule.maximized,
             fullscreen: rule.fullscreen,
             decorations: rule.decorations,
-            private: rule.private,
+            private: rule.private.map(private),
             shaded: rule.shaded,
             above: rule.above,
             sticky: rule.sticky,
@@ -360,6 +369,10 @@ rules:
     decorations: false
   - match: { title: '*Bank*' }
     private: true
+  - match: { app_id: photos }
+    private: blur
+  - match: { app_id: photos, title: Wallpapers }
+    private: false
   - match: { app_id: notes }
     shaded: true
     above: true
@@ -391,7 +404,23 @@ rules:
                     app_id: None,
                     title: Some(Pattern::new("*Bank*")),
                     effects: Effects {
-                        private: Some(true),
+                        private: Some(Private::Blank),
+                        ..Effects::default()
+                    },
+                },
+                Rule {
+                    app_id: Some(Pattern::new("photos")),
+                    title: None,
+                    effects: Effects {
+                        private: Some(Private::Blur),
+                        ..Effects::default()
+                    },
+                },
+                Rule {
+                    app_id: Some(Pattern::new("photos")),
+                    title: Some(Pattern::new("Wallpapers")),
+                    effects: Effects {
+                        private: Some(Private::Not),
                         ..Effects::default()
                     },
                 },

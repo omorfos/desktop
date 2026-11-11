@@ -246,10 +246,13 @@ calls for them.
       the memory of the graphics card is solid, see-through only in
       shared memory; and a titlebar of glass is in it as its tint alone,
       with nothing of what is behind it, which is not in the picture.
-- [ ] A private window blurred in pictures in place of blank, as a
-      choice of the rule (`private: blur`), once glass has brought the
-      blur and a way to draw a window by itself. A blur hides less than
-      a blank does, which the guide is to say.
+- [x] A private window blurred in pictures in place of blank, as a
+      choice of the rule (`private: blur`): the whole frame under glass
+      that blurs it, blank where glass is solid. A blur hides less than a
+      blank does, which the guide says (ADR 38).
+- [ ] Known gaps in a blurred private window: a picture of it by itself
+      is blank, being drawn without glass; and how far it is blurred is
+      not the theme's to say.
 - [x] A private window's last moment, as it fades when closed, left out
       of pictures as the window was.
 - [ ] Known gaps in what is private: a notification about a private
@@ -401,9 +404,9 @@ calls for them.
       the backend waits on would spare it; only layouts of one part are
       offered; and what reads the stream is not asked which layouts it
       prefers, only offered those that can be made, each in turn.
-- [ ] The portal's settings read from `appearance` once there is one
-      (stage 4), with reduced motion and high contrast; today light or
-      dark is worked out from the theme's colours.
+- [x] The portal's settings read from `appearance` once there is one
+      (stage 4): the scheme, the accent and reduced motion. High contrast
+      is told as off until there is a setting for it (stage 8).
 - [x] A screen's resolution and refresh rate, as `mode` under `outputs`:
       that size at that rate, or at the fastest, and what the screen says
       suits it best if it cannot be had, which the user is told. A change
@@ -550,8 +553,9 @@ what only games and touchpads need last.
       -c` is each time it is used, asked in the sealed prompt in our words,
       in place of being said no to; and keys held by `ssh-agent`, which ask
       through `SSH_ASKPASS`, asked the same way.
-- [ ] The session blurred as well as dimmed behind the sealed prompt,
-      once Glass has brought the blur.
+- [x] The session blurred as well as dimmed behind the sealed prompt,
+      once Glass has brought the blur: `sealed`'s `backdrop-filter`
+      (stage 4).
 - [ ] Screen readers: what the shell's components draw, the sealed prompt
       first, told to them over AT-SPI, as GTK and Qt programs are. Our
       components draw themselves, so each has to say what is on it and

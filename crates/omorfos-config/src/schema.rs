@@ -13,7 +13,7 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Accent, Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu,
-    MenuItem, NamedOutput, Offset, OutputScale, Outputs, Picture, Role, Rules, ScreenMode,
+    MenuItem, NamedOutput, Offset, OutputScale, Outputs, Picture, Private, Role, Rules, ScreenMode,
     ScreenWallpaper, Screens, Speed, Started, Workspaces,
 };
 
@@ -109,6 +109,27 @@ impl JsonSchema for KeyChain {
             "description": "Chords such as `Super+Return`, separated by spaces when chained.",
             "type": "string",
             "pattern": "\\S",
+        })
+    }
+}
+
+impl JsonSchema for Private {
+    fn schema_name() -> Cow<'static, str> {
+        "Private".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "oneOf": [
+                {
+                    "description": "Blank in pictures of the screen if true, as `blank`; shown if false.",
+                    "type": "boolean",
+                },
+                {
+                    "description": "`blank`: nothing of it can be told. `blur`: what is in it cannot be read, though its colours and larger shapes can be made out.",
+                    "enum": ["blank", "blur"],
+                },
+            ],
         })
     }
 }

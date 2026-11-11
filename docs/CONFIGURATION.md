@@ -499,6 +499,8 @@ rules:
     fullscreen: true
   - match: { title: "*Bank*" }
     private: true
+  - match: { app_id: org.gnome.Loupe }
+    private: blur
   - match: { app_id: "*notes*" }
     above: true
     sticky: true
@@ -520,6 +522,16 @@ private from then on, and one whose title no longer does is not. A
 private window is left blank in any picture a program takes of the
 screen, titlebar and all, and so is a window that shares its frame as a
 tab. You see it as ever.
+
+`private: blur` has the window blurred in pictures instead, frame and
+all, so that someone you share your screen with can see that a window is
+there and roughly what is in it, but read nothing of it. A blur hides
+less than a blank: colours, large shapes and where things are can still
+be made out, so keep `true` (or `blank`) for what nobody else should
+know is there, such as a password manager. Where a picture cannot be
+blurred, as with `appearance.reduce_transparency`, it is blank; and a
+picture of the window by itself is blank too. In a frame of several
+windows, one to be blank makes all of it blank.
 
 ## `theme.css`
 
@@ -1778,7 +1790,8 @@ does, is seen by having it open, for as long as it does.
 
 A window that a rule in `rules.yaml` calls `private` is blank in every
 picture, of the screen or of itself, in the background colour of the
-`capture` part of the theme. A window that is out of sight, minimized or
+`capture` part of the theme; one it says is `private: blur` is blurred
+in a picture of the screen, and blank in one of itself. A window that is out of sight, minimized or
 on another workspace, can have its picture taken all the same.
 
 Nothing is given while the session is locked. The pointer is in a picture

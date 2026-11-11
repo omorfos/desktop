@@ -93,6 +93,6 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     };
     assert_eq!(bound("Super+l"), Some(omorfos_config::Action::Lock));
     assert_eq!(bound("Super+h"), None);
-    assert_eq!(config.rules.rules.len(), 5);
+    assert_eq!(config.rules.rules.len(), 6);
     assert_eq!(config.menu.items.len(), 3);
 }

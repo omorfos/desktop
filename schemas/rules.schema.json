@@ -24,6 +24,21 @@
       },
       "type": "object"
     },
+    "Private": {
+      "oneOf": [
+        {
+          "description": "Blank in pictures of the screen if true, as `blank`; shown if false.",
+          "type": "boolean"
+        },
+        {
+          "description": "`blank`: nothing of it can be told. `blur`: what is in it cannot be read, though its colours and larger shapes can be made out.",
+          "enum": [
+            "blank",
+            "blur"
+          ]
+        }
+      ]
+    },
     "Rule": {
       "additionalProperties": false,
       "description": "What to do with a new window that matches.",
@@ -65,12 +80,15 @@
           ]
         },
         "private": {
-          "default": null,
-          "description": "Leave the window blank in any picture taken of the screen, or not.\nUnlike the others this holds for as long as the window matches,\nnot only when it opens: a title that comes to match hides it.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Private"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Hide the window in any picture taken of the screen, or not: blank,\nor blurred. Unlike the others this holds for as long as the window\nmatches, not only when it opens: a title that comes to match hides\nit."
         },
         "shaded": {
           "default": null,

@@ -125,6 +125,17 @@ and the dock that this record is mostly about.
   that a program taking pictures is not told that part of the screen
   changed when it did not. It is the background colour of the `capture`
   part of the theme, so the mark and the blank are one thing to style.
+- **Blurred, if the rule says so** (`private: blur`): the whole frame
+  under glass that blurs it 32 units, twice the thinnest glass, which
+  leaves nothing written readable however large. A blur hides less than
+  a blank, colours, large shapes and where things are, which is why it
+  is asked for by name and `true` stays a blank. It is the blur glass
+  already draws, laid over the frame rather than under a part; where
+  glass is drawn solid, it is solid in the blank's colour, wholly, so
+  that nothing ever shows through it. A picture of the window by itself
+  is drawn without glass, and so is blank. In a frame shared by tabs,
+  any one to be blank makes the frame blank: it is hidden as much as
+  any window in it is to be.
 - **It does not fade into a picture.** A window that closes fades out on
   the screen as it last was, from what was drawn of it; for a private
   window that is its contents, so in a picture it is gone at once, and
