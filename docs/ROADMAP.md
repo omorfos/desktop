@@ -1687,8 +1687,11 @@ How the project is run, as learnt in part from Vela's:
       request or a release run what it should not.
 - [x] `SECURITY.md`, a private way to report a vulnerability, and a
       form for reporting a bug that asks for what one needs.
-- [ ] The links between the documents checked in CI, without the
-      network.
+- [x] The links between the documents checked in CI, without the
+      network: each relative link in a Markdown file leads to a file or
+      directory that is there, and to a heading in it where it names one,
+      as GitHub makes them (`crates/omorfos-config/tests/links.rs`, among
+      the tests every gate runs). Links elsewhere are not followed.
 - [ ] What a version promises written down: what counts as breaking,
       which, as nothing here is a library others build on, is what users
       and other programs depend on: the configuration's keys, the
