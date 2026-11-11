@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stands in for gpg-connect-agent with no gpg-agent running, which it is
+# not to start.
+echo "gpg-connect-agent: no gpg-agent running in this session" >&2
+exit 1

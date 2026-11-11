@@ -525,3 +525,37 @@ fn the_pointer_is_drawn_over_the_locker_as_the_locker_asks() {
     session.step();
     assert_eq!(session.draw().at(303, 203), YELLOW);
 }
+
+/// A session as `config` has it, with a stand-in in `directory` for what
+/// watches over it, which notes what it is asked to do; and where it notes
+/// that.
+fn watched(config: &str, directory: &std::path::Path) -> (Session, std::path::PathBuf) {
+    let asked = directory.join("asked");
+    let program = directory.join("omorfos-session");
+    let script = format!("#!/bin/sh\necho \"$@\" >> '{}'\n", asked.display());
+    crate::common::runnable(&program, &script);
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    session.compositor_mut().set_session(&program);
+    session.step();
+    (session, asked)
+}
+
+#[test]
+fn what_the_configuration_names_is_forgotten_as_the_session_locks() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let (mut session, asked) = watched("lock: { forget: [ssh, gpg] }\n", directory.path());
+    let said = || std::fs::read_to_string(&asked).unwrap_or_default();
+    assert_eq!(said(), "", "nothing while it is not locked");
+    let _locked = lock(&mut session);
+    session.eventually(|_| said() == "forget ssh gpg\n");
+}
+
+#[test]
+fn nothing_is_forgotten_as_the_session_locks_unless_it_is_named() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let (mut session, asked) = watched("{}\n", directory.path());
+    let _locked = lock(&mut session);
+    crate::idle::a_moment();
+    session.step();
+    assert_eq!(std::fs::read_to_string(&asked).unwrap_or_default(), "");
+}

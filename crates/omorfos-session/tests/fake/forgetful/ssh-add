@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stands in for ssh-add, forgetting every key as asked, and fails on
+# anything it was not expected to be asked.
+[ "$*" = "-D" ] || { echo "asked what it was not expected to be: $*" >&2; exit 3; }
+echo "All identities removed." >&2

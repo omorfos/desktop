@@ -23,7 +23,7 @@ pub use ways::Way;
 /// The ways the configuration offers: the password always, and a finger
 /// and a key unless it says not to.
 #[must_use]
-pub fn offered(lock: Offered) -> Vec<Way> {
+pub fn offered(lock: &Offered) -> Vec<Way> {
     let ways = [
         (true, Way::Password),
         (lock.fingerprint, Way::Fingerprint),
@@ -122,8 +122,12 @@ pub fn start(
     let (wayland, config) = wayland.zip(config).ok_or(
         "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is not set",
     )?;
-    let settings = omorfos_config::Store::open(&config).current().general.lock;
-    let ways = offered(settings);
+    let settings = omorfos_config::Store::open(&config)
+        .current()
+        .general
+        .lock
+        .clone();
+    let ways = offered(&settings);
     // `omorfos-session`, as the compositor finds it, asked with nothing
     // before what it is asked.
     let power = settings
@@ -183,13 +187,14 @@ mod tests {
     #[test]
     fn the_password_is_always_offered_and_the_rest_unless_turned_off() {
         let all = Offered::default();
-        assert_eq!(offered(all), [Way::Password, Way::Fingerprint, Way::Key]);
+        assert_eq!(offered(&all), [Way::Password, Way::Fingerprint, Way::Key]);
         let none = Offered {
             fingerprint: false,
             key: false,
             power: false,
+            forget: Vec::new(),
         };
-        assert_eq!(offered(none), [Way::Password]);
+        assert_eq!(offered(&none), [Way::Password]);
         assert_eq!(Way::Key.service(), "omorfos-lock-key");
     }
 

@@ -2034,19 +2034,19 @@ impl Compositor {
         // Then what the desktop entries in `~/.config/autostart` and the
         // system's say is to start, which the program that watches over the
         // session reads and starts as ordinary programs, once.
-        self.ask_session("autostart");
+        self.ask_session(&["autostart"]);
     }
 
     /// Asks the program that watches over the session to do `request`, as
     /// a key or the menu does. Without one there is nobody to ask.
-    pub(crate) fn ask_session(&mut self, request: &str) {
+    pub(crate) fn ask_session(&mut self, request: &[&str]) {
         let session = self
             .components
             .iter()
             .find(|component| component.kind == Program::Session);
         let session = session.map(|component| component.program.clone());
         if let Some(session) = session {
-            let request = [request.to_owned()];
+            let request: Vec<String> = request.iter().map(|word| (*word).to_owned()).collect();
             self.launch(
                 session.as_os_str(),
                 &request,

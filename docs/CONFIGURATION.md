@@ -70,6 +70,7 @@ lock:                     # how omorfos-lock may be unlocked besides the passwor
   fingerprint: true       # a finger, through the omorfos-lock-fingerprint PAM service
   key: true               # a security key, through omorfos-lock-key
   power: true             # Sleep, Restart, Shut Down and Log Out without unlocking
+  forget: []              # forgotten as the session locks: ssh, gpg
 cursor:
   theme: omorfos          # omorfos's own, or a cursor theme by name
   size: 24                # 8 to 128
@@ -1862,6 +1863,28 @@ bindings:
   - keys: Super+l
     action: lock
 ```
+
+A machine left locked still holds the keys you gave it: those
+`ssh-agent` holds, and the passphrases `gpg-agent` has kept for a while.
+`lock.forget` has them forgotten as the session locks, however it is
+locked and whatever the locker:
+
+```yaml
+# config.yaml
+lock:
+  forget: [ssh, gpg]
+```
+
+`ssh` has `ssh-add -D` forget every key `ssh-agent` holds; `gpg` has
+`gpg-agent` forget every passphrase it has kept, of GnuPG's keys and of
+the SSH keys it holds, and ends its smartcard daemon, so that a key on a
+card such as a YubiKey asks for the card's PIN again. It starts no
+`gpg-agent` that is not running. Where `gpg-agent` is your SSH agent too,
+`gpg` is the one that matters: a key on a card cannot be taken out of an
+agent, only locked again.
+Nothing is forgotten unless named, since each key is to be given again
+after unlocking. What could not be forgotten, as where there is no agent,
+is in the journal.
 
 An idle daemon of your own, as `swayidle`, still works: it is told when
 you have been away, and asks omorfos to lock with `omorfosctl action

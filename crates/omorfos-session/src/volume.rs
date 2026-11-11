@@ -7,10 +7,8 @@
 //! can show.
 
 use std::ffi::OsStr;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 
-use crate::{Failure, Level, PATIENCE, Volume};
+use crate::{Failure, Level, Volume, ran};
 
 /// The sound that plays, and what records it.
 const SINK: &str = "@DEFAULT_AUDIO_SINK@";
@@ -90,23 +88,5 @@ fn heard(said: &str) -> Result<(u8, bool), Failure> {
 /// Runs `wpctl` with `arguments`, found on `path`, and returns what it
 /// said, if it did as asked in time.
 fn wpctl(arguments: &[&str], path: &OsStr) -> Result<String, Failure> {
-    let mut command = Command::new("wpctl");
-    command.args(arguments).env("PATH", path);
-    command.stdin(Stdio::null()).stdout(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| format!("wpctl: {error}"))?;
-    let given = Instant::now() + PATIENCE;
-    // One that cannot be asked whether it has finished is waited for as
-    // one that has not.
-    while child.try_wait().ok().flatten().is_none() {
-        if Instant::now() >= given {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("wpctl did not answer in time".into());
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    let output = child.wait_with_output().ok();
-    let output = output.filter(|output| output.status.success());
-    let output = output.ok_or_else(|| format!("wpctl {} failed", arguments.join(" ")))?;
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    ran("wpctl", arguments, path)
 }

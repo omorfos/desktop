@@ -78,8 +78,9 @@ pub struct General {
 /// How the lock screen that comes with omorfos may be unlocked, and what
 /// else it offers. The password always may unlock, so that a reader that
 /// fails never keeps the user out; each other way is offered beside it
-/// where PAM is set up for it, and whichever is shown first unlocks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+/// where PAM is set up for it, and whichever is shown first unlocks. And
+/// what is forgotten as the session locks, whatever locks it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Lock {
@@ -94,6 +95,10 @@ pub struct Lock {
     /// can then end the session, and what is not saved in it; a machine
     /// that others use may want them off.
     pub power: bool,
+    /// What is forgotten as the session locks, so that a locked machine
+    /// left behind has no key to use: nothing unless named, since each is
+    /// to be given again after.
+    pub forget: Vec<Forgotten>,
 }
 
 impl Default for Lock {
@@ -102,8 +107,22 @@ impl Default for Lock {
             fingerprint: true,
             key: true,
             power: true,
+            forget: Vec::new(),
         }
     }
+}
+
+/// What may be forgotten as the session locks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Forgotten {
+    /// The keys `ssh-agent` holds, as `ssh-add -D` forgets them.
+    Ssh,
+    /// The passphrases `gpg-agent` has kept, of GnuPG's keys and of the
+    /// SSH keys it holds, as reloading it forgets them; and the PIN a
+    /// smartcard was given, as ending its daemon does.
+    Gpg,
 }
 
 /// Programs written for X11, which run through `Xwayland`.
@@ -1640,6 +1659,15 @@ autostart:
             parse("lock: { password: false }").is_err(),
             "always offered"
         );
+    }
+
+    #[test]
+    fn nothing_is_forgotten_as_the_session_locks_unless_it_is_named() {
+        assert_eq!(parse("{}").unwrap().lock.forget, []);
+        let both = parse("lock: { forget: [ssh, gpg] }").unwrap().lock.forget;
+        assert_eq!(both, [Forgotten::Ssh, Forgotten::Gpg]);
+        let error = parse("lock: { forget: [pgp] }").unwrap_err();
+        assert!(error.contains("pgp"), "{error}");
     }
 
     #[test]

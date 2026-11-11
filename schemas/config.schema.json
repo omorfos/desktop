@@ -251,6 +251,21 @@
         }
       ]
     },
+    "Forgotten": {
+      "description": "What may be forgotten as the session locks.",
+      "oneOf": [
+        {
+          "const": "ssh",
+          "description": "The keys `ssh-agent` holds, as `ssh-add -D` forgets them.",
+          "type": "string"
+        },
+        {
+          "const": "gpg",
+          "description": "The passphrases `gpg-agent` has kept, of GnuPG's keys and of the\nSSH keys it holds, as reloading it forgets them; and the PIN a\nsmartcard was given, as ending its daemon does.",
+          "type": "string"
+        }
+      ]
+    },
     "Icons": {
       "additionalProperties": false,
       "description": "The icons programs are shown by, where a program names an icon rather\nthan giving its pixels.",
@@ -379,12 +394,19 @@
     },
     "Lock": {
       "additionalProperties": false,
-      "description": "How the lock screen that comes with omorfos may be unlocked, and what\nelse it offers. The password always may unlock, so that a reader that\nfails never keeps the user out; each other way is offered beside it\nwhere PAM is set up for it, and whichever is shown first unlocks.",
+      "description": "How the lock screen that comes with omorfos may be unlocked, and what\nelse it offers. The password always may unlock, so that a reader that\nfails never keeps the user out; each other way is offered beside it\nwhere PAM is set up for it, and whichever is shown first unlocks. And\nwhat is forgotten as the session locks, whatever locks it.",
       "properties": {
         "fingerprint": {
           "default": true,
           "description": "A finger on the reader, through the `omorfos-lock-fingerprint` PAM\nservice.",
           "type": "boolean"
+        },
+        "forget": {
+          "description": "What is forgotten as the session locks, so that a locked machine\nleft behind has no key to use: nothing unless named, since each is\nto be given again after.",
+          "items": {
+            "$ref": "#/$defs/Forgotten"
+          },
+          "type": "array"
         },
         "key": {
           "default": true,

@@ -512,10 +512,11 @@ what only games and touchpads need last.
       programs in Flatpak do; each held only while the program that asked
       is there, and keeping the machine from sleeping also while the
       session is locked, so that music behind the lock screen plays on.
-- [ ] Keys and passphrases forgotten when the session is locked, as a
-      choice: what `ssh-agent` holds (`ssh-add -D`) and what `gpg-agent`
-      has kept, so that a locked machine left behind has no key to use.
-      Off unless chosen, since every key is to be given again after.
+- [x] Keys and passphrases forgotten when the session is locked, as a
+      choice (`lock.forget`): what `ssh-agent` holds (`ssh-add -D`), what
+      `gpg-agent` has kept, and the PIN a smartcard was given, its daemon
+      ended, so that a locked machine left behind has no key to use. Off
+      unless chosen, since every key is to be given again after (ADR 14).
 - [x] The radios, wireless, Bluetooth and the rest, known to omorfos
       whatever turned them off or on: a key the kernel handles itself (on
       a ThinkPad, `thinkpad_acpi`), a switch on the side, or another

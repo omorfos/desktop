@@ -31,6 +31,7 @@
 
 mod autostart;
 mod brightness;
+mod keys;
 mod media;
 mod power;
 mod radios;
@@ -41,16 +42,18 @@ mod volume;
 mod watch;
 
 use std::error::Error;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 
 pub use autostart::directories;
 pub use brightness::Backlight;
+pub use keys::Forget;
 pub use power::Power;
 pub use watch::watch;
 
@@ -93,6 +96,8 @@ pub enum Request {
     Offered,
     /// What is to start with the session started.
     Autostart,
+    /// Keys and passphrases forgotten, as the session locks.
+    Forget(Forget),
 }
 
 /// What is asked of the volume.
@@ -137,7 +142,8 @@ impl fmt::Display for Unknown {
         formatter.write_str(
             "usage: omorfos-session [volume up|down|mute | microphone mute | \
              brightness up|down | media play-pause|next|previous|stop | \
-             sleep|restart|shut-down [--locked] | log-out | offered | autostart]",
+             sleep|restart|shut-down [--locked] | log-out | offered | autostart | \
+             forget ssh|gpg...]",
         )
     }
 }
@@ -173,6 +179,7 @@ impl Request {
             ["log-out"] => Ok(Self::LogOut),
             ["offered"] => Ok(Self::Offered),
             ["autostart"] => Ok(Self::Autostart),
+            ["forget", named @ ..] => Forget::read(named).map(Self::Forget).ok_or(Unknown),
             _ => Err(Unknown),
         }
     }
@@ -245,7 +252,7 @@ impl Places {
 
 /// Whether systemd's user manager runs for the session whose runtime
 /// directory is `runtime`, as its socket there says.
-fn user_manager(runtime: Option<&std::ffi::OsStr>) -> bool {
+fn user_manager(runtime: Option<&OsStr>) -> bool {
     runtime.is_some_and(|runtime| {
         std::path::Path::new(runtime)
             .join("systemd/private")
@@ -295,6 +302,7 @@ pub fn run(request: Request, places: &Places) -> Result<String, Failure> {
         }
         Request::Watch => return watch(places).map(said_nothing),
         Request::Autostart => return autostart::start(places).map(said_nothing),
+        Request::Forget(forget) => return keys::forget(forget, &places.path).map(said_nothing),
     };
     // That it changed is what matters; showing it is a courtesy, and is
     // done without where there is nothing to show it.
@@ -302,6 +310,33 @@ pub fn run(request: Request, places: &Places) -> Result<String, Failure> {
         let _ = shown::show(&bus, &level);
     }
     Ok(String::new())
+}
+
+/// Runs `program` with `arguments`, found on `path`, and returns what it
+/// said, if it did as asked in time.
+fn ran(program: &str, arguments: &[&str], path: &OsStr) -> Result<String, Failure> {
+    let mut command = Command::new(program);
+    command.args(arguments).env("PATH", path);
+    command.stdin(Stdio::null()).stdout(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("{program}: {error}"))?;
+    let given = Instant::now() + PATIENCE;
+    // One that cannot be asked whether it has finished is waited for as
+    // one that has not.
+    while child.try_wait().ok().flatten().is_none() {
+        if Instant::now() >= given {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("{program} did not answer in time").into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let output = child.wait_with_output().ok();
+    let output = output.filter(|output| output.status.success());
+    let failed = || format!("{program} {} failed", arguments.join(" "));
+    let output = output.ok_or_else(failed)?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// What is said of what was done, which is nothing.
@@ -419,6 +454,37 @@ mod tests {
     }
 
     #[test]
+    fn what_is_named_is_forgotten_and_what_cannot_be_is_said_to() {
+        let daemon = Daemon::start();
+        let at = |kind| Places {
+            path: stand_in::wpctl(kind).into_os_string(),
+            ..places(None, &daemon, "wpctl")
+        };
+        let both = Request::Forget(Forget {
+            ssh: true,
+            gpg: true,
+        });
+        // The stand-ins fail on anything but what each is to be asked.
+        run(both, &at("forgetful")).unwrap();
+        let failed = |request, kind| run(request, &at(kind)).unwrap_err().to_string();
+        assert_eq!(
+            failed(both, "unforgetful"),
+            "ssh-add -D failed; gpg-connect-agent --no-autostart reloadagent SCD KILLSCD /bye failed",
+            "each is tried, whatever the other did"
+        );
+        let ssh = Request::Forget(Forget {
+            ssh: true,
+            gpg: false,
+        });
+        assert_eq!(
+            failed(ssh, "unforgetful"),
+            "ssh-add -D failed",
+            "only what is named"
+        );
+        assert!(failed(ssh, "nowhere").starts_with("ssh-add: "), "not there");
+    }
+
+    #[test]
     fn a_wpctl_that_is_not_there_fails_or_does_not_answer_is_said_to() {
         let daemon = Daemon::start();
         let failed = |kind| {
@@ -433,7 +499,7 @@ mod tests {
             "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ failed"
         );
         assert_eq!(failed("garbled"), "wpctl said \"Volume: loud\"");
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         assert_eq!(failed("slow"), "wpctl did not answer in time");
         assert!(
             started.elapsed() < PATIENCE * 3,
@@ -731,6 +797,9 @@ mod tests {
         assert_eq!(read(&["offered"]), Ok(Request::Offered));
         assert_eq!(read(&[]), Ok(Request::Watch), "as the compositor runs it");
         assert_eq!(read(&["autostart"]), Ok(Request::Autostart));
+        let forget = |ssh, gpg| Ok(Request::Forget(Forget { ssh, gpg }));
+        assert_eq!(read(&["forget", "ssh"]), forget(true, false));
+        assert_eq!(read(&["forget", "gpg", "ssh"]), forget(true, true));
     }
 
     #[test]
@@ -740,6 +809,8 @@ mod tests {
             &["volume"],
             &["volume", "loud"],
             &["volume", "up", "now"],
+            &["forget"],
+            &["forget", "ssh", "pgp"],
         ] {
             assert_eq!(Request::parse(words), Err(Unknown));
         }

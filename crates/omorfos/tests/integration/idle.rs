@@ -264,7 +264,7 @@ fn started(noted: &std::path::Path) -> usize {
 
 /// Gives what was started the moment it may need to have noted that it was:
 /// enough for a check that it was not to mean something.
-fn a_moment() {
+pub(crate) fn a_moment() {
     std::thread::sleep(Duration::from_millis(200));
 }
 

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Stands in for gpg-connect-agent, having gpg-agent forget what it kept
+# and the smartcard daemon end, without starting an agent, and fails on
+# anything it was not expected to be asked.
+[ "$*" = "--no-autostart reloadagent SCD KILLSCD /bye" ] || { echo "asked what it was not expected to be: $*" >&2; exit 3; }
+echo OK

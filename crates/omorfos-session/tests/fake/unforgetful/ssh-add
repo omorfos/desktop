@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for ssh-add with no agent to ask.
+echo "Could not open a connection to your authentication agent." >&2
+exit 2

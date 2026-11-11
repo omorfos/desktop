@@ -56,6 +56,20 @@ nothing. A new locker may then take over. This is what the protocol asks
 for and the only safe answer: the alternative is that crashing the locker
 unlocks the screen.
 
+**Keys forgotten as it locks, if asked.** `lock.forget` names what is
+forgotten once the lock is held: the keys `ssh-agent` holds (`ssh-add
+-D`), and the passphrases `gpg-agent` has kept and the PIN a smartcard
+was given (`gpg-connect-agent --no-autostart reloadagent "SCD KILLSCD"
+/bye`, which starts no agent that is not running). A key on a card, as a
+YubiKey's, is in no agent's memory: the card lets it be used for as long
+as the smartcard daemon holds it, unlocked once by its PIN, so the
+daemon is ended. That was found by trying it, with `ssh-add -D` and the
+agent reloaded both done, and `git push` still let through. It is done when the lock is held, not when the locker is
+started, so that it follows every way of locking and every locker, and
+by `omorfos-session`, as sleeping is, so that the compositor waits on
+neither agent. Nothing is forgotten unless named: each key is to be
+given again after unlocking, which is a choice for the user to make.
+
 **Any client may lock.** Locking reveals nothing and the user can undo it,
 so there is no list of trusted lockers to maintain.
 

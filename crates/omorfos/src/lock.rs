@@ -23,6 +23,8 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use omorfos_config::Forgotten;
+
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::utils::under_from_surface_tree;
@@ -436,7 +438,7 @@ impl Compositor {
             self.presence.slept_for = away;
             // Asked as the menu asks it, of what speaks to logind, which
             // has the session locked before the machine sleeps.
-            self.ask_session("sleep");
+            self.ask_session(&["sleep"]);
         }
     }
 
@@ -508,6 +510,22 @@ impl SessionLockHandler for Compositor {
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
         self.point_at_lock(0);
+        // What the configuration names is forgotten now that the session is
+        // locked, so that a machine left locked has no key to use.
+        let named = self
+            .config()
+            .general
+            .lock
+            .forget
+            .iter()
+            .map(|forgotten| match forgotten {
+                Forgotten::Ssh => "ssh",
+                Forgotten::Gpg => "gpg",
+            });
+        let forget: Vec<&str> = ["forget"].into_iter().chain(named).collect();
+        if forget.len() > 1 {
+            self.ask_session(&forget);
+        }
     }
 
     fn unlock(&mut self) {
