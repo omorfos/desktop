@@ -53,8 +53,13 @@ already in the tree carry (`wayland_backend::protocol::Interface`), so
 that nothing is added to the tree. It reads every message both ways,
 keeps a table of each program's objects and of what each is, and drops
 a program that sends what does not parse, names an object it has not
-made, or breaks a bound. A global not in the list cannot be bound
-through it. A test checks that each protocol in the list has a
+made, or breaks a bound, telling it first, as the compositor would
+have, with an error of `wl_display`: `invalid_object` for an object
+that is not there or cannot be made, `no_memory` for more descriptors
+than are kept, and `invalid_method` for what cannot be read, with the
+reason the relay's log gives. One dropped for what the compositor sent
+is told nothing; it did nothing wrong. A global not in the list cannot
+be bound through it. A test checks that each protocol in the list has a
 description at or above the version listed.
 
 **It is fuzzed with `cargo-fuzz`**, in a crate of its own beside the

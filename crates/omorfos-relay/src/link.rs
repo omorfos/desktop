@@ -386,7 +386,8 @@ impl Link {
             self.again = false;
         }
         let passing = passing_mut(&mut self.up, &mut self.down, way);
-        let open = from.map_or(Ok(true), |from| take_in(from, passing))?;
+        let open = from.map_or(Ok(true), |from| take_in(from, passing));
+        let open = self.refusing(way, open)?;
         let passed = self.pass(way);
         // What came before the end has been passed on, as far as it could
         // be without waiting.
@@ -449,7 +450,10 @@ impl Link {
     /// destroys, moves it to be written, and writes what it can.
     fn pass(&mut self, way: Way) -> Result<(), Ended> {
         match way {
-            Way::Up => self.pass_up()?,
+            Way::Up => {
+                let passed = self.pass_up();
+                self.refusing(way, passed)?;
+            }
             Way::Down => self.pass_down()?,
         }
         for freed in self.keeping.journal.freed() {
@@ -459,6 +463,19 @@ impl Link {
         self.flush_keeping();
         self.give_out(Way::Up)?;
         self.give_out(Way::Down)
+    }
+
+    /// Tells the program, where what was read `way` was broken by what it
+    /// sent, why it is let go, as the compositor would have told it: an
+    /// error of the display, written as far as it can be.
+    fn refusing<T>(&mut self, way: Way, read: Result<T, Ended>) -> Result<T, Ended> {
+        if let (Way::Up, Err(Ended::Broken(broken))) = (way, &read) {
+            let why = broken.0.as_bytes();
+            let error = journal::said_after(DISPLAY, ERROR, &[DISPLAY, broken.code()], why);
+            self.down.push(error);
+            let _ = self.give_out(Way::Down);
+        }
+        read
     }
 
     /// Passes on what the program has sent, while it is live.
@@ -671,7 +688,7 @@ fn take_in(from: &UnixStream, passing: &mut Passing) -> Result<bool, Ended> {
         }
     }
     if flags.contains(ReturnFlags::CTRUNC) || passing.read_fds.len() > DESCRIPTORS {
-        return Err(Broken("more descriptors than are kept").into());
+        return Err(wire::TOO_MANY_DESCRIPTORS.into());
     }
     Ok(open)
 }
@@ -932,11 +949,14 @@ mod tests {
     }
 
     #[test]
-    fn what_cannot_be_passed_on_ends_the_link() {
+    fn what_cannot_be_passed_on_ends_the_link_telling_the_program_why() {
+        // As the compositor would have told it, on the display.
+        let told = |code, reason: &str| journal::said_after(1, 0, &[1, code], reason.as_bytes()).0;
         let (mut link, program, _compositor) = linked();
         send(&program, &message(9, 0, &[]), &[]);
         let broken = |reason| Err(Ended::Broken(Broken(reason)));
         assert_eq!(link.read(Way::Up), broken("a request to no object"));
+        assert_eq!(received(&program).0, told(0, "a request to no object"));
 
         let (mut link, program, _compositor) = linked();
         let mut missized = message(1, 1, &[]);
@@ -946,6 +966,8 @@ mod tests {
             link.read(Way::Up),
             broken("a message of a size no message has")
         );
+        let said = told(1, "a message of a size no message has");
+        assert_eq!(received(&program).0, said);
 
         let (mut link, program, _compositor) = linked();
         let mut sent = get_registry();
@@ -1095,9 +1117,14 @@ mod tests {
             broken("a message of a size no message has")
         );
 
-        let (mut link, _program, compositor) = linked();
+        let (mut link, program, compositor) = linked();
         send(&compositor, &message(99, 0, &[]), &[]);
         assert_eq!(link.read(Way::Down), broken("an event to no object"));
+        assert_eq!(
+            received(&program),
+            (Vec::new(), 0),
+            "not the program's doing"
+        );
     }
 
     #[test]
@@ -1273,7 +1300,7 @@ mod tests {
         link.join(towards).unwrap();
         // No seat is offered: the relay's sync is answered at once.
         send(&next, &message(3, 0, &words(&[0])), &[]);
-        let gone = Err(Ended::Broken(Broken("a global that is no longer offered")));
+        let gone = Err(Ended::Broken(wire::GLOBAL_GONE));
         assert_eq!(link.read(Way::Down), gone);
         drop(program);
     }
@@ -1424,7 +1451,7 @@ mod tests {
         // Far more than there is room for, which the kernel cuts short.
         let fds = vec![memory.as_fd(); 2 * AT_ONCE];
         send(&program, &[0], &fds);
-        let too_many = Err(Ended::Broken(Broken("more descriptors than are kept")));
+        let too_many = Err(Ended::Broken(wire::TOO_MANY_DESCRIPTORS));
         assert_eq!(link.read(Way::Up), too_many, "at once");
 
         let (mut link, program, _compositor) = linked();

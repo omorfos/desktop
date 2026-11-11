@@ -33,6 +33,60 @@ pub struct Header {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Broken(pub &'static str);
 
+/// The errors of `wl_display`: an object named that is not there or cannot
+/// be made, a request that cannot be read, and more than can be kept.
+const INVALID_OBJECT: u32 = 0;
+const INVALID_METHOD: u32 = 1;
+const NO_MEMORY: u32 = 2;
+
+/// A request to an object that is not there.
+pub const NO_OBJECT: Broken = Broken("a request to no object");
+/// An object made with a number another has.
+pub const NUMBER_TAKEN: Broken = Broken("an object made with a number that is not free");
+/// An object made without a number for it.
+pub const NO_NUMBER: Broken = Broken("an object made with no number");
+/// An object made by the program with a number of the compositor's.
+pub const COMPOSITORS_NUMBER: Broken =
+    Broken("an object made with one of the compositor's numbers");
+/// An object made of no interface known.
+pub const NO_INTERFACE: Broken = Broken("an object made of no interface");
+/// A global bound of an interface the compositor does not offer.
+pub const NOT_OFFERED: Broken = Broken("an interface the compositor does not offer");
+/// A global bound at a version the compositor does not offer.
+pub const VERSION_NOT_OFFERED: Broken = Broken("a version the compositor does not offer");
+/// A global bound that is no longer offered.
+pub const GLOBAL_GONE: Broken = Broken("a global that is no longer offered");
+/// More descriptors sent than are kept.
+pub const TOO_MANY_DESCRIPTORS: Broken = Broken("more descriptors than are kept");
+
+/// What a program breaks by naming an object that is not there, or one
+/// that cannot be made.
+const NO_SUCH_OBJECT: [Broken; 8] = [
+    NO_OBJECT,
+    NUMBER_TAKEN,
+    NO_NUMBER,
+    COMPOSITORS_NUMBER,
+    NO_INTERFACE,
+    NOT_OFFERED,
+    VERSION_NOT_OFFERED,
+    GLOBAL_GONE,
+];
+
+impl Broken {
+    /// The error of `wl_display` a compositor would tell a program that
+    /// sent what is broken so.
+    #[must_use]
+    pub fn code(self) -> u32 {
+        if NO_SUCH_OBJECT.contains(&self) {
+            INVALID_OBJECT
+        } else if self == TOO_MANY_DESCRIPTORS {
+            NO_MEMORY
+        } else {
+            INVALID_METHOD
+        }
+    }
+}
+
 const SHORT: Broken = Broken("a message shorter than what it carries");
 const LONG: Broken = Broken("a message longer than what it carries");
 
@@ -99,7 +153,7 @@ pub fn read<'a>(body: &'a [u8], message: &MessageDesc) -> Result<Carried<'a>, Br
                 let made = word(body, at).ok_or(SHORT)?;
                 at += 4;
                 if made == 0 {
-                    return Err(Broken("an object made with no number"));
+                    return Err(NO_NUMBER);
                 }
                 carried.made = Some(made);
                 carried.named = string.zip(number);
@@ -282,6 +336,14 @@ pub(crate) mod tests {
         request(known::display(), "get_registry")
             .child_interface
             .unwrap()
+    }
+
+    #[test]
+    fn what_is_broken_is_told_as_the_error_a_compositor_would_tell() {
+        assert_eq!(NO_OBJECT.code(), 0, "an object that is not");
+        assert_eq!(GLOBAL_GONE.code(), 0, "or cannot be made");
+        assert_eq!(TOO_MANY_DESCRIPTORS.code(), 2, "more than is kept");
+        assert_eq!(SHORT.code(), 1, "what cannot be read");
     }
 
     #[test]

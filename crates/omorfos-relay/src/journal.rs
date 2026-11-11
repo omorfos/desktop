@@ -751,7 +751,7 @@ impl Journal {
             let (mut bytes, fds) = kept.made.sending();
             if kept.bound {
                 let name = wire::word(&bytes, HEADER).unwrap_or_default();
-                let name = rename(name).ok_or(Broken("a global that is no longer offered"))?;
+                let name = rename(name).ok_or(wire::GLOBAL_GONE)?;
                 wire::put(&mut bytes, HEADER, name);
             }
             sending.push((bytes, fds));

@@ -313,6 +313,14 @@ fn a_program_that_sends_what_cannot_be_read_is_let_go_and_said_to_be() {
         )),
         "{said}"
     );
+    // Told why first, as the compositor would have told it: on the display,
+    // that it named an object that is not there.
+    let why = b"a request to no object\0\0";
+    let mut error = 1_u32.to_ne_bytes().to_vec();
+    error.extend((u32::try_from(20 + why.len()).unwrap() << 16).to_ne_bytes());
+    error.extend([1_u32, 0, 23].iter().flat_map(|word| word.to_ne_bytes()));
+    error.extend(why);
+    assert_eq!(read(&mut held, &mut program, error.len()), error);
 }
 
 #[test]

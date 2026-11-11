@@ -3641,7 +3641,7 @@ mod tests {
         let mut done = message(sync, 0, &words(&[0]));
         let header = wire::header(&done).unwrap().unwrap();
         let answered = kept.keeping.before(&kept.objects, header, &mut done);
-        assert_eq!(answered, Err(Broken("a global that is no longer offered")));
+        assert_eq!(answered, Err(wire::GLOBAL_GONE));
     }
 
     #[test]

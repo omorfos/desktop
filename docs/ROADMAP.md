@@ -787,12 +787,10 @@ what only games and touchpads need last.
       breaks a bound; telling the compositor who each program is, which
       it takes in place of asking the socket; fuzzed by `cargo-fuzz` in
       a nightly CI job of its own. A restart still closes every window.
-- [ ] Known gaps in the relay: a program it lets go for what it sent is
-      closed without the protocol's error, which the compositor would
-      have sent it; it makes its list of what to wait on anew each turn,
-      where epoll would keep one; and the holder learns that it has ended
-      only between one compositor and the next, so one that hangs is not
-      noticed.
+- [ ] Known gaps in the relay: it makes its list of what to wait on anew
+      each turn, where epoll would keep one; and the holder learns that
+      it has ended only between one compositor and the next, so one that
+      hangs is not noticed.
 - [x] Programs kept by the relay, the means (ADR 61, step 2a): a
       program's connection outliving the compositor; what it has made
       written down as it is made, and made again for the next compositor

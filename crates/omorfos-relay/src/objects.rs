@@ -88,7 +88,7 @@ impl Objects {
     /// not as described, or making an object it may not.
     pub fn request(&mut self, message: &[u8], header: Header) -> Result<Read, Broken> {
         let object = self.known.get(&header.object).filter(|object| !object.gone);
-        let object = object.copied().ok_or(Broken("a request to no object"))?;
+        let object = object.copied().ok_or(wire::NO_OBJECT)?;
         let described = object.interface.requests.get(usize::from(header.opcode));
         let described = described.ok_or(Broken("a request its object has not"))?;
         if described.since > object.version {
@@ -98,9 +98,7 @@ impl Objects {
         let mut made_of = None;
         if let Some(made) = carried.made {
             if made >= SERVERS {
-                return Err(Broken(
-                    "an object made with one of the compositor's numbers",
-                ));
+                return Err(wire::COMPOSITORS_NUMBER);
             }
             let (interface, version) = Self::what(described, carried, object.version)?;
             self.make(made, interface, version)?;
@@ -138,7 +136,7 @@ impl Objects {
                 return Err(Broken("an object made with one of the program's numbers"));
             }
             let interface = described.child_interface;
-            let interface = interface.ok_or(Broken("an object made of no interface"))?;
+            let interface = interface.ok_or(wire::NO_INTERFACE)?;
             self.make(made, interface, object.version)?;
             made_of = Some((made, interface, object.version));
         }
@@ -222,16 +220,14 @@ impl Objects {
         if let Some(interface) = described.child_interface {
             return Ok((interface, version));
         }
-        let (name, version) = carried
-            .named
-            .ok_or(Broken("an object made of no interface"))?;
+        let (name, version) = carried.named.ok_or(wire::NO_INTERFACE)?;
         let name = std::str::from_utf8(name).ok();
         let interface = name.and_then(known::global);
-        let interface = interface.ok_or(Broken("an interface the compositor does not offer"))?;
+        let interface = interface.ok_or(wire::NOT_OFFERED)?;
         if (1..=interface.version).contains(&version) {
             Ok((interface, version))
         } else {
-            Err(Broken("a version the compositor does not offer"))
+            Err(wire::VERSION_NOT_OFFERED)
         }
     }
 
@@ -257,7 +253,7 @@ impl Objects {
             Some(object) => object.gone && number >= SERVERS,
         };
         if !free {
-            return Err(Broken("an object made with a number that is not free"));
+            return Err(wire::NUMBER_TAKEN);
         }
         let object = Object {
             interface,
