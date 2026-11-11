@@ -308,3 +308,22 @@ fn the_version_held_is_handed_the_socket_itself_and_the_relay_stopped() {
     assert!(place.told().ends_with(";again,older,;"), "{}", place.told());
     assert_eq!(place.relays(), 1);
 }
+
+#[test]
+fn how_a_compositor_that_failed_ended_is_said() {
+    let place = Place::new();
+    let then = "printf 'up\\n' >&0; if [ $n = 1 ]; then kill -s KILL $$; fi; exit 3";
+    place.install(&place.compositor(), then);
+    let (failed, said) = place.hold();
+    assert!(failed);
+    assert!(said.contains("ended with signal: 9 (SIGKILL)"), "{said}");
+    assert!(said.contains("ended with exit status: 3"), "{said}");
+}
+
+#[test]
+fn a_compositor_that_ended_well_is_not_said_to_have_ended_badly() {
+    let place = Place::new();
+    place.install(&place.compositor(), "printf 'up\\n' >&0; exit 0");
+    let (_, said) = place.hold();
+    assert!(!said.contains("ended with"), "{said}");
+}

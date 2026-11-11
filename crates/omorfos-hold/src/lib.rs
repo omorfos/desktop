@@ -418,12 +418,17 @@ impl Hold {
             .stood
             .as_mut()
             .map(|stood| stood.closed(Instant::now()));
-        let status = child.wait();
+        let status = child.wait().ok();
         let _ = self.stood.as_mut().map(|stood| stood.gone(Instant::now()));
         if self.policy.is_up() {
             self.held = Some(file);
         }
-        status.map_or(true, |status| !status.success())
+        // How it ended, a signal or what it gave, is what tells a crash
+        // from a compositor that gave up.
+        if let Some(status) = status.filter(|status| !status.success()) {
+            let _ = writeln!(log, "omorfos-hold: the compositor ended with {status}");
+        }
+        !status.is_some_and(|status| status.success())
     }
 
     /// The compositor's end of a connection to the relay, which has been

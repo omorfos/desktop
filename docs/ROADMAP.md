@@ -766,9 +766,11 @@ what only games and touchpads need last.
       hardware, switched to another, it drew to screens it no longer held
       ("cannot draw on eDP-1 … Permission denied") and then ended as
       failed, saying nothing more, so the holder started it again; it is
-      to wait until the terminal is shown again. First the holder is to
-      say how a compositor ended, its exit code or the signal that ended
-      it, where it now says only that it failed.
+      to wait until the terminal is shown again. The holder now says how
+      a compositor that failed ended, the signal or the exit status, so
+      the next time it happens the log says whether it crashed or gave up.
+      On 11 November it outlived a switch to another terminal and back,
+      saying only that it could not draw meanwhile.
 - [x] Every protocol the compositor offers listed in code, each with how
       a program's state in it would be replayed, or that there is none,
       and a test that what is offered is the list; from then on a
