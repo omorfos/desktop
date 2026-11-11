@@ -758,10 +758,9 @@ what only games and touchpads need last.
       hand, started from a console, but not yet by a login screen, and
       the backend's part of it, taking the connection and becoming the
       holder, is run by no test; a compositor that hangs without ending is
-      waited for for ever; `restart_compositor` has neither a key nor
-      an entry in a menu; and the keyboard layout chosen by `next_layout`
-      is not told to the next compositor, which starts on the first of
-      `keyboard.layout` while the programs kept carry on.
+      waited for for ever; and `restart_compositor` has neither a key
+      nor an entry in a menu. The keyboard layout chosen by `next_layout`
+      is now told to the next compositor, which types with it.
 - [ ] The compositor ending when its virtual terminal is left: on real
       hardware, switched to another, it drew to screens it no longer held
       ("cannot draw on eDP-1 … Permission denied") and then ended as

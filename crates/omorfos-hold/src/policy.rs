@@ -129,6 +129,7 @@ impl Policy {
             Word::Locked => self.told.locked = true,
             Word::Unlocked => self.told.locked = false,
             Word::Display(display) => self.told.display = Some(display),
+            Word::Layout(layout) => self.told.layout = Some(layout),
             Word::SteppingDown => self.stepping_down = true,
             Word::Updated => self.told.updated = true,
             // The card it is said with is the holder's to keep, and how long
@@ -238,12 +239,20 @@ mod tests {
         policy.starting(Which::Installed);
         policy.heard(Word::Display(2));
         policy.heard(Word::Locked);
+        policy.heard(Word::Layout(1));
         let told = policy.starting(Which::Installed);
-        assert_eq!((told.locked, told.display), (true, Some(2)));
+        assert_eq!(
+            (told.locked, told.display, told.layout),
+            (true, Some(2), Some(1))
+        );
         policy.heard(Word::Unlocked);
         policy.heard(Word::Display(5));
+        policy.heard(Word::Layout(0));
         let told = policy.starting(Which::Installed);
-        assert_eq!((told.locked, told.display), (false, Some(5)));
+        assert_eq!(
+            (told.locked, told.display, told.layout),
+            (false, Some(5), Some(0))
+        );
     }
 
     #[test]

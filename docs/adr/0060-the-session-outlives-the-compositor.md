@@ -75,6 +75,10 @@ be lost, and decides nothing.
   X display number the session had, waiting for it as ADR 27 does when
   the X server is started again, so that `DISPLAY` stays right wherever
   it was told.
+- **Which keyboard layout is typed with**, by its place among those
+  configured, said as it changes, so that the programs kept, typing on,
+  are not typed at with another; the next compositor types with it if
+  the configuration still has a layout there.
 - **Nothing else.** No configuration, no policy and no service. The
   compositor goes on starting the components, the X server and what
   starts with the session (ADR 35). The components and the X server end
@@ -85,7 +89,8 @@ be lost, and decides nothing.
 
 The holder is told a few words by the compositor over a pipe: that it is
 up and serving the socket, that the session is locked or unlocked, which
-X display it has, and that it is stepping down. The pipe is the
+X display it has, which keyboard layout is typed with, and that it is
+stepping down. The pipe is the
 compositor's alone, closed in everything it starts, so that no program it
 started can say the session is unlocked. The holder reads the words as it
 would anything a program says, and passes over one it does not know: a

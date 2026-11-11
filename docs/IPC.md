@@ -316,6 +316,7 @@ compositor before left, and an empty line after them:
 | `again` | A compositor has been started in this login before, and started what starts with the session: it is not started again, nor the session announced to D-Bus and systemd again. |
 | `locked` | The session was locked. The compositor comes up locked, held by nobody, and starts the locker. |
 | `display N` | The session's X server had the number N, which the next is to have. |
+| `layout N` | The keyboard's layout in place N of those `keyboard.layout` lists, counted from 0, was typed with. The compositor types with it too, if it has a layout there, and otherwise with the first. |
 | `older` | The compositor is a version older than the one installed, which would not come up: the user is told the fix it was to bring is not in. |
 | `relayed` | Programs reach the compositor through the relay (ADR 61). Two descriptors are handed, not one: first the compositor's end of its connection to the relay, which it serves in place of the socket, then the socket, of which it takes the name alone. |
 | `updated` | The compositor before stepped down for this new version though the session was in use, having waited as long as it may for a moment it was not: the user is told so, once. Told to the next compositor alone. |
@@ -330,6 +331,7 @@ changes:
 | `up` | It is serving the socket. One that ends before it said so did not come up. |
 | `locked`, `unlocked` | The session is locked, or no longer. |
 | `display N` | The session's X server has the number N. |
+| `layout N` | The keyboard's layout in place N, counted from 0, is typed with. Not said of the first until another has been. |
 | `stepping down` | It is about to end, to be started again with the newest version installed; or, relayed, the relay has ended, and the programs with it. One that ends without having said so, and without failing, has ended the session. |
 | `updated` | It is stepping down for its new version though the session is in use: the next is to say so. Said just before `stepping down`, which a holder that does not know this line still acts on. |
 | `shown` | The session is shown: at once, or, started anew under a relay, once what the relay kept is back (ADR 62). Said once. The holder says on its log how long the session stood still, from when the compositor before stepped down, or ended, until this, and how much of that went to the one before ending (closing its connection to the holder), to closing what was opened for it, to its process being gone, to starting the next, to its coming up (until it says `up`), and to its showing the session. |

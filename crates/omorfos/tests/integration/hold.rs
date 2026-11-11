@@ -17,6 +17,7 @@ use omorfos_config::Action;
 use omorfos_ipc::hold::{self, Heard, Told, Word};
 
 use crate::common::{HEIGHT, Session, WIDTH, runnable};
+use crate::windows::RED;
 
 /// The holder's end of the connection to a compositor it started, with
 /// what has been heard on it so far.
@@ -157,6 +158,53 @@ fn the_holder_hears_when_the_session_is_locked_and_unlocked() {
     lock.unlock_and_destroy();
     session.roundtrip(&mut locker);
     assert_eq!(holder.said(), [Word::Unlocked]);
+}
+
+#[test]
+fn the_holder_hears_which_layout_is_typed_with() {
+    let config = "keyboard: { layout: 'us,de' }\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let (mut holder, _) = hold(&mut session, &Told::default());
+    session.step();
+    assert_eq!(
+        holder.said(),
+        [Word::Up, Word::Shown],
+        "the first is not said"
+    );
+    session.compositor_mut().perform(&Action::NextLayout);
+    session.step();
+    assert_eq!(holder.said(), [Word::Layout(1)]);
+}
+
+#[test]
+fn told_which_layout_was_typed_with_it_comes_up_typing_with_it() {
+    let config = "keyboard: { layout: 'us,de' }\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let told = Told {
+        layout: Some(1),
+        ..Told::default()
+    };
+    let (mut holder, _) = hold(&mut session, &told);
+    let mut app = session.connect_plain();
+    session.open(&mut app, "app", (200, 100), RED);
+    assert_eq!(app.state.layout, 1);
+    assert_eq!(holder.said(), [Word::Up, Word::Shown], "nothing new to say");
+}
+
+#[test]
+fn told_a_layout_it_does_not_have_it_comes_up_typing_with_the_first() {
+    // Not the second, as xkb would have it, going round them.
+    let config = "keyboard: { layout: 'us,de' }\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let told = Told {
+        layout: Some(3),
+        ..Told::default()
+    };
+    let (mut holder, _) = hold(&mut session, &told);
+    let mut app = session.connect_plain();
+    session.open(&mut app, "app", (200, 100), RED);
+    assert_eq!(app.state.layout, 0);
+    assert!(holder.said().contains(&Word::Layout(0)), "the next is told");
 }
 
 #[test]

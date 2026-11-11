@@ -43,6 +43,9 @@ pub struct Told {
     pub locked: bool,
     /// The number the session's X server had, which the next is to have.
     pub display: Option<u32>,
+    /// Which of the keyboard's layouts was typed with, by its place among
+    /// those configured, which the next is to type with if it has it.
+    pub layout: Option<u32>,
     /// The compositor is a version older than the one installed, which
     /// would not come up: the user is to be told that a fix meant to be
     /// in is not.
@@ -78,6 +81,9 @@ pub enum Word {
     Unlocked,
     /// The session's X server has this number.
     Display(u32),
+    /// The keyboard's layout in this place among those configured is
+    /// typed with.
+    Layout(u32),
     /// It is about to end, to be started again, as a new version is.
     SteppingDown,
     /// It is stepping down for its new version though the session is in
@@ -110,6 +116,9 @@ impl Told {
         }
         if let Some(display) = self.display {
             let _ = writeln!(text, "display {display}");
+        }
+        if let Some(layout) = self.layout {
+            let _ = writeln!(text, "layout {layout}");
         }
         if self.older {
             text.push_str("older\n");
@@ -162,6 +171,7 @@ impl Told {
                 let seat = line.strip_prefix("seat ").filter(|seat| named(seat));
                 Self {
                     display: number(line, "display ").or(told.display),
+                    layout: number(line, "layout ").or(told.layout),
                     seat: seat.map(str::to_owned).or(told.seat),
                     ..told
                 }
@@ -179,6 +189,7 @@ impl Word {
             Self::Locked => "locked\n".to_owned(),
             Self::Unlocked => "unlocked\n".to_owned(),
             Self::Display(display) => format!("display {display}\n"),
+            Self::Layout(layout) => format!("layout {layout}\n"),
             Self::SteppingDown => "stepping down\n".to_owned(),
             Self::Updated => "updated\n".to_owned(),
             Self::Showing => "showing\n".to_owned(),
@@ -197,7 +208,9 @@ impl Word {
             "updated" => Some(Self::Updated),
             "showing" => Some(Self::Showing),
             "shown" => Some(Self::Shown),
-            _ => number(line, "display ").map(Self::Display),
+            _ => number(line, "display ")
+                .map(Self::Display)
+                .or_else(|| number(line, "layout ").map(Self::Layout)),
         }
     }
 }
@@ -377,6 +390,7 @@ mod tests {
                 again: true,
                 locked: true,
                 display: Some(3),
+                layout: Some(1),
                 older: true,
                 relayed: true,
                 updated: true,
@@ -387,6 +401,7 @@ mod tests {
                 again: true,
                 locked: false,
                 display: None,
+                layout: None,
                 older: false,
                 relayed: false,
                 updated: false,
@@ -403,12 +418,14 @@ mod tests {
 
     #[test]
     fn what_a_holder_does_not_know_it_was_told_is_passed_over() {
-        let told =
-            Told::read("again\nsomething new\ndisplay x\ndisplay 2\nseat \nseat a b\nlocked\n\n");
+        let told = Told::read(
+            "again\nsomething new\ndisplay x\ndisplay 2\nlayout\nlayout -1\nseat \nseat a b\nlocked\n\n",
+        );
         let expected = Told {
             again: true,
             locked: true,
             display: Some(2),
+            layout: None,
             older: false,
             relayed: false,
             updated: false,
@@ -426,6 +443,8 @@ mod tests {
             Word::Unlocked,
             Word::Display(0),
             Word::Display(12),
+            Word::Layout(0),
+            Word::Layout(2),
             Word::SteppingDown,
             Word::Updated,
             Word::Showing,
@@ -437,12 +456,22 @@ mod tests {
             assert_eq!(Word::read(line.trim_end()), Some(word), "{line:?}");
         }
         assert_eq!(Word::Display(7).line(), "display 7\n");
+        assert_eq!(Word::Layout(1).line(), "layout 1\n");
         assert_eq!(Word::SteppingDown.line(), "stepping down\n");
     }
 
     #[test]
     fn a_word_not_known_here_is_none() {
-        for line in ["", "down", "display", "display -1", "display 1 2", "up!"] {
+        let lines = [
+            "",
+            "down",
+            "display",
+            "display -1",
+            "display 1 2",
+            "up!",
+            "layout x",
+        ];
+        for line in lines {
             assert_eq!(Word::read(line), None, "{line:?}");
         }
     }

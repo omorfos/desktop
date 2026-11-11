@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use omorfos_ipc::hold::{self, Told, Word};
 use omorfos_ipc::relay::{self, Hand};
 use smithay::backend::renderer::sync::SyncPoint;
+use smithay::input::keyboard::Layout;
 use smithay::output::Output;
 
 use crate::compositor::{Compositor, Drawn};
@@ -80,6 +81,9 @@ struct Said {
     shown: bool,
     locked: bool,
     display: Option<u32>,
+    /// The place of the keyboard's layout typed with among those
+    /// configured.
+    layout: u32,
     stepping_down: Option<bool>,
 }
 
@@ -95,6 +99,7 @@ impl Said {
         };
         let locked = (now.locked != self.locked).then_some(lock);
         let display = now.display.filter(|_| now.display != self.display);
+        let layout = (now.layout != self.layout).then_some(Word::Layout(now.layout));
         let stepping = now.stepping_down.filter(|_| self.stepping_down.is_none());
         // Said first, for a holder that does not know it to step down still.
         let updated = stepping
@@ -106,6 +111,7 @@ impl Said {
             shown,
             locked,
             display.map(Word::Display),
+            layout,
             updated,
             stepping,
         ]
@@ -138,13 +144,16 @@ impl Compositor {
                 relayed,
                 locked,
                 older,
+                layout,
                 ..
             } = told;
+            // The first is typed with until another is chosen.
             let said = Said {
                 up: false,
                 shown: false,
                 locked: told.locked,
                 display: told.display,
+                layout: layout.unwrap_or(0),
                 stepping_down: None,
             };
             self.holder = Some(Holder {
@@ -164,6 +173,9 @@ impl Compositor {
             });
             if older {
                 self.problems.push(OLDER.to_owned());
+            }
+            if let Some(layout) = layout {
+                self.type_with(layout);
             }
             // A session that was locked is locked before anything of it
             // could be drawn, and the locker started to unlock it: under a
@@ -306,11 +318,36 @@ impl Compositor {
         }
     }
 
+    /// Types with the keyboard's layout in the place `layout` among those
+    /// configured, as the compositor before did, if there is one there:
+    /// the configuration may have changed since.
+    fn type_with(&mut self, layout: u32) {
+        let keyboard = self.keyboard.clone();
+        keyboard.with_xkb_state(self, |mut context| {
+            let xkb = context.xkb().lock();
+            let known = xkb.is_ok_and(|xkb| xkb.layouts().any(|known| known == Layout(layout)));
+            if known {
+                context.set_layout(Layout(layout));
+            }
+        });
+    }
+
+    /// The place of the keyboard's layout typed with among those
+    /// configured.
+    fn typed_with(&mut self) -> Option<u32> {
+        let keyboard = self.keyboard.clone();
+        keyboard.with_xkb_state(self, |context| {
+            let xkb = context.xkb().lock();
+            xkb.ok().map(|xkb| xkb.active_layout().0)
+        })
+    }
+
     /// Tells the holder what has changed since it was last told.
     pub(crate) fn tell_holder(&mut self) {
         let locked = self.is_locked();
         let display = self.x11_number();
         let shown = self.showing();
+        let layout = self.holder.is_some().then(|| self.typed_with()).flatten();
         let Some(holder) = self.holder.as_mut() else {
             return;
         };
@@ -319,6 +356,7 @@ impl Compositor {
             shown,
             locked,
             display,
+            layout: layout.unwrap_or(holder.said.layout),
             stepping_down: holder.stepping_down,
         };
         // What cannot be said is not said: a holder that does not read is
