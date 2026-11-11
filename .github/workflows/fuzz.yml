@@ -1,21 +1,25 @@
 name: Fuzz
 
-# The relay reads what untrusted programs send before the compositor does,
-# so its reader is fuzzed (ADR 61): for two minutes on each change to what
-# it reads with, and for an hour every night. cargo-fuzz needs a nightly
-# toolchain, which nothing else here uses; the project's own is stable.
+# What reads untrusted input is fuzzed, a target for each: the relay's
+# reader, which reads what programs send before the compositor does (ADR
+# 61), the configuration, and what crosses omorfos's own sockets; for two
+# minutes on each change to what they read with, and for an hour every
+# night. cargo-fuzz needs a nightly toolchain, which nothing else here
+# uses; the project's own is stable.
 on:
   push:
     branches: [main]
     paths:
       - "crates/omorfos-relay/**"
       - "crates/omorfos-ipc/**"
+      - "crates/omorfos-config/**"
       - "fuzz/**"
       - ".github/workflows/fuzz.yml"
   pull_request:
     paths:
       - "crates/omorfos-relay/**"
       - "crates/omorfos-ipc/**"
+      - "crates/omorfos-config/**"
       - "fuzz/**"
       - ".github/workflows/fuzz.yml"
   schedule:
@@ -35,10 +39,15 @@ env:
   NIGHTLY: nightly-2026-10-01
 
 jobs:
-  messages:
-    name: Messages
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
     runs-on: ubuntu-26.04
     timeout-minutes: 90
+    strategy:
+      # Each is run whatever another finds.
+      fail-fast: false
+      matrix:
+        target: [messages, configuration, ipc]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,17 +62,18 @@ jobs:
         env:
           # Longer at night than on a change.
           SECONDS_TO_RUN: ${{ github.event_name == 'schedule' && '3600' || '120' }}
+          TARGET: ${{ matrix.target }}
         # For the toolchain's own target: cargo-fuzz otherwise builds for
         # the one it was itself built for, and the one installed is built
         # for musl, whose static libc the sanitizer cannot work with.
         run: |
           host=$(rustc "+$NIGHTLY" -vV | sed -n 's/^host: //p')
-          cargo "+$NIGHTLY" fuzz run --target "$host" messages -- \
+          cargo "+$NIGHTLY" fuzz run --target "$host" "$TARGET" -- \
             -max_total_time="$SECONDS_TO_RUN" -rss_limit_mb=2048
       - name: Keep what made it fail
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fuzz-artifacts
+          name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/
           retention-days: 30

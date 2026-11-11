@@ -314,21 +314,34 @@ for i in $(seq 1 25); do "$bin" >/dev/null 2>&1 || echo "failed on run $i"; done
 
 ## Fuzzing
 
-The relay reads what untrusted programs send before the compositor does,
-so its reader is fuzzed (ADR 61). The fuzzer is a crate of its own in
-`fuzz/`, outside the workspace, as `cargo-fuzz` needs a nightly toolchain
-and the project is built with a stable one. CI runs it for two minutes on
-each change to the relay or `omorfos-ipc`, and for an hour each night
-(`.github/workflows/fuzz.yml`). To run it by hand, with a nightly
-toolchain and `cargo-fuzz` installed:
+What reads untrusted input is fuzzed, each by a target of its own:
+
+- `messages`: the relay's reader, which reads what programs send before
+  the compositor does (ADR 61);
+- `configuration`: the configuration's files, a byte choosing which, read
+  as the compositor reads them, and read again over what that made, as a
+  reload is;
+- `ipc`: what crosses omorfos's own sockets: a request on the compositor's
+  socket, with the action it may carry, which any program may send; a
+  reply, as `omorfosctl` reads it; and what the holder, the relay and the
+  compositor say to each other, each of which reads as it did once written
+  again.
+
+The fuzzer is a crate of its own in `fuzz/`, outside the workspace, as
+`cargo-fuzz` needs a nightly toolchain and the project is built with a
+stable one. CI runs each target for two minutes on each change to what it
+reads with, and for an hour each night (`.github/workflows/fuzz.yml`). To
+run one by hand, with the nightly CI pins and `cargo-fuzz` installed:
 
 ```sh
 cd fuzz
-cargo +nightly fuzz run messages -- -max_total_time=60
+cargo +nightly-2026-10-01 fuzz run --target x86_64-unknown-linux-gnu ipc -- -max_total_time=60
 ```
 
-What makes it fail is kept in `fuzz/artifacts/`. Turn each into a test of
-the relay before mending it.
+What makes one fail is kept in `fuzz/artifacts/<target>/`. Turn each into
+a test of what failed before mending it. `configuration` is slow, some
+thirty runs a second, as each load reads the built-in theme's stylesheet
+anew.
 
 ## Flaky tests
 

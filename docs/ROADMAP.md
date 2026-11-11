@@ -1546,9 +1546,14 @@ Ongoing, and taken between the stages above as much as after them.
 
 Security:
 
-- [ ] The configuration, theme and IPC parsers fuzzed. `cargo-fuzz` needs
-      a nightly toolchain, so it runs as a job of its own and not among
-      the gates, which build with the stable one.
+- [x] The configuration, theme and IPC parsers fuzzed, beside the relay's
+      reader: `configuration` and `ipc` in `fuzz/`, each run by CI as a
+      job of its own on a change and for an hour each night, as
+      `cargo-fuzz` needs a nightly toolchain and the gates build with the
+      stable one.
+- [ ] The built-in theme's stylesheet read once, not at each load of the
+      configuration: it is most of what a load costs, some 1 ms of 1.75,
+      and keeps the `configuration` fuzzer to some thirty runs a second.
 - [x] Sandboxed programs recognised and held to less
       (`security-context-v1`): done in stage 3.
 - [ ] What a sandbox says its program is (the application's name) kept
