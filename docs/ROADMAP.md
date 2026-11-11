@@ -255,9 +255,13 @@ calls for them.
       not the theme's to say.
 - [x] A private window's last moment, as it fades when closed, left out
       of pictures as the window was.
+- [x] The menus of a program written for X11 with a private window left
+      out of pictures with it, the program known by the process it says
+      each window is of (`_NET_WM_PID`).
 - [ ] Known gaps in what is private: a notification about a private
-      window, and its menus if it is written for X11, are in a picture;
-      and a program cannot yet say of its own window that it is private.
+      window is in a picture, as is a menu of a program written for X11
+      that does not say what process it is of; and a program cannot yet
+      say of its own window that it is private.
 - [ ] Sharing the screen in Firefox froze once, on real hardware, just
       after a private window opened, and not again with every picture
       logged: what failed, if anything, is not known. Waits on: its

@@ -640,6 +640,78 @@ fn a_menu_of_a_program_written_for_x11_is_shown_where_the_program_puts_it() {
     open(&mut session, &program, "after", (50, 50), 0x0000_ff00);
 }
 
+/// Says that a window is a process's, as a program does of each of its
+/// windows, menus included.
+fn owned(session: &mut Session, program: &RustConnection, window: u32, process: u32) {
+    meanwhile(session, || {
+        let pid = program.intern_atom(false, b"_NET_WM_PID").unwrap();
+        let pid = pid.reply().unwrap().atom;
+        program
+            .change_property32(
+                PropMode::REPLACE,
+                window,
+                pid,
+                AtomEnum::CARDINAL,
+                &[process],
+            )
+            .unwrap();
+        program.flush().unwrap();
+    });
+}
+
+#[test]
+fn the_menus_of_a_program_with_a_private_window_are_not_in_a_picture() {
+    let private = "rules:\n  - match: { app_id: xwallet }\n    private: true\n";
+    let blank = "capture { background: #00ff00; }";
+    let mut session = Session::with_config(&[("rules.yaml", private), ("theme.css", blank)]);
+    start(&mut session);
+    let program = connect(&mut session);
+    let area = (0, 0, 400, 300);
+    let wallet = create(
+        &mut session,
+        &program,
+        "xwallet",
+        area,
+        (0x00ff_0000, false),
+    );
+    owned(&mut session, &program, wallet, 4242);
+    show(&mut session, &program, wallet, true);
+    session.eventually(|session| session.draw().at(200, 150) == RED);
+
+    // Its menu, reaching past it, and a menu of another program.
+    let mut menu = |name: &str, area, process| {
+        let menu = create(&mut session, &program, name, area, (0x0000_00ff, true));
+        owned(&mut session, &program, menu, process);
+        show(&mut session, &program, menu, true);
+    };
+    menu("menu", (380, 280, 50, 40), 4242);
+    menu("other", (500, 400, 50, 40), 9999);
+    // Beside them, a window of a program written for Wayland, which says
+    // nothing of a process.
+    let mut wayland = session.connect();
+    session.open(&mut wayland, "notes", (10, 10), GREEN);
+    session.eventually(|session| {
+        let screen = session.draw();
+        (
+            screen.at(390, 290),
+            screen.at(410, 300),
+            screen.at(510, 410),
+        ) == (BLUE, BLUE, BLUE)
+    });
+
+    let mut camera = crate::capture::camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = crate::capture::snap(&mut session, &mut camera, &taking);
+    assert_eq!(
+        shot.at(390, 290),
+        GREEN,
+        "over its window, the window's blank"
+    );
+    assert_eq!(shot.at(410, 300), BACKGROUND, "past it, what is under it");
+    assert_eq!(shot.at(510, 410), BLUE, "and another program's as it is");
+    assert_eq!(session.draw().at(410, 300), BLUE, "on the screen, as ever");
+}
+
 #[test]
 fn programs_written_for_x11_do_not_run_when_that_is_turned_off() {
     let mut session = Session::with_config(&[("config.yaml", "xwayland: { enabled: false }\n")]);

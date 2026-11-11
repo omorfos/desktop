@@ -98,6 +98,7 @@ use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_foreign::XdgForeignState;
+use smithay::xwayland::X11Surface;
 
 use crate::Scale;
 use crate::asked::Asked;
@@ -3348,7 +3349,7 @@ impl Compositor {
                 Self::chrome_elements(renderer, view, chrome, 1.0, drawn);
             }
             if !portrait.shaded {
-                self.window_elements(renderer, view, (portrait, false), &mut elements);
+                self.window_elements(renderer, view, (portrait, false, false), &mut elements);
             }
             let shadow = chrome.and_then(|chrome| chrome.shadow.as_ref());
             if let Some(shadow) = shadow {
@@ -3587,7 +3588,7 @@ impl Compositor {
                 if fullscreen {
                     // Menus and tooltips of programs written for X11 are
                     // over every window, and under what is over all.
-                    self.unmanaged_elements(renderer, view, &mut elements);
+                    self.unmanaged_elements(renderer, view, shown.mark, &mut elements);
                     // Panels brought back over a fullscreen window.
                     let raised = (Layer::Top, Placing::Raised);
                     let drawn = (&mut elements, &mut panes);
@@ -3680,12 +3681,33 @@ impl Compositor {
 
     /// Adds the windows of programs written for X11 that manage
     /// themselves, the last to come first.
-    fn unmanaged_elements<R>(&self, renderer: &mut R, view: View, elements: &mut Vec<Element<R>>)
-    where
+    fn unmanaged_elements<R>(
+        &self,
+        renderer: &mut R,
+        view: View,
+        seen: bool,
+        elements: &mut Vec<Element<R>>,
+    ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        for (window, surface) in self.x11.unmanaged().rev() {
+        // In a picture, the menus of a program with a window a rule calls
+        // private are left out with it, since they may say what is in it.
+        // A program is known by the process it says each window is of.
+        let private = |menu: &X11Surface| {
+            let process = menu.pid().filter(|_| !seen);
+            process.is_some_and(|process| {
+                let mut windows = self.windows.iter();
+                windows.any(|mapped| match &mapped.role {
+                    Role::X11(window) => {
+                        window.pid() == Some(process) && self.desktop.private(mapped.id)
+                    }
+                    Role::Xdg(_) => false,
+                })
+            })
+        };
+        let menus = self.x11.unmanaged().rev();
+        for (window, surface) in menus.filter(|(menu, _)| !private(menu)) {
             let at = window.geometry().loc.to_f64();
             let picture = render_elements_from_surface_tree(
                 renderer,
@@ -3848,7 +3870,10 @@ impl Compositor {
                 let nothing = self.noting::<R::TextureId>(view, Part::Window);
                 self.animation.note(&shown.surface, nothing.done());
             } else {
-                self.window_elements(renderer, view, (shown, true), elements);
+                // Under glass that blurs it, its menus are left out: they
+                // reach past its frame, where nothing blurs them.
+                let alone = matches!(veil, Some(Veil::Blurred));
+                self.window_elements(renderer, view, (shown, true, alone), elements);
                 // What is behind it, blurred where its program asks, is
                 // under it.
                 glass.extend(self.window_backdrop(view, shown, elements.len()));
@@ -3923,15 +3948,15 @@ impl Compositor {
         }
     }
 
-    /// Adds what a window itself shows: its pop-ups whole, and its own
-    /// picture, which is cut to the frame if the frame's bottom corners are
-    /// rounded. What it is drawn from is noted if `noted`, to fade it out
-    /// by when it goes.
+    /// Adds what a window itself shows: its pop-ups whole, unless it is
+    /// to be drawn `alone`, and its own picture, which is cut to the frame
+    /// if the frame's bottom corners are rounded. What it is drawn from is
+    /// noted if `noted`, to fade it out by when it goes.
     fn window_elements<R>(
         &self,
         renderer: &mut R,
         view: View,
-        (shown, noted): (&Shown, bool),
+        (shown, noted, alone): (&Shown, bool, bool),
         elements: &mut Vec<Element<R>>,
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -3969,14 +3994,21 @@ impl Compositor {
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
         let first = elements.len();
         let Some(chrome) = rounded else {
-            let surfaces = shown
-                .window
-                .render_elements::<WaylandSurfaceRenderElement<R>>(
+            let at = view.pixel(location.to_f64());
+            let opacity = shown.seen.opacity;
+            let surfaces: Vec<WaylandSurfaceRenderElement<R>> = if alone {
+                let kind = Kind::Unspecified;
+                render_elements_from_surface_tree(
                     renderer,
-                    view.pixel(location.to_f64()),
+                    &shown.surface,
+                    at,
                     scale,
-                    shown.seen.opacity,
-                );
+                    opacity,
+                    kind,
+                )
+            } else {
+                shown.window.render_elements(renderer, at, scale, opacity)
+            };
             for surface in &surfaces {
                 noting.add(surface, noting.paint(surface.texture()));
             }
@@ -3988,7 +4020,8 @@ impl Compositor {
             return;
         };
         // Pop-ups reach beyond the frame and are not cut to it.
-        for (popup, offset) in PopupManager::popups_for_surface(&shown.surface) {
+        let popups = PopupManager::popups_for_surface(&shown.surface);
+        for (popup, offset) in popups.filter(|_| !alone) {
             let at = location + shown.window.geometry().loc + offset - popup.geometry().loc;
             let picture: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
                 renderer,

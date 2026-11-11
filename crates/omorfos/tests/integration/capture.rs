@@ -26,7 +26,7 @@ const MARK: (i32, i32) = (WIDTH - 8 - 12, 8 + 8);
 type Taking = ExtImageCopyCaptureSessionV1;
 
 /// A program that may take pictures of the screen.
-fn camera(session: &mut Session) -> Client {
+pub(crate) fn camera(session: &mut Session) -> Client {
     session.connect_as(Roles::CAPTURE)
 }
 
@@ -53,7 +53,11 @@ pub(crate) fn develop(session: &mut Session, client: &mut Client) -> Vec<Event> 
 }
 
 /// Takes a picture of the first screen as it is now.
-fn snap(session: &mut Session, client: &mut Client, taking: &Taking) -> (Picture, Vec<Event>) {
+pub(crate) fn snap(
+    session: &mut Session,
+    client: &mut Client,
+    taking: &Taking,
+) -> (Picture, Vec<Event>) {
     let (file, buffer) = client.shot_buffer((WIDTH, HEIGHT));
     let frame = ask(client, taking, &buffer);
     let events = develop(session, client);
@@ -963,6 +967,25 @@ fn a_private_window_a_rule_says_to_blur_is_blurred_in_a_picture_and_not_on_the_s
     let taking = camera.capture_window("photos");
     let (shot, _) = snap_sized(&mut session, &mut camera, &taking, (20, 20));
     assert_eq!(shot.at(10, 10), GREEN);
+}
+
+#[test]
+fn the_menus_of_a_private_window_to_be_blurred_are_not_in_a_picture() {
+    let mut session = Session::with_config(&BLURRED);
+    let mut app = session.connect();
+    // In a frame with round corners, which has its menus drawn apart.
+    let photos = session.open_decorated(&mut app, "photos", (20, 20), RED);
+    // A menu reaching past its window.
+    let (surface, _popup, _positioner) = app.popup(&photos, (10, 10), (100, 60));
+    session.roundtrip(&mut app);
+    app.fill(&surface, (100, 60), BLUE);
+    session.roundtrip(&mut app);
+    assert_eq!(session.draw().at(80, 50), BLUE);
+
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(80, 50), BACKGROUND, "what is under it in its place");
 }
 
 #[test]

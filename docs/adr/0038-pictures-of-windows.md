@@ -132,10 +132,26 @@ and the dock that this record is mostly about.
   is asked for by name and `true` stays a blank. It is the blur glass
   already draws, laid over the frame rather than under a part; where
   glass is drawn solid, it is solid in the blank's colour, wholly, so
-  that nothing ever shows through it. A picture of the window by itself
+  that nothing ever shows through it. Its menus are left out of the
+  picture, not blurred, since they reach past the frame the glass
+  covers. A picture of the window by itself
   is drawn without glass, and so is blank. In a frame shared by tabs,
   any one to be blank makes the frame blank: it is hidden as much as
   any window in it is to be.
+- **Its program's menus go with it.** A program written for X11 puts
+  its menus on the screen itself, as windows apart from the one they
+  belong to, and they may say what is in it. In a picture, any whose
+  program has a private window are left out, what is under them shown
+  in their place; a program's windows are known as its by the process
+  each says it is of (`_NET_WM_PID`), which GTK, Qt and Chromium give
+  every window, menus too. So a program with a private window and
+  another that is not has the menus of both left out, which hides more
+  rather than less; and a menu that does not say is in the picture.
+  The X server could be asked which program made each window, but that
+  is a question waited on as the window is drawn. A Wayland program's
+  menus are drawn with its window, and are left out with it, blank or
+  blurred: the glass that blurs a window is over its frame, and its
+  menus reach past it, so they are not drawn at all.
 - **It does not fade into a picture.** A window that closes fades out on
   the screen as it last was, from what was drawn of it; for a private
   window that is its contents, so in a picture it is gone at once, and
