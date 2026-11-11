@@ -724,6 +724,9 @@ what only games and touchpads need last.
 - [x] The row of workspaces not going round: nothing before the first,
       and after the last only a new one, empty, made when the last has a
       window on it.
+- [x] Two workspaces sliding side by side told apart: the wallpaper goes
+      with them, drawn for each, where the windows of one ran on into the
+      other's over a wallpaper that stayed still.
 - [x] Nothing sliding with `appearance.reduce_motion`: the keys change
       the workspace at once, and three fingers carry nothing, changing it
       as they lift if they went far enough or fast enough (ADR 71).

@@ -6,9 +6,14 @@ use std::time::Duration;
 use omorfos::{Gesture, Input};
 use omorfos_config::{Action, WorkspaceNumber};
 
-use crate::common::{Client, Event, FOUR_WORKSPACES, Session};
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
+    Anchor, KeyboardInteractivity,
+};
+
+use crate::common::{Client, Event, FOUR_WORKSPACES, LayerShape, Session};
 use crate::lock::lock;
-use crate::windows::{BACKGROUND, BLUE, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 /// Makes a gesture on the touchpad, step by step, each at its time in
 /// milliseconds.
@@ -100,6 +105,37 @@ fn three_fingers_carry_the_workspace_shown_and_bring_the_next_in_from_the_right(
     assert_eq!(picture.at(5, 5), RED, "the first gone a little way left");
     assert_eq!(picture.at(545, 5), BLUE, "and the second in after it");
     assert_eq!(active(&session), 0, "still the one shown");
+}
+
+#[test]
+fn the_wallpaper_goes_with_the_workspaces_drawn_once_for_each() {
+    let (mut session, mut client) = two_windows();
+    // A wallpaper in the bottom left corner, where no window is.
+    let corner = LayerShape {
+        layer: Layer::Background,
+        anchor: Anchor::Bottom | Anchor::Left,
+        size: (100, 50),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    session.open_layer(&mut client, &corner, (100, 50), GREEN);
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(50, 455), picture.at(590, 455)),
+        (GREEN, BACKGROUND)
+    );
+
+    carry(&mut session, -100.0, 100);
+    let picture = session.draw();
+    assert_eq!(picture.at(50, 455), BACKGROUND, "gone left with the first");
+    assert_eq!(picture.at(590, 455), GREEN, "and come in with the second");
+    lift(&mut session, true);
+    session.advance(Duration::from_millis(240));
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(50, 455), picture.at(590, 455)),
+        (GREEN, BACKGROUND)
+    );
 }
 
 #[test]

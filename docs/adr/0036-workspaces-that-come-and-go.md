@@ -94,6 +94,12 @@ brings up the dock.
 
 - `next_workspace` and `previous_workspace`, and a swipe on the
   touchpad, go along the row, solos included, in order.
+- As they slide, the wallpaper goes with them, drawn once for each of
+  the two, so that each is a page of its own and the edge of one shows
+  where the next begins. Kept still under windows that slide, it made
+  them look like one strip moving across one picture, and a bar drawn
+  between them over it looked like a curtain going by. The panels stay
+  where they are.
 - `workspace: N` goes to the Nth desktop, counting desktops only. If N
   is one past the last, it makes that desktop and goes there, so
   `Super+2` on a fresh session gives a second workspace. Further than

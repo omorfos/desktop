@@ -4098,63 +4098,71 @@ impl Compositor {
         let mut shadows = Vec::new();
         let mut glass = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
-            let (first, cast, laid) = (elements.len(), shadows.len(), glass.len());
-            // A panel is placed within its own output, and drawn as far
-            // from there as it has to come yet.
-            let area = layers.layer_geometry(surface).unwrap_or_default();
-            let off = self.hover.reveal.off(index, (layer, area), height);
-            let at = layer_origin(&layers, surface) + view.origin + Point::from((0, off));
-            // A panel of a shell component may be coming in, and what it
-            // is drawn from is noted, to fade it out by when it goes.
-            let mut known = self.animation.layers.iter();
-            let known = known.find(|known| known.surface == *surface.wl_surface());
-            let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
-                renderer,
-                view.pixel(at.to_f64()),
-                smithay::utils::Scale::from(view.scale.factor()),
-                known.map_or(1.0, |known| known.seen.opacity),
-            );
-            if let Some(known) = known.filter(|known| fades(known.part)) {
-                let mut noting = self.noting(view, known.part);
-                for surface in &surfaces {
-                    noting.add(surface, noting.paint(surface.texture()));
+            // The wallpaper goes with the workspaces as they slide, drawn
+            // once for each the output draws; whatever else is on a layer
+            // stays where it is.
+            let carried = layer == Layer::Background;
+            let still = std::iter::once(0).filter(|_| !carried);
+            let shifts = self.desktop.shifts(index).filter(|_| carried);
+            for across in still.chain(shifts) {
+                let (first, cast, laid) = (elements.len(), shadows.len(), glass.len());
+                // A panel is placed within its own output, and drawn as far
+                // from there as it has to come yet.
+                let area = layers.layer_geometry(surface).unwrap_or_default();
+                let off = self.hover.reveal.off(index, (layer, area), height);
+                let at = layer_origin(&layers, surface) + view.origin + Point::from((across, off));
+                // A panel of a shell component may be coming in, and what it
+                // is drawn from is noted, to fade it out by when it goes.
+                let mut known = self.animation.layers.iter();
+                let known = known.find(|known| known.surface == *surface.wl_surface());
+                let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
+                    renderer,
+                    view.pixel(at.to_f64()),
+                    smithay::utils::Scale::from(view.scale.factor()),
+                    known.map_or(1.0, |known| known.seen.opacity),
+                );
+                if let Some(known) = known.filter(|known| fades(known.part)) {
+                    let mut noting = self.noting(view, known.part);
+                    for surface in &surfaces {
+                        noting.add(surface, noting.paint(surface.texture()));
+                    }
+                    self.animation.note(&known.surface, noting.done());
                 }
-                self.animation.note(&known.surface, noting.done());
+                elements.extend(surfaces.into_iter().map(Element::Surface));
+                // The shadow its part casts, and its glass, which is under it and
+                // over the shadows of the others.
+                let shadow =
+                    known.and_then(|known| Some(known.seen.opacity).zip(known.shadow.as_ref()));
+                if let Some((share, shadow)) = shadow {
+                    shadow.elements(renderer, share, view, &mut shadows);
+                }
+                let size = layers.layer_geometry(surface).unwrap_or_default().size;
+                let place = Rectangle::new(at, size);
+                let theme = &self.config().theme;
+                // A panel its part makes glass has that, whatever its program
+                // asks; else what is behind it is blurred where it asks.
+                let share = known.map_or(1.0, |known| known.seen.opacity);
+                let pane = known.and_then(|known| {
+                    let style = theme.style(known.part, States::NONE);
+                    let key = glass::key(&known.surface.id());
+                    let at = (key, elements.len(), 0);
+                    Pane::of(&style, (place, view), at, share)
+                });
+                glass.extend(pane.or_else(|| {
+                    let placed = (at, view);
+                    self.backdrop(surface.wl_surface(), placed, None, (elements.len(), share))
+                }));
+                // Its shadow is made larger or smaller with it, though it is
+                // drawn under all of them.
+                let scale = known.map_or(1.0, |known| known.seen.scale);
+                let around = scaling::around(scale, || {
+                    let middle = at + Point::from((size.w / 2, size.h / 2));
+                    view.pixel(middle.to_f64())
+                });
+                scaling::scale(elements, first, around);
+                scaling::scale(&mut shadows, cast, around);
+                scaling::scale_panes(&mut glass, laid, around);
             }
-            elements.extend(surfaces.into_iter().map(Element::Surface));
-            // The shadow its part casts, and its glass, which is under it and
-            // over the shadows of the others.
-            let shadow =
-                known.and_then(|known| Some(known.seen.opacity).zip(known.shadow.as_ref()));
-            if let Some((share, shadow)) = shadow {
-                shadow.elements(renderer, share, view, &mut shadows);
-            }
-            let size = layers.layer_geometry(surface).unwrap_or_default().size;
-            let place = Rectangle::new(at, size);
-            let theme = &self.config().theme;
-            // A panel its part makes glass has that, whatever its program
-            // asks; else what is behind it is blurred where it asks.
-            let share = known.map_or(1.0, |known| known.seen.opacity);
-            let pane = known.and_then(|known| {
-                let style = theme.style(known.part, States::NONE);
-                let key = glass::key(&known.surface.id());
-                let at = (key, elements.len(), 0);
-                Pane::of(&style, (place, view), at, share)
-            });
-            glass.extend(pane.or_else(|| {
-                let placed = (at, view);
-                self.backdrop(surface.wl_surface(), placed, None, (elements.len(), share))
-            }));
-            // Its shadow is made larger or smaller with it, though it is
-            // drawn under all of them.
-            let scale = known.map_or(1.0, |known| known.seen.scale);
-            let around = scaling::around(scale, || {
-                let middle = at + Point::from((size.w / 2, size.h / 2));
-                view.pixel(middle.to_f64())
-            });
-            scaling::scale(elements, first, around);
-            scaling::scale(&mut shadows, cast, around);
-            scaling::scale_panes(&mut glass, laid, around);
         }
         elements.append(&mut shadows);
         // What is behind each begins under all of their shadows.

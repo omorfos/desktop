@@ -2566,6 +2566,18 @@ impl Desktop {
         drawn.collect()
     }
 
+    /// How far right each workspace an output draws is drawn, in units of
+    /// layout: the one it shows, and while the workspaces slide the one
+    /// that comes in beside it. For what is drawn once for each, as the
+    /// wallpaper is, so that it goes with them. Not moved, for an output
+    /// there is not.
+    pub fn shifts(&self, output: usize) -> impl Iterator<Item = i32> {
+        let set = self.sets.get(output);
+        let beside = set.and_then(|_| self.beside(output));
+        let shown = set.map_or(0, |set| set.slid);
+        [shown].into_iter().chain(beside.map(|(_, shift)| shift))
+    }
+
     /// The workspaces an output draws: the one it shows, and while the
     /// workspaces slide the one that comes in beside it, each with how far
     /// right it is drawn.
@@ -5963,8 +5975,16 @@ mod tests {
             "and only the second beside it"
         );
 
+        assert_eq!(
+            desktop.shifts(0).collect::<Vec<_>>(),
+            [-300, width - 300],
+            "each drawn that far across"
+        );
+
         desktop.slide(0);
         assert_eq!(across(&desktop), [(first, at, true)], "and back");
+        assert_eq!(desktop.shifts(0).collect::<Vec<_>>(), [0]);
+        assert_eq!(desktop.shifts(1).collect::<Vec<_>>(), [0], "with no output");
     }
 
     #[test]

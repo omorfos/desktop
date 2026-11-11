@@ -298,7 +298,8 @@ little, and goes back.
 
 On a touchpad, three fingers swiped left carry the workspace with them
 and bring the next in from the right, and swiped right bring in the one
-before. Lift them past half way, or flick, and the one that came in is
+before, each with its own wallpaper, as when a key changes the
+workspace. Lift them past half way, or flick, and the one that came in is
 shown; lift them short of that, or turn back, and the one that was there
 stays. Every other gesture, as a pinch to zoom, is the program's under
 the pointer.
