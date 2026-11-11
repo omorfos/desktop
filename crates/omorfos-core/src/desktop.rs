@@ -1388,6 +1388,9 @@ pub struct Desktop {
     /// How many of each output's workspaces are always there.
     kept: usize,
     next_serial: u64,
+    /// How many times frames have been sent somewhere: see
+    /// [`Desktop::sent`].
+    sent: u64,
     /// What has been made again of what windows kept shared.
     restoring: Restoring,
 }
@@ -1425,6 +1428,7 @@ impl Desktop {
             primary: 0,
             kept: workspaces.clamp(1, Self::MOST_WORKSPACES),
             next_serial: 0,
+            sent: 0,
             restoring: Restoring::default(),
         };
         let first = desktop.set();
@@ -1931,6 +1935,7 @@ impl Desktop {
     /// Removes a window, for example because it closed.
     pub fn remove_window(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
+        self.sending();
         self.sets[at.set].workspaces[at.workspace].groups[at.group].remove(at.tab);
         self.sets[at.set].workspaces[at.workspace].repair();
         self.sets[at.set].settle();
@@ -2063,6 +2068,7 @@ impl Desktop {
             return;
         };
         group.maximized = maximized;
+        self.sending();
     }
 
     /// Switches a window's frame between maximized and restored.
@@ -2071,6 +2077,7 @@ impl Desktop {
             return;
         };
         group.maximized = !group.maximized;
+        self.sending();
     }
 
     /// Makes a window's frame fullscreen, or returns it to how it was.
@@ -2115,9 +2122,15 @@ impl Desktop {
         let part = on.solo.filter(|_| tile);
         let part = part.and_then(|tiling| tiling.at(frame).map(|at| (tiling, at)));
         if let Some((tiling, part)) = part {
-            on.solo = Some(tiling.halved(part, frame, half));
+            let halved = Some(tiling.halved(part, frame, half));
+            let moved = on.solo != halved;
+            on.solo = halved;
+            if moved {
+                self.sending();
+            }
             return;
         }
+        self.sending();
         let made = WorkspaceId(self.serial());
         self.solo(at, made, |origin, frame| {
             Tiling::alone(origin, frame).halved((0, 0), frame, half)
@@ -2133,6 +2146,7 @@ impl Desktop {
     /// that first.
     pub fn arrange(&mut self, id: WindowId, arrangement: Arrangement, part: usize) {
         let Some(at) = self.locate(id) else { return };
+        self.sending();
         let at = self.grounded(id, at);
         let made = WorkspaceId(self.serial());
         let (_, cuts) = arrangement.cuts();
@@ -2173,6 +2187,7 @@ impl Desktop {
         let Some(roomy) = roomy.and_then(|on| on.solo?.roomy()) else {
             return;
         };
+        self.sending();
         // It leaves what it filled before, and may be somewhere else for
         // it.
         let at = self.grounded(id, at);
@@ -2222,6 +2237,7 @@ impl Desktop {
         if let Some((at, tiling, [own, other], _)) = self.part_at(id, point) {
             let on = &mut self.sets[at.set].workspaces[at.workspace];
             on.solo = Some(tiling.swapped(own, other));
+            self.sending();
         }
     }
 
@@ -2235,6 +2251,7 @@ impl Desktop {
         if let Some(other) = tiling.beside(part, toward, area) {
             let on = &mut self.sets[at.set].workspaces[at.workspace];
             on.solo = Some(tiling.swapped(part, other));
+            self.sending();
         }
     }
 
@@ -2820,9 +2837,15 @@ impl Desktop {
     /// making one at the end if `workspace` is past the last. A fullscreen
     /// frame leaves fullscreen to go.
     fn send(&mut self, id: WindowId, at: Location, workspace: usize) {
+        // Leaving a part, it gives that up, whether or not it goes further.
+        let left = self.sets[at.set].workspaces[at.workspace].groups[at.group].fullscreen;
         let at = self.grounded(id, at);
         let workspace = self.reach(at.set, workspace);
-        if workspace == at.workspace {
+        let stays = workspace == at.workspace;
+        if left || !stays {
+            self.sending();
+        }
+        if stays {
             return;
         }
         let mut group = self.sets[at.set].workspaces[at.workspace]
@@ -2897,6 +2920,18 @@ impl Desktop {
             .map(|(index, workspace, group, (shift, shown))| {
                 self.frame(index, workspace, group, group.active, (shift, shown))
             })
+    }
+
+    /// How many times frames have been sent somewhere, as against put
+    /// there by hand or by their programs: maximized or restored, tiled,
+    /// arranged, put beside others or changed over with one, or given the
+    /// room of one that closed or left. A frame whose place changes while
+    /// this does is on its way there, which it may be drawn moving to; one
+    /// whose place changes while it does not is there at once. It counts
+    /// on from where it was, round to nothing past the largest.
+    #[must_use]
+    pub const fn sent(&self) -> u64 {
+        self.sent
     }
 
     /// The frame window `id` is in, as it is drawn showing it, wherever
@@ -3009,6 +3044,11 @@ impl Desktop {
             ..self.settings.decoration
         };
         Some((within, metrics))
+    }
+
+    /// Counts a frame, or several, being sent somewhere.
+    const fn sending(&mut self) {
+        self.sent = self.sent.wrapping_add(1);
     }
 
     const fn serial(&mut self) -> u64 {
@@ -3844,6 +3884,52 @@ mod tests {
         assert_eq!(whole.outer(), frame(&desktop, video).geometry);
         desktop.set_fullscreen(bare, true);
         assert_eq!(frame(&desktop, bare).decoration, None);
+    }
+
+    #[test]
+    fn a_frame_sent_somewhere_is_counted_and_one_moved_by_hand_or_by_its_program_is_not() {
+        let mut desktop = desktop();
+        let editor = open(&mut desktop, "editor");
+        let chat = open(&mut desktop, "chat");
+        let terminal = open(&mut desktop, "terminal");
+        let mut count = desktop.sent();
+        let mut sent = |desktop: &Desktop| {
+            let now = desktop.sent();
+            let changed = now != count;
+            count = now;
+            changed
+        };
+
+        // Moved by hand, by its program, or slid with its workspace, it
+        // goes where it is put at once.
+        desktop.set_geometry(editor, Rect::new(Point::new(5, 5), SIZE));
+        desktop.set_client_size(editor, Size::new(300, 200));
+        desktop.slide(-300);
+        desktop.slide(0);
+        assert!(!sent(&desktop));
+
+        desktop.toggle_maximized(editor);
+        assert!(sent(&desktop), "maximized");
+        desktop.set_maximized(editor, false);
+        assert!(sent(&desktop), "restored");
+        desktop.tile(editor, Half::Left);
+        assert!(sent(&desktop), "tiled");
+        desktop.join(chat, desktop_made(&desktop));
+        assert!(sent(&desktop), "beside another");
+        desktop.swap_toward(chat, Half::Left);
+        assert!(sent(&desktop), "changed over");
+        desktop.swap_at(chat, Point::new(1500, 500));
+        assert!(sent(&desktop), "changed over where the pointer is");
+        desktop.move_line(0, 0, Some(Point::new(700, 500)));
+        assert!(!sent(&desktop), "the line held by hand");
+        desktop.move_to_workspace(chat, 0);
+        assert!(sent(&desktop), "the room of one that left");
+        desktop.remove_window(editor);
+        assert!(sent(&desktop), "the room of one that closed");
+        desktop.arrange(terminal, Arrangement::SideBySide, 0);
+        assert!(sent(&desktop), "arranged");
+        desktop.choose(chat, Point::new(1500, 500));
+        assert!(sent(&desktop), "chosen for a part");
     }
 
     #[test]

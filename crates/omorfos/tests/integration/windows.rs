@@ -460,7 +460,10 @@ fn a_window_may_be_one_pixel_of_a_colour_stretched_to_its_size() {
 
 /// A theme in which windows come and go over a time, and so change size
 /// smoothly.
-const MOVING: (&str, &str) = ("theme.css", "window { transition: 180ms ease-out; }\n");
+pub(crate) const MOVING: (&str, &str) = ("theme.css", "window { transition: 180ms ease-out; }\n");
+
+/// How long a window takes to get where it was sent.
+pub(crate) const SENT: Duration = Duration::from_millis(240);
 
 #[test]
 fn a_window_s_last_picture_is_stretched_to_its_frame_until_its_program_draws_the_new_size() {
@@ -475,6 +478,7 @@ fn a_window_s_last_picture_is_stretched_to_its_frame_until_its_program_draws_the
     window.role.set_maximized();
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
+    session.advance(SENT);
     let picture = session.draw();
     assert_eq!((picture.at(5, 5), picture.at(600, 400)), (RED, RED));
 
@@ -508,6 +512,68 @@ fn a_window_whose_program_draws_another_size_than_asked_is_shown_as_it_draws() {
     // It has heard, and draws itself as large as it was all the same.
     window.surface.commit();
     session.roundtrip(&mut client);
+    session.advance(SENT);
     let picture = session.draw();
     assert_eq!((picture.at(5, 5), picture.at(600, 400)), (RED, BACKGROUND));
+}
+
+#[test]
+fn a_window_maximized_eases_there_and_its_program_is_told_only_where_it_goes() {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    client.take_events();
+
+    // Told at once how it is to be, it sets out from where it was.
+    window.role.set_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let maximized = ((WIDTH, HEIGHT), vec![State::Maximized, State::Activated]);
+    assert_eq!(client.last_configure(), maximized);
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(195, 95), picture.at(260, 160)),
+        (RED, BACKGROUND)
+    );
+
+    // Half way in half the time, its last picture stretched to fill it.
+    session.advance(SENT / 2);
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(400, 270), picture.at(440, 310)),
+        (RED, BACKGROUND)
+    );
+
+    // Drawn as large on the way, it is told nothing more, and gets there.
+    client.fill(&window.surface, (WIDTH, HEIGHT), BLUE);
+    session.roundtrip(&mut client);
+    session.advance(SENT / 4);
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(500, 380), picture.at(630, 470)),
+        (BLUE, BACKGROUND)
+    );
+    session.advance(SENT / 4);
+    let picture = session.draw();
+    assert_eq!((picture.at(5, 5), picture.at(635, 475)), (BLUE, BLUE));
+    let events = client.take_events();
+    let told = events
+        .iter()
+        .any(|event| matches!(event, Event::Configure { .. }));
+    assert!(!told, "{events:?}");
+    assert_eq!(session.compositor().deadline(), None);
+}
+
+#[test]
+fn with_motion_reduced_a_window_is_where_it_was_sent_at_once() {
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let mut session = Session::with_config(&[MOVING, reduced]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    window.role.set_maximized();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw().at(600, 400), RED);
 }

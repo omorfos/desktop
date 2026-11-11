@@ -46,6 +46,7 @@ mod roles;
 mod scaling;
 mod sealed;
 mod seat;
+mod sent;
 mod session;
 mod shader;
 mod shadows;

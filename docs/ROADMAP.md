@@ -1334,8 +1334,14 @@ the first than on the last.
           stretched, nor told in a way that is answered; and a window's
           pop-ups are stretched with it where its frame is square and not
           where its corners are round.
-    - [ ] Tiling, maximizing and filling the room of a window that closed
-          easing the frame there over 240 ms.
+    - [x] Tiling, maximizing and filling the room of a window that closed
+          easing the frame there over 240 ms, its program told only where
+          it goes, and what is dragged following the hand at once.
+    - [ ] Known gaps in a frame easing: going fullscreen and back is not
+          eased, nor is a window sent to another screen; the line between
+          parts is drawn where it goes at once, while the frames either
+          side of it are on their way; and a program that draws on the way
+          is shown at once, not faded into.
     - [ ] The line between parts easing when it moves by itself: put back
           in the middle, or a part closing.
     - [ ] A program written for X11 told at once still: it could be asked

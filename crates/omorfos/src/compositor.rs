@@ -131,6 +131,7 @@ use crate::reveal::{Placing, Reveal};
 use crate::roles::{Refused, Roles};
 use crate::scaling::{self, Boxed, Stretch};
 use crate::sealed::Seal;
+use crate::sent::Way;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
 use crate::switcher::Switch;
@@ -1153,9 +1154,13 @@ impl Compositor {
         let settling = self.protocols.gestures.slide.settling();
         let sliding = self.animation.epoch.filter(|_| settling);
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
-        // And what the screens showed before, while it gives way, and a
-        // window's last picture while it gives way to its new one.
-        let giving = self.scene.iter().any(|shown| shown.giving.is_some());
+        // And what the screens showed before, while it gives way, a
+        // window's last picture while it gives way to its new one, and a
+        // window on its way to where it was sent.
+        let giving = self
+            .scene
+            .iter()
+            .any(|shown| shown.giving.is_some() || shown.going());
         let fading = self.animation.epoch.filter(|_| self.is_fading() || giving);
         let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
@@ -2369,7 +2374,7 @@ impl Compositor {
                 .map_or(Scale::ONE, |head| head.scale)
         };
         let over = self.hover.button;
-        let frames: Vec<FrameInfo> = self
+        let mut frames: Vec<FrameInfo> = self
             .desktop
             .frames()
             .map(|frame| FrameInfo::of(&frame, scale_for(frame.geometry), over))
@@ -2377,15 +2382,16 @@ impl Compositor {
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
         let mut veils = Veils::kept(&mut previous, &config.theme);
-        let text = &mut self.text;
         // What slides into view with the workspace it is on was there all
         // along, and does not come in afresh.
         let sliding = self.desktop.slid() != 0;
+        let changes = config.theme.style(Part::Window, States::NONE).transition;
+        let moves = self.sends(changes, sliding);
+        let text = &mut self.text;
         let motion = &mut self.animation.motion;
         motion.begin(self.animation.clock);
         let shades = self.animation.shades.begun();
 
-        let changes = config.theme.style(Part::Window, States::NONE).transition;
         let mut scene = Vec::new();
         for Mapped {
             id,
@@ -2396,25 +2402,22 @@ impl Compositor {
         } in &self.windows
         {
             let frame = frames
-                .iter()
+                .iter_mut()
                 .enumerate()
                 .find(|(_, frame)| frame.shown == *id);
-            let placed = frame.and_then(|(_, frame)| frame.placed());
+            let placed = frame.as_ref().and_then(|(_, frame)| frame.placed());
             role.arrange(Some(*id) == focused, placed, window.geometry().size);
             match frame {
                 Some((order, frame)) => {
                     let before = previous.iter_mut().find(|shown| shown.id == *id);
-                    let sizes = (logical_size(frame.client.size), window.geometry().size);
+                    let shows = window.geometry().size;
+                    let clock = self.animation.clock;
+                    let (way, sizes) = frame.travel(before.as_deref(), shows, (clock, moves));
                     let noted = (&self.animation.drawn, surface);
                     let (stretch, giving) =
-                        stretching(role, sizes, before, noted, (changes, self.animation.clock));
+                        stretching(role, sizes, before, noted, (changes, clock));
                     let chrome = frame.decoration.map(|decoration| {
-                        let cached = previous
-                            .iter()
-                            .position(|shown| {
-                                shown.chrome.as_ref().is_some_and(|c| c.tabs == frame.tabs)
-                            })
-                            .and_then(|index| previous.swap_remove(index).chrome);
+                        let cached = painted(&mut previous, &frame.tabs);
                         let tools = (&mut *text, &mut *motion, &mut *shades);
                         Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
@@ -2438,6 +2441,7 @@ impl Compositor {
                             on: frame.on,
                             stretch,
                             giving,
+                            way,
                         },
                     ));
                 }
@@ -2463,6 +2467,17 @@ impl Compositor {
         self.announce_scale();
         self.update_idle_inhibition();
         self.sync_keyboard_focus(focused);
+    }
+
+    /// Whether the frames whose places have changed since the last sync
+    /// were sent there, to be drawn easing there: where windows change
+    /// over a time, `changes`, motion is not to be reduced, and nothing
+    /// slides, what slides with its workspace being carried, not sent.
+    fn sends(&mut self, changes: omorfos_config::Transition, sliding: bool) -> bool {
+        let sent = self.desktop.sent() != self.animation.sent;
+        self.animation.sent = self.desktop.sent();
+        let reduced = self.config().general.appearance.reduce_motion;
+        sent && !sliding && !changes.lasts().is_zero() && !reduced
     }
 
     /// Paints the frames the windows pictures are taken of by themselves
@@ -2517,6 +2532,7 @@ impl Compositor {
                 on: frame.on,
                 stretch: None,
                 giving: None,
+                way: Way::at(frame.geometry),
             });
         }
         portrayal.end();
@@ -5077,6 +5093,10 @@ pub(crate) struct Animation {
     pub(crate) glass: Glass,
     /// How each screen's frames are drawn, for the socket to tell.
     pub(crate) frames: Frames,
+    /// How many times the desktop had sent frames somewhere as of the
+    /// last sync: a frame whose place has changed since, while it has, is
+    /// drawn on its way there.
+    sent: u64,
 }
 
 /// A panel of a shell component that is on the screen.
@@ -5166,6 +5186,7 @@ impl Animation {
             shades: Shades::default(),
             glass: Glass::default(),
             frames: Frames::default(),
+            sent: 0,
         }
     }
 
@@ -5580,31 +5601,43 @@ fn presence(
     seen
 }
 
-/// How a window's picture is drawn, its frame being the first of `sizes`
-/// and what its program shows the second, as `before` it was drawn last:
-/// stretched to fill the frame while the program is behind with it, where
-/// windows change over a time, `changes`; and, once the program has caught
-/// up, with the picture it had while it was, which is in what was `noted`
-/// of what was drawn, fading into the new one from `now`.
+/// How a window's picture is drawn, its program having been told the
+/// first of `sizes`, its frame being drawn the second and what its program
+/// shows the third, as `before` it was drawn last: stretched to fill the
+/// frame while the frame is on its way somewhere or the program is behind
+/// with it, where windows change over a time, `changes`; and, once the
+/// program has caught up with a frame that is still, with the picture it
+/// had while it was, which is in what was `noted` of what was drawn,
+/// fading into the new one from `now`.
 fn stretching(
     role: &Role,
-    (wanted, drawn): (Size<i32, Logical>, Size<i32, Logical>),
+    (told, wanted, drawn): Sizes,
     before: Option<&mut Shown>,
     noted: (&RefCell<Vec<(WlSurface, Noted)>>, &WlSurface),
     (changes, now): (omorfos_config::Transition, Duration),
 ) -> (Option<Stretch>, Option<Giving>) {
-    let behind = role.behind(wanted, drawn) && !changes.lasts().is_zero();
-    let stretch = behind.then(|| {
+    let behind = wanted != told || role.behind(told, drawn);
+    let stretch = (behind && !changes.lasts().is_zero()).then(|| {
         let across = f64::from(wanted.w) / f64::from(drawn.w.max(1));
         (across, f64::from(wanted.h) / f64::from(drawn.h.max(1)))
     });
-    let before = before.map(|before| (before.stretch, before.giving.take()));
-    let (was, giving) = before.unwrap_or_default();
-    let caught_up = was.is_some() && stretch.is_none();
+    // A picture that was stretched only on its way is the new one already.
+    let before = before.map(|before| (before.stretch, before.giving.take(), before.going()));
+    let (was, giving, going) = before.unwrap_or_default();
+    let caught_up = was.is_some() && stretch.is_none() && !going;
     let begun = caught_up.then(|| taken(noted.0, noted.1)).flatten();
     let begun = begun.map(|pieces| Giving { pieces, since: now });
     let lasting = |giving: &Giving| now.saturating_sub(giving.since) < changes.lasts();
     (stretch, begun.or(giving).filter(lasting))
+}
+
+/// Takes the decoration painted for a frame of `tabs` out of what was
+/// shown before, if one was.
+fn painted(before: &mut Vec<Shown>, tabs: &[WindowId]) -> Option<Chrome> {
+    let found = before
+        .iter()
+        .position(|shown| shown.chrome.as_ref().is_some_and(|c| c.tabs == tabs));
+    found.and_then(|index| before.swap_remove(index).chrome)
 }
 
 /// Takes what a surface was last drawn from out of what was noted of
@@ -5615,6 +5648,10 @@ fn taken(drawn: &RefCell<Vec<(WlSurface, Noted)>>, surface: &WlSurface) -> Optio
     let found = drawn.iter().position(|(known, _)| known == surface);
     found.map(|index| drawn.swap_remove(index).1.left())
 }
+
+/// How large a window is: as its program was told, as its frame is drawn,
+/// and as its program shows it.
+type Sizes = (Size<i32, Logical>, Size<i32, Logical>, Size<i32, Logical>);
 
 /// A window on screen: where it is and the decoration drawn around it.
 #[derive(Debug)]
@@ -5654,6 +5691,8 @@ pub(crate) struct Shown {
     /// The picture it had while it was stretched, fading into the one its
     /// program has drawn since.
     giving: Option<Giving>,
+    /// Where its frame is drawn, on its way to where it was sent or there.
+    way: Way,
 }
 
 /// A window's last picture before its program drew the size its frame
@@ -5695,6 +5734,11 @@ impl Veils {
 }
 
 impl Shown {
+    /// Whether its frame was drawn on its way to where it was sent.
+    fn going(&self) -> bool {
+        self.outer != self.way.to()
+    }
+
     /// The layout of the frame's titlebar and borders, if it has them.
     pub(crate) fn decoration(&self) -> Option<&Decoration> {
         self.chrome.as_ref().map(|chrome| &chrome.decoration)
@@ -5841,6 +5885,33 @@ struct FrameInfo {
 }
 
 impl FrameInfo {
+    /// Draws it on its way from where it was drawn `before` to where it
+    /// is, if it `moves`, as of `now`: saying how, and how large its window
+    /// is where it is, as it is drawn, and as its program `shows` it.
+    fn travel(
+        &mut self,
+        before: Option<&Shown>,
+        shows: Size<i32, Logical>,
+        (now, moves): (Duration, bool),
+    ) -> (Way, Sizes) {
+        let mut way = before.map_or(Way::at(self.geometry), |before| before.way);
+        way.go(self.geometry, now, moves);
+        let told = logical_size(self.client.size);
+        self.ease(way.now(now));
+        (way, (told, logical_size(self.client.size), shows))
+    }
+
+    /// Draws it at `to`, on its way to where it is: what is inside the
+    /// frame as far in from each edge as it is there.
+    fn ease(&mut self, to: Rect) {
+        let from = self.geometry;
+        self.client = self.client.carried(from, to);
+        self.decoration = self
+            .decoration
+            .map(|decoration| decoration.at(decoration.outer().carried(from, to)));
+        self.geometry = to;
+    }
+
     /// Where its window is put, and in what state. One rolled up into its
     /// titlebar is left the size it was: it is not shown, but it is not
     /// made to be nothing.

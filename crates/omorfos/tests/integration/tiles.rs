@@ -1,10 +1,12 @@
 //! Windows that share a workspace, and the line between them.
 
+use std::time::Duration;
+
 use omorfos::Input;
 use omorfos_config::{Action, Half};
 
 use crate::common::{Client, Session, Toplevel};
-use crate::windows::{BACKGROUND, BLUE, RED};
+use crate::windows::{BACKGROUND, BLUE, MOVING, RED, SENT};
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -643,7 +645,7 @@ fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
     client.take_events();
     client.request_frame(&waiting.surface);
     session.roundtrip(&mut client);
-    session.send_frames(std::time::Duration::from_millis(16));
+    session.send_frames(Duration::from_millis(16));
     session.roundtrip(&mut client);
     let done = |event: &crate::common::Event| matches!(event, crate::common::Event::FrameDone);
     assert!(client.take_events().iter().any(done));
@@ -703,4 +705,48 @@ fn a_private_window_offered_is_shown_by_its_icon_in_its_blank() {
     session.roundtrip(&mut client);
     point(&mut session, 100, 240);
     assert_eq!(session.draw().at(480, 226), MAGENTA, "its program's own");
+}
+
+#[test]
+fn a_window_given_the_room_of_one_that_closed_eases_into_it() {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    let first = session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    drawn(&mut session, &mut client, &[&first, &second]);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(330, 50), BLUE);
+
+    // The first is to fill the screen, and sets out from its half.
+    second.role.destroy();
+    second.surface.destroy();
+    session.roundtrip(&mut client);
+    assert_eq!(parts(&session), [(0, 0, 640, 480)]);
+    session.advance(SENT / 2);
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(470, 200), picture.at(490, 200)),
+        (RED, BACKGROUND)
+    );
+    session.advance(SENT / 2);
+    assert_eq!(session.draw().at(630, 200), RED, "there");
+}
+
+#[test]
+fn a_line_dragged_moves_the_windows_either_side_with_it_at_once() {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    let first = session.open(&mut client, "first", (200, 100), RED);
+    session.compositor_mut().perform(&Action::Tile(Half::Left));
+    let second = session.open(&mut client, "second", (200, 100), BLUE);
+    drawn(&mut session, &mut client, &[&first, &second]);
+    session.advance(Duration::from_secs(1));
+
+    point(&mut session, 320, 300);
+    button(&mut session, LEFT, true, 1);
+    point(&mut session, 200, 300);
+    drawn(&mut session, &mut client, &[&first, &second]);
+    let picture = session.draw();
+    assert_eq!((picture.at(190, 50), picture.at(210, 50)), (RED, BLUE));
 }

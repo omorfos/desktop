@@ -127,6 +127,13 @@ impl Decoration {
         }
     }
 
+    /// The same, laid out over `outer` instead, as a frame's is drawn on
+    /// its way somewhere.
+    #[must_use]
+    pub const fn at(self, outer: Rect) -> Self {
+        Self { outer, ..self }
+    }
+
     /// The whole frame.
     #[must_use]
     pub const fn outer(&self) -> Rect {
@@ -367,6 +374,14 @@ mod tests {
                 rect(102, 270, 300, 2)
             ]
         );
+    }
+
+    #[test]
+    fn laid_over_another_rectangle_a_decoration_keeps_its_sizes_and_tabs() {
+        let moved = frame(3).at(rect(0, 0, 504, 322));
+        assert_eq!(moved.outer(), rect(0, 0, 504, 322));
+        assert_eq!(moved.client(), rect(2, 20, 500, 300));
+        assert_eq!(moved.tabs(), 3);
     }
 
     #[test]

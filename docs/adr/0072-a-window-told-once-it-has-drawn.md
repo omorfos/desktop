@@ -78,6 +78,45 @@ where there is nothing.
   unstretched: the program is given where it is in what it drew, and a
   frame or two later it has drawn the size the frame has.
 
+### Eased to where it was sent
+
+A frame sent somewhere is drawn easing there over 240 ms, ease-in-out,
+as `docs/DESIGN.md` has a window moving to where it was sent: maximized
+or restored, tiled, arranged, put beside others, changed over with
+another, or given the room of one that closed or left. Its program is
+told at once how the window is to be, as before, and only that; the
+frame is drawn on its way there, its decoration laid out over where it
+is, and the picture stretched to fill it, whether the program is behind
+or has drawn already. Sent elsewhere on its way, it sets out from where
+it has got to.
+
+- **Sent, not put.** The desktop counts each time it sends frames
+  somewhere, and a frame whose place changes while the count does is
+  sent. One dragged by hand, by its edge or by the line between it and
+  another, one whose program makes it another size, and one carried
+  with its workspace as the workspaces slide, is where it is put at
+  once: what the hand moves follows it. The count is in the desktop,
+  where what sends a frame is, rather than in each of the many places
+  in the compositor that ask it to; the time is not.
+- **Input does not wait.** What the pointer is on is what is drawn
+  under it, the titlebar's buttons and the window alike, at each step
+  of the way: nothing is held until the frame gets there. In the window
+  itself it is where it would be in the picture unstretched, as it is
+  while the picture is stretched for a program behind.
+- **Fullscreen is not eased.** A window going fullscreen or coming back
+  is there at once: it is the program's own wish, often a film's, and
+  the panels go from under it at once.
+- **No fade on the way.** A program that draws the new size while its
+  frame is on its way is stretched to the frame from that picture,
+  without the fade: the picture it had would be left behind where it
+  was, while the frame went on. Once there, a picture stretched only
+  for the way is the program's own, and does not fade either.
+- **Where windows change over a time**, and motion is not reduced, as
+  for the stretched picture: otherwise it is there at once.
+
+The titlebar is painted again at each width it passes through, for the
+240 ms; the shadow is laid out again, not painted.
+
 ## Consequences
 
 - Dragging the edge of a window of a slow program, the frame follows the
@@ -87,3 +126,5 @@ where there is nothing.
   it: its last picture fills it, stretched, until it draws.
 - A test's program has to draw between two changes to be told the
   second, as a real one does.
+- A window maximized, tiled or given the room of one that closed goes
+  there rather than jumping, and its program is still asked one size.

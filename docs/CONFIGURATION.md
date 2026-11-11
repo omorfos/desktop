@@ -1179,6 +1179,15 @@ drawn and chosen another size, as a terminal may to fit its lines, is
 shown as it draws. `window { transition: none; }` leaves the picture as
 it is, short of the frame or past it, until the program draws.
 
+**A window sent somewhere eases there.** Maximized or restored, tiled,
+arranged, changed over with another or given the room of one that
+closed or left, a window's frame goes there over 240 ms, easing in and
+out, its picture stretched to fill it on the way; the program is told
+at once how large it is to be, and nothing in between. What you drag,
+a window or the line between two, follows the pointer at once. A theme
+whose `window` changes at once, or `appearance.reduce_motion`, has the
+frame there at once.
+
 Not every part uses every property yet:
 
 - `margin` is honoured by `panel` (it moves the bar in from the edges of

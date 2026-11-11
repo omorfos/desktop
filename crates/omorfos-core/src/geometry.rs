@@ -109,6 +109,25 @@ impl Rect {
         let size = Size::new(width, height);
         (!size.is_empty()).then_some(Self::new(Point::new(x, y), size))
     }
+
+    /// Where this rectangle, a part of `from`, is once what it is part of
+    /// is moved and resized to `to`: as far in from each edge as it was,
+    /// and nothing across or down where `to` leaves no room for that.
+    #[must_use]
+    pub fn carried(self, from: Self, to: Self) -> Self {
+        let left = i64::from(self.origin.x) - i64::from(from.origin.x);
+        let top = i64::from(self.origin.y) - i64::from(from.origin.y);
+        let (x, y) = (i64::from(to.origin.x) + left, i64::from(to.origin.y) + top);
+        let width = to.right() - (from.right() - self.right()) - x;
+        let height = to.bottom() - (from.bottom() - self.bottom()) - y;
+        let place =
+            |at: i64| i32::try_from(at.clamp(i32::MIN.into(), i32::MAX.into())).unwrap_or_default();
+        let length = |at: i64| u32::try_from(at.clamp(0, u32::MAX.into())).unwrap_or_default();
+        Self::new(
+            Point::new(place(x), place(y)),
+            Size::new(length(width), length(height)),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -191,5 +210,26 @@ mod tests {
     #[test]
     fn intersection_with_an_empty_rect_is_none() {
         assert_eq!(rect(0, 0, 10, 10).intersection(rect(5, 5, 0, 0)), None);
+    }
+
+    #[test]
+    fn a_rectangle_carried_with_what_it_is_part_of_keeps_as_far_in_from_each_edge() {
+        let from = rect(100, 50, 300, 200);
+        let to = rect(0, 0, 1000, 800);
+        // A window under a titlebar and within borders.
+        let inner = rect(102, 70, 296, 178);
+        assert_eq!(inner.carried(from, to), rect(2, 20, 996, 778));
+        // A titlebar laid over a window from above it.
+        let above = rect(100, 40, 300, 200);
+        assert_eq!(above.carried(from, to), rect(0, -10, 1000, 800));
+        assert_eq!(from.carried(from, to), to, "the whole is the whole");
+        // Carried into less than its insets, it is nothing; and beyond
+        // where places can be, it stops at the last.
+        assert_eq!(inner.carried(from, rect(0, 0, 3, 10)), rect(2, 20, 0, 0));
+        let far = rect(i32::MAX, i32::MIN, u32::MAX, 0);
+        assert_eq!(
+            above.carried(from, far),
+            rect(i32::MAX, i32::MIN, u32::MAX, 0)
+        );
     }
 }
