@@ -1589,15 +1589,19 @@ Hardware and performance:
 
 Reports and recovery:
 
-- [ ] `omorfosctl report`: the versions, the configuration, what the
-      compositor and its programs wrote, and the state the IPC socket
-      gives, gathered into one file for the user to look over before
-      handing it on. Titles and paths are left out unless asked for, and
-      nothing is sent anywhere. Every report from real hardware so far
-      has needed a log found and sent by hand. The holder now keeps the
-      session's log, this login's and the one before's, in
-      `~/.local/state/omorfos` (ADR 60), for the report to gather; how
-      large a login's log grows is not bounded yet.
+- [x] `omorfosctl report`: the versions, the graphics cards, the
+      configuration, the end of the session's logs, which the holder now
+      keeps, this login's and the one before's, in
+      `~/.local/state/omorfos` (ADR 60), and the state the IPC socket
+      gives, gathered into one text for the user to look over before
+      handing it on. Window titles and paths in the home are left out
+      unless `--whole` is given, and nothing is sent anywhere. Made
+      without a compositor too.
+- [ ] Known gaps in the report: how large a login's log grows is not
+      bounded, and the report puts in only its last 256 KiB; what the
+      programs said is in the journal, which the report does not read;
+      and a path is left out only where it is in the home, so one
+      elsewhere that names the user, as a mount under `/media`, stays.
 - [ ] The screen kept lit while the compositor is started again (ADR
       60): the holder holding the screen's device, so that the last frame
       stays until the next compositor draws over it. The hardware

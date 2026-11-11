@@ -16,6 +16,9 @@ omorfos-ipc = { path = "../omorfos-ipc" }
 serde_json = "1.0"
 
 [dev-dependencies]
+# Already ours: to check that a report puts in the files the compositor
+# reads, without depending on how it reads them.
+omorfos-config = { path = "../omorfos-config" }
 tempfile = "3.27.0"
 
 [lints]

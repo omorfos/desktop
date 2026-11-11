@@ -2132,6 +2132,18 @@ So a program that complains, as most do now and then, does not fill
 omorfos's log, and what it said is still there after you log out and in
 again. Where there is no journal, they say it where omorfos does.
 
+To report a fault, `omorfosctl report` gathers what a report needs into
+one text: the versions of omorfos, the kernel and the system, the graphics
+cards and screens, what the compositor says of its state, your
+configuration, and the end of both logs. Window titles, and any path in
+your home, are left out; `--whole` keeps them. It is only written out,
+never sent: read it over before you hand it on. It is made without a
+running compositor too, saying why that part is missing.
+
+```sh
+omorfosctl report > omorfos-report.txt
+```
+
 ## Installing a new version
 
 Installing omorfos again, as `make install` or a package does, takes up

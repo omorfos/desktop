@@ -18,6 +18,7 @@ omorfosctl action spawn foot --title scratch
 omorfosctl activate 7              # switch to the window with id 7
 omorfosctl config check            # print problems; fails if there are any
 omorfosctl config reload           # re-read the configuration, then check
+omorfosctl report > report.txt     # what a report of a fault needs, to look over
 ```
 
 It exits with 0 on success, 1 on failure or if `config check` found

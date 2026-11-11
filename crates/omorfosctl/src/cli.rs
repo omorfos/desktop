@@ -7,6 +7,8 @@ use std::process::ExitCode;
 use omorfos_ipc::{Client, Drawing, Reply, Request, State};
 use serde_json::{Value, json};
 
+use crate::report::{self, Places};
+
 const USAGE: &str = "\
 Control a running omorfos compositor.
 
@@ -22,6 +24,12 @@ Commands:
   activate ID           Switch to a window, by the id shown in `state`
   config check          Print configuration problems; fails if there are any
   config reload         Re-read the configuration, then check it
+  report [--whole]      Print what a report of a fault needs, for you to look
+                        over before handing it on: versions, graphics cards,
+                        screens, state, configuration and the session's
+                        logs. Window titles and paths in your home are left
+                        out unless --whole is given. Works without a
+                        running compositor
 
 Options:
       --socket PATH     The compositor's socket [default: $OMORFOS_SOCKET, or
@@ -33,6 +41,7 @@ Examples:
   omorfosctl action close
   omorfosctl action workspace 2
   omorfosctl action spawn foot --title scratch
+  omorfosctl report > omorfos-report.txt
 ";
 
 /// What the user asked for.
@@ -49,6 +58,7 @@ enum Command {
     Activate(u64),
     Check,
     Reload,
+    Report { whole: bool },
 }
 
 /// Reads the arguments: an optional `--socket PATH`, then a command.
@@ -68,6 +78,8 @@ fn parse(arguments: &[String]) -> Result<(Option<PathBuf>, Command), String> {
         ["watch"] => Command::Watch,
         ["config", "check"] => Command::Check,
         ["config", "reload"] => Command::Reload,
+        ["report"] => Command::Report { whole: false },
+        ["report", "--whole"] => Command::Report { whole: true },
         ["activate", id] => {
             let id = id
                 .parse()
@@ -99,10 +111,11 @@ fn action(name: &str, arguments: &[&str]) -> Value {
 /// Runs the program: output goes to `out`, problems to `err`.
 ///
 /// `socket` is where the environment says the compositor's socket is; a
-/// `--socket` argument overrides it.
+/// `--socket` argument overrides it. A report reads from `places`.
 pub(crate) fn run(
     arguments: &[String],
     socket: Option<PathBuf>,
+    places: &Places,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> ExitCode {
@@ -122,19 +135,16 @@ pub(crate) fn run(
             let _ = writeln!(out, "omorfosctl {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
+        // Made with or without a compositor, which is most wanted when there
+        // is none.
+        Command::Report { whole } => {
+            let asked = connect(chosen.or(socket)).and_then(|mut client| ask(&mut client));
+            report::write(places, asked, whole, out);
+            return ExitCode::SUCCESS;
+        }
         _ => {}
     }
-    let connected = chosen
-        .or(socket)
-        .ok_or_else(|| {
-            "cannot tell where the compositor's socket is; is omorfos running? \
-             Set OMORFOS_SOCKET or pass --socket"
-                .to_owned()
-        })
-        .and_then(|path| {
-            Client::connect(&path)
-                .map_err(|error| format!("cannot connect to {}: {error}", path.display()))
-        });
+    let connected = connect(chosen.or(socket));
     match connected.and_then(|mut client| execute(&command, &mut client, out)) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
@@ -142,6 +152,42 @@ pub(crate) fn run(
             let _ = writeln!(err, "omorfosctl: {problem}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Connects to the compositor's socket at `path`, saying why not where it
+/// cannot.
+fn connect(path: Option<PathBuf>) -> Result<Client, String> {
+    path.ok_or_else(|| {
+        "cannot tell where the compositor's socket is; is omorfos running? \
+         Set OMORFOS_SOCKET or pass --socket"
+            .to_owned()
+    })
+    .and_then(|path| {
+        Client::connect(&path)
+            .map_err(|error| format!("cannot connect to {}: {error}", path.display()))
+    })
+}
+
+/// Asks the compositor its version, as `version` prints it, and its state.
+fn ask(client: &mut Client) -> Result<(String, State), String> {
+    let unexpected = || "the compositor sent an unexpected answer".to_owned();
+    let version = match client
+        .request(&Request::Version)
+        .map_err(|error| error.to_string())?
+    {
+        Reply::Version {
+            protocol,
+            compositor,
+        } => format!("omorfos {compositor} (protocol {protocol})"),
+        _ => return Err(unexpected()),
+    };
+    match client
+        .request(&Request::State)
+        .map_err(|error| error.to_string())?
+    {
+        Reply::State(state) => Ok((version, state)),
+        _ => Err(unexpected()),
     }
 }
 
@@ -220,7 +266,7 @@ fn execute(command: &Command, client: &mut Client, out: &mut dyn Write) -> Resul
 /// Prints each screen: where it stands, how large it is there and the mode
 /// it is driven in, and then each mode it can be driven in, as
 /// `config.yaml` writes one.
-fn screens(state: &State, out: &mut dyn Write) {
+pub(crate) fn screens(state: &State, out: &mut dyn Write) {
     for screen in &state.screens {
         let driven = if screen.mode.is_empty() {
             String::new()
@@ -348,7 +394,13 @@ mod tests {
         let fake = fake(replies, extra);
         let arguments: Vec<String> = arguments.iter().map(ToString::to_string).collect();
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(&arguments, Some(fake.socket.clone()), &mut out, &mut err);
+        let code = run(
+            &arguments,
+            Some(fake.socket.clone()),
+            &nowhere(),
+            &mut out,
+            &mut err,
+        );
         // Connect once more in case the command never did, so the fake
         // compositor stops waiting.
         drop(Client::connect(&fake.socket));
@@ -361,10 +413,20 @@ mod tests {
         }
     }
 
+    /// Places a report finds nothing in.
+    fn nowhere() -> Places {
+        Places {
+            config: None,
+            logs: None,
+            home: None,
+            root: PathBuf::from("/nonexistent"),
+        }
+    }
+
     fn offline(arguments: &[&str]) -> (ExitCode, String, String) {
         let arguments: Vec<String> = arguments.iter().map(ToString::to_string).collect();
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(&arguments, None, &mut out, &mut err);
+        let code = run(&arguments, None, &nowhere(), &mut out, &mut err);
         (
             code,
             String::from_utf8(out).unwrap(),
@@ -466,7 +528,7 @@ mod tests {
             "state".to_owned(),
         ];
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(&arguments, None, &mut out, &mut err);
+        let code = run(&arguments, None, &nowhere(), &mut out, &mut err);
         assert_eq!(code, ExitCode::FAILURE);
         let err = String::from_utf8(err).unwrap();
         assert!(
@@ -490,7 +552,7 @@ mod tests {
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let elsewhere = Some(PathBuf::from("/nonexistent/omorfos.sock"));
         assert_eq!(
-            run(&arguments, elsewhere, &mut out, &mut err),
+            run(&arguments, elsewhere, &nowhere(), &mut out, &mut err),
             ExitCode::SUCCESS
         );
         assert_eq!(
@@ -498,6 +560,71 @@ mod tests {
             [Request::Perform {
                 action: json!("close")
             }]
+        );
+    }
+
+    #[test]
+    fn a_report_asks_the_compositor_its_version_and_state_and_is_made_without_one() {
+        let version = Reply::Version {
+            protocol: 3,
+            compositor: "0.1.0".to_owned(),
+        };
+        let outcome = invoke(
+            &["report"],
+            vec![version.clone(), Reply::State(state(&["odd"]))],
+        );
+        assert_eq!(outcome.code, ExitCode::SUCCESS);
+        assert_eq!(outcome.requests, [Request::Version, Request::State]);
+        assert!(
+            outcome
+                .out
+                .contains("compositor: omorfos 0.1.0 (protocol 3)\n"),
+            "{}",
+            outcome.out
+        );
+        assert!(
+            outcome.out.contains("\"title\": \"(left out)\""),
+            "{}",
+            outcome.out
+        );
+        let outcome = invoke(
+            &["report", "--whole"],
+            vec![version.clone(), Reply::State(state(&[]))],
+        );
+        assert!(outcome.out.contains("\"title\": \"~\""), "{}", outcome.out);
+
+        let refused = Reply::Error {
+            message: "busy".to_owned(),
+        };
+        for replies in [vec![Reply::Done], vec![version.clone(), Reply::Done]] {
+            let outcome = invoke(&["report"], replies);
+            let said = "compositor: did not answer: the compositor sent an unexpected answer\n";
+            assert!(outcome.out.contains(said), "{}", outcome.out);
+        }
+        let outcome = invoke(&["report"], vec![refused]);
+        assert!(
+            outcome
+                .out
+                .contains("did not answer: the compositor sent an unexpected answer"),
+            "{}",
+            outcome.out
+        );
+
+        // Gone before it answered either.
+        for replies in [Vec::new(), vec![version.clone()]] {
+            let outcome = invoke(&["report"], replies);
+            assert!(
+                outcome.out.contains("compositor: did not answer: "),
+                "{}",
+                outcome.out
+            );
+        }
+
+        let (code, out, err) = offline(&["report"]);
+        assert_eq!((code, err.as_str()), (ExitCode::SUCCESS, ""));
+        assert!(
+            out.contains("did not answer: cannot tell where the compositor's socket is"),
+            "{out}"
         );
     }
 
@@ -732,6 +859,7 @@ mod tests {
         let code = run(
             &["watch".to_owned()],
             Some(fake.socket.clone()),
+            &nowhere(),
             &mut out,
             &mut Vec::new(),
         );
