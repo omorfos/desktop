@@ -1692,11 +1692,13 @@ How the project is run, as learnt in part from Vela's:
       directory that is there, and to a heading in it where it names one,
       as GitHub makes them (`crates/omorfos-config/tests/links.rs`, among
       the tests every gate runs). Links elsewhere are not followed.
-- [ ] What a version promises written down: what counts as breaking,
-      which, as nothing here is a library others build on, is what users
-      and other programs depend on: the configuration's keys, the
-      theme's parts and states, the IPC protocol, `omorfosctl`'s
-      commands and what it prints, and the names of the programs.
+- [x] What a version promises written down (ADR 73, and in
+      `RELEASING.md`): what someone else writes down or starts by name,
+      the configuration's files and keys, the theme's parts, states and
+      variables, the IPC protocol, `omorfosctl`'s commands, JSON and exit
+      codes, the programs' and the IPC socket's names, and where the
+      session's log is; not what only a person reads, nor the defaults,
+      whose changes are said in the changelog all the same.
 - [ ] CI that finds a breaking change not marked as one: a schema of
       the configuration that loses or renames something in a commit
       without `!`.

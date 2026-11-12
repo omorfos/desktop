@@ -31,6 +31,28 @@ the changelog by hand.
 To force a version, add a commit whose body contains
 `Release-As: 1.0.0`.
 
+## What a version promises
+
+A change is breaking, and marked with `!`, when it takes away or changes
+the meaning of something written or started by name elsewhere
+([ADR 73](adr/0073-what-a-version-promises.md)). Adding to it is not.
+
+| Promised | Not promised |
+|---|---|
+| The configuration's file names, and each key and value `schemas/` describes, with the actions' names | |
+| The theme's parts, states, properties and variables, as `CONFIGURATION.md` lists them | How the built-in theme looks |
+| Each IPC request, reply and field (`PROTOCOL` rises when one goes) | |
+| `omorfosctl`'s commands and arguments, the JSON of `state` and `watch`, and its exit codes | The text of `version`, `screens`, `frames`, `report` and every error |
+| The programs' names: `omorfos`, `omorfosctl`, `omorfos-session`, `omorfos-pinentry` and the rest | Where they are installed |
+| The IPC socket's name and `OMORFOS_SOCKET` | The Wayland socket's name |
+| Where the session's log is kept | What it says |
+| | The defaults: key bindings, looks and settings' values |
+
+A changed default is not breaking, as what the user wrote still means
+what it did, but its commit says what changed, so that the changelog
+does. What the holder, the relay and the compositor say to each other
+keeps a rule of its own, that lines are added and never changed (ADR 60).
+
 ## One-time setup on GitHub
 
 - **Let Actions open pull requests:** Settings → Actions → General →
