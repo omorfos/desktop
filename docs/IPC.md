@@ -12,7 +12,9 @@ omorfosctl state                   # workspaces, windows and problems, as JSON
 omorfosctl screens                 # the screens, where they stand and their modes
 omorfosctl frames                  # how long each screen's last frame took to draw
 omorfosctl watch                   # the state again, one line per change
+omorfosctl action                  # every action, and what each does
 omorfosctl action close            # any action from keys.yaml
+omorfosctl action tile left
 omorfosctl action workspace 2
 omorfosctl action spawn foot --title scratch
 omorfosctl activate 7              # switch to the window with id 7

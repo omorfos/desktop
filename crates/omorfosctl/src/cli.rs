@@ -1,5 +1,6 @@
 //! Parsing the command line and carrying it out.
 
+use std::fmt::Write as _;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -20,7 +21,8 @@ Commands:
   screens               Print the screens, where they stand and their modes
   frames                Print how long each screen's last frame took to draw
   watch                 Print the state, one JSON line each time it changes
-  action NAME [ARG]...  Perform an action, as named in keys.yaml
+  action NAME [ARG]...  Perform an action, as named in keys.yaml; `action`
+                        alone lists them
   activate ID           Switch to a window, by the id shown in `state`
   config check          Print configuration problems; fails if there are any
   config reload         Re-read the configuration, then check it
@@ -48,6 +50,7 @@ Examples:
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Help,
+    Actions,
     OwnVersion,
     Version,
     State,
@@ -86,6 +89,7 @@ fn parse(arguments: &[String]) -> Result<(Option<PathBuf>, Command), String> {
                 .map_err(|_| format!("`{id}` is not a window id"))?;
             Command::Activate(id)
         }
+        ["action"] | ["action", "-h" | "--help"] => Command::Actions,
         ["action", name, arguments @ ..] => Command::Perform(action(name, arguments)),
         [] => return Err("no command given".to_owned()),
         [first, ..] => return Err(format!("unrecognised command `{first}`")),
@@ -93,17 +97,51 @@ fn parse(arguments: &[String]) -> Result<(Option<PathBuf>, Command), String> {
     Ok((socket, command))
 }
 
+/// Every action there is, as `omorfosctl action` alone lists them: in
+/// their groups, each by its name and what it takes, beside what it does.
+fn actions() -> String {
+    let told = omorfos_ipc::actions::TOLD;
+    let named = |told: &omorfos_ipc::actions::Told| {
+        let space = if told.takes.is_empty() { "" } else { " " };
+        format!("{}{space}{}", told.name, told.takes)
+    };
+    let wide = told
+        .iter()
+        .map(|told| named(told).len())
+        .max()
+        .unwrap_or_default();
+    let mut list = String::from(
+        "Actions, for `omorfosctl action NAME [ARG]...`, and to bind in keys.yaml\n\
+         and menu.yaml by the same names:\n",
+    );
+    let mut group = "";
+    for told in told {
+        if told.group != group {
+            group = told.group;
+            let _ = write!(list, "\n{group}:\n");
+        }
+        let _ = writeln!(list, "  {:wide$}  {}", named(told), told.does);
+    }
+    list.push_str(
+        "\nExamples:\n  omorfosctl action overview\n  omorfosctl action workspace 2\n  \
+         omorfosctl action tile left\n  omorfosctl action spawn foot --title scratch\n",
+    );
+    list
+}
+
 /// Builds an action in the form `keys.yaml` uses, from words.
 ///
 /// A name alone is the action itself (`close`). With one whole number it is
-/// that action applied to the number (`workspace 2`). With anything else the
-/// words are a list (`spawn foot --title scratch`).
+/// that action applied to the number (`workspace 2`), and with one word
+/// that action applied to the word (`tile left`). A program to start, and
+/// anything else, is a list (`spawn foot --title scratch`).
 fn action(name: &str, arguments: &[&str]) -> Value {
     match arguments {
         [] => json!(name),
         [number] if number.parse::<u64>().is_ok() => {
             json!({ name: number.parse::<u64>().unwrap_or_default() })
         }
+        [word] if name != "spawn" => json!({ name: word }),
         words => json!({ name: words }),
     }
 }
@@ -129,6 +167,10 @@ pub(crate) fn run(
     match command {
         Command::Help => {
             let _ = out.write_all(USAGE.as_bytes());
+            return ExitCode::SUCCESS;
+        }
+        Command::Actions => {
+            let _ = out.write_all(actions().as_bytes());
             return ExitCode::SUCCESS;
         }
         Command::OwnVersion => {
@@ -485,6 +527,27 @@ mod tests {
     }
 
     #[test]
+    fn the_action_command_alone_lists_every_action_in_groups_and_needs_no_compositor() {
+        for arguments in [&["action"][..], &["action", "--help"], &["action", "-h"]] {
+            let (code, out, err) = offline(arguments);
+            assert_eq!((code, err.as_str()), (ExitCode::SUCCESS, ""));
+            assert!(out.starts_with("Actions, for `omorfosctl action"), "{out}");
+            for told in omorfos_ipc::actions::TOLD {
+                let name = format!("{} ", told.name);
+                let line = out
+                    .lines()
+                    .find(|line| line.trim_start().starts_with(&name));
+                assert!(
+                    line.is_some_and(|line| line.ends_with(told.does)),
+                    "{told:?}\n{out}"
+                );
+            }
+            assert!(out.contains("\nWindows:\n  close "), "{out}");
+            assert!(out.lines().all(|line| line.len() <= 80), "{out}");
+        }
+    }
+
+    #[test]
     fn a_missing_or_unknown_command_is_a_usage_error() {
         let (code, out, err) = offline(&[]);
         assert_eq!((code, out.as_str()), (ExitCode::from(2), ""));
@@ -737,6 +800,7 @@ mod tests {
         assert_eq!(action("close", &[]), json!("close"));
         assert_eq!(action("workspace", &["2"]), json!({ "workspace": 2 }));
         assert_eq!(action("spawn", &["foot"]), json!({ "spawn": ["foot"] }));
+        assert_eq!(action("tile", &["left"]), json!({ "tile": "left" }));
         assert_eq!(
             action("spawn", &["foot", "-e", "top"]),
             json!({ "spawn": ["foot", "-e", "top"] })
@@ -745,6 +809,23 @@ mod tests {
             action("spawn", &["foot", "2"]),
             json!({ "spawn": ["foot", "2"] })
         );
+    }
+
+    #[test]
+    fn every_action_listed_is_built_from_words_as_the_configuration_takes_it() {
+        for told in omorfos_ipc::actions::TOLD {
+            // What it takes, as someone would type it: the first of the
+            // choices, a number, or a program and its arguments.
+            let words: Vec<&str> = match told.takes {
+                "" => Vec::new(),
+                "N" | "ID" | "SECONDS" => vec!["2"],
+                "PROGRAM [ARG]..." => vec!["foot", "--title", "scratch"],
+                choices => vec![choices.split('|').next().unwrap_or_default()],
+            };
+            let built = action(told.name, &words);
+            let taken = serde_json::from_value::<omorfos_config::Action>(built.clone());
+            assert!(taken.is_ok(), "{} {words:?}: {built} {taken:?}", told.name);
+        }
     }
 
     #[test]

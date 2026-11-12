@@ -1797,6 +1797,11 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       `omorfos-lock` each with what it does, and examples, kept within 80
       columns; and a test of each that it answers, run where starting
       would fail.
+- [x] `omorfosctl action` alone lists every action, in groups, with what
+      it takes and what it does, from one list in `omorfos_ipc::help`
+      that a test holds to every action the configuration promises; and
+      an action given one word, as `tile left`, is built as keys.yaml
+      takes it, where it was refused.
 - [ ] A manual page for each program, `omorfos(1)`, `omorfosctl(1)` and
       the rest, and for the files a user writes, `config.yaml`,
       `keys.yaml`, `rules.yaml`, `menu.yaml` and `theme.css` in section

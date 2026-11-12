@@ -457,6 +457,9 @@ not begin with keys you have bound on their own.
 
 ### Actions
 
+`omorfosctl action`, run alone, lists them too, in groups, each with what
+it takes and what it does.
+
 | Action | Effect |
 |---|---|
 | `spawn: [program, arg, ...]` | Start a program. No shell is involved. |

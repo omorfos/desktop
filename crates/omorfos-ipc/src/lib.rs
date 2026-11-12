@@ -22,6 +22,7 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+pub mod actions;
 mod client;
 pub mod help;
 pub mod hold;
