@@ -125,6 +125,10 @@ struct Screen {
     failing: bool,
     /// Whether it is off because the configuration says so.
     dark: bool,
+    /// How warm night light has its gamma table, in kelvin: nothing until
+    /// it is set, or where it may have been lost, as with a mode changed
+    /// or the card given up and taken back.
+    tinted: Option<u16>,
 }
 
 /// What a screen is showing.
@@ -230,6 +234,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
                     for screen in &mut hardware.screens {
                         screen.surface.reset_buffers();
                         screen.picture = Picture::Stale;
+                        screen.tinted = None;
                     }
                     // A screen may have come or gone while we were away.
                     hardware.scan(compositor);
@@ -244,6 +249,36 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let ended = session.run(move |compositor| turn(&hardware, &handle, compositor));
     end_session(session.compositor(), kept);
     ended
+}
+
+/// Has each of `screens` that is not tinted as a light of `kelvin` would
+/// be so, saying where it cannot be the first time, not at each step of
+/// turning warm.
+fn tint_screens(card: &DrmDevice, screens: &mut [Screen], kelvin: u16) {
+    for screen in screens
+        .iter_mut()
+        .filter(|screen| screen.tinted != Some(kelvin))
+    {
+        let first = screen.tinted.is_none();
+        screen.tinted = Some(kelvin);
+        let tinted = tint(card, screen.crtc, kelvin);
+        if let Some(error) = tinted.err().filter(|_| first) {
+            let name = screen.output.name();
+            let _ = writeln!(
+                stderr(),
+                "omorfos: cannot make {name} warmer at night: {error}"
+            );
+        }
+    }
+}
+
+/// Has what `crtc` shows tinted as a light of `kelvin` would be, through
+/// its gamma table, as night light asks.
+fn tint(card: &DrmDevice, crtc: crtc::Handle, kelvin: u16) -> io::Result<()> {
+    let length = card.get_crtc(crtc)?.gamma_length();
+    let length = usize::try_from(length).unwrap_or_default();
+    let [red, green, blue] = omorfos_config::ramps(omorfos_config::tint(kelvin), length);
+    card.set_gamma(crtc, &red, &green, &blue)
 }
 
 /// Leaves the screens showing what was drawn, as the compositor steps down
@@ -686,6 +721,7 @@ fn turn(
                 let _ = screen.surface.surface().clear();
             }
             screen.picture = Picture::Stale;
+            screen.tinted = None;
         }
     }
     if !now.lit {
@@ -702,6 +738,7 @@ fn turn(
         before,
         ..
     } = &mut *now;
+    tint_screens(card, screens, compositor.night_kelvin());
     let mut refused = false;
     for screen in screens.iter_mut() {
         // One the configuration has off is turned off, and nothing is drawn
@@ -984,6 +1021,7 @@ impl Hardware {
             ticking: false,
             failing: false,
             dark: false,
+            tinted: None,
         })
     }
 
@@ -1136,6 +1174,7 @@ impl Hardware {
             screen.tracker = OutputDamageTracker::from_output(&screen.output);
             screen.frame = Duration::from_secs(1) / mode.vrefresh().max(1);
             screen.picture = Picture::Stale;
+            screen.tinted = None;
         }
     }
 

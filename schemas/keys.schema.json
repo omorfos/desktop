@@ -231,6 +231,11 @@
           "type": "object"
         },
         {
+          "const": "night_light",
+          "description": "Make the screens warm now if they are not, as warm as `night_light`\nsays, or as they are if they are, until night light next turns them\nby the time of day.",
+          "type": "string"
+        },
+        {
           "const": "next_layout",
           "description": "Type with the next of the keyboard's layouts, and after the last\nwith the first again.",
           "type": "string"

@@ -119,6 +119,10 @@ pub enum Action {
     StayAwake,
     /// The same for at most this many seconds, up to a day.
     StayAwakeFor(Bounded<1, 86_400>),
+    /// Make the screens warm now if they are not, as warm as `night_light`
+    /// says, or as they are if they are, until night light next turns them
+    /// by the time of day.
+    NightLight,
     /// Type with the next of the keyboard's layouts, and after the last
     /// with the first again.
     NextLayout,
@@ -349,6 +353,7 @@ mod tests {
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
         assert_eq!(parse("lock"), Ok(Action::Lock));
         assert_eq!(parse("stay_awake"), Ok(Action::StayAwake));
+        assert_eq!(parse("night_light"), Ok(Action::NightLight));
         let hour = Bounded::clamped(3600);
         assert_eq!(
             parse("stay_awake_for: 3600"),

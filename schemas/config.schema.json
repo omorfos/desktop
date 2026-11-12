@@ -532,6 +532,24 @@
       ],
       "type": "object"
     },
+    "NightLight": {
+      "additionalProperties": false,
+      "description": "The screens made warmer after dark.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the screens are made warmer after dark: from sunset to\nsunrise where `appearance.location` says, or outside the hours of\n`appearance.day`, as `scheme: auto` goes by, turning warm over the\n20 minutes after it is dark and back over the 20 before it is light.",
+          "type": "boolean"
+        },
+        "temperature": {
+          "description": "How warm the screens are at night, as the colour of a light of this\ntemperature, in kelvin: 6500 is daylight, as screens are, and lower\nis warmer.",
+          "maximum": 6500,
+          "minimum": 1900,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Notifications": {
       "additionalProperties": false,
       "description": "The notifications that come with omorfos: what programs have to tell\nthe user, shown in a corner of the screen.",
@@ -1093,6 +1111,10 @@
     "mouse": {
       "$ref": "#/$defs/Mouse",
       "description": "Mouse behaviour."
+    },
+    "night_light": {
+      "$ref": "#/$defs/NightLight",
+      "description": "The screens made warmer after dark."
     },
     "notifications": {
       "$ref": "#/$defs/Notifications",

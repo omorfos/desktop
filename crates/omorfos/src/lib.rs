@@ -35,6 +35,7 @@ mod ipc;
 mod kde_blur;
 mod kept;
 mod lock;
+mod night;
 mod outputs;
 mod paint;
 mod palette;

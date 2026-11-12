@@ -1844,6 +1844,7 @@ version = "0.1.0"
 dependencies = [
  "cosmic-text",
  "inotify",
+ "jiff",
  "omorfos-ask",
  "omorfos-brand",
  "omorfos-clipboard",

@@ -37,6 +37,7 @@ mod lock_screen;
 mod login;
 mod menu;
 mod mirroring;
+mod night;
 mod notice;
 mod notifications;
 mod outputs;

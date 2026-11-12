@@ -8,7 +8,9 @@ use std::time::SystemTime;
 use jiff::Zoned;
 
 use crate::daylight::{self, Day, Location};
-use crate::{Accent, Bounded, Command, MAX_WORKSPACES, Scheme, SchemeChoice, Started, Wallpaper};
+use crate::{
+    Accent, Bounded, Command, MAX_WORKSPACES, NightLight, Scheme, SchemeChoice, Started, Wallpaper,
+};
 
 /// The contents of `config.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -52,6 +54,8 @@ pub struct General {
     pub icons: Icons,
     /// How what the desktop draws looks, whatever the theme.
     pub appearance: Appearance,
+    /// The screens made warmer after dark.
+    pub night_light: NightLight,
     /// The launcher that comes with omorfos.
     pub launcher: Launcher,
     /// The notifications that come with omorfos.

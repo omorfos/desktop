@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use omorfos_brand::pointer::Shape;
 use omorfos_config::{
@@ -122,6 +122,7 @@ use crate::input::Focused;
 use crate::ipc::Server;
 use crate::kept::Parts;
 use crate::lock::{Awake, Lock, Presence};
+use crate::night::Night;
 use crate::outputs::{Aside, Head};
 use crate::paint::{self, AboutButton, Motion, Text};
 use crate::palette::{self, Palette};
@@ -369,6 +370,8 @@ pub struct Compositor {
     /// What has happened lately that the user might want to know of and
     /// need do nothing about, and when.
     events: Vec<(String, Instant)>,
+    /// How warm night light has the screens.
+    pub(crate) night: Night,
 
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed_keys: Vec<Keycode>,
@@ -550,6 +553,7 @@ impl Compositor {
                     bindings: Bindings::new([]),
                     problems: Vec::new(),
                     events: Vec::new(),
+                    night: Night::default(),
                     suppressed_keys: Vec::new(),
                     pointer_location: (0.0, 0.0).into(),
                     draws_pointer: false,
@@ -1172,6 +1176,7 @@ impl Compositor {
         let turning = turning.map(|(due, epoch)| epoch + due);
         [
             turning,
+            self.night_due(Instant::now(), SystemTime::now()),
             self.about_due(),
             self.debouncer.deadline(),
             self.ipc.as_ref().and_then(|server| server.retry),
@@ -1228,6 +1233,7 @@ impl Compositor {
         // Day turning into night, or night into day, is drawn over a minute;
         // whatever compares the theme it was drawn in is drawn again.
         let _ = self.store.at(self.animation.clock);
+        self.light_the_night_if_due(SystemTime::now());
         self.settle_recording(now);
         self.settle_capture(now);
         self.wait_for_relay(now);
@@ -1300,6 +1306,7 @@ impl Compositor {
             .iter_mut()
             .for_each(|watcher| watcher.wake_at(due));
         self.switch.icons.set_theme(&config.general.icons.theme);
+        self.light_the_night(&jiff::Zoned::now());
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
         problems.extend(crate::outputs::misplaced(&config.general));
 
@@ -1434,6 +1441,7 @@ impl Compositor {
             Action::Lock => self.start_locker(),
             Action::StayAwake => self.stay_awake(None),
             Action::StayAwakeFor(seconds) => self.stay_awake(Some(seconds.get())),
+            Action::NightLight => self.switch_night_light(),
             Action::NextLayout => {
                 let keyboard = self.keyboard.clone();
                 keyboard.with_xkb_state(self, |mut xkb| xkb.cycle_next_layout());

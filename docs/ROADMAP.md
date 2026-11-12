@@ -1368,7 +1368,18 @@ the first than on the last.
       because it is there to be read.
 - [ ] The switcher as a queue on a diagonal (wish 5).
 - [ ] An overview of every window on a workspace, and of the workspaces.
-- [ ] Night light: the screen warmer after dark.
+- [x] Night light: the screens warmer after dark (ADR 74), by the day
+      and night `scheme: auto` goes by, turning over twenty minutes either
+      side, through each screen's gamma table; `night_light` in
+      `config.yaml`, off unless set, and an action to switch it until it
+      next turns.
+- [ ] Known gaps in night light: it is set in the hardware backend,
+      which no test runs, and has been tried on no screen yet; programs
+      that set a screen's gamma themselves, through
+      `wlr-gamma-control`, as `gammastep` and `wlsunset` do, are not
+      offered it; nothing on the panel says it is on; and on an HDR
+      screen (stage 8) it is to warm the picture as it is composed
+      instead.
 - [ ] The defaults reviewed together, keys and settings, rather than one
       at a time as each feature came. What has gathered for it: `Super+l`
       to lock; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,

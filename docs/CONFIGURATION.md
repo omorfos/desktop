@@ -83,6 +83,9 @@ appearance:
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
   reduce_motion: false    # nothing moves: what comes and goes only fades
+night_light:
+  enabled: false          # the screens warmer after dark, by appearance's day and night
+  temperature: 4000       # kelvin at night, 1900 to 6500: lower is warmer
 launcher:
   icons: false            # show each program's icon
   descriptions: false     # show, and search, what each program says of itself
@@ -477,6 +480,7 @@ not begin with keys you have bound on their own.
 | `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
 | `stay_awake` | Keep the session from locking, the screens from going off and the machine from sleeping when you are away, until it is chosen again, the session is locked by hand, or you log out. The panel says so while it lasts, and a click there ends it. The root menu offers it. |
 | `stay_awake_for: N` | The same for N seconds at most, up to a day (86400). |
+| `night_light` | Make the screens warm now if they are not, as warm as `night_light.temperature` says, or as they are if they are, until night light next turns them by the time of day: switched off one evening, it is on again the next. No key is bound to it. |
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. No key is bound to it. |
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. Bound to `XF86Display`. |
 | `show_launcher` | Open the launcher. |
@@ -1534,6 +1538,30 @@ notifications:
 ```
 
 Like `autostart`, this takes effect the next time you log in.
+
+## Night light
+
+With `night_light.enabled: true` in `config.yaml`, the screens are made
+warmer after dark, as though lit by a light of `night_light.temperature`
+kelvin, 4000 unless you say otherwise: 6500 is daylight, as screens
+are, and lower takes away more blue. Dark is as `appearance.scheme: auto`
+has it, from sunset to sunrise where `appearance.location` says, or
+outside the hours of `appearance.day`, whatever the scheme is; the
+screens turn warm over the 20 minutes after dusk, and back over the 20
+before dawn.
+
+```yaml
+night_light:
+  enabled: true
+  temperature: 3400
+```
+
+The `night_light` action switches it by hand until it next turns: off
+for the rest of the evening, or on now, as warm as it says, even where it
+is not enabled. It is done through each screen's gamma table, after
+everything is drawn, so pictures of the screen, and a screen shared, keep
+their colours. A screen whose table cannot be set says so once, in the
+session's log.
 
 ## What applications are told of the desktop
 

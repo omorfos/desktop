@@ -92,6 +92,9 @@ config.yaml mouse.acceleration = "adaptive"
 config.yaml mouse.acceleration = "flat"
 config.yaml mouse.natural_scroll
 config.yaml mouse.speed
+config.yaml night_light
+config.yaml night_light.enabled
+config.yaml night_light.temperature
 config.yaml notifications
 config.yaml notifications.enabled
 config.yaml notifications.timeout
@@ -196,6 +199,7 @@ keys.yaml bindings[].action = "next_layout"
 keys.yaml bindings[].action = "next_screens"
 keys.yaml bindings[].action = "next_tab"
 keys.yaml bindings[].action = "next_workspace"
+keys.yaml bindings[].action = "night_light"
 keys.yaml bindings[].action = "previous_tab"
 keys.yaml bindings[].action = "previous_workspace"
 keys.yaml bindings[].action = "quit"
@@ -260,6 +264,7 @@ menu.yaml items[].action = "next_layout"
 menu.yaml items[].action = "next_screens"
 menu.yaml items[].action = "next_tab"
 menu.yaml items[].action = "next_workspace"
+menu.yaml items[].action = "night_light"
 menu.yaml items[].action = "previous_tab"
 menu.yaml items[].action = "previous_workspace"
 menu.yaml items[].action = "quit"
