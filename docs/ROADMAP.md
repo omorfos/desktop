@@ -489,8 +489,9 @@ what only games and touchpads need last.
       The icon theme is `hicolor` and then Adwaita, as for the shell's
       components; the user's own theme comes with the look.
 - [ ] Known gaps in the switcher: windows are made small in one step,
-      not by halves, so text in them is rough; and the pointer moving
-      over a window does not pick it.
+      not by halves, so text in them is rough, and rougher still at the
+      back of the queue; and the pointer moving over a window does not
+      pick it.
 - [x] Sleep, restart and shut down, by logind, and what the lid and the
       power button do. Sleep, by the lid or asked for, locks the screen
       first, with the locker in use until `omorfos-lock` takes its place,
@@ -1366,7 +1367,15 @@ the first than on the last.
       the one with focus stands out. It has to be weighed against the
       design language, which keeps a window's content from being glass
       because it is there to be read.
-- [ ] The switcher as a queue on a diagonal (wish 5).
+- [x] The switcher as a queue on a diagonal (wish 5), unless
+      `switcher.style: flat` (ADR 75): the one picked in front, its title
+      under it, those after it smaller, fainter, up and to the right, and
+      the queue turned over 240 ms as the next comes forward.
+- [ ] Known gaps in the switcher on a diagonal: the places further back
+      have thinner borders, being drawn smaller; a theme's `box-shadow`
+      on `switcher-item` is not drawn there; the pictures are not rounded
+      at the corners; and its look, the steps and how much each shrinks,
+      is to be tried on real hardware.
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [x] Night light: the screens warmer after dark (ADR 74), by the day
       and night `scheme: auto` goes by, turning over twenty minutes either

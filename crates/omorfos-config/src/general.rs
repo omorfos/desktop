@@ -58,6 +58,8 @@ pub struct General {
     pub night_light: NightLight,
     /// The launcher that comes with omorfos.
     pub launcher: Launcher,
+    /// The switcher on `Alt+Tab`.
+    pub switcher: Switcher,
     /// The notifications that come with omorfos.
     pub notifications: Notifications,
     /// Pictures of the screen.
@@ -363,6 +365,28 @@ pub struct Launcher {
     /// Whether what each program says of itself is shown after its name,
     /// and looked through for what is typed.
     pub descriptions: bool,
+}
+
+/// The switcher on `Alt+Tab`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Switcher {
+    /// How the windows are shown in it.
+    pub style: SwitcherStyle,
+}
+
+/// How the switcher shows the windows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SwitcherStyle {
+    /// One behind another on a diagonal, the one picked in front, its title
+    /// under it; each Tab sends the one in front to the back.
+    #[default]
+    Diagonal,
+    /// Side by side in rows, each over its title, in a box.
+    Flat,
 }
 
 /// The pictures used for the pointer.
@@ -1275,6 +1299,19 @@ mod tests {
         let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
+    }
+
+    #[test]
+    fn the_switcher_stands_the_windows_on_a_diagonal_unless_asked_for_rows() {
+        let style = |text| parse(text).unwrap().switcher.style;
+        assert_eq!(General::default().switcher.style, SwitcherStyle::Diagonal);
+        assert_eq!(style("switcher: { style: flat }"), SwitcherStyle::Flat);
+        assert_eq!(
+            style("switcher: { style: diagonal }"),
+            SwitcherStyle::Diagonal
+        );
+        assert!(parse("switcher: { style: round }").is_err());
+        assert!(parse("switcher: { size: 3 }").is_err());
     }
 
     #[test]

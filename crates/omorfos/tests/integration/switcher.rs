@@ -11,6 +11,9 @@ use crate::windows::{BLUE, GREEN, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
 
+/// The switcher in rows, which most of these are about.
+const FLAT: (&str, &str) = ("config.yaml", "switcher: { style: flat }\n");
+
 fn press(session: &mut Session, code: Keycode, pressed: bool) {
     session
         .compositor_mut()
@@ -50,21 +53,33 @@ fn shown(session: &Session) -> Option<(Vec<String>, String)> {
             .map(|window| window.app_id.clone())
             .unwrap_or_default()
     };
-    let names = layout.items.iter().map(|(id, _, _)| name(*id)).collect();
+    let names = layout.items.iter().map(|item| name(item.window)).collect();
     let picked = layout
         .items
         .iter()
-        .find(|(_, _, picked)| *picked)
-        .map(|(id, _, _)| name(*id))?;
+        .find(|item| item.picked)
+        .map(|item| name(item.window))?;
     Some((names, picked))
 }
 
-/// Three windows, opened in turn, the last with focus.
+/// Three windows, opened in turn, the last with focus, the switcher in
+/// rows.
 fn three() -> (Session, Client) {
-    let mut session = Session::new();
+    three_with(&[FLAT])
+}
+
+/// Three windows, opened in turn, the last with focus, with `files` as
+/// the configuration, those on a diagonal larger than their places.
+fn three_with(files: &[(&str, &str)]) -> (Session, Client) {
+    let mut session = Session::with_config(files);
     let mut client = session.connect();
+    let size = if files.contains(&FLAT) {
+        (200, 100)
+    } else {
+        (800, 500)
+    };
     for (name, colour) in [("one", RED), ("two", BLUE), ("three", GREEN)] {
-        session.open(&mut client, name, (200, 100), colour);
+        session.open(&mut client, name, size, colour);
     }
     session.step();
     (session, client)
@@ -195,7 +210,7 @@ fn opened_by_something_other_than_a_key_it_waits_for_enter() {
 
 #[test]
 fn with_no_windows_there_is_nothing_to_open() {
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[FLAT]);
     alt_tab(&mut session, 1, false);
     assert_eq!(shown(&session), None);
     press(&mut session, key::ALT, false);
@@ -219,16 +234,12 @@ fn each_window_is_shown_small_in_its_place_and_the_one_picked_is_set_apart() {
     let layout = session.compositor().switcher_layout().unwrap();
     let frame = session.draw();
     let theme = Theme::default();
-    for ((_, place, _), colour) in layout.items.iter().zip([GREEN, BLUE, RED]) {
-        let (x, y) = picture(*place, &theme);
+    for (item, colour) in layout.items.iter().zip([GREEN, BLUE, RED]) {
+        let place = item.place;
+        let (x, y) = picture(place, &theme);
         assert_eq!(frame.at(x, y), colour, "{place:?}");
     }
-    let picked = layout
-        .items
-        .iter()
-        .find(|(_, _, picked)| *picked)
-        .unwrap()
-        .1;
+    let picked = layout.items.iter().find(|item| item.picked).unwrap().place;
     let accent = theme
         .style(Part::SwitcherItem, States::NONE.with(State::Active))
         .border
@@ -248,7 +259,7 @@ fn each_window_is_shown_small_in_its_place_and_the_one_picked_is_set_apart() {
 #[test]
 fn a_private_window_is_shown_by_its_title_and_not_its_picture() {
     let rules = "rules:\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
     let mut client = session.connect();
     session.open(&mut client, "one", (200, 100), RED);
     session.open(&mut client, "two", (200, 100), BLUE);
@@ -259,8 +270,8 @@ fn a_private_window_is_shown_by_its_title_and_not_its_picture() {
     let colours: Vec<u32> = layout
         .items
         .iter()
-        .map(|(_, place, _)| {
-            let (x, y) = picture(*place, &theme);
+        .map(|item| {
+            let (x, y) = picture(item.place, &theme);
             frame.at(x, y)
         })
         .collect();
@@ -273,7 +284,7 @@ fn a_click_on_a_window_chooses_it_and_anywhere_else_closes_the_switcher() {
     let (mut session, _client) = three();
     alt_tab(&mut session, 1, false);
     let layout = session.compositor().switcher_layout().unwrap();
-    let last = layout.items[2].1;
+    let last = layout.items[2].place;
     let click = |session: &mut Session, (x, y): (i32, i32)| {
         let compositor = session.compositor_mut();
         compositor.input(
@@ -312,7 +323,7 @@ fn a_click_on_a_window_chooses_it_and_anywhere_else_closes_the_switcher() {
 
 #[test]
 fn a_window_that_closes_while_it_is_open_is_taken_out() {
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[FLAT]);
     let mut client = session.connect();
     let one = session.open(&mut client, "one", (200, 100), RED);
     let two = session.open(&mut client, "two", (200, 100), BLUE);
@@ -469,7 +480,7 @@ fn icons_shown(session: &mut Session) -> Vec<(u32, u32)> {
     let frame = session.draw();
     let theme = Theme::default();
     let at = |(x, y)| frame.at(x, y);
-    let places = layout.items.iter().map(|(_, place, _)| *place);
+    let places = layout.items.iter().map(|item| item.place);
     places
         .map(|place| (at(beside_title(place, &theme)), at(picture(place, &theme))))
         .collect()
@@ -501,7 +512,7 @@ fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
     let path = data
         .path()
         .join("icons/hicolor/scalable/apps/org.example.Given.svg");
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[FLAT]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -541,7 +552,7 @@ fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
 #[test]
 fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applications_icon() {
     let data = installed(&[("one", CYAN)], &[]);
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[FLAT]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -594,7 +605,7 @@ fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applicatio
 
 #[test]
 fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused() {
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[FLAT]);
     let changed = session.connect();
     let window = changed.toplevel("one", "One");
     let (manager, icon) = changed.icon();
@@ -628,7 +639,7 @@ fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused(
 fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -640,5 +651,223 @@ fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     alt_tab(&mut session, 1, false);
     let shown = icons_shown(&mut session);
     assert_eq!(shown, [(MAGENTA, MAGENTA), (YELLOW, YELLOW)]);
+    press(&mut session, key::ALT, false);
+}
+
+/// Where each window the switcher shows is, front first, and how much of
+/// it is seen, but not which is picked.
+fn standing(session: &Session) -> Vec<(u64, Rect, u16)> {
+    let layout = session.compositor().switcher_layout().unwrap_or_else(|| {
+        unreachable!("the switcher is open");
+    });
+    let items = layout.items.iter();
+    items
+        .map(|item| (item.window.raw(), item.place, item.opacity))
+        .collect()
+}
+
+/// The middle of `rect`.
+fn middle(rect: Rect) -> (i32, i32) {
+    let x = rect.origin.x + rect.size.width.cast_signed() / 2;
+    let y = rect.origin.y + rect.size.height.cast_signed() / 2;
+    (x, y)
+}
+
+/// Whether `pixel` is mostly `colour`, of red, green and blue each all or
+/// nothing, as one seen partly through is.
+fn mostly(pixel: u32, colour: u32) -> bool {
+    let [_, red, green, blue] = pixel.to_be_bytes();
+    let [_, want_red, want_green, want_blue] = colour.to_be_bytes();
+    [(red, want_red), (green, want_green), (blue, want_blue)]
+        .into_iter()
+        .all(|(got, want)| if want == 0 { got < 0x40 } else { got > 0xc0 })
+}
+
+#[test]
+fn unless_set_the_windows_stand_one_behind_another_the_one_picked_in_front() {
+    let (mut session, _client) = three_with(&[]);
+    alt_tab(&mut session, 1, false);
+    let names = |names: [&str; 3]| names.map(str::to_owned).to_vec();
+    assert_eq!(
+        shown(&session),
+        Some((names(["two", "one", "three"]), "two".to_owned()))
+    );
+    let layout = session.compositor().switcher_layout().unwrap();
+    let frame = session.draw();
+    let front = layout.items[0].place;
+    let (x, y) = middle(front);
+    assert_eq!(frame.at(x, y), BLUE, "the one picked whole, in front");
+    // Each behind is seen to the right of those in front of it, fainter:
+    // the first over the desktop, where nothing red is.
+    let mut seen = Vec::new();
+    for (pair, colour) in layout.items.windows(2).zip([RED, GREEN]) {
+        let (before, behind) = (pair[0].place, pair[1].place);
+        let x = i32::try_from(i64::midpoint(before.right(), behind.right())).unwrap();
+        let (_, y) = middle(behind);
+        seen.push(frame.at(x, y));
+        assert!(
+            mostly(frame.at(x, y), colour),
+            "{:#x} at {x}, {y}",
+            frame.at(x, y)
+        );
+    }
+    assert_ne!(seen[0], RED, "seen through");
+    // Its title is under it, in the switcher's box.
+    assert!(
+        i64::from(layout.area.origin.y) > front.bottom(),
+        "{:?}",
+        layout.area
+    );
+    // A click where two stand chooses the one in front.
+    let (x, y) = (front.right() - 2, front.origin.y + 2);
+    let compositor = session.compositor_mut();
+    compositor.input(
+        Input::Motion {
+            x: f64::from(i32::try_from(x).unwrap()),
+            y: f64::from(y),
+        },
+        0,
+    );
+    for pressed in [true, false] {
+        let button = LEFT_BUTTON;
+        compositor.input(Input::Button { button, pressed }, 0);
+    }
+    session.step();
+    assert_eq!(focused(&session).as_deref(), Some("two"));
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn going_on_turns_the_queue_from_where_it_stood_and_the_next_comes_to_the_front() {
+    let (mut session, _client) = three_with(&[]);
+    alt_tab(&mut session, 1, false);
+    let before = standing(&session);
+    tap(&mut session, key::TAB);
+    assert_eq!(
+        standing(&session),
+        before,
+        "it sets out from where it stood"
+    );
+    let now = session.now;
+    let due = session.compositor().deadline();
+    let frame = std::time::Duration::from_millis(20);
+    assert!(
+        due.is_some_and(|due| due > now && due <= now + frame),
+        "{due:?}"
+    );
+    session.advance(std::time::Duration::from_millis(120));
+    let halfway = standing(&session);
+    assert_ne!(halfway, before);
+    session.advance(std::time::Duration::from_millis(200));
+    let names = |names: [&str; 3]| names.map(str::to_owned).to_vec();
+    assert_eq!(
+        shown(&session),
+        Some((names(["one", "three", "two"]), "one".to_owned()))
+    );
+    assert_ne!(standing(&session), halfway, "and stands there");
+    // The one now in front is set apart, its place painted again; the
+    // one that was is not.
+    let accent = Theme::default()
+        .style(Part::SwitcherItem, States::NONE.with(State::Active))
+        .border
+        .left
+        .color;
+    let accent = u32::from_be_bytes([accent.alpha, accent.red, accent.green, accent.blue]);
+    let edge = |place: Rect| (place.origin.x, middle(place).1);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let frame = session.draw();
+    let (x, y) = edge(layout.items[0].place);
+    assert_eq!(frame.at(x, y), accent);
+    let (x, y) = edge(layout.items[2].place);
+    assert_ne!(frame.at(x + 1, y), accent, "{:?}", layout.items[2]);
+    // Back again, the other way round, and the arrows go as Tab does.
+    tap(&mut session, key::LEFT);
+    session.advance(std::time::Duration::from_millis(300));
+    assert_eq!(standing(&session), before);
+    press(&mut session, key::ALT, false);
+    assert_eq!(focused(&session).as_deref(), Some("two"));
+}
+
+#[test]
+fn with_motion_reduced_the_queue_does_not_turn_but_stands_at_once() {
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let (mut session, _client) = three_with(&[reduced]);
+    alt_tab(&mut session, 2, false);
+    let names = |names: [&str; 3]| names.map(str::to_owned).to_vec();
+    assert_eq!(
+        shown(&session),
+        Some((names(["one", "three", "two"]), "one".to_owned()))
+    );
+    press(&mut session, key::ALT, false);
+}
+
+/// The middle of where the icon goes beside the title in the box under the
+/// queue, `area`.
+fn beside_queued_title(area: Rect, theme: &Theme) -> (i32, i32) {
+    let inset = theme.style(Part::Switcher, States::NONE).inset();
+    let font = theme.font(Part::SwitcherTitle, States::NONE.with(State::Active));
+    let tall = font.size.get() * 5 / 3;
+    let x = area.origin.x + (inset.left + tall / 2).cast_signed();
+    let y = area.origin.y + (inset.top + tall / 2).cast_signed();
+    (x, y)
+}
+
+#[test]
+fn in_the_queue_a_private_window_is_shown_by_its_icon_large_and_beside_its_title() {
+    let data = installed(&[("one", YELLOW)], &[]);
+    let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    let two = session.open(&mut client, "two", (200, 100), BLUE);
+    client.set_icon(&two, None, Some((32, MAGENTA)));
+    session.roundtrip(&mut client);
+    let theme = Theme::default();
+    let seen = |session: &mut Session| {
+        let layout = session.compositor().switcher_layout().unwrap();
+        let frame = session.draw();
+        let (x, y) = middle(layout.items[0].place);
+        let (beside_x, beside_y) = beside_queued_title(layout.area, &theme);
+        (frame.at(x, y), frame.at(beside_x, beside_y))
+    };
+    // The icon of its application, painted, and the one its program gave,
+    // drawn by the renderer.
+    alt_tab(&mut session, 1, false);
+    assert_eq!(seen(&mut session), (YELLOW, YELLOW));
+    tap(&mut session, key::TAB);
+    session.advance(std::time::Duration::from_millis(300));
+    assert_eq!(seen(&mut session), (MAGENTA, MAGENTA));
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn the_one_that_leaves_the_front_is_drawn_on_its_way_though_six_others_are_shown() {
+    let mut session = Session::with_workspaces();
+    let mut client = session.connect();
+    for number in 1..=7 {
+        let colour = if number == 6 { BLUE } else { RED };
+        session.open(&mut client, &format!("w{number}"), (800, 500), colour);
+        // The blue one elsewhere, so that blue on this workspace is the
+        // switcher's.
+        if number == 6 {
+            let elsewhere = Action::MoveToWorkspace(omorfos_config::WorkspaceNumber::clamped(2));
+            session.compositor_mut().perform(&elsewhere);
+            session.step();
+        }
+    }
+    alt_tab(&mut session, 2, false);
+    session.advance(std::time::Duration::from_millis(300));
+    let front = session.compositor().switcher_layout().unwrap().items[0];
+    assert_eq!(focused(&session).as_deref(), Some("w7"));
+    // Once it has turned, the one in front is seventh, behind the six
+    // shown; as it sets out, it is still in front.
+    let (x, y) = middle(front.place);
+    assert_eq!(session.draw().at(x, y), BLUE);
+    tap(&mut session, key::TAB);
+    session.step();
+    assert_eq!(session.draw().at(x, y), BLUE, "on its way");
     press(&mut session, key::ALT, false);
 }

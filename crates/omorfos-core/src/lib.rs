@@ -37,5 +37,5 @@ pub use menu::{Item, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Private, Rule, resolve};
 pub use sign::Sign;
-pub use switcher::{Switcher, SwitcherLayout, SwitcherMetrics, Used};
+pub use switcher::{QueueMetrics, Switcher, SwitcherItem, SwitcherLayout, SwitcherMetrics, Used};
 pub use system::{Card, Disk, Monitor, Said, System};

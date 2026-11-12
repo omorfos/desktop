@@ -89,6 +89,8 @@ night_light:
 launcher:
   icons: false            # show each program's icon
   descriptions: false     # show, and search, what each program says of itself
+switcher:
+  style: diagonal         # the windows one behind another; or flat, in rows
 notifications:
   enabled: true           # show what programs have to tell you
   timeout: 5              # seconds one stays; 0 until it is clicked
@@ -896,9 +898,11 @@ question-input:active {
   color: var(--on-accent);
 }
 
-/* The switcher on Alt+Tab: the box in the middle of the screen, each
- * window's place in it, its picture over its title, and the title. The
- * window picked is :active. Each place is as wide as its min-width. */
+/* The switcher on Alt+Tab: its box, each window's place, and the title.
+ * In rows, the box is in the middle of the screen, each place in it with
+ * its picture over its title, as wide as its min-width. On a diagonal,
+ * the box is under the queue, with the title of the one picked, and each
+ * place is as large as the picture in front. The one picked is :active. */
 switcher {
   padding: 12px;
   background: var(--surface);
@@ -2281,10 +2285,24 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 ### Switching windows
 
 `Alt+Tab` opens the switcher in the middle of the screen the pointer is
-on: every window, on every workspace and minimized or not, each as a
-small picture of itself over its title, in the order they were last
-used. It opens at the window used before the one you are in, so one
-`Alt+Tab` goes back to it and another comes back again.
+on: every window, on every workspace and minimized or not, as a picture
+of itself, in the order they were last used. A window smaller than its
+place is shown as large as it is, not made larger. It opens at the
+window used before the one you are in, so one `Alt+Tab` goes back to it
+and another comes back again.
+
+The windows stand one behind another on a diagonal: the one picked in
+front, with its title and icon under it, and those after it going back
+up and to the right, each smaller and fainter, six at most. Going on to
+the next window turns the queue: the one in front fades out and goes to
+the back, and the next comes forward, over a quarter of a second, or at
+once with `appearance.reduce_motion`. With `style: flat` they
+stand side by side in rows instead, each small over its title, in a box:
+
+```yaml
+switcher:
+  style: flat
+```
 
 While Alt is held, Tab goes on to the next window and `Shift+Tab` back,
 as do the arrows; letting go of Alt goes to the window picked, bringing
@@ -2299,7 +2317,10 @@ installed with (the `Icon` of its desktop entry, or the icon named as
 its `app_id` is). A window a rule says is `private` is shown by its
 title and its icon, large where its picture would be. How the switcher looks is `switcher`,
 `switcher-item` (the one picked is `:active`, and `min-width` is how wide
-each is) and `switcher-title` in `theme.css`. The actions are
+each is in rows) and `switcher-title` in `theme.css`. On a diagonal,
+`switcher` is the box under the queue that the title is in, and each
+window's place is a `switcher-item` as large as it is in front, made
+smaller further back, border and all. The actions are
 `switch_windows` and `switch_windows_back`; `focus_next` and
 `focus_previous` still go from window to window on a workspace without
 it.

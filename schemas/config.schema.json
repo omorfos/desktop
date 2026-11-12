@@ -913,6 +913,32 @@
         }
       ]
     },
+    "Switcher": {
+      "additionalProperties": false,
+      "description": "The switcher on `Alt+Tab`.",
+      "properties": {
+        "style": {
+          "$ref": "#/$defs/SwitcherStyle",
+          "description": "How the windows are shown in it."
+        }
+      },
+      "type": "object"
+    },
+    "SwitcherStyle": {
+      "description": "How the switcher shows the windows.",
+      "oneOf": [
+        {
+          "const": "diagonal",
+          "description": "One behind another on a diagonal, the one picked in front, its title\nunder it; each Tab sends the one in front to the back.",
+          "type": "string"
+        },
+        {
+          "const": "flat",
+          "description": "Side by side in rows, each over its title, in a box.",
+          "type": "string"
+        }
+      ]
+    },
     "Touchpad": {
       "additionalProperties": false,
       "description": "Touchpad behaviour.",
@@ -1143,6 +1169,10 @@
     "screenshots": {
       "$ref": "#/$defs/Screenshots",
       "description": "Pictures of the screen."
+    },
+    "switcher": {
+      "$ref": "#/$defs/Switcher",
+      "description": "The switcher on `Alt+Tab`."
     },
     "touchpad": {
       "$ref": "#/$defs/Touchpad",

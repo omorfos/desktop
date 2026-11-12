@@ -3,15 +3,20 @@
 //! keys held with it are, and the window it is at chosen when they are let
 //! go. Which windows, in what order and where each is shown is the desktop
 //! model's business (`omorfos_core::Switcher`).
+//!
+//! `switcher.style` has it show them in rows, or one behind another on a
+//! diagonal (ADR 75), each window's place painted once as large as it is
+//! in front and drawn smaller further back. Going on to the next window
+//! turns the queue there over [`TURN`], unless motion is to be reduced.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use omorfos_config::{Color, Config, Modifiers, Part, State, States, Theme};
+use omorfos_config::{Color, Config, Easing, Modifiers, Part, State, States, SwitcherStyle, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Switcher, SwitcherLayout, SwitcherMetrics, Used, WindowId};
-use omorfos_ui::Image;
+use omorfos_core::{QueueMetrics, Switcher, SwitcherLayout, SwitcherMetrics, Used, WindowId};
+use omorfos_ui::{Area, Image};
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
@@ -26,7 +31,7 @@ use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
-use crate::compositor::{Compositor, Element, Painted, View, logical};
+use crate::compositor::{Compositor, Element, Mapped, Painted, View, logical};
 use crate::glass::{self, Pane};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
@@ -43,6 +48,14 @@ const UNDER: u32 = 6;
 const SHAPE: (u32, u32) = (10, 16);
 /// The narrowest a window's place is made, whatever the theme says.
 const NARROWEST: u32 = 80;
+/// The widest the window in front of the queue is made.
+const WIDEST: u32 = 720;
+/// How long the queue takes to turn to the next window, as long as
+/// `docs/DESIGN.md` gives something moving to where it was sent.
+const TURN: Duration = Duration::from_millis(240);
+/// The farthest the queue is let fall behind the keys, in windows, so that
+/// Tab held down does not send it spinning.
+const FARTHEST: f64 = 2.0;
 
 /// The switcher, open or not, and what it goes by.
 #[derive(Debug)]
@@ -88,23 +101,61 @@ pub(crate) struct Switching {
     held: Modifiers,
     /// The screen it is on, as it was when it opened.
     screen: Rect,
+    /// The queue on its way round: how far it had still to turn, in
+    /// windows, and when it set out, by the compositor's clock.
+    turn: Option<(f64, Duration)>,
     /// Its pixels, kept until they would be painted differently.
     painted: Option<Drawn>,
+}
+
+impl Switching {
+    /// Goes on to the next window, or back if not `forward`, the queue
+    /// turning there from where it is at `clock`, unless it is `still`.
+    fn turn(&mut self, forward: bool, clock: Duration, still: bool) {
+        if forward {
+            self.switcher.next();
+        } else {
+            self.switcher.previous();
+        }
+        let way = if forward { -1.0 } else { 1.0 };
+        let from = (turned(self.turn, clock) + way).clamp(-FARTHEST, FARTHEST);
+        self.turn = (!still).then_some((from, clock));
+    }
 }
 
 /// The switcher's pixels, and what they were painted from.
 #[derive(Debug)]
 struct Drawn {
+    /// Where it all is, as it stands, turned no further.
     layout: SwitcherLayout,
+    /// The windows painted: those in rows, or those the queue shows as it
+    /// stands and on its way there, the one picked first.
+    windows: Vec<WindowId>,
     shown: Vec<Shown<Icon>>,
     /// What the renderer knows each icon given as pixels by, beside the
     /// title and large, so that it is drawn again only when it changes.
     ids: Vec<[Id; 2]>,
     config: Arc<Config>,
     scale: Scale,
+    /// The rows in their box, or the box under the queue with the title of
+    /// the one picked.
     pixels: Painted,
+    /// Each window's place in the queue, as large as it is in front; none
+    /// in rows.
+    cards: Vec<Card>,
     /// The shadow it casts, as a part on the second level does.
     shadow: Option<Shadowing>,
+}
+
+/// A window's place in the queue, painted, and what it was painted from,
+/// so that only those that change are painted again as it turns.
+#[derive(Debug)]
+struct Card {
+    window: WindowId,
+    picked: bool,
+    shown: Shown<Icon>,
+    size: DomainSize,
+    pixels: Painted,
 }
 
 /// The colour of a window's title in the switcher, which an icon that is
@@ -141,16 +192,203 @@ fn metrics(theme: &Theme) -> (SwitcherMetrics, u32) {
     (metrics, picture)
 }
 
+/// How the switcher stands the windows on a diagonal under `theme`, its
+/// box under them as tall as the title in it.
+fn queue_metrics(theme: &Theme) -> QueueMetrics {
+    let style = theme.style(Part::Switcher, States::NONE);
+    let font = theme.font(Part::SwitcherTitle, States::NONE.with(State::Active));
+    QueueMetrics {
+        widest: WIDEST,
+        title: paint::line_height(font.size.get()) + style.inset().down(),
+        gap: 2 * GAP,
+        margin: MARGIN,
+    }
+}
+
+/// How far the queue has still to turn at `clock`, in windows, easing in
+/// and out on its way.
+fn turned(turn: Option<(f64, Duration)>, clock: Duration) -> f64 {
+    turn.map_or(0.0, |(from, began)| {
+        let share = clock.saturating_sub(began).as_secs_f32() / TURN.as_secs_f32();
+        from * f64::from(1.0 - Easing::EaseInOut.at(share.min(1.0)))
+    })
+}
+
+/// Where the switcher and each window in it are shown, as `config` lays it
+/// out, the queue `turning` windows short of where it stands.
+fn laid_out(config: &Config, switching: &Switching, turning: f64) -> SwitcherLayout {
+    let (switcher, screen) = (&switching.switcher, switching.screen);
+    match config.general.switcher.style {
+        SwitcherStyle::Flat => switcher.layout(screen, metrics(&config.theme).0),
+        SwitcherStyle::Diagonal => switcher.queue(screen, queue_metrics(&config.theme), turning),
+    }
+}
+
+/// The windows the switcher may show before it is painted again, as
+/// `config` lays it out: those `layout` shows as it stands, and, while the
+/// queue turns, those it shows on the way there from where it set out.
+fn shown_windows(config: &Config, switching: &Switching, layout: &SwitcherLayout) -> Vec<WindowId> {
+    let from = switching.turn.map_or(0.0, |(from, _)| from);
+    let on_the_way = [from, -2.0, -1.0, 1.0, 2.0]
+        .into_iter()
+        .filter(|turning| turning * from > 0.0 && turning.abs() <= from.abs());
+    let mut windows: Vec<WindowId> = layout.items.iter().map(|item| item.window).collect();
+    for turning in on_the_way {
+        for item in laid_out(config, switching, turning).items {
+            if !windows.contains(&item.window) {
+                windows.push(item.window);
+            }
+        }
+    }
+    windows
+}
+
+/// `mapped`'s picture made as small as it has to be to fit `room`, its
+/// shape kept, in the middle of it, as see-through as `opacity` says.
+fn pictured<R>(
+    renderer: &mut R,
+    mapped: &Mapped,
+    room: Area,
+    view: View,
+    opacity: f32,
+) -> impl Iterator<Item = Element<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Texture + Send + 'static,
+{
+    let size = mapped.window.geometry().size;
+    let across = f64::from(room.2) / f64::from(size.w.max(1));
+    let down = f64::from(room.3) / f64::from(size.h.max(1));
+    // No larger than it is, which would only blur it.
+    let factor = across.min(down).min(1.0);
+    let shown = (f64::from(size.w) * factor, f64::from(size.h) * factor);
+    let left = f64::from(room.0) + (f64::from(room.2) - shown.0) / 2.0;
+    let top = f64::from(room.1) + (f64::from(room.3) - shown.1) / 2.0;
+    let corner = view.pixel(Point::<f64, Logical>::from((left, top)));
+    let scale = view.scale.factor() * factor;
+    let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
+    let at = corner - within.to_i32_round();
+    let picture = smithay::utils::Size::<f64, Logical>::from(shown);
+    let crop = Rectangle::new(
+        corner,
+        picture.to_physical(view.scale.factor()).to_i32_round(),
+    );
+    let scale = smithay::utils::Scale::from(scale);
+    let surfaces = mapped
+        .window
+        .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, opacity);
+    surfaces
+        .into_iter()
+        .filter_map(move |surface| CropRenderElement::from_element(surface, scale, crop))
+        .map(Element::Cropped)
+}
+
+/// What the switcher is painted from: where it all is as it stands, the
+/// windows painted, what is shown of each, and that as it is painted.
+type Painting<'a> = (
+    &'a SwitcherLayout,
+    &'a [WindowId],
+    &'a [Shown<Icon>],
+    &'a [Shown<Option<Image>>],
+);
+
+/// Paints the switcher as `config` lays it out, `layout` as it stands, with
+/// what is `shown` of each of `windows`, `painted` as it is to be painted:
+/// the rows in their box; or the box under the queue, with the title of
+/// `picked`, and each window's place, as large as it is in front, those
+/// `kept` from before taken as they are where nothing of them changed.
+fn paint_switcher(
+    text: &mut paint::Text,
+    config: &Config,
+    (layout, windows, shown, painted): Painting<'_>,
+    (picked, mut kept): (WindowId, Vec<Card>),
+    scale: Scale,
+) -> (paint::Canvas, Vec<Card>) {
+    let theme = &config.theme;
+    match config.general.switcher.style {
+        SwitcherStyle::Flat => {
+            let (_, picture) = metrics(theme);
+            let canvas = paint::switcher(text, theme, layout, painted, picture, scale);
+            (canvas, Vec::new())
+        }
+        SwitcherStyle::Diagonal => {
+            let size = layout.area.size;
+            let first = painted.first();
+            let title = first.map_or("", |shown| shown.title.as_str());
+            let icon = first.and_then(|shown| shown.icon.as_ref());
+            let canvas = paint::switcher_title(
+                text,
+                theme,
+                (size.width, size.height),
+                (title, icon.and_then(Option::as_ref)),
+                scale,
+            );
+            let front = layout.items.first().map(|item| item.place.size);
+            let front = front.unwrap_or_default();
+            let painting = windows.iter().zip(shown).zip(painted);
+            let cards = painting.map(|((window, shown), painting)| {
+                let picked = *window == picked;
+                let same = |card: &Card| {
+                    (card.window, card.picked, card.size) == (*window, picked, front)
+                        && card.shown == *shown
+                };
+                let at = kept.iter().position(same);
+                let pixels = at.map(|at| kept.swap_remove(at).pixels);
+                Card {
+                    window: *window,
+                    picked,
+                    shown: shown.clone(),
+                    size: front,
+                    pixels: pixels.unwrap_or_else(|| {
+                        let size = (front.width, front.height);
+                        let card = paint::switcher_card(theme, size, picked, painting, scale);
+                        Painted::new(&card)
+                    }),
+                }
+            });
+            (canvas, cards.collect())
+        }
+    }
+}
+
+/// Adds the switcher's shadow under what has been added of it, and its
+/// glass.
+fn switcher_box<R>(
+    renderer: &mut R,
+    drawn: &Drawn,
+    view: View,
+    (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+) where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Texture + Send + 'static,
+{
+    let glass = elements.len();
+    if let Some(shadow) = &drawn.shadow {
+        shadow.elements(renderer, 1.0, view, elements);
+    }
+    let style = drawn.config.theme.style(Part::Switcher, States::NONE);
+    let area = (logical(drawn.layout.area), view);
+    let key = (glass::key(&"switcher"), glass, elements.len());
+    panes.extend(Pane::of(&style, area, key, 1.0));
+}
+
+/// A rectangle of the desktop model as the painting code has it.
+const fn area(rect: Rect) -> Area {
+    (
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height,
+    )
+}
+
 impl Compositor {
     /// Opens the switcher, going back if `back`, on the screen the pointer
     /// is on; or, while it is open, goes on to the next window or back.
     pub(crate) fn switch_windows(&mut self, back: bool) {
+        let (clock, still) = (self.clock(), self.switcher_still());
         if let Some(switching) = &mut self.switch.open {
-            if back {
-                switching.switcher.previous();
-            } else {
-                switching.switcher.next();
-            }
+            switching.turn(!back, clock, still);
             return;
         }
         let windows = self.desktop.windows().map(|listed| listed.window.id);
@@ -163,8 +401,26 @@ impl Compositor {
             switcher,
             held: self.switch.held,
             screen,
+            turn: None,
             painted: None,
         });
+    }
+
+    /// Whether the switcher goes from one window to the next at once: in
+    /// rows, and with motion reduced.
+    fn switcher_still(&self) -> bool {
+        let general = &self.config().general;
+        general.appearance.reduce_motion || general.switcher.style == SwitcherStyle::Flat
+    }
+
+    /// Whether the queue is turning, and to be drawn again a frame on.
+    pub(crate) fn switcher_turning(&self) -> bool {
+        let turn = self
+            .switch
+            .open
+            .as_ref()
+            .and_then(|switching| switching.turn);
+        turn.is_some_and(|(_, began)| self.clock() < began + TURN)
     }
 
     /// Closes the switcher, choosing the window it is at if `chosen`.
@@ -184,14 +440,15 @@ impl Compositor {
     /// the switcher's; any other is left to bindings, among them the one
     /// that goes on to the next window.
     pub(crate) fn switcher_key(&mut self, keysym: Keysym) -> bool {
+        let (clock, still) = (self.clock(), self.switcher_still());
         let Some(switching) = &mut self.switch.open else {
             return false;
         };
         match keysym {
             Keysym::Escape => self.close_switcher(false),
             Keysym::Return | Keysym::KP_Enter => self.close_switcher(true),
-            Keysym::Left | Keysym::Up => switching.switcher.previous(),
-            Keysym::Right | Keysym::Down => switching.switcher.next(),
+            Keysym::Left | Keysym::Up => switching.turn(false, clock, still),
+            Keysym::Right | Keysym::Down => switching.turn(true, clock, still),
             _ => return false,
         }
         true
@@ -209,12 +466,13 @@ impl Compositor {
     }
 
     /// Where the switcher and each window in it are shown, while it is
-    /// open, as the theme lays it out.
+    /// open, as the theme and the configuration lay it out, and as far as
+    /// the queue has turned.
     #[must_use]
     pub fn switcher_layout(&self) -> Option<SwitcherLayout> {
-        let (metrics, _) = metrics(&self.store.current().theme);
+        let config = self.store.current();
         let open = self.switch.open.as_ref();
-        open.map(|switching| switching.switcher.layout(switching.screen, metrics))
+        open.map(|switching| laid_out(config, switching, turned(switching.turn, self.clock())))
     }
 
     /// Whether the switcher is open.
@@ -223,15 +481,16 @@ impl Compositor {
     }
 
     /// Takes a press of the pointer while the switcher is open: on a
-    /// window it chooses it, anywhere else it closes the switcher.
+    /// window it chooses the one in front there, anywhere else it closes
+    /// the switcher.
     pub(crate) fn switcher_press(&mut self, at: DomainPoint) {
-        let theme = &self.store.current().theme;
-        let (metrics, _) = metrics(theme);
+        let config = Arc::clone(self.store.current());
+        let clock = self.clock();
         let open = self.switch.open.as_mut();
         let under = open.and_then(|switching| {
-            let layout = switching.switcher.layout(switching.screen, metrics);
-            let under = layout.items.iter().find(|(_, place, _)| place.contains(at));
-            let window = under.map(|(window, _, _)| *window)?;
+            let layout = laid_out(&config, switching, turned(switching.turn, clock));
+            let under = layout.items.iter().find(|item| item.place.contains(at));
+            let window = under.map(|item| item.window)?;
             switching.switcher.pick(window);
             Some(window)
         });
@@ -250,12 +509,14 @@ impl Compositor {
         }
     }
 
-    /// Forgets a window that has gone, and takes it out of the switcher.
+    /// Forgets a window that has gone, and takes it out of the switcher,
+    /// which stands still where it has got to.
     pub(crate) fn forget_use(&mut self, window: WindowId) {
         self.switch.used.forget(window);
         let switching = self.switch.open.take();
         self.switch.open = switching.and_then(|mut switching| {
             switching.switcher = switching.switcher.without(window)?;
+            switching.turn = None;
             Some(switching)
         });
     }
@@ -269,15 +530,15 @@ impl Compositor {
         let Some(mut switching) = self.switch.open.take() else {
             return;
         };
-        let (metrics, picture) = metrics(&config.theme);
-        let layout = switching.switcher.layout(switching.screen, metrics);
+        let layout = laid_out(&config, &switching, 0.0);
+        let windows = shown_windows(&config, &switching, &layout);
+        let picked = switching.switcher.picked();
         let pixels = crate::icons::icon_pixels(paint::LARGE_ICON, scale);
         let mut icons = std::mem::take(&mut self.switch.icons);
-        let shown: Vec<Shown<Icon>> = layout
-            .items
+        let shown: Vec<Shown<Icon>> = windows
             .iter()
-            .map(|(window, _, picked)| {
-                let ink = ink(&config.theme, *picked);
+            .map(|window| {
+                let ink = ink(&config.theme, *window == picked);
                 let listed = self.desktop.window(*window);
                 let mapped = self.mapped(*window);
                 let app_id = listed
@@ -295,17 +556,17 @@ impl Compositor {
             .collect();
         let same = |drawn: &Drawn| {
             drawn.layout == layout
+                && drawn.windows == windows
                 && drawn.shown == shown
                 && Arc::ptr_eq(&drawn.config, &config)
                 && drawn.scale == scale
         };
         if !switching.painted.as_ref().is_some_and(same) {
-            let painted: Vec<Shown<Option<Image>>> = layout
-                .items
+            let painted: Vec<Shown<Option<Image>>> = windows
                 .iter()
                 .zip(&shown)
-                .map(|((_, _, picked), shown)| {
-                    let ink = ink(&config.theme, *picked);
+                .map(|(window, shown)| {
+                    let ink = ink(&config.theme, *window == picked);
                     let icon = shown.icon.as_ref().map(|icon| match icon {
                         Icon::Named(name) => icons.picture(name, pixels, ink).cloned(),
                         Icon::Given(_) => None,
@@ -318,7 +579,22 @@ impl Compositor {
                 })
                 .collect();
             let theme = &config.theme;
-            let canvas = paint::switcher(&mut self.text, theme, &layout, &painted, picture, scale);
+            // What was painted before, but for the shadow, is kept only as
+            // long as it was painted as it is now.
+            let had = switching.painted.take();
+            let same = |drawn: &Drawn| Arc::ptr_eq(&drawn.config, &config) && drawn.scale == scale;
+            let painted_so = had.as_ref().is_some_and(same);
+            let (mut kept, had) =
+                had.map_or((Vec::new(), None), |drawn| (drawn.cards, drawn.shadow));
+            kept.retain(|_| painted_so);
+            let painting = (
+                &layout,
+                windows.as_slice(),
+                shown.as_slice(),
+                painted.as_slice(),
+            );
+            let (canvas, cards) =
+                paint_switcher(&mut self.text, &config, painting, (picked, kept), scale);
             let pixels = Painted::new(&canvas);
             let style = theme.style(Part::Switcher, States::NONE);
             let area = &layout.area;
@@ -328,15 +604,16 @@ impl Compositor {
                 area.size.width,
                 area.size.height,
             );
-            let had = switching.painted.take().and_then(|drawn| drawn.shadow);
             let shadow = self.animation.shades.cast(&style, scale, placed, had);
             switching.painted = Some(Drawn {
                 ids: shown.iter().map(|_| [Id::new(), Id::new()]).collect(),
                 layout,
+                windows,
                 shown,
                 config,
                 scale,
                 pixels,
+                cards,
                 shadow,
             });
         }
@@ -362,33 +639,38 @@ impl Compositor {
             let here = self.head(output).map(|head| domain(head.area()));
             here == Some(switching.screen)
         });
-        let Some(drawn) = switching.and_then(|switching| switching.painted.as_ref()) else {
+        let painted = switching
+            .and_then(|switching| switching.painted.as_ref().map(|drawn| (switching, drawn)));
+        let Some((switching, drawn)) = painted else {
             return;
         };
+        if drawn.config.general.switcher.style == SwitcherStyle::Diagonal {
+            self.queue_elements(renderer, (switching, drawn), view, (elements, panes));
+            return;
+        }
         let theme = &drawn.config.theme;
         let (_, tall) = metrics(theme);
         let given = drawn.layout.items.iter().zip(&drawn.shown).zip(&drawn.ids);
-        for (((_, place, picked), shown), ids) in given {
+        for ((item, shown), ids) in given {
             let Some(Icon::Given(buffer)) = &shown.icon else {
                 continue;
             };
-            let states = States::NONE.when(State::Active, *picked);
-            let place = (
-                place.origin.x,
-                place.origin.y,
-                place.size.width,
-                place.size.height,
-            );
-            let places = Places::of(place, theme, states, tall, true);
+            let states = States::NONE.when(State::Active, item.picked);
+            let places = Places::of(area(item.place), theme, states, tall, true);
             let large = (!shown.pictured).then_some(places.large);
             let areas = [Some(places.icon), large].into_iter().zip(ids);
             for (area, id) in areas.filter_map(|(area, id)| Some((area?, id))) {
-                elements.extend(self.switch.icons.given(renderer, buffer, area, id, view));
+                elements.extend(
+                    self.switch
+                        .icons
+                        .given(renderer, buffer, (area, 1.0), id, view),
+                );
             }
         }
-        for (window, place, picked) in &drawn.layout.items {
-            let states = States::NONE.when(State::Active, *picked);
+        for item in &drawn.layout.items {
+            let states = States::NONE.when(State::Active, item.picked);
             let style = drawn.config.theme.style(Part::SwitcherItem, states);
+            let place = item.place;
             let room = (
                 place.origin.x.saturating_add_unsigned(style.inset().left),
                 place.origin.y.saturating_add_unsigned(style.inset().top),
@@ -396,47 +678,88 @@ impl Compositor {
                 tall,
             );
             let mapped = self
-                .mapped(*window)
-                .filter(|_| !self.desktop.private(*window));
+                .mapped(item.window)
+                .filter(|_| !self.desktop.private(item.window));
             let Some(mapped) = mapped else { continue };
-            // As small as it has to be to fit, its shape kept, in the
-            // middle of where it goes.
-            let size = mapped.window.geometry().size;
-            let across = f64::from(room.2) / f64::from(size.w.max(1));
-            let down = f64::from(room.3) / f64::from(size.h.max(1));
-            let factor = across.min(down);
-            let shown = (f64::from(size.w) * factor, f64::from(size.h) * factor);
-            let left = f64::from(room.0) + (f64::from(room.2) - shown.0) / 2.0;
-            let top = f64::from(room.1) + (f64::from(room.3) - shown.1) / 2.0;
-            let corner = view.pixel(Point::<f64, Logical>::from((left, top)));
-            let scale = view.scale.factor() * factor;
-            let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
-            let at = corner - within.to_i32_round();
-            let picture = smithay::utils::Size::<f64, Logical>::from(shown);
-            let crop = Rectangle::new(
-                corner,
-                picture.to_physical(view.scale.factor()).to_i32_round(),
-            );
-            let scale = smithay::utils::Scale::from(scale);
-            let surfaces = mapped
-                .window
-                .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0);
-            let cropped = surfaces
-                .into_iter()
-                .filter_map(|surface| CropRenderElement::from_element(surface, scale, crop));
-            elements.extend(cropped.map(Element::Cropped));
+            elements.extend(pictured(renderer, mapped, room, view, 1.0));
         }
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
         elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
-        let glass = elements.len();
-        if let Some(shadow) = &drawn.shadow {
-            shadow.elements(renderer, 1.0, view, elements);
+        switcher_box(renderer, drawn, view, (elements, panes));
+    }
+
+    /// Adds the queue: the box under it with the title of the window
+    /// picked, over everything, and then each window, the one in front
+    /// first, its picture over its place, both as far round as the queue
+    /// has turned and as faint as it is there.
+    fn queue_elements<R>(
+        &self,
+        renderer: &mut R,
+        (switching, drawn): (&Switching, &Drawn),
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let theme = &drawn.config.theme;
+        let below = area(drawn.layout.area);
+        let first = drawn.shown.first().zip(drawn.ids.first());
+        let first = first.map(|(shown, ids)| (&shown.icon, ids));
+        if let Some((Some(Icon::Given(buffer)), [beside, _])) = first {
+            let (icon, _) = paint::title_places(below, theme, true);
+            let icons = &self.switch.icons;
+            elements.extend(icons.given(renderer, buffer, (icon, 1.0), beside, view));
         }
-        let style = theme.style(Part::Switcher, States::NONE);
-        let area = (logical(drawn.layout.area), view);
-        let key = (glass::key(&"switcher"), glass, elements.len());
-        panes.extend(Pane::of(&style, area, key, 1.0));
+        let at = Point::<f64, Logical>::from((f64::from(below.0), f64::from(below.1)));
+        elements.extend(drawn.pixels.element(renderer, at, view, 1.0));
+        switcher_box(renderer, drawn, view, (elements, panes));
+        let layout = laid_out(
+            &drawn.config,
+            switching,
+            turned(switching.turn, self.clock()),
+        );
+        let front = drawn
+            .layout
+            .items
+            .first()
+            .map_or(1, |item| item.place.size.width);
+        let front = f64::from(front.max(1));
+        let painted = drawn.windows.iter().zip(&drawn.shown);
+        let painted = painted.zip(drawn.cards.iter().zip(&drawn.ids));
+        let cards = layout.items.iter().filter_map(|item| {
+            let found = painted
+                .clone()
+                .find(|((window, _), _)| **window == item.window);
+            found.map(|((_, shown), (card, ids))| (item, shown, card, ids))
+        });
+        for (item, shown, card, ids) in cards {
+            let opacity = f32::from(item.opacity) / 1000.0;
+            let place = area(item.place);
+            let share = f64::from(place.2) / front;
+            let (room, large) = paint::card_places(place, theme, item.picked, share);
+            if let Some(Icon::Given(buffer)) = shown.icon.as_ref().filter(|_| !shown.pictured) {
+                let given = (large, opacity);
+                elements.extend(
+                    self.switch
+                        .icons
+                        .given(renderer, buffer, given, &ids[1], view),
+                );
+            }
+            let mapped = self
+                .mapped(item.window)
+                .filter(|_| !self.desktop.private(item.window));
+            if let Some(mapped) = mapped {
+                elements.extend(pictured(renderer, mapped, room, view, opacity));
+            }
+            let at = Point::<f64, Logical>::from((f64::from(place.0), f64::from(place.1)));
+            let size = (place.2.cast_signed(), place.3.cast_signed());
+            elements.extend(
+                card.pixels
+                    .stretched(renderer, (at, size.into()), view, opacity),
+            );
+        }
     }
 
     /// Tells each window shown in the switcher on `output` that what it
@@ -456,7 +779,7 @@ impl Compositor {
             .layout
             .items
             .iter()
-            .filter_map(|(window, _, _)| self.mapped(*window));
+            .filter_map(|item| self.mapped(item.window));
         for mapped in shown {
             let output = output.clone();
             mapped

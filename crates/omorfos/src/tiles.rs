@@ -570,7 +570,7 @@ impl Compositor {
                 elements.extend(self.switch.icons.given(
                     renderer,
                     buffer,
-                    beside,
+                    (beside, 1.0),
                     &title.ids[0],
                     view,
                 ));
@@ -599,7 +599,7 @@ impl Compositor {
                     elements.extend(self.switch.icons.given(
                         renderer,
                         buffer,
-                        area,
+                        (area, 1.0),
                         &title.ids[1],
                         view,
                     ));

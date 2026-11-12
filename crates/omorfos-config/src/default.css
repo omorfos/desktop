@@ -344,9 +344,11 @@ question-input:active {
   color: var(--on-accent);
 }
 
-/* The switcher on Alt+Tab: the box in the middle of the screen, each
- * window's place in it, its picture over its title, and the title. The
- * window picked is :active. Each place is as wide as its min-width. */
+/* The switcher on Alt+Tab: its box, each window's place, and the title.
+ * In rows, the box is in the middle of the screen, each place in it with
+ * its picture over its title, as wide as its min-width. On a diagonal,
+ * the box is under the queue, with the title of the one picked, and each
+ * place is as large as the picture in front. The one picked is :active. */
 switcher {
   padding: 12px;
   background: var(--surface);

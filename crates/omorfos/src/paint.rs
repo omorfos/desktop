@@ -846,8 +846,9 @@ pub(crate) fn switcher(
         (0, 0, width, height),
         &theme.style(Part::Switcher, States::NONE),
     );
-    for ((_, at, picked), shown) in layout.items.iter().zip(shown) {
-        let states = States::NONE.when(State::Active, *picked);
+    for (item, shown) in layout.items.iter().zip(shown) {
+        let (at, picked) = (item.place, item.picked);
+        let states = States::NONE.when(State::Active, picked);
         let style = theme.style(Part::SwitcherItem, states);
         let left = at.origin.x - area.origin.x;
         let top = at.origin.y - area.origin.y;
@@ -863,6 +864,92 @@ pub(crate) fn switcher(
                 canvas.draw_image(places.large, image);
             }
         }
+    }
+    canvas
+}
+
+/// Where the title of the window picked goes in the switcher's box under
+/// the queue, `area`, and its icon beside it if it has one.
+pub(crate) fn title_places(area: Area, theme: &Theme, iconic: bool) -> (Area, Area) {
+    let style = theme.style(Part::Switcher, States::NONE);
+    let (left, top, room, down) = inset(area, style.inset());
+    let font = theme.font(Part::SwitcherTitle, States::NONE.with(State::Active));
+    let tall = line_height(font.size.get()).min(down);
+    let icon = (left, top, tall.min(room), tall);
+    let aside = if iconic { (tall + BESIDE).min(room) } else { 0 };
+    let title = (left.saturating_add_unsigned(aside), top, room - aside, tall);
+    (icon, title)
+}
+
+/// Paints the switcher's box under the queue, `width` by `height`, with
+/// the title of the window picked, and its icon beside it if it has one.
+pub(crate) fn switcher_title(
+    text: &mut Text,
+    theme: &Theme,
+    (width, height): (u32, u32),
+    (title, icon): (&str, Option<&Image>),
+    scale: Scale,
+) -> Canvas {
+    let mut canvas = Canvas::scaled(width, height, scale);
+    let area = (0, 0, width, height);
+    canvas.draw_box(area, &theme.style(Part::Switcher, States::NONE));
+    let states = States::NONE.with(State::Active);
+    let (beside, line) = title_places(area, theme, icon.is_some());
+    let font = theme.font(Part::SwitcherTitle, states);
+    let ink = theme.style(Part::SwitcherTitle, states).color;
+    text.draw(&mut canvas, title, line, ink, font);
+    if let Some(image) = icon {
+        canvas.draw_image(beside, image);
+    }
+    canvas
+}
+
+/// Where a window's picture goes in its `place` in the queue, `share` as
+/// large as the one in front, and where its icon goes, large, if its
+/// picture is not shown: as they go in front, made smaller with it.
+pub(crate) fn card_places(place: Area, theme: &Theme, picked: bool, share: f64) -> (Area, Area) {
+    let style = theme.style(Part::SwitcherItem, States::NONE.when(State::Active, picked));
+    let edges = style.inset();
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "an inset made smaller, within a u32"
+    )]
+    let less = |edge: u32| (f64::from(edge) * share).round() as u32;
+    let edges = Edges {
+        top: less(edges.top),
+        right: less(edges.right),
+        bottom: less(edges.bottom),
+        left: less(edges.left),
+    };
+    let room = inset(place, edges);
+    let side = less(LARGE_ICON).min(room.2).min(room.3);
+    let large = (
+        room.0.saturating_add_unsigned((room.2 - side) / 2),
+        room.1.saturating_add_unsigned((room.3 - side) / 2),
+        side,
+        side,
+    );
+    (room, large)
+}
+
+/// Paints a window's place in the queue, `width` by `height`, as large as
+/// it is in front: set apart if it is `picked`, and with its icon large
+/// where its picture would be, if that is not shown.
+pub(crate) fn switcher_card(
+    theme: &Theme,
+    (width, height): (u32, u32),
+    picked: bool,
+    shown: &Shown<Option<Image>>,
+    scale: Scale,
+) -> Canvas {
+    let mut canvas = Canvas::scaled(width, height, scale);
+    let place = (0, 0, width, height);
+    let states = States::NONE.when(State::Active, picked);
+    canvas.draw_box(place, &theme.style(Part::SwitcherItem, states));
+    let (_, large) = card_places(place, theme, picked, 1.0);
+    if let Some(Some(image)) = shown.icon.as_ref().filter(|_| !shown.pictured) {
+        canvas.draw_image(large, image);
     }
     canvas
 }

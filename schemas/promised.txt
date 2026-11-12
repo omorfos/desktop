@@ -137,6 +137,10 @@ config.yaml screenshots.destination
 config.yaml screenshots.destination = "both"
 config.yaml screenshots.destination = "clipboard"
 config.yaml screenshots.destination = "file"
+config.yaml switcher
+config.yaml switcher.style
+config.yaml switcher.style = "diagonal"
+config.yaml switcher.style = "flat"
 config.yaml touchpad
 config.yaml touchpad.acceleration
 config.yaml touchpad.acceleration = "adaptive"

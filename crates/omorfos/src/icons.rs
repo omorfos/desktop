@@ -200,13 +200,14 @@ impl WindowIcons {
 
     /// An icon a program gave as pixels, drawn by the renderer in the middle
     /// of `area`, as large as fits but no larger than its pixels, which would
-    /// only make it blocky. Icons are square, as the protocol has them. Nothing
-    /// if the renderer cannot read it.
+    /// only make it blocky, and as see-through as `opacity` says. Icons are
+    /// square, as the protocol has them. Nothing if the renderer cannot read
+    /// it.
     pub(crate) fn given<R>(
         &self,
         renderer: &mut R,
         buffer: &WlBuffer,
-        area: Area,
+        (area, opacity): (Area, f32),
         id: &Id,
         view: View,
     ) -> Option<Element<R>>
@@ -259,7 +260,7 @@ impl WindowIcons {
                 texture,
                 1,
                 Transform::Normal,
-                None,
+                Some(opacity),
                 None,
                 Some((side, side).into()),
                 None,

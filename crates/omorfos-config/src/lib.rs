@@ -50,7 +50,8 @@ pub use general::{
     Acceleration, Align, Appearance, Clipboard, Cursor, Focus, FocusModel, Forgotten, General,
     Icons, Idle, Kept, Keyboard, Launcher, Lock, Mouse, NamedOutput, Notifications, OfferedMode,
     Offset, Output, OutputScale, Outputs, Panel, Place, Placement, Portals, Rotation, ScreenMode,
-    Screenshots, Speed, Touchpad, Update, Workspaces, X11Scaling, Xwayland,
+    Screenshots, Speed, Switcher, SwitcherStyle, Touchpad, Update, Workspaces, X11Scaling,
+    Xwayland,
 };
 pub use gradient::{Direction, Gradient, Run, Stop};
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
