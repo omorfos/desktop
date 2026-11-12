@@ -69,6 +69,22 @@ jobs:
           advanced-security: false
           annotations: true
 
+  # A commit that takes away what the configuration promises, a line of
+  # schemas/promised.txt, has to be marked breaking (ADR 73).
+  promises:
+    name: Promises kept
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Find a promise taken away by a commit not marked breaking
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: .github/promises.sh "$BASE" "$HEAD"
+
   commits:
     name: Conventional Commits
     runs-on: ubuntu-26.04

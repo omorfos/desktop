@@ -5,8 +5,10 @@
 //! same types that parse the files, so they cannot drift from the parser.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use serde_json::Value;
 
 use crate::keys::RawKeys;
 use crate::menu::RawItem;
@@ -32,12 +34,102 @@ pub fn schemas() -> [(&'static str, String); 4] {
 }
 
 fn render<T: JsonSchema>() -> String {
-    format!(
-        "{:#}\n",
-        SchemaGenerator::default()
-            .into_root_schema_for::<T>()
-            .as_value()
-    )
+    format!("{:#}\n", root::<T>())
+}
+
+fn root<T: JsonSchema>() -> Value {
+    SchemaGenerator::default()
+        .into_root_schema_for::<T>()
+        .as_value()
+        .clone()
+}
+
+/// What the configuration's files promise (ADR 73): a line for each key a
+/// file may have, by the path written to reach it, as
+/// `config.yaml appearance.accent`, and one for each value a key may be
+/// given by name, as `config.yaml appearance.accent = "cyan"`; sorted, a
+/// line each. A line taken away is a promise taken away, which a commit
+/// has to mark as breaking. Kept in `schemas/promised.txt` beside the
+/// schemas.
+#[must_use]
+pub fn promised() -> String {
+    let files = [
+        ("config.yaml", root::<General>()),
+        ("keys.yaml", root::<Keys>()),
+        ("rules.yaml", root::<Rules>()),
+        ("menu.yaml", root::<Menu>()),
+    ];
+    let mut lines = BTreeSet::new();
+    for (file, schema) in &files {
+        let mut promises = Promises {
+            file,
+            defs: schema.get("$defs"),
+            within: Vec::new(),
+            lines: &mut lines,
+        };
+        promises.walk(schema, "");
+    }
+    lines.into_iter().map(|line| line + "\n").collect()
+}
+
+/// A walk through a schema, writing down what it promises.
+struct Promises<'a> {
+    /// The file it is the schema of.
+    file: &'a str,
+    /// The definitions its references name.
+    defs: Option<&'a Value>,
+    /// The definitions the walk is within, so that one that holds itself,
+    /// as a menu holds menus, is walked once.
+    within: Vec<&'a str>,
+    lines: &'a mut BTreeSet<String>,
+}
+
+impl<'a> Promises<'a> {
+    /// Writes down what `schema` promises, at `path`, the keys to it from
+    /// the file's top.
+    fn walk(&mut self, schema: &'a Value, path: &str) {
+        let referred = schema.get("$ref").and_then(Value::as_str);
+        let named = referred.and_then(|reference| reference.strip_prefix("#/$defs/"));
+        let defined = named.and_then(|name| {
+            let definition = self.defs.and_then(|defs| defs.get(name));
+            definition.map(|definition| (name, definition))
+        });
+        if let Some((name, definition)) = defined.filter(|(name, _)| !self.within.contains(name)) {
+            self.within.push(name);
+            self.walk(definition, path);
+            self.within.pop();
+        }
+        let alternatives = ["anyOf", "oneOf", "allOf"].into_iter();
+        let alternatives = alternatives.filter_map(|key| schema.get(key)?.as_array());
+        for alternative in alternatives.flatten() {
+            self.walk(alternative, path);
+        }
+        if let Some(items) = schema.get("items") {
+            self.walk(items, &format!("{path}[]"));
+        }
+        // A map, as `outputs` is, from names of the user's own.
+        if let Some(values) = schema
+            .get("additionalProperties")
+            .filter(|values| values.is_object())
+        {
+            self.walk(values, &format!("{path}.*"));
+        }
+        let properties = schema.get("properties").and_then(Value::as_object);
+        for (key, property) in properties.into_iter().flatten() {
+            let keyed = [path, key.as_str()].join(if path.is_empty() { "" } else { "." });
+            self.lines.insert(format!("{} {keyed}", self.file));
+            self.walk(property, &keyed);
+        }
+        let named = schema.get("const").into_iter();
+        let listed = schema
+            .get("enum")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten();
+        for value in named.chain(listed) {
+            self.lines.insert(format!("{} {path} = {value}", self.file));
+        }
+    }
 }
 
 impl<const MIN: u32, const MAX: u32> JsonSchema for Bounded<MIN, MAX> {
@@ -361,6 +453,69 @@ mod tests {
         let schemas = schemas();
         let (_, text) = schemas.iter().find(|(file, _)| *file == name).unwrap();
         text.clone()
+    }
+
+    #[test]
+    fn what_a_schema_promises_is_each_key_by_its_path_and_each_value_by_name() {
+        let schema = serde_json::json!({
+            "properties": {
+                "look": { "$ref": "#/$defs/Look" },
+                "screens": { "additionalProperties": { "properties": { "scale": {} } } },
+                "free": { "additionalProperties": true },
+                "nowhere": { "$ref": "#/$defs/Gone" },
+                "elsewhere": { "$ref": "https://example.org/schema.json" },
+            },
+            "$defs": {
+                "Look": {
+                    "anyOf": [
+                        { "enum": ["dark", "light"] },
+                        { "const": 7 },
+                        { "properties": { "inside": { "items": { "$ref": "#/$defs/Look" } } } },
+                    ],
+                },
+            },
+        });
+        let mut lines = BTreeSet::new();
+        let mut promises = Promises {
+            file: "a.yaml",
+            defs: schema.get("$defs"),
+            within: Vec::new(),
+            lines: &mut lines,
+        };
+        promises.walk(&schema, "");
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        assert_eq!(
+            lines,
+            [
+                "a.yaml elsewhere",
+                "a.yaml free",
+                "a.yaml look",
+                "a.yaml look = \"dark\"",
+                "a.yaml look = \"light\"",
+                "a.yaml look = 7",
+                "a.yaml look.inside",
+                "a.yaml nowhere",
+                "a.yaml screens",
+                "a.yaml screens.*.scale",
+            ],
+            "a look within a look is walked once"
+        );
+    }
+
+    #[test]
+    fn the_configuration_promises_its_keys_and_named_values() {
+        let promised = promised();
+        for line in [
+            "config.yaml appearance.accent\n",
+            "config.yaml appearance.accent = \"cyan\"\n",
+            "config.yaml outputs[].scale\n",
+            "keys.yaml bindings[].keys\n",
+            "keys.yaml bindings[].action = \"close\"\n",
+            "rules.yaml rules[].private = \"blur\"\n",
+            "menu.yaml items[].label\n",
+        ] {
+            assert!(promised.contains(line), "{line:?} in:\n{promised}");
+        }
     }
 
     #[test]

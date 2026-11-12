@@ -1,0 +1,321 @@
+config.yaml appearance
+config.yaml appearance.accent
+config.yaml appearance.accent = "blue"
+config.yaml appearance.accent = "cyan"
+config.yaml appearance.accent = "orange"
+config.yaml appearance.accent = "pink"
+config.yaml appearance.accent = "purple"
+config.yaml appearance.accent = "teal"
+config.yaml appearance.day
+config.yaml appearance.day.from
+config.yaml appearance.day.to
+config.yaml appearance.location
+config.yaml appearance.location.latitude
+config.yaml appearance.location.longitude
+config.yaml appearance.reduce_motion
+config.yaml appearance.reduce_transparency
+config.yaml appearance.scheme
+config.yaml appearance.scheme = "auto"
+config.yaml appearance.scheme = "dark"
+config.yaml appearance.scheme = "light"
+config.yaml arrangements
+config.yaml arrangements[][].align
+config.yaml arrangements[][].align = "end"
+config.yaml arrangements[][].align = "middle"
+config.yaml arrangements[][].align = "start"
+config.yaml arrangements[][].enabled
+config.yaml arrangements[][].mirror
+config.yaml arrangements[][].mode
+config.yaml arrangements[][].name
+config.yaml arrangements[][].offset
+config.yaml arrangements[][].place
+config.yaml arrangements[][].place = "above"
+config.yaml arrangements[][].place = "below"
+config.yaml arrangements[][].place = "left"
+config.yaml arrangements[][].place = "right"
+config.yaml arrangements[][].primary
+config.yaml arrangements[][].rotate
+config.yaml arrangements[][].rotate = "inverted"
+config.yaml arrangements[][].rotate = "left"
+config.yaml arrangements[][].rotate = "normal"
+config.yaml arrangements[][].rotate = "right"
+config.yaml arrangements[][].scale
+config.yaml arrangements[][].scale = "auto"
+config.yaml autostart
+config.yaml autostart[].may
+config.yaml autostart[].may[] = "ask"
+config.yaml autostart[].may[] = "capture"
+config.yaml autostart[].may[] = "clipboard"
+config.yaml autostart[].may[] = "input"
+config.yaml autostart[].may[] = "lock"
+config.yaml autostart[].may[] = "overlay"
+config.yaml autostart[].may[] = "panel"
+config.yaml autostart[].may[] = "screens"
+config.yaml autostart[].run
+config.yaml clipboard
+config.yaml clipboard.enabled
+config.yaml clipboard.forget
+config.yaml cursor
+config.yaml cursor.size
+config.yaml cursor.theme
+config.yaml focus
+config.yaml focus.model
+config.yaml focus.model = "click"
+config.yaml focus.model = "sloppy"
+config.yaml focus.raise_on_focus
+config.yaml icons
+config.yaml icons.theme
+config.yaml idle
+config.yaml idle.lock
+config.yaml idle.screen_off
+config.yaml idle.sleep
+config.yaml keyboard
+config.yaml keyboard.layout
+config.yaml keyboard.options
+config.yaml keyboard.repeat_delay
+config.yaml keyboard.repeat_rate
+config.yaml keyboard.variant
+config.yaml launcher
+config.yaml launcher.descriptions
+config.yaml launcher.icons
+config.yaml lock
+config.yaml lock.fingerprint
+config.yaml lock.forget
+config.yaml lock.forget[] = "gpg"
+config.yaml lock.forget[] = "ssh"
+config.yaml lock.key
+config.yaml lock.power
+config.yaml locker
+config.yaml mouse
+config.yaml mouse.acceleration
+config.yaml mouse.acceleration = "adaptive"
+config.yaml mouse.acceleration = "flat"
+config.yaml mouse.natural_scroll
+config.yaml mouse.speed
+config.yaml notifications
+config.yaml notifications.enabled
+config.yaml notifications.timeout
+config.yaml output
+config.yaml output.scale
+config.yaml output.scale = "auto"
+config.yaml outputs
+config.yaml outputs[].align
+config.yaml outputs[].align = "end"
+config.yaml outputs[].align = "middle"
+config.yaml outputs[].align = "start"
+config.yaml outputs[].enabled
+config.yaml outputs[].mirror
+config.yaml outputs[].mode
+config.yaml outputs[].name
+config.yaml outputs[].offset
+config.yaml outputs[].place
+config.yaml outputs[].place = "above"
+config.yaml outputs[].place = "below"
+config.yaml outputs[].place = "left"
+config.yaml outputs[].place = "right"
+config.yaml outputs[].primary
+config.yaml outputs[].rotate
+config.yaml outputs[].rotate = "inverted"
+config.yaml outputs[].rotate = "left"
+config.yaml outputs[].rotate = "normal"
+config.yaml outputs[].rotate = "right"
+config.yaml outputs[].scale
+config.yaml outputs[].scale = "auto"
+config.yaml panel
+config.yaml panel.enabled
+config.yaml placement
+config.yaml placement = "cascade"
+config.yaml placement = "center"
+config.yaml placement = "pointer"
+config.yaml portals
+config.yaml portals.enabled
+config.yaml screenshots
+config.yaml screenshots.destination
+config.yaml screenshots.destination = "both"
+config.yaml screenshots.destination = "clipboard"
+config.yaml screenshots.destination = "file"
+config.yaml touchpad
+config.yaml touchpad.acceleration
+config.yaml touchpad.acceleration = "adaptive"
+config.yaml touchpad.acceleration = "flat"
+config.yaml touchpad.natural_scroll
+config.yaml touchpad.speed
+config.yaml touchpad.tap_to_click
+config.yaml update
+config.yaml update.wait
+config.yaml wallpaper
+config.yaml wallpaper.color
+config.yaml wallpaper.enabled
+config.yaml wallpaper.every
+config.yaml wallpaper.fade
+config.yaml wallpaper.fit
+config.yaml wallpaper.fit = "center"
+config.yaml wallpaper.fit = "fill"
+config.yaml wallpaper.fit = "fit"
+config.yaml wallpaper.fit = "stretch"
+config.yaml wallpaper.fit = "tile"
+config.yaml wallpaper.order
+config.yaml wallpaper.order = "name"
+config.yaml wallpaper.order = "shuffled"
+config.yaml wallpaper.picture
+config.yaml wallpaper.picture.dark
+config.yaml wallpaper.picture.light
+config.yaml wallpaper.screens
+config.yaml wallpaper.screens[].color
+config.yaml wallpaper.screens[].fit
+config.yaml wallpaper.screens[].fit = "center"
+config.yaml wallpaper.screens[].fit = "fill"
+config.yaml wallpaper.screens[].fit = "fit"
+config.yaml wallpaper.screens[].fit = "stretch"
+config.yaml wallpaper.screens[].fit = "tile"
+config.yaml wallpaper.screens[].name
+config.yaml wallpaper.screens[].picture
+config.yaml wallpaper.screens[].picture.dark
+config.yaml wallpaper.screens[].picture.light
+config.yaml workspaces
+config.yaml xwayland
+config.yaml xwayland.enabled
+config.yaml xwayland.scaling
+config.yaml xwayland.scaling = "native"
+config.yaml xwayland.scaling = "stretched"
+keys.yaml bindings
+keys.yaml bindings[].action
+keys.yaml bindings[].action = "about"
+keys.yaml bindings[].action = "close"
+keys.yaml bindings[].action = "focus_next"
+keys.yaml bindings[].action = "focus_previous"
+keys.yaml bindings[].action = "fullscreen"
+keys.yaml bindings[].action = "keep_above"
+keys.yaml bindings[].action = "lock"
+keys.yaml bindings[].action = "maximize"
+keys.yaml bindings[].action = "minimize"
+keys.yaml bindings[].action = "move_to_new_workspace"
+keys.yaml bindings[].action = "move_to_next_output"
+keys.yaml bindings[].action = "new_workspace"
+keys.yaml bindings[].action = "next_layout"
+keys.yaml bindings[].action = "next_screens"
+keys.yaml bindings[].action = "next_tab"
+keys.yaml bindings[].action = "next_workspace"
+keys.yaml bindings[].action = "previous_tab"
+keys.yaml bindings[].action = "previous_workspace"
+keys.yaml bindings[].action = "quit"
+keys.yaml bindings[].action = "reload_config"
+keys.yaml bindings[].action = "restart_compositor"
+keys.yaml bindings[].action = "shade"
+keys.yaml bindings[].action = "show_launcher"
+keys.yaml bindings[].action = "show_menu"
+keys.yaml bindings[].action = "stay_awake"
+keys.yaml bindings[].action = "stick"
+keys.yaml bindings[].action = "switch_windows"
+keys.yaml bindings[].action = "switch_windows_back"
+keys.yaml bindings[].action.focus
+keys.yaml bindings[].action.focus = "bottom"
+keys.yaml bindings[].action.focus = "left"
+keys.yaml bindings[].action.focus = "right"
+keys.yaml bindings[].action.focus = "top"
+keys.yaml bindings[].action.join_workspace
+keys.yaml bindings[].action.move_to_workspace
+keys.yaml bindings[].action.spawn
+keys.yaml bindings[].action.spawn.may
+keys.yaml bindings[].action.spawn.may[] = "ask"
+keys.yaml bindings[].action.spawn.may[] = "capture"
+keys.yaml bindings[].action.spawn.may[] = "clipboard"
+keys.yaml bindings[].action.spawn.may[] = "input"
+keys.yaml bindings[].action.spawn.may[] = "lock"
+keys.yaml bindings[].action.spawn.may[] = "overlay"
+keys.yaml bindings[].action.spawn.may[] = "panel"
+keys.yaml bindings[].action.spawn.may[] = "screens"
+keys.yaml bindings[].action.spawn.run
+keys.yaml bindings[].action.stay_awake_for
+keys.yaml bindings[].action.swap
+keys.yaml bindings[].action.swap = "bottom"
+keys.yaml bindings[].action.swap = "left"
+keys.yaml bindings[].action.swap = "right"
+keys.yaml bindings[].action.swap = "top"
+keys.yaml bindings[].action.tile
+keys.yaml bindings[].action.tile = "bottom"
+keys.yaml bindings[].action.tile = "left"
+keys.yaml bindings[].action.tile = "right"
+keys.yaml bindings[].action.tile = "top"
+keys.yaml bindings[].action.workspace
+keys.yaml bindings[].keys
+keys.yaml defaults
+keys.yaml unbind
+menu.yaml items
+menu.yaml items[] = "separator"
+menu.yaml items[].action
+menu.yaml items[].action = "about"
+menu.yaml items[].action = "close"
+menu.yaml items[].action = "focus_next"
+menu.yaml items[].action = "focus_previous"
+menu.yaml items[].action = "fullscreen"
+menu.yaml items[].action = "keep_above"
+menu.yaml items[].action = "lock"
+menu.yaml items[].action = "maximize"
+menu.yaml items[].action = "minimize"
+menu.yaml items[].action = "move_to_new_workspace"
+menu.yaml items[].action = "move_to_next_output"
+menu.yaml items[].action = "new_workspace"
+menu.yaml items[].action = "next_layout"
+menu.yaml items[].action = "next_screens"
+menu.yaml items[].action = "next_tab"
+menu.yaml items[].action = "next_workspace"
+menu.yaml items[].action = "previous_tab"
+menu.yaml items[].action = "previous_workspace"
+menu.yaml items[].action = "quit"
+menu.yaml items[].action = "reload_config"
+menu.yaml items[].action = "restart_compositor"
+menu.yaml items[].action = "shade"
+menu.yaml items[].action = "show_launcher"
+menu.yaml items[].action = "show_menu"
+menu.yaml items[].action = "stay_awake"
+menu.yaml items[].action = "stick"
+menu.yaml items[].action = "switch_windows"
+menu.yaml items[].action = "switch_windows_back"
+menu.yaml items[].action.focus
+menu.yaml items[].action.focus = "bottom"
+menu.yaml items[].action.focus = "left"
+menu.yaml items[].action.focus = "right"
+menu.yaml items[].action.focus = "top"
+menu.yaml items[].action.join_workspace
+menu.yaml items[].action.move_to_workspace
+menu.yaml items[].action.spawn
+menu.yaml items[].action.spawn.may
+menu.yaml items[].action.spawn.may[] = "ask"
+menu.yaml items[].action.spawn.may[] = "capture"
+menu.yaml items[].action.spawn.may[] = "clipboard"
+menu.yaml items[].action.spawn.may[] = "input"
+menu.yaml items[].action.spawn.may[] = "lock"
+menu.yaml items[].action.spawn.may[] = "overlay"
+menu.yaml items[].action.spawn.may[] = "panel"
+menu.yaml items[].action.spawn.may[] = "screens"
+menu.yaml items[].action.spawn.run
+menu.yaml items[].action.stay_awake_for
+menu.yaml items[].action.swap
+menu.yaml items[].action.swap = "bottom"
+menu.yaml items[].action.swap = "left"
+menu.yaml items[].action.swap = "right"
+menu.yaml items[].action.swap = "top"
+menu.yaml items[].action.tile
+menu.yaml items[].action.tile = "bottom"
+menu.yaml items[].action.tile = "left"
+menu.yaml items[].action.tile = "right"
+menu.yaml items[].action.tile = "top"
+menu.yaml items[].action.workspace
+menu.yaml items[].icon
+menu.yaml items[].items
+menu.yaml items[].label
+rules.yaml rules
+rules.yaml rules[].above
+rules.yaml rules[].decorations
+rules.yaml rules[].fullscreen
+rules.yaml rules[].match
+rules.yaml rules[].match.app_id
+rules.yaml rules[].match.title
+rules.yaml rules[].maximized
+rules.yaml rules[].private
+rules.yaml rules[].private = "blank"
+rules.yaml rules[].private = "blur"
+rules.yaml rules[].shaded
+rules.yaml rules[].sticky
+rules.yaml rules[].workspace

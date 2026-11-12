@@ -29,3 +29,22 @@ fn committed_schemas_match_the_configuration_types() {
         );
     }
 }
+
+/// What the schemas promise is kept beside them, so that a promise taken
+/// away shows as a line taken away, which CI asks to be marked breaking
+/// (ADR 73).
+#[test]
+fn committed_promises_match_the_configuration_types() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/promised.txt");
+    let generated = omorfos_config::schema::promised();
+    if env::var_os("OMORFOS_BLESS").is_some() {
+        fs::write(&path, &generated).unwrap();
+    }
+    let committed = fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        committed == generated,
+        "{} is out of date; regenerate it with \
+         `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`",
+        path.display(),
+    );
+}

@@ -50,7 +50,13 @@ the meaning of something written or started by name elsewhere
 
 A changed default is not breaking, as what the user wrote still means
 what it did, but its commit says what changed, so that the changelog
-does. What the holder, the relay and the compositor say to each other
+does.
+
+What the configuration promises is listed in `schemas/promised.txt`, a
+line for each key by the path written to reach it and each value given
+by name, made from the schemas as they are. CI fails a commit that takes
+a line away from it without being marked breaking
+(`.github/promises.sh`). What the holder, the relay and the compositor say to each other
 keeps a rule of its own, that lines are added and never changed (ADR 60).
 
 ## One-time setup on GitHub

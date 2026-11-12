@@ -1699,9 +1699,15 @@ How the project is run, as learnt in part from Vela's:
       codes, the programs' and the IPC socket's names, and where the
       session's log is; not what only a person reads, nor the defaults,
       whose changes are said in the changelog all the same.
-- [ ] CI that finds a breaking change not marked as one: a schema of
-      the configuration that loses or renames something in a commit
-      without `!`.
+- [x] CI that finds a breaking change not marked as one, in the
+      configuration: `schemas/promised.txt` lists each key by its path and
+      each value by name, made from the schemas, and a commit that takes
+      a line away from it without `!` or a `BREAKING CHANGE:` footer
+      fails `Promises kept` (ADR 73).
+- [ ] Known gaps in finding breaking changes: a key whose type narrows,
+      as a number made a word, keeps its line; the theme's parts, states
+      and variables, the IPC protocol and `omorfosctl`'s JSON are not
+      listed yet.
 
 Reaching people:
 

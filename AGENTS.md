@@ -126,7 +126,10 @@ lists the programs; a new one is added there, and to the packaging.
   A test fails while what the compositor offers is not that list.
 - **Configuration types validate while deserializing** (`try_from`), so parser
   errors carry a line and column. After changing them, regenerate the JSON
-  Schemas: `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
+  Schemas, and the list of what they promise, `schemas/promised.txt`:
+  `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
+  A commit that takes a line away from that list is a breaking change and
+  is marked as one (ADR 73); CI fails one that is not.
 - **Record significant decisions** as a new ADR in `docs/adr/`, and keep
   `docs/ROADMAP.md` current when a task is finished.
 

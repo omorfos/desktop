@@ -27,8 +27,11 @@ is the order things are done in, and what the maintainer expects to be told.
   .claude/skills/handover/gates.sh area -p omorfos-core tiles::
   ```
 
-- After changing configuration types, regenerate the schemas:
+- After changing configuration types, regenerate the schemas and
+  `schemas/promised.txt`:
   `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
+  A line gone from `promised.txt` is a breaking change: its commit is
+  marked with `!` (ADR 73), or CI fails it.
 - Update `docs/CONFIGURATION.md` for anything a user can set or do. Its
   example and its copy of the built-in theme are checked by tests against
   the defaults.

@@ -12,14 +12,18 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-# Generates JSON Schemas for the configuration files (editor completion).
-schema = ["dep:schemars"]
+# Generates JSON Schemas for the configuration files (editor completion),
+# and the list of what they promise (ADR 73).
+schema = ["dep:schemars", "dep:serde_json"]
 
 [dependencies]
 inotify = { version = "0.11.5", default-features = false }
 rustix = { version = "1.1.5", default-features = false, features = ["event", "std", "time"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 schemars = { version = "1.2.2", optional = true }
+# Already in the tree, under schemars: the schemas are walked as JSON to
+# list what they promise.
+serde_json = { version = "1.0", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
 
