@@ -15,8 +15,21 @@ a private window is shown in it as it is in pictures of the screen.
 ## Decision
 
 **An `overview` action opens and closes it, on the screen the pointer is
-on.** No key does by default: which key, and whether four fingers swiped
-up, is for the review of the defaults, as every new default has been.
+on, and so do three fingers swiped up the touchpad and down.** No key
+does by default: which key is for the review of the defaults, as every
+new default has been; the gesture was asked for as it is.
+
+- **Three fingers carry it**, as they carry the workspaces across: up
+  opens it as far as they have gone, 300 of the touchpad's units for all
+  of it, the windows moving and shrinking towards their places and the
+  screen dimming with them; down closes it the same way. Let go past half
+  way, or going fast enough that they would have got there in 120 ms, it
+  goes on from where it is to open, and otherwise back to closed, over the
+  time a glide takes. Which way a swipe goes is told once it has gone 8
+  units: mostly across, it slides the workspaces as before; mostly up or
+  down, it carries the overview; so the two never take the same swipe.
+  With `reduce_motion` the fingers carry nothing, and it opens or not as
+  they lift.
 
 - **The windows of the workspace shown, laid out small** by the desktop
   model (`omorfos_core::overview`): in the order they are read where they
@@ -30,6 +43,11 @@ up, is for the review of the defaults, as every new default has been.
   frame: its titlebar is gone as the glide begins and back as it ends. A
   minimized window has nowhere to glide from and fades in its place, as
   every window does with `appearance.reduce_motion`.
+- **As they glide, the windows keep the stacking they have on the
+  screen**, the topmost over the rest, so that nothing changes places as
+  the overview sets out; the one gone to rises over the others as it
+  closes, as it is raised once there. The border and title of the one
+  picked are just over it, under whatever stands over it on the way.
 - **The windows themselves are not drawn on that screen while it is
   open**, the scene being left as it is and each window whose frame's
   middle is on the screen passed over as it is drawn, so that a window

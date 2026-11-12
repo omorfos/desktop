@@ -198,6 +198,8 @@ fn the_arrows_walk_the_windows_and_enter_goes_to_the_one_picked_once_closed() {
     assert_eq!(picked(&session), Some(second.clone()));
     tap(&mut session, key::RETURN);
     assert_eq!(focused(&session).as_deref(), Some("three"), "not yet");
+    // Escape while it closes takes nothing back.
+    tap(&mut session, key::ESCAPE);
     session.advance(GLIDE);
     assert_eq!(focused(&session), Some(second));
     assert_eq!(session.compositor().overview_layout(), None);
@@ -637,4 +639,191 @@ fn the_button_after_the_strip_makes_a_new_workspace_and_goes_to_it() {
         .collect();
     assert_eq!(shown.last(), Some(&true));
     assert_eq!(overviewed.windows, []);
+}
+
+/// Puts three fingers on the touchpad, moves them down by each of `steps`
+/// in turn, ten milliseconds apart, and, if `lift`, lifts them.
+fn swipe(session: &mut Session, steps: &[f64], lift: bool) {
+    let compositor = session.compositor_mut();
+    let begin = omorfos::Gesture::SwipeBegin { fingers: 3 };
+    compositor.input(Input::Gesture(begin), 0);
+    let mut time = 0;
+    for dy in steps {
+        time += 10;
+        let update = omorfos::Gesture::SwipeUpdate { dx: 0.0, dy: *dy };
+        compositor.input(Input::Gesture(update), time);
+    }
+    if lift {
+        let end = omorfos::Gesture::SwipeEnd { cancelled: false };
+        compositor.input(Input::Gesture(end), time + 10);
+    }
+    session.step();
+}
+
+/// How dark the dim has made the bottom right corner, which no window
+/// covers, against `open`, how it is with nothing over it: none, and more
+/// as the overview opens.
+fn dimmed(session: &mut Session, open: u32) -> i32 {
+    let corner = session.draw().at(WIDTH - 3, HEIGHT - 3);
+    let blue = |pixel: u32| i32::try_from(pixel & 0xff).unwrap_or_default();
+    blue(open) - blue(corner)
+}
+
+/// One small window, the clock started, and the corner as it is.
+fn swiping(files: &[(&str, &str)]) -> (Session, Client, u32) {
+    let mut session = Session::with_config(files);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (120, 80), RED);
+    session.step();
+    let open = session.draw().at(WIDTH - 3, HEIGHT - 3);
+    (session, client, open)
+}
+
+#[test]
+fn three_fingers_up_carry_the_overview_open_with_them_and_past_half_way_it_opens() {
+    let (mut session, _client, open) = swiping(&[UNBLURRED]);
+    // A quarter of the way up: open a quarter, and no further while they
+    // rest.
+    swipe(&mut session, &[-25.0, -25.0, -25.0], false);
+    assert!(session.compositor().overview_layout().is_some());
+    let quarter = dimmed(&mut session, open);
+    session.advance(GLIDE);
+    assert_eq!(dimmed(&mut session, open), quarter, "they hold it");
+    // On to two thirds, and lifted: it goes on open.
+    let compositor = session.compositor_mut();
+    let more = omorfos::Gesture::SwipeUpdate {
+        dx: 0.0,
+        dy: -125.0,
+    };
+    compositor.input(Input::Gesture(more), 1000);
+    compositor.input(
+        Input::Gesture(omorfos::Gesture::SwipeEnd { cancelled: false }),
+        1010,
+    );
+    session.step();
+    let lifted = dimmed(&mut session, open);
+    session.advance(GLIDE);
+    let whole = dimmed(&mut session, open);
+    assert!(
+        0 < quarter && quarter < lifted && lifted < whole,
+        "{quarter} {lifted} {whole}"
+    );
+    // Down again, past half way, closes it.
+    swipe(&mut session, &[100.0, 100.0], true);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+}
+
+#[test]
+fn let_go_short_of_half_way_it_sinks_back_unless_flicked() {
+    let (mut session, _client, _open) = swiping(&[UNBLURRED]);
+    // Slowly, a third of the way: back it goes.
+    let slow = [-10.0; 10];
+    let compositor = session.compositor_mut();
+    compositor.input(
+        Input::Gesture(omorfos::Gesture::SwipeBegin { fingers: 3 }),
+        0,
+    );
+    for (at, dy) in slow.iter().enumerate() {
+        let time = 100 * (u32::try_from(at).unwrap_or_default() + 1);
+        let update = omorfos::Gesture::SwipeUpdate { dx: 0.0, dy: *dy };
+        compositor.input(Input::Gesture(update), time);
+    }
+    compositor.input(
+        Input::Gesture(omorfos::Gesture::SwipeEnd { cancelled: false }),
+        1100,
+    );
+    session.step();
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    // A third of the way, but fast: it opens.
+    swipe(&mut session, &[-50.0, -50.0], true);
+    session.advance(GLIDE);
+    assert!(session.compositor().overview_layout().is_some());
+    // Cancelled, it closes from where it is.
+    swipe(&mut session, &[50.0], false);
+    let end = omorfos::Gesture::SwipeEnd { cancelled: true };
+    session.compositor_mut().input(Input::Gesture(end), 100);
+    session.step();
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+}
+
+#[test]
+fn down_with_no_overview_open_does_nothing() {
+    let (mut session, _client, open) = swiping(&[UNBLURRED]);
+    swipe(&mut session, &[100.0, 100.0], true);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(dimmed(&mut session, open), 0);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+}
+
+#[test]
+fn with_motion_reduced_the_fingers_carry_nothing_but_open_it_as_they_lift() {
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let (mut session, _client, open) = swiping(&[UNBLURRED, reduced]);
+    swipe(&mut session, &[-100.0, -100.0], false);
+    assert_eq!(dimmed(&mut session, open), 0, "nothing shown yet");
+    let end = omorfos::Gesture::SwipeEnd { cancelled: false };
+    session.compositor_mut().input(Input::Gesture(end), 100);
+    session.step();
+    session.advance(GLIDE);
+    assert!(dimmed(&mut session, open) > 0);
+}
+
+#[test]
+fn a_pinch_while_the_overview_is_open_is_no_programs() {
+    let (mut session, _client) = three(&[UNBLURRED]);
+    open(&mut session);
+    let compositor = session.compositor_mut();
+    compositor.input(
+        Input::Gesture(omorfos::Gesture::PinchBegin { fingers: 2 }),
+        0,
+    );
+    let pinch = omorfos::Gesture::PinchUpdate {
+        dx: 0.0,
+        dy: 0.0,
+        scale: 1.5,
+        rotation: 0.0,
+    };
+    compositor.input(Input::Gesture(pinch), 10);
+    compositor.input(
+        Input::Gesture(omorfos::Gesture::PinchEnd { cancelled: false }),
+        20,
+    );
+    session.step();
+    assert!(
+        session.compositor().overview_layout().is_some(),
+        "still open"
+    );
+}
+
+#[test]
+fn the_windows_keep_their_stacking_as_they_glide_and_the_one_gone_to_rises_closing() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    session.open(&mut client, "under", (300, 200), RED);
+    session.open(&mut client, "over", (300, 200), BLUE);
+    session.step();
+    let desktop = session.compositor().desktop();
+    let frames: Vec<Rect> = desktop
+        .windows()
+        .filter_map(|listed| desktop.frame_of(listed.window.id))
+        .map(|frame| frame.geometry)
+        .collect();
+    // Where the two overlap, the one over the other is seen.
+    let (under, over) = (frames[0], frames[1]);
+    let x = i32::try_from(i64::midpoint(i64::from(over.origin.x), under.right())).unwrap();
+    let y = i32::try_from(i64::midpoint(i64::from(over.origin.y), under.bottom())).unwrap();
+    assert_eq!(session.draw().at(x, y), BLUE, "{under:?} {over:?}");
+    // As the overview sets out, nothing has changed places.
+    session.compositor_mut().perform(&Action::Overview);
+    session.step();
+    assert_eq!(session.draw().at(x, y), BLUE, "as it opens");
+    session.advance(GLIDE);
+    // Gone to, the one under rises as they glide back.
+    let under_place = middle(place(&session, "under"));
+    click(&mut session, under_place);
+    session.advance(Duration::from_millis(200));
+    assert_eq!(session.draw().at(x, y), RED, "closing on it");
 }

@@ -50,6 +50,12 @@ const GAP: u32 = 24;
 const MARGIN: u32 = 32;
 /// How tall each workspace in the strip is, as a share of the screen.
 const STRIP: f64 = 0.12;
+/// How far fingers go up the touchpad to open the overview all the way, in
+/// the units the touchpad tells, about the pixels of the pointer.
+const REACH: f64 = 300.0;
+/// How far a swipe let go of is taken to carry on, as the time it would go
+/// on for at the speed it was going, in milliseconds.
+const THROW: f64 = 120.0;
 /// How far inside the bottom of the window picked its title is.
 const INSIDE: u32 = 8;
 
@@ -102,6 +108,12 @@ struct Looking {
     output: usize,
     /// When it was opened, by the compositor's clock.
     opened: Duration,
+    /// How open it is on its way to being: from how open, to how open,
+    /// since when. From none to all as it opens, back to none as it
+    /// closes, and on from where the fingers let it go.
+    way: (f32, f32, Duration),
+    /// Fingers on the touchpad carrying it open or closed, while they are.
+    held: Option<Held>,
     /// When each window came into it, and so began to glide to its place:
     /// as it opened, or as its workspace was gone to.
     entered: Vec<(WindowId, Duration)>,
@@ -109,9 +121,10 @@ struct Looking {
     hovered: Option<usize>,
     /// The window picked, by the pointer or the arrows.
     picked: Option<WindowId>,
-    /// Closing: when it began to, and the window to be gone to once it
-    /// has.
-    closing: Option<(Duration, Option<WindowId>)>,
+    /// Whether it is closing.
+    closing: bool,
+    /// The window to be gone to once it has closed.
+    chosen: Option<WindowId>,
     /// The border and title of the window picked, kept until they would
     /// be painted differently.
     painted: Option<Drawn>,
@@ -202,35 +215,93 @@ impl Overview {
     }
 }
 
+/// Fingers carrying the overview open or closed.
+#[derive(Debug, Clone, Copy)]
+struct Held {
+    /// How open it was as they began.
+    from: f32,
+    /// How far they have gone down the touchpad since, up being less than
+    /// none.
+    moved: f64,
+    /// How fast they were going down when they last moved, in units a
+    /// millisecond.
+    speed: f64,
+    /// When they last moved, in milliseconds.
+    last: u32,
+    /// Whether what is shown follows them, as it does unless motion is to
+    /// be reduced.
+    carried: bool,
+}
+
+impl Held {
+    /// How open the fingers have taken it.
+    fn reached(&self) -> f32 {
+        let reached = self.moved.mul_add(-1.0 / REACH, f64::from(self.from));
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a share from 0 to 1 by the clamp"
+        )]
+        let reached = reached.clamp(0.0, 1.0) as f32;
+        reached
+    }
+
+    /// How open it is shown: as far as the fingers have taken it, or, with
+    /// motion reduced, as it was as they began.
+    fn shown(&self) -> f32 {
+        if self.carried {
+            self.reached()
+        } else {
+            self.from
+        }
+    }
+}
+
 impl Looking {
-    /// How far from closed it is at `clock`: all of it until it closes, and
-    /// none once it has.
-    fn closing(&self, clock: Duration) -> f32 {
-        let closing = self.closing.map(|(began, _)| glided(began, clock));
-        1.0 - closing.unwrap_or_default()
-    }
-
     /// How open it is at `clock`: none as it opens, all of it once open,
-    /// and none again once it has closed.
+    /// and none again once it has closed; or as far as the fingers have
+    /// taken it.
     fn open(&self, clock: Duration) -> f32 {
-        glided(self.opened, clock) * self.closing(clock)
+        let (from, to, began) = self.way;
+        let going = (to - from).mul_add(glided(began, clock), from);
+        self.held.map_or(going, |held| held.shown())
     }
 
-    /// How far `window` has got to its place at `clock`: none as it comes
-    /// in, all the way once there, and none again once it has closed.
+    /// How far `window` has got to its place at `clock`: as far as the
+    /// overview is open, or, for one that came in once it was, as far too
+    /// as its own glide in has got.
     fn arrived(&self, window: WindowId, clock: Duration) -> f32 {
         let entered = self.entered.iter().find(|(entered, _)| *entered == window);
         let entered = entered.map_or(clock, |(_, at)| *at);
-        glided(entered, clock) * self.closing(clock)
+        let coming = if entered > self.opened {
+            glided(entered, clock)
+        } else {
+            1.0
+        };
+        coming * self.open(clock)
     }
 
     /// Whether anything of it is on its way, and to be drawn again a frame
-    /// on.
+    /// on: fingers carry it, or it glides.
     fn moving(&self, clock: Duration) -> bool {
         let entered = self.entered.iter().map(|(_, at)| *at);
-        let closing = self.closing.map(|(began, _)| began);
-        let latest = entered.chain(closing).fold(self.opened, Duration::max);
-        clock < latest + GLIDE
+        let latest = entered.fold(self.way.2, Duration::max);
+        self.held.is_some() || clock < latest + GLIDE
+    }
+
+    /// Closes it from as open as it is at `clock`, going to `chosen` once
+    /// it has; unless it is closing already.
+    fn close(&mut self, clock: Duration, chosen: Option<WindowId>) {
+        if !self.closing {
+            self.way = (self.open(clock), 0.0, clock);
+            self.closing = true;
+            self.chosen = chosen;
+            self.held = None;
+        }
+    }
+
+    /// Whether it has closed by `clock`.
+    fn closed(&self, clock: Duration) -> bool {
+        self.closing && self.held.is_none() && clock >= self.way.2 + GLIDE
     }
 }
 
@@ -240,9 +311,16 @@ impl Compositor {
     pub(crate) fn toggle_overview(&mut self) {
         let clock = self.clock();
         if let Some(looking) = self.cards.overview.open.as_mut() {
-            looking.closing.get_or_insert((clock, None));
+            looking.close(clock, None);
             return;
         }
+        self.open_overview(None);
+    }
+
+    /// Opens the overview on the screen the pointer is on, gliding open,
+    /// or carried open by `fingers` on the touchpad.
+    fn open_overview(&mut self, fingers: Option<Held>) {
+        let clock = self.clock();
         self.close_switcher(false);
         let head = self.pointer_head();
         let screen = head.map(|head| domain(head.area())).unwrap_or_default();
@@ -251,15 +329,22 @@ impl Compositor {
             .heads
             .iter()
             .position(|head| Some(&head.output) == output.as_ref());
+        let output = output.unwrap_or_default();
         let picked = self.desktop.focused();
+        // Those there as it opens come in as it does.
+        let windows = self.overview_windows(output).into_iter();
+        let entered = windows.map(|(window, _, _)| (window, clock)).collect();
         self.cards.overview.open = Some(Looking {
             screen,
-            output: output.unwrap_or_default(),
+            output,
             opened: clock,
-            entered: Vec::new(),
+            way: (0.0, 1.0, clock),
+            held: fingers,
+            entered,
             hovered: None,
             picked,
-            closing: None,
+            closing: false,
+            chosen: None,
             painted: None,
         });
     }
@@ -401,11 +486,9 @@ impl Compositor {
             self.cards.overview.open = None;
         }
         let clock = self.clock();
-        let closed = self.cards.overview.open.as_ref().and_then(|looking| {
-            let (began, chosen) = looking.closing?;
-            (clock >= began + GLIDE).then_some(chosen)
-        });
-        if let Some(chosen) = closed {
+        let looking = self.cards.overview.open.as_ref();
+        let closed = looking.filter(|looking| looking.closed(clock));
+        if let Some(chosen) = closed.map(|looking| looking.chosen) {
             self.cards.overview.open = None;
             if let Some(window) = chosen {
                 self.desktop.activate(window);
@@ -417,7 +500,7 @@ impl Compositor {
     fn close_overview(&mut self, chosen: Option<WindowId>) {
         let clock = self.clock();
         if let Some(looking) = self.cards.overview.open.as_mut() {
-            looking.closing.get_or_insert((clock, chosen));
+            looking.close(clock, chosen);
         }
     }
 
@@ -442,11 +525,12 @@ impl Compositor {
         };
         let ours = match keysym {
             Keysym::Escape => {
-                looking.closing.get_or_insert((clock, None));
+                looking.close(clock, None);
                 true
             }
             Keysym::Return | Keysym::KP_Enter => {
-                looking.closing.get_or_insert((clock, looking.picked));
+                let picked = looking.picked;
+                looking.close(clock, picked);
                 true
             }
             Keysym::Right | Keysym::Down => {
@@ -661,38 +745,27 @@ impl Compositor {
         let open = looking.open(clock);
         let cards = self.cards(looking, clock);
         let theme = &drawn.config.theme;
-        let picked = drawn.picked.as_ref().and_then(|picked| {
-            let card = cards.iter().find(|card| card.window == picked.window);
-            card.map(|card| (picked, card))
-        });
-        if let Some((picked, card)) = picked {
-            let (left, top, across, down) = card.now;
-            let share = across / f64::from(card.place.size.width.max(1));
-            let style = theme.style(Part::OverviewWindow, States::NONE.with(State::Active));
-            let edges = style.inset();
-            let out = |edge: u32| f64::from(edge) * share;
-            let tall = f64::from(paint::overview_title_height(theme)) * share;
-            let inside = out(INSIDE);
-            let label = Point::<f64, Logical>::from((left + inside, top + down - inside - tall));
-            let wide = whole(2.0f64.mul_add(-inside, across)).max(1);
-            let size = (wide, whole(tall).max(1));
-            elements.extend(
-                picked
-                    .label
-                    .stretched(renderer, (label, size.into()), view, open),
-            );
-            let ring = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
-            let size = (
-                whole(across + out(edges.left) + out(edges.right)),
-                whole(down + out(edges.top) + out(edges.bottom)),
-            );
-            elements.extend(
-                picked
-                    .ring
-                    .stretched(renderer, (ring, size.into()), view, open),
-            );
-        }
-        for card in &cards {
+        // As the windows stand on the screen, the topmost first, as the
+        // scene has them, and those not on it, as a minimized one, under
+        // them; the one gone to, while it closes, over them all, as it is
+        // raised once there. So nothing changes places as they glide.
+        let height = |window: WindowId| {
+            let chosen = looking.closing && looking.chosen == Some(window);
+            let on = self.scene.iter().position(|shown| shown.id == window);
+            std::cmp::Reverse((chosen, on))
+        };
+        let mut stacked: Vec<&Card> = cards.iter().collect();
+        stacked.sort_by_key(|card| height(card.window));
+        for card in stacked {
+            // The border and title of the one picked just over it, under
+            // whatever stands over it.
+            let picked = drawn
+                .picked
+                .as_ref()
+                .filter(|picked| picked.window == card.window);
+            if let Some(picked) = picked {
+                picked_elements(renderer, (picked, card), theme, (view, open), elements);
+            }
             let blanks = &self.cards.overview.blanks;
             let blank = blanks
                 .iter()
@@ -895,6 +968,123 @@ impl Compositor {
                 });
         }
     }
+}
+
+impl Compositor {
+    /// Takes three fingers that began to swipe up the touchpad, if
+    /// `opening`, or down it, and so open the overview or close it: it
+    /// follows them from as open as it is. Says whether there was one to
+    /// open or close.
+    pub(crate) fn overview_swipe_began(&mut self, opening: bool, time: u32) -> bool {
+        let clock = self.clock();
+        let carried = !self.config().general.appearance.reduce_motion;
+        let looking = self.cards.overview.open.as_mut();
+        let looking = looking.filter(|looking| !looking.closing);
+        match (opening, looking) {
+            (true, None) => {
+                let held = Held {
+                    from: 0.0,
+                    moved: 0.0,
+                    speed: 0.0,
+                    last: time,
+                    carried,
+                };
+                self.open_overview(Some(held));
+                true
+            }
+            (false, Some(looking)) => {
+                looking.held = Some(Held {
+                    from: looking.open(clock),
+                    moved: 0.0,
+                    speed: 0.0,
+                    last: time,
+                    carried,
+                });
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Carries the overview `dy` further down the touchpad with the
+    /// fingers, at `time`. Says whether fingers carry it.
+    pub(crate) fn overview_swipe_moved(&mut self, dy: f64, time: u32) -> bool {
+        let looking = self.cards.overview.open.as_mut();
+        let Some(held) = looking.and_then(|looking| looking.held.as_mut()) else {
+            return false;
+        };
+        let gone = f64::from(time.wrapping_sub(held.last));
+        if gone > 0.0 {
+            held.speed = dy / gone;
+            held.last = time;
+        }
+        held.moved += dy;
+        true
+    }
+
+    /// Takes the fingers lifting, or the swipe being `cancelled`: the
+    /// overview goes on open from where they let it go if they took it
+    /// past half way, or were going fast enough that they would have, and
+    /// closes otherwise. Says whether fingers carried it.
+    pub(crate) fn overview_swipe_ended(&mut self, cancelled: bool) -> bool {
+        let clock = self.clock();
+        let looking = self.cards.overview.open.as_mut();
+        let held = looking.and_then(|looking| looking.held.map(|held| (looking, held)));
+        let Some((looking, held)) = held else {
+            return false;
+        };
+        let reached = held.reached();
+        let thrown = (held.speed * THROW).mul_add(-1.0 / REACH, f64::from(reached));
+        let shown = held.shown();
+        looking.held = None;
+        if !cancelled && thrown > 0.5 {
+            looking.way = (shown, 1.0, clock);
+        } else {
+            looking.way = (shown, shown, clock);
+            looking.close(clock, None);
+        }
+        true
+    }
+}
+
+/// Adds the border round the window picked in the overview, `card`, and
+/// its title inside its foot, as `picked` has them painted, where it is
+/// drawn now and as open as the overview is.
+fn picked_elements<R>(
+    renderer: &mut R,
+    (picked, card): (&Picked, &Card),
+    theme: &omorfos_config::Theme,
+    (view, open): (View, f32),
+    elements: &mut Vec<Element<R>>,
+) where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Texture + Send + 'static,
+{
+    let (left, top, across, down) = card.now;
+    let share = across / f64::from(card.place.size.width.max(1));
+    let style = theme.style(Part::OverviewWindow, States::NONE.with(State::Active));
+    let edges = style.inset();
+    let out = |edge: u32| f64::from(edge) * share;
+    let tall = f64::from(paint::overview_title_height(theme)) * share;
+    let inside = out(INSIDE);
+    let label = Point::<f64, Logical>::from((left + inside, top + down - inside - tall));
+    let wide = whole(2.0f64.mul_add(-inside, across)).max(1);
+    let size = (wide, whole(tall).max(1));
+    elements.extend(
+        picked
+            .label
+            .stretched(renderer, (label, size.into()), view, open),
+    );
+    let ring = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
+    let size = (
+        whole(across + out(edges.left) + out(edges.right)),
+        whole(down + out(edges.top) + out(edges.bottom)),
+    );
+    elements.extend(
+        picked
+            .ring
+            .stretched(renderer, (ring, size.into()), view, open),
+    );
 }
 
 /// Whether a frame that is `outer` is on `screen`: its middle is.

@@ -307,8 +307,9 @@ and bring the next in from the right, and swiped right bring in the one
 before, each with its own wallpaper, as when a key changes the
 workspace. Lift them past half way, or flick, and the one that came in is
 shown; lift them short of that, or turn back, and the one that was there
-stays. Every other gesture, as a pinch to zoom, is the program's under
-the pointer.
+stays. Three fingers swiped up open the overview (see "The overview"),
+and down close it. Every other gesture, as a pinch to zoom, is the
+program's under the pointer.
 
 A window made fullscreen, by the second button of its titlebar, by
 `Super+f`, or because its program asked, goes alone to a workspace made
@@ -2389,8 +2390,13 @@ it.
 
 The overview shows every window of the workspace on the screen the
 pointer is on, laid out small side by side, under a strip of that
-screen's workspaces. No key opens it yet: bind the `overview` action in
-`keys.yaml`, and again to close it.
+screen's workspaces. Three fingers swiped up the touchpad open it, the
+windows moving up and shrinking to their places with the fingers and the
+screen dimming as they go; lift them past half way, or flick, and it
+opens the rest of the way, or short of that and it sinks back. Swiped
+down, they close it the same way. With `appearance.reduce_motion` the
+fingers carry nothing, and it opens or not as they lift. No key opens it
+yet: bind the `overview` action in `keys.yaml`, and again to close it.
 
 ```yaml
 bindings:
