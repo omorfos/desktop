@@ -328,8 +328,8 @@ fn switching(theme: &str) -> (Session, Client) {
     press(&mut session, key::TAB, true);
     press(&mut session, key::TAB, false);
     session.step();
-    // Shown once Alt has been held a moment.
-    session.advance(Duration::from_millis(160));
+    // Shown once Alt has been held a moment, and faded in.
+    session.advance(Duration::from_millis(330));
     assert!(session.compositor().switcher_layout().is_some(), "open");
     (session, client)
 }

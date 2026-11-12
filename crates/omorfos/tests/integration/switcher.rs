@@ -32,9 +32,9 @@ fn tap(session: &mut Session, code: Keycode) {
     press(session, code, false);
 }
 
-/// How long Alt is held after Tab before the switcher is shown, and a
-/// little more.
-const SHOWN_AFTER: std::time::Duration = std::time::Duration::from_millis(160);
+/// How long Alt is held after Tab before the switcher is shown, and has
+/// faded in, and a little more.
+const SHOWN_AFTER: std::time::Duration = std::time::Duration::from_millis(330);
 
 /// Holds Alt, taps Tab `times`, and lets go of Alt if `let_go`; or holds
 /// it long enough for the switcher to be shown.
@@ -213,8 +213,10 @@ fn opened_by_something_other_than_a_key_it_waits_for_enter() {
     let open = session.draw().at(corner.0, corner.1);
     session.compositor_mut().perform(&Action::SwitchWindows);
     session.step();
+    // Shown at once, with nothing held to let go, and faded in.
+    session.advance(std::time::Duration::from_millis(130));
     let seen = session.draw().at(corner.0, corner.1);
-    assert_ne!(seen, open, "shown at once, with nothing held to let go");
+    assert_ne!(seen, open, "shown at once");
     tap(&mut session, key::ALT);
     session.step();
     assert_eq!(
@@ -944,9 +946,9 @@ fn a_quick_alt_tab_goes_to_the_window_before_without_showing_the_switcher() {
     assert_eq!(session.draw().at(corner.0, corner.1), open, "but not shown");
     let now = session.now;
     let due = session.compositor().deadline();
-    let shown = now + std::time::Duration::from_millis(150);
+    let shown = now + std::time::Duration::from_millis(200);
     assert!(due.is_some_and(|due| due > now && due <= shown), "{due:?}");
-    session.advance(std::time::Duration::from_millis(100));
+    session.advance(std::time::Duration::from_millis(180));
     assert_eq!(session.draw().at(corner.0, corner.1), open, "nor yet");
     press(&mut session, key::ALT, false);
     session.step();
@@ -1037,4 +1039,74 @@ fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_
         assert_eq!(frame.at(x, y), blank, "the blank of two, {style:?}");
         press(&mut session, key::ALT, false);
     }
+}
+
+#[test]
+fn once_shown_the_switcher_and_its_dim_fade_in_quickly() {
+    let (mut session, _client) = three_with(&[UNBLURRED]);
+    let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
+    let open = session.draw().at(corner.0, corner.1);
+    press(&mut session, key::ALT, true);
+    tap(&mut session, key::TAB);
+    session.step();
+    session.advance(std::time::Duration::from_millis(200));
+    assert_eq!(
+        session.draw().at(corner.0, corner.1),
+        open,
+        "only just shown"
+    );
+    let now = session.now;
+    let due = session.compositor().deadline();
+    let frame = std::time::Duration::from_millis(20);
+    assert!(
+        due.is_some_and(|due| due > now && due <= now + frame),
+        "{due:?}"
+    );
+    session.advance(std::time::Duration::from_millis(40));
+    let fading = session.draw().at(corner.0, corner.1);
+    session.advance(std::time::Duration::from_millis(200));
+    let dimmed = session.draw().at(corner.0, corner.1);
+    let green = |pixel: u32| (pixel >> 8) & 0xff;
+    assert!(
+        green(dimmed) < green(fading) && green(fading) < green(open),
+        "{open:#x} {fading:#x} {dimmed:#x}"
+    );
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front() {
+    let rules = "rules:\n  - match: { app_id: secret }\n    private: blur\n";
+    let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
+    let mut client = session.connect();
+    for number in 1..=5 {
+        session.open(&mut client, &format!("w{number}"), (800, 500), GREEN);
+    }
+    // Red on the left and white on the right: an edge the blur softens.
+    let secret = session.open(&mut client, "secret", (800, 500), RED);
+    let _white = client.subsurface(&secret.surface, (400, 0), (400, 500), 0xffff_ffff);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    // In use last, it is sixth, at the back, faintest, once the switcher
+    // opens at the one before.
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let back = layout.items.last().unwrap();
+    assert_eq!(layout.items.len(), 6);
+    let desktop = session.compositor().desktop();
+    let name = desktop
+        .window(back.window)
+        .map(|window| window.app_id.clone());
+    assert_eq!(name.as_deref(), Some("secret"));
+    // Either side of the edge, along its top, which those in front leave
+    // in sight.
+    let place = back.place;
+    let edge = place.origin.x + place.size.width.cast_signed() / 2;
+    let y = place.origin.y + 6;
+    let frame = session.draw();
+    let green = |x: i32| i32::try_from((frame.at(x, y) >> 8) & 0xff).unwrap_or_default();
+    let apart = (green(edge + 6) - green(edge - 6)).abs();
+    // Seen through as much as it is, unblurred it is 0x3e apart.
+    assert!(apart < 0x10, "the edge is sharp: {apart:#x}");
+    press(&mut session, key::ALT, false);
 }

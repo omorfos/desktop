@@ -60,7 +60,11 @@ const FARTHEST: f64 = 2.0;
 /// How long the keys that opened the switcher are held before it is shown,
 /// so that a quick `Alt+Tab` goes back to the window before without it
 /// showing for a moment, as GNOME's and Windows's do.
-const SHOWN_AFTER: Duration = Duration::from_millis(150);
+const SHOWN_AFTER: Duration = Duration::from_millis(200);
+/// How long the switcher takes to fade in once it is shown, so that held
+/// just long enough for it to be shown, and let go, it is hardly seen
+/// rather than flashing.
+const FADE_IN: Duration = Duration::from_millis(120);
 
 /// The switcher, open or not, and what it goes by.
 #[derive(Debug)]
@@ -416,11 +420,11 @@ fn paint_switcher(
 }
 
 /// Adds the switcher's shadow under what has been added of it, and its
-/// glass.
+/// glass, as much of each `seen` as the switcher is.
 fn switcher_box<R>(
     renderer: &mut R,
     drawn: &Drawn,
-    view: View,
+    (view, seen): (View, f32),
     (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
 ) where
     R: Renderer + ImportAll + ImportMem,
@@ -428,12 +432,19 @@ fn switcher_box<R>(
 {
     let glass = elements.len();
     if let Some(shadow) = &drawn.shadow {
-        shadow.elements(renderer, 1.0, view, elements);
+        shadow.elements(renderer, seen, view, elements);
     }
     let style = drawn.config.theme.style(Part::Switcher, States::NONE);
     let area = (logical(drawn.layout.area), view);
     let key = (glass::key(&"switcher"), glass, elements.len());
-    panes.extend(Pane::of(&style, area, key, 1.0));
+    panes.extend(Pane::of(&style, area, key, seen));
+}
+
+/// How much of the switcher is seen at `clock`: none as it is shown, and
+/// all of it once it has faded in, easing out.
+fn seen_at(switching: &Switching, clock: Duration) -> f32 {
+    let gone = clock.saturating_sub(switching.shown);
+    Easing::EaseOut.at((gone.as_secs_f32() / FADE_IN.as_secs_f32()).min(1.0))
 }
 
 /// A rectangle of the desktop model as the painting code has it.
@@ -496,6 +507,12 @@ impl Compositor {
         let open = self.switch.open.as_ref();
         let hidden = open.filter(|switching| self.clock() < switching.shown);
         hidden.map(|switching| switching.shown)
+    }
+
+    /// Whether the switcher is fading in, and to be drawn again a frame on.
+    pub(crate) fn switcher_fading(&self) -> bool {
+        let shown = self.shown_switcher();
+        shown.is_some_and(|switching| self.clock() < switching.shown + FADE_IN)
     }
 
     /// Whether the queue is turning, and to be drawn again a frame on.
@@ -746,21 +763,23 @@ impl Compositor {
         let Some((switching, drawn)) = painted else {
             return;
         };
+        let seen = (view, seen_at(switching, self.clock()));
         if drawn.config.general.switcher.style == SwitcherStyle::Diagonal {
-            self.queue_elements(renderer, (switching, drawn), view, (elements, panes));
+            self.queue_elements(renderer, (switching, drawn), seen, (elements, panes));
         } else {
-            self.rows_elements(renderer, drawn, view, (elements, panes));
+            self.rows_elements(renderer, drawn, seen, (elements, panes));
         }
-        self.switcher_backdrop(output, drawn, view, (elements, panes));
+        self.switcher_backdrop(output, drawn, seen, (elements, panes));
     }
 
     /// Adds the rows: each window's picture, made small to fit its place,
-    /// over the switcher's own pixels, and the box's shadow and glass.
+    /// over the switcher's own pixels, and the box's shadow and glass, as
+    /// much of all of it `seen` as the switcher is.
     fn rows_elements<R>(
         &self,
         renderer: &mut R,
         drawn: &Drawn,
-        view: View,
+        (view, seen): (View, f32),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -781,7 +800,7 @@ impl Compositor {
                 elements.extend(
                     self.switch
                         .icons
-                        .given(renderer, buffer, (area, 1.0), id, view),
+                        .given(renderer, buffer, (area, seen), id, view),
                 );
             }
         }
@@ -795,13 +814,13 @@ impl Compositor {
                 f64::from(place.size.width.saturating_sub(style.inset().across())),
                 f64::from(tall),
             );
-            let window = (item.window, 1.0);
+            let window = (item.window, seen);
             self.picture_elements(renderer, window, room, view, (elements, panes));
         }
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
-        elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
-        switcher_box(renderer, drawn, view, (elements, panes));
+        elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, seen));
+        switcher_box(renderer, drawn, (view, seen), (elements, panes));
     }
 
     /// Whether `window` is shown blank in the switcher, as in pictures of
@@ -843,6 +862,8 @@ impl Compositor {
                 (whole(left), whole(top)).into(),
                 (whole(across), whole(down)).into(),
             );
+            // Whole however faint the window is, as what it blurs is the
+            // faint picture: glass as faint would let the picture through.
             let key = glass::key(&("private in the switcher", window));
             panes.push(Pane::veiling(
                 (area, view),
@@ -854,12 +875,12 @@ impl Compositor {
 
     /// Adds what is behind the switcher on `output`, under all of it: the
     /// dim of its screen, and the blur of what is under that, as the theme
-    /// says.
+    /// says, as much of each `seen` as the switcher is.
     fn switcher_backdrop<R>(
         &self,
         output: &Output,
         drawn: &Drawn,
-        view: View,
+        (view, seen): (View, f32),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -867,7 +888,7 @@ impl Compositor {
     {
         let scale = view.scale.factor();
         let dim = &self.switch.dim;
-        let dim = SolidColorRenderElement::from_buffer(dim, (0, 0), scale, 1.0, Kind::Unspecified);
+        let dim = SolidColorRenderElement::from_buffer(dim, (0, 0), scale, seen, Kind::Unspecified);
         elements.push(Element::Solid(dim));
         let backdrop = drawn
             .config
@@ -885,7 +906,12 @@ impl Compositor {
         let key = glass::key(&("the switcher's backdrop", output.name()));
         let under = elements.len();
         let blurred = whole.and_then(|whole| {
-            Pane::behind(vec![whole], (backdrop.blur, view), (key, under, under), 1.0)
+            Pane::behind(
+                vec![whole],
+                (backdrop.blur, view),
+                (key, under, under),
+                seen,
+            )
         });
         panes.extend(blurred);
     }
@@ -893,12 +919,13 @@ impl Compositor {
     /// Adds the queue: the box under it with the title of the window
     /// picked, over everything, and then each window, the one in front
     /// first, its picture over its place, both as far round as the queue
-    /// has turned and as faint as it is there.
+    /// has turned and as faint as it is there; and all of it as much `seen`
+    /// as the switcher is.
     fn queue_elements<R>(
         &self,
         renderer: &mut R,
         (switching, drawn): (&Switching, &Drawn),
-        view: View,
+        (view, seen): (View, f32),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -911,11 +938,11 @@ impl Compositor {
         if let Some((Some(Icon::Given(buffer)), [beside, _])) = first {
             let (icon, _) = paint::title_places(below, theme, true);
             let icons = &self.switch.icons;
-            elements.extend(icons.given(renderer, buffer, (icon, 1.0), beside, view));
+            elements.extend(icons.given(renderer, buffer, (icon, seen), beside, view));
         }
         let at = Point::<f64, Logical>::from((f64::from(below.0), f64::from(below.1)));
-        elements.extend(drawn.pixels.element(renderer, at, view, 1.0));
-        switcher_box(renderer, drawn, view, (elements, panes));
+        elements.extend(drawn.pixels.element(renderer, at, view, seen));
+        switcher_box(renderer, drawn, (view, seen), (elements, panes));
         let layout = laid_out(
             &drawn.config,
             switching,
@@ -936,7 +963,7 @@ impl Compositor {
             found.map(|((_, shown), (card, ids))| (item, shown, card, ids))
         });
         for (item, shown, card, ids) in cards {
-            let opacity = f32::from(item.opacity) / 1000.0;
+            let opacity = f32::from(item.opacity) / 1000.0 * seen;
             let place = area(item.place);
             let share = f64::from(place.2) / front;
             // Its picture as large as it is in front, made smaller with its

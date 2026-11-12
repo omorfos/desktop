@@ -2304,9 +2304,11 @@ of itself, in the order they were last used. A window smaller than its
 place is shown as large as it is, not made larger. It opens at the
 window used before the one you are in, so one `Alt+Tab` goes back to it
 and another comes back again. It is shown once Alt has been held for
-150 ms, so that a quick `Alt+Tab` goes back without the switcher
+200 ms, so that a quick `Alt+Tab` goes back without the switcher
 showing for a moment; opened by something other than keys, it is shown
-at once. A click before it is shown closes it, choosing nothing.
+at once. Shown, it fades in over 120 ms, with the dim and blur behind
+it, and goes at once. A click before it is shown closes it, choosing
+nothing.
 
 The windows stand one behind another on a diagonal: the one picked in
 front, with its title and icon under it, and those after it going back

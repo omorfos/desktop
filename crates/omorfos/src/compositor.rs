@@ -1156,8 +1156,10 @@ impl Compositor {
         let moving = self.animation.epoch.zip(due);
         let moving = moving.map(|(epoch, due)| epoch + due);
         // So is a slide of the workspaces that is settling.
-        // As is the queue of the switcher, while it turns.
-        let settling = self.protocols.gestures.slide.settling() || self.switcher_turning();
+        // As is the switcher, while its queue turns and as it fades in.
+        let settling = self.protocols.gestures.slide.settling()
+            || self.switcher_turning()
+            || self.switcher_fading();
         let sliding = self.animation.epoch.filter(|_| settling);
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // And what the screens showed before, while it gives way, a

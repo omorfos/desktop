@@ -1212,7 +1212,8 @@ the first than on the last.
       shadow and glass with it (ADR 25).
 - [ ] Known gaps in coming and going: a part's colours stay as they are
       while it is `:closing`; `scale` only as a part comes and goes, not
-      at rest; the tooltip and the switcher appear and go at once; and
+      at rest; the tooltip appears and goes at once, and the switcher
+      goes at once; and
       the corners of a part's glass are as round at every size.
 - [x] The inner hairline of light along the top of glass: a sharp
       `inset` shadow in `box-shadow`, beside the one cast, and
@@ -1374,17 +1375,18 @@ the first than on the last.
 - [x] The switcher's screen dimmed and blurred behind it
       (`switcher-backdrop`), and on a diagonal each window's border round
       its picture rather than a box behind it (`switcher-window`).
-- [x] The switcher shown only once Alt has been held 150 ms after Tab, so
-      that a quick `Alt+Tab` goes back to the window before without it.
+- [x] The switcher shown only once Alt has been held 200 ms after Tab, so
+      that a quick `Alt+Tab` goes back to the window before without it,
+      and fading in over 120 ms, with its dim and blur.
 - [x] A private window in the switcher as its rule has it in pictures:
       blurred with `private: blur`, and blank otherwise, in the `capture`
       part's colour.
 - [ ] Known gaps in the switcher on a diagonal: the borders further back
       are thinner, being drawn smaller; a theme's `box-shadow` on
       `switcher-window` is not drawn; the pictures are not rounded at the
-      corners; the dim and blur behind it come and go at once, as the
-      switcher does; and its look, the steps and how much each shrinks,
-      is to be tried on real hardware.
+      corners; it goes at once, with the dim and blur behind it, rather
+      than fading out as it fades in; and its look, the steps and how
+      much each shrinks, is to be tried on real hardware.
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [x] Night light: the screens warmer after dark (ADR 74), by the day
       and night `scheme: auto` goes by, turning over twenty minutes either

@@ -65,16 +65,23 @@ window is where and how it moves, not only how it looks.
   switcher is drawn onto it and so into them: blank, in the `capture`
   part's background, with its icon large in the middle; or, if its rule
   says `private: blur`, its picture under glass that blurs it as much as
-  in pictures (32 units), blank where glass cannot blur. Blurring every
+  in pictures (32 units), blank where glass cannot blur. The glass is
+  whole however faint the window is further back or as the switcher
+  fades in: what it blurs is the faint picture, and glass as faint as
+  that would let the sharp picture through. Blurring every
   private window would show of one meant to be blank its colours and
   shapes.
 - **A click goes to the window in front where it is clicked.**
-- **It is shown once its keys have been held for 150 ms**, as GNOME's and
+- **It is shown once its keys have been held for 200 ms**, as GNOME's and
   Windows's are, so that a quick `Alt+Tab` goes back to the window before
   without the switcher, its dim and its blur showing for a frame or two.
   It opens on the first Tab all the same, and goes as far as the keys
   take it while it is not shown; opened by other than keys, as from a
-  menu, with nothing held to let go, it is shown at once.
+  menu, with nothing held to let go, it is shown at once. 150 ms was
+  tried first, and was short enough to be caught by an ordinary Alt+Tab.
+- **Shown, it fades in over 120 ms**, easing out, with its dim and blur,
+  so that held just long enough to be shown, and let go, it is hardly
+  seen rather than flashing at the user. It goes at once, as it did.
 
 How each window stands is the desktop model's (`Switcher::queue`), which
 is told how far the queue has still to turn and has no clock; the
