@@ -1376,6 +1376,9 @@ the first than on the last.
       its picture rather than a box behind it (`switcher-window`).
 - [x] The switcher shown only once Alt has been held 150 ms after Tab, so
       that a quick `Alt+Tab` goes back to the window before without it.
+- [x] A private window in the switcher as its rule has it in pictures:
+      blurred with `private: blur`, and blank otherwise, in the `capture`
+      part's colour.
 - [ ] Known gaps in the switcher on a diagonal: the borders further back
       are thinner, being drawn smaller; a theme's `box-shadow` on
       `switcher-window` is not drawn; the pictures are not rounded at the

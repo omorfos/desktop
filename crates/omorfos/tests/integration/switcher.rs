@@ -984,3 +984,57 @@ fn held_a_moment_the_switcher_is_shown_and_a_click_before_closes_it_choosing_not
     assert_ne!(session.draw().at(corner.0, corner.1), open, "shown");
     press(&mut session, key::ALT, false);
 }
+
+#[test]
+fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_is_blank() {
+    let rules = "rules:\n  - match: { app_id: one }\n    private: blur\n  - match: { app_id: two }\n    private: true\n";
+    for style in [("config.yaml", ""), FLAT] {
+        let mut session = Session::with_config(&[style, ("rules.yaml", rules), UNBLURRED]);
+        let mut client = session.connect();
+        let size = if style == FLAT {
+            (200, 100)
+        } else {
+            (800, 500)
+        };
+        session.open(&mut client, "one", size, RED);
+        session.open(&mut client, "two", size, BLUE);
+        session.open(&mut client, "three", size, GREEN);
+        session.step();
+        drop(session.draw());
+        let before = session.compositor().blurs();
+        // Two is picked, and blank; one is blurred.
+        alt_tab(&mut session, 1, false);
+        let layout = session.compositor().switcher_layout().unwrap();
+        let frame = session.draw();
+        assert!(session.compositor().blurs() > before, "{style:?}");
+        let theme = Theme::default();
+        let place = |name: &str| {
+            let desktop = session.compositor().desktop();
+            let item = layout.items.iter().find(|item| {
+                desktop
+                    .window(item.window)
+                    .is_some_and(|window| window.app_id == name)
+            });
+            item.unwrap().place
+        };
+        let (x, y) = if style == FLAT {
+            picture(place("one"), &theme)
+        } else {
+            // One is behind; seen to the right of two, in front.
+            let (one, two) = (place("one"), place("two"));
+            let x = i32::try_from(i64::midpoint(one.right(), two.right())).unwrap();
+            (x, middle(one).1)
+        };
+        let blurred = frame.at(x, y);
+        assert!(mostly(blurred, RED), "{style:?}: {blurred:#x}");
+        let blank = theme.style(Part::Capture, States::NONE).ground();
+        let blank = u32::from_be_bytes([blank.alpha, blank.red, blank.green, blank.blue]);
+        let (x, y) = if style == FLAT {
+            picture(place("two"), &theme)
+        } else {
+            middle(place("two"))
+        };
+        assert_eq!(frame.at(x, y), blank, "the blank of two, {style:?}");
+        press(&mut session, key::ALT, false);
+    }
+}

@@ -368,13 +368,11 @@ switcher-item:active {
 }
 switcher-title { color: var(--text); }
 /* On a diagonal, each window in the switcher: its border round its picture,
- * its padding away, and its background behind a window shown by its icon.
- * The one picked is :active. */
+ * its padding away. The one picked is :active. */
 switcher-window {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
-  background: var(--surface);
 }
 switcher-window:active { border-color: var(--accent); }
 /* The screen behind the switcher: dimmed, and blurred out of focus. */

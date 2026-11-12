@@ -858,6 +858,13 @@ pub(crate) fn switcher(
         let font = theme.font(Part::SwitcherTitle, states);
         let ink = theme.style(Part::SwitcherTitle, states).color;
         text.draw(&mut canvas, &shown.title, places.title, ink, font);
+        // A private window is blank where its picture would be, as in
+        // pictures of the screen.
+        if !shown.pictured {
+            let (left, top, room, down) = inset(place, style.inset());
+            let blank = theme.style(Part::Capture, States::NONE).ground();
+            canvas.fill((left, top, room, picture.min(down)), blank);
+        }
         if let Some(Some(image)) = &shown.icon {
             canvas.draw_image(places.icon, image);
             if !shown.pictured {
@@ -906,8 +913,9 @@ pub(crate) fn switcher_title(
 
 /// Paints a window in the queue round its picture, `picture` as large as
 /// it is in front: its border, its padding away from the picture, set
-/// apart if it is `picked`; and, where its picture is not shown, its
-/// background, with its icon large in the middle, in the picture's stead.
+/// apart if it is `picked`; and, where its picture is not shown, a blank in
+/// the picture's stead, in the colour of the `capture` part as a private
+/// window's is in every picture, with its icon large in the middle.
 pub(crate) fn switcher_window(
     theme: &Theme,
     (across, down): (u32, u32),
@@ -919,14 +927,21 @@ pub(crate) fn switcher_window(
         Part::SwitcherWindow,
         States::NONE.when(State::Active, picked),
     );
-    if shown.pictured {
-        style.background = Color::rgba(0, 0, 0, 0);
-        style.gradient = None;
-    }
+    style.background = Color::rgba(0, 0, 0, 0);
+    style.gradient = None;
     let edges = style.inset();
     let (width, height) = (across + edges.across(), down + edges.down());
     let mut canvas = Canvas::scaled(width, height, scale);
     canvas.draw_box((0, 0, width, height), &style);
+    if !shown.pictured {
+        let picture = (
+            edges.left.cast_signed(),
+            edges.top.cast_signed(),
+            across,
+            down,
+        );
+        canvas.fill(picture, theme.style(Part::Capture, States::NONE).ground());
+    }
     let side = LARGE_ICON.min(across).min(down);
     let large = (
         (edges.left + (across - side) / 2).cast_signed(),

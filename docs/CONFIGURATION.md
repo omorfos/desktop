@@ -922,13 +922,11 @@ switcher-item:active {
 }
 switcher-title { color: var(--text); }
 /* On a diagonal, each window in the switcher: its border round its picture,
- * its padding away, and its background behind a window shown by its icon.
- * The one picked is :active. */
+ * its padding away. The one picked is :active. */
 switcher-window {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
-  background: var(--surface);
 }
 switcher-window:active { border-color: var(--accent); }
 /* The screen behind the switcher: dimmed, and blurred out of focus. */
@@ -2333,14 +2331,15 @@ The order stands still while the switcher is open: a window passed over
 on the way has not been used. Each window's icon is beside its title:
 the one its program gives it, or else the one its application is
 installed with (the `Icon` of its desktop entry, or the icon named as
-its `app_id` is). A window a rule says is `private` is shown by its
-title and its icon, large where its picture would be. How the switcher looks is `switcher`,
+its `app_id` is). A window a rule says is `private` is shown as it is
+in pictures of the screen: blank, in the background colour of the
+`capture` part, with its icon large in the middle; or, with `private:
+blur`, its picture blurred, and blank where blur cannot be drawn. How the switcher looks is `switcher`,
 `switcher-item` (the one picked is `:active`, and `min-width` is how wide
 each is in rows) and `switcher-title` in `theme.css`. On a diagonal,
 `switcher` is the box under the queue that the title is in, and each
 window is a `switcher-window`: its border round its picture, its
-`padding` away, the accent round the one picked, and its background
-behind a private window's icon, in the shape of the window. Behind the
+`padding` away, and the accent round the one picked. Behind the
 switcher, its screen is dimmed by `switcher-backdrop`'s background and
 blurred out of focus by its `backdrop-filter`, in rows as on a diagonal;
 with `appearance.reduce_transparency` it is the dim alone. The actions are

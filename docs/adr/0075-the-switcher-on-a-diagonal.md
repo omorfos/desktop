@@ -34,8 +34,7 @@ window is where and how it moves, not only how it looks.
 - **A window is its picture, with a border round it**: `switcher-window`,
   its border its `padding` away from the picture, in the window's own
   shape rather than a box of one shape for all, the accent round the one
-  picked and nothing round the rest; its background only behind a
-  private window, whose icon stands in the picture's place. A box filled
+  picked and nothing round the rest. A box filled
   behind each, as in rows, was tried first and was heavy on a diagonal,
   where being in front already says which is picked.
 - **Each window's border is painted once, as large as it is in front**,
@@ -62,6 +61,13 @@ window is where and how it moves, not only how it looks.
   before it has turned takes it on from where it has got to, but no more
   than two windows behind the keys, so that Tab held down does not send
   it spinning. With `appearance.reduce_motion`, it stands at once.
+- **A private window is shown as in pictures of the screen**, as the
+  switcher is drawn onto it and so into them: blank, in the `capture`
+  part's background, with its icon large in the middle; or, if its rule
+  says `private: blur`, its picture under glass that blurs it as much as
+  in pictures (32 units), blank where glass cannot blur. Blurring every
+  private window would show of one meant to be blank its colours and
+  shapes.
 - **A click goes to the window in front where it is clicked.**
 - **It is shown once its keys have been held for 150 ms**, as GNOME's and
   Windows's are, so that a quick `Alt+Tab` goes back to the window before

@@ -32,7 +32,7 @@ use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
-use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical};
+use crate::compositor::{Compositor, Element, Mapped, PRIVATE_BLUR, Painted, View, color, logical};
 use crate::glass::{self, Pane};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
@@ -650,7 +650,7 @@ impl Compositor {
                         .map(|listed| listed.title.clone())
                         .unwrap_or_default(),
                     icon,
-                    pictured: mapped.is_some() && !self.desktop.private(*window),
+                    pictured: mapped.is_some() && !self.blank(*window),
                 }
             })
             .collect();
@@ -795,17 +795,61 @@ impl Compositor {
                 f64::from(place.size.width.saturating_sub(style.inset().across())),
                 f64::from(tall),
             );
-            let mapped = self
-                .mapped(item.window)
-                .filter(|_| !self.desktop.private(item.window));
-            let Some(mapped) = mapped else { continue };
-            let picture = fitted(shape(mapped), room);
-            elements.extend(pictured(renderer, mapped, picture, view, 1.0));
+            let window = (item.window, 1.0);
+            self.picture_elements(renderer, window, room, view, (elements, panes));
         }
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
         elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
         switcher_box(renderer, drawn, view, (elements, panes));
+    }
+
+    /// Whether `window` is shown blank in the switcher, as in pictures of
+    /// the screen: private, and not to be blurred.
+    fn blank(&self, window: WindowId) -> bool {
+        self.desktop.private(window) && !self.desktop.blurred(window)
+    }
+
+    /// Adds `window`'s picture, as large as fits in `room` and as
+    /// see-through as `opacity` says: under glass that blurs it, and is
+    /// blank where glass cannot, if a rule says it is private but to be
+    /// blurred, as in pictures of the screen; and not at all if it is to be
+    /// blank, or is not there.
+    fn picture_elements<R>(
+        &self,
+        renderer: &mut R,
+        (window, opacity): (WindowId, f32),
+        room: Exact,
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let Some(mapped) = self.mapped(window).filter(|_| !self.blank(window)) else {
+            return;
+        };
+        let picture = fitted(shape(mapped), room);
+        let first = elements.len();
+        elements.extend(pictured(renderer, mapped, picture, view, opacity));
+        if self.desktop.blurred(window) {
+            let blank = self
+                .config()
+                .theme
+                .style(Part::Capture, States::NONE)
+                .ground();
+            let (left, top, across, down) = picture;
+            let area = Rectangle::new(
+                (whole(left), whole(top)).into(),
+                (whole(across), whole(down)).into(),
+            );
+            let key = glass::key(&("private in the switcher", window));
+            panes.push(Pane::veiling(
+                (area, view),
+                (PRIVATE_BLUR, blank),
+                (key, first),
+            ));
+        }
     }
 
     /// Adds what is behind the switcher on `output`, under all of it: the
@@ -915,13 +959,8 @@ impl Compositor {
                 let icons = &self.switch.icons;
                 elements.extend(icons.given(renderer, buffer, (large, opacity), &ids[1], view));
             }
-            let mapped = self
-                .mapped(item.window)
-                .filter(|_| !self.desktop.private(item.window));
-            if let Some(mapped) = mapped {
-                let picture = (left, top, across, down);
-                elements.extend(pictured(renderer, mapped, picture, view, opacity));
-            }
+            let (window, picture) = ((item.window, opacity), (left, top, across, down));
+            self.picture_elements(renderer, window, picture, view, (elements, panes));
             let at = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
             let size = (
                 whole(across + out(edges.left) + out(edges.right)),

@@ -128,8 +128,8 @@ pub enum Part {
     /// The title of a window in the switcher.
     SwitcherTitle,
     /// A window in the switcher on a diagonal: its border round its
-    /// picture, its padding away, and its background behind a window shown
-    /// by its icon. The one picked is [`State::Active`].
+    /// picture, its padding away. Only its border, padding and corners are
+    /// used. The one picked is [`State::Active`].
     SwitcherWindow,
     /// The screen behind the switcher while it is open: its background dims
     /// it, and its `backdrop-filter` blurs what is behind.
