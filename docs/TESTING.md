@@ -90,6 +90,13 @@ The session's clock is `session.now`, and it stands still. Nothing takes
 time unless the test says so.
 
 - `session.advance(by)` moves the clock and steps.
+- The compositor's own clock, which what moves goes by, begins at the
+  session's first step. Something started before any step (an action
+  performed on a fresh session) is timed from before that, and seems not
+  to move. Step once first.
+- What the compositor paints, the switcher, the overview, is painted
+  again as it refreshes, before it draws. A draw straight after a key or
+  an action, with no step between, shows what was painted before it.
 - `session.settle()` steps, then moves the clock on a second: enough for
   anything the built-in theme fades in or changes the colour of.
 - A theme written by a test (`with_config`, `write_config`) has
@@ -131,6 +138,22 @@ instant.
 
 - Windows are filled with one colour, so a pixel says which window, or
   which part of a frame, is there.
+- One colour also hides blur: a window blurred and a window shown sharp
+  look the same inside. A test of blur, a private window's above all,
+  gives the window an edge (a subsurface of another colour over half of
+  it) and measures how far apart the two sides of the edge are, near it,
+  in every place the window is drawn: at rest, on its way, faint.
+- Two parts of the built-in theme can share a colour, as `capture`'s
+  blank and the desktop do: a pixel that is that colour then proves
+  nothing. Give one a colour of its own in the test's theme.
+- The software renderer the tests draw with blurs slowly, seconds a frame
+  at the size of the screen. A test not about blur gives the theme
+  `backdrop-filter: none` for what it would blur behind; one test that it
+  is blurred, counted with `compositor().blurs()`, is enough.
+- The software renderer draws nothing of a window's picture made larger
+  than the window is; pictures are never made larger, which is the rule
+  anyway. Give a window drawn small in a test a size larger than its
+  place.
 - Text depends on the fonts installed. Assert where ink may and may not
   be, never on exact pixels. CI has DejaVu only; `AGENTS.md` says how to
   have the same.
@@ -299,6 +322,13 @@ size is not limited (`prlimit --pid PID --core=unlimited`).
    quiet moment, by itself, and says so after. Where the holder itself
    changed, it takes up its new version between the two compositors, and
    the console shows for that moment, once (ADR 63).
+
+## A test that passes at once
+
+A test written beside the code it tests, that passes the first time it
+runs, has not yet shown that it tests anything. Put the fault in for one
+run, the line it is about taken out or made wrong, and see it fail; then
+put the line back. Say in the handover which faults were tried.
 
 ## Stress
 

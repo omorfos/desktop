@@ -47,6 +47,31 @@ is the order things are done in, and what the maintainer expects to be told.
 - A decision someone would later ask "why" about gets an ADR, numbered
   after the last in `docs/adr/`, or a paragraph added to the ADR it
   belongs to.
+- A test that passes the first time it runs is shown to fail with the
+  fault it is about put in for one run (`docs/TESTING.md`, "A test that
+  passes at once"); `docs/TESTING.md` lists what else catches tests out.
+- Some changes touch the same places every time; each place is checked
+  by a test or the build, but one at a time:
+  - **A part of the theme**: the `Part` enum in
+    `crates/omorfos-config/src/style.rs`, its doc comment saying which
+    properties are used and which states it has, `Part::ALL` and its
+    count, its name in `Part::name` and in the list of names in the test
+    there; its rule in `crates/omorfos-config/src/default.css`, and the
+    same in the copy of the built-in theme in `docs/CONFIGURATION.md`;
+    the list of parts in the guide; and the `backdrop-filter` or
+    `box-shadow` row of the guide if it uses them.
+  - **An action**: the `Action` enum in
+    `crates/omorfos-config/src/action.rs`, its doc comment (the schemas'
+    words), the parse test there; its arm in `Compositor::perform`; a row
+    in the guide's table of actions; the schemas blessed, which adds a
+    line for `keys.yaml` and `menu.yaml` to `promised.txt`; and no
+    default key unless the review of the defaults says so.
+  - **A key of `config.yaml`**: the type in
+    `crates/omorfos-config/src/general.rs` with `deny_unknown_fields`, a
+    parse test of its default, each value and a wrong one, its export in
+    `lib.rs`; the schemas blessed; the example `config.yaml` at the top of
+    the guide, which is checked against the defaults, and a section of the
+    guide.
 
 ## 3. Gates
 
@@ -121,6 +146,13 @@ the tests; say so when a change depends on it.
   commit, run `gates.sh commits` before merging: it checks out each in a
   worktree of its own and runs formatting, clippy and the coverage gate
   on it alone.
+- Where one file holds parts of two commits, give the first commit a
+  version of the whole file that has only its part: `main`'s version with
+  that part made, or, where the work went in steps, the file as it was
+  after the first step, kept aside then for the purpose (copy the files a
+  step touched before going on to the next). Commit it, put the final
+  version back, and commit the rest. Before merging, the last commit's
+  tree is the tree the gates passed on: `git rev-parse 'HEAD^{tree}'`.
 - The commit hook is in `.githooks/`. If `git config core.hooksPath` does
   not say `.githooks`, set it, and say so.
 - The message follows `AGENTS.md`: Conventional Commits, a body that says
