@@ -1603,7 +1603,29 @@ Hardware and performance:
 - [ ] A window that fills the screen shown without being copied (direct
       scanout), and the refresh rate following it (VRR).
 - [ ] Touch screens and drawing tablets.
-- [ ] Wide colour and HDR, when Smithay can.
+- [ ] Wide colour and HDR: a screen that can show more than sRGB, or
+      brighter than white, driven so, and a program that draws for it
+      shown as it drew. What it takes:
+      - programs told what each screen can show, and saying what colours
+        and brightness they drew in, through `wp_color_management_v1`,
+        whose description `wayland-protocols` already carries (staging);
+      - the screen told, through its connector's `Colorspace` and
+        `HDR_OUTPUT_METADATA`, that it is sent HDR (PQ, BT.2020), and
+        driven at 10 bits or more;
+      - the session composed in a space wide and deep enough for both,
+        what was drawn for sRGB, the panel, titlebars and most programs,
+        brought into it at a brightness of the user's choosing, and what
+        is brighter than the screen can show tone-mapped to fit;
+      - pictures of the screen and sharing it, which programs expect in
+        sRGB, mapped back down, and the colour picker reading what was
+        drawn, not what was sent;
+      - a setting for it, each screen's own, off unless the screen says
+        it can and the user says so.
+      Waits on Smithay, which has no handler for the protocol, composes
+      in 8-bit sRGB, and sets neither connector property. Night light
+      (stage 4) warms a screen through its gamma table, which an HDR
+      screen needs for its own curve: there it is to warm the picture as
+      it is composed instead.
 - [ ] Measured: what an idle session costs, and how long a frame takes.
 - [ ] The third priority as a gate: a test that a session with nothing
       changing draws nothing and allocates nothing, turn after turn.
