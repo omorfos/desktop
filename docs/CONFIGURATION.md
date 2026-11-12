@@ -1558,7 +1558,9 @@ night_light:
 
 The `night_light` action switches it by hand until it next turns: off
 for the rest of the evening, or on now, as warm as it says, even where it
-is not enabled. It is done through each screen's gamma table, after
+is not enabled. Each change fades in over two seconds rather than
+jumping at you, but for the first after the session starts, which is
+there at once. It is done through each screen's gamma table, after
 everything is drawn, so pictures of the screen, and a screen shared, keep
 their colours. A screen whose table cannot be set says so once, in the
 session's log.

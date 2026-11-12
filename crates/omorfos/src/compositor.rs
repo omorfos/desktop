@@ -1169,6 +1169,10 @@ impl Compositor {
             || self.hover.lines.going(self.animation.clock);
         let fading = self.animation.epoch.filter(|_| self.is_fading() || giving);
         let fading = fading.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
+        // As are the screens, while night light fades from one temperature
+        // to the next.
+        let warming = self.animation.epoch.filter(|_| self.night_fading());
+        let warming = warming.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
         // As is the next step of day turning into night.
@@ -1176,6 +1180,7 @@ impl Compositor {
         let turning = turning.map(|(due, epoch)| epoch + due);
         [
             turning,
+            warming,
             self.night_due(Instant::now(), SystemTime::now()),
             self.about_due(),
             self.debouncer.deadline(),

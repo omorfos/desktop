@@ -107,6 +107,24 @@ pub fn tint(kelvin: u16) -> [f64; 3] {
     [0, 1, 2].map(|channel| (warm[channel] / daylight[channel]).clamp(0.0, 1.0))
 }
 
+/// The temperature `share` of the way from `from` to `to`, from 0 to 1,
+/// going evenly in mireds, the reciprocal of the temperature, as the eye
+/// sees a light change, rather than in kelvin, which would seem to change
+/// slowly near daylight and quickly when warm.
+#[must_use]
+pub fn between(from: u16, to: u16, share: f32) -> u16 {
+    let mireds = |kelvin: u16| 1e6 / f64::from(kelvin);
+    let (from, to) = (mireds(from), mireds(to));
+    let mireds = (to - from).mul_add(f64::from(share), from);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "between two temperatures, each within a u16"
+    )]
+    let kelvin = (1e6 / mireds).round() as u16;
+    kelvin
+}
+
 /// The colour of a black body at `kelvin`, as red, green and blue from 0 to
 /// 255, by Tanner Helland's fit, for 1000 K to 40000 K.
 fn black_body(kelvin: u16) -> [f64; 3] {
@@ -241,6 +259,18 @@ mod tests {
         assert_eq!(green, [0, 16384, 32768]);
         assert_eq!(blue, [0, 0, 0]);
         assert_eq!(ramps([1.0; 3], 1)[0], [0], "a table of one");
+    }
+
+    #[test]
+    fn between_two_temperatures_the_way_is_even_to_the_eye_and_ends_where_it_was_going() {
+        assert_eq!(between(DAYLIGHT, 4000, 0.0), DAYLIGHT);
+        assert_eq!(between(DAYLIGHT, 4000, 1.0), 4000);
+        assert_eq!(between(4000, DAYLIGHT, 1.0), DAYLIGHT);
+        // Halfway in mireds, the reciprocal of the temperature, which the
+        // eye sees evenly: nearer the warm end than halfway in kelvin.
+        assert_eq!(between(DAYLIGHT, 4000, 0.5), 4952);
+        assert_eq!(between(4000, DAYLIGHT, 0.5), 4952);
+        assert_eq!(between(1900, 1900, 0.3), 1900);
     }
 
     #[test]

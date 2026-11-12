@@ -39,6 +39,13 @@ from 1900 to 6500, 6500 being daylight and the screens as they are.
   is off or by day. It lasts until the schedule turns the screens warm or
   back, so that an evening it was switched off is followed by one it is
   on.
+- **Each change fades in over two seconds**, easing in and out, evenly
+  in mireds (the reciprocal of the temperature, which the eye sees
+  change evenly): one by hand, the configuration's, and each of the
+  schedule's steps, so that none jumps at the user. The first a
+  compositor is asked for is there at once, as one started again by
+  night finds the screens warm already, and fading in from daylight
+  would flash them white.
 - **The gamma table is set again whenever it may have been lost**: when
   a screen's mode changes, when it is turned back on, and when the card
   is taken back from another virtual terminal. A screen whose table
