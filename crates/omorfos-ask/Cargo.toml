@@ -12,6 +12,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Answers --help and --version as every program does.
+omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-config = { path = "../omorfos-config" }
 omorfos-shell = { path = "../omorfos-shell" }
 omorfos-ui = { path = "../omorfos-ui" }

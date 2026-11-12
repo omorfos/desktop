@@ -48,3 +48,22 @@ fn what_is_not_understood_is_answered_with_how_to_ask() {
         "{said}"
     );
 }
+
+#[test]
+fn asked_what_it_is_omorfos_session_says_so_and_starts_nothing() {
+    // Outside a session, so that starting instead would fail.
+    for (asked, said) in [
+        ("--help", "Usage: omorfos-session"),
+        ("-h", "Usage: omorfos-session"),
+        ("--version", "omorfos-session "),
+        ("-V", "omorfos-session "),
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_omorfos-session"));
+        command.env_clear();
+        command.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
+        let output = command.arg(asked).output().unwrap();
+        assert!(output.status.success(), "{asked}: {output:?}");
+        let out = String::from_utf8_lossy(&output.stdout);
+        assert!(out.contains(said), "{asked}: {out}");
+    }
+}

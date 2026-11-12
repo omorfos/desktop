@@ -23,6 +23,7 @@
 //! ```
 
 mod client;
+pub mod help;
 pub mod hold;
 mod message;
 pub mod protocols;

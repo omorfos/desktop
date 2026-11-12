@@ -35,3 +35,22 @@ fn a_session_that_is_not_there_is_reported_too() {
     assert!(said.starts_with("omorfos-notifications: "), "{said}");
     assert!(!said.contains("not an omorfos session"), "{said}");
 }
+
+#[test]
+fn asked_what_it_is_omorfos_notifications_says_so_and_starts_nothing() {
+    // Outside a session, so that starting instead would fail.
+    for (asked, said) in [
+        ("--help", "Usage: omorfos-notifications"),
+        ("-h", "Usage: omorfos-notifications"),
+        ("--version", "omorfos-notifications "),
+        ("-V", "omorfos-notifications "),
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_omorfos-notifications"));
+        command.env_clear();
+        command.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
+        let output = command.arg(asked).output().unwrap();
+        assert!(output.status.success(), "{asked}: {output:?}");
+        let out = String::from_utf8_lossy(&output.stdout);
+        assert!(out.contains(said), "{asked}: {out}");
+    }
+}

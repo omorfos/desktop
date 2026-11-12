@@ -1783,15 +1783,20 @@ there is can be found without reading the source (looked at on
 `omorfosctl` answer `--help` with help, and two more with a line of
 usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
 
-- [ ] Every program answers `--help` and `-h` with what it is, how it is
-      started and what it takes, and `--version` with its version, and
-      does nothing else: today `omorfos-panel`, `omorfos-launcher`,
-      `omorfos-wallpaper`, `omorfos-notifications`, `omorfos-clipboard`,
-      `omorfos-ask`, `omorfos-recording`, `omorfos-lock` and the portal
-      start as if run, `omorfos-lock` trying to lock the session. First,
-      as a slip there costs the user a lock or a second panel. One way of
-      reading arguments for all, with a test that each installed program
-      answers both and starts nothing.
+- [x] Every program answers `--help` and `-h` with what it is, how it is
+      started and what it takes, and `--version` and `-V` with its
+      version, and does nothing else, wherever among its arguments it is
+      asked: where `omorfos-panel`, `omorfos-launcher`, `omorfos-wallpaper`,
+      `omorfos-notifications`, `omorfos-clipboard`, `omorfos-ask`,
+      `omorfos-pinentry`, `omorfos-recording`, `omorfos-lock`,
+      `omorfos-session`, `omorfos-screenshot` and the portal started as if
+      run, `omorfos-lock` trying to lock the session. One way for all,
+      `omorfos_ipc::help`, each program saying what it is, how it is
+      started and who starts it, laid out as `omorfosctl`'s is: the
+      commands and options of `omorfos-session`, `omorfos-screenshot` and
+      `omorfos-lock` each with what it does, and examples, kept within 80
+      columns; and a test of each that it answers, run where starting
+      would fail.
 - [ ] A manual page for each program, `omorfos(1)`, `omorfosctl(1)` and
       the rest, and for the files a user writes, `config.yaml`,
       `keys.yaml`, `rules.yaml`, `menu.yaml` and `theme.css` in section

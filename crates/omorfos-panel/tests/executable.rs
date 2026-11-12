@@ -85,3 +85,22 @@ fn a_connection_it_is_handed_is_the_one_it_uses() {
     let said = output.take().transpose().unwrap().unwrap_or_default();
     assert_eq!(said, "");
 }
+
+#[test]
+fn asked_what_it_is_omorfos_panel_says_so_and_starts_nothing() {
+    // Outside a session, so that starting instead would fail.
+    for (asked, said) in [
+        ("--help", "Usage: omorfos-panel"),
+        ("-h", "Usage: omorfos-panel"),
+        ("--version", "omorfos-panel "),
+        ("-V", "omorfos-panel "),
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_omorfos-panel"));
+        command.env_clear();
+        command.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
+        let output = command.arg(asked).output().unwrap();
+        assert!(output.status.success(), "{asked}: {output:?}");
+        let out = String::from_utf8_lossy(&output.stdout);
+        assert!(out.contains(said), "{asked}: {out}");
+    }
+}

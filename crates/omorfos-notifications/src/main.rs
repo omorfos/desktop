@@ -1,11 +1,30 @@
 //! The `omorfos-notifications` executable: notifications for the omorfos
 //! desktop.
 
+use std::ffi::OsString;
 use std::io::Write;
 use std::process::ExitCode;
 use std::{env, io};
 
+use omorfos_ipc::help::{About, answered};
+
+/// What it says when asked what it is.
+const ABOUT: About = About {
+    name: "omorfos-notifications",
+    what: "Notifications for the omorfos desktop: what programs have to tell the user.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, unless `notifications.enabled` in config.yaml is false.",
+    version: env!("CARGO_PKG_VERSION"),
+};
+
 fn main() -> ExitCode {
+    let arguments: Vec<OsString> = env::args_os().skip(1).collect();
+    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+        return ExitCode::SUCCESS;
+    }
     // It runs until the session ends, so it only ever returns with the
     // reason it could not go on.
     let failure = omorfos_notifications::start(&|name| env::var_os(name));

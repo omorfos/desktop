@@ -1888,6 +1888,7 @@ name = "omorfos-ask"
 version = "0.1.0"
 dependencies = [
  "omorfos-config",
+ "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
  "rustix 1.1.6",
@@ -1912,6 +1913,7 @@ name = "omorfos-clipboard"
 version = "0.1.0"
 dependencies = [
  "omorfos-config",
+ "omorfos-ipc",
  "omorfos-shell",
  "wayland-client",
  "wayland-protocols",
@@ -2006,6 +2008,7 @@ version = "0.1.0"
 dependencies = [
  "nonstick",
  "omorfos-config",
+ "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
  "omorfos-wallpaper",
@@ -2073,6 +2076,7 @@ name = "omorfos-recording"
 version = "0.1.0"
 dependencies = [
  "inotify",
+ "omorfos-ipc",
  "pipewire",
  "rustix 1.1.6",
  "tempfile",
@@ -2155,6 +2159,7 @@ version = "0.1.0"
 dependencies = [
  "inotify",
  "omorfos-config",
+ "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",
  "png",
