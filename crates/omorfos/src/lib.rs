@@ -39,6 +39,7 @@ mod night;
 mod outputs;
 mod paint;
 mod palette;
+mod pictures;
 mod presentation;
 mod recording;
 mod restarts;
