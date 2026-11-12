@@ -57,6 +57,10 @@ const TURN: Duration = Duration::from_millis(240);
 /// The farthest the queue is let fall behind the keys, in windows, so that
 /// Tab held down does not send it spinning.
 const FARTHEST: f64 = 2.0;
+/// How long the keys that opened the switcher are held before it is shown,
+/// so that a quick `Alt+Tab` goes back to the window before without it
+/// showing for a moment, as GNOME's and Windows's do.
+const SHOWN_AFTER: Duration = Duration::from_millis(150);
 
 /// The switcher, open or not, and what it goes by.
 #[derive(Debug)]
@@ -118,6 +122,9 @@ pub(crate) struct Switching {
     held: Modifiers,
     /// The screen it is on, as it was when it opened.
     screen: Rect,
+    /// When it is shown, by the compositor's clock: a moment after it was
+    /// opened by keys, and at once otherwise.
+    shown: Duration,
     /// The queue on its way round: how far it had still to turn, in
     /// windows, and when it set out, by the compositor's clock.
     turn: Option<(f64, Duration)>,
@@ -454,10 +461,17 @@ impl Compositor {
             .pointer_head()
             .map(|head| domain(head.area()))
             .unwrap_or_default();
+        let held = self.switch.held;
+        let wait = if held == Modifiers::NONE {
+            Duration::ZERO
+        } else {
+            SHOWN_AFTER
+        };
         self.switch.open = Switcher::open(windows, back).map(|switcher| Switching {
             switcher,
-            held: self.switch.held,
+            held,
             screen,
+            shown: clock + wait,
             turn: None,
             painted: None,
         });
@@ -468,6 +482,20 @@ impl Compositor {
     fn switcher_still(&self) -> bool {
         let general = &self.config().general;
         general.appearance.reduce_motion || general.switcher.style == SwitcherStyle::Flat
+    }
+
+    /// The switcher while it is open and shown.
+    fn shown_switcher(&self) -> Option<&Switching> {
+        let open = self.switch.open.as_ref();
+        open.filter(|switching| self.clock() >= switching.shown)
+    }
+
+    /// When the switcher, open, is to be shown, if it is not yet, by the
+    /// compositor's clock.
+    pub(crate) fn switcher_due(&self) -> Option<Duration> {
+        let open = self.switch.open.as_ref();
+        let hidden = open.filter(|switching| self.clock() < switching.shown);
+        hidden.map(|switching| switching.shown)
     }
 
     /// Whether the queue is turning, and to be drawn again a frame on.
@@ -543,7 +571,9 @@ impl Compositor {
     pub(crate) fn switcher_press(&mut self, at: DomainPoint) {
         let config = Arc::clone(self.store.current());
         let clock = self.clock();
+        // Before it is shown, nothing of it is there to be clicked on.
         let open = self.switch.open.as_mut();
+        let open = open.filter(|switching| clock >= switching.shown);
         let under = open.and_then(|switching| {
             let layout = laid_out(&config, switching, turned(switching.turn, clock));
             let under = layout.items.iter().find(|item| item.place.contains(at));
@@ -707,7 +737,7 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let switching = self.switch.open.as_ref().filter(|switching| {
+        let switching = self.shown_switcher().filter(|switching| {
             let here = self.head(output).map(|head| domain(head.area()));
             here == Some(switching.screen)
         });
@@ -910,9 +940,7 @@ impl Compositor {
     pub(crate) fn send_switched_frames(&self, output: &Output, elapsed: Duration) {
         let here = self.head(output).map(|head| domain(head.area()));
         let switching = self
-            .switch
-            .open
-            .as_ref()
+            .shown_switcher()
             .filter(|switching| here == Some(switching.screen));
         let Some(drawn) = switching.and_then(|switching| switching.painted.as_ref()) else {
             return;

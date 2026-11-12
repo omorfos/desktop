@@ -32,7 +32,12 @@ fn tap(session: &mut Session, code: Keycode) {
     press(session, code, false);
 }
 
-/// Holds Alt, taps Tab `times`, and lets go of Alt if `let_go`.
+/// How long Alt is held after Tab before the switcher is shown, and a
+/// little more.
+const SHOWN_AFTER: std::time::Duration = std::time::Duration::from_millis(160);
+
+/// Holds Alt, taps Tab `times`, and lets go of Alt if `let_go`; or holds
+/// it long enough for the switcher to be shown.
 fn alt_tab(session: &mut Session, times: usize, let_go: bool) {
     press(session, key::ALT, true);
     for _ in 0..times {
@@ -42,6 +47,9 @@ fn alt_tab(session: &mut Session, times: usize, let_go: bool) {
         press(session, key::ALT, false);
     }
     session.step();
+    if !let_go {
+        session.advance(SHOWN_AFTER);
+    }
 }
 
 fn focused(session: &Session) -> Option<String> {
@@ -200,8 +208,13 @@ fn escape_closes_it_as_it_was_and_the_arrows_and_enter_steer_it() {
 
 #[test]
 fn opened_by_something_other_than_a_key_it_waits_for_enter() {
-    let (mut session, _client) = three();
+    let (mut session, _client) = three_with(&[FLAT, UNBLURRED]);
+    let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
+    let open = session.draw().at(corner.0, corner.1);
     session.compositor_mut().perform(&Action::SwitchWindows);
+    session.step();
+    let seen = session.draw().at(corner.0, corner.1);
+    assert_ne!(seen, open, "shown at once, with nothing held to let go");
     tap(&mut session, key::ALT);
     session.step();
     assert_eq!(
@@ -917,4 +930,57 @@ fn behind_the_switcher_its_screen_is_dimmed_and_blurred_unless_the_theme_says_no
         session.step();
         assert_eq!(session.draw().at(corner.0, corner.1), open, "{theme}");
     }
+}
+
+#[test]
+fn a_quick_alt_tab_goes_to_the_window_before_without_showing_the_switcher() {
+    let (mut session, _client) = three_with(&[UNBLURRED]);
+    let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
+    let open = session.draw().at(corner.0, corner.1);
+    press(&mut session, key::ALT, true);
+    tap(&mut session, key::TAB);
+    session.step();
+    assert!(session.compositor().switcher_layout().is_some(), "open");
+    assert_eq!(session.draw().at(corner.0, corner.1), open, "but not shown");
+    let now = session.now;
+    let due = session.compositor().deadline();
+    let shown = now + std::time::Duration::from_millis(150);
+    assert!(due.is_some_and(|due| due > now && due <= shown), "{due:?}");
+    session.advance(std::time::Duration::from_millis(100));
+    assert_eq!(session.draw().at(corner.0, corner.1), open, "nor yet");
+    press(&mut session, key::ALT, false);
+    session.step();
+    assert_eq!(focused(&session).as_deref(), Some("two"));
+}
+
+#[test]
+fn held_a_moment_the_switcher_is_shown_and_a_click_before_closes_it_choosing_nothing() {
+    let (mut session, _client) = three_with(&[UNBLURRED]);
+    let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
+    let open = session.draw().at(corner.0, corner.1);
+    press(&mut session, key::ALT, true);
+    tap(&mut session, key::TAB);
+    session.step();
+    // A click on where the window picked will be, before it is shown.
+    let front = session.compositor().switcher_layout().unwrap().items[0].place;
+    let (x, y) = middle(front);
+    let compositor = session.compositor_mut();
+    let (x, y) = (f64::from(x), f64::from(y));
+    compositor.input(Input::Motion { x, y }, 0);
+    for pressed in [true, false] {
+        let button = LEFT_BUTTON;
+        compositor.input(Input::Button { button, pressed }, 0);
+    }
+    session.step();
+    assert_eq!(shown(&session), None, "closed");
+    assert_eq!(
+        focused(&session).as_deref(),
+        Some("three"),
+        "nothing chosen"
+    );
+    press(&mut session, key::ALT, false);
+    // Held a moment, it is shown.
+    alt_tab(&mut session, 1, false);
+    assert_ne!(session.draw().at(corner.0, corner.1), open, "shown");
+    press(&mut session, key::ALT, false);
 }

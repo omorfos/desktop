@@ -63,6 +63,12 @@ window is where and how it moves, not only how it looks.
   than two windows behind the keys, so that Tab held down does not send
   it spinning. With `appearance.reduce_motion`, it stands at once.
 - **A click goes to the window in front where it is clicked.**
+- **It is shown once its keys have been held for 150 ms**, as GNOME's and
+  Windows's are, so that a quick `Alt+Tab` goes back to the window before
+  without the switcher, its dim and its blur showing for a frame or two.
+  It opens on the first Tab all the same, and goes as far as the keys
+  take it while it is not shown; opened by other than keys, as from a
+  menu, with nothing held to let go, it is shown at once.
 
 How each window stands is the desktop model's (`Switcher::queue`), which
 is told how far the queue has still to turn and has no clock; the

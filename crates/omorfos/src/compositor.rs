@@ -1176,12 +1176,16 @@ impl Compositor {
         let warming = warming.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
         let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
+        // And the switcher, once its keys have been held long enough.
+        let showing = self.animation.epoch.zip(self.switcher_due());
+        let showing = showing.map(|(epoch, due)| epoch + due);
         // As is the next step of day turning into night.
         let turning = self.store.turns().zip(self.animation.epoch);
         let turning = turning.map(|(due, epoch)| epoch + due);
         [
             turning,
             warming,
+            showing,
             self.night_due(Instant::now(), SystemTime::now()),
             self.about_due(),
             self.debouncer.deadline(),

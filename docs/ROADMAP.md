@@ -1374,6 +1374,8 @@ the first than on the last.
 - [x] The switcher's screen dimmed and blurred behind it
       (`switcher-backdrop`), and on a diagonal each window's border round
       its picture rather than a box behind it (`switcher-window`).
+- [x] The switcher shown only once Alt has been held 150 ms after Tab, so
+      that a quick `Alt+Tab` goes back to the window before without it.
 - [ ] Known gaps in the switcher on a diagonal: the borders further back
       are thinner, being drawn smaller; a theme's `box-shadow` on
       `switcher-window` is not drawn; the pictures are not rounded at the
