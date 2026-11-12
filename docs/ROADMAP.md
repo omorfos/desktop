@@ -1777,6 +1777,34 @@ How the project is run, as learnt in part from Vela's:
       and variables, the IPC protocol and `omorfosctl`'s JSON are not
       listed yet.
 
+What a user reads, asked for after trying the overview, so that what
+there is can be found without reading the source (looked at on
+2026-11-12: only `omorfos`, `omorfos-hold`, `omorfos-relay` and
+`omorfosctl` answer `--help` with help, and two more with a line of
+usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
+
+- [ ] Every program answers `--help` and `-h` with what it is, how it is
+      started and what it takes, and `--version` with its version, and
+      does nothing else: today `omorfos-panel`, `omorfos-launcher`,
+      `omorfos-wallpaper`, `omorfos-notifications`, `omorfos-clipboard`,
+      `omorfos-ask`, `omorfos-recording`, `omorfos-lock` and the portal
+      start as if run, `omorfos-lock` trying to lock the session. First,
+      as a slip there costs the user a lock or a second panel. One way of
+      reading arguments for all, with a test that each installed program
+      answers both and starts nothing.
+- [ ] A manual page for each program, `omorfos(1)`, `omorfosctl(1)` and
+      the rest, and for the files a user writes, `config.yaml`,
+      `keys.yaml`, `rules.yaml`, `menu.yaml` and `theme.css` in section
+      5, made from what `--help` and the schemas already say so that the
+      two cannot disagree, installed by `make install` and in the `.deb`
+      and the AUR package, and checked by a test like the links'.
+- [ ] The guide gone through as a user would use it: a short way in for
+      the first login (what is there, the keys that matter, where the
+      files are, how to bind what has no key, such as the overview); the
+      reference split by file rather than one page of 120 KB; and what to
+      do when something is wrong (`omorfosctl config check`, `omorfosctl
+      report`, the session's log). With the first-login guide below.
+
 Reaching people:
 
 - [x] The README put right: what omorfos is now, how to build, install
