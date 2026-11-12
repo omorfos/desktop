@@ -143,7 +143,23 @@ impl Compositor {
         surface: &WlSurface,
         (origin, view): (Point<i32, Logical>, View),
         bounds: Option<&[Rectangle<i32, Physical>]>,
+        drawn: (usize, f32),
+    ) -> Option<Pane> {
+        let placed = (origin.to_f64(), 1.0, view);
+        self.backdrop_within(surface, placed, bounds, drawn, 0)
+    }
+
+    /// The glass as [`Compositor::backdrop`] has it, for the surface drawn
+    /// `factor` as large as it is, as a picture of its window is drawn
+    /// small; `place` tells apart the places one surface is drawn in at
+    /// once, none being where it is on the screen.
+    pub(crate) fn backdrop_within(
+        &self,
+        surface: &WlSurface,
+        (origin, factor, view): (Point<f64, Logical>, f64, View),
+        bounds: Option<&[Rectangle<i32, Physical>]>,
         (at, opacity): (usize, f32),
+        place: usize,
     ) -> Option<Pane> {
         // Nothing is looked at for a program that may have none.
         let may = !self.backdrop_capabilities().is_empty();
@@ -161,7 +177,10 @@ impl Compositor {
             Asked::Within(asked) => asked,
         };
         let placed = |area: Rectangle<i32, Logical>| {
-            view.pixels(Rectangle::new(origin + area.loc, area.size))
+            let from = view.pixel(origin + area.loc.to_f64().upscale(factor));
+            let end = (area.loc + area.size.to_point()).to_f64().upscale(factor);
+            let to = view.pixel(origin + end);
+            Rectangle::new(from, (to - from).to_size())
         };
         let strips = asked.into_iter();
         let strips = strips
@@ -178,7 +197,7 @@ impl Compositor {
             None => strips.collect(),
         };
         let blur = self.config().theme.style(Part::Window, States::NONE).blur;
-        let key = glass::key(&("backdrop", surface.id()));
+        let key = glass::key(&("backdrop", surface.id(), place));
         Pane::behind(strips, (blur, view), (key, at, 0), opacity)
     }
 }

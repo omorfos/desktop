@@ -95,8 +95,10 @@ new default has been; the gesture was asked for as it is.
 ## Consequences
 
 - `pictures.rs` holds what the switcher and the overview share: a
-  window's picture made small, cut to where it may be drawn, and a
-  private window as in pictures of the screen.
+  window's picture made small, cut to where it may be drawn, with what is
+  behind it blurred where its program asks, as on the screen (a terminal
+  see-through over a blur, as Ghostty is, would otherwise be clear), and
+  a private window as in pictures of the screen.
 - The overview draws the screen's background layer a second time for each
   workspace in the strip, and each window there once more; while it is
   open, every window of the screen is told to keep drawing.

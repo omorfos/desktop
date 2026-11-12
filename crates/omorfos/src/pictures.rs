@@ -133,6 +133,23 @@ impl Compositor {
         let picture = fitted(shape(mapped), room);
         let first = elements.len();
         elements.extend(pictured(renderer, mapped, (picture, within), view, opacity));
+        // Under it, what is behind it blurred where its program asks, as on
+        // the screen: made as small as the picture, and cut where it is.
+        let (left, top, across, _) = picture;
+        let factor = across / f64::from(shape(mapped).0.max(1));
+        let inside = mapped.window.geometry().loc.to_f64().upscale(factor);
+        let origin = Point::<f64, Logical>::from((left, top)) - inside;
+        let cut = |(left, top, across, down): Exact| {
+            let from = view.pixel(Point::<f64, Logical>::from((left, top)));
+            let to = view.pixel(Point::<f64, Logical>::from((left + across, top + down)));
+            Rectangle::new(from, (to - from).to_size())
+        };
+        let bounds = cut(picture).intersection(cut(within)).unwrap_or_default();
+        let behind = (elements.len(), opacity);
+        let placed = (origin, factor, view);
+        let backdrop =
+            self.backdrop_within(&mapped.surface, placed, Some(&[bounds]), behind, place + 1);
+        panes.extend(backdrop);
         if self.desktop.blurred(window) {
             let blank = self
                 .config()

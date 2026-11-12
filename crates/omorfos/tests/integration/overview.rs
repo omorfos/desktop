@@ -827,3 +827,27 @@ fn the_windows_keep_their_stacking_as_they_glide_and_the_one_gone_to_rises_closi
     session.advance(Duration::from_millis(200));
     assert_eq!(session.draw().at(x, y), RED, "closing on it");
 }
+
+#[test]
+fn a_window_that_asks_for_blur_behind_it_has_it_in_the_overview_too() {
+    // Programs may have blur, but the overview's own backdrop is not.
+    let theme = format!(
+        "{}window, window:focus {{ backdrop-filter: blur(16px); }}\n",
+        UNBLURRED.1
+    );
+    let mut session = Session::with_config(&[(UNBLURRED.0, &theme)]);
+    let mut client = session.connect();
+    let window = session.open(&mut client, "clear", (200, 150), 0);
+    let _effect = client.blur_behind(&window.surface, &[(0, 0, 200, 150)]);
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    open(&mut session);
+    drop(session.draw());
+    let before = session.compositor().blurs();
+    // Its picture moves, and what is behind it is blurred again.
+    session.compositor_mut().perform(&Action::Overview);
+    session.step();
+    session.advance(Duration::from_millis(100));
+    drop(session.draw());
+    assert!(session.compositor().blurs() > before);
+}
