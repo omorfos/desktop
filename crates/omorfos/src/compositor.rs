@@ -1159,7 +1159,8 @@ impl Compositor {
         // As is the switcher, while its queue turns and as it fades in.
         let settling = self.protocols.gestures.slide.settling()
             || self.switcher_turning()
-            || self.switcher_fading();
+            || self.switcher_fading()
+            || self.overview_moving();
         let sliding = self.animation.epoch.filter(|_| settling);
         let sliding = sliding.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // And what the screens showed before, while it gives way, a
@@ -1285,6 +1286,9 @@ impl Compositor {
         self.reveal(now);
         self.offer_arrangements(now);
         self.settle_slide();
+        // The window gone to from the overview is raised before the scene
+        // is made, so that it is not drawn under the others for a frame.
+        self.settle_overview();
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
@@ -1400,8 +1404,12 @@ impl Compositor {
             Action::Shade => self.on_focused(Desktop::toggle_shaded),
             Action::KeepAbove => self.on_focused(Desktop::toggle_above),
             Action::Stick => self.on_focused(Desktop::toggle_sticky),
-            Action::SwitchWindows => self.switch_windows(false),
-            Action::SwitchWindowsBack => self.switch_windows(true),
+            Action::SwitchWindows | Action::SwitchWindowsBack => {
+                // Over the overview, the switcher is opened in its stead.
+                self.cards.overview.close();
+                self.switch_windows(*action == Action::SwitchWindowsBack);
+            }
+            Action::Overview => self.toggle_overview(),
             Action::FocusNext => self.desktop.focus_next(),
             Action::FocusPrevious => self.desktop.focus_previous(),
             Action::NextTab => self.on_focused(Desktop::next_tab),
@@ -2829,6 +2837,7 @@ impl Compositor {
         let share = menu.map(|_| self.animation.motion.presence(theme, Part::Menu, 0));
         self.animation.menu_seen = share.unwrap_or(Seen::WHOLE);
         self.repaint_switcher();
+        self.repaint_overview();
         let locked = self.is_locked();
         self.animation.fade_out(theme, &self.scene, locked);
         // Everything that changes colour, comes in or goes has been asked
@@ -2854,7 +2863,7 @@ impl Compositor {
             }
             return;
         }
-        if self.switcher_open() {
+        if self.switcher_open() || self.overview_open() {
             // The switcher has the keyboard while it is open, so that the
             // window with focus does not see Alt go down and come up with
             // nothing between, which a browser takes as Alt pressed alone
@@ -3569,6 +3578,7 @@ impl Compositor {
             });
         }
         self.switcher_elements(renderer, output, view, (&mut elements, &mut panes));
+        self.overview_elements(renderer, output, view, (&mut elements, &mut panes));
         if let Some(chrome) = &self.menu_chrome {
             let seen = self.animation.menu_seen;
             let drawn = (&mut elements, &mut panes);
@@ -3844,6 +3854,7 @@ impl Compositor {
             .iter()
             .rev()
             .filter(|shown| shown.over == fullscreen)
+            .filter(|shown| !self.hidden_by_overview(shown.outer))
         {
             let veil = shown.veil.as_ref().filter(|_| !seen);
             if let Some(Veil::Blank(veil)) = veil {
@@ -4262,6 +4273,7 @@ impl Compositor {
         }
         self.send_offered_frames(output, elapsed);
         self.send_switched_frames(output, elapsed);
+        self.send_overview_frames(output, elapsed);
         for layer in layer_map_for_output(output).layers() {
             layer.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
                 Some(output.clone())
@@ -4592,9 +4604,11 @@ const ABOUT_WIDTH: u32 = 640;
 const CREDITS: &str = include_str!("../../../CREDITS.md");
 
 /// The cards the compositor shows over everything: the notice of what is
-/// wrong, and "About".
+/// wrong, "About", and the overview.
 #[derive(Debug, Default)]
 pub(crate) struct Cards {
+    /// The overview of the windows of a workspace.
+    pub(crate) overview: crate::overview::Overview,
     /// The notice of what is wrong, while there is something.
     pub(crate) notice: Option<Notice>,
     /// The problems the user has clicked away, hidden until they change.

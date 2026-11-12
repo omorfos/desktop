@@ -68,6 +68,9 @@ pub enum Action {
     /// The same, going back: the switcher opens at the window used longest
     /// ago.
     SwitchWindowsBack,
+    /// Open the overview, every window of the workspace side by side
+    /// under the workspaces of the screen, to pick one from; or close it.
+    Overview,
     /// Switch to the tab after the active one in the focused window's group.
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
@@ -344,6 +347,7 @@ mod tests {
         assert_eq!(parse("close"), Ok(Action::Close));
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
+        assert_eq!(parse("overview"), Ok(Action::Overview));
         assert_eq!(parse("switch_windows_back"), Ok(Action::SwitchWindowsBack));
         assert_eq!(parse("reload_config"), Ok(Action::ReloadConfig));
         assert_eq!(parse("restart_compositor"), Ok(Action::RestartCompositor));

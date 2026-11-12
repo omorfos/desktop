@@ -72,6 +72,11 @@
           "type": "string"
         },
         {
+          "const": "overview",
+          "description": "Open the overview, every window of the workspace side by side\nunder the workspaces of the screen, to pick one from; or close it.",
+          "type": "string"
+        },
+        {
           "const": "next_tab",
           "description": "Switch to the tab after the active one in the focused window's group.",
           "type": "string"

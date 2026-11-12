@@ -134,6 +134,23 @@ pub enum Part {
     /// The screen behind the switcher while it is open: its background dims
     /// it, and its `backdrop-filter` blurs what is behind.
     SwitcherBackdrop,
+    /// A window in the overview: its border round its picture, its padding
+    /// away. The one picked, by the pointer or the arrows, is
+    /// [`State::Active`]. Only its border, padding and corners are used.
+    OverviewWindow,
+    /// The title of the window picked in the overview, under it.
+    OverviewTitle,
+    /// A workspace in the overview's strip: its border round it. The one
+    /// shown is [`State::Active`], and one under the pointer
+    /// [`State::Hovered`]. Only its border and corners are used.
+    OverviewWorkspace,
+    /// The button after the overview's strip that makes a new workspace:
+    /// its border, and the plus in its middle in its colour. It is
+    /// [`State::Hovered`] under the pointer.
+    OverviewAdd,
+    /// The screen behind the overview while it is open: its background dims
+    /// it, and its `backdrop-filter` blurs what is behind.
+    OverviewBackdrop,
     /// The screens shown still to pick what a picture is to be of: its
     /// background dims what is not picked, and its border is round what
     /// is drawn.
@@ -158,7 +175,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 46] = [
+    pub const ALL: [Self; 51] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -199,6 +216,11 @@ impl Part {
         Self::SwitcherTitle,
         Self::SwitcherWindow,
         Self::SwitcherBackdrop,
+        Self::OverviewWindow,
+        Self::OverviewTitle,
+        Self::OverviewWorkspace,
+        Self::OverviewAdd,
+        Self::OverviewBackdrop,
         Self::Picker,
         Self::Sealed,
         Self::About,
@@ -251,6 +273,11 @@ impl Part {
             Self::SwitcherTitle => "switcher-title",
             Self::SwitcherWindow => "switcher-window",
             Self::SwitcherBackdrop => "switcher-backdrop",
+            Self::OverviewWindow => "overview-window",
+            Self::OverviewTitle => "overview-title",
+            Self::OverviewWorkspace => "overview-workspace",
+            Self::OverviewAdd => "overview-add",
+            Self::OverviewBackdrop => "overview-backdrop",
             Self::Picker => "picker",
             Self::Sealed => "sealed",
             Self::About => "about",
@@ -782,6 +809,11 @@ mod tests {
                 "switcher-title",
                 "switcher-window",
                 "switcher-backdrop",
+                "overview-window",
+                "overview-title",
+                "overview-workspace",
+                "overview-add",
+                "overview-backdrop",
                 "picker",
                 "sealed",
                 "about",

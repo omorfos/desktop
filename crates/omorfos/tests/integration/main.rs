@@ -41,6 +41,7 @@ mod night;
 mod notice;
 mod notifications;
 mod outputs;
+mod overview;
 mod palette;
 mod panel;
 mod popups;

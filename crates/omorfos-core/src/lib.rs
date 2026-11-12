@@ -20,6 +20,7 @@ mod desktop;
 pub mod geometry;
 mod keys;
 mod menu;
+mod overview;
 mod placement;
 mod rules;
 mod sign;
@@ -34,6 +35,7 @@ pub use desktop::{
 };
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
+pub use overview::{OverviewLayout, OverviewMetrics, overview};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Private, Rule, resolve};
 pub use sign::Sign;

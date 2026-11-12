@@ -1387,7 +1387,21 @@ the first than on the last.
       corners; it goes at once, with the dim and blur behind it, rather
       than fading out as it fades in; and its look, the steps and how
       much each shrinks, is to be tried on real hardware.
-- [ ] An overview of every window on a workspace, and of the workspaces.
+- [x] An overview of every window on a workspace, and of the workspaces
+      (ADR 76): an `overview` action, the windows of the workspace laid
+      out small, gliding there from where they are, the one picked by the
+      pointer or the arrows, and a strip of the screen's desktops as live
+      miniatures to go to, with a plus after them that makes another.
+- [ ] Dragging a window in the overview onto a workspace in its strip, to
+      move it there.
+- [ ] Known gaps in the overview: the windows of a workspace left in it
+      go at once rather than glide out; which window is over which on a
+      workspace not shown is the order they were made in; a window's
+      titlebar is back only once it has glided home; the miniatures show
+      windows without their frames; a fullscreen window's workspace is not
+      in the strip; `Super+Right` while it is open goes along the row of
+      the screen the pointer is on, not the overview's; and a swipe on the
+      touchpad does nothing while it is open.
 - [x] Night light: the screens warmer after dark (ADR 74), by the day
       and night `scheme: auto` goes by, turning over twenty minutes either
       side, through each screen's gamma table; `night_light` in
@@ -1402,7 +1416,7 @@ the first than on the last.
       instead.
 - [ ] The defaults reviewed together, keys and settings, rather than one
       at a time as each feature came. What has gathered for it: `Super+l`
-      to lock; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,
+      to lock; a key for the overview, and four fingers swiped up; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,
       and with `Shift` too, which needs an action that gives the program
       with focus its own keys for them; keys to tile; whether
       `Shift+Print` keeps its picture as a file rather than on the

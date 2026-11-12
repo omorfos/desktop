@@ -955,6 +955,93 @@ pub(crate) fn switcher_window(
     canvas
 }
 
+/// Paints the border round the window picked in the overview, its picture
+/// `across` by `down` inside it, its padding away.
+pub(crate) fn overview_window(theme: &Theme, (across, down): (u32, u32), scale: Scale) -> Canvas {
+    let mut style = theme.style(Part::OverviewWindow, States::NONE.with(State::Active));
+    style.background = Color::rgba(0, 0, 0, 0);
+    style.gradient = None;
+    let edges = style.inset();
+    let (width, height) = (across + edges.across(), down + edges.down());
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box((0, 0, width, height), &style);
+    canvas
+}
+
+/// Paints the border of a workspace in the overview's strip, `width` by
+/// `height`, in `states`: the one shown, and one under the pointer.
+pub(crate) fn overview_workspace(
+    theme: &Theme,
+    (width, height): (u32, u32),
+    states: States,
+    scale: Scale,
+) -> Canvas {
+    let mut style = theme.style(Part::OverviewWorkspace, states);
+    style.background = Color::rgba(0, 0, 0, 0);
+    style.gradient = None;
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box((0, 0, width, height), &style);
+    canvas
+}
+
+/// Paints the button after the overview's strip that makes a new
+/// workspace, `width` by `height`: its border, and a plus in the middle in
+/// its colour, as under the pointer if `hovered`.
+pub(crate) fn overview_add(
+    theme: &Theme,
+    (width, height): (u32, u32),
+    hovered: bool,
+    scale: Scale,
+) -> Canvas {
+    let mut style = theme.style(
+        Part::OverviewAdd,
+        States::NONE.when(State::Hovered, hovered),
+    );
+    let ink = style.color;
+    style.background = Color::rgba(0, 0, 0, 0);
+    style.gradient = None;
+    let mut canvas = Canvas::scaled(width, height, scale);
+    canvas.draw_box((0, 0, width, height), &style);
+    // A third of the shorter side across, and two units thick.
+    let long = width.min(height) / 3;
+    let thick = 2;
+    let (middle_x, middle_y) = ((width / 2).cast_signed(), (height / 2).cast_signed());
+    let half = (long / 2).cast_signed();
+    canvas.fill((middle_x - half, middle_y - 1, long, thick), ink);
+    canvas.fill((middle_x - 1, middle_y - half, thick, long), ink);
+    canvas
+}
+
+/// How tall the title of the window picked in the overview is.
+pub(crate) fn overview_title_height(theme: &Theme) -> u32 {
+    let style = theme.style(Part::OverviewTitle, States::NONE);
+    let font = theme.font(Part::OverviewTitle, States::NONE);
+    line_height(font.size.get()) + style.inset().down()
+}
+
+/// Paints the title of the window picked in the overview, `width` by
+/// `height`, in its box.
+pub(crate) fn overview_title(
+    text: &mut Text,
+    theme: &Theme,
+    (width, height): (u32, u32),
+    title: &str,
+    scale: Scale,
+) -> Canvas {
+    let mut canvas = Canvas::scaled(width, height, scale);
+    let style = theme.style(Part::OverviewTitle, States::NONE);
+    canvas.draw_box((0, 0, width, height), &style);
+    let font = theme.font(Part::OverviewTitle, States::NONE);
+    text.draw(
+        &mut canvas,
+        title,
+        inset((0, 0, width, height), style.inset()),
+        style.color,
+        font,
+    );
+    canvas
+}
+
 /// What the mark that says something is captured shows a sign of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Signs {

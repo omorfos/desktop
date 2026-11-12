@@ -46,11 +46,11 @@ pub(crate) fn shape(mapped: &Mapped) -> (i32, i32) {
 }
 
 /// `mapped`'s picture made as large as `picture`, which has its shape, as
-/// see-through as `opacity` says.
+/// see-through as `opacity` says, and nothing of it outside `clip`.
 pub(crate) fn pictured<R>(
     renderer: &mut R,
     mapped: &Mapped,
-    (left, top, across, down): Exact,
+    ((left, top, across, down), clip): (Exact, Exact),
     view: View,
     opacity: f32,
 ) -> impl Iterator<Item = Element<R>>
@@ -70,6 +70,11 @@ where
         corner,
         picture.to_physical(view.scale.factor()).to_i32_round(),
     );
+    let (left, top, across, down) = clip;
+    let from = view.pixel(Point::<f64, Logical>::from((left, top)));
+    let size = smithay::utils::Size::<f64, Logical>::from((across, down));
+    let clip = Rectangle::new(from, size.to_physical(view.scale.factor()).to_i32_round());
+    let crop = crop.intersection(clip).unwrap_or_default();
     let scale = smithay::utils::Scale::from(scale);
     let surfaces = mapped
         .window
@@ -95,8 +100,27 @@ impl Compositor {
     pub(crate) fn picture_elements<R>(
         &self,
         renderer: &mut R,
-        (window, opacity): (WindowId, f32),
+        window: (WindowId, f32),
         room: Exact,
+        view: View,
+        drawn: (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        self.picture_within(renderer, window, (room, room, 0), view, drawn);
+    }
+
+    /// Adds `window`'s picture as [`Compositor::picture_elements`] does,
+    /// and nothing of it outside `within`: a window hanging off the edge of
+    /// what it is pictured in is cut there. `place` tells apart the places
+    /// one window is pictured in at once, as the overview pictures it both
+    /// laid out and on its workspace in the strip.
+    pub(crate) fn picture_within<R>(
+        &self,
+        renderer: &mut R,
+        (window, opacity): (WindowId, f32),
+        (room, within, place): (Exact, Exact, usize),
         view: View,
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
@@ -108,21 +132,29 @@ impl Compositor {
         };
         let picture = fitted(shape(mapped), room);
         let first = elements.len();
-        elements.extend(pictured(renderer, mapped, picture, view, opacity));
+        elements.extend(pictured(renderer, mapped, (picture, within), view, opacity));
         if self.desktop.blurred(window) {
             let blank = self
                 .config()
                 .theme
                 .style(Part::Capture, States::NONE)
                 .ground();
-            let (left, top, across, down) = picture;
-            let area = Rectangle::new(
-                (whole(left), whole(top)).into(),
-                (whole(across), whole(down)).into(),
-            );
+            // Out to the next whole unit on every side, so that whatever
+            // pixel the picture is drawn to at any scale is under it.
+            let area = |(left, top, across, down): Exact| {
+                let (left, top) = (left.floor(), top.floor());
+                let (right, bottom) = ((left + across).ceil(), (top + down).ceil());
+                Rectangle::<i32, Logical>::new(
+                    (whole(left), whole(top)).into(),
+                    (whole(right - left), whole(bottom - top)).into(),
+                )
+            };
+            let area = area(picture).intersection(area(within)).unwrap_or_default();
             // Whole however faint the window is, as what it blurs is the
             // faint picture: glass as faint would let the picture through.
-            let key = glass::key(&("private in the switcher", window));
+            // Known by the window and where it is pictured, not by where
+            // that is now, so that what the glass keeps is kept as it moves.
+            let key = glass::key(&("private, pictured small", window, place));
             panes.push(Pane::veiling(
                 (area, view),
                 (PRIVATE_BLUR, blank),

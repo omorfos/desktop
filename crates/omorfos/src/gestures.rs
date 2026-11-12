@@ -45,6 +45,10 @@ impl Compositor {
     /// Takes a gesture that happened at `time`, in milliseconds: a swipe
     /// of three fingers, or passes it on.
     pub(crate) fn gesture(&mut self, gesture: Gesture, time: u32) {
+        // The overview has the pointer, and the touchpad with it.
+        if self.overview_open() {
+            return;
+        }
         let pointer = self.pointer.clone();
         let serial = SERIAL_COUNTER.next_serial();
         match gesture {

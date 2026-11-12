@@ -188,7 +188,9 @@ impl Compositor {
     /// the one it was showing, beside it. Nothing slides if the key brought
     /// nothing else.
     pub(crate) fn slide_in(&mut self, was: usize, forwards: bool) {
-        if self.desktop.active_workspace() == was || self.still() {
+        // Under the overview, its windows glide in from where they are
+        // rather than slide.
+        if self.desktop.active_workspace() == was || self.still() || self.overview_open() {
             return;
         }
         let width = self.slide_width();

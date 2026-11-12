@@ -481,8 +481,9 @@ impl Compositor {
                     return FilterResult::Intercept(None);
                 }
             }
-            // An open switcher is steered by Escape, Enter and the arrows.
-            if compositor.switcher_key(keysym) {
+            // An open switcher is steered by Escape, Enter and the arrows,
+            // and so is the overview.
+            if compositor.switcher_key(keysym) || compositor.overview_key(keysym) {
                 compositor.suppressed_keys.push(code);
                 return FilterResult::Intercept(None);
             }
@@ -588,6 +589,11 @@ impl Compositor {
         if self.over_notice() || self.cards.about.asked.is_some() {
             // The notice is ours, and "About" has the pointer while it is
             // shown, like the menu; nothing underneath sees it.
+            self.move_pointer(None, time);
+            return;
+        }
+        if self.overview_motion(position) {
+            // So has the overview, which picks the window under it.
             self.move_pointer(None, time);
             return;
         }
@@ -728,6 +734,7 @@ impl Compositor {
             return;
         }
         let ours = self.drag.is_some()
+            || self.overview_open()
             || self.menu.is_some()
             || self.over_notice()
             || self.cards.about.asked.is_some()
@@ -1017,10 +1024,12 @@ impl Compositor {
             return;
         }
         let position = self.pointer_position();
-        if self.switcher_open() {
-            // The switcher has the pointer while it is open.
+        if self.switcher_open() || self.overview_open() {
+            // The switcher has the pointer while it is open, as the
+            // overview has; each takes a press only while it is.
             if pressed {
                 self.switcher_press(position);
+                self.overview_press(position);
             }
             return;
         }

@@ -380,6 +380,40 @@ switcher-backdrop {
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(16px);
 }
+/* The overview: each window in it, its border round its picture, its
+ * padding away, the one picked :active; the title of the one picked, under
+ * it; each workspace in the strip along the top, the one shown :active
+ * and one under the pointer :hover; the button after them that makes a
+ * new workspace, its plus in its colour; and the screen behind it all,
+ * dimmed and blurred out of focus. */
+overview-window {
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+}
+overview-window:active { border-color: var(--accent); }
+overview-title {
+  padding: 4px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+}
+overview-workspace {
+  border: 2px solid var(--border);
+  border-radius: 6px;
+}
+overview-workspace:hover { border-color: var(--text); }
+overview-workspace:active { border-color: var(--accent); }
+overview-add {
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+overview-add:hover { border-color: var(--text); }
+overview-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+}
 
 /* The screens shown still, to pick what a picture is to be of: what is not
  * picked is dimmed by the background, and what is drawn has the border. */
