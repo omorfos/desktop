@@ -118,14 +118,22 @@ pub enum Part {
     /// what is typed when all of it is chosen, its background behind it.
     QuestionInput,
     /// The switcher on `Alt+Tab`: the box the windows are shown in, in the
-    /// middle of the screen.
+    /// middle of the screen, or under them where they stand on a diagonal,
+    /// with the title of the one picked.
     Switcher,
-    /// A window's place in the switcher, its picture over its title. The
-    /// one picked is [`State::Active`]. Its `min-width` is how wide each
-    /// is.
+    /// A window's place in the switcher in rows, its picture over its
+    /// title. The one picked is [`State::Active`]. Its `min-width` is how
+    /// wide each is.
     SwitcherItem,
     /// The title of a window in the switcher.
     SwitcherTitle,
+    /// A window in the switcher on a diagonal: its border round its
+    /// picture, its padding away, and its background behind a window shown
+    /// by its icon. The one picked is [`State::Active`].
+    SwitcherWindow,
+    /// The screen behind the switcher while it is open: its background dims
+    /// it, and its `backdrop-filter` blurs what is behind.
+    SwitcherBackdrop,
     /// The screens shown still to pick what a picture is to be of: its
     /// background dims what is not picked, and its border is round what
     /// is drawn.
@@ -150,7 +158,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 46] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -189,6 +197,8 @@ impl Part {
         Self::Switcher,
         Self::SwitcherItem,
         Self::SwitcherTitle,
+        Self::SwitcherWindow,
+        Self::SwitcherBackdrop,
         Self::Picker,
         Self::Sealed,
         Self::About,
@@ -239,6 +249,8 @@ impl Part {
             Self::Switcher => "switcher",
             Self::SwitcherItem => "switcher-item",
             Self::SwitcherTitle => "switcher-title",
+            Self::SwitcherWindow => "switcher-window",
+            Self::SwitcherBackdrop => "switcher-backdrop",
             Self::Picker => "picker",
             Self::Sealed => "sealed",
             Self::About => "about",
@@ -768,6 +780,8 @@ mod tests {
                 "switcher",
                 "switcher-item",
                 "switcher-title",
+                "switcher-window",
+                "switcher-backdrop",
                 "picker",
                 "sealed",
                 "about",

@@ -81,7 +81,8 @@ fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
 #[test]
 fn a_theme_without_shadows_casts_none() {
     let none = "* { transition: none; }\n\
-                window, window:focus, menu, notice, switcher { box-shadow: none; }\n";
+                window, window:focus, menu, notice, switcher { box-shadow: none; }\n\
+                switcher-backdrop { background: transparent; backdrop-filter: none; }\n";
     // With a mistake in the keys, so that the notice says so.
     let mut session = Session::with_config(&[("theme.css", none), ("keys.yaml", "nonsense: [")]);
     let mut client = session.connect();
@@ -337,7 +338,8 @@ fn the_switcher_casts_the_shadow_its_theme_gives_it_and_takes_it_when_it_closes(
     // pixels alike.
     let theme = "* { transition: none; }\n\
                  window, window:focus { box-shadow: none; }\n\
-                 switcher { box-shadow: 0 0 0 8px #000000c0; }\n";
+                 switcher { box-shadow: 0 0 0 8px #000000c0; }\n\
+                 switcher-backdrop { background: transparent; backdrop-filter: none; }\n";
     let (mut session, _client) = switching(theme);
     let area = session.compositor().switcher_layout().unwrap().area;
     let (left, middle) = (

@@ -898,11 +898,11 @@ question-input:active {
   color: var(--on-accent);
 }
 
-/* The switcher on Alt+Tab: its box, each window's place, and the title.
- * In rows, the box is in the middle of the screen, each place in it with
- * its picture over its title, as wide as its min-width. On a diagonal,
- * the box is under the queue, with the title of the one picked, and each
- * place is as large as the picture in front. The one picked is :active. */
+/* The switcher on Alt+Tab: its box, each window's place in rows, and the
+ * title. In rows, the box is in the middle of the screen, each place in it
+ * with its picture over its title, as wide as its min-width. On a diagonal,
+ * the box is under the queue, with the title of the one picked. The one
+ * picked is :active. */
 switcher {
   padding: 12px;
   background: var(--surface);
@@ -921,6 +921,21 @@ switcher-item:active {
   border-color: var(--accent);
 }
 switcher-title { color: var(--text); }
+/* On a diagonal, each window in the switcher: its border round its picture,
+ * its padding away, and its background behind a window shown by its icon.
+ * The one picked is :active. */
+switcher-window {
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--surface);
+}
+switcher-window:active { border-color: var(--accent); }
+/* The screen behind the switcher: dimmed, and blurred out of focus. */
+switcher-backdrop {
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+}
 
 /* The screens shown still, to pick what a picture is to be of: what is not
  * picked is dimmed by the background, and what is drawn has the border. */
@@ -1066,7 +1081,8 @@ workspace:active, task:active { border-bottom: none; }
 `clock`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
-`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`, `picker`,
+`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
+`switcher-window`, `switcher-backdrop`, `picker`,
 `sealed`, `about`, `about-heading`, `about-detail` and `about-button`. `*` is every part. Several can share a rule:
 `workspace, task { ... }`.
 
@@ -1138,7 +1154,7 @@ is measured to the outside of its border.
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |
 | `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`. After a comma, or alone, one `inset`: a sharp line inside the border along the side it falls from, as wide as it falls, following the corners, as `inset 0 1px rgba(255, 255, 255, 0.06)` is light along the top, with neither a soft edge nor a spread; drawn wherever the part is drawn as a box, its titlebar among them. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice` and `tooltip`; by `switcher`, under the switcher on Alt+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
-| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; `sealed`, under the dim of every screen while a password is asked for, which is blurred and is the dim alone where blur cannot be drawn; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
+| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; `sealed`, under the dim of every screen while a password is asked for, which is blurred and is the dim alone where blur cannot be drawn; `switcher-backdrop`, likewise under the dim of the screen the switcher is on; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -2319,8 +2335,12 @@ title and its icon, large where its picture would be. How the switcher looks is 
 `switcher-item` (the one picked is `:active`, and `min-width` is how wide
 each is in rows) and `switcher-title` in `theme.css`. On a diagonal,
 `switcher` is the box under the queue that the title is in, and each
-window's place is a `switcher-item` as large as it is in front, made
-smaller further back, border and all. The actions are
+window is a `switcher-window`: its border round its picture, its
+`padding` away, the accent round the one picked, and its background
+behind a private window's icon, in the shape of the window. Behind the
+switcher, its screen is dimmed by `switcher-backdrop`'s background and
+blurred out of focus by its `backdrop-filter`, in rows as on a diagonal;
+with `appearance.reduce_transparency` it is the dim alone. The actions are
 `switch_windows` and `switch_windows_back`; `focus_next` and
 `focus_previous` still go from window to window on a workspace without
 it.

@@ -904,50 +904,36 @@ pub(crate) fn switcher_title(
     canvas
 }
 
-/// Where a window's picture goes in its `place` in the queue, `share` as
-/// large as the one in front, and where its icon goes, large, if its
-/// picture is not shown: as they go in front, made smaller with it.
-pub(crate) fn card_places(place: Area, theme: &Theme, picked: bool, share: f64) -> (Area, Area) {
-    let style = theme.style(Part::SwitcherItem, States::NONE.when(State::Active, picked));
-    let edges = style.inset();
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "an inset made smaller, within a u32"
-    )]
-    let less = |edge: u32| (f64::from(edge) * share).round() as u32;
-    let edges = Edges {
-        top: less(edges.top),
-        right: less(edges.right),
-        bottom: less(edges.bottom),
-        left: less(edges.left),
-    };
-    let room = inset(place, edges);
-    let side = less(LARGE_ICON).min(room.2).min(room.3);
-    let large = (
-        room.0.saturating_add_unsigned((room.2 - side) / 2),
-        room.1.saturating_add_unsigned((room.3 - side) / 2),
-        side,
-        side,
-    );
-    (room, large)
-}
-
-/// Paints a window's place in the queue, `width` by `height`, as large as
-/// it is in front: set apart if it is `picked`, and with its icon large
-/// where its picture would be, if that is not shown.
-pub(crate) fn switcher_card(
+/// Paints a window in the queue round its picture, `picture` as large as
+/// it is in front: its border, its padding away from the picture, set
+/// apart if it is `picked`; and, where its picture is not shown, its
+/// background, with its icon large in the middle, in the picture's stead.
+pub(crate) fn switcher_window(
     theme: &Theme,
-    (width, height): (u32, u32),
+    (across, down): (u32, u32),
     picked: bool,
     shown: &Shown<Option<Image>>,
     scale: Scale,
 ) -> Canvas {
+    let mut style = theme.style(
+        Part::SwitcherWindow,
+        States::NONE.when(State::Active, picked),
+    );
+    if shown.pictured {
+        style.background = Color::rgba(0, 0, 0, 0);
+        style.gradient = None;
+    }
+    let edges = style.inset();
+    let (width, height) = (across + edges.across(), down + edges.down());
     let mut canvas = Canvas::scaled(width, height, scale);
-    let place = (0, 0, width, height);
-    let states = States::NONE.when(State::Active, picked);
-    canvas.draw_box(place, &theme.style(Part::SwitcherItem, states));
-    let (_, large) = card_places(place, theme, picked, 1.0);
+    canvas.draw_box((0, 0, width, height), &style);
+    let side = LARGE_ICON.min(across).min(down);
+    let large = (
+        (edges.left + (across - side) / 2).cast_signed(),
+        (edges.top + (down - side) / 2).cast_signed(),
+        side,
+        side,
+    );
     if let Some(Some(image)) = shown.icon.as_ref().filter(|_| !shown.pictured) {
         canvas.draw_image(large, image);
     }

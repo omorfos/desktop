@@ -31,13 +31,26 @@ window is where and how it moves, not only how it looks.
   The one in front is as wide as fits, but no wider than 720 units of
   layout. Under it is the switcher's box, `switcher`, with the title and
   the icon of the one picked; a window's title is not drawn in its place.
-- **Each window's place is painted once, as large as it is in front**,
-  `switcher-item` with its border, and drawn smaller further back, border
-  and all, rather than painted again at each size as the queue turns;
-  and painted again only when it changes, which a Tab does to two, the
-  one leaving the front and the one coming to it.
-  Each is drawn whole, its picture over its place, before the one behind,
-  so that what is in front covers what is behind.
+- **A window is its picture, with a border round it**: `switcher-window`,
+  its border its `padding` away from the picture, in the window's own
+  shape rather than a box of one shape for all, the accent round the one
+  picked and nothing round the rest; its background only behind a
+  private window, whose icon stands in the picture's place. A box filled
+  behind each, as in rows, was tried first and was heavy on a diagonal,
+  where being in front already says which is picked.
+- **Each window's border is painted once, as large as it is in front**,
+  and drawn smaller further back, border and all, rather than painted
+  again at each size as the queue turns; and painted again only when it
+  changes, which a Tab does to two, the one leaving the front and the
+  one coming to it. Each window is drawn whole, its picture under its
+  border, before the one behind, so that what is in front covers what is
+  behind.
+- **Behind the switcher its screen is dimmed and blurred**, by
+  `switcher-backdrop`, in rows as on a diagonal, so that the eye goes to
+  the switcher: the dim of the theme's colour, 35% black in the built-in
+  one, over what is behind blurred by its `backdrop-filter`, as the
+  session is under a prompt for a password (`sealed`), and the dim alone
+  where blur cannot be drawn or transparency is reduced.
 - **A window's picture is never made larger than the window is**, which
   would only blur it: a small one stands in the middle of its place, as
   an icon given as pixels does. This holds in rows too, where a window
@@ -75,8 +88,13 @@ compositor keeps the clock.
 
 - `SwitcherLayout`'s items are a type of their own, `SwitcherItem`, with
   how much of each is seen.
-- The places further back have thinner borders, being drawn smaller; and
-  a theme's `box-shadow` on `switcher-item` is not drawn on a diagonal.
+- The borders further back are thinner, being drawn smaller; and a
+  theme's `box-shadow` on `switcher-window` is not drawn.
+- `switcher-window` and `switcher-backdrop` are parts of the theme, new
+  with this; `switcher-item` is the rows' alone.
+- Blurring the whole screen behind the switcher costs what glass costs,
+  which ADR 33 has still to measure on a modest laptop; a theme drops the
+  blur with `switcher-backdrop { backdrop-filter: none; }`.
 - Pictures in the queue are not rounded at the corners, as windows are
   on the screen (ADR 16): cut into strips at each size, each window's
   picture would be drawn many times over at every frame of a turn.

@@ -1371,10 +1371,14 @@ the first than on the last.
       `switcher.style: flat` (ADR 75): the one picked in front, its title
       under it, those after it smaller, fainter, up and to the right, and
       the queue turned over 240 ms as the next comes forward.
-- [ ] Known gaps in the switcher on a diagonal: the places further back
-      have thinner borders, being drawn smaller; a theme's `box-shadow`
-      on `switcher-item` is not drawn there; the pictures are not rounded
-      at the corners; and its look, the steps and how much each shrinks,
+- [x] The switcher's screen dimmed and blurred behind it
+      (`switcher-backdrop`), and on a diagonal each window's border round
+      its picture rather than a box behind it (`switcher-window`).
+- [ ] Known gaps in the switcher on a diagonal: the borders further back
+      are thinner, being drawn smaller; a theme's `box-shadow` on
+      `switcher-window` is not drawn; the pictures are not rounded at the
+      corners; the dim and blur behind it come and go at once, as the
+      switcher does; and its look, the steps and how much each shrinks,
       is to be tried on real hardware.
 - [ ] An overview of every window on a workspace, and of the workspaces.
 - [x] Night light: the screens warmer after dark (ADR 74), by the day

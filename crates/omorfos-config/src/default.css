@@ -344,11 +344,11 @@ question-input:active {
   color: var(--on-accent);
 }
 
-/* The switcher on Alt+Tab: its box, each window's place, and the title.
- * In rows, the box is in the middle of the screen, each place in it with
- * its picture over its title, as wide as its min-width. On a diagonal,
- * the box is under the queue, with the title of the one picked, and each
- * place is as large as the picture in front. The one picked is :active. */
+/* The switcher on Alt+Tab: its box, each window's place in rows, and the
+ * title. In rows, the box is in the middle of the screen, each place in it
+ * with its picture over its title, as wide as its min-width. On a diagonal,
+ * the box is under the queue, with the title of the one picked. The one
+ * picked is :active. */
 switcher {
   padding: 12px;
   background: var(--surface);
@@ -367,6 +367,21 @@ switcher-item:active {
   border-color: var(--accent);
 }
 switcher-title { color: var(--text); }
+/* On a diagonal, each window in the switcher: its border round its picture,
+ * its padding away, and its background behind a window shown by its icon.
+ * The one picked is :active. */
+switcher-window {
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--surface);
+}
+switcher-window:active { border-color: var(--accent); }
+/* The screen behind the switcher: dimmed, and blurred out of focus. */
+switcher-backdrop {
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+}
 
 /* The screens shown still, to pick what a picture is to be of: what is not
  * picked is dimmed by the background, and what is drawn has the border. */

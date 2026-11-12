@@ -20,7 +20,8 @@ use omorfos_ui::{Area, Image};
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
-use smithay::backend::renderer::element::Id;
+use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
+use smithay::backend::renderer::element::{Id, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::output::Output;
@@ -31,7 +32,7 @@ use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
-use crate::compositor::{Compositor, Element, Mapped, Painted, View, logical};
+use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical};
 use crate::glass::{self, Pane};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
@@ -72,9 +73,24 @@ pub(crate) struct Switch {
     /// The icons programs are making for their windows, by the number of
     /// each, until it is set on one.
     pub(crate) making: HashMap<ObjectId, Making>,
+    /// What dims the screen behind the switcher, kept as large as the
+    /// screen and of the theme's colour, so that it is the same from one
+    /// frame to the next.
+    dim: SolidColorBuffer,
 }
 
 impl Switch {
+    /// Keeps the dim behind the switcher as large as `screen`, the one it is
+    /// on, and of the colour `config`'s theme gives it.
+    fn dim_behind(&mut self, config: &Config, screen: Rect) {
+        let backdrop = config.theme.style(Part::SwitcherBackdrop, States::NONE);
+        let size = (
+            screen.size.width.cast_signed(),
+            screen.size.height.cast_signed(),
+        );
+        self.dim.update(size, color(backdrop.ground()));
+    }
+
     /// The switcher, closed, and the protocol for icons offered on
     /// `display`, asking for icons of the size the switcher draws them
     /// largest.
@@ -87,6 +103,7 @@ impl Switch {
             held: Modifiers::NONE,
             icons: WindowIcons::default(),
             making: HashMap::new(),
+            dim: SolidColorBuffer::default(),
         }
     }
 }
@@ -154,7 +171,14 @@ struct Card {
     window: WindowId,
     picked: bool,
     shown: Shown<Icon>,
+    /// How large the one in front is.
     size: DomainSize,
+    /// How large the window is.
+    shape: (i32, i32),
+    /// How large its picture is in front.
+    picture: (u32, u32),
+    /// Its border round its picture, and its background where that is
+    /// not shown.
     pixels: Painted,
 }
 
@@ -243,12 +267,42 @@ fn shown_windows(config: &Config, switching: &Switching, layout: &SwitcherLayout
     windows
 }
 
-/// `mapped`'s picture made as small as it has to be to fit `room`, its
-/// shape kept, in the middle of it, as see-through as `opacity` says.
+/// A rectangle worked out in fractions of units of layout: its left, its
+/// top, how wide and how tall.
+type Exact = (f64, f64, f64, f64);
+
+/// Where a picture of something `width` by `height` goes in `room`: as
+/// large as fits, its shape kept, but no larger than it is, which would
+/// only blur it; in the middle.
+fn fitted((width, height): (i32, i32), (left, top, across, down): Exact) -> Exact {
+    let (width, height) = (f64::from(width.max(1)), f64::from(height.max(1)));
+    let factor = (across / width).min(down / height).min(1.0);
+    let shown = (width * factor, height * factor);
+    let left = left + (across - shown.0) / 2.0;
+    (left, top + (down - shown.1) / 2.0, shown.0, shown.1)
+}
+
+/// A length worked out in fractions, as the nearest whole one.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "within a screen, far inside an i32"
+)]
+fn whole(length: f64) -> i32 {
+    length.round() as i32
+}
+
+/// The size of `mapped`, as its frame has it.
+fn shape(mapped: &Mapped) -> (i32, i32) {
+    let size = mapped.window.geometry().size;
+    (size.w, size.h)
+}
+
+/// `mapped`'s picture made as large as `picture`, which has its shape, as
+/// see-through as `opacity` says.
 fn pictured<R>(
     renderer: &mut R,
     mapped: &Mapped,
-    room: Area,
+    (left, top, across, down): Exact,
     view: View,
     opacity: f32,
 ) -> impl Iterator<Item = Element<R>>
@@ -257,13 +311,8 @@ where
     R::TextureId: Clone + Texture + Send + 'static,
 {
     let size = mapped.window.geometry().size;
-    let across = f64::from(room.2) / f64::from(size.w.max(1));
-    let down = f64::from(room.3) / f64::from(size.h.max(1));
-    // No larger than it is, which would only blur it.
-    let factor = across.min(down).min(1.0);
-    let shown = (f64::from(size.w) * factor, f64::from(size.h) * factor);
-    let left = f64::from(room.0) + (f64::from(room.2) - shown.0) / 2.0;
-    let top = f64::from(room.1) + (f64::from(room.3) - shown.1) / 2.0;
+    let factor = across / f64::from(size.w.max(1));
+    let shown = (across, down);
     let corner = view.pixel(Point::<f64, Logical>::from((left, top)));
     let scale = view.scale.factor() * factor;
     let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
@@ -284,12 +333,14 @@ where
 }
 
 /// What the switcher is painted from: where it all is as it stands, the
-/// windows painted, what is shown of each, and that as it is painted.
+/// windows painted, what is shown of each, that as it is painted, and how
+/// large each window is.
 type Painting<'a> = (
     &'a SwitcherLayout,
     &'a [WindowId],
     &'a [Shown<Icon>],
     &'a [Shown<Option<Image>>],
+    &'a [(i32, i32)],
 );
 
 /// Paints the switcher as `config` lays it out, `layout` as it stands, with
@@ -300,7 +351,7 @@ type Painting<'a> = (
 fn paint_switcher(
     text: &mut paint::Text,
     config: &Config,
-    (layout, windows, shown, painted): Painting<'_>,
+    (layout, windows, shown, painted, shapes): Painting<'_>,
     (picked, mut kept): (WindowId, Vec<Card>),
     scale: Scale,
 ) -> (paint::Canvas, Vec<Card>) {
@@ -325,23 +376,29 @@ fn paint_switcher(
             );
             let front = layout.items.first().map(|item| item.place.size);
             let front = front.unwrap_or_default();
-            let painting = windows.iter().zip(shown).zip(painted);
-            let cards = painting.map(|((window, shown), painting)| {
+            let painting = windows.iter().zip(shown).zip(painted).zip(shapes);
+            let cards = painting.map(|(((window, shown), painting), shape)| {
                 let picked = *window == picked;
                 let same = |card: &Card| {
-                    (card.window, card.picked, card.size) == (*window, picked, front)
+                    (card.window, card.picked, card.size, card.shape)
+                        == (*window, picked, front, *shape)
                         && card.shown == *shown
                 };
                 let at = kept.iter().position(same);
                 let pixels = at.map(|at| kept.swap_remove(at).pixels);
+                // Its picture as large as it is in front.
+                let room = (0.0, 0.0, f64::from(front.width), f64::from(front.height));
+                let (_, _, across, down) = fitted(*shape, room);
+                let picture = (whole(across).cast_unsigned(), whole(down).cast_unsigned());
                 Card {
                     window: *window,
                     picked,
                     shown: shown.clone(),
                     size: front,
+                    shape: *shape,
+                    picture,
                     pixels: pixels.unwrap_or_else(|| {
-                        let size = (front.width, front.height);
-                        let card = paint::switcher_card(theme, size, picked, painting, scale);
+                        let card = paint::switcher_window(theme, picture, picked, painting, scale);
                         Painted::new(&card)
                     }),
                 }
@@ -521,6 +578,18 @@ impl Compositor {
         });
     }
 
+    /// How large each of `windows` is, and one not mapped as large as the
+    /// place in front in `layout`.
+    fn shapes(&self, windows: &[WindowId], layout: &SwitcherLayout) -> Vec<(i32, i32)> {
+        let front = layout.items.first().map(|item| item.place.size);
+        let front = front.unwrap_or_default();
+        let front = (front.width.cast_signed(), front.height.cast_signed());
+        let shapes = windows
+            .iter()
+            .map(|window| self.mapped(*window).map_or(front, shape));
+        shapes.collect()
+    }
+
     /// Paints the switcher again if what it shows, the theme or the scale
     /// changed since it was painted.
     pub(crate) fn repaint_switcher(&mut self) {
@@ -532,6 +601,7 @@ impl Compositor {
         };
         let layout = laid_out(&config, &switching, 0.0);
         let windows = shown_windows(&config, &switching, &layout);
+        self.switch.dim_behind(&config, switching.screen);
         let picked = switching.switcher.picked();
         let pixels = crate::icons::icon_pixels(paint::LARGE_ICON, scale);
         let mut icons = std::mem::take(&mut self.switch.icons);
@@ -587,11 +657,13 @@ impl Compositor {
             let (mut kept, had) =
                 had.map_or((Vec::new(), None), |drawn| (drawn.cards, drawn.shadow));
             kept.retain(|_| painted_so);
+            let shapes = self.shapes(&windows, &layout);
             let painting = (
                 &layout,
                 windows.as_slice(),
                 shown.as_slice(),
                 painted.as_slice(),
+                shapes.as_slice(),
             );
             let (canvas, cards) =
                 paint_switcher(&mut self.text, &config, painting, (picked, kept), scale);
@@ -646,8 +718,24 @@ impl Compositor {
         };
         if drawn.config.general.switcher.style == SwitcherStyle::Diagonal {
             self.queue_elements(renderer, (switching, drawn), view, (elements, panes));
-            return;
+        } else {
+            self.rows_elements(renderer, drawn, view, (elements, panes));
         }
+        self.switcher_backdrop(output, drawn, view, (elements, panes));
+    }
+
+    /// Adds the rows: each window's picture, made small to fit its place,
+    /// over the switcher's own pixels, and the box's shadow and glass.
+    fn rows_elements<R>(
+        &self,
+        renderer: &mut R,
+        drawn: &Drawn,
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
         let theme = &drawn.config.theme;
         let (_, tall) = metrics(theme);
         let given = drawn.layout.items.iter().zip(&drawn.shown).zip(&drawn.ids);
@@ -672,21 +760,60 @@ impl Compositor {
             let style = drawn.config.theme.style(Part::SwitcherItem, states);
             let place = item.place;
             let room = (
-                place.origin.x.saturating_add_unsigned(style.inset().left),
-                place.origin.y.saturating_add_unsigned(style.inset().top),
-                place.size.width.saturating_sub(style.inset().across()),
-                tall,
+                f64::from(place.origin.x.saturating_add_unsigned(style.inset().left)),
+                f64::from(place.origin.y.saturating_add_unsigned(style.inset().top)),
+                f64::from(place.size.width.saturating_sub(style.inset().across())),
+                f64::from(tall),
             );
             let mapped = self
                 .mapped(item.window)
                 .filter(|_| !self.desktop.private(item.window));
             let Some(mapped) = mapped else { continue };
-            elements.extend(pictured(renderer, mapped, room, view, 1.0));
+            let picture = fitted(shape(mapped), room);
+            elements.extend(pictured(renderer, mapped, picture, view, 1.0));
         }
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
         elements.extend(drawn.pixels.element(renderer, at.to_f64(), view, 1.0));
         switcher_box(renderer, drawn, view, (elements, panes));
+    }
+
+    /// Adds what is behind the switcher on `output`, under all of it: the
+    /// dim of its screen, and the blur of what is under that, as the theme
+    /// says.
+    fn switcher_backdrop<R>(
+        &self,
+        output: &Output,
+        drawn: &Drawn,
+        view: View,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let scale = view.scale.factor();
+        let dim = &self.switch.dim;
+        let dim = SolidColorRenderElement::from_buffer(dim, (0, 0), scale, 1.0, Kind::Unspecified);
+        elements.push(Element::Solid(dim));
+        let backdrop = drawn
+            .config
+            .theme
+            .style(Part::SwitcherBackdrop, States::NONE);
+        let head = self
+            .head(output)
+            .filter(|_| backdrop.blur > 0 && backdrop.see_through());
+        let whole = head.map(|head| {
+            let area = head.area();
+            let from = view.pixel(area.loc.to_f64());
+            let to = view.pixel((area.loc + area.size.to_point()).to_f64());
+            Rectangle::new(from, (to - from).to_size())
+        });
+        let key = glass::key(&("the switcher's backdrop", output.name()));
+        let under = elements.len();
+        let blurred = whole.and_then(|whole| {
+            Pane::behind(vec![whole], (backdrop.blur, view), (key, under, under), 1.0)
+        });
+        panes.extend(blurred);
     }
 
     /// Adds the queue: the box under it with the title of the window
@@ -738,27 +865,42 @@ impl Compositor {
             let opacity = f32::from(item.opacity) / 1000.0;
             let place = area(item.place);
             let share = f64::from(place.2) / front;
-            let (room, large) = paint::card_places(place, theme, item.picked, share);
+            // Its picture as large as it is in front, made smaller with its
+            // place, in the middle of it; and round it, its border.
+            let across = f64::from(card.picture.0) * share;
+            let down = f64::from(card.picture.1) * share;
+            let left = f64::from(place.0) + (f64::from(place.2) - across) / 2.0;
+            let top = f64::from(place.1) + (f64::from(place.3) - down) / 2.0;
+            let states = States::NONE.when(State::Active, item.picked);
+            let edges = theme.style(Part::SwitcherWindow, states).inset();
+            let out = |edge: u32| f64::from(edge) * share;
             if let Some(Icon::Given(buffer)) = shown.icon.as_ref().filter(|_| !shown.pictured) {
-                let given = (large, opacity);
-                elements.extend(
-                    self.switch
-                        .icons
-                        .given(renderer, buffer, given, &ids[1], view),
+                let side = (f64::from(paint::LARGE_ICON) * share).min(across).min(down);
+                let large = (
+                    whole(left + (across - side) / 2.0),
+                    whole(top + (down - side) / 2.0),
+                    whole(side).cast_unsigned(),
+                    whole(side).cast_unsigned(),
                 );
+                let icons = &self.switch.icons;
+                elements.extend(icons.given(renderer, buffer, (large, opacity), &ids[1], view));
             }
             let mapped = self
                 .mapped(item.window)
                 .filter(|_| !self.desktop.private(item.window));
             if let Some(mapped) = mapped {
-                elements.extend(pictured(renderer, mapped, room, view, opacity));
+                let picture = (left, top, across, down);
+                elements.extend(pictured(renderer, mapped, picture, view, opacity));
             }
-            let at = Point::<f64, Logical>::from((f64::from(place.0), f64::from(place.1)));
-            let size = (place.2.cast_signed(), place.3.cast_signed());
-            elements.extend(
-                card.pixels
-                    .stretched(renderer, (at, size.into()), view, opacity),
+            let at = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
+            let size = (
+                whole(across + out(edges.left) + out(edges.right)),
+                whole(down + out(edges.top) + out(edges.bottom)),
             );
+            let ring = card
+                .pixels
+                .stretched(renderer, (at, size.into()), view, opacity);
+            elements.extend(ring);
         }
     }
 

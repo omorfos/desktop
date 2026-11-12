@@ -14,6 +14,13 @@ const LEFT_BUTTON: u32 = 0x110;
 /// The switcher in rows, which most of these are about.
 const FLAT: (&str, &str) = ("config.yaml", "switcher: { style: flat }\n");
 
+/// The screen behind the switcher dimmed but not blurred, which takes the
+/// software renderer a while, for what is not about it.
+const UNBLURRED: (&str, &str) = (
+    "theme.css",
+    "switcher-backdrop { backdrop-filter: none; }\n",
+);
+
 fn press(session: &mut Session, code: Keycode, pressed: bool) {
     session
         .compositor_mut()
@@ -685,7 +692,7 @@ fn mostly(pixel: u32, colour: u32) -> bool {
 
 #[test]
 fn unless_set_the_windows_stand_one_behind_another_the_one_picked_in_front() {
-    let (mut session, _client) = three_with(&[]);
+    let (mut session, _client) = three_with(&[UNBLURRED]);
     alt_tab(&mut session, 1, false);
     let names = |names: [&str; 3]| names.map(str::to_owned).to_vec();
     assert_eq!(
@@ -739,7 +746,7 @@ fn unless_set_the_windows_stand_one_behind_another_the_one_picked_in_front() {
 
 #[test]
 fn going_on_turns_the_queue_from_where_it_stood_and_the_next_comes_to_the_front() {
-    let (mut session, _client) = three_with(&[]);
+    let (mut session, _client) = three_with(&[UNBLURRED]);
     alt_tab(&mut session, 1, false);
     let before = standing(&session);
     tap(&mut session, key::TAB);
@@ -773,13 +780,15 @@ fn going_on_turns_the_queue_from_where_it_stood_and_the_next_comes_to_the_front(
         .left
         .color;
     let accent = u32::from_be_bytes([accent.alpha, accent.red, accent.green, accent.blue]);
-    let edge = |place: Rect| (place.origin.x, middle(place).1);
+    // Its border is round its picture, which fills its place, 4 away
+    // and 2 wide.
+    let edge = |place: Rect| (place.origin.x - 5, middle(place).1);
     let layout = session.compositor().switcher_layout().unwrap();
     let frame = session.draw();
     let (x, y) = edge(layout.items[0].place);
     assert_eq!(frame.at(x, y), accent);
     let (x, y) = edge(layout.items[2].place);
-    assert_ne!(frame.at(x + 1, y), accent, "{:?}", layout.items[2]);
+    assert_ne!(frame.at(x, y), accent, "{:?}", layout.items[2]);
     // Back again, the other way round, and the arrows go as Tab does.
     tap(&mut session, key::LEFT);
     session.advance(std::time::Duration::from_millis(300));
@@ -791,7 +800,7 @@ fn going_on_turns_the_queue_from_where_it_stood_and_the_next_comes_to_the_front(
 #[test]
 fn with_motion_reduced_the_queue_does_not_turn_but_stands_at_once() {
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
-    let (mut session, _client) = three_with(&[reduced]);
+    let (mut session, _client) = three_with(&[reduced, UNBLURRED]);
     alt_tab(&mut session, 2, false);
     let names = |names: [&str; 3]| names.map(str::to_owned).to_vec();
     assert_eq!(
@@ -816,7 +825,7 @@ fn beside_queued_title(area: Rect, theme: &Theme) -> (i32, i32) {
 fn in_the_queue_a_private_window_is_shown_by_its_icon_large_and_beside_its_title() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -846,6 +855,8 @@ fn in_the_queue_a_private_window_is_shown_by_its_icon_large_and_beside_its_title
 #[test]
 fn the_one_that_leaves_the_front_is_drawn_on_its_way_though_six_others_are_shown() {
     let mut session = Session::with_workspaces();
+    session.write_config(UNBLURRED.0, UNBLURRED.1);
+    session.compositor_mut().reload_config();
     let mut client = session.connect();
     for number in 1..=7 {
         let colour = if number == 6 { BLUE } else { RED };
@@ -870,4 +881,40 @@ fn the_one_that_leaves_the_front_is_drawn_on_its_way_though_six_others_are_shown
     session.step();
     assert_eq!(session.draw().at(x, y), BLUE, "on its way");
     press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn behind_the_switcher_its_screen_is_dimmed_and_blurred_unless_the_theme_says_not() {
+    let diagonal = ("config.yaml", "");
+    let cases = [
+        ("", true, true, diagonal),
+        (UNBLURRED.1, true, false, FLAT),
+        (
+            "switcher-backdrop { background: transparent; backdrop-filter: none; }\n",
+            false,
+            false,
+            diagonal,
+        ),
+    ];
+    for (theme, dimmed, blurred, style) in cases {
+        let (mut session, _client) = three_with(&[style, ("theme.css", theme)]);
+        let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
+        let open = session.draw().at(corner.0, corner.1);
+        let before = session.compositor().blurs();
+        alt_tab(&mut session, 1, false);
+        let seen = session.draw().at(corner.0, corner.1);
+        let blurs = session.compositor().blurs();
+        assert_eq!(blurs > before, blurred, "{theme} {style:?}");
+        assert_eq!(seen != open, dimmed, "{theme} {style:?}: {seen:#x}");
+        if dimmed {
+            let channels = |of: u32| [of >> 16, of >> 8, of].map(|channel| channel & 0xff);
+            let darker = channels(seen).into_iter().zip(channels(open));
+            assert!(darker.into_iter().all(|(seen, open)| seen <= open));
+        }
+        // Gone with it.
+        tap(&mut session, key::ESCAPE);
+        press(&mut session, key::ALT, false);
+        session.step();
+        assert_eq!(session.draw().at(corner.0, corner.1), open, "{theme}");
+    }
 }
