@@ -252,6 +252,12 @@ Milliseconds a key is held before it starts repeating. From 0 to 65535. By defau
 \fBkeyboard.repeat_rate\fR
 Repeats per second once repeating starts. \fB0\fR disables key repeat. From 0 to 65535. By default \fB30\fR.
 .TP
+\fBkeyboard.super_as_ctrl\fR
+Whether a chord with Super that nothing is bound to reaches the program as the same chord with Ctrl, as Super+C copies and Super+V pastes, as Cmd does on macOS. Turn it off for such a chord to reach the program as it is. By default \fBtrue\fR.
+.TP
+\fBkeyboard.terminals\fR
+The programs that are terminals, by their application identifier, where \fB*\fR stands for any run of characters. A chord with Super reaches one as Ctrl+Shift, which terminals copy and paste with, so that Ctrl+C still interrupts. By default \fB["foot","footclient","com.mitchellh.ghostty","kitty","Alacritty","org.wezfurlong.wezterm","org.gnome.Terminal","org.gnome.Ptyxis","org.gnome.Console","org.kde.konsole","com.gexperts.Tilix","XTerm"]\fR.
+.TP
 \fBkeyboard.variant\fR
 XKB variant, such as \fBdvorak\fR. Empty for the default. By default \fB""\fR.
 .TP
@@ -631,6 +637,8 @@ keyboard:
   options: ""             # e.g. "caps:escape"
   repeat_delay: 400       # milliseconds
   repeat_rate: 30         # per second; 0 disables repeat
+  super_as_ctrl: true     # Super+C reaches programs as Ctrl+C
+  terminals: [foot, footclient, com.mitchellh.ghostty, kitty, Alacritty, org.wezfurlong.wezterm, org.gnome.Terminal, org.gnome.Ptyxis, org.gnome.Console, org.kde.konsole, com.gexperts.Tilix, XTerm]
 touchpad:
   tap_to_click: true
   natural_scroll: true    # content follows the fingers

@@ -136,6 +136,7 @@ pub(crate) mod key {
     pub(crate) const BACKSPACE: Keycode = Keycode::new(22);
     pub(crate) const TAB: Keycode = Keycode::new(23);
     pub(crate) const Q: Keycode = Keycode::new(24);
+    pub(crate) const C: Keycode = Keycode::new(54);
     pub(crate) const T: Keycode = Keycode::new(28);
     pub(crate) const RETURN: Keycode = Keycode::new(36);
     pub(crate) const A: Keycode = Keycode::new(38);
@@ -862,6 +863,11 @@ pub(crate) struct ClientState {
     typing_done: u32,
     /// Which of the keyboard's layouts it was last told is typed with.
     pub(crate) layout: u32,
+    /// The modifiers it was last told are held, as a mask of XKB's.
+    depressed: u32,
+    /// Each key it was sent, its evdev code and `true` for a press, with
+    /// the modifiers it had been told were held when it came.
+    pub(crate) chords: Vec<(u32, bool, u32)>,
     sandboxes: Option<wp_security_context_manager_v1::WpSecurityContextManagerV1>,
     capture_sources: Option<capture_sources::ExtOutputImageCaptureSourceManagerV1>,
     capturers: Option<capture_manager::ExtImageCopyCaptureManagerV1>,
@@ -2667,8 +2673,16 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
                 state.serial = serial;
                 let pressed = key_state == WEnum::Value(wl_keyboard::KeyState::Pressed);
                 state.events.push(Event::Key { code: key, pressed });
+                state.chords.push((key, pressed, state.depressed));
             }
-            wl_keyboard::Event::Modifiers { group, .. } => state.layout = group,
+            wl_keyboard::Event::Modifiers {
+                group,
+                mods_depressed,
+                ..
+            } => {
+                state.layout = group;
+                state.depressed = mods_depressed;
+            }
             _ => {}
         }
     }

@@ -145,6 +145,25 @@ fn while_alt_is_held_tab_walks_every_window_and_the_order_stands_still() {
 }
 
 #[test]
+fn super_tab_is_the_switcher_too_and_letting_go_of_super_chooses() {
+    let (mut session, _client) = three();
+    press(&mut session, key::SUPER, true);
+    tap(&mut session, key::TAB);
+    tap(&mut session, key::TAB);
+    session.step();
+    session.advance(SHOWN_AFTER);
+    assert_eq!(
+        shown(&session).map(|(_, picked)| picked).as_deref(),
+        Some("one"),
+        "open while Super is held"
+    );
+    press(&mut session, key::SUPER, false);
+    session.step();
+    assert_eq!(focused(&session).as_deref(), Some("one"));
+    assert_eq!(shown(&session), None);
+}
+
+#[test]
 fn with_shift_it_opens_at_the_window_used_longest_ago_and_goes_back() {
     let (mut session, _client) = three();
     press(&mut session, key::ALT, true);

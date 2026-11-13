@@ -122,16 +122,21 @@ impl Default for Keys {
             bind("Super+Escape", Action::ShowMenu),
             bind("Super+q", Action::Close),
             bind("Super+m", Action::Maximize),
-            bind("Super+f", Action::Fullscreen),
+            // Find is Super+F, as Ctrl+F (ADR 78).
+            bind("Super+Ctrl+f", Action::Fullscreen),
             bind("Super+h", Action::Minimize),
             bind("Alt+Tab", Action::SwitchWindows),
             bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
-            bind("Super+Tab", Action::NextTab),
-            bind("Super+Shift+Tab", Action::PreviousTab),
+            bind("Super+Tab", Action::SwitchWindows),
+            bind("Super+Shift+Tab", Action::SwitchWindowsBack),
+            bind("Super+grave", Action::NextTab),
+            bind("Super+Shift+grave", Action::PreviousTab),
             bind("Super+Right", Action::NextWorkspace),
             bind("Super+Left", Action::PreviousWorkspace),
-            bind("Super+n", Action::NewWorkspace),
-            bind("Super+Shift+n", Action::MoveToNewWorkspace),
+            // A new window is Super+N, as Ctrl+N, and a private one in a
+            // browser Super+Shift+N.
+            bind("Super+Ctrl+n", Action::NewWorkspace),
+            bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
             bind("Print", Action::Spawn(Started::screenshot())),
             bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
             bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
@@ -140,6 +145,8 @@ impl Default for Keys {
             // The key a laptop has for the screens, which means nothing
             // else, and is pressed when one has gone dark.
             bind("XF86Display", Action::NextScreens),
+            // Apple's Mission Control key, F3 on a MacBook.
+            bind("XF86LaunchA", Action::Overview),
         ];
         // The keys a keyboard has for the volume, the brightness and what
         // is playing, which mean nothing else.
@@ -678,8 +685,23 @@ bindings:
         assert_eq!(action_for("Alt+Print"), Some(Action::Spawn(window.clone())));
         assert_eq!(window.run.arguments(), ["--window"]);
         assert!(window.may.contains(&crate::Role::Panel));
+        // Super is the desktop's (ADR 78): the switcher is on it as well as
+        // on Alt, the tabs of a group on the key above Tab, and what macOS
+        // leaves to programs on Cmd is theirs, as Ctrl.
         assert_eq!(action_for("Alt+Tab"), Some(Action::SwitchWindows));
         assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::SwitchWindowsBack));
+        assert_eq!(action_for("Super+Tab"), Some(Action::SwitchWindows));
+        assert_eq!(
+            action_for("Super+Shift+Tab"),
+            Some(Action::SwitchWindowsBack)
+        );
+        assert_eq!(action_for("Super+grave"), Some(Action::NextTab));
+        assert_eq!(action_for("Super+Shift+grave"), Some(Action::PreviousTab));
+        assert_eq!(action_for("Super+Ctrl+f"), Some(Action::Fullscreen));
+        assert_eq!(action_for("Super+f"), None);
+        assert_eq!(action_for("Super+n"), None);
+        assert_eq!(action_for("Super+Shift+n"), None);
+        assert_eq!(action_for("XF86LaunchA"), Some(Action::Overview));
         assert_eq!(
             action_for("Super+3"),
             Some(Action::Workspace(WorkspaceNumber::clamped(3)))
@@ -694,7 +716,7 @@ bindings:
             action_for("Super+9"),
             Some(Action::Workspace(WorkspaceNumber::clamped(9)))
         );
-        assert_eq!(action_for("Super+n"), Some(Action::NewWorkspace));
+        assert_eq!(action_for("Super+Ctrl+n"), Some(Action::NewWorkspace));
         assert_eq!(action_for("XF86Display"), Some(Action::NextScreens));
         assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Focus(Half::Top)));
         assert_eq!(
@@ -702,7 +724,7 @@ bindings:
             Some(Action::Swap(Half::Left))
         );
         assert_eq!(
-            action_for("Super+Shift+n"),
+            action_for("Super+Ctrl+Shift+n"),
             Some(Action::MoveToNewWorkspace)
         );
         // The keys for the volume, the brightness and what is playing ask

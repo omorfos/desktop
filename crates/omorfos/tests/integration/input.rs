@@ -601,3 +601,96 @@ fn a_binding_can_start_a_program_that_can_find_the_compositor() {
     session.step();
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "wayland-test");
 }
+
+/// XKB's masks of the modifiers a program is told are held.
+const SHIFT: u32 = 1;
+const CTRL: u32 = 4;
+const LOGO: u32 = 64;
+/// The evdev codes of Super and of C, as a program is sent them.
+const SUPER_CODE: u32 = 125;
+const C_CODE: u32 = 46;
+
+/// What `app`'s window is sent of Super, then Shift if `shifted`, then C,
+/// each let go again in turn, under `config`.
+fn chord_with_super(app: &str, shifted: bool, config: &[(&str, &str)]) -> Vec<(u32, bool, u32)> {
+    let mut session = Session::with_config(config);
+    let mut client = session.connect();
+    session.open(&mut client, app, (200, 100), RED);
+    session.roundtrip(&mut client);
+    client.state.chords.clear();
+    press(&mut session, key::SUPER);
+    if shifted {
+        press(&mut session, key::SHIFT);
+    }
+    press(&mut session, key::C);
+    release(&mut session, key::C);
+    if shifted {
+        release(&mut session, key::SHIFT);
+    }
+    release(&mut session, key::SUPER);
+    session.roundtrip(&mut client);
+    let chords = std::mem::take(&mut client.state.chords);
+    // Super itself reaches it, and it is told Super is held again before
+    // Super is let go of.
+    assert_eq!(chords.first().map(|chord| chord.0), Some(SUPER_CODE));
+    assert_eq!(chords.last(), Some(&(SUPER_CODE, false, LOGO)));
+    chords
+        .into_iter()
+        .filter(|(code, ..)| *code == C_CODE)
+        .collect()
+}
+
+#[test]
+fn a_chord_with_super_that_nothing_binds_reaches_the_program_as_ctrl() {
+    let chords = chord_with_super("app", false, &[]);
+    // Pressed and let go of with Ctrl in place of Super: it is told Super
+    // is held again only after.
+    assert_eq!(chords, [(C_CODE, true, CTRL), (C_CODE, false, CTRL)]);
+    let shifted = chord_with_super("app", true, &[]);
+    assert_eq!(
+        shifted[0],
+        (C_CODE, true, CTRL | SHIFT),
+        "Super+Shift is Ctrl+Shift"
+    );
+}
+
+#[test]
+fn in_a_terminal_a_chord_with_super_is_ctrl_and_shift_so_ctrl_c_still_interrupts() {
+    let chords = chord_with_super("com.mitchellh.ghostty", false, &[]);
+    assert_eq!(chords[0], (C_CODE, true, CTRL | SHIFT));
+    // Which programs are terminals is for the configuration to say.
+    let config = [("config.yaml", "keyboard: { terminals: ['my-*'] }\n")];
+    assert_eq!(
+        chord_with_super("my-term", false, &config)[0],
+        (C_CODE, true, CTRL | SHIFT)
+    );
+    assert_eq!(
+        chord_with_super("foot", false, &config)[0],
+        (C_CODE, true, CTRL)
+    );
+}
+
+#[test]
+fn with_super_as_ctrl_off_a_chord_with_super_reaches_the_program_as_it_is() {
+    let config = [("config.yaml", "keyboard: { super_as_ctrl: false }\n")];
+    let chords = chord_with_super("app", false, &config);
+    assert_eq!(chords, [(C_CODE, true, LOGO), (C_CODE, false, LOGO)]);
+}
+
+#[test]
+fn a_chord_with_super_reaches_nothing_when_no_program_has_the_keyboard() {
+    let mut session = Session::new();
+    press(&mut session, key::SUPER);
+    press(&mut session, key::C);
+    release(&mut session, key::C);
+    release(&mut session, key::SUPER);
+    // Nothing to tell, and nothing held over for whatever comes next.
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    session.roundtrip(&mut client);
+    client.state.chords.clear();
+    press(&mut session, key::C);
+    release(&mut session, key::C);
+    session.roundtrip(&mut client);
+    assert_eq!(client.state.chords, [(C_CODE, true, 0), (C_CODE, false, 0)]);
+}

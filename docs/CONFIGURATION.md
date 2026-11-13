@@ -47,6 +47,8 @@ keyboard:
   options: ""             # e.g. "caps:escape"
   repeat_delay: 400       # milliseconds
   repeat_rate: 30         # per second; 0 disables repeat
+  super_as_ctrl: true     # Super+C reaches programs as Ctrl+C
+  terminals: [foot, footclient, com.mitchellh.ghostty, kitty, Alacritty, org.wezfurlong.wezterm, org.gnome.Terminal, org.gnome.Ptyxis, org.gnome.Console, org.kde.konsole, com.gexperts.Tilix, XTerm]
 touchpad:
   tap_to_click: true
   natural_scroll: true    # content follows the fingers
@@ -295,8 +297,8 @@ the modes each screen offers, written as `mode` takes them. A screen's name is t
 `omorfosctl state`. One that is listed but not plugged in is skipped.
 
 The workspaces listed are always there. More are made as they are wanted,
-after those: by `Super+n`, by sending a window to a new one
-(`Super+Shift+n`, or "Send to workspace" in the menu of its titlebar), or
+after those: by `Super+Ctrl+n`, by sending a window to a new one
+(`Super+Ctrl+Shift+n`, or "Send to workspace" in the menu of its titlebar), or
 by going to the number one past the last, so that `Super+2` in a session
 with one workspace makes a second. A workspace that was made is called by
 its number, and goes again once nothing is on it and another is being
@@ -319,7 +321,7 @@ and down close it. Every other gesture, as a pinch to zoom, is the
 program's under the pointer.
 
 A window made fullscreen, by the second button of its titlebar, by
-`Super+f`, or because its program asked, goes alone to a workspace made
+`Super+Ctrl+f`, or because its program asked, goes alone to a workspace made
 for it, directly after the one it was on, with no panel over it and no
 titlebar. That workspace has no number: `Super+Right` and `Super+Left` go
 along the whole row and reach it, and the number keys count desktops only.
@@ -462,6 +464,21 @@ ignored and reported.
 Two of your bindings may not use the same keys, and a chain of yours may
 not begin with keys you have bound on their own.
 
+### Super
+
+Super is the desktop's: a program never sees a key pressed while it is
+held. A chord with Super that is bound does what it is bound to; any
+other reaches the program with the keyboard as the same chord with Ctrl
+in its place, as Cmd does on macOS: `Super+c` copies, `Super+v` pastes,
+`Super+z` undoes, `Super+f` finds, `Super+Shift+t` is `Ctrl+Shift+t`. In
+a terminal, where `Ctrl+c` interrupts, it is Ctrl and Shift together,
+which terminals copy, paste and open tabs with. Which programs are
+terminals is `keyboard.terminals` in `config.yaml`, by their `app_id`,
+where `*` stands for any run of characters; `keyboard.super_as_ctrl:
+false` has a chord with Super that nothing binds reach the program as it
+is. A chord you bind with Super is no longer the program's: `Super+s`
+bound is no longer save anywhere.
+
 ### Built-in bindings
 
 What the keys do before you write anything, each action as `keys.yaml`
@@ -476,22 +493,25 @@ as `overview` or `lock`, has no key until you bind one.
 | `Super+Escape` | `show_menu` | Open the root menu at the pointer |
 | `Super+q` | `close` | Ask the focused window to close |
 | `Super+m` | `maximize` | Maximize the focused window, or restore it |
-| `Super+f` | `fullscreen` | Make the focused window fullscreen, or not |
+| `Ctrl+Super+f` | `fullscreen` | Make the focused window fullscreen, or not |
 | `Super+h` | `minimize` | Hide the focused window |
 | `Alt+Tab` | `switch_windows` | Open the switcher, or go on to the next window |
 | `Alt+Shift+Tab` | `switch_windows_back` | The same, going back |
-| `Super+Tab` | `next_tab` | Show the next tab of the focused window |
-| `Shift+Super+Tab` | `previous_tab` | Show the previous tab of the focused window |
+| `Super+Tab` | `switch_windows` | Open the switcher, or go on to the next window |
+| `Shift+Super+Tab` | `switch_windows_back` | The same, going back |
+| `Super+grave` | `next_tab` | Show the next tab of the focused window |
+| `Shift+Super+grave` | `previous_tab` | Show the previous tab of the focused window |
 | `Super+Right` | `next_workspace` | Show the next workspace |
 | `Super+Left` | `previous_workspace` | Show the workspace before |
-| `Super+n` | `new_workspace` | Make a workspace after the last, and show it |
-| `Shift+Super+n` | `move_to_new_workspace` | Send the focused window to a new workspace |
+| `Ctrl+Super+n` | `new_workspace` | Make a workspace after the last, and show it |
+| `Ctrl+Shift+Super+n` | `move_to_new_workspace` | Send the focused window to a new workspace |
 | `Print` | `{ spawn: { run: [omorfos-screenshot], may: [capture, clipboard] } }` | Start a program, with no shell |
 | `Shift+Print` | `{ spawn: { run: [omorfos-screenshot, --pick, --to, clipboard], may: [capture, clipboard, panel, overlay] } }` | Start a program, with no shell |
 | `Alt+Print` | `{ spawn: { run: [omorfos-screenshot, --window], may: [capture, clipboard, panel] } }` | Start a program, with no shell |
 | `Shift+Super+r` | `reload_config` | Read the configuration again |
 | `Shift+Super+e` | `quit` | End the session |
 | `XF86Display` | `next_screens` | Arrange the screens the next way |
+| `XF86LaunchA` | `overview` | Open the overview of the workspace, or close it |
 | `XF86AudioRaiseVolume` | `{ spawn: [omorfos-session, volume, up] }` | Start a program, with no shell |
 | `XF86AudioLowerVolume` | `{ spawn: [omorfos-session, volume, down] }` | Start a program, with no shell |
 | `XF86AudioMute` | `{ spawn: [omorfos-session, volume, mute] }` | Start a program, with no shell |
@@ -2402,7 +2422,7 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 | Put two windows side by side | Rest the pointer on the middle button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
 | Put a window in a half or a quarter of the screen | Drag it by its titlebar to an edge of the screen, or to an edge near a corner, and let go |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
-| Leave fullscreen | `Super+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
+| Leave fullscreen | `Super+Ctrl+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |
 | Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
@@ -2414,13 +2434,13 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 
 ### Switching windows
 
-`Alt+Tab` opens the switcher in the middle of the screen the pointer is
-on: every window, on every workspace and minimized or not, as a picture
+`Super+Tab`, or `Alt+Tab`, opens the switcher in the middle of the
+screen the pointer is on: every window, on every workspace and minimized or not, as a picture
 of itself, in the order they were last used. A window smaller than its
 place is shown as large as it is, not made larger. It opens at the
-window used before the one you are in, so one `Alt+Tab` goes back to it
-and another comes back again. It is shown once Alt has been held for
-200 ms, so that a quick `Alt+Tab` goes back without the switcher
+window used before the one you are in, so one `Super+Tab` goes back to it
+and another comes back again. It is shown once Super, or Alt, has been
+held for 200 ms, so that a quick `Super+Tab` goes back without the switcher
 showing for a moment; opened by something other than keys, it is shown
 at once. Shown, it fades in over 120 ms, with the dim and blur behind
 it, and goes at once. A click before it is shown closes it, choosing
@@ -2439,11 +2459,13 @@ switcher:
   style: flat
 ```
 
-While Alt is held, Tab goes on to the next window and `Shift+Tab` back,
-as do the arrows; letting go of Alt goes to the window picked, bringing
+While Super, or Alt, is held, Tab goes on to the next window and
+`Shift+Tab` back, as do the arrows; letting go of it goes to the window
+picked, bringing
 it back if it was minimized and showing its workspace. Enter does the
 same, Escape closes the switcher where you were, and a click on a window
-goes to it. `Alt+Shift+Tab` opens it at the window used longest ago.
+goes to it. `Super+Shift+Tab`, or `Alt+Shift+Tab`, opens it at the
+window used longest ago.
 
 The order stands still while the switcher is open: a window passed over
 on the way has not been used. Each window's icon is beside its title:
@@ -2474,12 +2496,14 @@ windows moving up and shrinking to their places with the fingers and the
 screen dimming as they go; lift them past half way, or flick, and it
 opens the rest of the way, or short of that and it sinks back. Swiped
 down, they close it the same way. With `appearance.reduce_motion` the
-fingers carry nothing, and it opens or not as they lift. No key opens it
-yet: bind the `overview` action in `keys.yaml`, and again to close it.
+fingers carry nothing, and it opens or not as they lift. The Mission
+Control key of a Mac's keyboard (`XF86LaunchA`, F3 on a MacBook) opens
+it and closes it. On a keyboard without one, bind the `overview` action
+in `keys.yaml`:
 
 ```yaml
 bindings:
-  - keys: Super+Tab
+  - keys: Super+Up
     action: overview
 ```
 

@@ -586,7 +586,7 @@ pub enum Placement {
     Pointer,
 }
 
-/// Keyboard layout and key repeat.
+/// Keyboard layout, key repeat, and what Super does for programs.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
@@ -601,6 +601,16 @@ pub struct Keyboard {
     pub repeat_delay: u16,
     /// Repeats per second once repeating starts. `0` disables key repeat.
     pub repeat_rate: u16,
+    /// Whether a chord with Super that nothing is bound to reaches the
+    /// program as the same chord with Ctrl, as Super+C copies and Super+V
+    /// pastes, as Cmd does on macOS. Turn it off for such a chord to reach
+    /// the program as it is.
+    pub super_as_ctrl: bool,
+    /// The programs that are terminals, by their application identifier,
+    /// where `*` stands for any run of characters. A chord with Super
+    /// reaches one as Ctrl+Shift, which terminals copy and paste with, so
+    /// that Ctrl+C still interrupts.
+    pub terminals: Vec<String>,
 }
 
 impl Default for Keyboard {
@@ -611,6 +621,23 @@ impl Default for Keyboard {
             options: String::new(),
             repeat_delay: 400,
             repeat_rate: 30,
+            super_as_ctrl: true,
+            terminals: [
+                "foot",
+                "footclient",
+                "com.mitchellh.ghostty",
+                "kitty",
+                "Alacritty",
+                "org.wezfurlong.wezterm",
+                "org.gnome.Terminal",
+                "org.gnome.Ptyxis",
+                "org.gnome.Console",
+                "org.kde.konsole",
+                "com.gexperts.Tilix",
+                "XTerm",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
         }
     }
 }
@@ -1914,7 +1941,7 @@ autostart:
 workspaces: [web, code]
 focus: { model: sloppy, raise_on_focus: false }
 placement: pointer
-keyboard: { layout: 'gb,pl', variant: dvorak, options: 'caps:escape', repeat_delay: 250, repeat_rate: 0 }
+keyboard: { layout: 'gb,pl', variant: dvorak, options: 'caps:escape', repeat_delay: 250, repeat_rate: 0, super_as_ctrl: false, terminals: ['st-*'] }
 touchpad: { tap_to_click: false, natural_scroll: true, speed: -0.5, acceleration: flat }
 ";
         let general = parse(yaml).unwrap();
@@ -1935,6 +1962,8 @@ touchpad: { tap_to_click: false, natural_scroll: true, speed: -0.5, acceleration
                 options: "caps:escape".to_owned(),
                 repeat_delay: 250,
                 repeat_rate: 0,
+                super_as_ctrl: false,
+                terminals: vec!["st-*".to_owned()],
             }
         );
         assert_eq!(

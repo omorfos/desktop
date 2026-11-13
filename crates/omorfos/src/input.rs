@@ -1,15 +1,15 @@
 //! Input from the user.
 
-use omorfos_config::Modifiers;
+use omorfos_config::{Action, Modifiers};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
-use omorfos_core::{Button, Edges, Home, MenuKey, MenuOutcome, Part, WindowId, resize};
+use omorfos_core::{Button, Edges, Home, MenuKey, MenuOutcome, Part, Pattern, WindowId, resize};
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
-use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
+use smithay::input::keyboard::{FilterResult, KeyboardTarget, Keycode, Keysym, ModifiersState};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, MotionEvent};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Point, SERIAL_COUNTER};
+use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
@@ -18,6 +18,7 @@ use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
 use crate::paint::{self, AboutButton};
 use crate::reveal::Placing;
+use crate::x11::Focus;
 use omorfos_core::KeyOutcome;
 
 /// The surface of a program the pointer is over, and where its corner is,
@@ -132,6 +133,19 @@ pub enum Gesture {
         /// Whether they moved rather than lifted.
         cancelled: bool,
     },
+}
+
+/// What became of keys pressed, for when they are let go of.
+#[derive(Debug, Default)]
+pub(crate) struct Taken {
+    /// Keys whose press was consumed, so their release is consumed too.
+    pub(crate) suppressed: Vec<Keycode>,
+    /// Keys pressed with Super that went to the program as Ctrl, whose
+    /// release goes the same way (ADR 78).
+    pub(crate) as_ctrl: Vec<Keycode>,
+    /// A key the keyboard has taken that is to go to the program as Ctrl,
+    /// and whether it was pressed or let go of.
+    pub(crate) handing: Option<(Keycode, bool)>,
 }
 
 /// How far a key scrolls "About", in units of layout, a page being `page`
@@ -439,25 +453,13 @@ impl Compositor {
         let serial = SERIAL_COUNTER.next_serial();
         let action = keyboard.input(self, code, state, serial, time, |compositor, held, key| {
             if !pressed {
-                // Letting go of the keys held with the one that opened the
-                // switcher chooses where it is.
-                compositor.switcher_let_go(held);
-                // Swallow the release of a key whose press was swallowed.
-                let before = compositor.suppressed_keys.len();
-                compositor
-                    .suppressed_keys
-                    .retain(|suppressed| *suppressed != code);
-                return if compositor.suppressed_keys.len() < before {
-                    FilterResult::Intercept(None)
-                } else {
-                    FilterResult::Forward
-                };
+                return compositor.let_go(code, held);
             }
             if let Some(terminal) = virtual_terminal(key.modified_sym()) {
                 // Not ours to act on: the backend that holds the seat is
                 // asked, and no client or binding sees the key.
                 compositor.terminal_wanted = Some(terminal);
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
             let keysym = key
@@ -477,19 +479,19 @@ impl Compositor {
                 };
                 if let Some(keep) = screens {
                     compositor.answer_screens(keep);
-                    compositor.suppressed_keys.push(code);
+                    compositor.taken.suppressed.push(code);
                     return FilterResult::Intercept(None);
                 }
             }
             // An open switcher is steered by Escape, Enter and the arrows,
             // and so is the overview.
             if compositor.switcher_key(keysym) || compositor.overview_key(keysym) {
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
             if compositor.menu.is_some() && keysym == Keysym::Escape {
                 compositor.menu = None;
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
             // "About" has the keyboard while it is shown: Escape puts it
@@ -498,7 +500,7 @@ impl Compositor {
             // binding still does what it is bound to.
             let about = compositor.cards.about.asked.is_some();
             if about && compositor.about_key(keysym) {
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
             // An open menu is steered by the arrows and Enter, which no
@@ -512,7 +514,7 @@ impl Compositor {
                 if chosen.is_some() {
                     compositor.menu = None;
                 }
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(chosen);
             }
             if keysym.is_modifier_key() {
@@ -521,27 +523,111 @@ impl Compositor {
                 if !about {
                     return FilterResult::Forward;
                 }
-                compositor.suppressed_keys.push(code);
+                compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
             let chord = Chord {
                 modifiers: bridge::modifiers(held),
                 keysym: keysym.raw(),
             };
+            // Super is the desktop's: a chord with it that nothing binds
+            // is the program's as Ctrl (ADR 78).
+            let as_ctrl = held.logo && compositor.config().general.keyboard.super_as_ctrl;
             let action = match compositor.bindings.press(chord) {
+                KeyOutcome::Unbound if !about && as_ctrl => {
+                    compositor.taken.as_ctrl.push(code);
+                    compositor.taken.handing = Some((code, true));
+                    return FilterResult::Intercept(None);
+                }
                 KeyOutcome::Unbound if !about => return FilterResult::Forward,
                 KeyOutcome::Unbound | KeyOutcome::Pending | KeyOutcome::Cancelled => None,
                 KeyOutcome::Triggered(action) => Some(action.clone()),
             };
-            compositor.suppressed_keys.push(code);
+            compositor.taken.suppressed.push(code);
             // The switcher a binding opens stays open while they are held.
             compositor.switch.held = crate::switcher::held_with(held);
             FilterResult::Intercept(action)
         });
+        if let Some((code, pressed)) = self.taken.handing.take() {
+            self.hand_on_as_ctrl(code, pressed, serial, time);
+        }
         if let Some(action) = action.flatten() {
             self.perform(&action);
         }
         self.switch.held = Modifiers::NONE;
+    }
+
+    /// What becomes of `code` let go of with `held`: the switcher it was
+    /// held open by chooses, a key that went to the program as Ctrl is let
+    /// go of so, and the release of a key whose press was swallowed is
+    /// swallowed too.
+    fn let_go(&mut self, code: Keycode, held: &ModifiersState) -> FilterResult<Option<Action>> {
+        self.switcher_let_go(held);
+        let before = self.taken.as_ctrl.len();
+        self.taken.as_ctrl.retain(|handed| *handed != code);
+        if self.taken.as_ctrl.len() < before {
+            self.taken.handing = Some((code, false));
+            return FilterResult::Intercept(None);
+        }
+        let before = self.taken.suppressed.len();
+        self.taken
+            .suppressed
+            .retain(|suppressed| *suppressed != code);
+        if self.taken.suppressed.len() < before {
+            FilterResult::Intercept(None)
+        } else {
+            FilterResult::Forward
+        }
+    }
+
+    /// Hands the program with the keyboard `code`, pressed or let go of
+    /// with Super held, as though Ctrl were held in its place, and Shift
+    /// with it in a terminal, where Ctrl alone is the shell's (ADR 78).
+    /// The program is told the modifiers so for that key alone, and told
+    /// them as they are once it is let go of.
+    fn hand_on_as_ctrl(&mut self, code: Keycode, pressed: bool, serial: Serial, time: u32) {
+        let keyboard = self.keyboard.clone();
+        let focus = keyboard.current_focus();
+        let held = keyboard.modifier_state();
+        if pressed {
+            let mut told = held;
+            told.logo = false;
+            told.ctrl = true;
+            told.shift |= self.terminal_focused();
+            // What is sent of them is made from the keymap: they are set
+            // so, read back, and set as they were before anything else.
+            keyboard.set_modifier_state(told);
+            let told = keyboard.modifier_state();
+            keyboard.set_modifier_state(held);
+            self.tell_modifiers(focus.as_ref(), told, serial);
+            keyboard.input_forward(self, code, KeyState::Pressed, serial, time, false);
+        } else {
+            keyboard.input_forward(self, code, KeyState::Released, serial, time, false);
+            self.tell_modifiers(focus.as_ref(), held, serial);
+        }
+    }
+
+    /// Tells `focus`, if anything has the keyboard, that `modifiers` are
+    /// held.
+    fn tell_modifiers(&mut self, focus: Option<&Focus>, modifiers: ModifiersState, serial: Serial) {
+        if let Some(focus) = focus {
+            let seat = self.seat.clone();
+            focus.modifiers(&seat, self, modifiers, serial);
+        }
+    }
+
+    /// Whether the window with focus is a terminal, as `keyboard.terminals`
+    /// says.
+    fn terminal_focused(&self) -> bool {
+        let window = self
+            .desktop
+            .focused()
+            .and_then(|id| self.desktop.window(id));
+        let app_id = window.map_or("", |window| window.app_id.as_str());
+        let terminals = &self.config().general.keyboard.terminals;
+        terminals
+            .iter()
+            .any(|terminal| Pattern::new(terminal.as_str()).matches(app_id))
     }
 
     fn motion(&mut self, x: f64, y: f64, time: u32) {

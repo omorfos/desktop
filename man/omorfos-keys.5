@@ -31,7 +31,7 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBSuper+m\fR
 \fBmaximize\fR: Maximize the focused window, or restore it
 .TP
-\fBSuper+f\fR
+\fBCtrl+Super+f\fR
 \fBfullscreen\fR: Make the focused window fullscreen, or not
 .TP
 \fBSuper+h\fR
@@ -44,9 +44,15 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBswitch_windows_back\fR: The same, going back
 .TP
 \fBSuper+Tab\fR
-\fBnext_tab\fR: Show the next tab of the focused window
+\fBswitch_windows\fR: Open the switcher, or go on to the next window
 .TP
 \fBShift+Super+Tab\fR
+\fBswitch_windows_back\fR: The same, going back
+.TP
+\fBSuper+grave\fR
+\fBnext_tab\fR: Show the next tab of the focused window
+.TP
+\fBShift+Super+grave\fR
 \fBprevious_tab\fR: Show the previous tab of the focused window
 .TP
 \fBSuper+Right\fR
@@ -55,10 +61,10 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBSuper+Left\fR
 \fBprevious_workspace\fR: Show the workspace before
 .TP
-\fBSuper+n\fR
+\fBCtrl+Super+n\fR
 \fBnew_workspace\fR: Make a workspace after the last, and show it
 .TP
-\fBShift+Super+n\fR
+\fBCtrl+Shift+Super+n\fR
 \fBmove_to_new_workspace\fR: Send the focused window to a new workspace
 .TP
 \fBPrint\fR
@@ -78,6 +84,9 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 .TP
 \fBXF86Display\fR
 \fBnext_screens\fR: Arrange the screens the next way
+.TP
+\fBXF86LaunchA\fR
+\fBoverview\fR: Open the overview of the workspace, or close it
 .TP
 \fBXF86AudioRaiseVolume\fR
 \fB{ spawn: [omorfos\-session, volume, up] }\fR: Start a program, with no shell

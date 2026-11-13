@@ -54,7 +54,7 @@ use smithay::backend::renderer::{
 };
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::desktop::{LayerMap, LayerSurface, PopupManager, Space, Window, layer_map_for_output};
-use smithay::input::keyboard::{KeyboardHandle, Keycode, XkbConfig};
+use smithay::input::keyboard::{KeyboardHandle, XkbConfig};
 use smithay::input::pointer::{
     CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
 };
@@ -118,7 +118,7 @@ use crate::hold::Holder;
 use crate::holding::Holding;
 use crate::icons::WindowIcons;
 use crate::input::Drag;
-use crate::input::Focused;
+use crate::input::{Focused, Taken};
 use crate::ipc::Server;
 use crate::kept::Parts;
 use crate::lock::{Awake, Lock, Presence};
@@ -373,8 +373,8 @@ pub struct Compositor {
     /// How warm night light has the screens.
     pub(crate) night: Night,
 
-    /// Keys whose press was consumed, so their release is consumed too.
-    pub(crate) suppressed_keys: Vec<Keycode>,
+    /// What became of the keys pressed, for when they are let go of.
+    pub(crate) taken: Taken,
     pub(crate) pointer_location: Point<f64, Logical>,
     /// Whether the compositor is the one to draw the pointer.
     draws_pointer: bool,
@@ -554,7 +554,7 @@ impl Compositor {
                     problems: Vec::new(),
                     events: Vec::new(),
                     night: Night::default(),
-                    suppressed_keys: Vec::new(),
+                    taken: Taken::default(),
                     pointer_location: (0.0, 0.0).into(),
                     draws_pointer: false,
                     cursor: CursorImageStatus::default_named(),

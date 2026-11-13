@@ -74,6 +74,8 @@ config.yaml keyboard.layout
 config.yaml keyboard.options
 config.yaml keyboard.repeat_delay
 config.yaml keyboard.repeat_rate
+config.yaml keyboard.super_as_ctrl
+config.yaml keyboard.terminals
 config.yaml keyboard.variant
 config.yaml launcher
 config.yaml launcher.descriptions

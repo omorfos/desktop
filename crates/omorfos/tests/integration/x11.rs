@@ -303,6 +303,28 @@ fn a_window_of_a_program_written_for_x11_is_a_window_like_any_other() {
 }
 
 #[test]
+fn a_chord_with_super_reaches_a_program_written_for_x11_as_ctrl() {
+    let (mut session, program) = session();
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let gained = |event: &Told| matches!(event, Told::FocusIn(_)).then_some(());
+    told(&mut session, &program, gained);
+    let pressed = |event: &Told| match event {
+        Told::KeyPress(key) => Some((key.detail, key.state)),
+        _ => None,
+    };
+    press(&mut session, key::SUPER, true);
+    told(&mut session, &program, pressed);
+    press(&mut session, key::C, true);
+    let (which, held) = told(&mut session, &program, pressed);
+    assert_eq!(
+        (u32::from(which), held),
+        (key::C.raw(), KeyButMask::CONTROL)
+    );
+    press(&mut session, key::C, false);
+    press(&mut session, key::SUPER, false);
+}
+
+#[test]
 fn what_is_typed_goes_to_the_window_of_a_program_written_for_x11_that_has_focus() {
     let (mut session, program) = session();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);

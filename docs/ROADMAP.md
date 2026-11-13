@@ -1821,6 +1821,16 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
 - [x] The guide lists the built-in bindings in a table of their own, made
       from them by the test that makes the manual pages, in place of the
       keys its table of actions named by hand.
+- [x] Super is the desktop's (ADR 78): a chord with it that nothing binds
+      reaches the program as Ctrl, as Cmd does on macOS (Ctrl+Shift in a
+      terminal, by `keyboard.terminals`), unless `keyboard.super_as_ctrl`
+      is off. The switcher on Super+Tab as well as Alt+Tab, the tabs of a
+      group on Super+\`, fullscreen and new workspaces on Super+Ctrl, so
+      that find and a new window are the program's, and the overview on
+      the Mission Control key, F3 on a MacBook.
+- [ ] `keyboard-shortcuts-inhibit`, for a virtual machine, a remote
+      desktop or a game to have the whole keyboard, Super among it, while
+      its window has focus, as ADR 78 leaves them without it.
 - [ ] The guide gone through as a user would use it: a short way in for
       the first login (what is there, the keys that matter, where the
       files are, how to bind what has no key, such as the overview); the

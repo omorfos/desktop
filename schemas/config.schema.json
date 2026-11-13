@@ -330,7 +330,7 @@
     },
     "Keyboard": {
       "additionalProperties": false,
-      "description": "Keyboard layout and key repeat.",
+      "description": "Keyboard layout, key repeat, and what Super does for programs.",
       "properties": {
         "layout": {
           "default": "us",
@@ -357,6 +357,32 @@
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
+        },
+        "super_as_ctrl": {
+          "default": true,
+          "description": "Whether a chord with Super that nothing is bound to reaches the\nprogram as the same chord with Ctrl, as Super+C copies and Super+V\npastes, as Cmd does on macOS. Turn it off for such a chord to reach\nthe program as it is.",
+          "type": "boolean"
+        },
+        "terminals": {
+          "default": [
+            "foot",
+            "footclient",
+            "com.mitchellh.ghostty",
+            "kitty",
+            "Alacritty",
+            "org.wezfurlong.wezterm",
+            "org.gnome.Terminal",
+            "org.gnome.Ptyxis",
+            "org.gnome.Console",
+            "org.kde.konsole",
+            "com.gexperts.Tilix",
+            "XTerm"
+          ],
+          "description": "The programs that are terminals, by their application identifier,\nwhere `*` stands for any run of characters. A chord with Super\nreaches one as Ctrl+Shift, which terminals copy and paste with, so\nthat Ctrl+C still interrupts.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "variant": {
           "default": "",
