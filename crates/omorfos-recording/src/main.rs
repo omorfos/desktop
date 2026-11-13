@@ -10,7 +10,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use omorfos_ipc::help::{About, answered};
+use omorfos_ipc::help::answered;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
 /// How long it waits for PipeWire to be there again once it is not.
@@ -26,21 +26,9 @@ fn unheard(out: BorrowedFd<'_>) -> bool {
         .intersects(PollFlags::ERR | PollFlags::HUP)
 }
 
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-recording",
-    what: "Tells the omorfos desktop what records from a microphone or a camera, as PipeWire knows it.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "The omorfos compositor starts it, and reads what it writes.",
-    version: env!("CARGO_PKG_VERSION"),
-};
-
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_recording::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
     let stdout = io::stdout();

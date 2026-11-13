@@ -1,0 +1,40 @@
+.TH OMORFOS\-SCREENSHOT 1 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-screenshot \- Takes a picture of every screen of the omorfos desktop, and saves it or puts it on the clipboard
+.SH SYNOPSIS
+.PP
+\fBomorfos\-screenshot [\-\-window | \-\-pick] [\-\-to WHERE]\fR
+.SH DESCRIPTION
+.PP
+Only a program the compositor starts with \fBmay: [capture]\fR may take pictures, and only one with \fBmay: [clipboard]\fR may put them on the clipboard, as the \fBPrint\fR keys start it; run any other way it is refused and says so. \-\-pick needs the \fBpanel\fR and \fBoverlay\fR roles as well, and \-\-window \fBpanel\fR.
+.SH OPTIONS
+.TP
+\fB\-\-window\fR
+Take the window with focus, the whole of it, in place of the screens
+.TP
+\fB\-\-pick\fR
+Pick what to take first: drag over an area, or click a window or a screen
+.TP
+\fB\-\-to file|clipboard|both\fR
+Where the picture goes, whatever \fBscreenshots.destination\fR in config.yaml says
+.TP
+\fB\-h, \-\-help\fR
+Print this help
+.TP
+\fB\-V, \-\-version\fR
+Print the version
+.SH EXAMPLES
+.PP
+.nf
+.RS 4
+omorfos\-screenshot
+omorfos\-screenshot \-\-pick \-\-to clipboard
+omorfos\-screenshot \-\-window \-\-to both
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

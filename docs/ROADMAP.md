@@ -1798,16 +1798,24 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       columns; and a test of each that it answers, run where starting
       would fail.
 - [x] `omorfosctl action` alone lists every action, in groups, with what
-      it takes and what it does, from one list in `omorfos_ipc::help`
+      it takes and what it does, from one list in `omorfos_ipc::actions`
       that a test holds to every action the configuration promises; and
       an action given one word, as `tile left`, is built as keys.yaml
       takes it, where it was refused.
-- [ ] A manual page for each program, `omorfos(1)`, `omorfosctl(1)` and
-      the rest, and for the files a user writes, `config.yaml`,
-      `keys.yaml`, `rules.yaml`, `menu.yaml` and `theme.css` in section
-      5, made from what `--help` and the schemas already say so that the
-      two cannot disagree, installed by `make install` and in the `.deb`
-      and the AUR package, and checked by a test like the links'.
+- [x] A manual page for each program, `omorfos(1)`, `omorfosctl(1)` and
+      the rest, and for the files a user writes in section 5,
+      `omorfos-config(5)` for `config.yaml` and `omorfos-keys(5)`,
+      `omorfos-rules(5)`, `omorfos-menu(5)` and `omorfos-theme(5)`, made
+      from what `--help` and the schemas say, so that the two cannot
+      disagree, and kept in `man/` by tests that make them again (ADR 77).
+      Installed by `make install`, the `.deb`, the AUR package and the
+      release's tarball, which a test checks, with a page for every program
+      and every page a page points to. Doing so found the `.deb` without
+      `omorfos-pinentry` and the tarball without `omorfos-hold` and
+      `omorfos-relay`, now in both, which the same test checks.
+- [ ] The built-in bindings in `omorfos-keys(5)`, and the built-in menu in
+      `omorfos-menu(5)`: today the pages tell what may be written, but not
+      what is there before anything is.
 - [ ] The guide gone through as a user would use it: a short way in for
       the first login (what is there, the keys that matter, where the
       files are, how to bind what has no key, such as the overview); the

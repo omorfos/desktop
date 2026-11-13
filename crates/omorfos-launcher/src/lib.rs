@@ -20,7 +20,20 @@ use std::path::Path;
 pub use apps::{App, directories, installed};
 pub use client::{Failure, Launcher};
 pub use omorfos_icons::Icons;
+use omorfos_ipc::help::About;
 pub use picker::{Key, Outcome, Picker};
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-launcher",
+    what: "The launcher of the omorfos desktop: type a program's name to start it.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it when the launcher is asked for.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Runs the launcher in the session the environment describes, until a
 /// program is picked or it is dismissed.

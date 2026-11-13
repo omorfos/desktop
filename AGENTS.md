@@ -74,7 +74,9 @@ sudo make install PROFILE=nightly
 ```
 
 Packages are built with `--release`, as plain `make` does. The `Makefile`
-lists the programs; a new one is added there, and to the packaging.
+lists the programs; a new one is added there, and to the packaging, with
+an `About` in its library and its page among those the compositor's tests
+make.
 
 ## Rules
 
@@ -130,6 +132,10 @@ lists the programs; a new one is added there, and to the packaging.
   `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
   A commit that takes a line away from that list is a breaking change and
   is marked as one (ADR 73); CI fails one that is not.
+- **The manual pages in `man/` are made, not written** (ADR 77): from each
+  program's `About`, which its `--help` is made from too, and from the
+  schemas. After changing either, make them again:
+  `OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page`.
 - **Record significant decisions** as a new ADR in `docs/adr/`, and keep
   `docs/ROADMAP.md` current when a task is finished.
 

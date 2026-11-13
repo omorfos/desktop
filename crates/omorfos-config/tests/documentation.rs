@@ -1,7 +1,8 @@
-//! Keeps the examples in `docs/CONFIGURATION.md` valid.
+//! Keeps the examples in `docs/CONFIGURATION.md` valid, and the manual
+//! pages of the files, which end with them, made.
 
 use std::path::Path;
-use std::{fs, mem};
+use std::{env, fs, mem};
 
 use omorfos_config::{Config, FILES};
 use tempfile::TempDir;
@@ -95,4 +96,40 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
     assert_eq!(bound("Super+h"), None);
     assert_eq!(config.rules.rules.len(), 6);
     assert_eq!(config.menu.items.len(), 3);
+}
+
+/// The pages of the files in `man/`, made from the schemas and the guide's
+/// examples. Make them again after changing either with:
+///
+/// ```sh
+/// OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page
+/// ```
+#[cfg(feature = "schema")]
+#[test]
+fn every_manual_page_of_a_file_is_made_from_its_schema_and_the_guide() {
+    let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let guide = fs::read_to_string(top.join("docs/CONFIGURATION.md")).unwrap();
+    let examples = examples(&guide);
+    let example = |file: &str| {
+        let found = examples.iter().find(|(name, _)| name == file);
+        found.map(|(_, text)| text.as_str()).unwrap_or_default()
+    };
+    let examples = omorfos_config::manual::Examples {
+        config: example("config.yaml"),
+        keys: example("keys.yaml"),
+        rules: example("rules.yaml"),
+        menu: example("menu.yaml"),
+        theme: example("theme.css"),
+    };
+    let bless = env::var_os("OMORFOS_BLESS").is_some();
+    for (name, made) in omorfos_config::manual::pages(&examples) {
+        let path = top.join("man").join(name);
+        let kept = omorfos_ipc::manual::kept(&path, &made, bless).unwrap();
+        assert!(
+            kept,
+            "{} is out of date; make it again with \
+             `OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page`",
+            path.display(),
+        );
+    }
 }

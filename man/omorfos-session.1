@@ -1,0 +1,65 @@
+.TH OMORFOS\-SESSION 1 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-session \- What an omorfos session does besides draw: locking before sleep, starting programs at login, the volume, the brightness and what is playing
+.SH SYNOPSIS
+.PP
+\fBomorfos\-session [COMMAND]\fR
+.SH DESCRIPTION
+.PP
+Without a command it watches over the session for as long as it lasts, locking the screen before the machine sleeps; the compositor starts it so at login. With one, it does what a key or the menu asks, and can be bound to keys in keys.yaml as \fBspawn: [omorfos\-session, volume, up]\fR.
+.SH COMMANDS
+.TP
+\fBvolume up|down|mute\fR
+Turn the sound that plays up or down by five hundredths, or mute it and back
+.TP
+\fBmicrophone mute\fR
+Mute the microphone, or hear it again
+.TP
+\fBbrightness up|down\fR
+Make the screen a twentieth brighter or darker, never quite dark
+.TP
+\fBmedia play\-pause\fR
+Tell the player that is playing, or else one that is paused, to play or to pause
+.TP
+\fBmedia next|previous|stop\fR
+Tell it to go on to the next, back to the one before, or stop
+.TP
+\fBsleep|restart|shut\-down\fR
+Ask logind for the machine to sleep, start again or turn off
+.TP
+\fBlog\-out\fR
+End the session, as the compositor ends it
+.TP
+\fBoffered\fR
+Print which of sleep, restart, shut\-down and log\-out a locked screen may offer, and what holds the machine
+.TP
+\fBautostart\fR
+Start what is to start with the session, as at login
+.TP
+\fBforget ssh|gpg...\fR
+Have ssh\-agent forget its keys, or gpg\-agent its passphrases
+.SH OPTIONS
+.TP
+\fB\-\-locked\fR
+With sleep, restart or shut\-down: asked from a locked screen, so done only where no password is asked for
+.TP
+\fB\-h, \-\-help\fR
+Print this help
+.TP
+\fB\-V, \-\-version\fR
+Print the version
+.SH EXAMPLES
+.PP
+.nf
+.RS 4
+omorfos\-session volume up
+omorfos\-session media next
+omorfos\-session forget ssh gpg
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

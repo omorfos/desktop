@@ -1,0 +1,66 @@
+.TH OMORFOSCTL 1 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfosctl \- Control a running omorfos compositor
+.SH SYNOPSIS
+.PP
+\fBomorfosctl [\-\-socket PATH] <COMMAND>\fR
+.SH DESCRIPTION
+.PP
+It exits with 0 on success, 1 on failure or if \fBconfig check\fR found problems, and 2 for a usage error.
+.SH COMMANDS
+.TP
+\fBversion\fR
+Print the running compositor's version
+.TP
+\fBstate\fR
+Print workspaces, windows and problems as JSON
+.TP
+\fBscreens\fR
+Print the screens, where they stand and their modes
+.TP
+\fBframes\fR
+Print how long each screen's last frame took to draw
+.TP
+\fBwatch\fR
+Print the state, one JSON line each time it changes
+.TP
+\fBaction NAME [ARG]...\fR
+Perform an action, as named in keys.yaml; \fBaction\fR alone lists them
+.TP
+\fBactivate ID\fR
+Switch to a window, by the id shown in \fBstate\fR
+.TP
+\fBconfig check\fR
+Print configuration problems; fails if there are any
+.TP
+\fBconfig reload\fR
+Re\-read the configuration, then check it
+.TP
+\fBreport [\-\-whole]\fR
+Print what a report of a fault needs, for you to look over before handing it on: versions, graphics cards, screens, state, configuration and the session's logs. Window titles and paths in your home are left out unless \-\-whole is given. Works without a running compositor
+.SH OPTIONS
+.TP
+\fB\-\-socket PATH\fR
+The compositor's socket [default: $OMORFOS_SOCKET, or omorfos\-$WAYLAND_DISPLAY.sock in $XDG_RUNTIME_DIR]
+.TP
+\fB\-h, \-\-help\fR
+Print this help
+.TP
+\fB\-V, \-\-version\fR
+Print the version
+.SH EXAMPLES
+.PP
+.nf
+.RS 4
+omorfosctl action close
+omorfosctl action workspace 2
+omorfosctl action spawn foot \-\-title scratch
+omorfosctl report > omorfos\-report.txt
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

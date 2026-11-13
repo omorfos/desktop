@@ -5,23 +5,11 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, io};
 
-use omorfos_ipc::help::{About, answered};
-
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-launcher",
-    what: "The launcher of the omorfos desktop: type a program's name to start it.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "The omorfos compositor starts it when the launcher is asked for.",
-    version: env!("CARGO_PKG_VERSION"),
-};
+use omorfos_ipc::help::answered;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_launcher::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
     let outcome = omorfos_launcher::start(&|name| env::var_os(name));

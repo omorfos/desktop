@@ -6,23 +6,11 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, io};
 
-use omorfos_ipc::help::{About, answered};
-
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-wallpaper",
-    what: "The wallpaper of the omorfos desktop: a picture or a colour behind the windows of each screen.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "The omorfos compositor starts it, as `wallpaper` in config.yaml says.",
-    version: env!("CARGO_PKG_VERSION"),
-};
+use omorfos_ipc::help::answered;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_wallpaper::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
     // The wallpaper runs until the session ends, so it only ever returns

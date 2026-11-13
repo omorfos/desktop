@@ -26,6 +26,7 @@ pub mod actions;
 mod client;
 pub mod help;
 pub mod hold;
+pub mod manual;
 mod message;
 pub mod protocols;
 pub mod relay;

@@ -1,0 +1,26 @@
+.TH OMORFOS\-LOCK 1 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-lock \- The lock screen of the omorfos desktop, which asks PAM for each way of unlocking at once
+.SH SYNOPSIS
+.PP
+\fBomorfos\-lock [COMMAND]\fR
+.SH DESCRIPTION
+.PP
+Without a command it locks the session at once. The \fBlock\fR action starts it so, as \fBlocker\fR in config.yaml names it, and so does the session before the machine sleeps.
+.SH COMMANDS
+.TP
+\fBcheck SERVICE USER\fR
+Ask PAM's SERVICE whether USER may unlock, as the helper the lock screen starts for each way of unlocking; not for running by hand
+.SH OPTIONS
+.TP
+\fB\-h, \-\-help\fR
+Print this help
+.TP
+\fB\-V, \-\-version\fR
+Print the version
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

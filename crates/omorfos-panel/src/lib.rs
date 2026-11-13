@@ -18,7 +18,20 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 pub use bar::Bar;
+use omorfos_ipc::help::About;
 pub use panel::{Failure, Panel};
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-panel",
+    what: "The panel of the omorfos desktop: workspaces and windows along the edge of a screen.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, and again if it ends.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Runs the panel in the session the environment describes, until it
 /// cannot go on, and returns why.

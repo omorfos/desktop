@@ -7,21 +7,8 @@ use std::io::{self, Write};
 use std::os::fd::AsFd;
 use std::process::ExitCode;
 
+use omorfos_ipc::help::help;
 use omorfos_relay::Relay;
-
-const USAGE: &str = "\
-Stands between Wayland programs and the omorfos compositor, so that the
-compositor can be started again without closing them.
-
-Usage: omorfos-relay [OPTIONS]
-
-It is started by omorfos-hold, which hands it what it serves: there is no
-need to start it by hand.
-
-Options:
-  -h, --help     Print this help
-  -V, --version  Print the version
-";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
@@ -30,7 +17,7 @@ fn main() -> ExitCode {
     match arguments.as_slice() {
         [] => relay(&mut err),
         ["-h" | "--help"] => {
-            let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(help(&omorfos_relay::ABOUT).as_bytes());
             ExitCode::SUCCESS
         }
         ["-V" | "--version"] => {
@@ -40,7 +27,8 @@ fn main() -> ExitCode {
         [unexpected, ..] => {
             let _ = writeln!(
                 err,
-                "omorfos-relay: unexpected argument `{unexpected}`\n\n{USAGE}"
+                "omorfos-relay: unexpected argument `{unexpected}`\n\n{}",
+                help(&omorfos_relay::ABOUT)
             );
             ExitCode::from(2)
         }

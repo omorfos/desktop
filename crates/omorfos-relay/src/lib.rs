@@ -24,11 +24,26 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::Duration;
 
+use omorfos_ipc::help::About;
 use omorfos_ipc::relay::{self, Hand, Program, Received, Started};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
 use crate::link::{Ended, Link, Way};
 use crate::sandbox::Sandbox;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-relay",
+    what: "Stands between Wayland programs and the omorfos compositor, so that the compositor \
+           can be started again without closing them.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "It is started by omorfos-hold, which hands it what it serves: there is no need to start \
+            it by hand.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// What a connection being ready to read is, or its other end gone.
 const READABLE: PollFlags = PollFlags::IN.union(PollFlags::HUP).union(PollFlags::ERR);

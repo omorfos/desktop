@@ -5,46 +5,68 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use omorfos_ipc::help::{About, help};
 use omorfos_ipc::{Client, Drawing, Reply, Request, State};
 use serde_json::{Value, json};
 
 use crate::report::{self, Places};
 
-const USAGE: &str = "\
-Control a running omorfos compositor.
-
-Usage: omorfosctl [--socket PATH] <COMMAND>
-
-Commands:
-  version               Print the compositor's version
-  state                 Print workspaces, windows and problems as JSON
-  screens               Print the screens, where they stand and their modes
-  frames                Print how long each screen's last frame took to draw
-  watch                 Print the state, one JSON line each time it changes
-  action NAME [ARG]...  Perform an action, as named in keys.yaml; `action`
-                        alone lists them
-  activate ID           Switch to a window, by the id shown in `state`
-  config check          Print configuration problems; fails if there are any
-  config reload         Re-read the configuration, then check it
-  report [--whole]      Print what a report of a fault needs, for you to look
-                        over before handing it on: versions, graphics cards,
-                        screens, state, configuration and the session's
-                        logs. Window titles and paths in your home are left
-                        out unless --whole is given. Works without a
-                        running compositor
-
-Options:
-      --socket PATH     The compositor's socket [default: $OMORFOS_SOCKET, or
-                        omorfos-$WAYLAND_DISPLAY.sock in $XDG_RUNTIME_DIR]
-  -h, --help            Print this help
-  -V, --version         Print omorfosctl's own version
-
-Examples:
-  omorfosctl action close
-  omorfosctl action workspace 2
-  omorfosctl action spawn foot --title scratch
-  omorfosctl report > omorfos-report.txt
-";
+/// What it says of itself, when asked and in its manual page.
+pub(crate) const ABOUT: About = About {
+    name: "omorfosctl",
+    what: "Control a running omorfos compositor.",
+    usage: " [--socket PATH] <COMMAND>",
+    commands: &[
+        ("version", "Print the running compositor's version"),
+        ("state", "Print workspaces, windows and problems as JSON"),
+        (
+            "screens",
+            "Print the screens, where they stand and their modes",
+        ),
+        (
+            "frames",
+            "Print how long each screen's last frame took to draw",
+        ),
+        (
+            "watch",
+            "Print the state, one JSON line each time it changes",
+        ),
+        (
+            "action NAME [ARG]...",
+            "Perform an action, as named in keys.yaml; `action` alone lists them",
+        ),
+        (
+            "activate ID",
+            "Switch to a window, by the id shown in `state`",
+        ),
+        (
+            "config check",
+            "Print configuration problems; fails if there are any",
+        ),
+        ("config reload", "Re-read the configuration, then check it"),
+        (
+            "report [--whole]",
+            "Print what a report of a fault needs, for you to look over before handing it on: \
+             versions, graphics cards, screens, state, configuration and the session's logs. \
+             Window titles and paths in your home are left out unless --whole is given. Works \
+             without a running compositor",
+        ),
+    ],
+    options: &[(
+        "--socket PATH",
+        "The compositor's socket [default: $OMORFOS_SOCKET, or \
+         omorfos-$WAYLAND_DISPLAY.sock in $XDG_RUNTIME_DIR]",
+    )],
+    examples: &[
+        "omorfosctl action close",
+        "omorfosctl action workspace 2",
+        "omorfosctl action spawn foot --title scratch",
+        "omorfosctl report > omorfos-report.txt",
+    ],
+    notes: "It exits with 0 on success, 1 on failure or if `config check` found problems, and 2 \
+            for a usage error.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// What the user asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -160,13 +182,13 @@ pub(crate) fn run(
     let (chosen, command) = match parse(arguments) {
         Ok(parsed) => parsed,
         Err(problem) => {
-            let _ = writeln!(err, "omorfosctl: {problem}\n\n{USAGE}");
+            let _ = writeln!(err, "omorfosctl: {problem}\n\n{}", help(&ABOUT));
             return ExitCode::from(2);
         }
     };
     match command {
         Command::Help => {
-            let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(help(&ABOUT).as_bytes());
             return ExitCode::SUCCESS;
         }
         Command::Actions => {
@@ -524,6 +546,21 @@ mod tests {
             assert_eq!(code, ExitCode::SUCCESS);
             assert_eq!(out, format!("omorfosctl {}\n", env!("CARGO_PKG_VERSION")));
         }
+    }
+
+    /// How the manual pages are made again.
+    const AGAIN: &str =
+        "make it again with `OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page`";
+
+    /// Kept here, as the other programs' pages are kept by the compositor's
+    /// tests, through their libraries, which omorfosctl has none of.
+    #[test]
+    fn its_manual_page_is_made_from_what_it_says() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../man/omorfosctl.1");
+        let made = omorfos_ipc::manual::page(&ABOUT);
+        let bless = std::env::var_os("OMORFOS_BLESS").is_some();
+        let kept = omorfos_ipc::manual::kept(&path, &made, bless).unwrap();
+        assert!(kept, "man/omorfosctl.1 is out of date; {AGAIN}");
     }
 
     #[test]

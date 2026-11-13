@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use omorfos_ipc::help::About;
 use omorfos_ipc::hold::{self, Heard, Told, Word};
 use omorfos_ipc::relay::{self, Hand};
 use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
@@ -43,6 +44,20 @@ use crate::stood::Stood;
 pub use exec::give_back;
 pub use policy::{Next, Policy, Which};
 pub use socket::Socket;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-hold",
+    what: "Holds an omorfos session while its compositor is started again.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "It is started by omorfos itself, from the login screen, and starts omorfos beside it in \
+            turn, as `omorfos --held`, and again whenever it ends: there is no need to start it \
+            by hand.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// What the holder holds for the session.
 #[derive(Debug)]

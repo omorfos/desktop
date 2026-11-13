@@ -33,6 +33,7 @@ pub use door::NAME as DOOR;
 use door::{Door, Passing};
 pub use helper::Helper;
 use omorfos_config::Store;
+use omorfos_ipc::help::About;
 pub use omorfos_shell::said::{Said, heard};
 pub use omorfos_shell::shake::{SHAKE, SHAKING, shaken};
 pub use people::{Identity, Person, chosen, named, users};
@@ -44,6 +45,31 @@ pub use prompt::{
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
 use zbus::message::Message;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-ask",
+    what: "What asks the user of an omorfos session for a secret: polkit's agent, in the sealed prompt.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, with the `ask` role.",
+    version: env!("CARGO_PKG_VERSION"),
+};
+
+/// What it says of itself, when asked and in its manual page.
+pub const PINENTRY: About = About {
+    name: "omorfos-pinentry",
+    what: "What gpg-agent starts to ask for a passphrase, in the sealed prompt of the omorfos desktop.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "gpg-agent starts it where `pinentry-program` in gpg-agent.conf names it, and\n\
+            speaks with it on its standard input and output.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Why the program cannot go on, in words for the user.
 pub type Failure = Box<dyn Error + Send + Sync>;

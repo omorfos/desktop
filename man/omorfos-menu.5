@@ -1,0 +1,242 @@
+.TH OMORFOS\-MENU 5 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-menu \- menu.yaml, the root menu of the omorfos desktop
+.SH SYNOPSIS
+.PP
+\fB$XDG_CONFIG_HOME/omorfos/menu.yaml\fR, usually \fB~/.config/omorfos/menu.yaml\fR
+.SH DESCRIPTION
+.PP
+The root menu, which the \fBshow_menu\fR action opens at the pointer: its entries, each a label and an action, or a menu of its own.
+.PP
+It is read again as soon as it is saved. If it has a mistake, its contents before are kept, and the mistake is shown among the notifications and printed by \fBomorfosctl config check\fR, with its line and column; the other files still apply.
+.SH KEYS
+.TP
+\fBitems\fR
+The entries of the root menu, top to bottom.
+.RS
+.TP
+\fBseparator\fR
+A dividing line.
+.RE
+.TP
+\fBitems[].action\fR
+What choosing the item does. Give either this or \fBitems\fR.
+.RS
+.TP
+\fBclose\fR
+Ask the focused window to close.
+.TP
+\fBmaximize\fR
+Toggle the focused window between maximized and its normal size.
+.TP
+\fBfullscreen\fR
+Toggle fullscreen for the focused window.
+.TP
+\fBminimize\fR
+Hide the focused window.
+.TP
+\fBshade\fR
+Roll the focused window up into its titlebar, or let it down again.
+.TP
+\fBkeep_above\fR
+Keep the focused window above the others, or stop keeping it there.
+.TP
+\fBstick\fR
+Have the focused window on whichever workspace its screen is showing, or leave it on the one it is on.
+.TP
+\fBfocus_next\fR
+Focus the next window on the workspace.
+.TP
+\fBfocus_previous\fR
+Focus the previous window on the workspace.
+.TP
+\fBswitch_windows\fR
+Open the switcher at the window used before the one in use, or, while it is open, go on to the next. Letting go of the keys held with it chooses the window it is at.
+.TP
+\fBswitch_windows_back\fR
+The same, going back: the switcher opens at the window used longest ago.
+.TP
+\fBoverview\fR
+Open the overview, every window of the workspace side by side under the workspaces of the screen, to pick one from; or close it.
+.TP
+\fBnext_tab\fR
+Switch to the tab after the active one in the focused window's group.
+.TP
+\fBprevious_tab\fR
+Switch to the tab before the active one in the focused window's group.
+.TP
+\fBnew_workspace\fR
+Make a workspace after the last and switch to it. It goes again once it is empty and another is shown.
+.TP
+\fBnext_workspace\fR
+Switch to the following workspace.
+.TP
+\fBprevious_workspace\fR
+Switch to the preceding workspace.
+.TP
+\fBmove_to_new_workspace\fR
+Send the focused window to a workspace made for it, after the last.
+.TP
+\fBmove_to_next_output\fR
+Send the focused window to the next screen.
+.TP
+\fBshow_menu\fR
+Open the root menu at the pointer.
+.TP
+\fBshow_launcher\fR
+Open the launcher, to start a program by typing its name.
+.TP
+\fBabout\fR
+Show "About omorfos": its version, and what it is made with that is someone else's. Asked again while it is shown, it goes.
+.TP
+\fBlock\fR
+Lock the session, with the program \fBlocker\fR in config.yaml names.
+.TP
+\fBstay_awake\fR
+Keep the session from locking, the screens from going off and the machine from sleeping when the user is away, until asked again; or, while it is kept so, let it go.
+.TP
+\fBnight_light\fR
+Make the screens warm now if they are not, as warm as \fBnight_light\fR says, or as they are if they are, until night light next turns them by the time of day.
+.TP
+\fBnext_layout\fR
+Type with the next of the keyboard's layouts, and after the last with the first again.
+.TP
+\fBnext_screens\fR
+Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone. Each is kept only if the user says so in time.
+.TP
+\fBreload_config\fR
+Re\-read the configuration now.
+.TP
+\fBrestart_compositor\fR
+Start the compositor again, keeping the login, as \fBomorfos\-hold\fR does when it ends: the newest version installed, with the windows closed.
+.TP
+\fBquit\fR
+End the session.
+.RE
+.TP
+\fBitems[].action.focus\fR
+A half of the screen.
+.RS
+.TP
+\fBleft\fR
+The left half.
+.TP
+\fBright\fR
+The right half.
+.TP
+\fBtop\fR
+The top half, or upwards.
+.TP
+\fBbottom\fR
+The bottom half, or downwards.
+.RE
+.TP
+\fBitems[].action.join_workspace\fR
+At least 0.
+.TP
+\fBitems[].action.move_to_workspace\fR
+From 1 to 32.
+.TP
+\fBitems[].action.spawn\fR
+A program to start with the session: its name and arguments, or that and what it may do.
+.TP
+\fBitems[].action.spawn.may\fR
+What it may do that an ordinary program may not.
+.RS
+.TP
+\fBpanel\fR
+Put surfaces on the screen outside windows and keep room for them, and list the windows.
+.TP
+\fBoverlay\fR
+Cover the screen and take the keyboard while it does.
+.TP
+\fBlock\fR
+Lock the session.
+.TP
+\fBask\fR
+Show the prompt that asks for a secret.
+.TP
+\fBcapture\fR
+Take pictures of the screen and of windows.
+.TP
+\fBclipboard\fR
+Read and set the clipboard at any time.
+.TP
+\fBinput\fR
+Type and click as the user, and see what is typed into fields.
+.TP
+\fBscreens\fR
+Arrange the screens and change their colour.
+.RE
+.TP
+\fBitems[].action.spawn.run\fR
+A program followed by its arguments, run without a shell.
+.TP
+\fBitems[].action.stay_awake_for\fR
+From 1 to 86400.
+.TP
+\fBitems[].action.swap\fR
+A half of the screen.
+.RS
+.TP
+\fBleft\fR
+The left half.
+.TP
+\fBright\fR
+The right half.
+.TP
+\fBtop\fR
+The top half, or upwards.
+.TP
+\fBbottom\fR
+The bottom half, or downwards.
+.RE
+.TP
+\fBitems[].action.tile\fR
+A half of the screen.
+.RS
+.TP
+\fBleft\fR
+The left half.
+.TP
+\fBright\fR
+The right half.
+.TP
+\fBtop\fR
+The top half, or upwards.
+.TP
+\fBbottom\fR
+The bottom half, or downwards.
+.RE
+.TP
+\fBitems[].action.workspace\fR
+From 1 to 32.
+.TP
+\fBitems[].icon\fR
+What stands before the label in place of what is chosen for it: the name of an icon of the icon theme, or the path of a picture.
+.TP
+\fBitems[].items\fR
+A nested menu. Give either this or \fBaction\fR.
+.TP
+\fBitems[].label\fR
+The text shown.
+.SH EXAMPLE
+.PP
+.nf
+.RS 4
+items:
+  \- label: Terminal
+    action: { spawn: [foot] }
+  \- separator
+  \- label: Session
+    items:
+      \- { label: Reload configuration, action: reload_config }
+      \- { label: Quit, action: quit }
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-theme\fR(5)

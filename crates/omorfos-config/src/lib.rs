@@ -24,6 +24,8 @@ mod diagnostic;
 mod general;
 mod gradient;
 mod keys;
+#[cfg(feature = "schema")]
+pub mod manual;
 mod menu;
 mod night;
 mod paths;

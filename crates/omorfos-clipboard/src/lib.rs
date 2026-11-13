@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use omorfos_ipc::help::About;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat};
 use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
@@ -38,6 +39,18 @@ use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_manager_v1::ExtDataControlManagerV1,
     ext_data_control_offer_v1::{self as offer, ExtDataControlOfferV1},
     ext_data_control_source_v1::{self as source, ExtDataControlSourceV1},
+};
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-clipboard",
+    what: "Keeps what is copied in the omorfos desktop after the program it was copied from closes.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, with the role that lets it keep the clipboard.",
+    version: env!("CARGO_PKG_VERSION"),
 };
 
 /// Why the keeper could not go on.

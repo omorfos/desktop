@@ -1,0 +1,492 @@
+.TH OMORFOS\-THEME 5 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-theme \- theme.css, how the omorfos desktop looks
+.SH SYNOPSIS
+.PP
+\fB$XDG_CONFIG_HOME/omorfos/theme.css\fR, usually \fB~/.config/omorfos/theme.css\fR
+.SH DESCRIPTION
+.PP
+The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, perhaps in some state, and gives them properties. Yours is laid over the built\-in theme, so you only write what you want changed. A rule of yours always wins over a built\-in one; among your own, the one that names more states wins, and then the later one. It is read again as soon as it is saved, and kept as it was before if it has a mistake.
+.SH PARTS
+.PP
+\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
+.SH STATES
+.PP
+\fB:focus\fR, \fB:active\fR, \fB:hover\fR, \fB:urgent\fR, \fB:closing\fR
+.SH THE BUILT\-IN THEME
+.PP
+Every part there is:
+.PP
+.nf
+.RS 4
+/* The built\-in theme of omorfos, drawn in its design language (DESIGN.md).
+ *
+ * Your own theme.css is laid over this one: a rule of yours always wins
+ * over a rule here, so you only write what you want changed. The quickest
+ * change is to give the variables below other values. */
+
+:root {
+  \-\-background: #0c1226;     /* behind everything, where there is no wallpaper */
+  \-\-surface: #141c38;        /* titlebars, menus and the panel */
+  \-\-surface\-dim: #10172f;    /* the same, where focus is elsewhere */
+  \-\-surface\-raised: #243364; /* a field, and a row under the pointer */
+  \-\-text: #e6eaf5;
+  \-\-text\-dim: #9aa4c7;       /* what is beside the point */
+  \-\-border: #2b3a6b;         /* a hairline between or around surfaces */
+  \-\-border\-strong: #7482b3;  /* the edge of what takes input */
+  \-\-accent: #22d3ee;         /* what has focus, and what is picked out */
+  \-\-on\-accent: #0c1226;      /* text on the accent */
+  \-\-accent\-tint: rgba(34, 211, 238, 0.2); /* behind what is on, faintly */
+  \-\-danger: #f8616d;         /* close, and what is urgent or wrong */
+  \-\-warning: #fde047;        /* minimize */
+  \-\-success: #a3e635;        /* maximize */
+  \-\-capture: #f8616d;        /* the screen is being captured */
+  /* Glass: the surface, at as much of itself as text on it needs to be
+   * read over anything, and light along its top as on the rim of a sheet.
+   * Nothing here is glass until what it costs has been measured, but for
+   * "About", which is seldom shown;
+   *   menu {
+   *     background: var(\-\-glass\-thick);
+   *     backdrop\-filter: blur(32px);
+   *     box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
+   *   }
+   * makes a menu glass. Give the surface another colour, and these too. */
+  \-\-glass\-thin: rgba(20, 28, 56, 0.7);    /* the panel: text on it, never dim */
+  \-\-glass\-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
+  \-\-glass\-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
+  \-\-glass\-rim: rgba(255, 255, 255, 0.06); /* the light along the top */
+
+  /* What programs are told to write code and terminals in, at the size of
+   * the rest: omorfos writes nothing in it itself. */
+  \-\-font\-monospace: JetBrains Mono, monospace;
+}
+
+/* Colours take a moment to change when a part's state does. To have them
+ * change at once, write `* { transition: none; }` in your theme. */
+* {
+  font\-family: Inter, sans\-serif; /* Inter where it is installed */
+  font\-size: 11pt;
+  transition: 120ms ease\-out;
+}
+
+/* What comes onto the screen takes a little longer than a colour does to
+ * change, and leaves quicker than it came, so that what has been dismissed
+ * is not in the way of what is next: it comes over its own transition,
+ * from how it is in @starting\-style, a little small and not yet seen; and
+ * it goes over the one it has :closing, to how it is then, a little less
+ * small. `scale` is only for this: how large a part is drawn as it comes
+ * and goes. */
+window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+  transition: 180ms ease\-out;
+}
+window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
+notification:closing, launcher:closing, switcher:closing, question:closing, about:closing {
+  transition: 120ms ease\-in;
+  scale: 98%;
+  opacity: 0;
+}
+@starting\-style {
+  window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+    scale: 96%;
+    opacity: 0;
+  }
+}
+/* What dims the screen behind the launcher only fades, being as large as
+ * the screen. */
+launcher\-backdrop:closing { opacity: 0; }
+@starting\-style {
+  launcher\-backdrop { opacity: 0; }
+}
+
+desktop { background: var(\-\-background); }
+
+/* A window's frame. Its sizes are taken from the rule without a state.
+ * Its edge is a hairline with focus or without, as programs that draw
+ * their own draw it: focus is in the titlebar, and in the shadow. The
+ * shadow says the window floats over the desktop, and how far: the one
+ * with focus is lifted higher. A shadow is black and falls straight down;
+ * `box\-shadow: none` does without it. */
+window {
+  border: 1px solid var(\-\-border);
+  border\-radius: 12px;
+  box\-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+  /* What is behind a program, blurred where it asks to be see\-through.
+   * `backdrop\-filter: none` gives programs no blur. */
+  backdrop\-filter: blur(24px);
+}
+window:focus { box\-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+
+/* The line between windows that share a workspace. */
+tile\-line { color: var(\-\-border); }
+
+/* A window offered in a part with nothing in it: the box round its picture
+ * and its title, and the title, brighter under the pointer. */
+offer {
+  color: var(\-\-text\-dim);
+  border: 1px solid var(\-\-border);
+  border\-radius: 10px;
+}
+offer:hover { color: var(\-\-text); }
+
+titlebar {
+  height: 28px;
+  background: var(\-\-surface\-dim);
+  color: var(\-\-text\-dim);
+}
+titlebar:focus {
+  background: var(\-\-surface);
+  color: var(\-\-text);
+}
+
+/* A title in a titlebar. Where there are several, the border on the left
+ * is the line between one tab and the next. */
+tab {
+  padding: 0 12px;
+  background: var(\-\-surface\-dim);
+  color: var(\-\-text\-dim);
+  border\-left: 1px solid var(\-\-border);
+}
+tab:active { border\-bottom: 2px solid var(\-\-border); }
+tab:active:focus {
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border\-bottom\-color: var(\-\-accent);
+}
+
+/* The buttons at the right of a titlebar: minimize, maximize, close. Each
+ * is a box in its share of the titlebar, as wide as its min\-width with its
+ * margin around it, and its color is that of the sign drawn on it. They
+ * are :focus with their frame and :hover under the pointer. Give one a
+ * min\-width of 0 to do without it. */
+button\-close, button\-maximize, button\-minimize {
+  min\-width: 12px;
+  margin: 8px 4px;
+  border\-radius: 6px;
+  background: var(\-\-border);
+  color: transparent;
+}
+button\-close { margin\-right: 12px; }
+button\-close:focus, button\-close:hover { background: var(\-\-danger); }
+button\-maximize:focus, button\-maximize:hover { background: var(\-\-success); }
+button\-minimize:focus, button\-minimize:hover { background: var(\-\-warning); }
+button\-close:hover, button\-maximize:hover, button\-minimize:hover {
+  color: var(\-\-background);
+}
+
+/* What floats over windows casts a deeper shadow than they do. */
+menu {
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border);
+  border\-radius: 10px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+/* A sign is 8 from the row's start, from its top and bottom, and from its
+ * label. */
+menu\-item {
+  height: 32px;
+  padding: 0 12px 0 8px;
+  color: var(\-\-text);
+}
+menu\-item:hover { background: var(\-\-surface\-raised); }
+menu\-separator { color: var(\-\-border); }
+/* What stands before a row's label, in the accent on a faint square of it
+ * while what the row turns on and off is on. */
+menu\-sign {
+  padding: 3px;
+  border\-radius: 6px;
+  color: var(\-\-text);
+}
+menu\-sign:active {
+  background: var(\-\-accent\-tint);
+  color: var(\-\-accent);
+}
+
+/* What is wrong with the configuration, when it was last read. */
+notice {
+  padding: 12px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-danger);
+  border\-radius: 10px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+notice\-heading { color: var(\-\-danger); }
+
+tooltip {
+  padding: 4px 8px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border);
+  border\-radius: 10px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+
+/* The mark shown while a program takes pictures of the screen. */
+capture {
+  background: var(\-\-background);
+  color: var(\-\-capture);
+  border\-radius: 6px;
+}
+
+/* The line round a screen or a window while it is shared or recorded,
+ * which is in no picture of it. */
+capture\-border { border: 2px solid var(\-\-capture); }
+
+/* The panel, and what is on it: the workspaces, a task for each window on
+ * the one being shown, and the clock. A margin on the panel moves it in
+ * from the edges of the screen. All that is written on it is in the full
+ * colour of text, as it is to be when it is thin glass. */
+panel {
+  height: 28px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+}
+workspace, task {
+  padding: 0 12px;
+  color: var(\-\-text);
+}
+workspace { min\-width: 28px; }
+task { max\-width: 240px; }
+workspace:active, task:active {
+  background: var(\-\-surface\-raised);
+  color: var(\-\-text);
+  border\-bottom: 2px solid var(\-\-accent);
+}
+clock {
+  padding: 0 12px;
+  color: var(\-\-text);
+}
+
+/* The launcher: where a name is typed, and the programs that match. The
+ * launcher is as wide as its min\-width. */
+launcher {
+  min\-width: 480px;
+  padding: 12px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border);
+  border\-radius: 10px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+launcher\-input {
+  height: 32px;
+  margin: 0 0 8px 0;
+  padding: 0 8px;
+  background: var(\-\-surface\-raised);
+  color: var(\-\-text);
+  border\-radius: 6px;
+}
+launcher\-item {
+  height: 28px;
+  padding: 0 8px;
+  color: var(\-\-text);
+  border\-radius: 6px;
+}
+launcher\-item:active {
+  background: var(\-\-accent);
+  color: var(\-\-on\-accent);
+}
+/* What a program says of itself, where the launcher is set to show it. */
+launcher\-description { color: var(\-\-text\-dim); }
+launcher\-description:active { color: var(\-\-on\-accent); }
+/* The rest of the screen while the launcher is open. A click on it closes
+ * the launcher. Give it a see\-through colour to dim what is behind. */
+launcher\-backdrop { background: transparent; }
+
+/* A notification. The margin is the room between one and the next, and
+ * between them and the edges of the screen. One a program marks critical
+ * is :urgent. */
+notification {
+  min\-width: 340px;
+  margin: 8px;
+  padding: 12px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border);
+  border\-radius: 10px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+notification:hover { border\-color: var(\-\-border\-strong); }
+notification:urgent { border\-color: var(\-\-danger); }
+notification\-title {
+  color: var(\-\-text);
+  font\-weight: 600;
+}
+notification\-body { color: var(\-\-text\-dim); }
+/* How full something a notification tells of is, such as the volume: the
+ * background is the whole, the colour how much of it is full. */
+notification\-level {
+  margin\-top: 8px;
+  background: var(\-\-border);
+  color: var(\-\-accent);
+  border\-radius: 4px;
+}
+
+/* What the portals ask: whether an application may see the screen, and
+ * what asks for a password. The button that gives is :active. The border
+ * is also the ring of the loupe a colour on the screen is picked with. */
+question {
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border\-strong);
+  border\-radius: 12px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+question\-detail { color: var(\-\-text\-dim); }
+question\-button {
+  background: var(\-\-surface\-dim);
+  color: var(\-\-text);
+  border\-radius: 6px;
+}
+question\-button:hover { background: var(\-\-surface\-raised); }
+question\-button:active {
+  background: var(\-\-accent);
+  color: var(\-\-on\-accent);
+}
+/* What the keyboard is on has a ring of the accent, a little way out from
+ * it, which shows round a button filled with the accent as well as round
+ * one that is not. */
+question\-button:focus {
+  outline: 2px solid var(\-\-accent);
+  outline\-offset: 2px;
+}
+question\-input {
+  padding: 8px;
+  background: var(\-\-surface\-raised);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border\-strong);
+  border\-radius: 6px;
+}
+question\-input:focus { border\-color: var(\-\-accent); }
+/* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
+question\-input:active {
+  background: var(\-\-accent);
+  color: var(\-\-on\-accent);
+}
+
+/* The switcher on Alt+Tab: its box, each window's place in rows, and the
+ * title. In rows, the box is in the middle of the screen, each place in it
+ * with its picture over its title, as wide as its min\-width. On a diagonal,
+ * the box is under the queue, with the title of the one picked. The one
+ * picked is :active. */
+switcher {
+  padding: 12px;
+  background: var(\-\-surface);
+  border: 1px solid var(\-\-border);
+  border\-radius: 12px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+switcher\-item {
+  min\-width: 200px;
+  padding: 8px;
+  border: 2px solid transparent;
+  border\-radius: 6px;
+}
+switcher\-item:active {
+  background: var(\-\-surface\-raised);
+  border\-color: var(\-\-accent);
+}
+switcher\-title { color: var(\-\-text); }
+/* On a diagonal, each window in the switcher: its border round its picture,
+ * its padding away. The one picked is :active. */
+switcher\-window {
+  padding: 4px;
+  border: 2px solid transparent;
+  border\-radius: 10px;
+}
+switcher\-window:active { border\-color: var(\-\-accent); }
+/* The screen behind the switcher: dimmed, and blurred out of focus. */
+switcher\-backdrop {
+  background: rgba(0, 0, 0, 0.35);
+  backdrop\-filter: blur(16px);
+}
+/* The overview: each window in it, its border round its picture, its
+ * padding away, the one picked :active; the title of the one picked, under
+ * it; each workspace in the strip along the top, the one shown :active
+ * and one under the pointer :hover; the button after them that makes a
+ * new workspace, its plus in its colour; and the screen behind it all,
+ * dimmed and blurred out of focus. */
+overview\-window {
+  padding: 4px;
+  border: 2px solid transparent;
+  border\-radius: 10px;
+}
+overview\-window:active { border\-color: var(\-\-accent); }
+overview\-title {
+  padding: 4px 10px;
+  background: var(\-\-surface);
+  color: var(\-\-text);
+  border\-radius: 6px;
+}
+overview\-workspace {
+  border: 2px solid var(\-\-border);
+  border\-radius: 6px;
+}
+overview\-workspace:hover { border\-color: var(\-\-text); }
+overview\-workspace:active { border\-color: var(\-\-accent); }
+overview\-add {
+  border: 2px solid var(\-\-border);
+  border\-radius: 6px;
+  color: var(\-\-text);
+}
+overview\-add:hover { border\-color: var(\-\-text); }
+overview\-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop\-filter: blur(16px);
+}
+
+/* The screens shown still, to pick what a picture is to be of: what is not
+ * picked is dimmed by the background, and what is drawn has the border. */
+picker {
+  background: #00000066;
+  border: 2px solid var(\-\-accent);
+}
+
+/* What dims the session while a prompt asks for a secret, such as the
+ * administrator's password, and blurs it: nothing a program draws can dim
+ * and blur it so. `backdrop\-filter: none` dims it alone. */
+sealed {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop\-filter: blur(24px);
+}
+
+/* "About omorfos", from the root menu: the name and version, what the
+ * computer is, and what is someone else's under its headings, whose each
+ * is dimmer. It is glass, as glass is drawn everywhere; it is closed by a
+ * window's button, and its own button copies what the computer is. */
+about {
+  padding: 20px;
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(32px);
+  color: var(\-\-text);
+  border: 1px solid var(\-\-border);
+  border\-radius: 12px;
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
+}
+about\-heading {
+  color: var(\-\-text);
+  font\-weight: 600;
+}
+about\-detail { color: var(\-\-text\-dim); }
+about\-button {
+  padding: 4px 12px;
+  background: var(\-\-surface\-dim);
+  color: var(\-\-text);
+  border\-radius: 6px;
+}
+about\-button:hover { background: var(\-\-surface\-raised); }
+/* For a moment once it has copied, it says so, in the colour of what is
+ * done, with a tick. */
+about\-button:active {
+  background: var(\-\-success);
+  color: var(\-\-background);
+}
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5)

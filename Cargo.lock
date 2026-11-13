@@ -1850,6 +1850,7 @@ dependencies = [
  "omorfos-clipboard",
  "omorfos-config",
  "omorfos-core",
+ "omorfos-hold",
  "omorfos-icons",
  "omorfos-ipc",
  "omorfos-journal",
@@ -1857,6 +1858,7 @@ dependencies = [
  "omorfos-lock",
  "omorfos-notifications",
  "omorfos-panel",
+ "omorfos-recording",
  "omorfos-relay",
  "omorfos-screenshot",
  "omorfos-session",
@@ -1925,6 +1927,7 @@ version = "0.1.0"
 dependencies = [
  "inotify",
  "jiff",
+ "omorfos-ipc",
  "rustix 1.1.6",
  "schemars",
  "serde",

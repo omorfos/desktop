@@ -7,24 +7,11 @@ use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::{env, io};
 
-use omorfos_ipc::help::{About, answered};
-
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-pinentry",
-    what: "What gpg-agent starts to ask for a passphrase, in the sealed prompt of the omorfos desktop.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "gpg-agent starts it where `pinentry-program` in gpg-agent.conf names it, and\n\
-            speaks with it on its standard input and output.",
-    version: env!("CARGO_PKG_VERSION"),
-};
+use omorfos_ipc::help::answered;
 
 fn main() {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_ask::PINENTRY, &arguments, &mut io::stdout()) {
         return;
     }
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);

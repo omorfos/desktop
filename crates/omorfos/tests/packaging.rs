@@ -129,6 +129,48 @@ fn every_package_carries_every_program_the_makefile_installs() {
 }
 
 #[test]
+fn every_program_installed_has_its_page_in_man_and_every_package_carries_them() {
+    let (programs, beside) = installed();
+    let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for program in programs.iter().chain(&beside) {
+        let page = top.join(format!("man/{program}.1"));
+        assert!(page.is_file(), "man/{program}.1 is missing");
+    }
+    // Each as it installs them, so that a page only taken away again, as
+    // `make uninstall` does, is not taken for one installed.
+    let installing = [
+        (
+            "Makefile",
+            "install -Dm644 man/*.1 -t \"$(DESTDIR)$(MAN_DIR)/man1/\"",
+        ),
+        (
+            "Makefile",
+            "install -Dm644 man/*.5 -t \"$(DESTDIR)$(MAN_DIR)/man5/\"",
+        ),
+        (
+            "packaging/aur/PKGBUILD",
+            "install -Dm644 man/*.1 -t \"$pkgdir/usr/share/man/man1/\"",
+        ),
+        (
+            "packaging/aur/PKGBUILD",
+            "install -Dm644 man/*.5 -t \"$pkgdir/usr/share/man/man5/\"",
+        ),
+        ("packaging/package.sh", "cp man/*.1 man/*.5 "),
+        (
+            "crates/omorfos/Cargo.toml",
+            "[\"../../man/*.1\", \"usr/share/man/man1/\", \"644\"]",
+        ),
+        (
+            "crates/omorfos/Cargo.toml",
+            "[\"../../man/*.5\", \"usr/share/man/man5/\", \"644\"]",
+        ),
+    ];
+    for (packaging, line) in installing {
+        assert!(read(packaging).contains(line), "{packaging} carries {line}");
+    }
+}
+
+#[test]
 fn a_program_is_named_whole_and_not_by_the_start_of_another() {
     assert!(names(
         "cp target/release/omorfos x",

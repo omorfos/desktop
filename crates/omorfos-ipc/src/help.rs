@@ -34,7 +34,7 @@ pub struct About {
 }
 
 /// The options every program has.
-const ASKED: &[(&str, &str)] = &[
+pub(crate) const ASKED: &[(&str, &str)] = &[
     ("-h, --help", "Print this help"),
     ("-V, --version", "Print the version"),
 ];
@@ -66,7 +66,8 @@ pub fn answered(about: &About, arguments: &[OsString], out: &mut dyn Write) -> b
 /// The help of the program `about` tells of, laid out as `omorfosctl`'s
 /// is: what it is, how it is used, its commands and options in a column
 /// each, examples, and notes, kept within `WIDTH`.
-fn help(about: &About) -> String {
+#[must_use]
+pub fn help(about: &About) -> String {
     let About {
         name,
         what,

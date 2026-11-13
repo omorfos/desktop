@@ -19,6 +19,7 @@ DATADIR ?= /usr/share
 SYSTEMD_USER_DIR ?= /usr/lib/systemd/user
 PAM_DIR ?= /etc/pam.d
 DOC_DIR ?= $(PREFIX)/share/doc/omorfos
+MAN_DIR ?= $(PREFIX)/share/man
 # Where the icon and the wallpapers go, which programs find through
 # XDG_DATA_DIRS, /usr/local/share among them.
 SHARE_DIR ?= $(PREFIX)/share
@@ -82,6 +83,8 @@ install:
 	install -Dm644 README.md "$(DESTDIR)$(DOC_DIR)/README.md"
 	install -Dm644 docs/CONFIGURATION.md "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md"
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
+	install -Dm644 man/*.1 -t "$(DESTDIR)$(MAN_DIR)/man1/"
+	install -Dm644 man/*.5 -t "$(DESTDIR)$(MAN_DIR)/man5/"
 	install -Dm644 $(LICENSES) $(CRATES) -t "$(DESTDIR)$(DOC_DIR)/"
 	cd "$(PICTURES)" && find icons backgrounds -type f -exec install -Dm644 {} "$(DESTDIR)$(SHARE_DIR)/{}" \;
 	@# The older names of the pointer's shapes, which are links to them.
@@ -105,6 +108,8 @@ uninstall:
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
 	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
 	rm -f $(foreach l,$(LICENSES) LICENSE-crates,"$(DESTDIR)$(DOC_DIR)/$(l)")
+	rm -f $(foreach page,$(notdir $(wildcard man/*.1)),"$(DESTDIR)$(MAN_DIR)/man1/$(page)")
+	rm -f $(foreach page,$(notdir $(wildcard man/*.5)),"$(DESTDIR)$(MAN_DIR)/man5/$(page)")
 	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg
 	rm -f $(foreach w,$(WALLPAPERS),"$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-dark.png" "$(DESTDIR)$(SHARE_DIR)/backgrounds/omorfos/$(w)-light.png")
 	rm -rf $(foreach p,$(POINTERS),"$(DESTDIR)$(SHARE_DIR)/icons/$(p)")

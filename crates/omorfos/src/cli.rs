@@ -5,20 +5,32 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::process::ExitCode;
 
-const USAGE: &str = "\
-A lightweight Wayland compositor.
+use omorfos_ipc::help::{About, help};
 
-Usage: omorfos [OPTIONS]
-
-Options:
-  -h, --help     Print this help
-  -V, --version  Print the version
-      --held     Take the socket from omorfos-hold, which started it: only
-                 omorfos-hold runs omorfos so
-
-Configuration is read from $XDG_CONFIG_HOME/omorfos/ (usually
-~/.config/omorfos/) and reloaded when it changes.
-";
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos",
+    what: "A lightweight Wayland compositor.",
+    usage: " [--held]",
+    commands: &[],
+    options: &[(
+        "--held",
+        "Take the socket from omorfos-hold, which started it: only omorfos-hold runs omorfos so",
+    )],
+    examples: &[],
+    notes: "Chosen at the login screen, omorfos becomes omorfos-hold, which starts the \
+            compositor beside it and starts it again if it ends, with the programs that were \
+            open still open.\n\n\
+            The configuration is read from $XDG_CONFIG_HOME/omorfos/ (usually \
+            ~/.config/omorfos/), each file with a page of its own: config.yaml in \
+            omorfos-config(5), keys.yaml in omorfos-keys(5), rules.yaml in omorfos-rules(5), \
+            menu.yaml in omorfos-menu(5) and theme.css in omorfos-theme(5). It is read again \
+            when it changes, and a mistake in it never breaks the session: `omorfosctl config \
+            check` says what is wrong.\n\n\
+            What the session has to say is kept in ~/.local/state/omorfos/session.log, and \
+            what the login before said in session.log.old.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// How the compositor was started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +64,7 @@ where
         [] => Start::Alone,
         ["--held"] => Start::Held,
         ["-h" | "--help"] => {
-            let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(help(&ABOUT).as_bytes());
             return ExitCode::SUCCESS;
         }
         ["-V" | "--version"] => {
@@ -62,7 +74,8 @@ where
         [unexpected, ..] => {
             let _ = writeln!(
                 err,
-                "omorfos: unexpected argument `{unexpected}`\n\n{USAGE}"
+                "omorfos: unexpected argument `{unexpected}`\n\n{}",
+                help(&ABOUT)
             );
             return ExitCode::from(2);
         }
@@ -149,7 +162,7 @@ mod tests {
             let (code, out, err, launched) = invoke(&[flag], Ok(()));
             assert_eq!(launched, None);
             assert_eq!(code, ExitCode::SUCCESS);
-            assert!(out.contains("Usage: omorfos [OPTIONS]"), "{out}");
+            assert!(out.contains("Usage: omorfos [--held]"), "{out}");
             assert_eq!(err, "");
         }
     }

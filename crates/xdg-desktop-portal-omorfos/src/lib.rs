@@ -36,6 +36,7 @@ use card::Card;
 pub use feed::{Feed, Seen};
 pub use inhibit::{INHIBIT, Keep, SCREENSAVER};
 use omorfos_config::{Store, Watcher};
+use omorfos_ipc::help::About;
 use omorfos_pipewire::{Held, Picture};
 use omorfos_screenshot::Shared;
 pub use prompt::{Answer, Desk, Question, Still, asking, button_at, paint};
@@ -44,6 +45,18 @@ pub use screencast::{Pointer, SCREENCAST, SESSION, streams};
 pub use stream::{Pipes, Share};
 use zbus::message::Message;
 use zbus::zvariant::OwnedObjectPath;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "xdg-desktop-portal-omorfos",
+    what: "What applications ask the desktop through the portals, answered for omorfos.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "xdg-desktop-portal starts it over D-Bus, as omorfos.portal says.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Why the program cannot go on, in words for the user.
 pub type Failure = Box<dyn Error + Send + Sync>;

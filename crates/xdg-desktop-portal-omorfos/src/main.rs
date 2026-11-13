@@ -6,23 +6,15 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, io};
 
-use omorfos_ipc::help::{About, answered};
-
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "xdg-desktop-portal-omorfos",
-    what: "What applications ask the desktop through the portals, answered for omorfos.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "xdg-desktop-portal starts it over D-Bus, as omorfos.portal says.",
-    version: env!("CARGO_PKG_VERSION"),
-};
+use omorfos_ipc::help::answered;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(
+        &xdg_desktop_portal_omorfos::ABOUT,
+        &arguments,
+        &mut io::stdout(),
+    ) {
         return ExitCode::SUCCESS;
     }
     let failure = xdg_desktop_portal_omorfos::start(&|name| env::var_os(name));

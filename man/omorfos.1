@@ -1,0 +1,29 @@
+.TH OMORFOS 1 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos \- A lightweight Wayland compositor
+.SH SYNOPSIS
+.PP
+\fBomorfos [\-\-held]\fR
+.SH DESCRIPTION
+.PP
+Chosen at the login screen, omorfos becomes omorfos\-hold, which starts the compositor beside it and starts it again if it ends, with the programs that were open still open.
+.PP
+The configuration is read from $XDG_CONFIG_HOME/omorfos/ (usually ~/.config/omorfos/), each file with a page of its own: config.yaml in omorfos\-config(5), keys.yaml in omorfos\-keys(5), rules.yaml in omorfos\-rules(5), menu.yaml in omorfos\-menu(5) and theme.css in omorfos\-theme(5). It is read again when it changes, and a mistake in it never breaks the session: \fBomorfosctl config check\fR says what is wrong.
+.PP
+What the session has to say is kept in ~/.local/state/omorfos/session.log, and what the login before said in session.log.old.
+.SH OPTIONS
+.TP
+\fB\-\-held\fR
+Take the socket from omorfos\-hold, which started it: only omorfos\-hold runs omorfos so
+.TP
+\fB\-h, \-\-help\fR
+Print this help
+.TP
+\fB\-V, \-\-version\fR
+Print the version
+.SH SEE ALSO
+.PP
+\fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

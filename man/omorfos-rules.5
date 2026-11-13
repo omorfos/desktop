@@ -1,0 +1,81 @@
+.TH OMORFOS\-RULES 5 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-rules \- rules.yaml, how the omorfos desktop treats particular windows
+.SH SYNOPSIS
+.PP
+\fB$XDG_CONFIG_HOME/omorfos/rules.yaml\fR, usually \fB~/.config/omorfos/rules.yaml\fR
+.SH DESCRIPTION
+.PP
+Rules for particular windows, by the program they are of or their title: the workspace they open on, whether they open maximized, fullscreen, shaded, kept above or on every workspace, with or without a frame, and whether they are private, veiled in pictures of the screen.
+.PP
+It is read again as soon as it is saved. If it has a mistake, its contents before are kept, and the mistake is shown among the notifications and printed by \fBomorfosctl config check\fR, with its line and column; the other files still apply.
+.SH KEYS
+.TP
+\fBrules\fR
+Rules applied to new windows. Every matching rule applies, in order, so a later rule overrides an earlier one.
+.TP
+\fBrules[].above\fR
+Open the window kept above those that are not, or not.
+.TP
+\fBrules[].decorations\fR
+Draw a titlebar and border around the window, or not.
+.TP
+\fBrules[].fullscreen\fR
+Open the window fullscreen, or not.
+.TP
+\fBrules[].match\fR
+Which windows the rule applies to.
+.TP
+\fBrules[].match.app_id\fR
+Pattern for the application identifier, such as \fBfirefox\fR or \fBorg.gnome.*\fR. \fB*\fR stands for any run of characters.
+.TP
+\fBrules[].match.title\fR
+Pattern for the window title. \fB*\fR stands for any run of characters.
+.TP
+\fBrules[].maximized\fR
+Open the window maximized, or not.
+.TP
+\fBrules[].private\fR
+Hide the window in any picture taken of the screen, or not: blank, or blurred. Unlike the others this holds for as long as the window matches, not only when it opens: a title that comes to match hides it.
+.RS
+.TP
+\fBblank\fR
+.TP
+\fBblur\fR
+.RE
+.TP
+\fBrules[].shaded\fR
+Open the window rolled up into its titlebar, or not. A window without a titlebar is not rolled up.
+.TP
+\fBrules[].sticky\fR
+Open the window on every workspace of its screen, or not.
+.TP
+\fBrules[].workspace\fR
+Open the window on the workspace with this number. From 1 to 32.
+.SH EXAMPLE
+.PP
+.nf
+.RS 4
+rules:
+  \- match: { app_id: firefox }
+    workspace: 1
+  \- match: { app_id: "org.gnome.*", title: "*Preferences" }
+    maximized: false
+    decorations: true
+  \- match: { app_id: mpv }
+    fullscreen: true
+  \- match: { title: "*Bank*" }
+    private: true
+  \- match: { app_id: org.gnome.Loupe }
+    private: blur
+  \- match: { app_id: "*notes*" }
+    above: true
+    sticky: true
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-config\fR(5), \fBomorfos\-keys\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

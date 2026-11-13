@@ -23,6 +23,19 @@ pub use bus::{Bus, Event};
 pub use client::Notifier;
 pub use note::{Key, Note, Picture, Place, Reason, Stack};
 use omorfos_icons::Icons;
+use omorfos_ipc::help::About;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-notifications",
+    what: "Notifications for the omorfos desktop: what programs have to tell the user.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, unless `notifications.enabled` in config.yaml is false.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Why the notifications could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;

@@ -56,6 +56,9 @@ assets = [
     ["target/release/omorfos-pinentry", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
+    # The manual pages, which cargo-deb compresses as Debian's policy asks.
+    ["../../man/*.1", "usr/share/man/man1/", "644"],
+    ["../../man/*.5", "usr/share/man/man5/", "644"],
     # The icon and the wallpapers, drawn by omorfos-brand as omorfos is
     # built, under the licence of the pictures.
     ["target/release/share/icons/**/*", "usr/share/icons/", "644"],
@@ -154,6 +157,10 @@ omorfos-ask = { path = "../omorfos-ask" }
 # Keeps a program through one compositor and the next, in the tests of the
 # compositor being relayed (ADR 61).
 omorfos-relay = { path = "../omorfos-relay" }
+# Their manual pages are made beside the others', from what they say of
+# themselves.
+omorfos-hold = { path = "../omorfos-hold" }
+omorfos-recording = { path = "../omorfos-recording" }
 # Tells, as the components' programs do, the session ending from a failure.
 omorfos-shell = { path = "../omorfos-shell" }
 # Reads back the pictures the screenshot tool saves.

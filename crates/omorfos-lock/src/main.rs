@@ -8,32 +8,13 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::{env, fs};
 
-use omorfos_ipc::help::{About, answered};
+use omorfos_ipc::help::answered;
 use omorfos_lock::check::{Checked, check};
 use omorfos_lock::{ended, who};
 
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-lock",
-    what: "The lock screen of the omorfos desktop, which asks PAM for each way of unlocking at \
-           once.",
-    usage: " [COMMAND]",
-    commands: &[(
-        "check SERVICE USER",
-        "Ask PAM's SERVICE whether USER may unlock, as the helper the lock \
-         screen starts for each way of unlocking; not for running by hand",
-    )],
-    options: &[],
-    examples: &[],
-    notes: "Without a command it locks the session at once. The `lock` action starts it so, \
-            as `locker` in config.yaml names it, and so does the session before the machine \
-            sleeps.",
-    version: env!("CARGO_PKG_VERSION"),
-};
-
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_lock::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
     let mut arguments = env::args_os().skip(1);

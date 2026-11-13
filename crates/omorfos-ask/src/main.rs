@@ -6,23 +6,11 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, io};
 
-use omorfos_ipc::help::{About, answered};
-
-/// What it says when asked what it is.
-const ABOUT: About = About {
-    name: "omorfos-ask",
-    what: "What asks the user of an omorfos session for a secret: polkit's agent, in the sealed prompt.",
-    usage: "",
-    commands: &[],
-    options: &[],
-    examples: &[],
-    notes: "The omorfos compositor starts it, with the `ask` role.",
-    version: env!("CARGO_PKG_VERSION"),
-};
+use omorfos_ipc::help::answered;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().skip(1).collect();
-    if answered(&ABOUT, &arguments, &mut io::stdout()) {
+    if answered(&omorfos_ask::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
     let failure = omorfos_ask::start(&|name| env::var_os(name));

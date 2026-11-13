@@ -26,9 +26,22 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use omorfos_config::Picture;
+use omorfos_ipc::help::About;
 
 pub use slides::{Heard, Slide, Slides};
 pub use wallpaper::{Failure, Wallpaper};
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-wallpaper",
+    what: "The wallpaper of the omorfos desktop: a picture or a colour behind the windows of each screen.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, as `wallpaper` in config.yaml says.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Runs the wallpaper in the session the environment describes, until it
 /// cannot go on, and returns why.

@@ -37,7 +37,8 @@ fn render<T: JsonSchema>() -> String {
     format!("{:#}\n", root::<T>())
 }
 
-fn root<T: JsonSchema>() -> Value {
+/// The schema of `T`, as JSON.
+pub(crate) fn root<T: JsonSchema>() -> Value {
     SchemaGenerator::default()
         .into_root_schema_for::<T>()
         .as_value()

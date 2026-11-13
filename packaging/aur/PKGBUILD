@@ -58,6 +58,8 @@ package() {
   install -Dm644 README.md docs/CONFIGURATION.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 crates/omorfos-config/src/default.css "$pkgdir/usr/share/doc/$pkgname/theme.css"
   install -Dm644 schemas/*.json -t "$pkgdir/usr/share/$pkgname/schemas/"
+  install -Dm644 man/*.1 -t "$pkgdir/usr/share/man/man1/"
+  install -Dm644 man/*.5 -t "$pkgdir/usr/share/man/man5/"
   install -Dm644 packaging/omorfos.desktop -t "$pkgdir/usr/share/wayland-sessions/"
   install -Dm644 packaging/omorfos.portal -t "$pkgdir/usr/share/xdg-desktop-portal/portals/"
   install -Dm644 packaging/omorfos-portals.conf -t "$pkgdir/usr/share/xdg-desktop-portal/"

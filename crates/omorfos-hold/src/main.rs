@@ -9,19 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use omorfos_hold::renew::{self, CHECK, TAKING, TAKING_BACK};
-
-const USAGE: &str = "\
-Holds an omorfos session while its compositor is started again.
-
-Usage: omorfos-hold [OPTIONS]
-
-It is started by omorfos itself, from the login screen, and starts omorfos
-beside it in turn: there is no need to start it by hand.
-
-Options:
-  -h, --help     Print this help
-  -V, --version  Print the version
-";
+use omorfos_ipc::help::help;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
@@ -30,7 +18,7 @@ fn main() -> ExitCode {
     match arguments.as_slice() {
         [] => hold(&mut err),
         ["-h" | "--help"] => {
-            let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(help(&omorfos_hold::ABOUT).as_bytes());
             ExitCode::SUCCESS
         }
         // What a version of the holder about to become this one asks.
@@ -43,7 +31,8 @@ fn main() -> ExitCode {
         [unexpected, ..] => {
             let _ = writeln!(
                 err,
-                "omorfos-hold: unexpected argument `{unexpected}`\n\n{USAGE}"
+                "omorfos-hold: unexpected argument `{unexpected}`\n\n{}",
+                help(&omorfos_hold::ABOUT)
             );
             ExitCode::from(2)
         }

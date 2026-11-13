@@ -29,6 +29,9 @@ cp target/release/omorfos target/release/omorfos-hold target/release/omorfos-rel
   packaging/pam/omorfos-lock packaging/pam/omorfos-lock-fingerprint packaging/pam/omorfos-lock-key \
   "${stage}/${name}/"
 cp -r schemas "${stage}/${name}/"
+# The manual pages, for man1 and man5 of wherever it is put.
+mkdir "${stage}/${name}/man"
+cp man/*.1 man/*.5 "${stage}/${name}/man/"
 # The icon and the wallpapers, as they go under share/.
 cp -r target/release/share "${stage}/${name}/"
 # The built-in theme, to copy from.

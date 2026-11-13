@@ -48,6 +48,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use omorfos_ipc::help::About;
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
 
@@ -56,6 +57,68 @@ pub use brightness::Backlight;
 pub use keys::Forget;
 pub use power::Power;
 pub use watch::watch;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-session",
+    what: "What an omorfos session does besides draw: locking before sleep, starting programs \
+           at login, the volume, the brightness and what is playing.",
+    usage: " [COMMAND]",
+    commands: &[
+        (
+            "volume up|down|mute",
+            "Turn the sound that plays up or down by five hundredths, or mute it \
+             and back",
+        ),
+        ("microphone mute", "Mute the microphone, or hear it again"),
+        (
+            "brightness up|down",
+            "Make the screen a twentieth brighter or darker, never quite dark",
+        ),
+        (
+            "media play-pause",
+            "Tell the player that is playing, or else one that is paused, to \
+             play or to pause",
+        ),
+        (
+            "media next|previous|stop",
+            "Tell it to go on to the next, back to the one before, or stop",
+        ),
+        (
+            "sleep|restart|shut-down",
+            "Ask logind for the machine to sleep, start again or turn off",
+        ),
+        ("log-out", "End the session, as the compositor ends it"),
+        (
+            "offered",
+            "Print which of sleep, restart, shut-down and log-out a locked screen \
+             may offer, and what holds the machine",
+        ),
+        (
+            "autostart",
+            "Start what is to start with the session, as at login",
+        ),
+        (
+            "forget ssh|gpg...",
+            "Have ssh-agent forget its keys, or gpg-agent its passphrases",
+        ),
+    ],
+    options: &[(
+        "--locked",
+        "With sleep, restart or shut-down: asked from a locked screen, so done \
+         only where no password is asked for",
+    )],
+    examples: &[
+        "omorfos-session volume up",
+        "omorfos-session media next",
+        "omorfos-session forget ssh gpg",
+    ],
+    notes: "Without a command it watches over the session for as long as it lasts, locking \
+            the screen before the machine sleeps; the compositor starts it so at login. With \
+            one, it does what a key or the menu asks, and can be bound to keys in keys.yaml as \
+            `spawn: [omorfos-session, volume, up]`.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Why what was asked could not be done.
 pub type Failure = Box<dyn Error + Send + Sync>;

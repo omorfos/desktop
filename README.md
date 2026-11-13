@@ -149,6 +149,7 @@ Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 | | |
 |---|---|
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, key, rule and part of the theme, and how to use the desktop |
+| [man/](man) | The manual pages, made from each program's `--help` and the files' schemas: `man omorfos` and `man 5 omorfos-config` once installed |
 | [docs/IPC.md](docs/IPC.md) | The socket and `omorfosctl`: scripting, and writing your own panel |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What is done, what is next, and in what order |
 | [docs/DESIGN.md](docs/DESIGN.md) | What it is to look like, and the rules a part is drawn by |

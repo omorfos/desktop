@@ -27,10 +27,23 @@ use std::time::{Duration, Instant};
 
 use cameras::Cameras;
 pub use graph::{Graph, Node};
+use omorfos_ipc::help::About;
 use pipewire as pw;
 use pw::registry::GlobalObject;
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-recording",
+    what: "Tells the omorfos desktop what records from a microphone or a camera, as PipeWire knows it.",
+    usage: "",
+    commands: &[],
+    options: &[],
+    examples: &[],
+    notes: "The omorfos compositor starts it, and reads what it writes.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// Why watching could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;

@@ -1,0 +1,704 @@
+.TH OMORFOS\-CONFIG 5 "" omorfos "omorfos manual"
+.nh
+.ad l
+.ds AD l
+.SH NAME
+omorfos\-config \- config.yaml, how the omorfos desktop behaves
+.SH SYNOPSIS
+.PP
+\fB$XDG_CONFIG_HOME/omorfos/config.yaml\fR, usually \fB~/.config/omorfos/config.yaml\fR
+.SH DESCRIPTION
+.PP
+How the desktop behaves, but for its keys, rules and menu: how it looks whatever the theme, the screens, the keyboard, touchpad and mouse, workspaces, the panel and the other parts of the desktop, and what starts with the session.
+.PP
+It is read again as soon as it is saved. If it has a mistake, its contents before are kept, and the mistake is shown among the notifications and printed by \fBomorfosctl config check\fR, with its line and column; the other files still apply.
+.SH KEYS
+.TP
+\fBappearance\fR
+How what the desktop draws looks, whatever the theme.
+.TP
+\fBappearance.accent\fR
+The colour the built\-in theme picks out what has focus with: one that comes with omorfos, by its name, or any other.
+.RS
+.TP
+\fBcyan\fR
+.TP
+\fBblue\fR
+.TP
+\fBteal\fR
+.TP
+\fBpurple\fR
+.TP
+\fBpink\fR
+.TP
+\fBorange\fR
+.RE
+.TP
+\fBappearance.day\fR
+The hours \fBscheme: auto\fR is light between where no location is given.
+.TP
+\fBappearance.day.from\fR
+When the desktop turns light, as \fB"07:00"\fR.
+.TP
+\fBappearance.day.to\fR
+When it turns dark, as \fB"19:00"\fR.
+.TP
+\fBappearance.location\fR
+Where the user is, for \fBscheme: auto\fR to be light from sunrise to sunset there: a latitude and longitude, a time zone, or \fBsystem\fR, the time zone the system is set to, which is where they are taken to be unless hours of the \fBday\fR are given. It is not told to any program.
+.TP
+\fBappearance.location.latitude\fR
+From \-90 at the South Pole to 90 at the North.
+.TP
+\fBappearance.location.longitude\fR
+From \-180 to 180, east of Greenwich being above 0.
+.TP
+\fBappearance.reduce_motion\fR
+Whether nothing moves: what comes and goes only fades, over 120 ms at most, workspaces change without sliding, and nothing shakes. Programs are told, to do the same. By default \fBfalse\fR.
+.TP
+\fBappearance.reduce_transparency\fR
+Whether every surface the theme makes glass is solid in its colour, with nothing behind it blurred or seen through. By default \fBfalse\fR.
+.TP
+\fBappearance.scheme\fR
+Whether the built\-in theme is dark or light, or which the time of day says.
+.RS
+.TP
+\fBdark\fR
+Always dark.
+.TP
+\fBlight\fR
+Always light.
+.TP
+\fBauto\fR
+Light from sunrise to sunset where \fBappearance.location\fR says, or between the hours of \fBappearance.day\fR, and dark the rest of the time.
+.RE
+.TP
+\fBarrangements\fR
+Screens as \fBoutputs\fR lists them, for when just those are plugged in: the first that names exactly the screens there are is used in place of \fBoutputs\fR.
+.TP
+\fBarrangements[][].align\fR
+Where along the edge it shares with the one before it it is lined up: at the start, the top or the left; the middle; or the end. Without this, the start beside it, and the middle above or below.
+.RS
+.TP
+\fBstart\fR
+Their tops, or their left sides, in line.
+.TP
+\fBmiddle\fR
+Their middles in line.
+.TP
+\fBend\fR
+Their bottoms, or their right sides, in line.
+.RE
+.TP
+\fBarrangements[][].enabled\fR
+Whether it is on. One that is not shows nothing and stands nowhere, unless every screen plugged in would be off, when it is left on. By default \fBtrue\fR.
+.TP
+\fBarrangements[][].mirror\fR
+Another screen, by name, whose picture this one shows, as large as fits on it: it stands nowhere of its own, and has nothing of its own on it. Without that one plugged in, it is a screen like any.
+.TP
+\fBarrangements[][].mode\fR
+The size it is driven at, and how often it is drawn. Without this, what the screen says suits it best.
+.TP
+\fBarrangements[][].name\fR
+The screen's name, such as \fBeDP\-1\fR or \fBHDMI\-A\-1\fR, as \fBomorfosctl state\fR shows it.
+.TP
+\fBarrangements[][].offset\fR
+How far along that edge it is moved from there: right or down, or left or up if less than nothing.
+.TP
+\fBarrangements[][].place\fR
+Where it stands next to the screen listed before it: to its right, unless this says otherwise.
+.RS
+.TP
+\fBright\fR
+To its right, the tops in line.
+.TP
+\fBleft\fR
+To its left, the tops in line.
+.TP
+\fBabove\fR
+Above it, the middles in line.
+.TP
+\fBbelow\fR
+Below it, the middles in line.
+.RE
+.TP
+\fBarrangements[][].primary\fR
+Whether it is the one that comes first: the one the notice of what is wrong is shown on, and that windows go to from a screen that is unplugged. Without one, the first screen plugged in. One screen at most. By default \fBfalse\fR.
+.TP
+\fBarrangements[][].rotate\fR
+Which way the screen is turned, as \fBxrandr \-\-rotate\fR says it: what is drawn is turned to match, so that it stands the right way up.
+.RS
+.TP
+\fBnormal\fR
+As it was made.
+.TP
+\fBleft\fR
+A quarter turn to the left: the top of the picture on the left.
+.TP
+\fBright\fR
+A quarter turn to the right: the top of the picture on the right.
+.TP
+\fBinverted\fR
+Upside down.
+.RE
+.TP
+\fBarrangements[][].scale\fR
+How large everything is drawn on it. Without this, the scale given for every screen applies. From 1 to 4.
+.RS
+.TP
+\fBauto\fR
+Whatever suits the screen.
+.RE
+.TP
+\fBautostart\fR
+Programs to start with the session, each as a program and its arguments, or as that and what it may do. They are started once, in order, and not again when the configuration is reloaded.
+.TP
+\fBautostart[].may\fR
+What it may do that an ordinary program may not.
+.RS
+.TP
+\fBpanel\fR
+Put surfaces on the screen outside windows and keep room for them, and list the windows.
+.TP
+\fBoverlay\fR
+Cover the screen and take the keyboard while it does.
+.TP
+\fBlock\fR
+Lock the session.
+.TP
+\fBask\fR
+Show the prompt that asks for a secret.
+.TP
+\fBcapture\fR
+Take pictures of the screen and of windows.
+.TP
+\fBclipboard\fR
+Read and set the clipboard at any time.
+.TP
+\fBinput\fR
+Type and click as the user, and see what is typed into fields.
+.TP
+\fBscreens\fR
+Arrange the screens and change their colour.
+.RE
+.TP
+\fBautostart[].run\fR
+A program followed by its arguments, run without a shell.
+.TP
+\fBclipboard\fR
+The clipboard.
+.TP
+\fBclipboard.enabled\fR
+Whether what is copied is kept by \fBomorfos\-clipboard\fR once the program it was copied from has closed. Turn it off to have another program keep it, or none. What a password manager copies is never kept. By default \fBtrue\fR.
+.TP
+\fBclipboard.forget\fR
+How many seconds what is copied stays on the clipboard before it is emptied, if nothing else is copied meanwhile: for passwords copied from where nothing says they are secret. 0 never empties it, and the most is a day. From 0 to 86400.
+.TP
+\fBcursor\fR
+The pointer.
+.TP
+\fBcursor.size\fR
+The size of the pointer, before scaling. From 8 to 128.
+.TP
+\fBcursor.theme\fR
+\fBomorfos\fR, for omorfos's own pointer, dark or light as the desktop is; or the name of an installed cursor theme, such as \fBAdwaita\fR. \fBdefault\fR is whichever the system has set up as its default. By default \fBomorfos\fR.
+.TP
+\fBfocus\fR
+How windows gain focus.
+.TP
+\fBfocus.model\fR
+What gives a window focus.
+.RS
+.TP
+\fBclick\fR
+A window is focused when it is clicked.
+.TP
+\fBsloppy\fR
+A window is focused when the pointer enters it, and keeps focus while the pointer is over the desktop.
+.RE
+.TP
+\fBfocus.raise_on_focus\fR
+Whether focusing a window also raises it above the others. By default \fBtrue\fR.
+.TP
+\fBicons\fR
+The icons programs are shown by.
+.TP
+\fBicons.theme\fR
+The name of an installed icon theme, such as \fBPapirus\fR: icons are looked for in it, then in those it inherits from, then in \fBhicolor\fR, where programs install their own. By default \fBAdwaita\fR.
+.TP
+\fBidle\fR
+What happens when the user is away.
+.TP
+\fBidle.lock\fR
+Seconds without input after which the session is locked, with the locker the configuration names. \fB0\fR never locks it. At least 0. By default \fB0\fR.
+.TP
+\fBidle.screen_off\fR
+Seconds without input after which the screens are turned off. \fB0\fR never turns them off. At least 0. By default \fB0\fR.
+.TP
+\fBidle.sleep\fR
+Seconds without input after which the machine is put to sleep, locked first. \fB0\fR never puts it to sleep. At least 0. By default \fB0\fR.
+.TP
+\fBkeyboard\fR
+Keyboard layout and key repeat.
+.TP
+\fBkeyboard.layout\fR
+XKB layout, such as \fBus\fR or \fBgb,pl\fR for several. By default \fBus\fR.
+.TP
+\fBkeyboard.options\fR
+XKB options, such as \fBcaps:escape,grp:alt_shift_toggle\fR. By default \fB""\fR.
+.TP
+\fBkeyboard.repeat_delay\fR
+Milliseconds a key is held before it starts repeating. From 0 to 65535. By default \fB400\fR.
+.TP
+\fBkeyboard.repeat_rate\fR
+Repeats per second once repeating starts. \fB0\fR disables key repeat. From 0 to 65535. By default \fB30\fR.
+.TP
+\fBkeyboard.variant\fR
+XKB variant, such as \fBdvorak\fR. Empty for the default. By default \fB""\fR.
+.TP
+\fBlauncher\fR
+The launcher that comes with omorfos.
+.TP
+\fBlauncher.descriptions\fR
+Whether what each program says of itself is shown after its name, and looked through for what is typed. By default \fBfalse\fR.
+.TP
+\fBlauncher.icons\fR
+Whether each program's icon is shown beside its name. By default \fBfalse\fR.
+.TP
+\fBlock\fR
+How \fBomorfos\-lock\fR may be unlocked, besides the password, and what else it offers.
+.TP
+\fBlock.fingerprint\fR
+A finger on the reader, through the \fBomorfos\-lock\-fingerprint\fR PAM service. By default \fBtrue\fR.
+.TP
+\fBlock.forget\fR
+What is forgotten as the session locks, so that a locked machine left behind has no key to use: nothing unless named, since each is to be given again after.
+.RS
+.TP
+\fBssh\fR
+The keys \fBssh\-agent\fR holds, as \fBssh\-add \-D\fR forgets them.
+.TP
+\fBgpg\fR
+The passphrases \fBgpg\-agent\fR has kept, of GnuPG's keys and of the SSH keys it holds, as reloading it forgets them; and the PIN a smartcard was given, as ending its daemon does.
+.RE
+.TP
+\fBlock.key\fR
+A security key touched, such as a \fBYubiKey\fR, through the \fBomorfos\-lock\-key\fR PAM service. By default \fBtrue\fR.
+.TP
+\fBlock.power\fR
+Sleep, Restart, Shut Down and Log Out, without unlocking, each where it may be done without a password. Whoever is at the screen can then end the session, and what is not saved in it; a machine that others use may want them off. By default \fBtrue\fR.
+.TP
+\fBlocker\fR
+The program that locks the session, and its arguments, such as \fB[swaylock, \-f]\fR. The \fBlock\fR action starts it, and it alone is let lock. Without one there is nothing to lock with.
+.TP
+\fBmouse\fR
+Mouse behaviour.
+.TP
+\fBmouse.acceleration\fR
+Whether a quick movement takes the pointer further than a slow one of the same length.
+.RS
+.TP
+\fBadaptive\fR
+A quick movement takes the pointer further than a slow one of the same length: slow for precision, quick to cross the screen.
+.TP
+\fBflat\fR
+The pointer goes as far as the device moved, however quickly.
+.RE
+.TP
+\fBmouse.natural_scroll\fR
+Whether content follows the wheel when scrolling. A wheel turned towards the user moves down the page unless this is on. By default \fBfalse\fR.
+.TP
+\fBmouse.speed\fR
+How fast the pointer moves with the mouse. From \-1 to 1.
+.TP
+\fBnight_light\fR
+The screens made warmer after dark.
+.TP
+\fBnight_light.enabled\fR
+Whether the screens are made warmer after dark: from sunset to sunrise where \fBappearance.location\fR says, or outside the hours of \fBappearance.day\fR, as \fBscheme: auto\fR goes by, turning warm over the 20 minutes after it is dark and back over the 20 before it is light. By default \fBfalse\fR.
+.TP
+\fBnight_light.temperature\fR
+How warm the screens are at night, as the colour of a light of this temperature, in kelvin: 6500 is daylight, as screens are, and lower is warmer. From 1900 to 6500.
+.TP
+\fBnotifications\fR
+The notifications that come with omorfos.
+.TP
+\fBnotifications.enabled\fR
+Whether they are shown by omorfos. Turn it off to go without, or to use another program for them. By default \fBtrue\fR.
+.TP
+\fBnotifications.timeout\fR
+How long one stays, in seconds, when the program that sent it does not say. \fB0\fR leaves it until it is clicked. From 0 to 3600.
+.TP
+\fBoutput\fR
+How every screen is driven, unless it is named in \fBoutputs\fR.
+.TP
+\fBoutput.scale\fR
+How large everything is drawn: \fBauto\fR to suit the screen, or a number from 1 to 4 in steps of 0.25. From 1 to 4.
+.RS
+.TP
+\fBauto\fR
+Whatever suits the screen.
+.RE
+.TP
+\fBoutputs\fR
+Particular screens, by name: where each stands and how it is driven.
+.TP
+\fBoutputs[].align\fR
+Where along the edge it shares with the one before it it is lined up: at the start, the top or the left; the middle; or the end. Without this, the start beside it, and the middle above or below.
+.RS
+.TP
+\fBstart\fR
+Their tops, or their left sides, in line.
+.TP
+\fBmiddle\fR
+Their middles in line.
+.TP
+\fBend\fR
+Their bottoms, or their right sides, in line.
+.RE
+.TP
+\fBoutputs[].enabled\fR
+Whether it is on. One that is not shows nothing and stands nowhere, unless every screen plugged in would be off, when it is left on. By default \fBtrue\fR.
+.TP
+\fBoutputs[].mirror\fR
+Another screen, by name, whose picture this one shows, as large as fits on it: it stands nowhere of its own, and has nothing of its own on it. Without that one plugged in, it is a screen like any.
+.TP
+\fBoutputs[].mode\fR
+The size it is driven at, and how often it is drawn. Without this, what the screen says suits it best.
+.TP
+\fBoutputs[].name\fR
+The screen's name, such as \fBeDP\-1\fR or \fBHDMI\-A\-1\fR, as \fBomorfosctl state\fR shows it.
+.TP
+\fBoutputs[].offset\fR
+How far along that edge it is moved from there: right or down, or left or up if less than nothing.
+.TP
+\fBoutputs[].place\fR
+Where it stands next to the screen listed before it: to its right, unless this says otherwise.
+.RS
+.TP
+\fBright\fR
+To its right, the tops in line.
+.TP
+\fBleft\fR
+To its left, the tops in line.
+.TP
+\fBabove\fR
+Above it, the middles in line.
+.TP
+\fBbelow\fR
+Below it, the middles in line.
+.RE
+.TP
+\fBoutputs[].primary\fR
+Whether it is the one that comes first: the one the notice of what is wrong is shown on, and that windows go to from a screen that is unplugged. Without one, the first screen plugged in. One screen at most. By default \fBfalse\fR.
+.TP
+\fBoutputs[].rotate\fR
+Which way the screen is turned, as \fBxrandr \-\-rotate\fR says it: what is drawn is turned to match, so that it stands the right way up.
+.RS
+.TP
+\fBnormal\fR
+As it was made.
+.TP
+\fBleft\fR
+A quarter turn to the left: the top of the picture on the left.
+.TP
+\fBright\fR
+A quarter turn to the right: the top of the picture on the right.
+.TP
+\fBinverted\fR
+Upside down.
+.RE
+.TP
+\fBoutputs[].scale\fR
+How large everything is drawn on it. Without this, the scale given for every screen applies. From 1 to 4.
+.RS
+.TP
+\fBauto\fR
+Whatever suits the screen.
+.RE
+.TP
+\fBpanel\fR
+The panel that comes with omorfos.
+.TP
+\fBpanel.enabled\fR
+Whether it is started with the session. Turn it off to go without a panel or to use another one. By default \fBtrue\fR.
+.TP
+\fBplacement\fR
+Where new windows appear.
+.RS
+.TP
+\fBcascade\fR
+Each window is offset from the previous one, so titlebars stay visible.
+.TP
+\fBcenter\fR
+In the middle of the screen.
+.TP
+\fBpointer\fR
+Under the pointer.
+.RE
+.TP
+\fBportals\fR
+What applications ask the desktop through the portals.
+.TP
+\fBportals.enabled\fR
+Whether omorfos answers them. Turn it off to have another program answer, or none. By default \fBtrue\fR.
+.TP
+\fBscreenshots\fR
+Pictures of the screen.
+.TP
+\fBscreenshots.destination\fR
+Where a picture goes when the program is not told otherwise.
+.RS
+.TP
+\fBfile\fR
+Saved as a file among the user's pictures.
+.TP
+\fBclipboard\fR
+Copied, to be pasted, and not saved.
+.TP
+\fBboth\fR
+Saved and copied.
+.RE
+.TP
+\fBswitcher\fR
+The switcher on \fBAlt+Tab\fR.
+.TP
+\fBswitcher.style\fR
+How the windows are shown in it.
+.RS
+.TP
+\fBdiagonal\fR
+One behind another on a diagonal, the one picked in front, its title under it; each Tab sends the one in front to the back.
+.TP
+\fBflat\fR
+Side by side in rows, each over its title, in a box.
+.RE
+.TP
+\fBtouchpad\fR
+Touchpad behaviour.
+.TP
+\fBtouchpad.acceleration\fR
+Whether a quick movement takes the pointer further than a slow one of the same length.
+.RS
+.TP
+\fBadaptive\fR
+A quick movement takes the pointer further than a slow one of the same length: slow for precision, quick to cross the screen.
+.TP
+\fBflat\fR
+The pointer goes as far as the device moved, however quickly.
+.RE
+.TP
+\fBtouchpad.natural_scroll\fR
+Whether content follows the fingers when scrolling. By default \fBtrue\fR.
+.TP
+\fBtouchpad.speed\fR
+How fast the pointer moves under a finger. From \-1 to 1.
+.TP
+\fBtouchpad.tap_to_click\fR
+Whether tapping the touchpad clicks. By default \fBtrue\fR.
+.TP
+\fBupdate\fR
+omorfos's own new version, once it is installed.
+.TP
+\fBupdate.wait\fR
+How many seconds it waits for such a moment, after which it is taken up regardless. 0 waits however long, and the most is a week. It is never taken up while a window of a program written for X11 is open, as that program would close. From 0 to 604800.
+.TP
+\fBwallpaper\fR
+What is shown behind the windows.
+.TP
+\fBwallpaper.color\fR
+The colour of the screen where the picture does not cover it, or of the whole screen without one. Without this, the background of the theme's \fBdesktop\fR part.
+.TP
+\fBwallpaper.enabled\fR
+Whether it is started with the session. Turn it off to use another program for it. By default \fBtrue\fR.
+.TP
+\fBwallpaper.every\fR
+How many seconds each picture of a directory is shown for. From 5 to 604800.
+.TP
+\fBwallpaper.fade\fR
+How many milliseconds what a screen shows takes to fade into what it shows next. 0 is at once. From 0 to 10000.
+.TP
+\fBwallpaper.fit\fR
+How the picture is laid on the screen.
+.RS
+.TP
+\fBfill\fR
+As large as it must be to cover the screen, its shape kept, and what does not fit cut off on two sides.
+.TP
+\fBfit\fR
+As large as fits on the screen, its shape kept, with the colour round it.
+.TP
+\fBstretch\fR
+Made the screen's size and shape.
+.TP
+\fBcenter\fR
+As it is, a pixel of it to a pixel of the screen, in the middle.
+.TP
+\fBtile\fR
+As it is, again and again from the top left corner.
+.RE
+.TP
+\fBwallpaper.order\fR
+The order the pictures of a directory are shown in.
+.RS
+.TP
+\fBname\fR
+By their names.
+.TP
+\fBshuffled\fR
+Any order, a different one each time through.
+.RE
+.TP
+\fBwallpaper.picture\fR
+A picture, PNG or JPEG, or a directory of them to be shown in turn: a path from the root, or from the home directory as \fB~/\fR.
+.TP
+\fBwallpaper.picture.dark\fR
+
+.TP
+\fBwallpaper.picture.light\fR
+
+.TP
+\fBwallpaper.screens\fR
+Particular screens, by name, that show something else.
+.TP
+\fBwallpaper.screens[].color\fR
+Its own colour.
+.TP
+\fBwallpaper.screens[].fit\fR
+Its own way of laying the picture on it.
+.RS
+.TP
+\fBfill\fR
+As large as it must be to cover the screen, its shape kept, and what does not fit cut off on two sides.
+.TP
+\fBfit\fR
+As large as fits on the screen, its shape kept, with the colour round it.
+.TP
+\fBstretch\fR
+Made the screen's size and shape.
+.TP
+\fBcenter\fR
+As it is, a pixel of it to a pixel of the screen, in the middle.
+.TP
+\fBtile\fR
+As it is, again and again from the top left corner.
+.RE
+.TP
+\fBwallpaper.screens[].name\fR
+The screen's name, such as \fBeDP\-1\fR or \fBHDMI\-A\-1\fR, as \fBomorfosctl state\fR shows it.
+.TP
+\fBwallpaper.screens[].picture\fR
+Its own picture, or directory of them. With this or \fBcolor\fR, it shows nothing of what every screen does.
+.TP
+\fBwallpaper.screens[].picture.dark\fR
+
+.TP
+\fBwallpaper.screens[].picture.light\fR
+
+.TP
+\fBworkspaces\fR
+The workspaces of the session, as a list of names.
+.TP
+\fBxwayland\fR
+Programs written for X11.
+.TP
+\fBxwayland.enabled\fR
+Whether \fBXwayland\fR is started with the session. Turn it off to do without programs written for X11: they can read each other's windows and keys, which programs written for Wayland cannot. By default \fBtrue\fR.
+.TP
+\fBxwayland.scaling\fR
+How they are drawn on a screen with a scale.
+.RS
+.TP
+\fBstretched\fR
+They draw at one pixel to a unit of layout and are stretched to size. All of them are the right size, and blurred.
+.TP
+\fBnative\fR
+They draw with as many pixels as the screen has, and are told how dense it is. Those that take that in are sharp and the right size; those that do not are sharp and small.
+.RE
+.SH EXAMPLE
+.PP
+Every key at its default, but for the names of the workspaces:
+.PP
+.nf
+.RS 4
+workspaces: [web, code, chat, media]   # 1 to 32 that are always there
+focus:
+  model: click            # click | sloppy
+  raise_on_focus: true
+placement: cascade        # cascade | center | pointer
+keyboard:
+  layout: us              # XKB layout; several as "gb,pl"
+  variant: ""
+  options: ""             # e.g. "caps:escape"
+  repeat_delay: 400       # milliseconds
+  repeat_rate: 30         # per second; 0 disables repeat
+touchpad:
+  tap_to_click: true
+  natural_scroll: true    # content follows the fingers
+  speed: 0                # \-1 slowest to 1 fastest
+  acceleration: adaptive  # adaptive | flat
+mouse:
+  natural_scroll: false   # content follows the wheel
+  speed: 0                # \-1 slowest to 1 fastest
+  acceleration: adaptive  # adaptive | flat
+output:
+  scale: auto             # auto | 1 to 4 in steps of 0.25
+outputs: []               # particular screens, by name
+idle:
+  screen_off: 0           # seconds without input; 0 never
+  lock: 0                 # seconds without input; 0 never
+  sleep: 0                # seconds without input; 0 never
+autostart: []             # programs to start with the session
+panel:
+  enabled: true           # start the panel that comes with omorfos
+wallpaper:
+  enabled: true           # start the wallpaper that comes with omorfos
+  fit: fill               # fill | fit | stretch | center | tile
+  every: 600              # seconds each picture of a directory is shown
+  fade: 1000              # milliseconds one picture fades into the next; 0 at once
+  order: name             # name | shuffled
+  screens: []             # particular screens, by name
+lock:                     # how omorfos\-lock may be unlocked besides the password
+  fingerprint: true       # a finger, through the omorfos\-lock\-fingerprint PAM service
+  key: true               # a security key, through omorfos\-lock\-key
+  power: true             # Sleep, Restart, Shut Down and Log Out without unlocking
+  forget: []              # forgotten as the session locks: ssh, gpg
+cursor:
+  theme: omorfos          # omorfos's own, or a cursor theme by name
+  size: 24                # 8 to 128
+icons:
+  theme: Adwaita          # an icon theme by name
+appearance:
+  scheme: dark            # dark | light | auto, light from sunrise to sunset
+  # location: system      # for auto: where the sun is watched; or Europe/London, or { latitude: 51.5, longitude: \-0.13 }
+  # day: { from: '07:00', to: '19:00' } # for auto: light between these hours instead
+  accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
+  reduce_transparency: false # every surface the theme makes glass solid
+  reduce_motion: false    # nothing moves: what comes and goes only fades
+night_light:
+  enabled: false          # the screens warmer after dark, by appearance's day and night
+  temperature: 4000       # kelvin at night, 1900 to 6500: lower is warmer
+launcher:
+  icons: false            # show each program's icon
+  descriptions: false     # show, and search, what each program says of itself
+switcher:
+  style: diagonal         # the windows one behind another; or flat, in rows
+notifications:
+  enabled: true           # show what programs have to tell you
+  timeout: 5              # seconds one stays; 0 until it is clicked
+screenshots:
+  destination: file       # file | clipboard | both
+clipboard:
+  enabled: true           # keep what is copied after its program closes
+  forget: 0               # seconds what is kept stays; 0 for as long as the session
+portals:
+  enabled: true           # tell applications how the desktop looks
+xwayland:
+  enabled: true           # run programs written for X11
+  scaling: stretched      # stretched | native, on a screen with a scale
+update:
+  wait: 3600              # seconds omorfos's new version waits for a quiet moment; 0 however long
+.RE
+.fi
+.SH SEE ALSO
+.PP
+\fBomorfos\fR(1), \fBomorfosctl\fR(1), \fBomorfos\-keys\fR(5), \fBomorfos\-rules\fR(5), \fBomorfos\-menu\fR(5), \fBomorfos\-theme\fR(5)

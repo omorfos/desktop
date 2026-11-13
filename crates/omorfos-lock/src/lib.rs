@@ -16,9 +16,29 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use omorfos_config::Lock as Offered;
+use omorfos_ipc::help::About;
 
 pub use screen::{Failure, Lock};
 pub use ways::Way;
+
+/// What it says of itself, when asked and in its manual page.
+pub const ABOUT: About = About {
+    name: "omorfos-lock",
+    what: "The lock screen of the omorfos desktop, which asks PAM for each way of unlocking at \
+           once.",
+    usage: " [COMMAND]",
+    commands: &[(
+        "check SERVICE USER",
+        "Ask PAM's SERVICE whether USER may unlock, as the helper the lock \
+         screen starts for each way of unlocking; not for running by hand",
+    )],
+    options: &[],
+    examples: &[],
+    notes: "Without a command it locks the session at once. The `lock` action starts it so, \
+            as `locker` in config.yaml names it, and so does the session before the machine \
+            sleeps.",
+    version: env!("CARGO_PKG_VERSION"),
+};
 
 /// The ways the configuration offers: the password always, and a finger
 /// and a key unless it says not to.
