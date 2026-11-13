@@ -1828,9 +1828,10 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       group on Super+\`, fullscreen and new workspaces on Super+Ctrl, so
       that find and a new window are the program's, and the overview on
       the Mission Control key, F3 on a MacBook.
-- [ ] `keyboard-shortcuts-inhibit`, for a virtual machine, a remote
-      desktop or a game to have the whole keyboard, Super among it, while
-      its window has focus, as ADR 78 leaves them without it.
+- [x] `keyboard-shortcuts-inhibit`: a virtual machine, a remote desktop
+      or a game that asks is given every key, Super among them, while its
+      window has the keyboard, with a notice; `Super+Escape` takes them
+      back until it asks again (ADR 78).
 - [ ] The guide gone through as a user would use it: a short way in for
       the first login (what is there, the keys that matter, where the
       files are, how to bind what has no key, such as the overview); the

@@ -694,3 +694,84 @@ fn a_chord_with_super_reaches_nothing_when_no_program_has_the_keyboard() {
     session.roundtrip(&mut client);
     assert_eq!(client.state.chords, [(C_CODE, true, 0), (C_CODE, false, 0)]);
 }
+
+const ESCAPE_CODE: u32 = 1;
+const Q_CODE: u32 = 16;
+
+/// A window of `app` that has asked for every key, and been given them.
+fn every_key(session: &mut Session, client: &mut crate::common::Client, app: &str) {
+    let window = session.open(client, app, (200, 100), RED);
+    let _asked = client.ask_every_key(&window.surface);
+    session.roundtrip(client);
+    assert!(
+        client.take_events().contains(&Event::EveryKey(true)),
+        "granted"
+    );
+    session.step();
+    let said: Vec<&str> = session.compositor().events().collect();
+    assert!(
+        said.iter()
+            .any(|said| said.contains(app) && said.contains("Super+Escape")),
+        "and the user told how to have the keys back: {said:?}"
+    );
+    client.state.chords.clear();
+}
+
+#[test]
+fn a_program_given_every_key_has_the_desktops_keys_too_while_it_has_focus() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    every_key(&mut session, &mut client, "vm");
+
+    // Super+Q, which closes a window, reaches it as it is, Super held.
+    press(&mut session, key::SUPER);
+    press(&mut session, key::Q);
+    release(&mut session, key::Q);
+    release(&mut session, key::SUPER);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(!events.contains(&Event::Close), "not asked to close");
+    assert!(client.state.chords.contains(&(Q_CODE, true, LOGO)));
+
+    // Another window that has not asked has the desktop's keys as ever.
+    let mut other = session.connect();
+    session.open(&mut other, "app", (200, 100), BLUE);
+    session.roundtrip(&mut other);
+    other.state.chords.clear();
+    press(&mut session, key::SUPER);
+    press(&mut session, key::C);
+    release(&mut session, key::C);
+    release(&mut session, key::SUPER);
+    session.roundtrip(&mut other);
+    assert!(other.state.chords.contains(&(C_CODE, true, CTRL)));
+}
+
+#[test]
+fn super_escape_takes_every_key_back_from_the_program_that_has_them() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    every_key(&mut session, &mut client, "vm");
+
+    press(&mut session, key::SUPER);
+    press(&mut session, key::ESCAPE);
+    release(&mut session, key::ESCAPE);
+    release(&mut session, key::SUPER);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(events.contains(&Event::EveryKey(false)));
+    assert!(
+        !client
+            .state
+            .chords
+            .iter()
+            .any(|chord| chord.0 == ESCAPE_CODE),
+        "Escape is not the program's"
+    );
+    // Nor is it the menu's, which would have taken the keyboard.
+    assert!(!events.contains(&Event::KeyboardLeave), "{events:?}");
+
+    // The desktop's keys are the desktop's again: Super+Q asks it to close.
+    super_tap(&mut session, key::Q);
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Close));
+}

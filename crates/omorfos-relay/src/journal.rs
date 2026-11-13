@@ -143,7 +143,7 @@ pub fn rule(interface: &str, request: &str) -> Rule {
 
 /// The interfaces of the objects, other than the globals bound, that can be
 /// made again: a program holding one of another cannot be kept.
-const KEPT: [&str; 52] = [
+const KEPT: [&str; 53] = [
     "wl_display",
     "wl_registry",
     "wl_callback",
@@ -173,6 +173,7 @@ const KEPT: [&str; 52] = [
     "zwp_pointer_gesture_pinch_v1",
     "zwp_pointer_gesture_hold_v1",
     "zwp_idle_inhibitor_v1",
+    "zwp_keyboard_shortcuts_inhibitor_v1",
     "zwp_linux_buffer_params_v1",
     "zwp_linux_dmabuf_feedback_v1",
     "xdg_toplevel_icon_v1",

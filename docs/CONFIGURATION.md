@@ -479,6 +479,12 @@ false` has a chord with Super that nothing binds reach the program as it
 is. A chord you bind with Super is no longer the program's: `Super+s`
 bound is no longer save anywhere.
 
+A program that needs every key, as a virtual machine, a remote desktop
+or a game may, can ask for them (`keyboard-shortcuts-inhibit`), and is
+given them while its window has the keyboard, the desktop's bindings and
+Super among them; a notice says so. `Super+Escape` always takes them
+back, until the program asks again.
+
 ### Built-in bindings
 
 What the keys do before you write anything, each action as `keys.yaml`

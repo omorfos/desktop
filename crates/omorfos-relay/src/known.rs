@@ -21,6 +21,7 @@ use wayland_protocols::wp::alpha_modifier::v1::server::wp_alpha_modifier_v1;
 use wayland_protocols::wp::cursor_shape::v1::server::wp_cursor_shape_manager_v1;
 use wayland_protocols::wp::fractional_scale::v1::server::wp_fractional_scale_manager_v1;
 use wayland_protocols::wp::idle_inhibit::zv1::server::zwp_idle_inhibit_manager_v1;
+use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::server::zwp_keyboard_shortcuts_inhibit_manager_v1;
 use wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_v1;
 use wayland_protocols::wp::pointer_constraints::zv1::server::zwp_pointer_constraints_v1;
 use wayland_protocols::wp::pointer_gestures::zv1::server::zwp_pointer_gestures_v1;
@@ -66,7 +67,7 @@ pub(crate) fn globals() -> impl Iterator<Item = &'static Interface> {
 }
 
 /// Every global the compositor offers, as `omorfos-ipc`'s list says.
-const GLOBALS: [fn() -> &'static Interface; 40] = [
+const GLOBALS: [fn() -> &'static Interface; 41] = [
     ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1::interface,
     ext_data_control_manager_v1::ExtDataControlManagerV1::interface,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1::interface,
@@ -96,6 +97,7 @@ const GLOBALS: [fn() -> &'static Interface; 40] = [
     zwlr_layer_shell_v1::ZwlrLayerShellV1::interface,
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1::interface,
     zwp_input_method_manager_v2::ZwpInputMethodManagerV2::interface,
+    zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1::interface,
     zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1::interface,
     zwp_pointer_constraints_v1::ZwpPointerConstraintsV1::interface,
     zwp_pointer_gestures_v1::ZwpPointerGesturesV1::interface,

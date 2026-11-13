@@ -81,6 +81,7 @@ use smithay::wayland::foreign_toplevel_list::{ForeignToplevelHandle, ForeignTopl
 use smithay::wayland::fractional_scale::{FractionalScaleManagerState, with_fractional_scale};
 use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
 use smithay::wayland::idle_notify::IdleNotifierState;
+use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState;
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::presentation::PresentationState;
 use smithay::wayland::security_context::SecurityContextState;
@@ -5447,6 +5448,8 @@ impl MenuChrome {
 pub(crate) struct Protocols {
     _decorations: XdgDecorationState,
     _idle_inhibit: IdleInhibitManagerState,
+    /// Programs asking for every key, those the desktop keeps among them.
+    pub(crate) shortcuts: KeyboardShortcutsInhibitState,
     /// Windows a program shares with another by a handle, for a dialog of
     /// one to belong to a window of the other, as a portal's does.
     pub(crate) foreign: XdgForeignState,
@@ -5465,6 +5468,7 @@ impl Protocols {
         Self {
             _decorations: XdgDecorationState::new::<Compositor>(display),
             _idle_inhibit: IdleInhibitManagerState::new::<Compositor>(display),
+            shortcuts: KeyboardShortcutsInhibitState::new::<Compositor>(display),
             foreign: XdgForeignState::new::<Compositor>(display),
             _presentation: PresentationState::new::<Compositor>(display, Monotonic::ID as u32),
             holding: Holding::offer(display),

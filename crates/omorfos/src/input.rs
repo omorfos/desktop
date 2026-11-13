@@ -20,6 +20,11 @@ use crate::paint::{self, AboutButton};
 use crate::reveal::Placing;
 use crate::x11::Focus;
 use omorfos_core::KeyOutcome;
+use smithay::delegate_keyboard_shortcuts_inhibit;
+use smithay::wayland::keyboard_shortcuts_inhibit::{
+    KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
+    KeyboardShortcutsInhibitorSeat,
+};
 
 /// The surface of a program the pointer is over, and where its corner is,
 /// as the program is told: nothing while the compositor's own things have
@@ -517,6 +522,11 @@ impl Compositor {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(chosen);
             }
+            // A program given every key has them while it has the keyboard,
+            // but for the one that takes them back.
+            if let Some(taken) = compositor.every_key(held, keysym, code) {
+                return taken;
+            }
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a
                 // step in a chain.
@@ -555,6 +565,31 @@ impl Compositor {
             self.perform(&action);
         }
         self.switch.held = Modifiers::NONE;
+    }
+
+    /// What becomes of `code`, pressed with `held` as `keysym`, if what
+    /// has the keyboard was given every key (ADR 78): `Super+Escape` takes
+    /// them back from it, until it asks again, and anything else is its
+    /// own. Nothing, if it was given none.
+    fn every_key(
+        &mut self,
+        held: &ModifiersState,
+        keysym: Keysym,
+        code: Keycode,
+    ) -> Option<FilterResult<Option<Action>>> {
+        let surface = match self.keyboard.current_focus()? {
+            Focus::Surface(surface) => Some(surface),
+            Focus::X11(window) => window.wl_surface(),
+        };
+        let given = surface
+            .and_then(|surface| self.seat.keyboard_shortcuts_inhibitor_for_surface(&surface));
+        let given = given.filter(KeyboardShortcutsInhibitor::is_active)?;
+        if held.logo && keysym == Keysym::Escape {
+            given.inactivate();
+            self.taken.suppressed.push(code);
+            return Some(FilterResult::Intercept(None));
+        }
+        Some(FilterResult::Forward)
     }
 
     /// What becomes of `code` let go of with `held`: the switcher it was
@@ -1299,3 +1334,27 @@ impl Compositor {
         )
     }
 }
+
+/// A program may have every key, those the desktop keeps among them, while
+/// its window has the keyboard, as a virtual machine or a remote desktop
+/// asks to (ADR 78). It is given them at once, and the user told so, and
+/// how to have them back.
+impl KeyboardShortcutsInhibitHandler for Compositor {
+    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
+        &mut self.protocols.shortcuts
+    }
+
+    fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
+        inhibitor.activate();
+        let window = self.window_id(inhibitor.wl_surface());
+        let window = window.and_then(|id| self.desktop.window(id));
+        let program = window.map_or("A program", |window| window.app_id.as_str());
+        let said = format!(
+            "{program} has every key while it has the keyboard, the desktop's among them: \
+             Super+Escape takes them back"
+        );
+        self.refused.say(&said);
+    }
+}
+
+delegate_keyboard_shortcuts_inhibit!(Compositor);

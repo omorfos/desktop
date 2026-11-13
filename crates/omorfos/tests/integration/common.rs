@@ -63,6 +63,10 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1,
 };
+use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
+    zwp_keyboard_shortcuts_inhibit_manager_v1 as shortcuts_manager,
+    zwp_keyboard_shortcuts_inhibitor_v1 as shortcuts_inhibitor,
+};
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
 };
@@ -732,6 +736,9 @@ pub(crate) enum Event {
     CaptureKnown,
     /// No more pictures will be given.
     CaptureStopped,
+    /// Whether the keys the desktop keeps for itself are this client's, as
+    /// it asked: `true` once granted, `false` once taken back.
+    EveryKey(bool),
     /// A part of a picture that differs from the one before.
     ShotDamage(i32, i32, i32, i32),
     /// The pointer came over the screen followed, or left it.
@@ -891,6 +898,9 @@ pub(crate) struct ClientState {
     pub(crate) versions: Vec<u32>,
     idlers: Option<ext_idle_notifier_v1::ExtIdleNotifierV1>,
     inhibitors: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    /// The protocol by which a program asks for every key, those the
+    /// desktop keeps for itself among them.
+    shortcuts: Option<shortcuts_manager::ZwpKeyboardShortcutsInhibitManagerV1>,
     /// The outputs the compositor offers, in the order they appeared.
     pub(crate) screens: Vec<wl_output::WlOutput>,
     /// What says how large each output is in the space windows are laid
@@ -1411,6 +1421,16 @@ impl Client {
     ) -> zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1 {
         let inhibitors = self.state.inhibitors.as_ref().unwrap();
         inhibitors.create_inhibitor(surface, &self.handle(), ())
+    }
+
+    /// Asks for every key while `surface` has the keyboard, those the
+    /// desktop keeps for itself among them.
+    pub(crate) fn ask_every_key(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> shortcuts_inhibitor::ZwpKeyboardShortcutsInhibitorV1 {
+        let shortcuts = self.state.shortcuts.as_ref().unwrap();
+        shortcuts.inhibit_shortcuts(surface, self.seat(), &self.handle(), ())
     }
 
     /// Asks for the pointer to be drawn as `picture` while it is over this
@@ -2147,6 +2167,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "zwp_idle_inhibit_manager_v1" => {
                 state.inhibitors = Some(registry.bind(name, version, handle, ()));
+            }
+            "zwp_keyboard_shortcuts_inhibit_manager_v1" => {
+                state.shortcuts = Some(registry.bind(name, version, handle, ()));
             }
             interface => state.bind_pointing(registry, interface, (name, version), handle),
         }
@@ -2987,6 +3010,21 @@ delegate_noop!(ClientState: ext_session_lock_manager_v1::ExtSessionLockManagerV1
 delegate_noop!(ClientState: ext_idle_notifier_v1::ExtIdleNotifierV1);
 delegate_noop!(ClientState: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
 delegate_noop!(ClientState: zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
+delegate_noop!(ClientState: shortcuts_manager::ZwpKeyboardShortcutsInhibitManagerV1);
+
+impl Dispatch<shortcuts_inhibitor::ZwpKeyboardShortcutsInhibitorV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &shortcuts_inhibitor::ZwpKeyboardShortcutsInhibitorV1,
+        event: shortcuts_inhibitor::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let active = matches!(event, shortcuts_inhibitor::Event::Active);
+        state.events.push(Event::EveryKey(active));
+    }
+}
 
 impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for ClientState {
     fn event(

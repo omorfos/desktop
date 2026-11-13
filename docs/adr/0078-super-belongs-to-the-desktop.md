@@ -62,9 +62,13 @@ overview is on Apple's Mission Control key (`XF86LaunchA`).
 ## Consequences
 
 - A program that needs Super itself, as a virtual machine, a remote
-  desktop or a game may, never gets it. The way for one to have the
-  whole keyboard is `keyboard-shortcuts-inhibit`, which omorfos does not
-  offer yet; it is on the roadmap.
+  desktop or a game may, asks for every key by
+  `keyboard-shortcuts-inhibit`. It is given them at once, while its
+  window has the keyboard, and a notice says so and how to have them
+  back: `Super+Escape`, which is never the program's, takes them back
+  until it asks again. Asking the user first was considered, and turned
+  down as a question each time a game starts; never giving them, as the
+  rule alone would, leaves such programs without their keys.
 - A chord bound in `keys.yaml` takes it from every program: Super+S bound
   there is no longer save anywhere.
 - Ctrl chords reach programs as they are typed: Ctrl+C in a terminal

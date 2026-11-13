@@ -261,6 +261,13 @@ pub const OFFERED: &[Protocol] = &[
                    input method is not made again.",
     },
     Protocol {
+        interface: "zwp_keyboard_shortcuts_inhibit_manager_v1",
+        version: 1,
+        replayed: "Each inhibitor made again on its surface and seat, which the compositor \
+                   grants as it did the first: one taken back by Super+Escape is given every \
+                   key again.",
+    },
+    Protocol {
         interface: "zwp_linux_dmabuf_v1",
         version: 5,
         replayed: "Offered once the backend says which card can be drawn from. Each buffer made \
