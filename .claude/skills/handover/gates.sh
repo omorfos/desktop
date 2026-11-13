@@ -6,7 +6,7 @@
 #   .claude/skills/handover/gates.sh handover          what a build for trying by hand needs
 #   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
 #   .claude/skills/handover/gates.sh all               handover, then rest
-#   .claude/skills/handover/gates.sh commits [base]    each commit after base (main) alone
+#   .claude/skills/handover/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
 #   .claude/skills/handover/gates.sh uncovered         what the last coverage run missed
 #
 # Each tier's whole output is kept in target/gates/<tier>.log. `area` takes
@@ -65,13 +65,15 @@ uncovered() {
         done
 }
 
-# Each commit after `base` by itself, oldest first, in a worktree of its
-# own: formatting, clippy, and the coverage gate. A commit that passes
-# only with what came after it is found here, as one split badly is. The
-# last commit's tree is what the other tiers ran on.
+# Each commit after `base` by itself, oldest first, up to `tip`, in a
+# worktree of its own: formatting, clippy, and the coverage gate. A commit
+# that passes only with what came after it is found here, as one split
+# badly is. The last commit's tree is what the other tiers ran on: where
+# `all` passed on it, `tip` can be the commit before, as `HEAD~1`, and the
+# tier is a coverage run shorter.
 commits() {
-    local base=${1:-main} tree commit list
-    list=$(git rev-list --reverse "$base"..HEAD)
+    local base=${1:-main} tip=${2:-HEAD} tree commit list
+    list=$(git rev-list --reverse "$base".."$tip")
     [ -n "$list" ] || { echo "nothing after $base"; return; }
     # Outside the repository: cargo reads the configuration of every folder
     # above the one it runs in, and would take the coverage alias twice.
@@ -165,7 +167,7 @@ case "$tier" in
     commits) shift; commits "$@" ;;
     uncovered) uncovered | tee -a "$log" ;;
     *)
-        echo "usage: $0 area <filter>... | handover | rest | all | commits [base] | uncovered" >&2
+        echo "usage: $0 area <filter>... | handover | rest | all | commits [base [tip]] | uncovered" >&2
         exit 2
         ;;
 esac

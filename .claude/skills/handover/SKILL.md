@@ -145,7 +145,9 @@ the tests; say so when a change depends on it.
   hunks and stashing the rest: that broke `main` once. With more than one
   commit, run `gates.sh commits` before merging: it checks out each in a
   worktree of its own and runs formatting, clippy and the coverage gate
-  on it alone.
+  on it alone. Where `all` passed on the last commit's tree, leave that
+  one out, `gates.sh commits main HEAD~1`, as each costs a coverage run.
+  Split only where the parts are changes someone would revert alone.
 - Where one file holds parts of two commits, give the first commit a
   version of the whole file that has only its part: `main`'s version with
   that part made, or, where the work went in steps, the file as it was
