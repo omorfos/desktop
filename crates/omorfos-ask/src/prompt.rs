@@ -137,7 +137,7 @@ pub enum Button {
 
 /// The button at a place on the box, if there is one.
 #[must_use]
-pub fn button_at((x, y): (i32, i32)) -> Option<Button> {
+pub fn button_at((x, y): (i32, i32), lower: i32) -> Option<Button> {
     let inside = |(left, top, width, height): Area| {
         let (right, bottom) = (left + width.cast_signed(), top + height.cast_signed());
         (left..right).contains(&x) && (top..bottom).contains(&y)
@@ -148,7 +148,7 @@ pub fn button_at((x, y): (i32, i32)) -> Option<Button> {
         (GO, Button::Go),
     ]
     .into_iter()
-    .find_map(|(area, button)| inside(area).then_some(button))
+    .find_map(|(area, button)| inside(below(area, lower)).then_some(button))
 }
 
 /// What the field is called: whose password it is, as `labels` says,
@@ -225,6 +225,35 @@ const fn along((left, top, across, down): Area, by: i32) -> Area {
     (left + by, top, across, down)
 }
 
+/// Moves `area` down by `lower` units, as what is under what is asked for
+/// is, by the lines it takes beyond its first.
+const fn below((left, top, across, down): Area, lower: i32) -> Area {
+    (left, top + lower, across, down)
+}
+
+/// The most lines what is asked for is given; what is left over is cut
+/// short on the last.
+const MESSAGE_LINES: usize = 4;
+
+/// How tall a line of what is asked for is, in units.
+const MESSAGE_LINE: i32 = 20;
+
+/// What is asked for, as polkit says it, in lines as wide as the box has
+/// room for, in the font `theme` gives it.
+fn message(text: &mut Text, theme: &Theme, said: &str) -> Vec<String> {
+    let font = theme.font(Part::QuestionDetail, States::NONE);
+    let room = SIZE.0 - MARGIN.unsigned_abs() * 2;
+    text.wrap(said, room, font, MESSAGE_LINES)
+}
+
+/// How far down what is under what is asked for goes, by the lines it
+/// takes beyond its first: the box is that much taller.
+fn lower(text: &mut Text, theme: &Theme, said: &str) -> i32 {
+    let lines = message(text, theme, said).len().max(1);
+    let beyond = i32::try_from(lines - 1).unwrap_or_default();
+    beyond * MESSAGE_LINE
+}
+
 /// Paints the box, `shift` units from where it rests: what is asked for,
 /// the field with what is typed shown or hidden and the eye that shows or
 /// hides it, what was said, the buttons with the one that goes on picked
@@ -238,27 +267,35 @@ pub fn paint(
     (asking, (typed, marked), open): (&Asking, (&str, bool), bool),
     (shift, on_eye, focused): (i32, bool, Option<Button>),
 ) -> Canvas {
+    let lines = message(text, theme, &asking.message);
+    let lower = lower(text, theme, &asking.message);
+    let taller = lower.unsigned_abs();
     let (width, height) = SURFACE;
-    let mut canvas = Canvas::scaled(width, height, scale);
+    let mut canvas = Canvas::scaled(width, height + taller, scale);
     let by = SHAKE + shift;
     let whole_box = theme.style(Part::Question, States::NONE);
-    canvas.draw_box((by, 0, SIZE.0, SIZE.1), &whole_box);
+    canvas.draw_box((by, 0, SIZE.0, SIZE.1 + taller), &whole_box);
     let room = SIZE.0 - MARGIN.unsigned_abs() * 2;
     let font = theme.font(Part::Question, States::NONE);
     let line = along((MARGIN, MARGIN, room, 24), by);
     text.draw(&mut canvas, &asking.heading, line, whole_box.color, font);
     let detail = theme.style(Part::QuestionDetail, States::NONE);
     let font = theme.font(Part::QuestionDetail, States::NONE);
-    let line = along((MARGIN, MARGIN + 28, room, 20), by);
-    text.draw(&mut canvas, &asking.message, line, detail.color, font);
+    let mut top = MARGIN + 28;
+    for said in &lines {
+        let line = along((MARGIN, top, room, MESSAGE_LINE.unsigned_abs()), by);
+        text.draw(&mut canvas, said, line, detail.color, font);
+        top += MESSAGE_LINE;
+    }
     let called = label(&asking.question, &asking.labels);
     text.draw(
         &mut canvas,
         &called,
-        along((MARGIN, 76, room, 20), by),
+        along((MARGIN, 76 + lower, room, 20), by),
         detail.color,
         font,
     );
+    let (field_area, eye) = (below(FIELD, lower), below(EYE, lower));
     // Typed into while the keyboard is on the field, and not on a button.
     let typed_into = !asking.checking && focused.is_none();
     let typing = if typed_into {
@@ -267,9 +304,9 @@ pub fn paint(
         States::NONE
     };
     let field = theme.style(Part::QuestionInput, typing);
-    canvas.draw_box(along(FIELD, by), &field);
+    canvas.draw_box(along(field_area, by), &field);
     let font = theme.font(Part::QuestionInput, typing);
-    let (left, top, across, down) = FIELD;
+    let (left, top, across, down) = field_area;
     // The text stops short of the eye.
     let within = along((left + 8, top + 6, across - 48, down - 12), by);
     let showing = shown(typed, open || asking.open);
@@ -305,7 +342,7 @@ pub fn paint(
         }
     };
     if !asking.open {
-        paint_eye(&mut canvas, (along(EYE, by), scale), field.color, open);
+        paint_eye(&mut canvas, (along(eye, by), scale), field.color, open);
         // The keyboard on the eye rings it as it would a button, but close
         // round it: it is in the field, with no room to stand off from it.
         let ringed = theme.style(Part::QuestionButton, on_it(Button::Show, States::NONE));
@@ -315,18 +352,52 @@ pub fn paint(
             radius: ringed.radius,
             ..Style::NONE
         };
-        canvas.draw_box(along(EYE, by), &ring);
+        canvas.draw_box(along(eye, by), &ring);
     }
-    let line = along((MARGIN, 140, room, 20), by);
+    let line = along((MARGIN, 140 + lower, room, 20), by);
     text.draw(&mut canvas, &asking.said, line, detail.color, font);
+    paint_buttons(&mut canvas, theme, text, (asking, focused), (by, lower));
+    if (on_eye || focused == Some(Button::Show)) && !asking.open {
+        paint_tooltip(
+            &mut canvas,
+            theme,
+            text,
+            (eye_says(&asking.labels, open), by, lower),
+        );
+    }
+    canvas
+}
+
+/// Paints the button that gives up and the one that goes on, `by` units
+/// along and `lower` down: the second picked out, and the one the keyboard
+/// is on, `focused`, as such.
+fn paint_buttons(
+    canvas: &mut Canvas,
+    theme: &Theme,
+    text: &mut Text,
+    (asking, focused): (&Asking, Option<Button>),
+    (by, lower): (i32, i32),
+) {
+    let on_it = |button: Button, states: States| {
+        if focused == Some(button) {
+            states.with(State::Focused)
+        } else {
+            states
+        }
+    };
     let picked = States::NONE.with(State::Active);
+    let cancel = asking.labels.cancel.as_str();
     let buttons = [
         (
-            CANCEL,
-            asking.labels.cancel.as_str(),
+            below(CANCEL, lower),
+            cancel,
             on_it(Button::Cancel, States::NONE),
         ),
-        (GO, asking.go.as_str(), on_it(Button::Go, picked)),
+        (
+            below(GO, lower),
+            asking.go.as_str(),
+            on_it(Button::Go, picked),
+        ),
     ];
     for (area, label, states) in buttons {
         let style = theme.style(Part::QuestionButton, states);
@@ -334,25 +405,21 @@ pub fn paint(
         let font = theme.font(Part::QuestionButton, states);
         let (left, top, across, down) = along(area, by);
         let within = (left + 10, top + 6, across - 20, down - 12);
-        text.draw(&mut canvas, label, within, style.color, font);
+        text.draw(canvas, label, within, style.color, font);
     }
-    if (on_eye || focused == Some(Button::Show)) && !asking.open {
-        paint_tooltip(
-            &mut canvas,
-            theme,
-            text,
-            (eye_says(&asking.labels, open), by),
-        );
-    }
-    canvas
 }
 
 /// Paints what the eye is for, under it, ending where the field does.
-fn paint_tooltip(canvas: &mut Canvas, theme: &Theme, text: &mut Text, (says, by): (&str, i32)) {
+fn paint_tooltip(
+    canvas: &mut Canvas,
+    theme: &Theme,
+    text: &mut Text,
+    (says, by, lower): (&str, i32, i32),
+) {
     let style = theme.style(Part::Tooltip, States::NONE);
     let font = theme.font(Part::Tooltip, States::NONE);
     let across = text.measure(says, font) + 16;
-    let (field_left, field_top, field_across, field_down) = FIELD;
+    let (field_left, field_top, field_across, field_down) = below(FIELD, lower);
     let right = field_left + field_across.cast_signed();
     let area = (
         right - across.cast_signed(),
@@ -431,6 +498,9 @@ struct Shell {
     /// The button the keyboard is on, reached with Tab; on none, it is on
     /// the field.
     focused: Option<Button>,
+    /// How far down what is under what is asked for goes, in units, by the
+    /// lines that takes beyond its first.
+    lower: i32,
     /// While the box shakes: when the first frame of it was shown, once one
     /// has been, and how long it has shaken for since, in milliseconds, as
     /// the compositor tells the time of each frame.
@@ -606,7 +676,8 @@ impl Shell {
     /// The button the pointer is on, if any: where it is on the surface,
     /// less the room the box shakes in.
     fn pointed(&self) -> Option<Button> {
-        self.over.and_then(|(x, y)| button_at((x - SHAKE, y)))
+        self.over
+            .and_then(|(x, y)| button_at((x - SHAKE, y), self.lower))
     }
 
     /// Takes the pointer in at `at` on the surface, or gone from it, and
@@ -636,9 +707,13 @@ impl Shell {
             self.over = None;
             return Ok(());
         };
+        self.lower = lower(&mut self.text, &self.store.current().theme, &asking.message);
+        let lower = self.lower;
         let on_eye = self.pointed() == Some(Button::Show);
         let focused = self.focus();
-        let face = self.face.get_or_insert_with(|| Face::new(globals, handle));
+        let face = self
+            .face
+            .get_or_insert_with(|| Face::new(globals, handle, lower));
         if !face.ready {
             return Ok(());
         }
@@ -663,11 +738,11 @@ impl Shell {
             // The box takes the pointer and the room it shakes in does not;
             // the compositor casts the box's shadow round that, as it goes.
             let region = globals.compositor.create_region(handle, ());
-            let (across, down) = (SIZE.0.cast_signed(), SIZE.1.cast_signed());
+            let (across, down) = (SIZE.0.cast_signed(), SIZE.1.cast_signed() + lower);
             region.add(SHAKE + shift, 0, across, down);
             face.surface.set_input_region(Some(&region));
             region.destroy();
-            let (width, height) = (SURFACE.0.cast_signed(), SURFACE.1.cast_signed());
+            let (width, height) = (SURFACE.0.cast_signed(), SURFACE.1.cast_signed() + lower);
             face.viewport.set_destination(width, height);
             face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
             face.surface.commit();
@@ -677,7 +752,9 @@ impl Shell {
 }
 
 impl Face {
-    fn new(globals: &Globals, handle: &QueueHandle<Shell>) -> Self {
+    /// Puts the box on the screen, `lower` units taller than it is with
+    /// what is asked for on one line.
+    fn new(globals: &Globals, handle: &QueueHandle<Shell>, lower: i32) -> Self {
         let surface = globals.compositor.create_surface(handle, ());
         let layer = globals.layers.get_layer_surface(
             &surface,
@@ -687,7 +764,7 @@ impl Face {
             handle,
             (),
         );
-        layer.set_size(SURFACE.0, SURFACE.1);
+        layer.set_size(SURFACE.0, SURFACE.1 + lower.unsigned_abs());
         let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
         layer.set_keyboard_interactivity(exclusive);
         let viewport = globals.viewporter.get_viewport(&surface, handle, ());
@@ -740,6 +817,7 @@ impl Desk {
                 answer: None,
                 over: None,
                 focused: None,
+                lower: 0,
                 shaking: None,
                 store,
                 text: Text::new(),
@@ -768,6 +846,8 @@ impl Desk {
             self.shell.answer = None;
             self.shell.focused = None;
         }
+        let theme = &self.shell.store.current().theme;
+        self.shell.lower = lower(&mut self.shell.text, theme, &asking.message);
         let globals = self.shell.globals();
         let asked = globals.is_some();
         self.shell.asked = globals.map(|globals| (asking, globals));
@@ -1113,12 +1193,57 @@ mod tests {
 
     #[test]
     fn each_button_is_where_it_is_drawn_and_nowhere_else() {
-        assert_eq!(button_at((EYE.0 + 2, EYE.1 + 2)), Some(Button::Show));
-        assert_eq!(button_at((168, 170)), Some(Button::Cancel));
-        assert_eq!(button_at((419, 195)), Some(Button::Go));
-        assert_eq!(button_at((420, 195)), None);
-        assert_eq!(button_at((MARGIN, 170)), None, "where Show was");
-        assert_eq!(button_at((200, 110)), None, "on the field");
+        assert_eq!(button_at((EYE.0 + 2, EYE.1 + 2), 0), Some(Button::Show));
+        assert_eq!(button_at((168, 170), 0), Some(Button::Cancel));
+        assert_eq!(button_at((419, 195), 0), Some(Button::Go));
+        assert_eq!(button_at((420, 195), 0), None);
+        assert_eq!(button_at((MARGIN, 170), 0), None, "where Show was");
+        assert_eq!(button_at((200, 110), 0), None, "on the field");
+        // Under a longer question, they are as much lower.
+        assert_eq!(button_at((168, 170), 40), None);
+        assert_eq!(button_at((168, 210), 40), Some(Button::Cancel));
+    }
+
+    #[test]
+    fn a_long_question_is_said_whole_and_the_box_grows_to_say_it() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let short = asking();
+        assert_eq!(lower(&mut text, &theme, &short.message), 0, "one line");
+        let long = Asking {
+            message: "Authentication is needed to run `/usr/bin/true' as the super user, \
+                      which is a long way of saying very little at all"
+                .to_owned(),
+            ..asking()
+        };
+        let lines = message(&mut text, &theme, &long.message);
+        assert!(lines.len() > 1, "{lines:?}");
+        assert_eq!(lines.join(" "), long.message, "nothing left out");
+        let lower = lower(&mut text, &theme, &long.message);
+        assert_eq!(
+            lower,
+            MESSAGE_LINE * i32::try_from(lines.len() - 1).unwrap()
+        );
+        let canvas = paint(
+            &theme,
+            &mut text,
+            Scale::ONE,
+            (&long, ("", false), false),
+            (0, false, None),
+        );
+        assert_eq!(
+            canvas.units(),
+            (SURFACE.0, SURFACE.1 + lower.unsigned_abs())
+        );
+        // The button that goes on is drawn as much lower as it is pressed.
+        let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
+        let (x, y) = on((GO.0 + 4, GO.1 + 2 + lower));
+        assert_eq!(canvas.at(x, y), argb(picked.background));
+        let (x, y) = on((GO.0 + 4, GO.1 + 2));
+        assert_ne!(canvas.at(x, y), argb(picked.background), "not where it was");
+        // As long as can be, it is cut short on the last line it is given.
+        let longest = "word ".repeat(400);
+        assert_eq!(message(&mut text, &theme, &longest).len(), MESSAGE_LINES);
     }
 
     #[test]
