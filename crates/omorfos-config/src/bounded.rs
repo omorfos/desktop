@@ -7,6 +7,7 @@ use serde::Deserialize;
 /// Out-of-range values are rejected when the configuration is read, so code
 /// that consumes a `Bounded` never has to clamp or re-validate it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[cfg_attr(feature = "schema", derive(serde::Serialize), serde(into = "u32"))]
 #[serde(try_from = "u32")]
 pub struct Bounded<const MIN: u32, const MAX: u32>(u32);
 
@@ -27,6 +28,14 @@ impl<const MIN: u32, const MAX: u32> Bounded<MIN, MAX> {
     #[must_use]
     pub const fn get(self) -> u32 {
         self.0
+    }
+}
+
+/// The integer, as it is written.
+#[cfg(feature = "schema")]
+impl<const MIN: u32, const MAX: u32> From<Bounded<MIN, MAX>> for u32 {
+    fn from(bounded: Bounded<MIN, MAX>) -> Self {
+        bounded.0
     }
 }
 

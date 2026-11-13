@@ -1813,9 +1813,15 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       and every page a page points to. Doing so found the `.deb` without
       `omorfos-pinentry` and the tarball without `omorfos-hold` and
       `omorfos-relay`, now in both, which the same test checks.
-- [ ] The built-in bindings in `omorfos-keys(5)`, and the built-in menu in
-      `omorfos-menu(5)`: today the pages tell what may be written, but not
-      what is there before anything is.
+- [x] The built-in bindings in `omorfos-keys(5)`, and the built-in menu in
+      `omorfos-menu(5)`, before the keys, written as the files would write
+      them, each binding with what its action does; a test reads each
+      back as the same binding or menu. The schemas now give the defaults
+      of the keys that take a number within bounds, which they had left out.
+- [ ] The guide's table of actions says by hand which key each is bound
+      to ("Bound to `XF86Display`", "No key is bound to it"), and lists no
+      built-in binding by itself: made from the built-in bindings, as the
+      manual page is, it could not fall behind them.
 - [ ] The guide gone through as a user would use it: a short way in for
       the first login (what is there, the keys that matter, where the
       files are, how to bind what has no key, such as the overview); the

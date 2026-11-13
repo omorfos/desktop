@@ -12,6 +12,183 @@ omorfos\-keys \- keys.yaml, the keys of the omorfos desktop and what they do
 The keys bound to actions, beside the built\-in bindings, and the built\-in bindings done without. \fBomorfosctl action\fR lists every action, with what it takes and what it does.
 .PP
 It is read again as soon as it is saved. If it has a mistake, its contents before are kept, and the mistake is shown among the notifications and printed by \fBomorfosctl config check\fR, with its line and column; the other files still apply.
+.SH BUILT\-IN BINDINGS
+.PP
+There before anything is written, and kept unless \fBdefaults: false\fR is: a binding of yours on the same keys, or on keys that begin with them, takes the place of one, and \fBunbind\fR does without one.
+.TP
+\fBSuper+Return\fR
+\fB{ spawn: [foot] }\fR: Start a program, with no shell
+.TP
+\fBSuper+space\fR
+\fBshow_launcher\fR: Open the launcher
+.TP
+\fBSuper+Escape\fR
+\fBshow_menu\fR: Open the root menu at the pointer
+.TP
+\fBSuper+q\fR
+\fBclose\fR: Ask the focused window to close
+.TP
+\fBSuper+m\fR
+\fBmaximize\fR: Maximize the focused window, or restore it
+.TP
+\fBSuper+f\fR
+\fBfullscreen\fR: Make the focused window fullscreen, or not
+.TP
+\fBSuper+h\fR
+\fBminimize\fR: Hide the focused window
+.TP
+\fBAlt+Tab\fR
+\fBswitch_windows\fR: Open the switcher, or go on to the next window
+.TP
+\fBAlt+Shift+Tab\fR
+\fBswitch_windows_back\fR: The same, going back
+.TP
+\fBSuper+Tab\fR
+\fBnext_tab\fR: Show the next tab of the focused window
+.TP
+\fBShift+Super+Tab\fR
+\fBprevious_tab\fR: Show the previous tab of the focused window
+.TP
+\fBSuper+Right\fR
+\fBnext_workspace\fR: Show the next workspace
+.TP
+\fBSuper+Left\fR
+\fBprevious_workspace\fR: Show the workspace before
+.TP
+\fBSuper+n\fR
+\fBnew_workspace\fR: Make a workspace after the last, and show it
+.TP
+\fBShift+Super+n\fR
+\fBmove_to_new_workspace\fR: Send the focused window to a new workspace
+.TP
+\fBPrint\fR
+\fB{ spawn: { run: [omorfos\-screenshot], may: [capture, clipboard] } }\fR: Start a program, with no shell
+.TP
+\fBShift+Print\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-pick, \-\-to, clipboard], may: [capture, clipboard, panel, overlay] } }\fR: Start a program, with no shell
+.TP
+\fBAlt+Print\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-window], may: [capture, clipboard, panel] } }\fR: Start a program, with no shell
+.TP
+\fBShift+Super+r\fR
+\fBreload_config\fR: Read the configuration again
+.TP
+\fBShift+Super+e\fR
+\fBquit\fR: End the session
+.TP
+\fBXF86Display\fR
+\fBnext_screens\fR: Arrange the screens the next way
+.TP
+\fBXF86AudioRaiseVolume\fR
+\fB{ spawn: [omorfos\-session, volume, up] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioLowerVolume\fR
+\fB{ spawn: [omorfos\-session, volume, down] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioMute\fR
+\fB{ spawn: [omorfos\-session, volume, mute] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioMicMute\fR
+\fB{ spawn: [omorfos\-session, microphone, mute] }\fR: Start a program, with no shell
+.TP
+\fBXF86MonBrightnessUp\fR
+\fB{ spawn: [omorfos\-session, brightness, up] }\fR: Start a program, with no shell
+.TP
+\fBXF86MonBrightnessDown\fR
+\fB{ spawn: [omorfos\-session, brightness, down] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioPlay\fR
+\fB{ spawn: [omorfos\-session, media, play\-pause] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioPause\fR
+\fB{ spawn: [omorfos\-session, media, play\-pause] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioNext\fR
+\fB{ spawn: [omorfos\-session, media, next] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioPrev\fR
+\fB{ spawn: [omorfos\-session, media, previous] }\fR: Start a program, with no shell
+.TP
+\fBXF86AudioStop\fR
+\fB{ spawn: [omorfos\-session, media, stop] }\fR: Start a program, with no shell
+.TP
+\fBCtrl+Super+Left\fR
+\fB{ focus: left }\fR: Focus the window beside the focused one
+.TP
+\fBCtrl+Shift+Super+Left\fR
+\fB{ swap: left }\fR: Swap the focused window with the one beside it
+.TP
+\fBCtrl+Super+Right\fR
+\fB{ focus: right }\fR: Focus the window beside the focused one
+.TP
+\fBCtrl+Shift+Super+Right\fR
+\fB{ swap: right }\fR: Swap the focused window with the one beside it
+.TP
+\fBCtrl+Super+Up\fR
+\fB{ focus: top }\fR: Focus the window beside the focused one
+.TP
+\fBCtrl+Shift+Super+Up\fR
+\fB{ swap: top }\fR: Swap the focused window with the one beside it
+.TP
+\fBCtrl+Super+Down\fR
+\fB{ focus: bottom }\fR: Focus the window beside the focused one
+.TP
+\fBCtrl+Shift+Super+Down\fR
+\fB{ swap: bottom }\fR: Swap the focused window with the one beside it
+.TP
+\fBSuper+1\fR
+\fB{ workspace: 1 }\fR: Show workspace N
+.TP
+\fBShift+Super+1\fR
+\fB{ move_to_workspace: 1 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+2\fR
+\fB{ workspace: 2 }\fR: Show workspace N
+.TP
+\fBShift+Super+2\fR
+\fB{ move_to_workspace: 2 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+3\fR
+\fB{ workspace: 3 }\fR: Show workspace N
+.TP
+\fBShift+Super+3\fR
+\fB{ move_to_workspace: 3 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+4\fR
+\fB{ workspace: 4 }\fR: Show workspace N
+.TP
+\fBShift+Super+4\fR
+\fB{ move_to_workspace: 4 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+5\fR
+\fB{ workspace: 5 }\fR: Show workspace N
+.TP
+\fBShift+Super+5\fR
+\fB{ move_to_workspace: 5 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+6\fR
+\fB{ workspace: 6 }\fR: Show workspace N
+.TP
+\fBShift+Super+6\fR
+\fB{ move_to_workspace: 6 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+7\fR
+\fB{ workspace: 7 }\fR: Show workspace N
+.TP
+\fBShift+Super+7\fR
+\fB{ move_to_workspace: 7 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+8\fR
+\fB{ workspace: 8 }\fR: Show workspace N
+.TP
+\fBShift+Super+8\fR
+\fB{ move_to_workspace: 8 }\fR: Send the focused window to workspace N
+.TP
+\fBSuper+9\fR
+\fB{ workspace: 9 }\fR: Show workspace N
+.TP
+\fBShift+Super+9\fR
+\fB{ move_to_workspace: 9 }\fR: Send the focused window to workspace N
 .SH KEYS
 .TP
 \fBbindings\fR

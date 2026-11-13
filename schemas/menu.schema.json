@@ -313,6 +313,7 @@
               "type": "null"
             }
           ],
+          "default": null,
           "description": "What choosing the item does. Give either this or `items`."
         },
         "icon": {

@@ -5,6 +5,7 @@
 //! A page names no version and no date, which would change with every
 //! release and leave the pages kept behind; `man` shows neither as missing.
 
+use std::fmt::Write as _;
 use std::path::Path;
 use std::{fs, io};
 
@@ -128,10 +129,23 @@ impl Page {
 
 /// `text` with what roff gives a meaning to escaped: the backslash, and
 /// the hyphen, which is drawn as a minus that can be typed, as options
-/// and names are, and not as a typographic hyphen.
+/// and names are, and not as a typographic hyphen. A letter beyond ASCII,
+/// as `…`, is named by its code point, which roff reads whatever the
+/// encoding it is given.
 #[must_use]
 pub fn escaped(text: &str) -> String {
-    text.replace('\\', "\\e").replace('-', "\\-")
+    let mut escaped = String::with_capacity(text.len());
+    for letter in text.chars() {
+        match letter {
+            '\\' => escaped.push_str("\\e"),
+            '-' => escaped.push_str("\\-"),
+            ascii if ascii.is_ascii() => escaped.push(ascii),
+            beyond => {
+                let _ = write!(escaped, "\\[u{:04X}]", u32::from(beyond));
+            }
+        }
+    }
+    escaped
 }
 
 /// `text` escaped, with what is between backticks in bold.
@@ -210,6 +224,7 @@ mod tests {
     #[test]
     fn what_roff_gives_a_meaning_to_is_escaped_and_a_line_never_begins_a_request() {
         assert_eq!(escaped("a-b \\n"), "a\\-b \\en");
+        assert_eq!(escaped("Run…, ü"), "Run\\[u2026], \\[u00FC]");
         let mut page = Page::new("omorfos-tool", 1, "A tool.");
         page.paragraph(".hidden and 'quoted', with `--to` in it");
         page.values(&[

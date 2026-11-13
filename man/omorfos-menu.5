@@ -12,6 +12,22 @@ omorfos\-menu \- menu.yaml, the root menu of the omorfos desktop
 The root menu, which the \fBshow_menu\fR action opens at the pointer: its entries, each a label and an action, or a menu of its own.
 .PP
 It is read again as soon as it is saved. If it has a mistake, its contents before are kept, and the mistake is shown among the notifications and printed by \fBomorfosctl config check\fR, with its line and column; the other files still apply.
+.SH BUILT\-IN MENU
+.PP
+The menu there is while \fBmenu.yaml\fR is not written, as it would be written. A \fBmenu.yaml\fR takes its place whole, so begin from this to keep any of it:
+.PP
+.nf
+.RS 4
+items:
+  \- { label: Terminal, action: { spawn: [foot] } }
+  \- { label: "Run\[u2026]", action: show_launcher }
+  \- separator
+  \- { label: Stay awake, action: stay_awake }
+  \- { label: Reload configuration, action: reload_config }
+  \- { label: About omorfos, action: about }
+  \- { label: Quit, action: quit }
+.RE
+.fi
 .SH KEYS
 .TP
 \fBitems\fR

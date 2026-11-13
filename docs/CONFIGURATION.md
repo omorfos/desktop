@@ -21,7 +21,9 @@ General rules:
 Each file has a manual page as well, made from the same schemas, with
 every key it may have: `man 5 omorfos-config` for `config.yaml`, and
 `omorfos-keys`, `omorfos-rules`, `omorfos-menu` and `omorfos-theme` for
-the others. Every program has one in section 1, as `man omorfos`.
+the others. `omorfos-keys` lists the built-in bindings too, and
+`omorfos-menu` the built-in menu, written as the file would write them.
+Every program has one in section 1, as `man omorfos`.
 
 For completion and inline validation in editors that use
 `yaml-language-server`, point a file at its schema in

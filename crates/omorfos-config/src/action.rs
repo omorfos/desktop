@@ -16,7 +16,7 @@ pub type WorkspaceNumber = Bounded<1, MAX_WORKSPACES>;
 
 /// A half of the screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema, serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub enum Half {
     /// The left half.
@@ -36,11 +36,13 @@ pub enum Half {
 /// In YAML, actions without a parameter are plain strings (`close`) and
 /// actions with one are single-key mappings (`workspace: 2`).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema, serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     /// Start a program, given as a list: the program followed by its
     /// arguments. No shell is involved, so nothing is expanded or split.
+    // The manual pages write it themselves, with `run` before `may`.
+    #[cfg_attr(feature = "schema", serde(skip_serializing))]
     Spawn(Started),
     /// Ask the focused window to close.
     Close,
@@ -244,7 +246,7 @@ impl From<Command> for Started {
 /// Something a program may do only if the compositor started it and was
 /// told it may.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema, serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     /// Put surfaces on the screen outside windows and keep room for them,

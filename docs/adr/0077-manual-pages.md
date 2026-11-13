@@ -38,6 +38,14 @@ would be made as.
   test keeps valid, and which for `config.yaml` is every default but the
   workspaces' names. The theme's page lists its parts and states and
   shows the built-in theme, whose comments tell what each part is.
+  `omorfos-keys(5)` and `omorfos-menu(5)` begin, before the keys, with
+  what is there before anything is written: each built-in binding by its
+  keys, its action as `keys.yaml` writes it and what that does, and the
+  built-in menu as a `menu.yaml`, to begin one from. The actions are
+  written by serde's `Serialize`, derived under the `schema` feature
+  only, but for `spawn`, written by hand so that `run` comes before
+  `may` as the guide has it; a test reads each back as the action it was
+  written from.
 - **No version and no date in a page.** Either would change with every
   release and leave the pages kept behind, failing the test on the
   release's own commit.
@@ -68,6 +76,9 @@ would be made as.
   roff, which only the tests turn on.
 - What a key does is said by the comment on its type, which the guide
   says at more length; the pages are as good as those comments.
+- Deriving `Serialize` lets schemars write the default of a key whose
+  type it could not write before, as the numbers within bounds are: the
+  schemas, and so the pages and editors, now give them.
 - A theme's parts have no description of their own in the page but the
   built-in theme's comments, as `Part`'s documentation is not there to be
   read when the pages are made.

@@ -6,12 +6,14 @@
 //! again.
 
 use std::collections::BTreeMap;
+use std::iter::once;
 
+use omorfos_ipc::actions::TOLD;
 use omorfos_ipc::manual::Page;
 use serde_json::Value;
 
 use crate::schema::root;
-use crate::{General, Keys, Menu, Part, Rules, State};
+use crate::{Action, General, Keys, Menu, MenuItem, Part, Rules, State};
 
 /// The pages every page of the configuration points to, at its end.
 const SEE_ALSO: &[&str] = &[
@@ -102,17 +104,23 @@ const FILES: [Written; 4] = [
 pub fn pages(examples: &Examples<'_>) -> [(String, String); 5] {
     let [config, keys, rules, menu] = FILES;
     [
-        keyed(&config, &root::<General>(), examples.config),
-        keyed(&keys, &root::<Keys>(), examples.keys),
-        keyed(&rules, &root::<Rules>(), examples.rules),
-        keyed(&menu, &root::<Menu>(), examples.menu),
+        keyed(&config, &root::<General>(), examples.config, |_| {}),
+        keyed(&keys, &root::<Keys>(), examples.keys, built_in_bindings),
+        keyed(&rules, &root::<Rules>(), examples.rules, |_| {}),
+        keyed(&menu, &root::<Menu>(), examples.menu, built_in_menu),
         ("omorfos-theme.5".to_owned(), theme(examples.theme)),
     ]
 }
 
 /// The page of a YAML file, from its `schema`: where it is read from, what
-/// it holds, each key it may have and what it may be given, and `example`.
-fn keyed(file: &Written, schema: &Value, example: &str) -> (String, String) {
+/// it holds, what is `built_in`, each key it may have and what it may be
+/// given, and `example`.
+fn keyed(
+    file: &Written,
+    schema: &Value,
+    example: &str,
+    built_in: fn(&mut Page),
+) -> (String, String) {
     let mut page = Page::new(file.name, 5, file.what);
     page.section("Synopsis");
     page.paragraph(&format!(
@@ -126,6 +134,7 @@ fn keyed(file: &Written, schema: &Value, example: &str) -> (String, String) {
          are kept, and the mistake is shown among the notifications and printed by \
          `omorfosctl config check`, with its line and column; the other files still apply.",
     );
+    built_in(&mut page);
     page.section("Keys");
     let mut entries = Entries::default();
     entries.walk(schema, &schema["$defs"], "", &mut Vec::new());
@@ -142,6 +151,133 @@ fn keyed(file: &Written, schema: &Value, example: &str) -> (String, String) {
     page.verbatim(example);
     page.see_also(&others(file.name));
     (format!("{}.5", file.name), page.finish())
+}
+
+/// The bindings there are before any are written, each by its keys, with
+/// its action as `keys.yaml` would write it and what that does.
+fn built_in_bindings(page: &mut Page) {
+    page.section("Built-in bindings");
+    page.paragraph(
+        "There before anything is written, and kept unless `defaults: false` is: a binding of \
+         yours on the same keys, or on keys that begin with them, takes the place of one, and \
+         `unbind` does without one.",
+    );
+    for binding in Keys::default().bindings() {
+        let written = action(&binding.action);
+        // Its name is what it is written as, or the key it is written by.
+        let name = written.trim_start_matches("{ ").split(':').next();
+        let told = TOLD.iter().find(|told| Some(told.name) == name);
+        let does = told.map(|told| told.does).unwrap_or_default();
+        page.entry(&binding.keys.to_string(), &format!("`{written}`: {does}"));
+    }
+}
+
+/// The menu there is before one is written, as `menu.yaml` would write it.
+fn built_in_menu(page: &mut Page) {
+    page.section("Built-in menu");
+    page.paragraph(
+        "The menu there is while `menu.yaml` is not written, as it would be written. A \
+         `menu.yaml` takes its place whole, so begin from this to keep any of it:",
+    );
+    page.verbatim(&menu_written(&Menu::default()));
+}
+
+/// `menu` as `menu.yaml` would be written.
+fn menu_written(menu: &Menu) -> String {
+    let mut lines = vec!["items:".to_owned()];
+    lines.extend(items(&menu.items, 1));
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+/// The lines of `items`, a level of a menu `depth` deep, an entry each,
+/// and a submenu's own beneath it.
+fn items(items: &[MenuItem], depth: usize) -> Vec<String> {
+    let indent = "  ".repeat(depth);
+    let icon =
+        |icon: Option<&str>, before: &str| icon.map(|icon| format!("{before}icon: {}", word(icon)));
+    let mut lines = Vec::new();
+    for item in items {
+        match item {
+            MenuItem::Separator => lines.push(format!("{indent}- separator")),
+            MenuItem::Entry {
+                label,
+                action: done,
+                icon: shown,
+            } => {
+                let shown = icon(shown.as_deref(), ", ").unwrap_or_default();
+                let (label, done) = (word(label), action(done));
+                lines.push(format!(
+                    "{indent}- {{ label: {label}, action: {done}{shown} }}"
+                ));
+            }
+            MenuItem::Submenu {
+                label,
+                items: nested,
+                icon: shown,
+            } => {
+                lines.push(format!("{indent}- label: {}", word(label)));
+                lines.extend(icon(shown.as_deref(), &format!("{indent}  ")));
+                lines.push(format!("{indent}  items:"));
+                lines.extend(self::items(nested, depth + 2));
+            }
+        }
+    }
+    lines
+}
+
+/// `action` as `keys.yaml` and `menu.yaml` write it.
+fn action(action: &Action) -> String {
+    if let Action::Spawn(started) = action {
+        let arguments = started.run.arguments().iter().map(String::as_str);
+        let run: Vec<&str> = once(started.run.program()).chain(arguments).collect();
+        let run = flow(&Value::from(run));
+        if started.may.is_empty() {
+            return format!("{{ spawn: {run} }}");
+        }
+        let may = flow(&serde_json::to_value(&started.may).unwrap_or_default());
+        return format!("{{ spawn: {{ run: {run}, may: {may} }} }}");
+    }
+    flow(&serde_json::to_value(action).unwrap_or_default())
+}
+
+/// `value` written in YAML's flow style, as `{ spawn: [foot] }`, on a line.
+fn flow(value: &Value) -> String {
+    match value {
+        Value::String(text) => word(text),
+        Value::Array(values) => {
+            let values: Vec<String> = values.iter().map(flow).collect();
+            format!("[{}]", values.join(", "))
+        }
+        Value::Object(fields) => {
+            let fields = fields.iter();
+            let fields: Vec<String> = fields
+                .map(|(name, value)| format!("{}: {}", word(name), flow(value)))
+                .collect();
+            format!("{{ {} }}", fields.join(", "))
+        }
+        other => other.to_string(),
+    }
+}
+
+/// `text` as YAML writes it among other values: bare where it is plainly a
+/// word, which YAML reads as nothing else, and quoted otherwise.
+fn word(text: &str) -> String {
+    let lower = text.to_lowercase();
+    // An option, as `--to`, is a word; a minus before a number is not.
+    let plain = text
+        .trim_start_matches('-')
+        .starts_with(char::is_alphabetic)
+        && !text.ends_with(' ')
+        && text
+            .chars()
+            .all(|letter| letter.is_alphanumeric() || " -_./+".contains(letter))
+        && !["true", "false", "null", "yes", "no", "on", "off"].contains(&lower.as_str());
+    if plain {
+        text.to_owned()
+    } else {
+        Value::from(text).to_string()
+    }
 }
 
 /// The page of `theme.css`: what it is, the parts and states a rule may
@@ -404,6 +540,45 @@ mod tests {
     }
 
     #[test]
+    fn what_is_built_in_is_written_as_its_file_would_write_it_and_read_back_the_same() {
+        for binding in Keys::default().bindings() {
+            let written = action(&binding.action);
+            let read: Action = serde_saphyr::from_str(&written).unwrap();
+            assert_eq!(read, binding.action, "{written}");
+        }
+        // A submenu and icons, which the built-in menu has none of.
+        let mut own = Menu::default();
+        own.items.push(MenuItem::Submenu {
+            label: "Session: now".to_owned(),
+            items: vec![MenuItem::Entry {
+                label: "Quit".to_owned(),
+                action: Action::Quit,
+                icon: Some("/a picture.png".to_owned()),
+            }],
+            icon: Some("system-shutdown".to_owned()),
+        });
+        for menu in [Menu::default(), own] {
+            let written = menu_written(&menu);
+            let read: Menu = serde_saphyr::from_str(&written).unwrap();
+            assert_eq!(read, menu, "{written}");
+        }
+        assert_eq!(
+            flow(&json!({"a": [1, "b c", true, "--to"]})),
+            "{ a: [1, b c, true, --to] }"
+        );
+        // A word YAML would read as something else, or with what flow
+        // YAML gives a meaning to, is quoted.
+        for word in [
+            "", "true", "Null", "1st", "-1", "- x", "a, b", "a: b", "[x]", "x #y", "y ",
+        ] {
+            let written = flow(&json!(word));
+            assert!(written.starts_with('"'), "{written}");
+            let read: String = serde_saphyr::from_str(&written).unwrap();
+            assert_eq!(read, word);
+        }
+    }
+
+    #[test]
     fn every_file_has_a_page_with_its_keys_or_parts_and_its_example() {
         let examples = Examples {
             config: "workspaces: []\n",
@@ -436,7 +611,30 @@ mod tests {
             !config.contains("\\fBomorfos\\-config\\fR(5)"),
             "it points not to itself"
         );
+        let keys = &pages[1].1;
+        let built_in = keys.find(".SH BUILT\\-IN BINDINGS\n").unwrap();
+        assert!(built_in < keys.find(".SH KEYS\n").unwrap(), "first: {keys}");
+        assert!(
+            keys.contains(
+                "\n.TP\n\\fBSuper+Return\\fR\n\\fB{ spawn: [foot] }\\fR: Start a program"
+            ),
+            "{keys}"
+        );
+        assert!(
+            keys.contains(
+                "\n.TP\n\\fBSuper+q\\fR\n\\fBclose\\fR: Ask the focused window to close\n"
+            ),
+            "{keys}"
+        );
+        let menu = &pages[3].1;
+        let built_in = menu.find(".SH BUILT\\-IN MENU\n").unwrap();
+        assert!(built_in < menu.find(".SH KEYS\n").unwrap(), "first: {menu}");
+        assert!(
+            menu.contains("\nitems:\n  \\- { label: Terminal, action: { spawn: [foot] } }\n"),
+            "{menu}"
+        );
         let rules = &pages[2].1;
+        assert!(!rules.contains("BUILT"), "{rules}");
         assert!(
             rules.contains(".SH EXAMPLE\n.PP\n.nf\n"),
             "nothing said first: {rules}"

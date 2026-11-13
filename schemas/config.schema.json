@@ -111,6 +111,7 @@
           "type": "boolean"
         },
         "forget": {
+          "default": 0,
           "description": "How many seconds what is copied stays on the clipboard before it is\nemptied, if nothing else is copied meanwhile: for passwords copied\nfrom where nothing says they are secret. 0 never empties it, and\nthe most is a day.",
           "maximum": 86400,
           "minimum": 0,
@@ -137,6 +138,7 @@
       "description": "The pictures used for the pointer.",
       "properties": {
         "size": {
+          "default": 24,
           "description": "The size of the pointer, before scaling.",
           "maximum": 128,
           "minimum": 8,
@@ -542,6 +544,7 @@
           "type": "boolean"
         },
         "temperature": {
+          "default": 4000,
           "description": "How warm the screens are at night, as the colour of a light of this\ntemperature, in kelvin: 6500 is daylight, as screens are, and lower\nis warmer.",
           "maximum": 6500,
           "minimum": 1900,
@@ -560,6 +563,7 @@
           "type": "boolean"
         },
         "timeout": {
+          "default": 5,
           "description": "How long one stays, in seconds, when the program that sent it does\nnot say. `0` leaves it until it is clicked.",
           "maximum": 3600,
           "minimum": 0,
@@ -969,6 +973,7 @@
       "description": "omorfos's own new version, once it is installed. It is taken up at a\nmoment the session is not in use, its windows staying as they were:\nnothing fullscreen, nothing recording or playing, and no input for a\nfew seconds.",
       "properties": {
         "wait": {
+          "default": 3600,
           "description": "How many seconds it waits for such a moment, after which it is\ntaken up regardless. 0 waits however long, and the most is a week.\nIt is never taken up while a window of a program written for X11\nis open, as that program would close.",
           "maximum": 604800,
           "minimum": 0,
@@ -991,12 +996,14 @@
           "type": "boolean"
         },
         "every": {
+          "default": 600,
           "description": "How many seconds each picture of a directory is shown for.",
           "maximum": 604800,
           "minimum": 5,
           "type": "integer"
         },
         "fade": {
+          "default": 1000,
           "description": "How many milliseconds what a screen shows takes to fade into what\nit shows next. 0 is at once.",
           "maximum": 10000,
           "minimum": 0,

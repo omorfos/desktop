@@ -191,13 +191,13 @@ The clipboard.
 Whether what is copied is kept by \fBomorfos\-clipboard\fR once the program it was copied from has closed. Turn it off to have another program keep it, or none. What a password manager copies is never kept. By default \fBtrue\fR.
 .TP
 \fBclipboard.forget\fR
-How many seconds what is copied stays on the clipboard before it is emptied, if nothing else is copied meanwhile: for passwords copied from where nothing says they are secret. 0 never empties it, and the most is a day. From 0 to 86400.
+How many seconds what is copied stays on the clipboard before it is emptied, if nothing else is copied meanwhile: for passwords copied from where nothing says they are secret. 0 never empties it, and the most is a day. From 0 to 86400. By default \fB0\fR.
 .TP
 \fBcursor\fR
 The pointer.
 .TP
 \fBcursor.size\fR
-The size of the pointer, before scaling. From 8 to 128.
+The size of the pointer, before scaling. From 8 to 128. By default \fB24\fR.
 .TP
 \fBcursor.theme\fR
 \fBomorfos\fR, for omorfos's own pointer, dark or light as the desktop is; or the name of an installed cursor theme, such as \fBAdwaita\fR. \fBdefault\fR is whichever the system has set up as its default. By default \fBomorfos\fR.
@@ -317,7 +317,7 @@ The screens made warmer after dark.
 Whether the screens are made warmer after dark: from sunset to sunrise where \fBappearance.location\fR says, or outside the hours of \fBappearance.day\fR, as \fBscheme: auto\fR goes by, turning warm over the 20 minutes after it is dark and back over the 20 before it is light. By default \fBfalse\fR.
 .TP
 \fBnight_light.temperature\fR
-How warm the screens are at night, as the colour of a light of this temperature, in kelvin: 6500 is daylight, as screens are, and lower is warmer. From 1900 to 6500.
+How warm the screens are at night, as the colour of a light of this temperature, in kelvin: 6500 is daylight, as screens are, and lower is warmer. From 1900 to 6500. By default \fB4000\fR.
 .TP
 \fBnotifications\fR
 The notifications that come with omorfos.
@@ -326,7 +326,7 @@ The notifications that come with omorfos.
 Whether they are shown by omorfos. Turn it off to go without, or to use another program for them. By default \fBtrue\fR.
 .TP
 \fBnotifications.timeout\fR
-How long one stays, in seconds, when the program that sent it does not say. \fB0\fR leaves it until it is clicked. From 0 to 3600.
+How long one stays, in seconds, when the program that sent it does not say. \fB0\fR leaves it until it is clicked. From 0 to 3600. By default \fB5\fR.
 .TP
 \fBoutput\fR
 How every screen is driven, unless it is named in \fBoutputs\fR.
@@ -500,7 +500,7 @@ Whether tapping the touchpad clicks. By default \fBtrue\fR.
 omorfos's own new version, once it is installed.
 .TP
 \fBupdate.wait\fR
-How many seconds it waits for such a moment, after which it is taken up regardless. 0 waits however long, and the most is a week. It is never taken up while a window of a program written for X11 is open, as that program would close. From 0 to 604800.
+How many seconds it waits for such a moment, after which it is taken up regardless. 0 waits however long, and the most is a week. It is never taken up while a window of a program written for X11 is open, as that program would close. From 0 to 604800. By default \fB3600\fR.
 .TP
 \fBwallpaper\fR
 What is shown behind the windows.
@@ -512,10 +512,10 @@ The colour of the screen where the picture does not cover it, or of the whole sc
 Whether it is started with the session. Turn it off to use another program for it. By default \fBtrue\fR.
 .TP
 \fBwallpaper.every\fR
-How many seconds each picture of a directory is shown for. From 5 to 604800.
+How many seconds each picture of a directory is shown for. From 5 to 604800. By default \fB600\fR.
 .TP
 \fBwallpaper.fade\fR
-How many milliseconds what a screen shows takes to fade into what it shows next. 0 is at once. From 0 to 10000.
+How many milliseconds what a screen shows takes to fade into what it shows next. 0 is at once. From 0 to 10000. By default \fB1000\fR.
 .TP
 \fBwallpaper.fit\fR
 How the picture is laid on the screen.

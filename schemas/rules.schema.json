@@ -107,6 +107,7 @@
           ]
         },
         "workspace": {
+          "default": null,
           "description": "Open the window on the workspace with this number.",
           "maximum": 32,
           "minimum": 1,
