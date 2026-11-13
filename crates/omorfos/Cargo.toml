@@ -53,6 +53,7 @@ assets = [
     ["target/release/omorfos-recording", "usr/bin/", "755"],
     ["target/release/omorfos-session", "usr/bin/", "755"],
     ["target/release/omorfos-ask", "usr/bin/", "755"],
+    ["target/release/omorfos-pinentry", "usr/bin/", "755"],
     ["target/release/xdg-desktop-portal-omorfos", "usr/bin/", "755"],
     ["../../packaging/omorfos.portal", "usr/share/xdg-desktop-portal/portals/", "644"],
     # The icon and the wallpapers, drawn by omorfos-brand as omorfos is

@@ -67,3 +67,80 @@ fn every_package_carries_the_licences_credits_names_and_the_crates() {
         assert!(!read(licence).is_empty(), "{licence}");
     }
 }
+
+/// The programs `make install` installs, as the Makefile lists them: each
+/// program, and those built beside another.
+fn installed() -> (Vec<String>, Vec<String>) {
+    let makefile = read("Makefile").replace("\\\n", " ");
+    let listed = |key: &str| -> Vec<String> {
+        let line = makefile
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{key} = ")));
+        let words = line.unwrap_or_default().split_whitespace();
+        words
+            .filter(|word| !word.starts_with("$("))
+            .map(str::to_owned)
+            .collect()
+    };
+    (listed("PROGRAMS"), listed("INSTALLED"))
+}
+
+/// Whether `text` names `path` whole, and not only as the start of a
+/// longer name, as `omorfos` starts `omorfos-panel`.
+fn names(text: &str, path: &str) -> bool {
+    text.match_indices(path).any(|(at, _)| {
+        let after = text[at + path.len()..].chars().next();
+        !after.is_some_and(|after| after.is_ascii_alphanumeric() || after == '-')
+    })
+}
+
+#[test]
+fn every_package_carries_every_program_the_makefile_installs() {
+    let (programs, beside) = installed();
+    assert!(
+        programs.contains(&"omorfos-hold".to_owned()),
+        "{programs:?}"
+    );
+    assert!(
+        beside.contains(&"omorfos-pinentry".to_owned()),
+        "{beside:?}"
+    );
+    let packagings = [
+        "packaging/aur/PKGBUILD",
+        "packaging/package.sh",
+        "crates/omorfos/Cargo.toml",
+    ];
+    for program in programs.iter().chain(&beside) {
+        for packaging in packagings {
+            assert!(
+                names(&read(packaging), &format!("target/release/{program}")),
+                "{packaging} carries {program}"
+            );
+        }
+    }
+    // Each is built for a release, by its crate, which is named as it is.
+    let release = read(".github/workflows/release.yml");
+    for program in &programs {
+        assert!(
+            names(&release, &format!("-p {program}")),
+            "the release builds {program}"
+        );
+    }
+}
+
+#[test]
+fn a_program_is_named_whole_and_not_by_the_start_of_another() {
+    assert!(names(
+        "cp target/release/omorfos x",
+        "target/release/omorfos"
+    ));
+    assert!(names(
+        "[\"target/release/omorfos\", ",
+        "target/release/omorfos"
+    ));
+    assert!(!names(
+        "target/release/omorfos-panel",
+        "target/release/omorfos"
+    ));
+    assert!(names("target/release/omorfos", "target/release/omorfos"));
+}

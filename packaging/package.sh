@@ -5,7 +5,7 @@
 #
 # Usage: VERSION=1.2.3 TARGET=x86_64-unknown-linux-gnu packaging/package.sh OUT
 #
-# Expects `cargo build --release -p omorfos-brand -p omorfos -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos` and
+# Expects `cargo build --release -p omorfos-brand -p omorfos -p omorfos-hold -p omorfos-relay -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos` and
 # `target/release/omorfos-brand target/release/share` and `cargo about
 # generate --workspace --all-features --frozen about.hbs -o
 # target/release/LICENSE-crates` to have run, and cargo-deb to be
@@ -24,7 +24,7 @@ cargo deb -p omorfos --no-build --output "${out}/"
 name="omorfos-${VERSION}-${TARGET}"
 stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
-cp target/release/omorfos target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates README.md docs/CONFIGURATION.md \
+cp target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates README.md docs/CONFIGURATION.md \
   packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf packaging/omorfos-session.target \
   packaging/pam/omorfos-lock packaging/pam/omorfos-lock-fingerprint packaging/pam/omorfos-lock-key \
   "${stage}/${name}/"
