@@ -12,6 +12,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# What the boxes say, in the user's language (ADR 79).
+omorfos-i18n = { path = "../omorfos-i18n" }
 # Answers --help and --version as every program does.
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-config = { path = "../omorfos-config" }

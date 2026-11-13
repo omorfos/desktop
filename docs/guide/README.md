@@ -13,8 +13,8 @@ Ctrl, so `Super+c` copies, `Super+v` pastes and `Super+z` undoes in every
 program, as Cmd does on a Mac.
 
 The desktop speaks the language your session is in, as `LANG` says,
-where it has the words: English, and Polish for the panel and the lock
-screen so far. The rest is in English until it is translated.
+where it has the words: English, and Polish for the panel, the lock
+screen and the boxes that ask for passwords so far. The rest is in English until it is translated.
 
 ## The keys that matter
 

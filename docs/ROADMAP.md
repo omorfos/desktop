@@ -1871,11 +1871,17 @@ Reaching people:
       reader and a security key say is said in our words too: PAM's modules
       speak English to a program that has not set its locale, which needs
       `unsafe`, and pam_u2f has no translations at all.
+- [x] The boxes that ask for the administrator's password and GnuPG's
+      passphrases, through `omorfos-i18n`, in English and Polish, in the
+      language the session is in as polkit is told it; what polkit asks
+      for is polkit's, in the language it speaks.
 - [ ] Every other program's words through `omorfos-i18n`, a program at a
-      time: the compositor's notices, the menu and About; the launcher,
-      the notifications and the prompts that ask for passwords;
-      `omorfos-session`'s notices; and the manual pages and `--help`,
-      which are English for now.
+      time: the compositor's notices, the menu and About; the
+      notifications; `omorfos-session`'s notices; and the manual pages and
+      `--help`, which are English for now.
+- [ ] The launcher showing applications by their names in the user's
+      language, as their desktop entries give them (`Name[pl]`), which it
+      reads only in English now.
 - [ ] Someone who speaks Polish reads its files, and becomes their owner
       in `CODEOWNERS`.
 - [ ] A guide for someone who has just logged in for the first time, and

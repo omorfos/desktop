@@ -1954,6 +1954,7 @@ name = "omorfos-ask"
 version = "0.1.0"
 dependencies = [
  "omorfos-config",
+ "omorfos-i18n",
  "omorfos-ipc",
  "omorfos-shell",
  "omorfos-ui",

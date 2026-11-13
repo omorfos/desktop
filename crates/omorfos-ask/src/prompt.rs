@@ -15,6 +15,7 @@ use std::os::unix::net::UnixStream;
 use std::time::Instant;
 
 use omorfos_config::{Color, Part, State, States, Store, Style, Theme};
+use omorfos_i18n::{Value, Words};
 use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
 use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_shell::{picture, whole};
@@ -81,6 +82,37 @@ pub struct Asking {
     /// Whether what was typed is being checked, and nothing more can be
     /// typed meanwhile.
     pub checking: bool,
+    /// The box's own words, in the user's language: boxed, as the same for
+    /// every box asked, and bulky beside what else is held for one.
+    pub labels: Box<Labels>,
+}
+
+/// The box's own words, in the user's language (ADR 79): what the field
+/// is where PAM asks for the password, what the eye beside it does, and
+/// the button that gives up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Labels {
+    /// What the field is, where PAM asks for the user's password.
+    pub password: String,
+    /// What pressing the eye does while what is typed is hidden.
+    pub show: String,
+    /// What pressing it does while it is shown.
+    pub hide: String,
+    /// What the button that gives up says.
+    pub cancel: String,
+}
+
+impl Labels {
+    /// The words `words` has for them, for `user`'s password.
+    #[must_use]
+    pub fn of(words: &Words, user: &str) -> Self {
+        Self {
+            password: words.say("password-for", &[("user", Value::Words(user))]),
+            show: words.say("show-password", &[]),
+            hide: words.say("hide-password", &[]),
+            cancel: words.say("cancel", &[]),
+        }
+    }
 }
 
 /// What the user did.
@@ -119,13 +151,13 @@ pub fn button_at((x, y): (i32, i32)) -> Option<Button> {
     .find_map(|(area, button)| inside(area).then_some(button))
 }
 
-/// What the field is called: whose password it is, where PAM asks for
-/// one, and what PAM asks otherwise.
+/// What the field is called: whose password it is, as `labels` says,
+/// where PAM asks for one, and what PAM asks otherwise.
 #[must_use]
-pub fn label(question: &str, user: &str) -> String {
+pub fn label(question: &str, labels: &Labels) -> String {
     let question = question.trim().trim_end_matches(':').trim_end();
     if question.eq_ignore_ascii_case("password") {
-        format!("Password for {user}")
+        labels.password.clone()
     } else {
         question.to_owned()
     }
@@ -142,14 +174,11 @@ pub fn shown(typed: &str, open: bool) -> String {
     }
 }
 
-/// What the tooltip over the eye says: what pressing it does.
+/// What the tooltip over the eye says: what pressing it does, as
+/// `labels` says it.
 #[must_use]
-pub const fn eye_says(open: bool) -> &'static str {
-    if open {
-        "Hide the password"
-    } else {
-        "Show the password"
-    }
+pub fn eye_says(labels: &Labels, open: bool) -> &str {
+    if open { &labels.hide } else { &labels.show }
 }
 
 /// Paints an eye in `area`, in `ink`: open, as what is typed is shown; or
@@ -222,7 +251,7 @@ pub fn paint(
     let font = theme.font(Part::QuestionDetail, States::NONE);
     let line = along((MARGIN, MARGIN + 28, room, 20), by);
     text.draw(&mut canvas, &asking.message, line, detail.color, font);
-    let called = label(&asking.question, &asking.user);
+    let called = label(&asking.question, &asking.labels);
     text.draw(
         &mut canvas,
         &called,
@@ -292,7 +321,11 @@ pub fn paint(
     text.draw(&mut canvas, &asking.said, line, detail.color, font);
     let picked = States::NONE.with(State::Active);
     let buttons = [
-        (CANCEL, "Cancel", on_it(Button::Cancel, States::NONE)),
+        (
+            CANCEL,
+            asking.labels.cancel.as_str(),
+            on_it(Button::Cancel, States::NONE),
+        ),
         (GO, asking.go.as_str(), on_it(Button::Go, picked)),
     ];
     for (area, label, states) in buttons {
@@ -304,7 +337,12 @@ pub fn paint(
         text.draw(&mut canvas, label, within, style.color, font);
     }
     if (on_eye || focused == Some(Button::Show)) && !asking.open {
-        paint_tooltip(&mut canvas, theme, text, (eye_says(open), by));
+        paint_tooltip(
+            &mut canvas,
+            theme,
+            text,
+            (eye_says(&asking.labels, open), by),
+        );
     }
     canvas
 }
@@ -1015,6 +1053,8 @@ delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1
 
 #[cfg(test)]
 mod tests {
+    use omorfos_i18n::ASK;
+
     use super::*;
 
     #[test]
@@ -1050,6 +1090,7 @@ mod tests {
             open: false,
             said: String::new(),
             checking: false,
+            labels: Box::new(Labels::of(&Words::in_languages(&ASK, &[]), "rafal")),
         }
     }
 
@@ -1082,9 +1123,14 @@ mod tests {
 
     #[test]
     fn the_field_says_whose_password_it_wants_or_what_pam_asks() {
-        assert_eq!(label("Password: ", "rafal"), "Password for rafal");
-        assert_eq!(label("password:", "rafal"), "Password for rafal");
-        assert_eq!(label("Verification code: ", "rafal"), "Verification code");
+        let labels = asking().labels;
+        assert_eq!(label("Password: ", &labels), "Password for rafal");
+        assert_eq!(label("password:", &labels), "Password for rafal");
+        assert_eq!(label("Verification code: ", &labels), "Verification code");
+        // In the user's language, where it has the words.
+        let polish = Labels::of(&Words::in_languages(&ASK, &["pl".to_owned()]), "rafal");
+        assert_eq!(label("Password: ", &polish), "Hasło użytkownika rafal");
+        assert_eq!(polish.cancel, "Anuluj");
     }
 
     #[test]
@@ -1247,8 +1293,9 @@ mod tests {
 
     #[test]
     fn the_eye_says_what_it_does_while_the_pointer_is_on_it() {
-        assert_eq!(eye_says(false), "Show the password");
-        assert_eq!(eye_says(true), "Hide the password");
+        let labels = asking().labels;
+        assert_eq!(eye_says(&labels, false), "Show the password");
+        assert_eq!(eye_says(&labels, true), "Hide the password");
         let theme = Theme::default();
         let mut text = Text::new();
         // Under the end of the field, where what was said is not.

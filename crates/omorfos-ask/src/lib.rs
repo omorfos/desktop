@@ -17,6 +17,7 @@ mod people;
 pub mod pinentry;
 mod prompt;
 
+use omorfos_i18n::{ASK, Value, Words};
 use std::collections::VecDeque;
 use std::error::Error;
 use std::ffi::OsString;
@@ -39,8 +40,8 @@ pub use omorfos_shell::shake::{SHAKE, SHAKING, shaken};
 pub use people::{Identity, Person, chosen, named, users};
 use pinentry::{Step, Wanted};
 pub use prompt::{
-    Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, SIZE, SURFACE, button_at, eye_says,
-    label, paint, shown,
+    Answer, Asking, Button, CANCEL, Desk, EYE, FIELD, GO, Labels, SIZE, SURFACE, button_at,
+    eye_says, label, paint, shown,
 };
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -84,9 +85,6 @@ const HELPERS: [&str; 3] = [
 
 /// Where the system bus is when the environment does not say.
 const SYSTEM_BUS: &str = "unix:path=/run/dbus/system_bus_socket";
-
-/// What is said when what was typed was not right.
-pub const WRONG: &str = "That did not work. Try again.";
 
 /// Where what is spoken to is found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -257,6 +255,9 @@ fn serve(
     (woken, wake): (OwnedFd, OwnedFd),
 ) -> Failure {
     let wake = std::sync::Arc::new(wake);
+    // What the boxes say, in the language the session is in, as polkit is
+    // told it.
+    let words = Words::in_locale(&ASK, &places.locale);
     let mut waiting: VecDeque<Waiting> = VecDeque::new();
     let mut asked: Option<Current> = None;
     loop {
@@ -264,7 +265,8 @@ fn serve(
         if let Some(Current::Polkit(request)) =
             asked.take_if(|current| matches!(current, Current::Polkit(_)))
         {
-            let mut told = |request, said| told(places, &mut desk, agent, request, said, &wake);
+            let mut told =
+                |request, said| told((places, &words), &mut desk, agent, request, said, &wake);
             asked = heard
                 .into_iter()
                 .try_fold(request, &mut told)
@@ -299,10 +301,10 @@ fn serve(
         {
             asked = match next {
                 Waiting::Polkit(begin) => {
-                    begun(places, &mut desk, agent, begin, &wake).map(Current::Polkit)
+                    begun((places, &words), &mut desk, agent, begin, &wake).map(Current::Polkit)
                 }
                 Waiting::Key(passing) => {
-                    desk.ask(of_key(&passing.wanted), passing.wanted.again);
+                    desk.ask(of_key(&words, &passing.wanted), passing.wanted.again);
                     Some(Current::Key(passing))
                 }
             };
@@ -379,39 +381,38 @@ const fn polkit(asked: Option<&Current>) -> Option<&Request> {
 }
 
 /// What the prompt says when GnuPG asks for a passphrase, in words of ours
-/// alone (ADR 58): which passphrase, of which key, as GnuPG lists it.
-fn of_key(wanted: &Wanted) -> Asking {
+/// alone (ADR 58), as `words` says them: which passphrase, of which key, as
+/// GnuPG lists it.
+fn of_key(words: &Words, wanted: &Wanted) -> Asking {
     let (heading, go) = match wanted.step {
-        Step::Passphrase => ("GnuPG asks for the passphrase of a key", "Unlock"),
-        Step::New => ("GnuPG asks for a new passphrase for a key", "Go on"),
-        Step::NewAgain => ("Type the new passphrase again", "Set"),
+        Step::Passphrase => ("passphrase-heading", "passphrase-go"),
+        Step::New => ("new-heading", "new-go"),
+        Step::NewAgain => ("again-heading", "again-go"),
     };
     let key = wanted.key.as_ref();
-    let named = key.map_or_else(|| UNNAMED.to_owned(), |key| key.name.clone());
+    let named = key.map_or_else(|| words.say("unnamed", &[]), |key| key.name.clone());
     let fingerprint = key.map_or_else(String::new, |key| {
-        format!("Fingerprint {}", key.fingerprint)
+        words.say(
+            "fingerprint",
+            &[("fingerprint", Value::Words(&key.fingerprint))],
+        )
     });
     Asking {
-        heading: heading.to_owned(),
-        go: go.to_owned(),
+        heading: words.say(heading, &[]),
+        go: words.say(go, &[]),
         message: named,
         user: String::new(),
         question: fingerprint,
         open: false,
         said: if wanted.again {
-            NOT_RIGHT.to_owned()
+            words.say("not-right", &[])
         } else {
             String::new()
         },
         checking: false,
+        labels: Box::new(Labels::of(words, "")),
     }
 }
-
-/// What a key GnuPG does not name is called.
-pub const UNNAMED: &str = "A key GnuPG does not name";
-
-/// What is said when the passphrase GnuPG was given was not right.
-pub const NOT_RIGHT: &str = "That passphrase was not right.";
 
 /// What the helper of the request being asked has said since this was
 /// last asked.
@@ -448,7 +449,7 @@ fn check(places: &Places, request: &mut Request, wake: &Wake) -> bool {
 /// Takes up a request polkit asks: whose secret to ask for, and the first
 /// try of it. One that cannot be asked is said to have been given up.
 fn begun(
-    places: &Places,
+    (places, words): (&Places, &Words),
     desk: &mut Desk,
     agent: &Agent,
     begin: Begin,
@@ -468,14 +469,15 @@ fn begun(
         return None;
     };
     let asking = Asking {
-        heading: "Authentication is required".to_owned(),
-        go: "Authenticate".to_owned(),
+        heading: words.say("polkit-heading", &[]),
+        go: words.say("polkit-go", &[]),
         message,
         user: person.name.clone(),
         question: String::new(),
         open: false,
         said: String::new(),
         checking: true,
+        labels: Box::new(Labels::of(words, &person.name)),
     };
     let mut request = Request {
         call,
@@ -496,7 +498,7 @@ fn begun(
 
 /// Takes in what the helper said of the try being checked.
 fn told(
-    places: &Places,
+    (places, words): (&Places, &Words),
     desk: &mut Desk,
     agent: &Agent,
     mut request: Request,
@@ -524,7 +526,7 @@ fn told(
             // Another try, afresh, until the user gives up; and the box
             // shakes, as a head does.
             desk.shake();
-            WRONG.clone_into(&mut request.asking.said);
+            request.asking.said = words.say("polkit-wrong", &[]);
             request.asking.checking = true;
             if !check(places, &mut request, wake) {
                 agent.cancelled(&request.call);

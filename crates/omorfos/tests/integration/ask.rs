@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use omorfos::{Input, Roles};
-use omorfos_ask::{AGENT, CANCEL, EYE, FIELD, GO, PATH, Places, SIZE, WRONG};
+use omorfos_ask::{AGENT, CANCEL, EYE, FIELD, GO, PATH, Places, SIZE};
 use omorfos_config::{Part, States, Theme};
 use smithay::input::keyboard::Keycode;
 use zbus::blocking::connection::Builder;
@@ -356,7 +356,6 @@ fn the_password_typed_in_the_sealed_prompt_is_checked_by_polkits_helper() {
     assert!(helped(&cookie).ends_with("typed atx\n"));
     session.eventually(|session| !up(session));
     assert!(!asker.running.is_finished());
-    let _ = WRONG;
 }
 
 #[test]

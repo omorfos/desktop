@@ -39,9 +39,16 @@ pub const LOCK: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/lock.ftl"))],
 };
 
+/// The words of the boxes that ask for a password or a passphrase.
+pub const ASK: Program = Program {
+    name: "ask",
+    english: include_str!("../../../i18n/en/ask.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/ask.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.
@@ -65,6 +72,14 @@ impl Words {
     #[must_use]
     pub fn of(program: &Program) -> Self {
         Self::in_languages(program, &wanted(|name| env::var(name).ok()))
+    }
+
+    /// `program`'s words in the language of `locale`, as `pl_PL.UTF-8`, for
+    /// a program that has read its locale already, or in English.
+    #[must_use]
+    pub fn in_locale(program: &Program, locale: &str) -> Self {
+        let languages = wanted(|name| (name == "LANG").then(|| locale.to_owned()));
+        Self::in_languages(program, &languages)
     }
 
     /// `program`'s words in the first of `languages`, by their codes, that
@@ -237,6 +252,20 @@ mod tests {
             wanted_of(&[("LANGUAGE", "fr:pt-BR"), ("LC_ALL", "en_GB.UTF-8")]),
             languages(&["fr", "pt", "en"]),
             "LANGUAGE's list first"
+        );
+    }
+
+    #[test]
+    fn a_program_that_has_read_its_locale_is_in_its_language() {
+        let polish = Words::in_locale(&TOOL, "pl_PL.UTF-8");
+        assert_eq!(
+            polish.say("hello", &[("name", Value::Words("Ala"))]),
+            "Cześć, Ala"
+        );
+        let english = Words::in_locale(&TOOL, "C");
+        assert_eq!(
+            english.say("hello", &[("name", Value::Words("Ala"))]),
+            "Hello, Ala"
         );
     }
 
