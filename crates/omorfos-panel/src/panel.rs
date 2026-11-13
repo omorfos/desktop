@@ -12,6 +12,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Store, Theme, Watcher};
+use omorfos_i18n::{PANEL, Value, Words};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Steady};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Motion, Scale, Text};
@@ -243,6 +244,8 @@ struct Shell {
     state: State,
     /// What the clocks read.
     time: String,
+    /// What it says, in the user's language (ADR 79).
+    words: Words,
     store: Store,
     text: Text,
     /// Where what clicks ask for is sent.
@@ -288,30 +291,43 @@ struct Face {
 /// What it takes to put a bar on a screen.
 /// What the bar says of the radios: that the machine is in aeroplane mode,
 /// all of them off; or which kinds are off; or nothing while none is.
-fn radios(radios: &[omorfos_ipc::Radio]) -> String {
+fn radios(words: &Words, radios: &[omorfos_ipc::Radio]) -> String {
     if !radios.is_empty() && radios.iter().all(|radio| radio.off) {
-        return "Aeroplane mode".to_owned();
+        return words.say("aeroplane-mode", &[]);
     }
-    let off: Vec<&str> = radios
+    let off: Vec<String> = radios
         .iter()
         .filter(|radio| radio.off)
-        .map(omorfos_ipc::Radio::called)
+        .map(|radio| words.say("radio", &[("kind", Value::Words(&radio.kind))]))
         .collect();
-    match off.as_slice() {
-        [] => String::new(),
-        [one] => format!("{one} off"),
-        [first @ .., last] => format!("{} and {last} off", first.join(", ")),
-    }
+    let named = match off.as_slice() {
+        [] => return String::new(),
+        [one] => one.clone(),
+        [first @ .., last] => {
+            let first = first.join(", ");
+            let both = [
+                ("first", Value::Words(&first)),
+                ("last", Value::Words(last)),
+            ];
+            words.say("and", &both)
+        }
+    };
+    let count = i64::try_from(off.len()).unwrap_or(i64::MAX);
+    let given = [
+        ("radios", Value::Words(&named)),
+        ("count", Value::Number(count)),
+    ];
+    words.say("radios-off", &given)
 }
 
 /// What the bar says while the session is kept awake, as the user asked:
 /// until when, if it ends. Nothing while it is not.
-fn awake(awake: Option<omorfos_ipc::Awake>) -> String {
+fn awake(words: &Words, awake: Option<omorfos_ipc::Awake>) -> String {
     let until = awake.map(|awake| awake.until.and_then(omorfos_shell::clock::at));
     match until {
         None => String::new(),
-        Some(None) => "Awake".to_owned(),
-        Some(Some(at)) => format!("Awake until {at}"),
+        Some(None) => words.say("awake", &[]),
+        Some(Some(at)) => words.say("awake-until", &[("at", Value::Words(&at))]),
     }
 }
 
@@ -346,6 +362,7 @@ impl Shell {
             over: None,
             state: State::default(),
             time: String::new(),
+            words: Words::of(&PANEL),
             store,
             text: Text::new(),
             commands,
@@ -435,8 +452,8 @@ impl Shell {
         let Some((((compositor, shm), layers), (viewporter, scales))) = globals else {
             return Ok(());
         };
-        let awake = awake(self.state.awake);
-        let radios = radios(&self.state.radios);
+        let awake = awake(&self.words, self.state.awake);
+        let radios = radios(&self.words, &self.state.radios);
         let mut tools = Tools {
             compositor,
             shm,
@@ -740,6 +757,8 @@ mod tests {
             off,
             switched: false,
         };
+        let english = Words::in_languages(&PANEL, &[]);
+        let radios = |given: &[omorfos_ipc::Radio]| radios(&english, given);
         assert_eq!(radios(&[]), "");
         assert_eq!(
             radios(&[radio("wlan", false), radio("bluetooth", false)]),
@@ -760,12 +779,26 @@ mod tests {
             radios(&[radio("wlan", true), radio("bluetooth", true)]),
             "Aeroplane mode"
         );
+        assert_eq!(
+            radios(&[radio("laser", true), radio("wlan", false)]),
+            "A radio off"
+        );
+        // In the user's language, where it has the words.
+        let polish = Words::in_languages(&PANEL, &["pl".to_owned()]);
+        assert_eq!(
+            super::radios(&polish, &three),
+            "Wyłączone: Wi-Fi, Bluetooth i NFC"
+        );
+        let all = [radio("wlan", true)];
+        assert_eq!(super::radios(&polish, &all), "Tryb samolotowy");
     }
 
     #[test]
     fn the_bar_says_the_session_is_kept_awake_and_until_when() {
         use omorfos_ipc::Awake;
 
+        let english = Words::in_languages(&PANEL, &[]);
+        let awake = |given| awake(&english, given);
         assert_eq!(awake(None), "");
         assert_eq!(awake(Some(Awake { until: None })), "Awake");
         let until = awake(Some(Awake {
@@ -776,5 +809,13 @@ mod tests {
             until: Some(u64::MAX),
         });
         assert_eq!(awake(never), "Awake", "a time no calendar has is not said");
+        let polish = Words::in_languages(&PANEL, &["pl".to_owned()]);
+        let until = super::awake(
+            &polish,
+            Some(Awake {
+                until: Some(1_761_400_800),
+            }),
+        );
+        assert!(until.starts_with("Nie zasypia do "), "{until}");
     }
 }

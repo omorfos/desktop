@@ -64,6 +64,18 @@ What is checked, and is not given way on:
   before they are handed in, as `docs/TESTING.md` says, since a test that
   fails one time in fifty fails someone's pull request.
 
+## Translating
+
+Each program's words are in `i18n/en/<program>.ftl`, in
+[Fluent](https://projectfluent.org/)'s format, and a translation is the
+same file under the language's code, as `i18n/pl/panel.ftl`, which needs
+no change of code but its line in `crates/omorfos-i18n/src/lib.rs`. A
+message it leaves out is said in English. `cargo test -p omorfos-i18n`
+checks it against the English: no message the English has not, no value
+the English is not given, and every plural form the language has. A
+translation made by a machine says so in its first lines, until someone
+who speaks the language has read it (ADR 79).
+
 ## Commits and pull requests
 
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):

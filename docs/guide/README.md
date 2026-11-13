@@ -12,6 +12,10 @@ that the desktop does not use reaches the program as the same chord with
 Ctrl, so `Super+c` copies, `Super+v` pastes and `Super+z` undoes in every
 program, as Cmd does on a Mac.
 
+The desktop speaks the language your session is in, as `LANG` says,
+where it has the words: English, and Polish for the panel so far. The
+rest is in English until it is translated.
+
 ## The keys that matter
 
 | Keys | What they do |

@@ -1858,19 +1858,20 @@ Reaching people:
       and release-please set to start at 0.1.0, where it would have made
       a first release 1.0.0. What is left is the maintainer's: merging
       release-please's pull request, and watching the workflow build it.
-- [ ] The shell in the user's language, Polish first. The mechanism and
-      the English are part of this repository, so that CI can test every
-      program in every language; each language's words are files of
-      their own (`i18n/<language>/`), with an owner each in `CODEOWNERS`,
-      so that translating needs no review of code. English is always
-      loaded, and a message missing from a language, or written with the
-      wrong placeholders, is shown in English, a message at a time. CI
-      checks every language against the English: no message unknown to
-      it, the same placeholders, and every plural form the language has.
-      A translation made by a machine is marked as such until someone
-      who speaks the language has read it. To be decided as an ADR: the
-      format (Fluent, which has per-message fallback and Polish's plurals
-      built in, or gettext, which translators' tools know best).
+- [x] The shell in the user's language, Polish first: the mechanism
+      (ADR 79), Fluent's messages in `i18n/<language>/<program>.ftl`, built
+      in, the language the environment asks for with English beneath it a
+      message at a time, and CI holding every language to the English (no
+      message unknown to it, no value it is not given, every plural form
+      the language has). The panel is the first program to speak through
+      it, in English and Polish, the Polish by a machine and marked so.
+- [ ] Every other program's words through `omorfos-i18n`, a program at a
+      time: the compositor's notices, the menu and About; the launcher,
+      the notifications, the lock and the prompts that ask for passwords;
+      `omorfos-session`'s notices; and the manual pages and `--help`,
+      which are English for now.
+- [ ] Someone who speaks Polish reads its files, and becomes their owner
+      in `CODEOWNERS`.
 - [ ] A guide for someone who has just logged in for the first time, and
       a first run that is not an empty screen.
 - [ ] Packages beyond `.deb` and the AUR.

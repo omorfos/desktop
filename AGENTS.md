@@ -132,6 +132,11 @@ make.
   `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
   A commit that takes a line away from that list is a breaking change and
   is marked as one (ADR 73); CI fails one that is not.
+- **What a translated program says is a message** (ADR 79): its English
+  in `i18n/en/<program>.ftl`, said through `omorfos-i18n`, never written
+  in the code. A message added in English is said in English by every
+  other language until it is translated; the tests hold each language to
+  the English. The panel is translated so far.
 - **The manual pages in `man/` are made, not written** (ADR 77): from each
   program's `About`, which its `--help` is made from too, and from the
   schemas. After changing either, make them again:
