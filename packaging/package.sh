@@ -26,8 +26,11 @@ stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
 cp target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates README.md \
   packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf packaging/omorfos-session.target \
-  packaging/pam/omorfos-lock packaging/pam/omorfos-lock-fingerprint packaging/pam/omorfos-lock-key \
   "${stage}/${name}/"
+# The PAM services the locker asks, for /etc/pam.d: in a folder of their
+# own, as one is named as the program that asks it is.
+mkdir "${stage}/${name}/pam.d"
+cp packaging/pam/omorfos-lock packaging/pam/omorfos-lock-fingerprint packaging/pam/omorfos-lock-key "${stage}/${name}/pam.d/"
 cp -r schemas "${stage}/${name}/"
 # The guide, a page for each file and each part of the desktop.
 cp -r docs/guide "${stage}/${name}/"

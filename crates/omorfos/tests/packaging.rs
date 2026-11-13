@@ -198,6 +198,31 @@ fn every_package_carries_every_page_of_the_guide() {
 }
 
 #[test]
+fn no_two_files_the_tarball_copies_side_by_side_have_one_name() {
+    // `cp` refuses a second file of a name it has just copied, which
+    // failed the tarball when `omorfos-lock` was both a program and the
+    // PAM service of the same name.
+    let script = read("packaging/package.sh").replace("\\\n", " ");
+    let flat = "\"${stage}/${name}/\"";
+    let copies = script.lines().filter(|line| {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        words.first() == Some(&"cp") && words.last() == Some(&flat)
+    });
+    let mut names: Vec<&str> = Vec::new();
+    for copy in copies {
+        let words: Vec<&str> = copy.split_whitespace().collect();
+        let sources = words[1..words.len() - 1].iter();
+        let sources = sources.filter(|word| !word.starts_with('-'));
+        names.extend(sources.map(|source| source.rsplit('/').next().unwrap()));
+    }
+    assert!(names.contains(&"omorfos-lock"), "{names:?}");
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), names.len(), "a name twice among {names:?}");
+}
+
+#[test]
 fn a_program_is_named_whole_and_not_by_the_start_of_another() {
     assert!(names(
         "cp target/release/omorfos x",

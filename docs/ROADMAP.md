@@ -1851,7 +1851,13 @@ Reaching people:
       and try it, and where the guide, the roadmap and the decisions are.
 - [ ] Pictures of it in the README, once it wears the design language.
 - [ ] A first release, which is also the first real test of the release
-      pipeline (see [RELEASING.md](RELEASING.md)).
+      pipeline (see [RELEASING.md](RELEASING.md)). Tried here first: the
+      `.deb` and the tarball made from a release build as the workflow
+      makes them, which found the tarball failing on the PAM service
+      `omorfos-lock` beside the program of that name, now in `pam.d/`;
+      and release-please set to start at 0.1.0, where it would have made
+      a first release 1.0.0. What is left is the maintainer's: merging
+      release-please's pull request, and watching the workflow build it.
 - [ ] The shell in the user's language, Polish first. The mechanism and
       the English are part of this repository, so that CI can test every
       program in every language; each language's words are files of
