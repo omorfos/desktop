@@ -162,14 +162,26 @@ fn built_in_bindings(page: &mut Page) {
          yours on the same keys, or on keys that begin with them, takes the place of one, and \
          `unbind` does without one.",
     );
-    for binding in Keys::default().bindings() {
+    for (keys, written, does) in bindings() {
+        page.entry(&keys, &format!("`{written}`: {does}"));
+    }
+}
+
+/// The bindings there are before any are written, as this page and the
+/// guide list them: each by its keys, with its action as `keys.yaml`
+/// would write it, and what that does.
+#[must_use]
+pub fn bindings() -> Vec<(String, String, &'static str)> {
+    let built_in = Keys::default();
+    let bindings = built_in.bindings().iter().map(|binding| {
         let written = action(&binding.action);
         // Its name is what it is written as, or the key it is written by.
         let name = written.trim_start_matches("{ ").split(':').next();
         let told = TOLD.iter().find(|told| Some(told.name) == name);
         let does = told.map(|told| told.does).unwrap_or_default();
-        page.entry(&binding.keys.to_string(), &format!("`{written}`: {does}"));
-    }
+        (binding.keys.to_string(), written, does)
+    });
+    bindings.collect()
 }
 
 /// The menu there is before one is written, as `menu.yaml` would write it.

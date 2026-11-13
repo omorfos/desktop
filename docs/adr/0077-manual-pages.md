@@ -45,7 +45,8 @@ would be made as.
   written by serde's `Serialize`, derived under the `schema` feature
   only, but for `spawn`, written by hand so that `run` comes before
   `may` as the guide has it; a test reads each back as the action it was
-  written from.
+  written from. The guide's table of the built-in bindings is made from
+  the same list, by the same command, between two marks in it.
 - **No version and no date in a page.** Either would change with every
   release and leave the pages kept behind, failing the test on the
   release's own commit.

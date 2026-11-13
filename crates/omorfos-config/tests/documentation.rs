@@ -133,3 +133,45 @@ fn every_manual_page_of_a_file_is_made_from_its_schema_and_the_guide() {
         );
     }
 }
+
+/// Where the guide's table of the built-in bindings begins, which a test
+/// makes, and where it ends.
+#[cfg(feature = "schema")]
+const BINDINGS: [&str; 2] = [
+    "<!-- The built-in bindings, made by a test: \
+     OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page -->\n",
+    "<!-- The end of the built-in bindings. -->\n",
+];
+
+/// The guide's table of the built-in bindings, made from them as their
+/// manual page is, so that neither falls behind them; made again by the
+/// same command as the pages.
+#[cfg(feature = "schema")]
+#[test]
+fn the_guides_built_in_bindings_are_made_as_the_manual_pages_are() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
+    let guide = fs::read_to_string(&path).unwrap();
+    let (before, rest) = guide
+        .split_once(BINDINGS[0])
+        .expect("the guide marks the table");
+    let (_, after) = rest
+        .split_once(BINDINGS[1])
+        .expect("the guide ends the table");
+    let rows = omorfos_config::manual::bindings().into_iter();
+    let rows: Vec<String> = rows
+        .map(|(keys, action, does)| format!("| `{keys}` | `{action}` | {does} |\n"))
+        .collect();
+    let table = format!(
+        "| Keys | Action | What it does |\n|---|---|---|\n{}",
+        rows.concat()
+    );
+    assert!(table.contains("| `Super+q` | `close` | Ask the focused window to close |\n"));
+    let made = format!("{before}{}{table}{}{after}", BINDINGS[0], BINDINGS[1]);
+    let bless = env::var_os("OMORFOS_BLESS").is_some();
+    let kept = omorfos_ipc::manual::kept(&path, &made, bless).unwrap();
+    assert!(
+        kept,
+        "the guide's built-in bindings are out of date; make them again with \
+         `OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page`",
+    );
+}
