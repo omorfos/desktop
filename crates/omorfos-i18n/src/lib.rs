@@ -8,7 +8,7 @@
 //! is said in English, a message at a time; and a message nothing has is
 //! said by its name, which a test makes sure never happens.
 
-use std::env;
+use std::{env, fmt};
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
@@ -32,9 +32,16 @@ pub const PANEL: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/panel.ftl"))],
 };
 
+/// The lock screen's words.
+pub const LOCK: Program = Program {
+    name: "lock",
+    english: include_str!("../../../i18n/en/lock.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/lock.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.
@@ -100,6 +107,20 @@ impl Words {
             }
         }
         name.to_owned()
+    }
+}
+
+/// Which languages it has, as what holds it is shown when looking into it.
+impl fmt::Debug for Words {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let languages = self.bundles.iter().map(|bundle| {
+            let language = bundle.locales.first().map(ToString::to_string);
+            language.unwrap_or_default()
+        });
+        formatter
+            .debug_struct("Words")
+            .field("languages", &languages.collect::<Vec<_>>())
+            .finish()
     }
 }
 
@@ -172,6 +193,8 @@ mod tests {
             "Hello, Ala",
             "no marks round Ala"
         );
+        let shown = format!("{polish:?}");
+        assert_eq!(shown, r#"Words { languages: ["pl", "en"] }"#);
     }
 
     #[test]

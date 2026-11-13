@@ -1865,9 +1865,13 @@ Reaching people:
       message unknown to it, no value it is not given, every plural form
       the language has). The panel is the first program to speak through
       it, in English and Polish, the Polish by a machine and marked so.
+- [x] The lock screen's words through `omorfos-i18n`, in English and
+      Polish: its power buttons and what they ask, who keeps the machine
+      from sleeping, and a password that was not right. What PAM asks is
+      PAM's, in the language PAM is set to speak.
 - [ ] Every other program's words through `omorfos-i18n`, a program at a
       time: the compositor's notices, the menu and About; the launcher,
-      the notifications, the lock and the prompts that ask for passwords;
+      the notifications and the prompts that ask for passwords;
       `omorfos-session`'s notices; and the manual pages and `--help`,
       which are English for now.
 - [ ] Someone who speaks Polish reads its files, and becomes their owner

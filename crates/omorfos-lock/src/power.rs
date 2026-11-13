@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
 
+use omorfos_i18n::{Value, Words};
+
 /// The longest a line said by another program is shown, in characters.
 const LONGEST: usize = 100;
 
@@ -23,7 +25,8 @@ impl Act {
     /// Each, in the order they are shown.
     const ALL: [Self; 4] = [Self::Sleep, Self::Restart, Self::ShutDown, Self::LogOut];
 
-    /// The word `omorfos-session` knows it by.
+    /// The word `omorfos-session` knows it by, which is also the name of
+    /// its button's message.
     const fn word(self) -> &'static str {
         match self {
             Self::Sleep => "sleep",
@@ -33,24 +36,15 @@ impl Act {
         }
     }
 
-    /// What its button says.
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Self::Sleep => "Sleep",
-            Self::Restart => "Restart",
-            Self::ShutDown => "Shut Down",
-            Self::LogOut => "Log Out",
-        }
-    }
-
-    /// What is asked before it is done, if it loses anything: sleep keeps
-    /// the session as it is, locked, and is done at once.
+    /// The message of what is asked before it is done, if it loses
+    /// anything: sleep keeps the session as it is, locked, and is done at
+    /// once.
     pub(crate) const fn question(self) -> Option<&'static str> {
         match self {
             Self::Sleep => None,
-            Self::Restart => Some("Restart? What is not saved in open programs is lost."),
-            Self::ShutDown => Some("Shut down? What is not saved in open programs is lost."),
-            Self::LogOut => Some("Log out? What is not saved in open programs is lost."),
+            Self::Restart => Some("restart-asked"),
+            Self::ShutDown => Some("shut-down-asked"),
+            Self::LogOut => Some("log-out-asked"),
         }
     }
 }
@@ -59,9 +53,9 @@ impl Act {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Offered {
     pub(crate) acts: Vec<Act>,
-    /// Who keeps the machine from sleeping or turning off, and why, as a
-    /// line to show.
-    pub(crate) held: Vec<String>,
+    /// Who keeps the machine from sleeping or turning off, and why, as
+    /// they say it: from sleeping if `true`.
+    pub(crate) held: Vec<(bool, String)>,
 }
 
 impl Offered {
@@ -74,14 +68,7 @@ impl Offered {
                 offered.acts.extend(act);
             } else if let Some(held) = line.strip_prefix("held ") {
                 let (from, who) = held.split_once(' ').unwrap_or((held, ""));
-                let from = if from == "sleep" {
-                    "sleeping"
-                } else {
-                    "turning off"
-                };
-                offered
-                    .held
-                    .push(plain(&format!("Kept from {from} by {who}")));
+                offered.held.push((from == "sleep", plain(who)));
             }
         }
         offered
@@ -122,13 +109,15 @@ pub(crate) struct Power {
     doing: Option<Act>,
     /// Why what was asked last was not done, until something else is.
     pub(crate) failed: String,
+    /// What it says, in the user's language.
+    words: Words,
     /// Whether what is offered is to be asked again.
     due: bool,
 }
 
 impl Power {
-    /// Buttons that ask `program`.
-    pub(crate) const fn new(program: (PathBuf, Vec<OsString>)) -> Self {
+    /// Buttons that ask `program`, which say what they do in `words`.
+    pub(crate) fn new(program: (PathBuf, Vec<OsString>), words: Words) -> Self {
         Self {
             program,
             offered: Offered {
@@ -138,6 +127,7 @@ impl Power {
             confirming: None,
             doing: None,
             failed: String::new(),
+            words,
             due: true,
         }
     }
@@ -209,7 +199,9 @@ impl Power {
             Told::Done(act, done) => {
                 self.doing = None;
                 if let Err(why) = done {
-                    self.failed = plain(&format!("{} did not happen: {why}", act.label()));
+                    let act = self.say(act.word());
+                    let given = [("act", Value::Words(&act)), ("why", Value::Words(&why))];
+                    self.failed = plain(&self.words.say("did-not-happen", &given));
                 }
             }
         }
@@ -220,6 +212,22 @@ impl Power {
     pub(crate) fn forget(&mut self) {
         self.confirming = None;
         self.failed.clear();
+    }
+
+    /// What the message `name` says.
+    pub(crate) fn say(&self, name: &str) -> String {
+        self.words.say(name, &[])
+    }
+
+    /// Who keeps the machine from sleeping or turning off, and why, a line
+    /// each.
+    pub(crate) fn held(&self) -> Vec<String> {
+        let held = self.offered.held.iter().map(|(sleep, who)| {
+            let from = Value::Words(if *sleep { "sleep" } else { "off" });
+            self.words
+                .say("kept-from", &[("from", from), ("who", Value::Words(who))])
+        });
+        held.collect()
     }
 
     /// The buttons shown, in order.
@@ -255,11 +263,11 @@ pub(crate) enum Button {
 }
 
 impl Button {
-    /// What it says.
+    /// The name of the message it says.
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::Act(act) | Self::Yes(act) => act.label(),
-            Self::No => "Cancel",
+            Self::Act(act) | Self::Yes(act) => act.word(),
+            Self::No => "cancel",
         }
     }
 }
@@ -282,6 +290,8 @@ fn run(mut command: Command) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use omorfos_i18n::LOCK;
+
     use super::*;
 
     #[test]
@@ -290,8 +300,13 @@ mod tests {
                     held sleep Player: Playing\nheld nothing\nsomething else\n";
         let offered = Offered::read(said);
         assert_eq!(offered.acts, [Act::Sleep, Act::LogOut]);
+        let mut power = Power::new(
+            (PathBuf::new(), Vec::new()),
+            Words::in_languages(&LOCK, &[]),
+        );
+        power.offered = offered;
         assert_eq!(
-            offered.held,
+            power.held(),
             [
                 "Kept from turning off by Firefox: Down load",
                 "Kept from sleeping by Player: Playing",
@@ -299,16 +314,31 @@ mod tests {
             ]
         );
         let long = Offered::read(&format!("held sleep {}\n", "x".repeat(500)));
-        assert_eq!(long.held[0].chars().count(), LONGEST);
+        assert_eq!(long.held[0].1.chars().count(), LONGEST);
+        // In the user's language, where it has the words.
+        let mut polish = Power::new(
+            (PathBuf::new(), Vec::new()),
+            Words::in_languages(&LOCK, &["pl".to_owned()]),
+        );
+        polish.offered = Offered::read("held sleep Player: Playing\n");
+        assert_eq!(
+            polish.held(),
+            ["Player: Playing nie pozwala uśpić komputera"]
+        );
     }
 
     #[test]
     fn what_loses_nothing_is_not_asked_about_first() {
+        let power = Power::new(
+            (PathBuf::new(), Vec::new()),
+            Words::in_languages(&LOCK, &[]),
+        );
         assert_eq!(Act::Sleep.question(), None);
         for act in [Act::Restart, Act::ShutDown, Act::LogOut] {
-            assert!(act.question().is_some_and(|asked| asked.contains("lost")));
+            let asked = act.question().map(|asked| power.say(asked));
+            assert!(asked.is_some_and(|asked| asked.contains("lost")));
         }
-        assert_eq!(Button::No.label(), "Cancel");
-        assert_eq!(Button::Yes(Act::ShutDown).label(), "Shut Down");
+        assert_eq!(power.say(Button::No.label()), "Cancel");
+        assert_eq!(power.say(Button::Yes(Act::ShutDown).label()), "Shut Down");
     }
 }

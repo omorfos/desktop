@@ -15,6 +15,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Color, Fit, Part, State, States, Store, Style, Theme, Transition};
+use omorfos_i18n::{LOCK, Words};
 use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
@@ -150,9 +151,9 @@ impl Lock {
                 let mut shell = Shell::new(
                     Store::open(config),
                     (user.called, face),
-                    Ways::new(ways, helper, user.name),
+                    Ways::new(ways, helper, user.name, Words::of(&LOCK)),
                 );
-                shell.power = power.map(Power::new);
+                shell.power = power.map(|program| Power::new(program, Words::of(&LOCK)));
                 Self {
                     connection,
                     queue,
@@ -1019,26 +1020,35 @@ fn paint_power(
     let font = theme.font(Part::Question, States::NONE);
     let row = height.saturating_sub(BOTTOM + BUTTON).cast_signed();
     let asked = power.confirming.and_then(Act::question);
-    let failed = Some(power.failed.as_str()).filter(|failed| !failed.is_empty());
-    let held = power.offered.held.iter().map(String::as_str);
-    let lines: Vec<&str> = held.chain(asked).chain(failed).collect();
+    let asked = asked.map(|asked| power.say(asked));
+    let failed = Some(power.failed.clone()).filter(|failed| !failed.is_empty());
+    let lines: Vec<String> = power
+        .held()
+        .into_iter()
+        .chain(asked)
+        .chain(failed)
+        .collect();
     let mut top = row - 8 - (LINE * u32::try_from(lines.len()).unwrap_or(0)).cast_signed();
     let (left, across) = (MARGIN.cast_signed(), width.saturating_sub(MARGIN * 2));
-    for line in lines {
+    for line in &lines {
         text.draw_centered(canvas, line, (left, top, across, LINE), said, font);
         top += LINE.cast_signed();
     }
     let buttons = power.buttons();
     let font = theme.font(Part::QuestionButton, States::NONE);
-    let wide: Vec<u32> = buttons
+    let labels: Vec<String> = buttons
         .iter()
-        .map(|button| text.measure(button.label(), font) + PADDING * 2)
+        .map(|button| power.say(button.label()))
+        .collect();
+    let wide: Vec<u32> = labels
+        .iter()
+        .map(|label| text.measure(label, font) + PADDING * 2)
         .collect();
     let gaps = GAP * u32::try_from(wide.len().saturating_sub(1)).unwrap_or(0);
     let all = wide.iter().sum::<u32>() + gaps;
     let mut along = (width.saturating_sub(all) / 2).cast_signed();
     let mut placed = Vec::new();
-    for (button, wide) in buttons.into_iter().zip(wide) {
+    for ((button, wide), label) in buttons.into_iter().zip(wide).zip(&labels) {
         let mut states = States::NONE;
         if matches!(button, Button::Yes(_)) {
             states = states.with(State::Active);
@@ -1055,7 +1065,7 @@ fn paint_power(
         let area = (along, row, wide, BUTTON);
         canvas.draw_box(area, &style);
         let font = theme.font(Part::QuestionButton, states);
-        text.draw_centered(canvas, button.label(), area, style.color, font);
+        text.draw_centered(canvas, label, area, style.color, font);
         placed.push((button, area));
         along += (wide + GAP).cast_signed();
     }

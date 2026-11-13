@@ -136,7 +136,7 @@ make.
   in `i18n/en/<program>.ftl`, said through `omorfos-i18n`, never written
   in the code. A message added in English is said in English by every
   other language until it is translated; the tests hold each language to
-  the English. The panel is translated so far.
+  the English. The panel and the lock screen are translated so far.
 - **The manual pages in `man/` are made, not written** (ADR 77): from each
   program's `About`, which its `--help` is made from too, and from the
   schemas. After changing either, make them again:

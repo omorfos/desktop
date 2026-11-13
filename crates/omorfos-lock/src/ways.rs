@@ -9,6 +9,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
+use omorfos_i18n::Words;
 use omorfos_shell::said::{Said, heard};
 
 /// How long a way other than the password waits to be asked again after
@@ -128,11 +129,14 @@ pub(crate) struct Ways {
     pub(crate) asking: Vec<Asking>,
     program: PathBuf,
     user: String,
+    /// What it says, in the user's language.
+    words: Words,
 }
 
 impl Ways {
-    /// The `ways` to ask about `user`, by helpers that are `program`.
-    pub(crate) fn new(ways: &[Way], program: PathBuf, user: String) -> Self {
+    /// The `ways` to ask about `user`, by helpers that are `program`,
+    /// saying what they say of themselves in `words`.
+    pub(crate) fn new(ways: &[Way], program: PathBuf, user: String, words: Words) -> Self {
         let asking = ways.iter().map(|way| Asking {
             way: *way,
             said: String::new(),
@@ -145,6 +149,7 @@ impl Ways {
             asking: asking.collect(),
             program,
             user,
+            words,
         }
     }
 
@@ -183,8 +188,7 @@ impl Ways {
                 // Only the password is typed into; a way that asks for more,
                 // as a key may for its PIN, is not asked here.
                 Said::Secret(_) | Said::Open(_) => {
-                    asking.said =
-                        "asks for something to be typed, which only the password is".into();
+                    asking.said = self.words.say("types", &[]);
                     asking.gone = true;
                     asking.helper.take().into_iter().for_each(Helper::stop);
                 }
@@ -212,7 +216,7 @@ impl Ways {
                     asking.again = (!asking.gone).then_some(now + wait);
                     if password && !unavailable {
                         if asking.said.is_empty() {
-                            asking.said = "That was not right".into();
+                            asking.said = self.words.say("wrong", &[]);
                         }
                         return Came::Wrong;
                     }
