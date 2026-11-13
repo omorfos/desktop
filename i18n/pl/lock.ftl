@@ -20,3 +20,8 @@ kept-from = { $who } nie pozwala { $from ->
 wrong = Nieprawidłowe hasło
 
 types = prosi o wpisanie czegoś, a wpisać można tylko hasło
+
+touch-key = Dotknij klucza bezpieczeństwa
+
+finger-place = Połóż palec na czytniku
+finger-wrong = Nie rozpoznano odcisku palca

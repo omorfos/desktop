@@ -192,7 +192,8 @@ impl Ways {
                     asking.gone = true;
                     asking.helper.take().into_iter().for_each(Helper::stop);
                 }
-                Said::Error(what) | Said::Info(what) => asking.said.clone_from(what),
+                Said::Info(what) => asking.said = shown(&self.words, asking.way, false, what),
+                Said::Error(what) => asking.said = shown(&self.words, asking.way, true, what),
                 Said::Wrong | Said::Unavailable => {
                     asking.asks = false;
                     asking.helper.take().into_iter().for_each(Helper::stop);
@@ -249,5 +250,72 @@ impl Ways {
             .iter_mut()
             .filter_map(|asking| asking.helper.take());
         helpers.for_each(Helper::stop);
+    }
+}
+
+/// What is shown of what `way` said, `what`, an error or not: a key's and a
+/// reader's in our words, in the user's language, as `pam_u2f` has no
+/// translations, and PAM's modules speak only English to a program that
+/// has not set its locale, which needs `unsafe`. Which finger and which
+/// reader fprintd names is lost; what it is to do is not. Anything else is
+/// shown as it is said.
+fn shown(words: &Words, way: Way, error: bool, what: &str) -> String {
+    let ours = match (way, error) {
+        (Way::Key, false) => Some("touch-key"),
+        (Way::Fingerprint, false) => Some("finger-place"),
+        (Way::Fingerprint, true) => Some("finger-wrong"),
+        _ => None,
+    };
+    ours.map_or_else(|| what.to_owned(), |name| words.say(name, &[]))
+}
+
+#[cfg(test)]
+mod tests {
+    use omorfos_i18n::LOCK;
+
+    use super::*;
+
+    /// What each way says once it has said `said`, in `language`.
+    fn says(language: &[&str], said: Said, way: Way) -> String {
+        let languages: Vec<String> = language.iter().map(|code| (*code).to_owned()).collect();
+        let words = Words::in_languages(&LOCK, &languages);
+        let ways = [Way::Password, Way::Fingerprint, Way::Key];
+        let mut ways = Ways::new(&ways, PathBuf::new(), String::new(), words);
+        ways.heard((way, said), Instant::now());
+        let asking = ways.asking.iter().find(|asking| asking.way == way);
+        asking.map(|asking| asking.said.clone()).unwrap_or_default()
+    }
+
+    #[test]
+    fn a_key_and_a_reader_are_said_in_our_words_and_in_the_users_language() {
+        let info = |said: &str| Said::Info(said.to_owned());
+        let error = |said: &str| Said::Error(said.to_owned());
+        let touch = info("Please touch the device.");
+        assert_eq!(says(&[], touch.clone(), Way::Key), "Touch the security key");
+        assert_eq!(
+            says(&["pl"], touch, Way::Key),
+            "Dotknij klucza bezpieczeństwa"
+        );
+        let place = info("Place your right index finger on FPC Fingerprint Reader");
+        assert_eq!(
+            says(&[], place.clone(), Way::Fingerprint),
+            "Place a finger on the reader"
+        );
+        assert_eq!(
+            says(&["pl"], place, Way::Fingerprint),
+            "Połóż palec na czytniku"
+        );
+        let failed = error("Failed to match fingerprint");
+        assert_eq!(
+            says(&["pl"], failed, Way::Fingerprint),
+            "Nie rozpoznano odcisku palca"
+        );
+        // What the password's modules say has no words of ours, and is said
+        // as they say it.
+        let locked = error("The account is locked");
+        assert_eq!(
+            says(&["pl"], locked, Way::Password),
+            "The account is locked"
+        );
     }
 }

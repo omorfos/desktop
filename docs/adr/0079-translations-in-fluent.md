@@ -71,3 +71,9 @@ at a time.
   then says what the English used to until it is read again.
 - What a program says in a test is its English, unless the test asks for
   another language.
+- PAM's modules speak only English to the lock screen's helper: their
+  translations are used once a process has set its locale, which from
+  Rust needs `unsafe`, and pam_u2f has none. What the fingerprint reader
+  and a security key say is said in the lock screen's own words instead,
+  which loses only which finger and which reader fprintd names. Anything
+  else a module says, as an account being locked, is shown as it says it.

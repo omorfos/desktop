@@ -1867,8 +1867,10 @@ Reaching people:
       it, in English and Polish, the Polish by a machine and marked so.
 - [x] The lock screen's words through `omorfos-i18n`, in English and
       Polish: its power buttons and what they ask, who keeps the machine
-      from sleeping, and a password that was not right. What PAM asks is
-      PAM's, in the language PAM is set to speak.
+      from sleeping, and a password that was not right. What the fingerprint
+      reader and a security key say is said in our words too: PAM's modules
+      speak English to a program that has not set its locale, which needs
+      `unsafe`, and pam_u2f has no translations at all.
 - [ ] Every other program's words through `omorfos-i18n`, a program at a
       time: the compositor's notices, the menu and About; the launcher,
       the notifications and the prompts that ask for passwords;

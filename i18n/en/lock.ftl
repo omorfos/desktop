@@ -29,3 +29,11 @@ wrong = That was not right
 # A way of unlocking, as a key, asked for something to be typed, which
 # only the password is.
 types = asks for something to be typed, which only the password is
+
+# A security key is waiting to be touched, as pam_u2f says in English.
+touch-key = Touch the security key
+
+# The reader is waiting for a finger, as pam_fprintd says in English, and
+# a finger it read was not one it knows.
+finger-place = Place a finger on the reader
+finger-wrong = That finger was not recognised
