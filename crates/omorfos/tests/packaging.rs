@@ -171,6 +171,33 @@ fn every_program_installed_has_its_page_in_man_and_every_package_carries_them() 
 }
 
 #[test]
+fn every_package_carries_every_page_of_the_guide() {
+    let guide = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guide");
+    assert!(guide.join("README.md").is_file(), "the guide begins there");
+    let installing = [
+        (
+            "Makefile",
+            "install -Dm644 docs/guide/*.md -t \"$(DESTDIR)$(DOC_DIR)/guide/\"",
+        ),
+        (
+            "packaging/aur/PKGBUILD",
+            "install -Dm644 docs/guide/*.md -t \"$pkgdir/usr/share/doc/$pkgname/guide/\"",
+        ),
+        (
+            "packaging/package.sh",
+            "cp -r docs/guide \"${stage}/${name}/\"",
+        ),
+        (
+            "crates/omorfos/Cargo.toml",
+            "[\"../../docs/guide/*.md\", \"usr/share/doc/omorfos/guide/\", \"644\"]",
+        ),
+    ];
+    for (packaging, line) in installing {
+        assert!(read(packaging).contains(line), "{packaging} carries {line}");
+    }
+}
+
+#[test]
 fn a_program_is_named_whole_and_not_by_the_start_of_another() {
     assert!(names(
         "cp target/release/omorfos x",

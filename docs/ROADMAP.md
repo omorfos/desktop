@@ -1832,12 +1832,16 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       or a game that asks is given every key, Super among them, while its
       window has the keyboard, with a notice; `Super+Escape` takes them
       back until it asks again (ADR 78).
-- [ ] The guide gone through as a user would use it: a short way in for
-      the first login (what is there, the keys that matter, where the
-      files are, how to bind what has no key, such as the overview); the
-      reference split by file rather than one page of 120 KB; and what to
-      do when something is wrong (`omorfosctl config check`, `omorfosctl
-      report`, the session's log). With the first-login guide below.
+- [x] The guide split into `docs/guide/`: a first page for the first
+      login (what is there, the keys that matter, which a test holds to the
+      built-in bindings, where the files are, how to bind what has no
+      key), a page for each file and each part of the desktop, and what to
+      do when something is wrong; installed whole by every packaging,
+      which a test checks.
+- [ ] The guide's pages read through one by one as a user would: they
+      were split as they were written, a section each, and some say more
+      than a user needs (the theme's page is 36 KB) or tell of one part
+      inside another's page, as fullscreen inside `config.yaml`'s.
 
 Reaching people:
 

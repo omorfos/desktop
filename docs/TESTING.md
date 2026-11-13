@@ -12,7 +12,7 @@ reasons in [ADR 2](adr/0002-coverage-policy.md).
 | Configuration | `crates/omorfos-config/src/*.rs`, in `mod tests` | Parse YAML or CSS text; assert on the value or on the message. |
 | The compositor | `crates/omorfos/tests/integration/*.rs` | A real compositor and a real Wayland client on one thread, drawn in software. |
 | The panel, launcher and notifications | Their own crates, and through the compositor in `integration/` | |
-| The schemas and the guide | `crates/omorfos-config/tests/` | The schemas in `schemas/` and the examples in `docs/CONFIGURATION.md` are compared with the code. |
+| The schemas and the guide | `crates/omorfos-config/tests/` | The schemas in `schemas/` and the examples in the guide, `docs/guide/`, are compared with the code. |
 
 Put a behaviour in the model if it can live there: it is then tested
 without a compositor, and the compositor's test only has to show that it
@@ -458,5 +458,5 @@ done about them, which is never to allow them:
 OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas
 ```
 
-and update the example in `docs/CONFIGURATION.md`, which a test compares
+and update the example in `docs/guide/config.yaml.md`, which a test compares
 with the defaults.

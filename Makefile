@@ -81,7 +81,7 @@ install:
 	install -Dm644 packaging/omorfos-portals.conf "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"
 	install -Dm644 packaging/omorfos-session.target "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
 	install -Dm644 README.md "$(DESTDIR)$(DOC_DIR)/README.md"
-	install -Dm644 docs/CONFIGURATION.md "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md"
+	install -Dm644 docs/guide/*.md -t "$(DESTDIR)$(DOC_DIR)/guide/"
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
 	install -Dm644 man/*.1 -t "$(DESTDIR)$(MAN_DIR)/man1/"
 	install -Dm644 man/*.5 -t "$(DESTDIR)$(MAN_DIR)/man5/"
@@ -106,7 +106,8 @@ uninstall:
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/portals/omorfos.portal"
 	rm -f "$(DESTDIR)$(DATADIR)/xdg-desktop-portal/omorfos-portals.conf"
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
-	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/CONFIGURATION.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
+	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
+	rm -f $(foreach page,$(notdir $(wildcard docs/guide/*.md)),"$(DESTDIR)$(DOC_DIR)/guide/$(page)")
 	rm -f $(foreach l,$(LICENSES) LICENSE-crates,"$(DESTDIR)$(DOC_DIR)/$(l)")
 	rm -f $(foreach page,$(notdir $(wildcard man/*.1)),"$(DESTDIR)$(MAN_DIR)/man1/$(page)")
 	rm -f $(foreach page,$(notdir $(wildcard man/*.5)),"$(DESTDIR)$(MAN_DIR)/man5/$(page)")

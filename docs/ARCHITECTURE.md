@@ -142,7 +142,7 @@ Wayland client with the pixman software renderer and assert on pixels. See
 Files live in `$XDG_CONFIG_HOME/omorfos/` (default `~/.config/omorfos/`):
 `config.yaml`, `keys.yaml`, `rules.yaml`, `theme.css`, `menu.yaml`. All are
 optional; built-in defaults apply when a file is absent. The format is
-described in [CONFIGURATION.md](CONFIGURATION.md).
+described in [the guide](guide/README.md).
 
 Live reload is three small pieces the compositor wires together: `Watcher`
 (an inotify descriptor that wakes the event loop), `Debouncer` (a pure

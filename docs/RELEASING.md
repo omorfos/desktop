@@ -40,7 +40,7 @@ the meaning of something written or started by name elsewhere
 | Promised | Not promised |
 |---|---|
 | The configuration's file names, and each key and value `schemas/` describes, with the actions' names | |
-| The theme's parts, states, properties and variables, as `CONFIGURATION.md` lists them | How the built-in theme looks |
+| The theme's parts, states, properties and variables, as `docs/guide/theme.css.md` lists them | How the built-in theme looks |
 | Each IPC request, reply and field (`PROTOCOL` rises when one goes) | |
 | `omorfosctl`'s commands and arguments, the JSON of `state` and `watch`, and its exit codes | The text of `version`, `screens`, `frames`, `report` and every error |
 | The programs' names: `omorfos`, `omorfosctl`, `omorfos-session`, `omorfos-pinentry` and the rest | Where they are installed |

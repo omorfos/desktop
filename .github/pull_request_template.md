@@ -26,7 +26,7 @@ might not expect. "Nothing" is an answer. -->
       features, `cargo coverage` at 100%, the doctests and `cargo deny`.
 - [ ] Each commit follows Conventional Commits, builds and passes alone,
       and says why in its body.
-- [ ] What a user can set or see is in `docs/CONFIGURATION.md`, and the
+- [ ] What a user can set or see is in the guide, `docs/guide/`, and the
       JSON Schemas are regenerated if the configuration changed.
 - [ ] The roadmap is ticked, and a decision has an ADR.
 - [ ] A new dependency is justified in its commit and passes `cargo deny`.

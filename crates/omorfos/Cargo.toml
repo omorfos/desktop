@@ -75,7 +75,7 @@ assets = [
     ["../../packaging/pam/omorfos-lock-fingerprint", "etc/pam.d/", "644"],
     ["../../packaging/pam/omorfos-lock-key", "etc/pam.d/", "644"],
     ["../../README.md", "usr/share/doc/omorfos/", "644"],
-    ["../../docs/CONFIGURATION.md", "usr/share/doc/omorfos/", "644"],
+    ["../../docs/guide/*.md", "usr/share/doc/omorfos/guide/", "644"],
     # The built-in theme, to copy from.
     ["../omorfos-config/src/default.css", "usr/share/doc/omorfos/theme.css", "644"],
     ["../../schemas/*.json", "usr/share/omorfos/schemas/", "644"],

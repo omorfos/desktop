@@ -1,20 +1,44 @@
-//! Keeps the examples in `docs/CONFIGURATION.md` valid, and the manual
+//! Keeps the examples in the guide, `docs/guide/`, valid, and the manual
 //! pages of the files, which end with them, made.
 
-use std::path::Path;
-use std::{env, fs, mem};
+use std::path::{Path, PathBuf};
+use std::{env, fs, io, mem};
 
 use omorfos_config::{Config, FILES};
 use tempfile::TempDir;
 
-/// Returns the first example under each heading that names a file, in the
+/// Where the guide's page `name` is.
+fn page(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/guide")
+        .join(name)
+}
+
+/// The guide, its pages one after another: those of the files first, in
+/// the order the configuration reads them, then the rest.
+fn guide() -> io::Result<String> {
+    let mut names: Vec<String> = FILES.iter().map(|file| format!("{file}.md")).collect();
+    let mut rest = Vec::new();
+    for entry in fs::read_dir(page(""))? {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        if !names.contains(&name) {
+            rest.push(name);
+        }
+    }
+    rest.sort();
+    names.extend(rest);
+    let pages = names.iter().map(|name| fs::read_to_string(page(name)));
+    Ok(pages.collect::<io::Result<Vec<_>>>()?.join("\n"))
+}
+
+/// Returns the first example on each page named after a file, in the
 /// language that file is written in.
 fn examples(guide: &str) -> Vec<(String, String)> {
     let mut examples: Vec<(String, String)> = Vec::new();
     let mut file = None;
     let mut block = None;
     for line in guide.lines() {
-        if let Some(heading) = line.strip_prefix("## `") {
+        if let Some(heading) = line.strip_prefix("# `") {
             file = heading.strip_suffix('`').map(str::to_owned);
         } else if line == "```yaml" || line == "```css" {
             let language = line.trim_start_matches('`');
@@ -34,8 +58,7 @@ fn examples(guide: &str) -> Vec<(String, String)> {
 
 #[test]
 fn every_stylesheet_in_the_guide_is_a_theme() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
-    let guide = fs::read_to_string(path).unwrap();
+    let guide = guide().unwrap();
     let blocks = guide.split("```css\n").skip(1);
     let stylesheets: Vec<&str> = blocks
         .filter_map(|block| block.split("```").next())
@@ -58,8 +81,7 @@ fn every_stylesheet_in_the_guide_is_a_theme() {
 
 #[test]
 fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
-    let examples = examples(&fs::read_to_string(path).unwrap());
+    let examples = examples(&guide().unwrap());
 
     let documented: Vec<&str> = examples.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
@@ -108,8 +130,7 @@ fn every_example_in_the_guide_is_valid_and_the_stated_defaults_are_true() {
 #[test]
 fn every_manual_page_of_a_file_is_made_from_its_schema_and_the_guide() {
     let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let guide = fs::read_to_string(top.join("docs/CONFIGURATION.md")).unwrap();
-    let examples = examples(&guide);
+    let examples = examples(&guide().unwrap());
     let example = |file: &str| {
         let found = examples.iter().find(|(name, _)| name == file);
         found.map(|(_, text)| text.as_str()).unwrap_or_default()
@@ -149,7 +170,7 @@ const BINDINGS: [&str; 2] = [
 #[cfg(feature = "schema")]
 #[test]
 fn the_guides_built_in_bindings_are_made_as_the_manual_pages_are() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/CONFIGURATION.md");
+    let path = page("keys.yaml.md");
     let guide = fs::read_to_string(&path).unwrap();
     let (before, rest) = guide
         .split_once(BINDINGS[0])
@@ -174,4 +195,27 @@ fn the_guides_built_in_bindings_are_made_as_the_manual_pages_are() {
         "the guide's built-in bindings are out of date; make them again with \
          `OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page`",
     );
+}
+
+/// The keys the guide's first page says matter are among the built-in
+/// bindings, so that it does not tell of a key that has moved.
+#[test]
+fn the_keys_the_guide_starts_with_are_built_in() {
+    let start = fs::read_to_string(page("README.md")).unwrap();
+    let (_, table) = start.split_once("## The keys that matter").unwrap();
+    let rows = table.lines().skip_while(|line| !line.starts_with("| `"));
+    let rows: Vec<&str> = rows.take_while(|line| line.starts_with('|')).collect();
+    assert!(rows.len() > 10, "{rows:?}");
+    let built_in = omorfos_config::Keys::default();
+    for row in rows {
+        let keys = row.split('`').nth(1).unwrap();
+        let keys: omorfos_config::KeyChain = keys.parse().unwrap();
+        assert!(
+            built_in
+                .bindings()
+                .iter()
+                .any(|binding| binding.keys == keys),
+            "the guide's first page names {keys}, which is not built in"
+        );
+    }
 }

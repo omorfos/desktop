@@ -32,9 +32,12 @@ is the order things are done in, and what the maintainer expects to be told.
   `OMORFOS_BLESS=1 cargo test -p omorfos-config --all-features --test schemas`.
   A line gone from `promised.txt` is a breaking change: its commit is
   marked with `!` (ADR 73), or CI fails it.
-- Update `docs/CONFIGURATION.md` for anything a user can set or do. Its
-  example and its copy of the built-in theme are checked by tests against
-  the defaults.
+- Update the guide, `docs/guide/`, for anything a user can set or do: the
+  page of the file it is set in, the page of what it is about, and the
+  first page if it changes what a first login meets. The files' examples
+  and the copy of the built-in theme are checked by tests against the
+  defaults, and the keys the first page names against the built-in
+  bindings.
 - Tick the item in `docs/ROADMAP.md`, and add what the work showed is
   still missing.
 - A library or program that is now needed, to build, to test or to run,
@@ -57,7 +60,7 @@ is the order things are done in, and what the maintainer expects to be told.
     properties are used and which states it has, `Part::ALL` and its
     count, its name in `Part::name` and in the list of names in the test
     there; its rule in `crates/omorfos-config/src/default.css`, and the
-    same in the copy of the built-in theme in `docs/CONFIGURATION.md`;
+    same in the copy of the built-in theme in `docs/guide/theme.css.md`;
     the list of parts in the guide; and the `backdrop-filter` or
     `box-shadow` row of the guide if it uses them.
   - **An action**: the `Action` enum in

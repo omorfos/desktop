@@ -95,8 +95,8 @@ A few keys to begin with:
 | `Super+Shift+r` | Read the configuration again |
 | `Super+Shift+e` | End the session |
 
-Everything else, and how to change any of it, is in
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+Everything else, and how to change any of it, is in the guide,
+[docs/guide/](docs/guide/README.md), which begins with your first login.
 
 ## What it needs
 
@@ -148,7 +148,7 @@ Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 
 | | |
 |---|---|
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, key, rule and part of the theme, and how to use the desktop |
+| [docs/guide/](docs/guide/README.md) | The first login, every setting, key, rule and part of the theme, how to use the desktop, and what to do when something is wrong |
 | [man/](man) | The manual pages, made from each program's `--help` and the files' schemas: `man omorfos` and `man 5 omorfos-config` once installed |
 | [docs/IPC.md](docs/IPC.md) | The socket and `omorfosctl`: scripting, and writing your own panel |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What is done, what is next, and in what order |

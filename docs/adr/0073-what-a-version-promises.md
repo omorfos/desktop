@@ -29,7 +29,7 @@ marked so. Adding to it is not.
   the same to the next: a key is not renamed, nor a value given another
   meaning, without the change being marked.
 - **The theme**: its parts, states, properties and variables, as
-  `docs/CONFIGURATION.md` lists them, so that a stylesheet of the user's
+  the guide lists them, so that a stylesheet of the user's
   styles what it styled.
 - **The IPC protocol**: each request and reply, and each field of them,
   as `docs/IPC.md` says. Fields may be added; one taken away or renamed

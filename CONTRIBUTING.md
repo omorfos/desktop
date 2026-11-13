@@ -73,8 +73,8 @@ What is checked, and is not given way on:
   [docs/RELEASING.md](docs/RELEASING.md) says.
 - Each commit is one change, which builds and passes on its own. A
   refactor, a fix and a feature are three commits.
-- What a user can set or see is in
-  [docs/CONFIGURATION.md](docs/CONFIGURATION.md) in the same change; a
+- What a user can set or see is in the guide,
+  [docs/guide/](docs/guide/README.md), in the same change; a
   finished item of the roadmap is ticked; and a decision someone will
   later ask "why" about gets a new ADR.
 - What is drawn follows [docs/DESIGN.md](docs/DESIGN.md), and can be used
