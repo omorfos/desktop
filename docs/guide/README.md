@@ -102,7 +102,9 @@ browser.
 ## Everything else
 
 - [Using windows](windows.md): moving, resizing, tiling and grouping them,
-  the switcher, the overview and fullscreen
+  the switcher, the overview, workspaces and fullscreen
+- [Screens](screens.md): placing them, mirroring one, turning one off, and
+  how large things are drawn
 - [The panel](panel.md), [the wallpaper](wallpaper.md),
   [the launcher](launcher.md) and [notifications](notifications.md)
 - [Pictures of the screen](screenshots.md): screenshots, recording, and

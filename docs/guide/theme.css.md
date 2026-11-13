@@ -6,7 +6,11 @@ laid over the built-in theme, so you only write what you want changed. A
 rule of yours always wins over a built-in one; among your own, the one that
 names more states wins, and then the later one.
 
-This is the whole built-in theme, which is also every part there is:
+The whole built-in theme, which is also every part there is, is folded
+away here; open it to see how a part is drawn before changing it.
+
+<details>
+<summary>The built-in theme</summary>
 
 ```css
 /* The built-in theme of omorfos, drawn in its design language (DESIGN.md).
@@ -473,6 +477,8 @@ about-button:active {
   color: var(--background);
 }
 ```
+
+</details>
 
 That is the theme in its dark scheme. With `appearance.scheme: light` in
 `config.yaml`, these are laid over it, so that the same rules draw it

@@ -1838,10 +1838,12 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       key), a page for each file and each part of the desktop, and what to
       do when something is wrong; installed whole by every packaging,
       which a test checks.
-- [ ] The guide's pages read through one by one as a user would: they
-      were split as they were written, a section each, and some say more
-      than a user needs (the theme's page is 36 KB) or tell of one part
-      inside another's page, as fullscreen inside `config.yaml`'s.
+- [x] The guide's pages put where a user looks for them: `config.yaml`'s
+      page holds its settings, and links to a page of its own for the
+      screens and to the windows' page for workspaces, fullscreen and
+      tiles, which it told of at length; the theme's page has the
+      built-in theme folded away, so that it begins with what to change.
+      The prose of each page is still as it was written.
 
 Reaching people:
 
