@@ -2,6 +2,7 @@
 //! of the one before it, by the hints notification services know; and
 //! what went wrong, shown until it is dismissed.
 
+use omorfos_i18n::Words;
 use std::collections::HashMap;
 
 use zbus::blocking::Connection;
@@ -32,7 +33,8 @@ pub(crate) fn warn(session: &Connection, title: &str, body: &str) -> Result<(), 
 }
 
 /// Shows `level` among the notifications.
-pub(crate) fn show(session: &Connection, level: &Level) -> Result<(), Failure> {
+pub(crate) fn show(session: &Connection, level: &Level, words: &Words) -> Result<(), Failure> {
+    let title = words.say(level.title, &[]);
     let hints = HashMap::from([
         ("value", Value::I32(i32::from(level.value))),
         ("synchronous", Value::from(level.tag)),
@@ -45,7 +47,7 @@ pub(crate) fn show(session: &Connection, level: &Level) -> Result<(), Failure> {
         "omorfos",
         0_u32,
         level.icon,
-        level.title,
+        title.as_str(),
         "",
         actions,
         hints,

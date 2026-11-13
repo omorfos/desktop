@@ -10,6 +10,7 @@
 //! session is on any screen. What to do when is [`Watch`], a value made
 //! from what has been heard; the rest is plumbing.
 
+use omorfos_i18n::Words;
 use std::path::Path;
 use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
@@ -163,9 +164,12 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
     let (radios, told, shown) = (
         places.rfkill.clone(),
         compositor.to_owned(),
-        places.session.clone(),
+        (places.session.clone(), places.locale.clone()),
     );
-    std::thread::spawn(move || crate::radios::follow(&radios, &told, shown.as_deref()));
+    std::thread::spawn(move || {
+        let (shown, locale) = shown;
+        crate::radios::follow(&radios, &told, (shown.as_deref(), &locale));
+    });
     let Ok(bus) = connect(&places.system) else {
         ended(news);
         return Ok(());
@@ -339,14 +343,13 @@ fn ask_to_lock(compositor: &Path) -> bool {
 fn warn(places: &Places) {
     let bus = places.session.as_deref();
     let bus = bus.and_then(|address| connect(address).ok());
+    let words = Words::in_locale(&omorfos_i18n::SESSION, &places.locale);
     let _ = bus.map(|bus| {
-        shown::warn(
-            &bus,
-            "The screen was not locked before sleep",
-            "The machine went to sleep before the screen locker had locked \
-             the screen, so it woke unlocked. Check that `locker` in \
-             config.yaml names a screen locker, and that it starts quickly.",
-        )
+        let (title, body) = (
+            words.say("unlocked-title", &[]),
+            words.say("unlocked-body", &[]),
+        );
+        shown::warn(&bus, &title, &body)
     });
 }
 
@@ -461,6 +464,7 @@ mod tests {
             scoper: None,
             journal: PathBuf::from("/nowhere/journal"),
             rfkill: PathBuf::from("/nowhere/rfkill"),
+            locale: String::new(),
         }
     }
 

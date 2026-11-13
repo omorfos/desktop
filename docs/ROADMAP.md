@@ -1875,10 +1875,13 @@ Reaching people:
       passphrases, through `omorfos-i18n`, in English and Polish, in the
       language the session is in as polkit is told it; what polkit asks
       for is polkit's, in the language it speaks.
+- [x] `omorfos-session`'s notices through `omorfos-i18n`, in English and
+      Polish: the volume, the microphone and the brightness, the radios and
+      aeroplane mode, and a machine that woke unlocked.
 - [ ] Every other program's words through `omorfos-i18n`, a program at a
-      time: the compositor's notices, the menu and About; the
-      notifications; `omorfos-session`'s notices; and the manual pages and
-      `--help`, which are English for now.
+      time: the compositor's notices, the menu and About; and the manual
+      pages and `--help`, which are English for now. The notifications
+      program says nothing of its own but what programs send it.
 - [ ] The launcher showing applications by their names in the user's
       language, as their desktop entries give them (`Name[pl]`), which it
       reads only in English now.

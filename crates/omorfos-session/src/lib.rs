@@ -41,6 +41,7 @@ mod stand_in;
 mod volume;
 mod watch;
 
+use omorfos_i18n::{SESSION, Words};
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
@@ -276,6 +277,10 @@ pub struct Places {
     pub journal: PathBuf,
     /// Where the kernel says what the machine's radios are and do.
     pub rfkill: PathBuf,
+    /// The language the session is in, as the C library reads it: from
+    /// `LC_ALL`, `LC_MESSAGES` or `LANG`, as `pl_PL.UTF-8`; nothing, which
+    /// is English, where none is set. What is shown is said in it.
+    pub locale: String,
 }
 
 impl Places {
@@ -309,6 +314,10 @@ impl Places {
                 .split(':')
                 .map(str::to_owned)
                 .collect(),
+            locale: ["LC_ALL", "LC_MESSAGES", "LANG"]
+                .into_iter()
+                .find_map(|name| address(name).filter(|value| !value.is_empty()))
+                .unwrap_or_default(),
         }
     }
 }
@@ -370,7 +379,8 @@ pub fn run(request: Request, places: &Places) -> Result<String, Failure> {
     // That it changed is what matters; showing it is a courtesy, and is
     // done without where there is nothing to show it.
     if let Ok(bus) = session() {
-        let _ = shown::show(&bus, &level);
+        let words = Words::in_locale(&SESSION, &places.locale);
+        let _ = shown::show(&bus, &level, &words);
     }
     Ok(String::new())
 }
@@ -419,7 +429,7 @@ fn connect(address: &str) -> Result<Connection, Failure> {
 struct Level {
     /// What it is of, which only one is shown of at a time.
     tag: &'static str,
-    /// What it says.
+    /// The name of the message of what it says.
     title: &'static str,
     /// The icon it is shown with.
     icon: &'static str,
@@ -445,6 +455,7 @@ mod tests {
             scoper: None,
             journal: PathBuf::from("/nowhere/journal"),
             rfkill: PathBuf::from("/nowhere/rfkill"),
+            locale: String::new(),
         }
     }
 
@@ -894,7 +905,19 @@ mod tests {
         assert_eq!(none.desktops, ["omorfos"]);
         assert_eq!(none.autostart, [PathBuf::from("/etc/xdg/autostart")]);
         assert_eq!(none.scoper, None);
+        assert_eq!(none.locale, "", "English");
         let all = Places::from(&|name| Some(OsString::from(format!("<{name}>"))));
+        assert_eq!(all.locale, "<LC_ALL>");
+        let messages = Places::from(&|name| {
+            let set = [
+                ("LC_ALL", ""),
+                ("LC_MESSAGES", "pl_PL.UTF-8"),
+                ("LANG", "en_GB.UTF-8"),
+            ];
+            let found = set.into_iter().find(|(set, _)| *set == name);
+            found.map(|(_, value)| OsString::from(value))
+        });
+        assert_eq!(messages.locale, "pl_PL.UTF-8", "LC_ALL empty is not set");
         assert_eq!(all.path, OsString::from("<PATH>"));
         assert_eq!(all.session.as_deref(), Some("<DBUS_SESSION_BUS_ADDRESS>"));
         assert_eq!(all.system, "<DBUS_SYSTEM_BUS_ADDRESS>");

@@ -46,9 +46,16 @@ pub const ASK: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/ask.ftl"))],
 };
 
+/// The words of the notices `omorfos-session` shows.
+pub const SESSION: Program = Program {
+    name: "session",
+    english: include_str!("../../../i18n/en/session.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/session.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.

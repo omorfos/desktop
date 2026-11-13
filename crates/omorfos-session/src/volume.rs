@@ -34,7 +34,7 @@ pub(crate) fn change(volume: Volume, path: &OsStr) -> Result<Level, Failure> {
         34..67 => "audio-volume-medium",
         _ => "audio-volume-high",
     };
-    let title = if muted { "Muted" } else { "Volume" };
+    let title = if muted { "muted" } else { "volume" };
     Ok(Level {
         tag: "volume",
         title,
@@ -47,9 +47,9 @@ pub(crate) fn change(volume: Volume, path: &OsStr) -> Result<Level, Failure> {
 pub(crate) fn microphone(path: &OsStr) -> Result<Level, Failure> {
     let (value, muted) = set(&["set-mute", SOURCE, "toggle"], SOURCE, path)?;
     let (title, icon) = if muted {
-        ("Microphone muted", "microphone-sensitivity-muted")
+        ("microphone-muted", "microphone-sensitivity-muted")
     } else {
-        ("Microphone on", "microphone-sensitivity-high")
+        ("microphone-on", "microphone-sensitivity-high")
     };
     Ok(Level {
         tag: "microphone",

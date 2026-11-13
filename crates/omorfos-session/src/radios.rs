@@ -9,6 +9,7 @@
 //! volume is. Nothing here turns a radio off or on: the kernel has already
 //! done what a key asks.
 
+use omorfos_i18n::{SESSION, Value, Words};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
@@ -115,18 +116,18 @@ impl Radios {
     }
 }
 
-/// What is shown of a change from `before` to `after`, if anything: that
-/// the machine is in aeroplane mode, all of it off, or no longer is; or
-/// that a kind is off or on. With its icon.
-fn said(before: &[Radio], after: &[Radio]) -> Option<(String, &'static str)> {
+/// What is shown of a change from `before` to `after`, if anything, as
+/// `words` says it: that the machine is in aeroplane mode, all of it off,
+/// or no longer is; or that a kind is off or on. With its icon.
+fn said(words: &Words, before: &[Radio], after: &[Radio]) -> Option<(String, &'static str)> {
     let all_off = |radios: &[Radio]| !radios.is_empty() && radios.iter().all(|radio| radio.off);
     match (all_off(before), all_off(after)) {
-        (false, true) => return Some(("Aeroplane mode on".to_owned(), "airplane-mode-symbolic")),
+        (false, true) => {
+            return Some((words.say("aeroplane-on", &[]), "airplane-mode-symbolic"));
+        }
         (true, false) => {
-            return Some((
-                "Aeroplane mode off".to_owned(),
-                "airplane-mode-disabled-symbolic",
-            ));
+            let off = words.say("aeroplane-off", &[]);
+            return Some((off, "airplane-mode-disabled-symbolic"));
         }
         _ => {}
     }
@@ -135,20 +136,21 @@ fn said(before: &[Radio], after: &[Radio]) -> Option<(String, &'static str)> {
         was.is_some_and(|was| was.off != radio.off)
     });
     let radio = changed.next()?;
-    let called = radio.called();
+    let called = words.say("radio", &[("kind", Value::Words(&radio.kind))]);
     let (state, icon) = if radio.off {
-        ("off", "network-wireless-disabled-symbolic")
+        ("radio-off", "network-wireless-disabled-symbolic")
     } else {
-        ("on", "network-wireless-symbolic")
+        ("radio-on", "network-wireless-symbolic")
     };
-    Some((format!("{called} {state}"), icon))
+    Some((words.say(state, &[("radio", Value::Words(&called))]), icon))
 }
 
 /// Follows the radios at `path`, telling the compositor at `compositor`
 /// each time they change, and showing each change after the first on the
 /// session's bus at `session`, until the kernel says no more. A machine
 /// whose radios cannot be read has nothing to say of them.
-pub(crate) fn follow(path: &Path, compositor: &Path, session: Option<&str>) {
+pub(crate) fn follow(path: &Path, compositor: &Path, (session, locale): (Option<&str>, &str)) {
+    let words = Words::in_locale(&SESSION, locale);
     let Ok(mut said_by_kernel) = File::open(path) else {
         return;
     };
@@ -169,7 +171,9 @@ pub(crate) fn follow(path: &Path, compositor: &Path, session: Option<&str>) {
         if told.as_ref() == Some(&now) {
             continue;
         }
-        let shown = told.as_deref().and_then(|before| said(before, &now));
+        let shown = told
+            .as_deref()
+            .and_then(|before| said(&words, before, &now));
         let bus = session.and_then(|session| crate::connect(session).ok());
         if let Some(((title, icon), bus)) = shown.zip(bus) {
             let _ = shown::said(&bus, &title, icon);
@@ -272,8 +276,10 @@ mod tests {
         ];
         let bluetooth_off = [radio("wlan", false, false), radio("bluetooth", true, false)];
         let all_off = [radio("wlan", true, false), radio("bluetooth", true, true)];
-        let said_of =
-            |before: &[Radio], after: &[Radio]| said(before, after).map(|(title, _)| title);
+        let english = Words::in_languages(&SESSION, &[]);
+        let said_of = |before: &[Radio], after: &[Radio]| {
+            said(&english, before, after).map(|(title, _)| title)
+        };
         assert_eq!(
             said_of(&on, &bluetooth_off).as_deref(),
             Some("Bluetooth off")
@@ -305,9 +311,21 @@ mod tests {
         // Not one the kernel numbers, but said of all the same.
         let odd = [radio("odd", false, false), radio("wlan", false, false)];
         let off = [radio("odd", true, false), radio("wlan", false, false)];
+        let english = Words::in_languages(&SESSION, &[]);
         assert_eq!(
-            said(&odd, &off).map(|(title, _)| title).as_deref(),
+            said(&english, &odd, &off)
+                .map(|(title, _)| title)
+                .as_deref(),
             Some("A radio off")
+        );
+        // In the user's language, where it has the words.
+        let polish = Words::in_languages(&SESSION, &["pl".to_owned()]);
+        let wlan_off = [radio("odd", false, false), radio("wlan", true, false)];
+        assert_eq!(
+            said(&polish, &odd, &wlan_off)
+                .map(|(title, _)| title)
+                .as_deref(),
+            Some("Wyłączono: Wi-Fi")
         );
     }
 
@@ -341,7 +359,7 @@ mod tests {
             compositor.path.clone(),
             daemon.address.clone(),
         );
-        let following = std::thread::spawn(move || follow(&path, &at, Some(&bus)));
+        let following = std::thread::spawn(move || follow(&path, &at, (Some(&bus), "")));
 
         // The kernel says of every radio there is as it is first read.
         let mut kernel_says = std::fs::OpenOptions::new()
@@ -397,7 +415,7 @@ mod tests {
         follow(
             Path::new("/nowhere/rfkill"),
             Path::new("/nowhere/ipc"),
-            None,
+            (None, ""),
         );
         assert!(tell(None, Path::new("/nowhere/ipc"), Vec::new()).is_none());
     }

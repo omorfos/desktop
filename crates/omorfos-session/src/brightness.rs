@@ -94,7 +94,7 @@ impl Changed {
         let value = u64::from(self.value) * 100 / u64::from(self.most);
         Level {
             tag: "brightness",
-            title: "Brightness",
+            title: "brightness",
             icon: "display-brightness",
             value: u8::try_from(value.min(100)).unwrap_or(100),
         }

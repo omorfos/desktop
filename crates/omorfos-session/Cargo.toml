@@ -12,6 +12,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# What it shows, in the user's language (ADR 79).
+omorfos-i18n = { path = "../omorfos-i18n" }
 # Reads the desktop entries of what is to start with the session.
 omorfos-entries = { path = "../omorfos-entries" }
 # Hears from the compositor when the session is locked, and asks it to lock.
