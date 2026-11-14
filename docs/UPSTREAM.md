@@ -266,8 +266,9 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   AddressSanitizer catches it on every run; glibc only now and then, as
   `corrupted size vs. prev_size` (issue #33).
 - **Reported:** <https://gitlab.freedesktop.org/pipewire/pipewire-rs/-/work_items/123>,
-  on 14 November 2026, with a fix for streams to follow; for proxies the
-  maintainers are asked which way they would have it.
+  on 14 November 2026, with a fix for streams offered as merge request
+  !280 (<https://gitlab.freedesktop.org/pipewire/pipewire-rs/-/merge_requests/280>);
+  for proxies the maintainers are asked which way they would have it.
 - **Meanwhile:** each listener is written before what it listens to, with
   why: the portal's `Share`, the recording watcher's `Followed`, and the
   tests' own. A listener made into a local variable after what it
