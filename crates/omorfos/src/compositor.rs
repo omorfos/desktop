@@ -2700,7 +2700,7 @@ impl Compositor {
         self.cards.about.shown = match (current, wanted) {
             (Some(about), _) => Some(about),
             (None, true) => {
-                let tools = (&mut self.text, &mut self.animation.shades);
+                let tools = (&mut self.text, &mut self.animation.shades, &self.words);
                 let what = (theme, scheme, &self.cards.about.system);
                 let mut about = About::paint(tools, what, within, (scale, hovered));
                 about.scroll(scrolled);
@@ -2811,7 +2811,7 @@ impl Compositor {
         self.cards.notice = match (current, wanted) {
             (Some(notice), _) => Some(notice),
             (None, true) => {
-                let tools = (&mut self.text, &mut self.animation.shades);
+                let tools = (&mut self.text, &mut self.animation.shades, &self.words);
                 Some(Notice::paint(tools, theme, &said, within, scale))
             }
             (None, false) => None,
@@ -4562,7 +4562,7 @@ pub(crate) struct Notice {
 
 impl Notice {
     fn paint(
-        (text, shades): (&mut Text, &mut Shades),
+        (text, shades, words): (&mut Text, &mut Shades, &Words),
         theme: &Theme,
         problems: &[String],
         within: Rectangle<i32, Logical>,
@@ -4570,7 +4570,7 @@ impl Notice {
     ) -> Self {
         let output_width = within.size.w.unsigned_abs();
         let width = NOTICE_WIDTH.min(output_width.saturating_sub(NOTICE_MARGIN * 2));
-        let canvas = paint::notice(text, theme, problems, width, scale);
+        let canvas = paint::notice((text, words), theme, problems, width, scale);
         let (painted_width, painted_height) = canvas.units();
         let left = output_width
             .saturating_sub(width + NOTICE_MARGIN)
@@ -4664,6 +4664,9 @@ const COPIED_FOR: Duration = Duration::from_millis(1500);
 /// "About omorfos", as it is shown.
 #[derive(Debug)]
 pub(crate) struct About {
+    /// What its button that copies says, before and once it has, in the
+    /// user's language.
+    says: (String, String),
     theme: Theme,
     scheme: Scheme,
     /// The output it is in the middle of.
@@ -4691,7 +4694,7 @@ pub(crate) struct About {
 
 impl About {
     fn paint(
-        (text, shades): (&mut Text, &mut Shades),
+        (text, shades, words): (&mut Text, &mut Shades, &Words),
         (theme, scheme, system): (&Theme, Scheme, &System),
         within: Rectangle<i32, Logical>,
         (scale, hovered): (Scale, bool),
@@ -4709,7 +4712,7 @@ impl About {
         let credits = omorfos_core::credits(CREDITS);
         let style = theme.style(Part::About, States::NONE);
         let room = width.saturating_sub(style.inset().across());
-        let list = paint::about_list(text, theme, (system, &credits), (room, scale));
+        let list = paint::about_list((text, words), theme, (system, &credits), (room, scale));
         // As much of it as there is room for on the screen, within the
         // margins, which is all of it on most screens.
         let tallest = high.saturating_sub(NOTICE_MARGIN * 2);
@@ -4718,8 +4721,9 @@ impl About {
         let version = env!("CARGO_PKG_VERSION");
         let said = (mark.as_slice(), version);
         let looks = (width, length, scale, hovered.then_some(AboutButton::Close));
-        let copy = paint::about_copy_size(text, theme);
-        let (canvas, (close, copy), shown) = paint::about(text, theme, said, looks, copy);
+        let says = (words.say("copy", &[]), words.say("copied", &[]));
+        let copy = paint::about_copy_size(text, theme, (&says.0, &says.1));
+        let (canvas, (close, copy), shown) = paint::about((text, words), theme, said, looks, copy);
         let (across, down) = canvas.units();
         let left = wide.saturating_sub(across) / 2;
         let top = high.saturating_sub(down) / 2;
@@ -4752,6 +4756,7 @@ impl About {
             list: Painted::new(&list),
             shown: on(shown),
             scrolled: 0.0,
+            says,
         }
     }
 
@@ -4768,7 +4773,8 @@ impl About {
             return;
         }
         let size = (self.copy.size.width, self.copy.size.height);
-        let canvas = paint::about_copy(text, (&style, font), (size, self.scale), tick);
+        let says = (self.says.0.as_str(), self.says.1.as_str());
+        let canvas = paint::about_copy(text, (&style, font), (size, self.scale), (tick, says));
         self.button = Some((style, tick, Painted::new(&canvas)));
     }
 

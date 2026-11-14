@@ -103,3 +103,37 @@ uses-camera = { $program } is using the camera
 taken-ago = Pictures of this screen were taken a moment ago
 sound-ago = Sound was recorded a moment ago
 camera-ago = The camera was used a moment ago
+
+## The list of what is wrong, in the corner of the screen.
+problems-heading = Problems (click to dismiss)
+# How many more there are than there is room for, $hidden.
+problems-more = … and { $hidden } more
+
+## "About omorfos".
+this-computer = This computer
+# A kind of thing the computer has, by its $kind in English, which is
+# said as it is where there is nothing for it here.
+thing = { $kind ->
+    [Processor] Processor
+    [Memory] Memory
+    [Graphics] Graphics
+    [Storage] Storage
+    [System] System
+    [Screens] Screens
+   *[other] { $kind }
+}
+# The heading of a table of what omorfos is made with, by $heading, its
+# words joined by hyphens, and $original, as CREDITS.md writes it.
+credits = { $heading ->
+    [built-in] Built in
+    [used-to-make-what-is-shipped] Used to make what is shipped
+    [recommended-by-the-packages-not-shipped] Recommended by the packages, not shipped
+    [thanks] Thanks
+   *[other] { $original }
+}
+version = Version { $version }
+licence = Under the MIT licence
+# The button that copies what the computer is, as text for a bug report,
+# which is in English; and what it says once it has.
+copy = Copy
+copied = Copied

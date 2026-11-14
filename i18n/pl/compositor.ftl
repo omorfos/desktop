@@ -84,3 +84,28 @@ uses-camera = { $program } używa kamery
 taken-ago = Przed chwilą robiono zdjęcia tego ekranu
 sound-ago = Przed chwilą nagrywano dźwięk
 camera-ago = Przed chwilą używano kamery
+
+problems-heading = Problemy (kliknij, aby zamknąć)
+problems-more = … i jeszcze { $hidden }
+
+this-computer = Ten komputer
+thing = { $kind ->
+    [Processor] Procesor
+    [Memory] Pamięć
+    [Graphics] Grafika
+    [Storage] Dyski
+    [System] System
+    [Screens] Ekrany
+   *[other] { $kind }
+}
+credits = { $heading ->
+    [built-in] Wbudowane
+    [used-to-make-what-is-shipped] Użyte do zbudowania tego, co dostarczane
+    [recommended-by-the-packages-not-shipped] Zalecane przez pakiety, niedostarczane
+    [thanks] Podziękowania
+   *[other] { $original }
+}
+version = Wersja { $version }
+licence = Na licencji MIT
+copy = Kopiuj
+copied = Skopiowano

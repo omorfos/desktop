@@ -1887,11 +1887,14 @@ Reaching people:
       what the mark of a screen being recorded says. What it says of a
       mistake in the configuration, which names its keys and values, is
       English, as the configuration's own diagnostics are.
-- [ ] The rest of the compositor's words through `omorfos-i18n`: About,
-      the heading of the list of problems, and the built-in root menu's
-      labels, which are the configuration's defaults; and the manual pages
-      and `--help`, which are English for now. The notifications program
-      says nothing of its own but what programs send it.
+- [x] "About omorfos" and the list of problems through `omorfos-i18n`, in
+      English and Polish: what the computer has, the headings of what
+      omorfos is made with, its version and licence, and the button that
+      copies, whose text for a bug report stays English.
+- [ ] The built-in root menu's labels in the user's language, which are
+      the configuration's defaults; and the manual pages and `--help`,
+      which are English for now. The notifications program says nothing of
+      its own but what programs send it.
 - [ ] The launcher showing applications by their names in the user's
       language, as their desktop entries give them (`Name[pl]`), which it
       reads only in English now.

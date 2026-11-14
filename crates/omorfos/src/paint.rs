@@ -345,15 +345,18 @@ const NOTICE_LINES: usize = 6;
 /// Paints the notice that tells the user something is wrong: a heading and
 /// one line per problem, each cut short if it does not fit.
 pub(crate) fn notice(
-    text: &mut Text,
+    (text, words): (&mut Text, &Words),
     theme: &Theme,
     problems: &[String],
     width: u32,
     scale: Scale,
 ) -> Canvas {
     let hidden = problems.len().saturating_sub(NOTICE_LINES);
-    let heading = "Problems (click to dismiss)".to_owned();
-    let more = (hidden > 0).then(|| format!("\u{2026} and {hidden} more"));
+    let heading = words.say("problems-heading", &[]);
+    let more = (hidden > 0).then(|| {
+        let hidden = i64::try_from(hidden).unwrap_or(i64::MAX);
+        words.say("problems-more", &[("hidden", Value::Number(hidden))])
+    });
     let lines: Vec<&String> = std::iter::once(&heading)
         .chain(problems.iter().take(NOTICE_LINES))
         .chain(more.iter())
@@ -428,13 +431,29 @@ impl Row {
     }
 }
 
+/// The heading of a table of `CREDITS.md`, `heading`, as `words` says it:
+/// known by its words joined by hyphens, as `built-in`, and as it is where
+/// they have nothing for it.
+fn credits_heading(words: &Words, heading: &str) -> String {
+    let joined = heading.split(|letter: char| !letter.is_alphanumeric());
+    let joined: Vec<String> = joined
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let given = [
+        ("heading", Value::Words(&joined.join("-"))),
+        ("original", Value::Words(heading)),
+    ];
+    words.say("credits", &given)
+}
+
 /// What "About" lists, `room` across and as tall as all of it is, on
 /// nothing, to be shown on it through a window that scrolls: what the
 /// computer is, `system`, in a table of each kind of thing and what there
 /// is of it; then each list of `credits` under its heading, each thing's
 /// name and its licence, and under them whose it is.
 pub(crate) fn about_list(
-    text: &mut Text,
+    (text, words): (&mut Text, &Words),
     theme: &Theme,
     (system, credits): (&omorfos_core::System, &[omorfos_core::Credits]),
     (room, scale): (u32, Scale),
@@ -442,17 +461,19 @@ pub(crate) fn about_list(
     let mut lines: Vec<Row> = Vec::new();
     // What it is goes after the widest of the kinds, and a little room.
     let kind = theme.font(Part::AboutDetail, States::NONE);
-    let widest = system
+    let named: Vec<String> = system
         .things
         .iter()
-        .map(|(name, _)| text.measure(name, kind));
+        .map(|(name, _)| words.say("thing", &[("kind", Value::Words(name))]))
+        .collect();
+    let widest = named.iter().map(|name| text.measure(name, kind));
     let column = widest.max().unwrap_or_default() + ABOUT_GAP;
-    let heading = "This computer".to_owned();
+    let heading = words.say("this-computer", &[]);
     lines.push(Row::alone(Part::AboutHeading, heading, ABOUT_ROW));
-    for (name, things) in &system.things {
+    for ((_, things), name) in system.things.iter().zip(&named) {
         for (index, thing) in things.iter().enumerate() {
             // The kind is said once, beside the first of its things.
-            let name = if index == 0 { *name } else { "" };
+            let name = if index == 0 { name.as_str() } else { "" };
             lines.push(Row {
                 first: (Part::AboutDetail, name.to_owned()),
                 then: (Part::About, thing.clone()),
@@ -463,7 +484,7 @@ pub(crate) fn about_list(
     }
     lines.push(Row::alone(Part::About, String::new(), ABOUT_GAP));
     for section in credits {
-        let heading = section.heading.clone();
+        let heading = credits_heading(words, &section.heading);
         lines.push(Row::alone(Part::AboutHeading, heading, ABOUT_ROW));
         for credit in &section.credits {
             let licence = format!(" \u{b7} {}", credit.licence);
@@ -508,7 +529,7 @@ pub(crate) fn about_list(
 /// where on it the button that closes it is and the one that copies, and
 /// where what it lists goes.
 pub(crate) fn about(
-    text: &mut Text,
+    (text, words): (&mut Text, &Words),
     theme: &Theme,
     (mark, version): (&[Image], &str),
     (width, list, scale, hovered): (u32, u32, Scale, Option<AboutButton>),
@@ -553,8 +574,11 @@ pub(crate) fn about(
     let narrower = room.saturating_sub(ABOUT_MARK + ABOUT_GAP + wide);
     let titles = [
         (Part::AboutHeading, "omorfos".to_owned()),
-        (Part::AboutDetail, format!("Version {version}")),
-        (Part::AboutDetail, "Under the MIT licence".to_owned()),
+        (
+            Part::AboutDetail,
+            words.say("version", &[("version", Value::Words(version))]),
+        ),
+        (Part::AboutDetail, words.say("licence", &[])),
     ];
     let mut at = top + (size - (3 * ABOUT_ROW).cast_signed()) / 2;
     for (part, line) in titles {
@@ -573,9 +597,6 @@ pub(crate) fn about(
     (canvas, (close, copy), below)
 }
 
-/// What the button of "About" that copies says, before and once it has.
-const COPY: &str = "Copy";
-const COPIED: &str = "Copied";
 /// How large the tick it shows once it has copied is, and the room after
 /// it.
 const TICK: u32 = 14;
@@ -583,13 +604,17 @@ const TICK: u32 = 14;
 /// How large the button of "About" that copies is: as wide as the wider
 /// of what it says before and once it has, so that it stays the size it
 /// is.
-pub(crate) fn about_copy_size(text: &mut Text, theme: &Theme) -> (u32, u32) {
+pub(crate) fn about_copy_size(
+    text: &mut Text,
+    theme: &Theme,
+    (copy, copied): (&str, &str),
+) -> (u32, u32) {
     let (style, font) = (
         theme.style(Part::AboutButton, States::NONE),
         theme.font(Part::AboutButton, States::NONE),
     );
-    let before = text.measure(COPY, font);
-    let after = TICK + TICK / 2 + text.measure(COPIED, font);
+    let before = text.measure(copy, font);
+    let after = TICK + TICK / 2 + text.measure(copied, font);
     let padding = style.inset();
     (
         before.max(after) + padding.across(),
@@ -604,13 +629,13 @@ pub(crate) fn about_copy(
     text: &mut Text,
     (style, font): (&Style, &Font),
     (size, scale): ((u32, u32), Scale),
-    tick: Option<f64>,
+    (tick, (copy, copied)): (Option<f64>, (&str, &str)),
 ) -> Canvas {
     let (wide, high) = size;
     let mut canvas = Canvas::scaled(wide, high, scale);
     canvas.draw_box((0, 0, wide, high), style);
     let (left, top, room, tall) = inset((0, 0, wide, high), style.inset());
-    let said = if tick.is_some() { COPIED } else { COPY };
+    let said = if tick.is_some() { copied } else { copy };
     // What it says, and the tick before it once there is one, in the
     // middle of it.
     let ticked = tick.map_or(0, |_| TICK + TICK / 2);
@@ -1132,6 +1157,38 @@ mod tests {
 
     use super::*;
 
+    /// The compositor's words in English, as the tests read them.
+    fn english() -> Words {
+        Words::in_languages(&omorfos_i18n::COMPOSITOR, &[])
+    }
+
+    #[test]
+    fn every_heading_of_the_credits_and_every_kind_of_thing_is_translated() {
+        let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
+        let credits = omorfos_core::credits(include_str!("../../../CREDITS.md"));
+        assert!(credits.len() >= 3, "{credits:?}");
+        for section in &credits {
+            let said = credits_heading(&polish, &section.heading);
+            assert_ne!(said, section.heading, "a heading has no Polish");
+            assert_eq!(
+                credits_heading(&english(), &section.heading),
+                section.heading
+            );
+        }
+        assert_eq!(credits_heading(&polish, "Something new"), "Something new");
+        for kind in [
+            "Processor",
+            "Memory",
+            "Graphics",
+            "Storage",
+            "System",
+            "Screens",
+        ] {
+            let said = polish.say("thing", &[("kind", Value::Words(kind))]);
+            assert!(said != kind || kind == "System", "{kind} has no Polish");
+        }
+    }
+
     /// The colours of a theme, by what the built-in theme uses them for.
     struct Palette {
         accent: Color,
@@ -1411,7 +1468,7 @@ mod tests {
             "keys.yaml: no such key".to_owned(),
         ];
 
-        let canvas = notice(&mut text, &theme, &problems, 400, Scale::ONE);
+        let canvas = notice((&mut text, &english()), &theme, &problems, 400, Scale::ONE);
 
         // A heading and two problems, 22 pixels each, inside the padding
         // and the border.
@@ -1439,8 +1496,20 @@ mod tests {
         let mut text = Text::new();
         let few: Vec<String> = (0..6).map(|n| format!("problem {n}")).collect();
         let many: Vec<String> = (0..40).map(|n| format!("problem {n}")).collect();
-        let exactly = notice(&mut text, &Theme::default(), &few, 400, Scale::ONE);
-        let capped = notice(&mut text, &Theme::default(), &many, 400, Scale::ONE);
+        let exactly = notice(
+            (&mut text, &english()),
+            &Theme::default(),
+            &few,
+            400,
+            Scale::ONE,
+        );
+        let capped = notice(
+            (&mut text, &english()),
+            &Theme::default(),
+            &many,
+            400,
+            Scale::ONE,
+        );
         assert_eq!(exactly.height(), 7 * 22 + 26, "a heading and six problems");
         assert_eq!(
             capped.height(),
