@@ -11,7 +11,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, FOUR_WORKSPACES, LayerShape, Session};
+use crate::common::{Client, Event, FOUR_WORKSPACES, LayerShape, Session, WIDTH};
 use crate::lock::lock;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
@@ -58,6 +58,12 @@ fn carry(session: &mut Session, dx: f64, taking: u32) {
     touch_at(session, &steps);
 }
 
+/// How far the fingers go across to carry the workspaces `across` units of
+/// the screen: a whole workspace, the screen's width, is 400 of theirs.
+fn fingers(across: f64) -> f64 {
+    across * 400.0 / f64::from(WIDTH)
+}
+
 /// The fingers lifting, or the swipe being cancelled.
 fn lift(session: &mut Session, cancelled: bool) {
     touch(session, &[Gesture::SwipeEnd { cancelled }]);
@@ -99,7 +105,7 @@ fn three_fingers_carry_the_workspace_shown_and_bring_the_next_in_from_the_right(
     let (mut session, _client) = two_windows();
     assert_eq!(session.draw().at(545, 5), BACKGROUND);
 
-    carry(&mut session, -100.0, 100);
+    carry(&mut session, fingers(-100.0), 100);
     assert_eq!(slid(&session), -100, "with no easing at all");
     let picture = session.draw();
     assert_eq!(picture.at(5, 5), RED, "the first gone a little way left");
@@ -125,12 +131,12 @@ fn the_wallpaper_goes_with_the_workspaces_drawn_once_for_each() {
         (GREEN, BACKGROUND)
     );
 
-    carry(&mut session, -100.0, 100);
+    carry(&mut session, fingers(-100.0), 100);
     let picture = session.draw();
     assert_eq!(picture.at(50, 455), BACKGROUND, "gone left with the first");
     assert_eq!(picture.at(590, 455), GREEN, "and come in with the second");
     lift(&mut session, true);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     let picture = session.draw();
     assert_eq!(
         (picture.at(50, 455), picture.at(590, 455)),
@@ -141,16 +147,16 @@ fn the_wallpaper_goes_with_the_workspaces_drawn_once_for_each() {
 #[test]
 fn let_go_past_half_way_the_workspace_that_came_in_is_shown_and_settles() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -400.0, 1000);
+    carry(&mut session, fingers(-400.0), 1000);
 
     lift(&mut session, false);
     assert_eq!(active(&session), 1, "shown at once");
     assert_eq!(slid(&session), 240, "from where it had got to");
     assert!(session.compositor().deadline().is_some(), "and drawn again");
-    session.advance(Duration::from_millis(120));
+    session.advance(Duration::from_millis(160));
     let halfway = slid(&session);
     assert!(0 < halfway && halfway < 240, "{halfway}");
-    session.advance(Duration::from_millis(120));
+    session.advance(Duration::from_millis(160));
     assert_eq!(slid(&session), 0, "where it belongs");
     assert_eq!(session.draw().at(5, 5), BLUE);
 }
@@ -158,12 +164,12 @@ fn let_go_past_half_way_the_workspace_that_came_in_is_shown_and_settles() {
 #[test]
 fn let_go_short_of_half_way_the_workspace_goes_back() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -200.0, 1000);
+    carry(&mut session, fingers(-200.0), 1000);
 
     lift(&mut session, false);
     assert_eq!(active(&session), 0);
     assert_eq!(slid(&session), -200);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(slid(&session), 0);
     assert_eq!(session.draw().at(5, 5), RED);
 }
@@ -171,8 +177,45 @@ fn let_go_short_of_half_way_the_workspace_goes_back() {
 #[test]
 fn a_quick_flick_turns_the_page_however_short() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -100.0, 20);
+    carry(&mut session, fingers(-100.0), 20);
 
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1);
+}
+
+#[test]
+fn a_long_slow_swipe_past_half_way_turns_the_page_however_wide_the_screen() {
+    let (mut session, _client) = two_windows();
+    // Some 220 units of the fingers' way: more than half of the 400 a
+    // workspace is, though less than half of the screen.
+    carry(&mut session, -220.0, 2000);
+
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1);
+}
+
+#[test]
+fn a_quick_short_flick_turns_the_page_and_a_twitch_does_not() {
+    let (mut session, _client) = two_windows();
+    // A tenth of the way and a little more, quickly.
+    carry(&mut session, -45.0, 30);
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1);
+    session.settle();
+
+    // Less than a tenth, however quick, is the fingers settling.
+    carry(&mut session, -20.0, 10);
+    lift(&mut session, false);
+    assert_eq!(active(&session), 1);
+}
+
+#[test]
+fn a_flick_is_one_though_the_fingers_slow_as_they_lift() {
+    let (mut session, _client) = two_windows();
+    carry(&mut session, -45.0, 30);
+    // The lighter touch of lifting: a little way, slowly.
+    let lifting = Gesture::SwipeUpdate { dx: -1.0, dy: 0.0 };
+    touch_at(&mut session, &[(lifting, 1070)]);
     lift(&mut session, false);
     assert_eq!(active(&session), 1);
 }
@@ -180,10 +223,22 @@ fn a_quick_flick_turns_the_page_however_short() {
 #[test]
 fn a_swipe_taken_back_half_way_goes_back() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -400.0, 1000);
+    carry(&mut session, fingers(-400.0), 1000);
     let back = [
-        (Gesture::SwipeUpdate { dx: 125.0, dy: 0.0 }, 2025),
-        (Gesture::SwipeUpdate { dx: 125.0, dy: 0.0 }, 2050),
+        (
+            Gesture::SwipeUpdate {
+                dx: fingers(125.0),
+                dy: 0.0,
+            },
+            2025,
+        ),
+        (
+            Gesture::SwipeUpdate {
+                dx: fingers(125.0),
+                dy: 0.0,
+            },
+            2050,
+        ),
     ];
     touch_at(&mut session, &back);
     assert_eq!(slid(&session), -150);
@@ -195,7 +250,7 @@ fn a_swipe_taken_back_half_way_goes_back() {
 #[test]
 fn a_cancelled_swipe_goes_back() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -500.0, 1000);
+    carry(&mut session, fingers(-500.0), 1000);
 
     lift(&mut session, true);
     assert_eq!(active(&session), 0);
@@ -206,7 +261,7 @@ fn three_fingers_right_bring_the_one_before_in_from_the_left() {
     let (mut session, _client) = two_windows();
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.settle();
-    carry(&mut session, 400.0, 1000);
+    carry(&mut session, fingers(400.0), 1000);
     lift(&mut session, false);
     assert_eq!(active(&session), 0);
     assert_eq!(slid(&session), 400 - 640);
@@ -215,26 +270,26 @@ fn three_fingers_right_bring_the_one_before_in_from_the_left() {
 #[test]
 fn with_one_workspace_it_goes_a_little_way_with_the_fingers_and_back() {
     let mut session = Session::new();
-    carry(&mut session, -400.0, 100);
+    carry(&mut session, fingers(-400.0), 100);
     assert_eq!(slid(&session), -100, "a quarter of the way");
 
     lift(&mut session, false);
     assert_eq!(active(&session), 0);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(slid(&session), 0);
 }
 
 #[test]
 fn a_swipe_begun_while_the_last_settles_takes_it_up_from_where_it_is() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, -400.0, 1000);
+    carry(&mut session, fingers(-400.0), 1000);
     lift(&mut session, false);
     session.advance(Duration::from_millis(60));
     let there = slid(&session);
 
-    carry(&mut session, -50.0, 1000);
+    carry(&mut session, fingers(-50.0), 1000);
     assert_eq!(slid(&session), there - 50);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(slid(&session), there - 50, "held by the fingers");
 }
 
@@ -325,10 +380,10 @@ fn the_keys_slide_the_next_in_from_the_right_and_the_one_before_from_the_left() 
     );
     session.step();
     assert_eq!(session.draw().at(5, 5), RED, "from where the first was");
-    session.advance(Duration::from_millis(120));
+    session.advance(Duration::from_millis(160));
     let halfway = slid(&session);
     assert!(0 < halfway && halfway < 640, "{halfway}");
-    session.advance(Duration::from_millis(120));
+    session.advance(Duration::from_millis(160));
     assert_eq!(slid(&session), 0);
     assert_eq!(session.draw().at(5, 5), BLUE);
 
@@ -346,7 +401,7 @@ fn a_number_key_that_goes_further_slides_with_the_workspace_it_left_beside() {
     session.step();
     let picture = session.draw();
     assert_eq!(picture.at(5, 5), RED, "the first beside it, not the second");
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(session.draw().at(5, 5), BACKGROUND);
 }
 
@@ -384,7 +439,7 @@ fn a_window_slides_off_and_in_with_its_workspace_without_fading() {
     session.compositor_mut().perform(&Action::PreviousWorkspace);
     // The first frame comes with the key.
     session.step();
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(
         session.draw().at(5, 5),
         BACKGROUND,
@@ -394,7 +449,7 @@ fn a_window_slides_off_and_in_with_its_workspace_without_fading() {
     session.compositor_mut().perform(&Action::NextWorkspace);
     // The first frame comes with the key.
     session.step();
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_eq!(session.draw().at(5, 5), BLUE, "nor coming in afresh");
 }
 
@@ -403,7 +458,7 @@ fn a_window_slides_off_and_in_with_its_workspace_without_fading() {
 #[test]
 fn before_the_first_workspace_there_is_nothing_and_a_swipe_gives_a_little() {
     let (mut session, _client) = two_windows();
-    carry(&mut session, 400.0, 100);
+    carry(&mut session, fingers(400.0), 100);
     assert_eq!(slid(&session), 100, "a quarter of the way");
 
     lift(&mut session, false);
@@ -424,7 +479,7 @@ fn past_the_last_with_a_window_on_it_one_empty_workspace_is_made_and_no_more() {
     let count = |session: &Session| session.compositor().desktop().workspace_count();
     assert_eq!((active(&session), count(&session)), (3, 4));
 
-    carry(&mut session, -400.0, 1000);
+    carry(&mut session, fingers(-400.0), 1000);
     assert_eq!(slid(&session), -400, "all the way with the fingers");
     lift(&mut session, false);
     assert_eq!(
@@ -434,7 +489,7 @@ fn past_the_last_with_a_window_on_it_one_empty_workspace_is_made_and_no_more() {
     );
     session.settle();
 
-    carry(&mut session, -400.0, 100);
+    carry(&mut session, fingers(-400.0), 100);
     assert_eq!(slid(&session), -100, "nothing on it, so nothing after it");
     lift(&mut session, false);
     session.settle();
@@ -477,18 +532,18 @@ fn the_line_between_windows_that_share_a_workspace_goes_with_it() {
     let (mut session, _client) = shared();
     assert_eq!(session.draw().at(320, 300), LINE);
 
-    carry(&mut session, -100.0, 1000);
+    carry(&mut session, fingers(-100.0), 1000);
     let picture = session.draw();
     assert_eq!(picture.at(220, 300), LINE, "carried with it");
     assert_ne!(picture.at(320, 300), LINE, "and not left behind");
     lift(&mut session, true);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
 
     // Coming in beside the desktop it was made from.
     session.compositor_mut().perform(&Action::PreviousWorkspace);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
     assert_ne!(session.draw().at(320, 300), LINE);
-    carry(&mut session, -400.0, 1000);
+    carry(&mut session, fingers(-400.0), 1000);
     assert_eq!(session.draw().at(560, 300), LINE, "it comes in with it");
 }
 
@@ -500,7 +555,7 @@ fn what_is_between_windows_that_share_a_workspace_is_not_taken_hold_of_as_it_sli
     let (x, y) = (offer.origin.x + 10, offer.origin.y + 10);
     let lines = session.compositor().desktop().lines(0);
 
-    carry(&mut session, -100.0, 1000);
+    carry(&mut session, fingers(-100.0), 1000);
     let click = |session: &mut Session, from: (i32, i32), to: (i32, i32)| {
         for (at, pressed) in [(from, true), (to, false)] {
             let (x, y) = (f64::from(at.0), f64::from(at.1));
@@ -517,7 +572,7 @@ fn what_is_between_windows_that_share_a_workspace_is_not_taken_hold_of_as_it_sli
     click(&mut session, (220, 300), (150, 300));
     click(&mut session, (x - 100, y), (x - 100, y));
     lift(&mut session, true);
-    session.advance(Duration::from_millis(240));
+    session.advance(Duration::from_millis(320));
 
     assert_eq!(session.compositor().desktop().lines(0), lines);
     assert_eq!(session.compositor().desktop().offers(0), offers);
@@ -536,7 +591,7 @@ fn with_motion_reduced_workspaces_change_without_sliding_by_keys_or_fingers() {
 
     // The fingers carry nothing, and a swipe far enough, or quick enough,
     // changes the workspace as they lift.
-    carry(&mut session, 400.0, 1000);
+    carry(&mut session, fingers(400.0), 1000);
     assert_eq!((active(&session), slid(&session)), (1, 0), "not carried");
     lift(&mut session, false);
     assert_eq!(
@@ -549,10 +604,10 @@ fn with_motion_reduced_workspaces_change_without_sliding_by_keys_or_fingers() {
         session.compositor().deadline().is_none(),
         "with nothing to settle"
     );
-    carry(&mut session, -200.0, 1000);
+    carry(&mut session, fingers(-200.0), 1000);
     lift(&mut session, false);
     assert_eq!(active(&session), 0, "not far enough");
-    carry(&mut session, -200.0, 100);
+    carry(&mut session, fingers(-200.0), 100);
     lift(&mut session, false);
     assert_eq!(active(&session), 1, "but quick enough");
 }

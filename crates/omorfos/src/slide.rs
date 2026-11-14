@@ -2,12 +2,14 @@
 //! turned: the one shown goes with the fingers, and the next comes in from
 //! the right, or the one before from the left.
 //!
-//! What the fingers carry follows them with no easing at all. Once they
-//! lift, the workspace that came in is shown if they went more than half
-//! the screen, or were going fast enough that they would have, and the
-//! one that was there is kept otherwise, which is how a swipe is taken
-//! back halfway. Either way it is shown at once, so that nothing waits on
-//! the movement, and the workspaces settle where they belong over 240 ms,
+//! What the fingers carry follows them with no easing at all, a whole
+//! workspace for the same way of the fingers on any screen, so that a
+//! wide one asks no more of them. Once they lift, the workspace that came
+//! in is shown if they went more than half that way, however slowly, or
+//! flicked it on, however short a way, but for a twitch; and the one that
+//! was there is kept otherwise, or if they were flicking it back, which
+//! is how a swipe is taken back halfway. Either way it is shown at once, so that nothing waits on
+//! the movement, and the workspaces settle where they belong over 320 ms,
 //! as `docs/DESIGN.md` says of a workspace sliding. Workspaces do not go
 //! round: before the first there is nothing, and after the last only a
 //! new one, if there is a window on the last. With nothing to come in on
@@ -32,11 +34,24 @@ use omorfos_config::Easing;
 use crate::compositor::Compositor;
 
 /// How long the workspaces take to settle once the fingers lift.
-const SETTLE: Duration = Duration::from_millis(240);
+const SETTLE: Duration = Duration::from_millis(320);
 
-/// How far a swipe let go of is taken to carry on, as the time it would go
-/// on for at the speed it was going, in milliseconds.
-const THROW: f64 = 120.0;
+/// How far the fingers go across for a whole workspace, as the touchpad
+/// counts it, whatever the screen's width: as GNOME has it.
+const FULL: f64 = 400.0;
+
+/// How fast the fingers going across when they lift is a flick, as the
+/// touchpad counts it a millisecond.
+const FLICK: f64 = 0.6;
+
+/// How much of the way a flick has to have gone, so that the fingers
+/// settling as they lift is not one.
+const TWITCH: f64 = 0.1;
+
+/// How much of the speed the fingers were going at before each movement
+/// is kept, beside that of the movement itself: the last few count, so
+/// that the lighter touch of lifting does not hide a flick.
+const KEPT: f64 = 0.5;
 
 /// How much of the fingers' way a workspace with nothing beside it goes.
 const RESISTED: f64 = 0.25;
@@ -61,10 +76,10 @@ impl Slide {
 struct Following {
     /// Where the workspace shown was when they began, in units of layout.
     from: f64,
-    /// How far across they have gone since.
+    /// How far across they have gone since, as the touchpad counts it.
     moved: f64,
-    /// How fast they were going across when last they moved, in units of
-    /// layout a millisecond.
+    /// How fast they have been going across lately, as the touchpad counts
+    /// it a millisecond.
     speed: f64,
     /// When they last moved, in milliseconds.
     last: u32,
@@ -124,11 +139,12 @@ impl Compositor {
         };
         let gone = f64::from(time.wrapping_sub(following.last));
         if gone > 0.0 {
-            following.speed = dx / gone;
+            following.speed = following.speed.mul_add(KEPT, (1.0 - KEPT) * dx / gone);
             following.last = time;
         }
         following.moved += dx;
-        let (from, moved) = (following.from, following.moved);
+        // The fingers' way as the workspaces' own: a whole one for FULL.
+        let (from, moved) = (following.from, following.moved * width / FULL);
         // Fingers going left bring in what is after; with nothing there,
         // the workspace gives a little and no more.
         let forwards = from + moved < 0.0;
@@ -152,15 +168,22 @@ impl Compositor {
             return false;
         };
         // Where the fingers took the workspace, or would have.
+        let width = self.slide_width();
         let offset = if self.still() {
-            following.from + following.moved
+            following.moved.mul_add(width / FULL, following.from)
         } else {
             f64::from(self.desktop.slid())
         };
-        let width = self.slide_width();
         let next = offset < 0.0;
-        let thrown = following.speed.mul_add(THROW, offset);
-        let far = thrown.abs() > width / 2.0 && (thrown < 0.0) == next;
+        let way = offset.abs() / width;
+        // Fingers going left bring in what is after.
+        let flicked = following.speed.abs() >= FLICK;
+        let onwards = (following.speed < 0.0) == next;
+        let far = if flicked {
+            onwards && way >= TWITCH
+        } else {
+            way > 0.5
+        };
         let turned = !cancelled && far && self.desktop.goes_on(next);
         // The workspace that came in is shown from where it has got to.
         let from = match (turned, next) {

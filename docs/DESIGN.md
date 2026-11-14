@@ -249,7 +249,8 @@ straight down.
 | A colour changing with a state | 120 ms | ease-out |
 | Something coming onto the screen | 180 ms | ease-out, from 96% of its size and no opacity |
 | Something leaving | 120 ms | ease-in, to 98% and no opacity |
-| A window moving to where it was sent: maximize, a workspace sliding | 240 ms | ease-in-out |
+| A window moving to where it was sent: maximize | 240 ms | ease-in-out |
+| A workspace sliding, by the fingers or a key: a page turned, which the eye follows across the whole screen | 320 ms | ease-in-out |
 
 - Nothing is longer than 300 ms, nothing bounces, nothing loops.
 - What the user drags follows the hand with no easing at all.

@@ -725,8 +725,11 @@ what only games and touchpads need last.
       and every other gesture the program's under the pointer
       (`pointer-gestures`).
 - [x] The swipe following the fingers: the workspaces slide with them
-      and settle over 240 ms once they lift, onto the next if they went
-      past half way or were flicked, and back otherwise.
+      and settle over 320 ms once they lift, onto the next if they went
+      past half way or were flicked, and back otherwise. Half way is of a
+      fixed way of the fingers, not of the screen, which asked a long
+      swipe and a fast one at once on a wide screen; either is now
+      enough, but for a twitch.
 - [x] The same slide when the keys go between workspaces: the one they
       bring in from the side it lies on, with the one they left beside it
       however far apart the two are, and a key pressed again taking them
