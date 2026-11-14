@@ -1820,12 +1820,25 @@ impl Client {
         position: (i32, i32),
         size: (i32, i32),
     ) -> (wl_surface::WlSurface, xdg_popup::XdgPopup) {
+        let kept = xdg_positioner::ConstraintAdjustment::None;
+        self.layer_popup_kept(parent, (position, size), kept)
+    }
+
+    /// A popup of `parent` as [`Self::layer_popup`] makes one, which asks
+    /// to be kept on the screen as `kept` says.
+    pub(crate) fn layer_popup_kept(
+        &self,
+        parent: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        (position, size): ((i32, i32), (i32, i32)),
+        kept: xdg_positioner::ConstraintAdjustment,
+    ) -> (wl_surface::WlSurface, xdg_popup::XdgPopup) {
         let wm_base = self.state.wm_base.as_ref().unwrap();
         let positioner = wm_base.create_positioner(&self.handle(), ());
         positioner.set_size(size.0, size.1);
         positioner.set_anchor_rect(position.0, position.1, 1, 1);
         positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
         positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+        positioner.set_constraint_adjustment(kept);
         let surface = self.surface();
         let xdg_surface = wm_base.get_xdg_surface(&surface, &self.handle(), ());
         let popup = xdg_surface.get_popup(None, &positioner, &self.handle(), ());

@@ -9,7 +9,10 @@ use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
 use smithay::delegate_dmabuf;
 use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state};
-use smithay::desktop::{LayerSurface, PopupKind, Window, WindowSurfaceType, layer_map_for_output};
+use smithay::desktop::{
+    LayerSurface, PopupKind, Window, WindowSurfaceType, find_popup_root_surface,
+    get_popup_toplevel_coords, layer_map_for_output,
+};
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{ResizeEdge, State as ToplevelState};
@@ -18,7 +21,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Serial, Size};
+use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, with_states,
@@ -360,7 +363,8 @@ impl XdgShellHandler for Compositor {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
-        surface.with_pending_state(|state| state.geometry = positioner.get_geometry());
+        let geometry = self.popup_placed(&surface, positioner);
+        surface.with_pending_state(|state| state.geometry = geometry);
         // Tracking only fails for a popup without a parent, which is then
         // never shown.
         let _ = self.popups.track_popup(PopupKind::Xdg(surface));
@@ -372,8 +376,9 @@ impl XdgShellHandler for Compositor {
         positioner: PositionerState,
         token: u32,
     ) {
+        let geometry = self.popup_placed(&surface, positioner);
         surface.with_pending_state(|state| {
-            state.geometry = positioner.get_geometry();
+            state.geometry = geometry;
             state.positioner = positioner;
         });
         surface.send_repositioned(token);
@@ -387,6 +392,42 @@ impl XdgShellHandler for Compositor {
 }
 
 impl Compositor {
+    /// Where a popup goes: where its positioner says, kept on the screen
+    /// what it hangs from is on, as far as the positioner lets it be
+    /// flipped or slid, as a bar's menu along the bottom is turned to hang
+    /// above it. As the positioner says, where what it hangs from is not
+    /// on a screen.
+    fn popup_placed(
+        &self,
+        popup: &PopupSurface,
+        positioner: PositionerState,
+    ) -> Rectangle<i32, Logical> {
+        let kind = PopupKind::Xdg(popup.clone());
+        // Popups are placed against what they hang from, and that, for one
+        // that hangs from another, by where that one is in theirs.
+        let root = find_popup_root_surface(&kind).ok();
+        let origin = root.and_then(|root| self.geometry_origin(&root));
+        let base = origin.map(|origin| origin + get_popup_toplevel_coords(&kind));
+        let anchor = positioner.anchor_rect.loc;
+        let screen = base.and_then(|base| {
+            let head = self.head_at((base + anchor).to_f64());
+            head.map(|head| Rectangle::new(head.area().loc - base, head.area().size))
+        });
+        let as_said = positioner.get_geometry();
+        screen.map_or(as_said, |screen| {
+            positioner.get_unconstrained_geometry(screen)
+        })
+    }
+
+    /// Where the window geometry of `surface`, the main surface of a window
+    /// or of a panel that is shown, begins on the screens: what its popups
+    /// are placed against. A panel's is its surface.
+    fn geometry_origin(&self, surface: &WlSurface) -> Option<Point<i32, Logical>> {
+        let window = self.scene.iter().find(|shown| shown.surface == *surface);
+        let window = window.map(|shown| shown.origin);
+        window.or_else(|| self.surface_origin(surface))
+    }
+
     /// Tells a toplevel that the compositor draws its decoration. Whatever
     /// the client prefers, the answer is the same: frames carry the tabs, so
     /// they are ours to draw. Clients that cannot go without their own
@@ -426,6 +467,14 @@ impl TabletSeatHandler for Compositor {}
 impl WlrLayerShellHandler for Compositor {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell
+    }
+
+    fn new_popup(&mut self, _parent: WlrLayerSurface, popup: PopupSurface) {
+        // A panel's popup is made without a parent and given one only now,
+        // before it is first shown: only now can it be kept on the screen.
+        let positioner = popup.with_pending_state(|state| state.positioner);
+        let geometry = self.popup_placed(&popup, positioner);
+        popup.with_pending_state(|state| state.geometry = geometry);
     }
 
     fn new_layer_surface(

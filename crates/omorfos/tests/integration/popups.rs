@@ -1,13 +1,14 @@
 //! Popups that grab: menus that close when the user clicks away.
 
 use omorfos::Input;
+use wayland_protocols::xdg::shell::client::xdg_positioner;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, LayerShape, Session, Toplevel, WIDTH, key};
-use crate::windows::{BLUE, GREEN, RED};
+use crate::common::{Client, Event, HEIGHT, LayerShape, Session, Toplevel, WIDTH, key};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
 
@@ -231,4 +232,40 @@ fn a_panels_menu_is_shown_and_dismissed_like_any_other() {
     click_at(&mut session, 500, 400);
     session.roundtrip(&mut client);
     assert!(dismissed(&mut client));
+}
+
+#[test]
+fn a_menu_of_a_bar_along_the_bottom_is_turned_to_hang_above_it_and_slid_onto_the_screen() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let panel = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Bottom | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let (_surface, role) = session.open_layer(&mut client, &panel, (WIDTH, 30), RED);
+
+    // Hung below its bar it would be off the bottom of the screen, and to
+    // the right of where it is asked for, off its right edge.
+    let kept =
+        xdg_positioner::ConstraintAdjustment::FlipY | xdg_positioner::ConstraintAdjustment::SlideX;
+    let (menu, popup) = client.layer_popup_kept(&role, ((WIDTH - 40, 0), (80, 60)), kept);
+    session.roundtrip(&mut client);
+    client.fill(&menu, (80, 60), GREEN);
+    popup.grab(client.seat(), client.state.serial);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(WIDTH - 5, HEIGHT - 30 - 5),
+        GREEN,
+        "above the bar, at the edge"
+    );
+    assert_eq!(
+        picture.at(WIDTH - 85, HEIGHT - 30 - 5),
+        BACKGROUND,
+        "and no further"
+    );
 }

@@ -47,7 +47,7 @@ impl Compositor {
     /// window or of a panel that is shown: what has the keyboard, and so
     /// what text is typed into. While the session is locked no popup is
     /// shown at all.
-    fn surface_origin(&self, surface: &WlSurface) -> Option<Point<i32, Logical>> {
+    pub(crate) fn surface_origin(&self, surface: &WlSurface) -> Option<Point<i32, Logical>> {
         let window = self.scene.iter().find(|shown| shown.surface == *surface);
         let window = window.map(|shown| shown.origin - shown.window.geometry().loc);
         let panel = || {
