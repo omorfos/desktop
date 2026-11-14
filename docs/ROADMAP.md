@@ -4,11 +4,12 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** the rest of the relay (ADR 61, step 3), at the end of stage 3,
-once `foot` has been seen to outlive a restart on real hardware; then the
-rest of stage 3, what a
-day's use needs, then what is taken from stage 8 straight after it
-(below), then stage 4.
+**Next:** stage 5, the bar and the dock. The relay's steps are done, and
+what is taken from stage 8 ahead of its turn (below) has been, but for
+packages beyond `.deb` and the AUR; what is left of stages 3 and 4 is
+known gaps, taken as the code beside them is touched, the defaults
+reviewed together, and the redesign of windows (stage 4), which comes
+before the bar and dock wear the same look.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -1415,6 +1416,15 @@ the first than on the last.
       offered it; nothing on the panel says it is on; and on an HDR
       screen (stage 8) it is to warm the picture as it is composed
       instead.
+- [ ] Windows redesigned, so that every program's looks the same: today
+      they are plain, and differ between programs written with Electron,
+      those in a Flatpak sandbox and those of the system, by whether each
+      draws its own titlebar and shadow or has omorfos's, and how. One
+      look across them: what omorfos draws, what it asks of a program
+      that draws its own (the decoration protocols, the portal's settings
+      of colours and buttons), and what it offers the toolkits' themes
+      (GTK's and Qt's, from the design language). Comes before the bar
+      and the dock, which are to wear the same look.
 - [ ] The defaults reviewed together, keys and settings, rather than one
       at a time as each feature came. What has gathered for it: `Super+l`
       to lock; a key for the overview; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,
@@ -1515,6 +1525,14 @@ a setting.
       to a program as one argument, never through a shell. A few come
       set up; the user adds their own.
 - [ ] Hot corners and edges, if wanted.
+- [ ] Widgets on the desktop, as a clock or a calendar (asked about on
+      14 November 2026): first conky, whose Wayland output speaks
+      layer-shell as waybar does, started from `autostart` with `may:
+      [panel]` and `out_to_wayland = true`, tried on real hardware and
+      written up in the guide; only if that is not enough, a clock and a
+      calendar of omorfos's own, drawn with the crates and the theme the
+      panel is. Not a necessity, and no API of its own: layer-shell, and
+      stage 9's crates for whoever wants a widget that looks omorfos's.
 
 ## 7. Applications
 
@@ -1531,14 +1549,23 @@ decision of stage 2.
       memory, swap, disk, network and GPU. A key the compositor always
       answers that brings it up, even when a program has taken the
       keyboard.
-- [ ] **Settings** (wish 7): the common choices of `config.yaml` and the
+- [ ] **Settings** (wish 7), with the default applications among its
+      choices: the editor, the web browser, the players of video and of
+      music, the viewer of pictures, the manager of files, the terminal,
+      the mail program, and whatever else the standards name (the
+      desktop entries' `mimeapps.list`, and the schemes such as
+      `x-scheme-handler/https`). The common choices of `config.yaml` and the
       theme, written to the files as they are made and taking effect at
       once, since the files are already watched. It writes what a person
       could have written, keeps what it does not understand (for
       `config.yaml`, through `omorfos_config::edit`, ADR 81), and offers
       presets. Few options, well chosen; everything else stays in the
       files. The keyboard's settings key (`XF86Tools`) opens it.
-- [ ] **Files** (wish 9): places and starred places at the side; volumes
+- [ ] **Files** (wish 9), where Space shows what is chosen without
+      opening it, as Quick Look does in macOS's Finder: a picture, a sound
+      or a video playing, a document's pages, and text; Space again or
+      Escape puts it away, and the arrows go to the next. Places and
+      starred places at the side; volumes
       mounted when plugged in, and unmounted; list, details and
       thumbnails; make, rename, move, delete to the trash; archives
       opened; a quick look at a picture or a document on Space. Remote
@@ -1847,6 +1874,47 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
       built-in theme folded away, so that it begins with what to change.
       The prose of each page is still as it was written.
 
+Reviews, and what is still to decide (asked for on 14 November 2026):
+
+- [ ] Whether the `unsafe` there is still has to be: `omorfos-shm` and
+      `omorfos-pipewire`, each against the safe ways its dependencies
+      offer by then, with the checks of `docs/UPSTREAM.md` run; and each
+      that can go, gone.
+- [ ] The standards omorfos does not follow, and those it should take
+      up: freedesktop.org's and Wayland's, the portals', the
+      accessibility ones, the desktop entries' and the icon themes', the
+      base directories' and the trash's, and the like, each listed with
+      whether omorfos follows it, should, or has a reason not to.
+- [ ] A review of the codebase, of how fast it is, and of how secure,
+      by a stronger model than writes it, as Mythos 5.2 or Fable 5.2; what
+      it finds fixed or put on this roadmap.
+- [ ] What other applications a desktop needs with it, beyond stage 7:
+      as a very simple player of music and sounds, and a very simple
+      player of video; each decided, and those wanted added to stage 7.
+- [ ] Stage 7's applications installable on any desktop, as GNOME, KDE
+      or Xfce, and not only under omorfos: Files, the task manager and the
+      image viewer, packaged each by itself, needing nothing of omorfos's
+      session.
+- [ ] The configuration made clean: the defaults made really good and
+      polished, with the review of the defaults (stage 4); then how the
+      files are laid out and written. One `config.yaml`; a file for each
+      part (`omorfos/bar.yaml`, `omorfos/files.yaml`,
+      `omorfos/wallpaper.yaml`); or files read in the order of their
+      names, each laid over the ones before it, as `00-config.yaml`,
+      `01-config.yaml`, `99-config.local.yaml`; and whether Settings and
+      the welcome card write the user's files at all, or keep what is
+      chosen elsewhere until it is exported. The aim: not everyone cares
+      for the files, and those who keep them, in git, want them changed
+      only by themselves, holding nothing more than they set, so that a
+      commit stays small. What is decided may change where ADR 81 has
+      programs write. What is chosen is then exported, to standard output
+      only, so that writing it to a file is the user's own doing, as
+      `omorfosctl config export > ~/.config/omorfos/config.yaml` (the
+      command's name and place to be settled): by default only what
+      differs from the defaults, every default left out, so that the file
+      stays small; with `--full`, everything, with comments, examples and
+      the values each may take, for whoever wants the whole of it.
+
 Reaching people:
 
 - [x] The README put right: what omorfos is now, how to build, install
@@ -1911,6 +1979,39 @@ Reaching people:
 - [ ] A guide for someone who has just logged in for the first time, and
       a first run that is not an empty screen.
 - [ ] Packages beyond `.deb` and the AUR.
+
+## 9. For others to build on
+
+Asked for on 14 November 2026: a way for other projects and repositories
+to plug into omorfos, as a bar, an applet or the look of windows, through
+an integration layer that shares what omorfos's own components are built
+with, rather than each copying it. The open standards come first, as
+everywhere: what a Wayland protocol, a portal or a freedesktop.org
+specification already says is not said again in a way of omorfos's own.
+
+- [ ] Whether, and what: an ADR on what is offered to others and how
+      firmly it is promised. Nothing loaded into the compositor's own
+      process: a plugin there would run with every key and every window
+      within its reach, and Rust offers no stable way to load one without
+      `unsafe`, against the first priority (and ADR 18, that what can be
+      a program of its own is one). What others build runs as a program,
+      over the protocols and omorfos's own socket (`docs/IPC.md`, already
+      promised as the configuration is).
+- [ ] The crates omorfos's components are built with offered to others,
+      with a promise of what does not change without a major version: as
+      `omorfos-ui` (drawing), `omorfos-config` (the theme and the
+      configuration), `omorfos-shell` (a component's Wayland plumbing and
+      its starting again), `omorfos-i18n` (words in the user's language)
+      and the IPC client, so that another repository's bar or applet
+      looks and behaves as omorfos's own, started and kept as they are
+      (ADR 28, ADR 60).
+- [ ] The look of windows offered as themes, not code: what stage 4's
+      redesign settles is made of the theme's parts, so that another
+      project's decorations are a stylesheet laid over the built-in one.
+- [ ] A guide for whoever builds on it, with a component written outside
+      this repository as its worked example (a widget on the desktop, as
+      a clock, being the obvious one), run by CI against each
+      release so that a promise broken shows.
 
 ## Done
 
