@@ -53,14 +53,17 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 const TURN: Duration = Duration::from_millis(100);
 
 /// What is kept of what is followed: a node that records, to be told
-/// whether it runs, and a client, to be told all that is known of it.
+/// whether it runs, and a client, to be told all that is known of it. The
+/// listener comes first, to be let go of first: it unhooks itself from
+/// what it listens to as it goes, which would be freed already the other
+/// way round.
 #[expect(
     dead_code,
     reason = "held so that PipeWire goes on telling of each, and let go with it"
 )]
 enum Followed {
-    Node(pw::node::Node, pw::node::NodeListener),
-    Client(pw::client::Client, pw::client::ClientListener),
+    Node(pw::node::NodeListener, pw::node::Node),
+    Client(pw::client::ClientListener, pw::client::Client),
 }
 
 /// What is followed, by its number in the graph.
@@ -198,7 +201,7 @@ fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObj
                         graph.borrow_mut().running(id, running);
                     })
                     .register();
-                Followed::Node(node, listener)
+                Followed::Node(listener, node)
             });
             bound
                 .borrow_mut()
@@ -219,7 +222,7 @@ fn note(registry: &pw::registry::RegistryRc, noting: &Noting, global: &GlobalObj
                         graph.borrow_mut().client(id, pid);
                     })
                     .register();
-                Followed::Client(client, listener)
+                Followed::Client(listener, client)
             });
             bound
                 .borrow_mut()

@@ -396,15 +396,19 @@ fn told(results: &HashMap<String, OwnedValue>) -> (u32, (i32, i32), u32, bool) {
 
 /// An application reading a stream in PipeWire, as one sharing the screen
 /// in a call does.
+///
+/// Its parts are let go of in the order they are written: a listener
+/// before what it listens to, which unhooks it from what would otherwise
+/// be freed already, and what PipeWire made before the core it came by.
 struct Viewer {
-    main: pw::main_loop::MainLoopRc,
-    _context: pw::context::ContextRc,
-    core: pw::core::CoreRc,
-    stream: pw::stream::StreamRc,
     _listener: pw::stream::StreamListener<()>,
+    link: Option<pw::link::Link>,
+    stream: pw::stream::StreamRc,
+    core: pw::core::CoreRc,
+    _context: pw::context::ContextRc,
+    main: pw::main_loop::MainLoopRc,
     node: Rc<Cell<Option<u32>>>,
     seen: Arc<Mutex<Seen>>,
-    link: Option<pw::link::Link>,
 }
 
 /// What a viewer has been given. PipeWire hands a picture over on the
@@ -579,14 +583,14 @@ impl Viewer {
             .connect(spa::utils::Direction::Input, None, flags, &mut wants)
             .unwrap();
         Self {
-            main,
-            _context: context,
-            core,
-            stream,
             _listener: listener,
+            link: None,
+            stream,
+            core,
+            _context: context,
+            main,
             node,
             seen,
-            link: None,
         }
     }
 

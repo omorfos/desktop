@@ -176,7 +176,7 @@ fn ports(
     core: &pw::core::CoreRc,
 ) -> (
     std::rc::Rc<std::cell::RefCell<BTreeSet<u32>>>,
-    (pw::registry::RegistryRc, pw::registry::Listener),
+    (pw::registry::Listener, pw::registry::RegistryRc),
 ) {
     let ported = std::rc::Rc::new(std::cell::RefCell::new(BTreeSet::new()));
     let porting = std::rc::Rc::clone(&ported);
@@ -191,7 +191,9 @@ fn ports(
             }
         })
         .register();
-    (ported, (registry, listener))
+    // The listener first, to be let go of before the registry: it unhooks
+    // itself from it as it goes.
+    (ported, (listener, registry))
 }
 
 /// Streams that stand for what is recorded from, each linked into one of
@@ -266,19 +268,21 @@ fn recorded(socket: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<(
                     pw::stream::StreamFlags::MAP_BUFFERS
                 };
                 stream.connect(direction, None, flags, &mut wants).unwrap();
-                streams.push((stream, listener, ready));
+                // The listener first, to be let go of before the stream, for
+                // the same reason.
+                streams.push((listener, stream, ready));
             }
         }
         let mut links = Vec::new();
         while !stop.load(Ordering::Relaxed) {
             main.loop_()
                 .iterate(pw::loop_::Timeout::Finite(Duration::from_millis(10)));
-            for (stream, ..) in streams.iter().step_by(2) {
+            for (_, stream, _) in streams.iter().step_by(2) {
                 let _ = stream.trigger_process();
             }
             let named: Vec<u32> = streams
                 .iter()
-                .map(|(stream, ..)| stream.node_id())
+                .map(|(_, stream, _)| stream.node_id())
                 .collect();
             let ready = streams.iter().all(|(.., ready)| ready.get());
             let known = ready && named.iter().all(|node| ported.borrow().contains(node));
@@ -295,7 +299,7 @@ fn recorded(socket: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<(
             }
         }
         drop(links);
-        for (stream, ..) in &streams {
+        for (_, stream, _) in &streams {
             let _ = stream.disconnect();
         }
         for _ in 0..20 {

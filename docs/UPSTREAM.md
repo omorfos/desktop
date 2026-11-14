@@ -254,6 +254,27 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 
 ## The PipeWire bindings (`pipewire`)
 
+### A listener let go of after what it listens to writes freed memory
+
+- **Wrong:** a listener (`StreamListener`, `NodeListener`,
+  `ClientListener`, the registry's `Listener`) unhooks itself from what it
+  listens to when it is dropped (`spa::utils::hook::remove`), but holds
+  nothing that keeps that alive. Dropped after its stream or proxy, which
+  frees the list it is hooked into, it writes into freed memory, from
+  code with no `unsafe` of its own: unsound. A struct with the stream
+  written before its listener does it, as Rust drops fields in order.
+  AddressSanitizer catches it on every run; glibc only now and then, as
+  `corrupted size vs. prev_size` (issue #33).
+- **Meanwhile:** each listener is written before what it listens to, with
+  why: the portal's `Share`, the recording watcher's `Followed`, and the
+  tests' own. A listener made into a local variable after what it
+  listens to is dropped first already.
+- **Check:** in the version in `Cargo.lock`,
+  `grep -n -B2 -A3 'impl<D> std::ops::Drop for StreamListener' $(ls -d ~/.cargo/registry/src/*/pipewire-*)/src/stream/mod.rs`
+  and the structs it names: fixed when a listener keeps what it listens
+  to alive, or its drop does nothing once that is gone. Then the order no
+  longer matters, but it does no harm.
+
 ### No safe way to hold a stream's buffer or give one memory
 
 - **Wrong:** a buffer of a stream is held, and one is made, only through

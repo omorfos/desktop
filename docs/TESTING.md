@@ -397,6 +397,24 @@ tool that retries.
   30 days. One seen on a push gets an issue of its own, with the run.
 - **Fixed, then closed.** The commit that fixes a flake says `Fixes #N` in
   its body, which closes the issue once it is on `main`.
+- **Memory spoilt shows late.** A run ended by the C library, as
+  `corrupted size vs. prev_size`, or by a signal, is memory written where
+  it should not be, in a library of C or in `omorfos-pipewire`; it is
+  noticed at a later allocation, in whatever test is running then. Build
+  the tests with AddressSanitizer, which stops at the write itself and
+  says where the memory was freed:
+
+  ```sh
+  RUSTFLAGS="-Zsanitizer=address" CARGO_TARGET_DIR=target/asan \
+    cargo +nightly-2026-10-01 test -p omorfos --all-features --test integration \
+    --target x86_64-unknown-linux-gnu --no-run
+  ASAN_OPTIONS=detect_leaks=0 ASAN_SYMBOLIZER_PATH=/usr/lib/llvm-19/bin/llvm-symbolizer \
+    target/asan/x86_64-unknown-linux-gnu/debug/build/omorfos/*/out/integration-* sharing::
+  ```
+
+  Leaks are left out: PipeWire keeps what it sets up for good. A test
+  that starts one of our programs with the environment cleared fails
+  under it for the leaks alone.
 
 ## Writing code the gate accepts
 

@@ -171,8 +171,8 @@ impl Pipes {
                 let connected =
                     stream.connect(direction, None, flags, &mut offer.collect::<Vec<_>>());
                 connected.map_err(Failure::from).map(|()| Share {
-                    stream,
                     _listener: listener,
+                    stream,
                     node,
                     reading,
                     removals,
@@ -204,8 +204,11 @@ fn note(said: &str) {
 
 /// A screen being shared.
 pub struct Share {
-    stream: StreamRc,
+    /// Before the stream, so that it is let go of first: it unhooks itself
+    /// from the stream as it goes, which would be freed already the other
+    /// way round.
     _listener: StreamListener<()>,
+    stream: StreamRc,
     /// The node the stream is in PipeWire, once it has one.
     node: Rc<Cell<Option<u32>>>,
     /// Whether something is reading the stream.
