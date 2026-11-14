@@ -114,5 +114,6 @@ terminal = Terminal
 run = Uruchom…
 stay-awake = Nie usypiaj
 reload-configuration = Wczytaj konfigurację
+welcome = Powitanie
 about-omorfos = O omorfos
 quit = Zakończ

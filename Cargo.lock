@@ -1931,6 +1931,7 @@ dependencies = [
  "omorfos-shm",
  "omorfos-ui",
  "omorfos-wallpaper",
+ "omorfos-welcome",
  "pipewire",
  "png",
  "rustix 1.1.6",
@@ -2256,6 +2257,26 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "zune-jpeg",
+]
+
+[[package]]
+name = "omorfos-welcome"
+version = "0.1.0"
+dependencies = [
+ "omorfos-brand",
+ "omorfos-config",
+ "omorfos-entries",
+ "omorfos-i18n",
+ "omorfos-icons",
+ "omorfos-ipc",
+ "omorfos-shell",
+ "omorfos-ui",
+ "rustix 1.1.6",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "xkbcommon",
 ]
 
 [[package]]

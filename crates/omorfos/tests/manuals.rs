@@ -27,6 +27,7 @@ const ABOUTS: &[About] = &[
     omorfos_relay::ABOUT,
     omorfos_panel::ABOUT,
     omorfos_launcher::ABOUT,
+    omorfos_welcome::ABOUT,
     omorfos_notifications::ABOUT,
     omorfos_screenshot::ABOUT,
     omorfos_clipboard::ABOUT,

@@ -1,0 +1,43 @@
+[package]
+name = "omorfos-welcome"
+description = "The welcome card of the omorfos desktop: the keys that matter, a wallpaper, light or dark"
+keywords = ["wayland", "compositor", "welcome"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Draws the wallpapers that come with omorfos small, as they are drawn to
+# be installed.
+omorfos-brand = { path = "../omorfos-brand" }
+omorfos-config = { path = "../omorfos-config" }
+omorfos-i18n = { path = "../omorfos-i18n" }
+omorfos-entries = { path = "../omorfos-entries" }
+omorfos-icons = { path = "../omorfos-icons" }
+omorfos-ipc = { path = "../omorfos-ipc" }
+omorfos-shell = { path = "../omorfos-shell" }
+omorfos-ui = { path = "../omorfos-ui" }
+# Already in the tree through Smithay. Waits for the compositor to say
+# something (`event`).
+rustix = { version = "1.1.5", default-features = false, features = ["event"] }
+# The card is a Wayland client. All three are already in the tree through
+# Smithay's nested backend.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# Turns the keys the compositor reports into what they are, by the
+# keyboard layout it sends. Already in the tree through Smithay. Without
+# its default features it does not map the layout into memory, which would
+# need `unsafe`.
+xkbcommon = { version = "0.8.0", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

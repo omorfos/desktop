@@ -144,5 +144,7 @@ terminal = Terminal
 run = Run…
 stay-awake = Stay awake
 reload-configuration = Reload configuration
+# Shows the welcome card again.
+welcome = Welcome
 about-omorfos = About omorfos
 quit = Quit

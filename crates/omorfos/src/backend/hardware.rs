@@ -56,7 +56,7 @@ use smithay::utils::{DeviceFd, Rectangle, Transform};
 
 use super::winit::{
     cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
-    wallpaper,
+    wallpaper, welcome,
 };
 use crate::cli::Start;
 use crate::{Compositor, Feedback, Frosting, Gles, Handed, HeldSeat, Scale, Session, Shader};
@@ -587,6 +587,7 @@ fn set_components(compositor: &mut Compositor) {
     compositor.set_panel(panel());
     compositor.set_wallpaper(wallpaper());
     compositor.set_launcher(launcher());
+    compositor.set_welcome(welcome());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
     compositor.set_recorder(recorder());
@@ -603,6 +604,9 @@ fn set_components(compositor: &mut Compositor) {
     compositor.set_session(super::session_program(own.as_deref()));
     // So is polkit's agent: nested, the outer desktop's asks.
     compositor.set_asker(super::asker_program(own.as_deref()));
+    // And the welcome card shown by itself at the first login: nested, it
+    // is a session to try things in, shown it only when asked.
+    compositor.greet();
     // What is to start with the session ends with it, in a scope of its
     // own, where systemd's user manager runs to make one.
     if super::user_manager(env::var_os("XDG_RUNTIME_DIR").as_deref()) {

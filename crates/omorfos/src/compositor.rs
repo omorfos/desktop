@@ -1451,6 +1451,7 @@ impl Compositor {
             }
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
+            Action::ShowWelcome => self.open_welcome(false),
             Action::About => {
                 // Asked again, it goes; and it is not shown on a locked
                 // session.
@@ -1747,13 +1748,47 @@ impl Compositor {
 
     /// Opens the launcher, unless one is open already.
     fn open_launcher(&mut self) {
-        let (program, open) = &self.on_demand.launcher;
+        self.open_once(|on_demand| &mut on_demand.launcher, &[]);
+    }
+
+    /// Says where the welcome card that comes with omorfos is: a name to
+    /// look up in `PATH`, or a path. Until this is called there is none to
+    /// show.
+    pub fn set_welcome(&mut self, program: impl Into<PathBuf>) {
+        self.on_demand.welcome.0 = Some(program.into());
+    }
+
+    /// Shows the welcome card as at a login: unless it has been closed
+    /// before, which the card itself knows.
+    pub fn greet(&mut self) {
+        self.open_welcome(true);
+    }
+
+    /// Shows the welcome card if it is not open already: at a login,
+    /// `first`, only if it has never been closed.
+    fn open_welcome(&mut self, first: bool) {
+        let first = if first {
+            vec!["--first".to_owned()]
+        } else {
+            Vec::new()
+        };
+        self.open_once(|on_demand| &mut on_demand.welcome, &first);
+    }
+
+    /// Starts the program `of` names with `arguments`, unless one it
+    /// started is still open: one that has the keyboard, whatever had it,
+    /// while it is open, as the launcher and the welcome card do.
+    fn open_once(
+        &mut self,
+        of: fn(&mut OnDemand) -> &mut (Option<PathBuf>, Option<u32>),
+        arguments: &[String],
+    ) {
+        let (program, open) = of(&mut self.on_demand).clone();
         let open = open.is_some_and(|open| self.children.iter().any(|child| child.id() == open));
-        let program = program.clone().filter(|_| !open);
+        let program = program.filter(|_| !open);
         if let Some(program) = program {
-            // It has the keyboard, whatever had it, while it is open.
-            let roles = Roles::OVERLAY;
-            self.on_demand.launcher.1 = self.start(program.as_os_str(), &[], roles);
+            let started = self.start(program.as_os_str(), arguments, Roles::OVERLAY);
+            of(&mut self.on_demand).1 = started;
         }
     }
 
@@ -4820,6 +4855,9 @@ struct OnDemand {
     /// The launcher, once a backend has said where it is, and the one that
     /// is open, by the number of its process.
     launcher: (Option<PathBuf>, Option<u32>),
+    /// The welcome card, once a backend has said where it is, and the one
+    /// that is open, by the number of its process.
+    welcome: (Option<PathBuf>, Option<u32>),
     /// The locker last started, while it runs, and when it was started
     /// again after ending with the session still locked.
     locker: (Option<u32>, Restarts),

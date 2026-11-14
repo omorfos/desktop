@@ -31,6 +31,7 @@ impl Default for Menu {
                 MenuItem::Separator,
                 entry("Stay awake", Action::StayAwake),
                 entry("Reload configuration", Action::ReloadConfig),
+                entry("Welcome", Action::ShowWelcome),
                 entry("About omorfos", Action::About),
                 entry("Quit", Action::Quit),
             ],
@@ -160,6 +161,7 @@ mod tests {
                 "Run\u{2026}",
                 "Stay awake",
                 "Reload configuration",
+                "Welcome",
                 "About omorfos",
                 "Quit"
             ]

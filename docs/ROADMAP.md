@@ -612,9 +612,8 @@ what only games and touchpads need last.
 - [x] More wallpapers that come with omorfos, drawn by `omorfos-brand`
       beside Prism, each a dark one and a light one: Spill, Horizon,
       Facets and Ground.
-- [ ] A choice of the wallpapers offered the first time the desktop is
-      set up, with the rest of what is chosen then, once there is a
-      first time to offer it in.
+- [x] A choice of the wallpapers offered the first time the desktop is
+      set up, with the rest of what is chosen then: on the welcome card.
 - [ ] The lock screen's picture of the brand, drawn by `omorfos-brand`
       as the wallpapers are, its mark small in the bottom right, once the
       lock screen has a picture of its own (below).
@@ -2115,8 +2114,19 @@ Reaching people:
       that ask it for something, wait for the items they belong to.
 - [ ] Someone who speaks Polish reads its files, and becomes their owner
       in `CODEOWNERS`.
-- [ ] A guide for someone who has just logged in for the first time, and
-      a first run that is not an empty screen.
+- [x] A guide for someone who has just logged in for the first time, and
+      a first run that is not an empty screen: `omorfos-welcome`, a card
+      shown at the first login and from the menu's **Welcome**, with what
+      the keys that matter do as `keys.yaml` has them, and the wallpapers
+      that come with omorfos and light or dark to choose from, each saved
+      to `config.yaml` as it is chosen (ADR 81), in English and Polish.
+      It is drawn with the launcher's parts of the theme; parts of its own
+      wait for a reason to look different. In steps, as the maintainer
+      asked on 14 November 2026: a welcome with the mark, the keys,
+      light, dark or with the day as small pictures of the desktop, a
+      wallpaper, and the applications that open what, read from
+      `mimeapps.list` and not yet chosen there; Skip, Back, Next and the
+      close button on each, its buttons as a question's.
 - [ ] Packages beyond `.deb` and the AUR.
 
 ## 9. For others to build on

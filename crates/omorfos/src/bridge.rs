@@ -103,11 +103,12 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
 
 /// The messages the entries of the built-in root menu are said by, in its
 /// order.
-const BUILT_IN: [&str; 6] = [
+const BUILT_IN: [&str; 7] = [
     "terminal",
     "run",
     "stay-awake",
     "reload-configuration",
+    "welcome",
     "about-omorfos",
     "quit",
 ];
@@ -202,7 +203,7 @@ pub fn mark(action: &Action, on: Toggled) -> Mark {
         Action::NewWorkspace | Action::MoveToNewWorkspace => Mark::Sign(Sign::Add),
         Action::ShowLauncher => Mark::Sign(Sign::Search),
         Action::ReloadConfig => Mark::Sign(Sign::Reload),
-        Action::About => Mark::Sign(Sign::About),
+        Action::About | Action::ShowWelcome => Mark::Sign(Sign::About),
         Action::Lock => Mark::Sign(Sign::Lock),
         Action::Quit => Mark::Sign(Sign::Quit),
         _ => Mark::Blank,
@@ -561,6 +562,7 @@ items:
                 "Uruchom\u{2026}",
                 "Nie usypiaj",
                 "Wczytaj konfigurację",
+                "Powitanie",
                 "O omorfos",
                 "Zakończ",
             ]

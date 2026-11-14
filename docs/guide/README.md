@@ -2,10 +2,28 @@
 
 ## Your first login
 
+The first time, a card in the middle of the screen goes through a few
+steps, one at a time: a welcome; what the few keys that matter do; a
+light or dark desktop, or one that follows the day, each shown as a
+small picture of the desktop; the wallpapers that come with omorfos; and
+the applications that open the web, files, mail, pictures, music and
+video, as the system has them (Settings is to change them). A choice is
+saved to `config.yaml` as it is made, the rest of the file kept as it is
+written, so the desktop behind the card changes at once. Next goes on and
+Back goes back; the arrows, Tab and Enter, or the pointer, choose. Skip,
+the close button in its corner, Escape, or Finish on the last step
+closes it, keeping what was chosen, and it is not shown at a login
+again. **Welcome** in the menu, or the `show_welcome` action, shows it
+again. Where `config.yaml` is written in a way it will not change, as a
+section written on one line, it says so and leaves the file alone. It is
+drawn with the launcher's parts of the theme, its buttons as a question's
+(`question-button`).
+
 There is a panel along the bottom of every screen, with its workspaces,
-the windows open and the time; notifications come in at the top right. Nothing else is open: `Super+Return` starts a
-terminal, `Super+space` the launcher, to start anything else by name, and
-a right click on the desktop, or `Super+Escape`, opens the menu.
+the windows open and the time; notifications come in at the top right.
+`Super+Return` starts a terminal, `Super+space` the launcher, to start
+anything else by name, and a right click on the desktop, or
+`Super+Escape`, opens the menu.
 
 Super is the desktop's (see [Super](keys.yaml.md#super)): a chord with it
 that the desktop does not use reaches the program as the same chord with
@@ -14,8 +32,10 @@ program, as Cmd does on a Mac.
 
 The desktop speaks the language your session is in, as `LANG` says,
 where it has the words: English, and Polish for the panel, the lock
-screen, the boxes that ask for passwords, the notices of the volume,
-the brightness and the radios, and a window's menu so far. The rest is in English until it is translated.
+screen, the boxes that ask for passwords, the welcome card, the notices
+of the session and of the compositor, the menus, "About", and the names
+the launcher gives programs, as their desktop entries give them. The
+manual pages and `--help` are in English.
 
 ## The keys that matter
 

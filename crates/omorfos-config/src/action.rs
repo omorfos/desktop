@@ -113,6 +113,11 @@ pub enum Action {
     ShowMenu,
     /// Open the launcher, to start a program by typing its name.
     ShowLauncher,
+    /// Show the welcome card: a step at a time, what the keys that matter
+    /// do, light or dark, the wallpapers that come with omorfos, and the
+    /// applications that open what. It is shown by itself at the first
+    /// login.
+    ShowWelcome,
     /// Show "About omorfos": its version, and what it is made with that is
     /// someone else's. Asked again while it is shown, it goes.
     About,
@@ -388,6 +393,7 @@ mod tests {
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
+        assert_eq!(parse("show_welcome"), Ok(Action::ShowWelcome));
         assert_eq!(parse("about"), Ok(Action::About));
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
         assert_eq!(parse("tile: bottom"), Ok(Action::Tile(Half::Bottom)));

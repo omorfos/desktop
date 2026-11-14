@@ -89,6 +89,7 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
     compositor.set_panel(panel());
     compositor.set_wallpaper(wallpaper());
     compositor.set_launcher(launcher());
+    compositor.set_welcome(welcome());
     compositor.set_notifier(notifier());
     compositor.set_keeper(keeper());
     compositor.set_recorder(recorder());
@@ -151,6 +152,11 @@ pub(super) fn recorder() -> PathBuf {
 /// Where the launcher that goes with this compositor is.
 pub(super) fn launcher() -> PathBuf {
     super::launcher_program(env::current_exe().ok().as_deref())
+}
+
+/// Where the welcome card that goes with this compositor is.
+pub(super) fn welcome() -> PathBuf {
+    super::welcome_program(env::current_exe().ok().as_deref())
 }
 
 /// Where the panel that goes with this compositor is.

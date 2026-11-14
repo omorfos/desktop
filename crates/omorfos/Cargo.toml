@@ -47,6 +47,7 @@ assets = [
     ["target/release/omorfos-wallpaper", "usr/bin/", "755"],
     ["target/release/omorfos-lock", "usr/bin/", "755"],
     ["target/release/omorfos-launcher", "usr/bin/", "755"],
+    ["target/release/omorfos-welcome", "usr/bin/", "755"],
     ["target/release/omorfos-notifications", "usr/bin/", "755"],
     ["target/release/omorfos-screenshot", "usr/bin/", "755"],
     ["target/release/omorfos-clipboard", "usr/bin/", "755"],
@@ -150,6 +151,7 @@ omorfos-panel = { path = "../omorfos-panel" }
 omorfos-wallpaper = { path = "../omorfos-wallpaper" }
 omorfos-lock = { path = "../omorfos-lock" }
 omorfos-launcher = { path = "../omorfos-launcher" }
+omorfos-welcome = { path = "../omorfos-welcome" }
 omorfos-notifications = { path = "../omorfos-notifications" }
 omorfos-screenshot = { path = "../omorfos-screenshot" }
 omorfos-clipboard = { path = "../omorfos-clipboard" }

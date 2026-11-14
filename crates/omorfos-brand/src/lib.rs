@@ -109,8 +109,10 @@ pub const DESIGNS: [Design; 5] = [
 ];
 
 impl Design {
-    /// What it is called in the names of files.
-    const fn name(self) -> &'static str {
+    /// What it is called in the names of files, as `horizon` is in
+    /// `horizon-dark.png`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
         match self {
             Self::Prism => "prism",
             Self::Spill => "spill",
@@ -507,6 +509,17 @@ fn line(svg: &mut String, canvas: Canvas) {
     );
 }
 
+/// The wallpaper `design` in `scheme`, drawn `size` pixels across and down
+/// to be chosen by, as it is installed but smaller: its pixels row by row
+/// from the top, each red, green, blue and opacity. Or nothing, for no
+/// size.
+#[must_use]
+pub fn miniature(design: Design, scheme: Scheme, size: (u32, u32)) -> Option<Vec<u8>> {
+    // A wallpaper covers all of itself, so its colours are the same
+    // whether or not they have been multiplied by an opacity of one.
+    render(&wallpaper(design, scheme, size), size).map(tiny_skia::Pixmap::take)
+}
+
 /// Draws `svg` at `width` by `height` pixels, stretched to them, and
 /// returns it as PNG; or nothing, if it cannot be read or has no size.
 #[must_use]
@@ -703,6 +716,23 @@ mod tests {
             .iter()
             .zip(wanted)
             .all(|(have, want)| have.abs_diff(want) <= 12)
+    }
+
+    #[test]
+    fn a_wallpaper_is_drawn_small_to_be_chosen_by_on_its_own_ground() {
+        for design in DESIGNS {
+            let small = miniature(design, Scheme::Dark, (160, 90)).unwrap();
+            assert_eq!(small.len(), 160 * 90 * 4);
+            assert!(
+                small.chunks(4).all(|pixel| pixel[3] == 255),
+                "it covers itself"
+            );
+            // The top left is the ground, lifted: navy dark, cream light.
+            assert!(small[0] < 0x30 && small[2] > small[0]);
+            let light = miniature(design, Scheme::Light, (160, 90)).unwrap();
+            assert!(light[0] > 0xe0);
+        }
+        assert_eq!(miniature(Design::Prism, Scheme::Dark, (0, 90)), None);
     }
 
     #[test]

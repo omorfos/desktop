@@ -206,6 +206,11 @@
           "type": "string"
         },
         {
+          "const": "show_welcome",
+          "description": "Show the welcome card: a step at a time, what the keys that matter\ndo, light or dark, the wallpapers that come with omorfos, and the\napplications that open what. It is shown by itself at the first\nlogin.",
+          "type": "string"
+        },
+        {
           "const": "about",
           "description": "Show \"About omorfos\": its version, and what it is made with that is\nsomeone else's. Asked again while it is shown, it goes.",
           "type": "string"

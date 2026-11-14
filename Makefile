@@ -24,7 +24,7 @@ MAN_DIR ?= $(PREFIX)/share/man
 # XDG_DATA_DIRS, /usr/local/share among them.
 SHARE_DIR ?= $(PREFIX)/share
 
-PROGRAMS = omorfos omorfos-hold omorfos-relay omorfosctl omorfos-panel omorfos-launcher omorfos-notifications \
+PROGRAMS = omorfos omorfos-hold omorfos-relay omorfosctl omorfos-panel omorfos-launcher omorfos-welcome omorfos-notifications \
 	omorfos-screenshot omorfos-clipboard omorfos-recording omorfos-session omorfos-ask \
 	omorfos-wallpaper omorfos-lock xdg-desktop-portal-omorfos
 # What is installed: each program, and those built beside another, as

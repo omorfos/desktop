@@ -41,7 +41,7 @@ build() {
   cd "desktop-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release -p omorfos -p omorfos-hold -p omorfos-relay -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos -p omorfos-brand
+  cargo build --frozen --release -p omorfos -p omorfos-hold -p omorfos-relay -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-welcome -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos -p omorfos-brand
   # The icon and the wallpapers, drawn as omorfos is built.
   target/release/omorfos-brand target/release/share
   # The licences of the crates it is built from, for this machine's, as
@@ -52,7 +52,7 @@ build() {
 
 package() {
   cd "desktop-$pkgver"
-  install -Dm755 target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-welcome target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
   install -Dm644 LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
   cp -r target/release/share/icons target/release/share/backgrounds "$pkgdir/usr/share/"
   install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname/"

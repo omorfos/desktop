@@ -67,5 +67,6 @@ mod tiles;
 mod typing;
 mod versions;
 mod wallpaper;
+mod welcome;
 mod windows;
 mod x11;

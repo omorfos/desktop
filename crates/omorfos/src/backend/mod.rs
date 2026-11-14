@@ -45,6 +45,15 @@ pub fn launcher_program(own: Option<&Path>) -> PathBuf {
     beside(own, LAUNCHER)
 }
 
+/// What the welcome card's executable is called.
+const WELCOME: &str = "omorfos-welcome";
+
+/// Where the welcome card is, found as [`panel_program`] finds the panel.
+#[must_use]
+pub fn welcome_program(own: Option<&Path>) -> PathBuf {
+    beside(own, WELCOME)
+}
+
 /// What the executable that shows notifications is called.
 const NOTIFIER: &str = "omorfos-notifications";
 
@@ -221,6 +230,7 @@ mod tests {
         assert_eq!(panel_program(None), Path::new(PANEL));
         assert_eq!(wallpaper_program(None), Path::new(WALLPAPER));
         assert_eq!(launcher_program(None), Path::new(LAUNCHER));
+        assert_eq!(welcome_program(None), Path::new(WELCOME));
         assert_eq!(notifier_program(None), Path::new(NOTIFIER));
         assert_eq!(portal_program(None), Path::new(PORTAL));
         assert_eq!(keeper_program(None), Path::new(KEEPER));

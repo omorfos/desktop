@@ -67,9 +67,16 @@ pub const LAUNCHER: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/launcher.ftl"))],
 };
 
+/// The welcome card's words.
+pub const WELCOME: Program = Program {
+    name: "welcome",
+    english: include_str!("../../../i18n/en/welcome.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/welcome.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR, LAUNCHER];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR, LAUNCHER, WELCOME];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.
@@ -189,6 +196,13 @@ pub fn asked(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
             !code.is_empty() && code != "c" && code != "posix"
         })
         .collect()
+}
+
+/// The languages the environment asks for, by their codes, in order, as
+/// [`asked`] finds them; `get` looks a variable up. For a program that is
+/// handed its environment, as [`Words::in_languages`] takes them.
+pub fn languages(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    wanted(get)
 }
 
 /// The languages the environment asks for, by their codes, in order, as
