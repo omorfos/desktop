@@ -246,11 +246,10 @@ fn message(text: &mut Text, theme: &Theme, said: &str) -> Vec<String> {
     text.wrap(said, room, font, MESSAGE_LINES)
 }
 
-/// How far down what is under what is asked for goes, by the lines it
+/// How far down what is under what is asked for goes, by the `lines` it
 /// takes beyond its first: the box is that much taller.
-fn lower(text: &mut Text, theme: &Theme, said: &str) -> i32 {
-    let lines = message(text, theme, said).len().max(1);
-    let beyond = i32::try_from(lines - 1).unwrap_or_default();
+fn lower(lines: &[String]) -> i32 {
+    let beyond = i32::try_from(lines.len().max(1) - 1).unwrap_or_default();
     beyond * MESSAGE_LINE
 }
 
@@ -264,11 +263,25 @@ pub fn paint(
     theme: &Theme,
     text: &mut Text,
     scale: Scale,
+    asked: (&Asking, (&str, bool), bool),
+    looks: (i32, bool, Option<Button>),
+) -> Canvas {
+    let lines = message(text, theme, &asked.0.message);
+    paint_lines(theme, text, scale, &lines, asked, looks)
+}
+
+/// Paints the box as [`paint`] does, with what is asked for in `lines`
+/// as they were wrapped when it was asked: wrapping them for each frame
+/// held the box back as it shook.
+fn paint_lines(
+    theme: &Theme,
+    text: &mut Text,
+    scale: Scale,
+    lines: &[String],
     (asking, (typed, marked), open): (&Asking, (&str, bool), bool),
     (shift, on_eye, focused): (i32, bool, Option<Button>),
 ) -> Canvas {
-    let lines = message(text, theme, &asking.message);
-    let lower = lower(text, theme, &asking.message);
+    let lower = lower(lines);
     let taller = lower.unsigned_abs();
     let (width, height) = SURFACE;
     let mut canvas = Canvas::scaled(width, height + taller, scale);
@@ -282,7 +295,7 @@ pub fn paint(
     let detail = theme.style(Part::QuestionDetail, States::NONE);
     let font = theme.font(Part::QuestionDetail, States::NONE);
     let mut top = MARGIN + 28;
-    for said in &lines {
+    for said in lines {
         let line = along((MARGIN, top, room, MESSAGE_LINE.unsigned_abs()), by);
         text.draw(&mut canvas, said, line, detail.color, font);
         top += MESSAGE_LINE;
@@ -498,9 +511,9 @@ struct Shell {
     /// The button the keyboard is on, reached with Tab; on none, it is on
     /// the field.
     focused: Option<Button>,
-    /// How far down what is under what is asked for goes, in units, by the
-    /// lines that takes beyond its first.
-    lower: i32,
+    /// What is asked for, in lines as wide as the box, wrapped once as it
+    /// is asked: the box is as much taller as they are more than one.
+    lines: Vec<String>,
     /// While the box shakes: when the first frame of it was shown, once one
     /// has been, and how long it has shaken for since, in milliseconds, as
     /// the compositor tells the time of each frame.
@@ -677,7 +690,7 @@ impl Shell {
     /// less the room the box shakes in.
     fn pointed(&self) -> Option<Button> {
         self.over
-            .and_then(|(x, y)| button_at((x - SHAKE, y), self.lower))
+            .and_then(|(x, y)| button_at((x - SHAKE, y), lower(&self.lines)))
     }
 
     /// Takes the pointer in at `at` on the surface, or gone from it, and
@@ -707,8 +720,7 @@ impl Shell {
             self.over = None;
             return Ok(());
         };
-        self.lower = lower(&mut self.text, &self.store.current().theme, &asking.message);
-        let lower = self.lower;
+        let lower = lower(&self.lines);
         let on_eye = self.pointed() == Some(Button::Show);
         let focused = self.focus();
         let face = self
@@ -726,10 +738,11 @@ impl Shell {
         // is due; otherwise it says nothing to do.
         face.surface.frame(handle, ());
         let shift = elapsed.map_or(0, shaken);
-        let canvas = paint(
+        let canvas = paint_lines(
             theme,
             &mut self.text,
             face.scale,
+            &self.lines,
             (asking, (&self.typed, self.marked), self.open),
             (shift, on_eye, focused),
         );
@@ -817,7 +830,7 @@ impl Desk {
                 answer: None,
                 over: None,
                 focused: None,
-                lower: 0,
+                lines: Vec::new(),
                 shaking: None,
                 store,
                 text: Text::new(),
@@ -847,7 +860,7 @@ impl Desk {
             self.shell.focused = None;
         }
         let theme = &self.shell.store.current().theme;
-        self.shell.lower = lower(&mut self.shell.text, theme, &asking.message);
+        self.shell.lines = message(&mut self.shell.text, theme, &asking.message);
         let globals = self.shell.globals();
         let asked = globals.is_some();
         self.shell.asked = globals.map(|globals| (asking, globals));
@@ -1209,7 +1222,8 @@ mod tests {
         let theme = Theme::default();
         let mut text = Text::new();
         let short = asking();
-        assert_eq!(lower(&mut text, &theme, &short.message), 0, "one line");
+        let short_lines = message(&mut text, &theme, &short.message);
+        assert_eq!(lower(&short_lines), 0, "one line");
         let long = Asking {
             message: "Authentication is needed to run `/usr/bin/true' as the super user, \
                       which is a long way of saying very little at all"
@@ -1219,7 +1233,7 @@ mod tests {
         let lines = message(&mut text, &theme, &long.message);
         assert!(lines.len() > 1, "{lines:?}");
         assert_eq!(lines.join(" "), long.message, "nothing left out");
-        let lower = lower(&mut text, &theme, &long.message);
+        let lower = lower(&lines);
         assert_eq!(
             lower,
             MESSAGE_LINE * i32::try_from(lines.len() - 1).unwrap()

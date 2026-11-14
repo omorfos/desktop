@@ -879,16 +879,19 @@ fn the_box_casts_its_shadow_where_it_is_as_it_shakes() {
     let theme = "question { transition: 120ms; box-shadow: 0 0 0 4px #ff0000; }\n";
     let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
     let rest = (WIDTH - SIZE.0.cast_signed()) / 2;
-    let mut shown = 0;
-    let mut moved = false;
-    session.eventually(|session| {
-        shown += 16;
-        session.send_frames(std::time::Duration::from_millis(shown));
-        let (edge, shadowed) = edge_shadowed(session);
-        assert!(shadowed, "the shadow is beside the box at {edge}");
-        moved |= edge != rest;
-        moved && edge == rest
-    });
+    // The time each frame is shown at is held still until the box has
+    // been drawn as it is then, however long it takes to draw: first a
+    // moment into the shake, which it is shown moved at; then after it.
+    let held_at = |session: &mut Session, at: u64, moved: bool| {
+        session.eventually(|session| {
+            session.send_frames(std::time::Duration::from_millis(at));
+            let (edge, shadowed) = edge_shadowed(session);
+            assert!(shadowed, "the shadow is beside the box at {edge}");
+            (edge != rest) == moved
+        });
+    };
+    held_at(&mut session, 16, true);
+    held_at(&mut session, 16 + 1000, false);
 }
 
 #[test]
