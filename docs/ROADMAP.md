@@ -1891,10 +1891,13 @@ Reaching people:
       English and Polish: what the computer has, the headings of what
       omorfos is made with, its version and licence, and the button that
       copies, whose text for a bug report stays English.
-- [ ] The built-in root menu's labels in the user's language, which are
-      the configuration's defaults; and the manual pages and `--help`,
-      which are English for now. The notifications program says nothing of
-      its own but what programs send it.
+- [x] The built-in root menu's labels in the user's language, which are
+      the configuration's defaults, through `omorfos-i18n`, in English and
+      Polish; and so an entry of `menu.yaml` named and doing just as one of
+      them. The notifications program says nothing of its own but what
+      programs send it.
+- [ ] The manual pages and `--help` in the user's language, which are
+      English for now.
 - [ ] The launcher showing applications by their names in the user's
       language, as their desktop entries give them (`Name[pl]`), which it
       reads only in English now.

@@ -13,6 +13,7 @@ use omorfos_core::{
     Button, Effects, Item, KeyChains, Mark, Metrics, Pattern, Placement, Private, Rule, Settings,
     Sign, Standing,
 };
+use omorfos_i18n::Words;
 use smithay::input::keyboard::{ModifiersState, xkb};
 
 use crate::Scale;
@@ -100,22 +101,61 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
     rules.rules.iter().map(convert).collect()
 }
 
-/// Converts the configured root menu into the domain's menu items.
+/// The messages the entries of the built-in root menu are said by, in its
+/// order.
+const BUILT_IN: [&str; 6] = [
+    "terminal",
+    "run",
+    "stay-awake",
+    "reload-configuration",
+    "about-omorfos",
+    "quit",
+];
+
+/// Converts the configured root menu into the domain's menu items. An
+/// entry just as the built-in menu has it, its label and its action, is
+/// said in the user's language, as the configuration's defaults are
+/// English; one named otherwise keeps what it is named.
 #[must_use]
-pub fn menu_items(items: &[omorfos_config::MenuItem], on: Toggled) -> Vec<Item<Action>> {
+pub fn menu_items(
+    items: &[omorfos_config::MenuItem],
+    on: Toggled,
+    words: &Words,
+) -> Vec<Item<Action>> {
+    let built_in = omorfos_config::Menu::default();
+    let entries = built_in.items.into_iter().filter_map(|item| match item {
+        omorfos_config::MenuItem::Entry { label, action, .. } => Some((label, action)),
+        _ => None,
+    });
+    let said = entries.zip(BUILT_IN);
+    let said = said.map(|((label, action), name)| (label, action, words.say(name, &[])));
+    converted(items, on, &said.collect::<Vec<_>>())
+}
+
+/// Converts `items`, saying an entry `said` has, by its label and action,
+/// as it says it.
+fn converted(
+    items: &[omorfos_config::MenuItem],
+    on: Toggled,
+    said: &[(String, Action, String)],
+) -> Vec<Item<Action>> {
     let convert = |item: &omorfos_config::MenuItem| match item {
         omorfos_config::MenuItem::Entry {
             label,
             action,
             icon,
         } => Item::Entry {
-            label: label.clone(),
+            label: said
+                .iter()
+                .find(|(english, built, _)| english == label && built == action)
+                .map_or(label, |(_, _, said)| said)
+                .clone(),
             action: action.clone(),
             mark: icon.clone().map_or_else(|| mark(action, on), Mark::Icon),
         },
         omorfos_config::MenuItem::Submenu { label, items, icon } => Item::Submenu {
             label: label.clone(),
-            items: menu_items(items, on),
+            items: converted(items, on, said),
             mark: icon.clone().map_or(Mark::Blank, Mark::Icon),
         },
         omorfos_config::MenuItem::Separator => Item::Separator,
@@ -462,7 +502,7 @@ items:
             awake: false,
         };
         assert_eq!(
-            menu_items(&config("menu.yaml", yaml).menu.items, on),
+            menu_items(&config("menu.yaml", yaml).menu.items, on, &english()),
             [
                 Item::Entry {
                     label: "Terminal".to_owned(),
@@ -485,6 +525,86 @@ items:
                 },
             ]
         );
+    }
+
+    fn english() -> Words {
+        Words::in_languages(&omorfos_i18n::COMPOSITOR, &[])
+    }
+
+    fn labels(items: &[Item<Action>]) -> Vec<&str> {
+        items.iter().filter_map(label).collect()
+    }
+
+    fn label(item: &Item<Action>) -> Option<&str> {
+        match item {
+            Item::Entry { label, .. } | Item::Submenu { label, .. } => Some(label.as_str()),
+            Item::Separator => None,
+        }
+    }
+
+    fn off() -> Toggled {
+        Toggled {
+            standing: Standing::default(),
+            maximized: false,
+            awake: false,
+        }
+    }
+
+    #[test]
+    fn the_built_in_menu_is_said_in_the_users_language() {
+        let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
+        let built_in = omorfos_config::Menu::default();
+        assert_eq!(
+            labels(&menu_items(&built_in.items, off(), &polish)),
+            [
+                "Terminal",
+                "Uruchom\u{2026}",
+                "Nie usypiaj",
+                "Wczytaj konfigurację",
+                "O omorfos",
+                "Zakończ",
+            ]
+        );
+    }
+
+    #[test]
+    fn every_entry_of_the_built_in_menu_is_said_by_a_message_whose_english_is_its_label() {
+        let built_in = omorfos_config::Menu::default();
+        let entries = built_in.items.iter();
+        let configured = entries.filter_map(|item| match item {
+            omorfos_config::MenuItem::Entry { label, .. } => Some(label.as_str()),
+            _ => None,
+        });
+        let said = menu_items(&built_in.items, off(), &english());
+        let configured: Vec<&str> = configured.collect();
+        assert_eq!(configured.len(), BUILT_IN.len());
+        assert_eq!(labels(&said), configured);
+    }
+
+    #[test]
+    fn an_entry_the_configuration_names_or_points_elsewhere_keeps_its_label_in_every_language() {
+        let yaml = "
+items:
+  - { label: Quit, action: about }
+  - { label: Leave, action: quit }
+  - label: Session
+    items:
+      - { label: Quit, action: quit }
+";
+        let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
+        let items = menu_items(&config("menu.yaml", yaml).menu.items, off(), &polish);
+        assert_eq!(labels(&items), ["Quit", "Leave", "Session"]);
+        let quit = Item::Entry {
+            label: "Zakończ".to_owned(),
+            action: Action::Quit,
+            mark: Mark::Sign(Sign::Quit),
+        };
+        let session = Item::Submenu {
+            label: "Session".to_owned(),
+            items: vec![quit],
+            mark: Mark::Blank,
+        };
+        assert_eq!(items.get(2), Some(&session));
     }
 
     #[test]

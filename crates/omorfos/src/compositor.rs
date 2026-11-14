@@ -1491,7 +1491,7 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
-        let items = bridge::menu_items(&config.menu.items, self.toggled());
+        let items = bridge::menu_items(&config.menu.items, self.toggled(), &self.words);
         self.open_menu_of(items);
     }
 

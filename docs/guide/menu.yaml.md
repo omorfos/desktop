@@ -14,6 +14,12 @@ items:
 An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
 
+Without a `menu.yaml` the menu has a terminal, the launcher, staying
+awake, reloading the configuration, "About" and quitting, said in the
+user's language. So is an entry of `menu.yaml` named and doing just as
+one of those, as `{ label: Quit, action: quit }` is; one named otherwise
+is shown as it is named, in whatever language it is written.
+
 Before each label stands what it does. An entry that starts a program has
 the program's icon: the one its desktop entry names, found by the name of
 the program's file (`foot` finds `foot.desktop`), or else the icon theme's

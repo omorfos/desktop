@@ -109,3 +109,10 @@ version = Wersja { $version }
 licence = Na licencji MIT
 copy = Kopiuj
 copied = Skopiowano
+
+terminal = Terminal
+run = Uruchom…
+stay-awake = Nie usypiaj
+reload-configuration = Wczytaj konfigurację
+about-omorfos = O omorfos
+quit = Zakończ

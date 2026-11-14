@@ -137,3 +137,12 @@ licence = Under the MIT licence
 # which is in English; and what it says once it has.
 copy = Copy
 copied = Copied
+
+## The built-in root menu, which menu.yaml takes the place of. An entry of
+## menu.yaml named and doing just as one of these is said by it too.
+terminal = Terminal
+run = Run…
+stay-awake = Stay awake
+reload-configuration = Reload configuration
+about-omorfos = About omorfos
+quit = Quit
