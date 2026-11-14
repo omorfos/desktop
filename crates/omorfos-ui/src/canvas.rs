@@ -1033,7 +1033,8 @@ impl Text {
     pub fn draw(&mut self, canvas: &mut Canvas, text: &str, area: Area, color: Color, font: &Font) {
         let (left, width) = span(canvas.scale, area.0, area.2);
         let (top, height) = span(canvas.scale, area.1, area.3);
-        self.draw_pixels(canvas, text, (left, top, width, height), color, font);
+        let (_, wide) = self.room(canvas, text, font, (area.2, width));
+        self.draw_pixels(canvas, text, (left, top, wide, height), color, font);
     }
 
     /// Draws one line of `text` in the middle of `area`, across and down,
@@ -1049,9 +1050,30 @@ impl Text {
     ) {
         let (left, width) = span(canvas.scale, area.0, area.2);
         let (top, height) = span(canvas.scale, area.1, area.3);
-        let wide = self.measured(text, font, scale_of(canvas)).min(width);
-        let left = left.saturating_add_unsigned((width - wide) / 2);
+        let (needs, room) = self.room(canvas, text, font, (area.2, width));
+        let wide = needs.min(room);
+        // Half of whatever it is over by, a pixel or two, before it too.
+        let shift = (i64::from(width) - i64::from(wide)) / 2;
+        let left = left.saturating_add(i32::try_from(shift).unwrap_or(0));
         self.draw_pixels(canvas, text, (left, top, wide, height), color, font);
+    }
+
+    /// How many pixels `text` takes, drawn on `canvas` in `font`, and how
+    /// many it may, given `units` of layout that come to `pixels`: as many
+    /// as it takes, if it fits in the units, as a layout measured it to.
+    /// The pixels the units are rounded to at a scale of a few quarters,
+    /// and glyphs set larger not being exactly as much wider, are no reason
+    /// to cut short what fits; it may stand a pixel or two over instead.
+    fn room(
+        &mut self,
+        canvas: &Canvas,
+        text: &str,
+        font: &Font,
+        (units, pixels): (u32, u32),
+    ) -> (u32, u32) {
+        let needs = self.measured(text, font, scale_of(canvas));
+        let fits = self.measure(text, font) <= units;
+        (needs, if fits { pixels.max(needs) } else { pixels })
     }
 
     /// Draws one line of `text` in an area counted in pixels, vertically
@@ -1275,6 +1297,48 @@ mod tests {
         text.draw_centered(&mut narrow, name, (100, 0, 60, 40), RED, &font);
         let ends = columns(&narrow);
         assert!(ends[0] >= 100 && ends[1] < 160, "{ends:?}");
+    }
+
+    #[test]
+    fn text_given_the_room_it_was_measured_to_take_is_drawn_whole_at_any_scale() {
+        // A layout gives text as many units as it measures; drawn at a
+        // scale of a few quarters, those are rounded to pixels, and glyphs
+        // set larger are not exactly as much wider. Neither is a reason to
+        // cut short what fits, as days of a month and buttons once were.
+        let mut text = Text::new();
+        // DejaVu, as CI has, is a little wider drawn at these scales at
+        // this size; so is Inter at the theme's.
+        let font = Font {
+            size: omorfos_config::Bounded::clamped(10),
+            ..Font::default()
+        };
+        let words = (1..=31).map(|day: u32| day.to_string());
+        let words: Vec<String> = words.chain(["Śr".to_owned()]).collect();
+        let ink = |canvas: &Canvas| -> u64 {
+            let (width, height) = (canvas.width(), canvas.height());
+            let all = (0..width).flat_map(|x| (0..height).map(move |y| (x, y)));
+            all.map(|(x, y)| u64::from(canvas.at(x, y) >> 16 & 0xff))
+                .sum()
+        };
+        for factor in [1.25, 1.75, 2.25] {
+            let scale = Scale::new(factor);
+            for words in &words {
+                let wide = text.measure(words, &font);
+                let mut drawn = |area: Area, centred: bool| {
+                    let mut canvas = Canvas::scaled(60, 20, scale);
+                    if centred {
+                        text.draw_centered(&mut canvas, words, area, RED, &font);
+                    } else {
+                        text.draw(&mut canvas, words, area, RED, &font);
+                    }
+                    ink(&canvas)
+                };
+                let whole = drawn((0, 0, 60, 20), false);
+                assert_eq!(drawn((0, 0, wide, 20), false), whole, "{words} at {factor}");
+                let centred = drawn((20, 0, wide, 20), true);
+                assert_eq!(centred, whole, "{words} centred at {factor}");
+            }
+        }
     }
 
     #[test]
