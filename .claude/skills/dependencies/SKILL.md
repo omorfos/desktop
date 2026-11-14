@@ -46,9 +46,12 @@ reading what they say.
   use. Try it here, on a branch with the pull request's changes, through
   every gate (the `handover` skill lists them); a change of code it needs
   is a commit of its own after Dependabot's.
-- **An action.** The workflows pin actions by commit, with the version in
-  a comment; Dependabot changes both. Nothing to try here but that its
-  checks pass.
+- **An action.** The workflows name actions by their version, and
+  `.github/workflows/actions.lock` holds the commit each is run at, and
+  those of the actions it uses in turn; Dependabot changes both. Nothing to
+  try here but that its checks pass, "Actions locked" among them. A change
+  of a workflow's `uses:` by hand is locked with `gh actions-lock`, never
+  by editing the lockfile.
 
 ## 3. Merge, when told to
 

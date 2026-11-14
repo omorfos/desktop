@@ -150,8 +150,10 @@ rest() {
     explain=uncovered step cargo coverage --locked
     step cargo test --workspace --all-features --doc --locked
     step cargo deny check
-    # The workflows, as CI checks them but for what needs the network.
+    # The workflows, as CI checks them but for what needs the network:
+    # each action they use has a commit in the lockfile.
     step zizmor --offline --no-progress .
+    step gh actions-lock --verify-local
     RUSTDOCFLAGS="-D warnings" step cargo doc --workspace --all-features --no-deps --locked
 }
 

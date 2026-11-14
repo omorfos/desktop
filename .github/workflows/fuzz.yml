@@ -49,12 +49,12 @@ jobs:
       matrix:
         target: [messages, configuration, ipc]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Install the nightly toolchain
         run: rustup toolchain install "$NIGHTLY" --profile minimal
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@v2.90.1
         with:
           tool: cargo-fuzz
       - name: Fuzz
@@ -72,7 +72,7 @@ jobs:
             -max_total_time="$SECONDS_TO_RUN" -rss_limit_mb=2048
       - name: Keep what made it fail
         if: ${{ failure() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/

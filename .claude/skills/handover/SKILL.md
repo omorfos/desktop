@@ -95,7 +95,8 @@ the background as the build is handed over (step 5), and has to have
 passed before anything is committed. Never two runs of the gates at
 once: they share the machine, and the X11 tests time out.
 
-The tools are in `~/.cargo/bin`. Each tier keeps its whole output in
+The tools are in `~/.cargo/bin`, but for `gh actions-lock`, an extension
+of `gh`, at the version CI installs. Each tier keeps its whole output in
 `target/gates/<tier>.log`: read that, not a filtered copy, when a step
 fails. When the coverage gate fails, the tier lists each line it did not
 reach, with the file, the line and the column; `gates.sh uncovered` lists

@@ -34,6 +34,7 @@ call them by their ids:
 | Dependency audit (`dependencies`) | `cargo deny check` |
 | Spelling (`typos`) | `typos` |
 | Conventional Commits (`commits`) | `committed` over the commits pushed |
+| Actions locked (`lockfile`) | `gh actions-lock --verify`: every action the workflows use has its commit in `.github/workflows/actions.lock`, still where it came from |
 | CodeQL (rust), (actions) (`analyze`) | CodeQL's security queries over the code and the workflows, without building; findings go to the security tab |
 
 ## 2. Say what kind of failure it is

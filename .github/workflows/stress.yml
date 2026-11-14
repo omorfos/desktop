@@ -40,7 +40,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-26.04-arm
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       # As the Test workflow has it.
@@ -48,8 +48,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg foot zenity flatpak
       - name: Make room for X servers
         run: sudo mkdir -p -m 1777 /tmp/.X11-unix
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: taiki-e/install-action@v2.90.1
         with:
           tool: cargo-llvm-cov
       - name: Build the tests
@@ -134,7 +134,7 @@ jobs:
           test "$failures" -eq 0
       - name: Keep the logs of what failed
         if: ${{ failure() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: failed-${{ matrix.arch }}
           path: failed/
