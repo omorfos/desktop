@@ -166,20 +166,34 @@ fn bundle(code: &str, text: &str) -> FluentBundle<FluentResource> {
     bundle
 }
 
-/// The languages the environment asks for, by their codes, in order:
-/// `LANGUAGE`'s, then the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that
-/// is set, as the C library reads them. `C` and `POSIX` are English.
-fn wanted(get: impl Fn(&str) -> Option<String>) -> Vec<String> {
+/// The locales the environment asks for, whole, as `pl_PL.UTF-8`, in
+/// order: `LANGUAGE`'s, then the first of `LC_ALL`, `LC_MESSAGES` and
+/// `LANG` that is set, as the C library reads them; `get` looks a variable
+/// up. `C` and `POSIX`, which are English, are left out. For what is
+/// matched by more than a language, as a desktop entry's `Name[pl_PL]`.
+pub fn asked(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
     let set = |name: &str| get(name).filter(|value| !value.is_empty());
     let locale = ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(set);
     let listed = set("LANGUAGE").unwrap_or_default();
     let named = listed.split(':').map(str::to_owned).chain(locale);
-    let codes = named.map(|named| {
-        let language = named.split(['_', '.', '@', '-']).next().unwrap_or_default();
-        language.to_lowercase()
-    });
-    let codes = codes.filter(|code| !code.is_empty() && code != "c" && code != "posix");
-    codes.collect()
+    named
+        .filter(|named| {
+            let code = code(named);
+            !code.is_empty() && code != "c" && code != "posix"
+        })
+        .collect()
+}
+
+/// The languages the environment asks for, by their codes, in order, as
+/// [`asked`] finds them.
+fn wanted(get: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    asked(&get).iter().map(|named| code(named)).collect()
+}
+
+/// The code of the language of the locale `named`, as `pl` of `pl_PL.UTF-8`.
+fn code(named: &str) -> String {
+    let language = named.split(['_', '.', '@', '-']).next().unwrap_or_default();
+    language.to_lowercase()
 }
 
 #[cfg(test)]
@@ -267,6 +281,22 @@ mod tests {
             languages(&["fr", "pt", "en"]),
             "LANGUAGE's list first"
         );
+    }
+
+    #[test]
+    fn the_locales_the_environment_asks_for_are_given_whole_and_in_order() {
+        let asked_of = |set: &[(&str, &str)]| {
+            let set: HashMap<String, String> = set
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect();
+            asked(&|name| set.get(name).cloned())
+        };
+        assert_eq!(
+            asked_of(&[("LANGUAGE", "pl:C:en_GB"), ("LANG", "sr_RS.UTF-8@latin")]),
+            languages(&["pl", "en_GB", "sr_RS.UTF-8@latin"])
+        );
+        assert_eq!(asked_of(&[("LC_ALL", "POSIX")]), languages(&[]));
     }
 
     #[test]

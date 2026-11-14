@@ -1496,8 +1496,9 @@ a setting.
       needs a privileged protocol (`ext-data-control`), honours what
       password managers mark as secret, and keeps nothing on disk unless
       asked.
-- [ ] The launcher: looser matching, names in the user's language, and
-      windows to go to as well as programs to start.
+- [ ] The launcher: looser matching, as the English name of a program
+      named in the user's language, and windows to go to as well as
+      programs to start.
 - [ ] Sums in the launcher: what is typed is worked out as it is typed,
       and Enter copies the answer. Worked out by code of ours; nothing
       typed is ever run.
@@ -1898,9 +1899,12 @@ Reaching people:
       programs send it.
 - [ ] The manual pages and `--help` in the user's language, which are
       English for now.
-- [ ] The launcher showing applications by their names in the user's
-      language, as their desktop entries give them (`Name[pl]`), which it
-      reads only in English now.
+- [x] The launcher showing applications by their names in the user's
+      language, as their desktop entries give them (`Name[pl]`), and what
+      they say of themselves (`Comment[pl]`), matched by the locale as the
+      Desktop Entry Specification matches it. A name is found by what is
+      shown; the English one, and the names the portal gives the programs
+      that ask it for something, wait for the items they belong to.
 - [ ] Someone who speaks Polish reads its files, and becomes their owner
       in `CODEOWNERS`.
 - [ ] A guide for someone who has just logged in for the first time, and

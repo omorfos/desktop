@@ -37,6 +37,59 @@ pub fn fields(entry: &str) -> impl Iterator<Item = (&str, &str)> {
     })
 }
 
+/// The locales a key's translations are looked for by, best first, for
+/// the locales `asked` in order, as the specification matches them:
+/// `sr_RS.UTF-8@latin` by `sr_RS@latin`, `sr_RS`, `sr@latin` and `sr`,
+/// the encoding never counting.
+#[must_use]
+pub fn locales(asked: &[String]) -> Vec<String> {
+    let mut locales: Vec<String> = Vec::new();
+    for named in asked {
+        let (named, modifier) = named
+            .split_once('@')
+            .map_or((named.as_str(), None), |(named, modifier)| {
+                (named, Some(modifier))
+            });
+        let named = named.split('.').next().unwrap_or_default();
+        let (language, country) = named
+            .split_once('_')
+            .map_or((named, None), |(language, country)| {
+                (language, Some(country))
+            });
+        let country = country.map(|country| format!("{language}_{country}"));
+        let forms = [
+            country
+                .as_ref()
+                .zip(modifier)
+                .map(|(country, modifier)| format!("{country}@{modifier}")),
+            country,
+            modifier.map(|modifier| format!("{language}@{modifier}")),
+            Some(language.to_owned()),
+        ];
+        for form in forms.into_iter().flatten() {
+            if !locales.contains(&form) {
+                locales.push(form);
+            }
+        }
+    }
+    locales
+}
+
+/// How well the key `field` of an entry gives `key` for `locales` (see
+/// [`locales`]): where among them its locale stands, as `Name[pl]` gives
+/// `Name` for `pl`, or after all of them for `key` itself, untranslated.
+/// Nothing for another key, or a locale not among them. The lower, the
+/// better.
+#[must_use]
+pub fn fit(field: &str, key: &str, locales: &[String]) -> Option<usize> {
+    let rest = field.strip_prefix(key)?;
+    if rest.is_empty() {
+        return Some(locales.len());
+    }
+    let locale = rest.strip_prefix('[')?.strip_suffix(']')?;
+    locales.iter().position(|named| named == locale)
+}
+
 /// The items of a list such as `OnlyShowIn`, written apart by `;`.
 pub fn list(value: &str) -> impl Iterator<Item = &str> {
     value
@@ -106,6 +159,37 @@ mod tests {
         );
         let stray = "Name=Stray\n[Other]\nName=Other\n";
         assert_eq!(fields(stray).count(), 0, "nothing outside the group counts");
+    }
+
+    fn named(locales: &[&str]) -> Vec<String> {
+        locales.iter().map(|locale| (*locale).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_locale_is_matched_as_the_specification_has_it_the_encoding_never_counting() {
+        assert_eq!(
+            locales(&named(&["sr_RS.UTF-8@latin"])),
+            named(&["sr_RS@latin", "sr_RS", "sr@latin", "sr"])
+        );
+        assert_eq!(
+            locales(&named(&["pl_PL.UTF-8", "pl", "en"])),
+            named(&["pl_PL", "pl", "en"]),
+            "a locale already listed is not listed again"
+        );
+        assert_eq!(locales(&named(&["de@euro"])), named(&["de@euro", "de"]));
+        assert_eq!(locales(&[]), named(&[]));
+    }
+
+    #[test]
+    fn a_key_is_given_best_by_the_first_locale_it_is_translated_into_and_last_by_itself() {
+        let polish = named(&["pl_PL", "pl"]);
+        assert_eq!(fit("Name[pl_PL]", "Name", &polish), Some(0));
+        assert_eq!(fit("Name[pl]", "Name", &polish), Some(1));
+        assert_eq!(fit("Name", "Name", &polish), Some(2));
+        assert_eq!(fit("Name[de]", "Name", &polish), None);
+        assert_eq!(fit("GenericName[pl]", "Name", &polish), None);
+        assert_eq!(fit("Names", "Name", &polish), None);
+        assert_eq!(fit("Name[pl", "Name", &polish), None);
     }
 
     #[test]

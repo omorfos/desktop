@@ -8,8 +8,11 @@ Escape closes the launcher. A click on a program starts it too, and a
 click anywhere beside the launcher closes it.
 
 The programs are those with a desktop entry installed, in
-`~/.local/share/applications` and the system's `applications` directories.
-One that needs a terminal is started in `foot`.
+`~/.local/share/applications` and the system's `applications` directories,
+by the names their entries give them in the language the session is in
+(`LANGUAGE`, or else `LC_ALL`, `LC_MESSAGES` or `LANG`), or in English
+where an entry has none in it. One that needs a terminal is started in
+`foot`.
 
 It shows names alone unless `config.yaml` asks for more:
 

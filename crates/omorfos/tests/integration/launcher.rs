@@ -683,12 +683,14 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
         .serve(socket, omorfos::Roles::OVERLAY)
         .unwrap();
     let ipc = session.listen();
-    // One program is installed, which leaves a mark.
+    // One program is installed, which leaves a mark, named in the
+    // language the session asks for as well as in English.
     let applications = runtime.join("data/applications");
     std::fs::create_dir_all(&applications).unwrap();
     let marker = runtime.join("started");
     let entry = format!(
-        "[Desktop Entry]\nType=Application\nName=Marker\nExec=sh -c \"printf x > '{}'\"\n",
+        "[Desktop Entry]\nType=Application\nName=Marker\nName[pl]=Znacznik\n\
+         Exec=sh -c \"printf x > '{}'\"\n",
         marker.display()
     );
     std::fs::write(applications.join("marker.desktop"), entry).unwrap();
@@ -700,6 +702,7 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
         ("XDG_CONFIG_HOME", runtime.clone().into_os_string()),
         ("XDG_DATA_HOME", runtime.join("data").into_os_string()),
         ("XDG_DATA_DIRS", runtime.join("none").into_os_string()),
+        ("LANG", OsString::from("pl_PL.UTF-8")),
     ];
     let launcher = std::thread::spawn(move || {
         let variable = |name: &str| {

@@ -42,8 +42,9 @@ pub const ABOUT: About = About {
 /// that this can be used and tested without touching the environment. The
 /// Wayland socket is `WAYLAND_DISPLAY` in `XDG_RUNTIME_DIR`; the
 /// compositor's own socket and the configuration directory are found as
-/// `omorfosctl` and the compositor find them; and programs are looked for
-/// where `XDG_DATA_HOME` and `XDG_DATA_DIRS` say.
+/// `omorfosctl` and the compositor find them; programs are looked for
+/// where `XDG_DATA_HOME` and `XDG_DATA_DIRS` say, and named in the
+/// language `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG` asks for.
 ///
 /// # Errors
 ///
@@ -65,7 +66,9 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
     let icons = Icons::directories(data_home, home.as_deref(), data_dirs);
     match wayland.zip(socket).zip(config) {
         Some(((wayland, socket), config)) => {
-            let offered = (installed(&places), Icons::new(icons));
+            let asked = omorfos_i18n::asked(&|name| get(name)?.into_string().ok());
+            let locales = omorfos_entries::locales(&asked);
+            let offered = (installed(&places, &locales), Icons::new(icons));
             client::run(&wayland, &socket, &config, offered)
         }
         None => Err(
