@@ -8,4 +8,11 @@ fpr = "fpr"
 
 [files]
 # The time zone database's table of places, as it comes, abbreviations and all.
-extend-exclude = ["Cargo.lock", "crates/omorfos-config/src/zone1970.tab"]
+# And the translations of the programs' words, which are not English and are
+# read by those who speak their languages (ADR 79); the English is checked.
+extend-exclude = [
+    "Cargo.lock",
+    "crates/omorfos-config/src/zone1970.tab",
+    "i18n/*",
+    "!i18n/en",
+]

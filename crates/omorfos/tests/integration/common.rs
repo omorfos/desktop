@@ -257,7 +257,9 @@ impl Session {
     /// the temporary directory itself when `None`.
     pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
         let directory = directory.unwrap_or(config.path()).to_owned();
-        let inner = omorfos::Session::new(directory).unwrap();
+        let mut inner = omorfos::Session::new(directory).unwrap();
+        // In English, whatever language the machine running them is in.
+        inner.compositor_mut().set_languages(&[]);
         let mut session = Self {
             inner,
             renderer: PixmanRenderer::new().unwrap(),

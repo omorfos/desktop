@@ -53,9 +53,16 @@ pub const SESSION: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/session.ftl"))],
 };
 
+/// The compositor's own words.
+pub const COMPOSITOR: Program = Program {
+    name: "compositor",
+    english: include_str!("../../../i18n/en/compositor.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/compositor.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.

@@ -1,5 +1,6 @@
 //! The compositor's state and its main operations.
 
+use omorfos_i18n::{COMPOSITOR, Value, Words};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::error::Error;
@@ -359,6 +360,8 @@ pub struct Compositor {
     /// How the screens stand for now, as the display key has them.
     pub(crate) interim: Interim,
     pub(crate) text: Text,
+    /// What it says, in the user's language (ADR 79).
+    pub(crate) words: Words,
 
     pub(crate) store: Store,
     watcher: Option<Watcher>,
@@ -494,7 +497,6 @@ impl Compositor {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display);
         let layer_shell = WlrLayerShellState::new_with_filter::<Self, _>(&display, Self::outside);
         let data_device = DataDeviceState::new::<Self>(&display);
-        let primary_selection = PrimarySelectionState::new::<Self>(&display);
         let foreign_toplevels =
             ForeignToplevelListState::new_with_filter::<Self>(&display, Self::lists);
         let mut seats = SeatState::new();
@@ -506,6 +508,7 @@ impl Compositor {
             .map(|keyboard| {
                 let mut compositor = Self {
                     _surfaces: Offered::new(&display),
+                    primary_selection: PrimarySelectionState::new::<Self>(&display),
                     _sandboxes: SecurityContextState::new::<Self, _>(&display, Self::outside),
                     _cursor_shapes: CursorShapeManagerState::new::<Self>(&display),
                     capture: Capture::offer(&display),
@@ -533,7 +536,6 @@ impl Compositor {
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
-                    primary_selection,
                     foreign_toplevels,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
@@ -547,6 +549,7 @@ impl Compositor {
                     cards: Cards::default(),
                     interim: Interim::default(),
                     text: Text::new(),
+                    words: Words::of(&COMPOSITOR),
                     store,
                     watcher,
                     debouncer: Debouncer::new(RELOAD_DELAY),
@@ -1306,6 +1309,13 @@ impl Compositor {
         self.tell_relay();
     }
 
+    /// Has it say what it says in the first of `languages`, by their codes,
+    /// that it has words in, or in English: as the environment asked when
+    /// it started, unless told otherwise, as tests do.
+    pub fn set_languages(&mut self, languages: &[String]) {
+        self.words = Words::in_languages(&COMPOSITOR, languages);
+    }
+
     // --- Configuration -------------------------------------------------------
 
     /// Reads the configuration again and applies it.
@@ -1506,8 +1516,9 @@ impl Compositor {
         // Each says what choosing it does, the same whichever way things
         // are; those that turn something on and off are ticked while it is.
         let on = self.toggled();
-        let entry = |label: &str, action: Action| Item::Entry {
-            label: label.to_owned(),
+        let say = |name: &str| self.words.say(name, &[]);
+        let entry = |name: &str, action: Action| Item::Entry {
+            label: say(name),
             mark: bridge::mark(&action, on),
             action,
         };
@@ -1528,36 +1539,40 @@ impl Compositor {
         let joinable =
             |place: &Place| place.room && !own.is_some_and(|id| place.tiles.contains(&id));
         let join = places().filter(joinable).map(|place| Item::Entry {
-            label: format!("Beside {}", self.workspace_name(&place)),
+            label: {
+                let workspace = self.workspace_name(&place);
+                self.words
+                    .say("beside", &[("workspace", Value::Words(&workspace))])
+            },
             action: Action::JoinWorkspace(place.id.get()),
             mark: Mark::Blank,
         });
         let send = send.chain(join).chain([
             Item::Separator,
-            entry("New workspace", Action::MoveToNewWorkspace),
+            entry("new-workspace", Action::MoveToNewWorkspace),
         ]);
         let items = vec![
-            entry("Close", Action::Close),
-            entry("Maximize", Action::Maximize),
-            entry("Minimize", Action::Minimize),
-            entry("Fullscreen", Action::Fullscreen),
+            entry("close", Action::Close),
+            entry("maximize", Action::Maximize),
+            entry("minimize", Action::Minimize),
+            entry("fullscreen", Action::Fullscreen),
             Item::Submenu {
-                label: "Tile".to_owned(),
+                label: say("tile"),
                 items: vec![
-                    entry("Left half", Action::Tile(Half::Left)),
-                    entry("Right half", Action::Tile(Half::Right)),
-                    entry("Top half", Action::Tile(Half::Top)),
-                    entry("Bottom half", Action::Tile(Half::Bottom)),
+                    entry("left-half", Action::Tile(Half::Left)),
+                    entry("right-half", Action::Tile(Half::Right)),
+                    entry("top-half", Action::Tile(Half::Top)),
+                    entry("bottom-half", Action::Tile(Half::Bottom)),
                 ],
                 mark: Mark::Sign(Sign::Tile),
             },
             Item::Separator,
-            entry("Shade", Action::Shade),
-            entry("Keep above", Action::KeepAbove),
-            entry("Show on every workspace", Action::Stick),
+            entry("shade", Action::Shade),
+            entry("keep-above", Action::KeepAbove),
+            entry("stick", Action::Stick),
             Item::Separator,
             Item::Submenu {
-                label: "Send to workspace".to_owned(),
+                label: say("send"),
                 items: send.collect(),
                 mark: Mark::Sign(Sign::Send),
             },

@@ -83,6 +83,8 @@ assets = [
 ]
 
 [dependencies]
+# What it says, in the user's language (ADR 79).
+omorfos-i18n = { path = "../omorfos-i18n" }
 cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash", "fontconfig"] }
 omorfos-config = { path = "../omorfos-config" }
 # Already in the tree through the configuration. Hears of the programs that

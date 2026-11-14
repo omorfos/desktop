@@ -5,6 +5,7 @@
 //! the window in that part. A click on the button itself still makes the
 //! window fullscreen. See `docs/adr/0039-windows-sharing-a-workspace.md`.
 
+use omorfos_i18n::{Value, Words};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -35,46 +36,52 @@ const CAPTION: u32 = 22;
 /// window and not lost in a titlebar of its own colour.
 pub(crate) const ARROW: u32 = 6;
 
-/// What each arrangement is called, and each of its parts, in the order
-/// of [`Arrangement::ALL`] and of the parts.
+/// The names of the messages of what each arrangement is called, and of
+/// where in it each of its parts is, in the order of [`Arrangement::ALL`]
+/// and of the parts.
 const NAMES: [(&str, &[&str]); 7] = [
-    ("Two side by side", &["on the left", "on the right"]),
-    ("One above the other", &["at the top", "at the bottom"]),
+    ("two-side-by-side", &["on-the-left", "on-the-right"]),
+    ("one-above-the-other", &["at-the-top", "at-the-bottom"]),
     (
-        "One beside two",
-        &["on the left", "at the top right", "at the bottom right"],
+        "one-beside-two",
+        &["on-the-left", "at-the-top-right", "at-the-bottom-right"],
     ),
     (
-        "Two beside one",
-        &["at the top left", "at the bottom left", "on the right"],
+        "two-beside-one",
+        &["at-the-top-left", "at-the-bottom-left", "on-the-right"],
     ),
     (
-        "One above two",
-        &["at the top", "at the bottom left", "at the bottom right"],
+        "one-above-two",
+        &["at-the-top", "at-the-bottom-left", "at-the-bottom-right"],
     ),
     (
-        "Two above one",
-        &["at the top left", "at the top right", "at the bottom"],
+        "two-above-one",
+        &["at-the-top-left", "at-the-top-right", "at-the-bottom"],
     ),
     (
-        "Four quarters",
+        "four-quarters",
         &[
-            "at the top left",
-            "at the bottom left",
-            "at the top right",
-            "at the bottom right",
+            "at-the-top-left",
+            "at-the-bottom-left",
+            "at-the-top-right",
+            "at-the-bottom-right",
         ],
     ),
 ];
 
-/// What the words under the pictures say: what the part under the pointer
-/// is, or what the pictures are for.
-fn caption(picked: Option<(usize, usize)>) -> String {
+/// What the words under the pictures say, as `words` says it: what the
+/// part under the pointer is, or what the pictures are for.
+fn caption(words: &Words, picked: Option<(usize, usize)>) -> String {
     let named = picked.map(|(arrangement, part)| {
         let (name, parts) = NAMES[arrangement];
-        format!("{name}: this window {}", parts[part])
+        let (name, part) = (words.say(name, &[]), words.say(parts[part], &[]));
+        let given = [
+            ("arrangement", Value::Words(&name)),
+            ("part", Value::Words(&part)),
+        ];
+        words.say("placed", &given)
     });
-    named.unwrap_or_else(|| "Choose where this window goes".to_owned())
+    named.unwrap_or_else(|| words.say("choose-place", &[]))
 }
 
 /// The pictures while they are up: whose, where, and which part of which
@@ -145,7 +152,7 @@ fn size() -> DomainSize {
 /// they belong to. The arrow stands [`ARROW`] above the rest, in the room
 /// left between them and the titlebar.
 fn paint(
-    text: &mut Text,
+    (text, said): (&mut Text, &Words),
     theme: &Theme,
     scale: Scale,
     (picked, arrow): (Option<(usize, usize)>, u32),
@@ -185,7 +192,7 @@ fn paint(
     let under = (PICTURE.1 + 2 * PAD).cast_signed() + down;
     let room = size.width.saturating_sub(2 * PAD);
     let line = (PAD.cast_signed(), under - 4, room, CAPTION);
-    text.draw(&mut canvas, &caption(picked), line, words, font);
+    text.draw(&mut canvas, &caption(said, picked), line, words, font);
     canvas
 }
 
@@ -219,7 +226,7 @@ impl Compositor {
         let scale = self.pointer_scale();
         let config = Arc::clone(self.store.current());
         let theme = &config.theme;
-        let (text, shades) = (&mut self.text, &mut self.animation.shades);
+        let (text, shades, said) = (&mut self.text, &mut self.animation.shades, &self.words);
         self.hover.palette.shown = wanted.map(|(window, area, arrow, picked)| {
             // Painted again only if something about them has changed.
             let same = |shown: &Shown| {
@@ -247,7 +254,7 @@ impl Compositor {
                     picked,
                     arrow,
                     look: (theme.clone(), scale),
-                    pixels: Painted::new(&paint(text, theme, scale, (picked, arrow))),
+                    pixels: Painted::new(&paint((text, said), theme, scale, (picked, arrow))),
                     shadow: shades.cast(&ground, scale, under, had),
                 }
             })

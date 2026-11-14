@@ -71,6 +71,8 @@ at a time.
   then says what the English used to until it is read again.
 - What a program says in a test is its English, unless the test asks for
   another language.
+- `typos`, which checks English, passes over the translations, which
+  are read by those who speak their languages; the English is checked.
 - PAM's modules speak only English to the lock screen's helper: their
   translations are used once a process has set its locale, which from
   Rust needs `unsafe`, and pam_u2f has none. What the fingerprint reader

@@ -1878,10 +1878,15 @@ Reaching people:
 - [x] `omorfos-session`'s notices through `omorfos-i18n`, in English and
       Polish: the volume, the microphone and the brightness, the radios and
       aeroplane mode, and a machine that woke unlocked.
-- [ ] Every other program's words through `omorfos-i18n`, a program at a
-      time: the compositor's notices, the menu and About; and the manual
-      pages and `--help`, which are English for now. The notifications
-      program says nothing of its own but what programs send it.
+- [x] The compositor's window menu, the pictures of where a window may
+      go, and the question whether to keep the screens as the display key
+      has them, through `omorfos-i18n`, in English and Polish.
+- [ ] The rest of the compositor's words through `omorfos-i18n`: its
+      notices, which it says in lower case as sentences of its own, About,
+      the list of problems, and the built-in root menu's labels, which are
+      the configuration's defaults; and the manual pages and `--help`,
+      which are English for now. The notifications program says nothing of
+      its own but what programs send it.
 - [ ] The launcher showing applications by their names in the user's
       language, as their desktop entries give them (`Name[pl]`), which it
       reads only in English now.

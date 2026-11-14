@@ -7,6 +7,7 @@
 
 use omorfos_config::{Color, Edges, Font, Line, Part, State, States, Style, Theme};
 use omorfos_core::{Button, Decoration, Item, Mark, Menu, Panel, SwitcherLayout};
+use omorfos_i18n::{Value, Words};
 use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
@@ -640,16 +641,16 @@ pub(crate) fn about_copy(
 /// saying what that is, and how many seconds are `left` before they go
 /// back as they were.
 pub(crate) fn keep_screens(
-    text: &mut Text,
+    (text, words): (&mut Text, &Words),
     theme: &Theme,
     (what, left): (&str, u64),
     scale: Scale,
 ) -> Canvas {
-    let seconds = if left == 1 { "second" } else { "seconds" };
+    let left = i64::try_from(left).unwrap_or(i64::MAX);
     let lines = [
         what.to_owned(),
-        "Keep the screens like this?".to_owned(),
-        format!("Enter keeps them. Escape, or {left} {seconds}, puts them back."),
+        words.say("keep-screens", &[]),
+        words.say("keep-or-back", &[("left", Value::Number(left))]),
     ];
     let style = theme.style(Part::Notice, States::NONE);
     let edges = style.inset();

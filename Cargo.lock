@@ -1915,6 +1915,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-core",
  "omorfos-hold",
+ "omorfos-i18n",
  "omorfos-icons",
  "omorfos-ipc",
  "omorfos-journal",

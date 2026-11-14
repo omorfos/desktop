@@ -7,6 +7,7 @@
 //! screens plugged in when it was tried, and the configuration's way comes
 //! back as soon as another is plugged in or one taken out.
 
+use omorfos_i18n::{Value, Words};
 use std::time::{Duration, Instant};
 
 use omorfos_config::{NamedOutput, Outputs, Rotation, Theme};
@@ -32,13 +33,13 @@ enum Way {
 }
 
 impl Way {
-    /// What it is, said to the user, with `first` the screen that comes
-    /// first.
-    fn described(&self, first: &str) -> String {
+    /// What it is, said to the user in `words`, with `first` the screen
+    /// that comes first.
+    fn described(&self, words: &Words, first: &str) -> String {
         match self {
-            Self::Configured => "As config.yaml has them".to_owned(),
-            Self::Mirrored => format!("Mirrored: every screen shows what {first} shows"),
-            Self::Alone(alone) => format!("Only {alone}: the others are off"),
+            Self::Configured => words.say("screens-configured", &[]),
+            Self::Mirrored => words.say("screens-mirrored", &[("first", Value::Words(first))]),
+            Self::Alone(alone) => words.say("screens-alone", &[("alone", Value::Words(alone))]),
         }
     }
 }
@@ -142,9 +143,7 @@ impl Compositor {
     pub(crate) fn next_screens(&mut self) {
         let plugged: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
         if plugged.len() < 2 {
-            self.interim
-                .said
-                .push("There is only one screen, so it stands only one way");
+            self.interim.said.push("only-one-screen");
             return;
         }
         let names = sorted(plugged.clone());
@@ -194,9 +193,9 @@ impl Compositor {
             // The configuration's way is kept by keeping no other, so that
             // a change to the configuration is followed again.
             self.interim.kept = tried.filter(|stood| stood.way != Way::Configured);
-            self.interim.said.push("The screens are kept as they are");
+            self.interim.said.push("screens-kept");
         } else {
-            self.interim.said.push("The screens are back as they were");
+            self.interim.said.push("screens-back");
         }
         self.apply_scale();
     }
@@ -210,7 +209,8 @@ impl Compositor {
             self.answer_screens(false);
         }
         for said in std::mem::take(&mut self.interim.said) {
-            self.happened(said, now);
+            let said = self.words.say(said, &[]);
+            self.happened(&said, now);
         }
         // Each whole second or part of one left is said as one.
         let left = until.map_or(0, |until| {
@@ -229,7 +229,7 @@ impl Compositor {
             return;
         };
         let first = tried.order.first().map_or("", String::as_str);
-        let what = tried.way.described(first);
+        let what = tried.way.described(&self.words, first);
         let theme = self.config().theme.clone();
         let mut prompts = Vec::new();
         for head in &self.heads {
@@ -244,7 +244,8 @@ impl Compositor {
             let prompt = known.map(|at| had.swap_remove(at));
             let prompt = prompt.unwrap_or_else(|| {
                 let asked = (what.as_str(), left);
-                let canvas = paint::keep_screens(&mut self.text, &theme, asked, head.scale);
+                let canvas =
+                    paint::keep_screens((&mut self.text, &self.words), &theme, asked, head.scale);
                 let (width, height) = canvas.units();
                 let area = head.area();
                 let middle = |room: i32, length: u32| (room - length.cast_signed()) / 2;
@@ -312,17 +313,23 @@ mod tests {
 
     #[test]
     fn each_way_is_said_as_it_is() {
+        let english = Words::in_languages(&omorfos_i18n::COMPOSITOR, &[]);
+        let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
         assert_eq!(
-            Way::Configured.described("eDP-1"),
+            Way::Mirrored.described(&polish, "eDP-1"),
+            "Lustrzane: każdy ekran pokazuje to, co eDP-1"
+        );
+        assert_eq!(
+            Way::Configured.described(&english, "eDP-1"),
             "As config.yaml has them"
         );
         assert_eq!(
-            Way::Mirrored.described("eDP-1"),
+            Way::Mirrored.described(&english, "eDP-1"),
             "Mirrored: every screen shows what eDP-1 shows"
         );
         let alone = Way::Alone("HDMI-A-1".to_owned());
         assert_eq!(
-            alone.described("eDP-1"),
+            alone.described(&english, "eDP-1"),
             "Only HDMI-A-1: the others are off"
         );
     }

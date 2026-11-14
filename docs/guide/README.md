@@ -14,8 +14,8 @@ program, as Cmd does on a Mac.
 
 The desktop speaks the language your session is in, as `LANG` says,
 where it has the words: English, and Polish for the panel, the lock
-screen, the boxes that ask for passwords and the notices of the volume,
-the brightness and the radios so far. The rest is in English until it is translated.
+screen, the boxes that ask for passwords, the notices of the volume,
+the brightness and the radios, and a window's menu so far. The rest is in English until it is translated.
 
 ## The keys that matter
 
