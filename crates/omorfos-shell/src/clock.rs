@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use jiff::Zoned;
+use jiff::civil::Date;
 
 /// The time now where the user is, as it reads on the bar, and how long
 /// until it reads differently.
@@ -33,6 +34,12 @@ fn reading(hour: i8, minute: i8, second: i8, millisecond: i16) -> (String, Durat
         format!("{hour:02}:{minute:02}"),
         Duration::from_millis(left),
     )
+}
+
+/// What day it is where the user is.
+#[must_use]
+pub fn today() -> Date {
+    Zoned::now().date()
 }
 
 #[cfg(test)]

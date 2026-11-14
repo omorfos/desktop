@@ -2214,10 +2214,13 @@ name = "omorfos-shell"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "omorfos-config",
  "omorfos-ui",
  "rustix 1.1.6",
  "wayland-backend",
  "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
  "xkbcommon",
 ]
 

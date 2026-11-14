@@ -23,3 +23,23 @@ radio = { $kind ->
 
 awake = Nie zasypia
 awake-until = Nie zasypia do { $at }
+
+january = Styczeń
+february = Luty
+march = Marzec
+april = Kwiecień
+may = Maj
+june = Czerwiec
+july = Lipiec
+august = Sierpień
+september = Wrzesień
+october = Październik
+november = Listopad
+december = Grudzień
+monday-short = Pn
+tuesday-short = Wt
+wednesday-short = Śr
+thursday-short = Cz
+friday-short = Pt
+saturday-short = So
+sunday-short = Nd

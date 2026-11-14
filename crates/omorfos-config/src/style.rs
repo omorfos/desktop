@@ -79,6 +79,22 @@ pub enum Part {
     Task,
     /// The time on the panel.
     Clock,
+    /// What hangs from a bar, as the month from the clock: a box drawn as
+    /// its program draws it, placed by the compositor.
+    Popover,
+    /// A row, a button or a heading in a popover, [`State::Hovered`]
+    /// under the pointer.
+    PopoverItem,
+    /// A day of the month a popover shows: [`State::Hovered`] under the
+    /// pointer, [`State::Focused`] in the week or the weekday of the day
+    /// that is, and [`State::Active`] today. Its height, or its
+    /// `min-width` if that is more, is how large a day is, and its margin
+    /// the room between days.
+    PopoverDay,
+    /// A day of the month before or after, filling the weeks the month
+    /// shown begins and ends in: in the same states as a
+    /// [`Part::PopoverDay`], and as large.
+    PopoverDayOutside,
     /// The launcher: the box that programs are picked from.
     Launcher,
     /// Where what is being looked for is typed in the launcher;
@@ -179,7 +195,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 55] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -202,6 +218,10 @@ impl Part {
         Self::Workspace,
         Self::Task,
         Self::Clock,
+        Self::Popover,
+        Self::PopoverItem,
+        Self::PopoverDay,
+        Self::PopoverDayOutside,
         Self::Launcher,
         Self::LauncherInput,
         Self::LauncherItem,
@@ -259,6 +279,10 @@ impl Part {
             Self::Workspace => "workspace",
             Self::Task => "task",
             Self::Clock => "clock",
+            Self::Popover => "popover",
+            Self::PopoverItem => "popover-item",
+            Self::PopoverDay => "popover-day",
+            Self::PopoverDayOutside => "popover-day-outside",
             Self::Launcher => "launcher",
             Self::LauncherInput => "launcher-input",
             Self::LauncherItem => "launcher-item",
@@ -795,6 +819,10 @@ mod tests {
                 "workspace",
                 "task",
                 "clock",
+                "popover",
+                "popover-item",
+                "popover-day",
+                "popover-day-outside",
                 "launcher",
                 "launcher-input",
                 "launcher-item",

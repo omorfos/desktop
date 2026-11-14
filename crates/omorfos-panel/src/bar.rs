@@ -17,8 +17,17 @@ enum Target {
     Awake,
     /// Which radios are off, which is only read.
     Radios,
-    /// Nothing: the clock is only read.
-    Nothing,
+    /// The clock, which opens the month.
+    Clock,
+}
+
+/// What a click on the bar comes to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Click {
+    /// The compositor is asked for this.
+    Ask(Request),
+    /// The month is opened, hanging from the button that is here.
+    Month(Area),
 }
 
 /// Something on the bar: a workspace, a window or the clock.
@@ -163,7 +172,7 @@ impl Bar {
                 }
             })
         };
-        let clock = ending(time, Target::Nothing);
+        let clock = ending(time, Target::Clock);
         let awake = ending(awake, Target::Awake);
         let radios = ending(radios, Target::Radios);
 
@@ -208,11 +217,12 @@ impl Bar {
         self.height
     }
 
-    /// What a click `x` units from the bar's left edge asks of the
-    /// compositor: to show the workspace or to bring up the window whose
-    /// button is there. Nothing where there is no button.
+    /// What a click `x` units from the bar's left edge comes to: the
+    /// compositor asked to show the workspace or to bring up the window
+    /// whose button is there, or the month opened under the clock. Nothing
+    /// where there is no button, or one that is only read.
     #[must_use]
-    pub fn click(&self, x: i32) -> Option<Request> {
+    pub fn click(&self, x: i32) -> Option<Click> {
         let mut items = self.items.iter();
         let item = items.find(|item| {
             let (left, _, width, _) = item.area;
@@ -222,16 +232,25 @@ impl Bar {
         match item.target {
             // The compositor switches workspace on the screen the pointer
             // is on, which for a click on this bar is this bar's screen.
-            Target::Workspace(number) => Some(Request::Perform {
+            Target::Workspace(number) => Some(Click::Ask(Request::Perform {
                 action: json!({ "workspace": number }),
-            }),
-            Target::Window(window) => Some(Request::Activate { window }),
+            })),
+            Target::Window(window) => Some(Click::Ask(Request::Activate { window })),
             // Asked again, it is let go.
-            Target::Awake => Some(Request::Perform {
+            Target::Awake => Some(Click::Ask(Request::Perform {
                 action: json!("stay_awake"),
-            }),
-            Target::Nothing | Target::Radios => None,
+            })),
+            Target::Clock => Some(Click::Month(item.area)),
+            Target::Radios => None,
         }
+    }
+
+    /// Where the clock is on the bar, if it is on it.
+    #[must_use]
+    pub fn clock(&self) -> Option<Area> {
+        let mut items = self.items.iter();
+        let clock = items.find(|item| item.target == Target::Clock);
+        clock.map(|item| item.area)
     }
 
     /// Draws the bar, with `scale` pixels to a unit of layout. A button
@@ -254,7 +273,7 @@ impl Bar {
             let key = match item.target {
                 Target::Workspace(number) => u64::from(number),
                 Target::Window(id) => id,
-                Target::Nothing => 0,
+                Target::Clock => 0,
                 Target::Awake => 1,
                 Target::Radios => 2,
             };
@@ -406,13 +425,33 @@ mod tests {
         }
     }
 
+    /// What a click `x` along `bar` asks of the compositor, if anything.
+    fn asked(bar: &Bar, x: i32) -> Option<Request> {
+        match bar.click(x) {
+            Some(Click::Ask(request)) => Some(request),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_click_on_the_clock_opens_the_month_under_it() {
+        let theme = Theme::default();
+        let times = ("14:05", "", "");
+        let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
+        let clock = bar.items.last().unwrap().area;
+        let x = clock.0 + 1;
+        assert_eq!(bar.click(x), Some(Click::Month(clock)));
+        assert_eq!(asked(&bar, x), None, "nothing is asked of the compositor");
+        assert_eq!(bar.clock(), Some(clock), "which is where it hangs");
+    }
+
     /// What a click asks for at each place along the bar from the left,
     /// with where each stretch begins. Stretches with no button are left
     /// out.
     fn stretches(bar: &Bar) -> Vec<(u32, Request)> {
         let mut stretches: Vec<(u32, Request)> = Vec::new();
         for x in 0..WIDTH {
-            let Some(request) = bar.click(x.cast_signed()) else {
+            let Some(request) = asked(bar, x.cast_signed()) else {
                 continue;
             };
             if stretches.last().map(|(_, last)| last) != Some(&request) {
@@ -480,9 +519,9 @@ mod tests {
     #[test]
     fn a_click_beside_the_buttons_asks_for_nothing() {
         let bar = bar(&state(), "left");
-        assert_eq!(bar.click(-1), None);
-        assert_eq!(bar.click(WIDTH.cast_signed() - 1), None, "past the last");
-        assert_eq!(bar.click(i32::MAX), None);
+        assert_eq!(asked(&bar, -1), None);
+        assert_eq!(asked(&bar, WIDTH.cast_signed() - 1), None, "past the last");
+        assert_eq!(asked(&bar, i32::MAX), None);
     }
 
     #[test]
@@ -546,8 +585,8 @@ mod tests {
             &Theme::default(),
             &mut Text::new(),
         );
-        assert_eq!(narrow.click(0), Some(workspace_request(1)));
-        let asked = (0..2000).filter_map(|x| narrow.click(x));
+        assert_eq!(asked(&narrow, 0), Some(workspace_request(1)));
+        let asked = (0..2000).filter_map(|x| asked(&narrow, x));
         assert!(
             asked
                 .into_iter()
@@ -649,7 +688,7 @@ mod tests {
         assert!(blank(WIDTH - PADDING..WIDTH));
         let last = (0..WIDTH)
             .rev()
-            .find(|x| bar.click(x.cast_signed()).is_some());
+            .find(|x| asked(&bar, x.cast_signed()).is_some());
         assert!(blank(last.unwrap() + 1..WIDTH - 100));
         // A longer time takes more room.
         let longer = timed(&state(), "left", "14:05:09 on a Saturday");
@@ -677,7 +716,7 @@ mod tests {
         let times = ("14:05", "Awake until 15:30", "Bluetooth off");
         let bar = Bar::new(&state(), "left", WIDTH, times, &theme, &mut Text::new());
         let clock = timed(&state(), "left", "14:05");
-        let ask = |bar: &Bar, x: u32| bar.click(x.cast_signed());
+        let ask = |bar: &Bar, x: u32| asked(bar, x.cast_signed());
 
         // Where the windows ended without it, it is now.
         let last = (0..WIDTH)
@@ -719,7 +758,7 @@ mod tests {
         let end = |bar: &Bar| {
             (0..WIDTH)
                 .rev()
-                .find(|x| bar.click(x.cast_signed()).is_some())
+                .find(|x| asked(bar, x.cast_signed()).is_some())
         };
         let (without, with) = (end(&without).unwrap(), end(&with).unwrap());
         assert!(without > WIDTH - 32, "they fill the bar: {without}");
@@ -755,7 +794,7 @@ mod tests {
     /// Where each stretch of the bar that asks for something begins and
     /// ends.
     fn spans(bar: &Bar) -> Vec<(u32, u32)> {
-        let asked = |x: &u32| bar.click(x.cast_signed());
+        let asked = |x: &u32| asked(bar, x.cast_signed());
         let starts = stretches(bar).into_iter().map(|(start, _)| start);
         let spans = starts.map(|start| {
             let request = asked(&start);
@@ -860,8 +899,11 @@ mod tests {
         let green = argb(Color::rgb(0, 255, 0));
         assert_eq!(canvas.at(WIDTH - 8, 1), green);
         assert_ne!(canvas.at(WIDTH - 7, 1), green, "its margin is the bar's");
-        // It is read, not clicked.
-        assert_eq!(bar.click((WIDTH - 20).cast_signed()), None);
+        // A click on it opens the month, and asks nothing of the compositor.
+        let x = (WIDTH - 20).cast_signed();
+        let clock = bar.items.last().unwrap().area;
+        assert_eq!(bar.click(x), Some(Click::Month(clock)));
+        assert_eq!(asked(&bar, x), None);
     }
 
     #[test]

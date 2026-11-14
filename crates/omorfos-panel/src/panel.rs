@@ -14,28 +14,39 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Store, Theme, Watcher};
 use omorfos_i18n::{PANEL, Value, Words};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Steady};
+use omorfos_shell::month::{self, Month};
+use omorfos_shell::popover::{Hanging, Popovers};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_client::{
+    Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_dispatch, delegate_noop,
+};
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
 };
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::Bar;
+use crate::{Bar, Click};
 
 /// Why the panel could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;
 
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
+
+/// Escape, and the arrows left and right, as Linux numbers keys, which is
+/// the same on every layout.
+const ESCAPE: u32 = 1;
+const LEFT: u32 = 105;
+const RIGHT: u32 = 106;
 
 /// The panel: a connection to the compositor as a Wayland client, two to
 /// its own socket, and a bar for each screen.
@@ -124,12 +135,19 @@ impl Panel {
             .and_then(|()| self.connection.flush().map_err(Failure::from))
     }
 
+    /// Says what day it is, which the month opens on: for whoever calls
+    /// [`Panel::turn`] to know, as the time is.
+    pub fn date(&mut self, today: month::Date) {
+        self.shell.today = today;
+    }
+
     /// Runs the panel, asleep until there is something to do, until it
     /// cannot go on. Returns why.
     pub fn serve(&mut self) -> Failure {
         let started = Instant::now();
         loop {
             let (time, changes) = omorfos_shell::clock::now();
+            self.date(omorfos_shell::clock::today());
             let now = started.elapsed();
             if let Err(failure) = self.turn(&time, now) {
                 return failure;
@@ -237,13 +255,24 @@ struct Shell {
     viewporter: Option<wp_viewporter::WpViewporter>,
     scales: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// The seat, which a popover takes the click that opens it from.
+    seat: Option<wl_seat::WlSeat>,
     screens: Vec<Screen>,
     /// The screen whose bar the pointer is over, and how far along it.
     over: Option<(u32, f64)>,
+    /// What hangs from a bar.
+    popovers: Popovers,
+    /// The month open, and the screen whose clock it hangs from.
+    month: Option<(u32, Month)>,
+    /// Where on the month the pointer is, while it is on it.
+    on_month: Option<(i32, i32)>,
     /// What the compositor last said of the session.
     state: State,
     /// What the clocks read.
     time: String,
+    /// What day it is, which the month opens on.
+    today: month::Date,
     /// What it says, in the user's language (ADR 79).
     words: Words,
     store: Store,
@@ -358,10 +387,16 @@ impl Shell {
             viewporter: None,
             scales: None,
             pointer: None,
+            keyboard: None,
+            seat: None,
             screens: Vec::new(),
             over: None,
+            popovers: Popovers::default(),
+            month: None,
+            on_month: None,
             state: State::default(),
             time: String::new(),
+            today: month::Date::default(),
             words: Words::of(&PANEL),
             store,
             text: Text::new(),
@@ -391,6 +426,10 @@ impl Shell {
 
     /// Takes the bars down, to be put up again as the theme now has them.
     fn rethemed(&mut self) {
+        // The month hangs from a bar, and goes before it: it opens again
+        // as large as the theme now makes it.
+        self.month = None;
+        self.popovers.close();
         let faces = self
             .screens
             .iter_mut()
@@ -423,26 +462,111 @@ impl Shell {
         })
     }
 
-    /// Asks the compositor for what the button under the pointer stands
-    /// for.
-    fn click(&mut self) {
-        let request = self.over.and_then(|(global, along)| {
+    /// Does what a click at `serial` on what is under the pointer comes
+    /// to: on the month, what it does there; on a bar, what its button
+    /// asks of the compositor, or the month opened under the clock, or
+    /// closed if it is open.
+    fn click(&mut self, serial: u32, handle: &QueueHandle<Self>) {
+        let theme = self.store.current().theme.clone();
+        if let Some((x, y)) = self.on_month {
+            let months = self.month.iter_mut();
+            self.stale |= months.fold(false, |turned, (_, month)| {
+                turned | month.click(x, y, &theme)
+            });
+            return;
+        }
+        let clicked = self.over.and_then(|(global, along)| {
             let screens = self.screens.iter();
             let screens = screens.filter(|screen| screen.global == global);
             let faces = screens.filter_map(|screen| screen.face.as_ref());
             let mut bars = faces.filter_map(|face| face.shown.as_ref());
-            bars.find_map(|(bar, ..)| bar.click(whole(along)))
+            let clicked = bars.find_map(|(bar, ..)| bar.click(whole(along)));
+            clicked.map(|clicked| (global, clicked))
         });
-        let now = self.now;
-        let sent = request.map_or(Ok(()), |request| self.commands.send(&request, now));
-        self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
+        match clicked {
+            Some((_, Click::Ask(request))) => {
+                let sent = self.commands.send(&request, self.now);
+                self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
+            }
+            Some((global, Click::Month(under))) => {
+                self.month_under(global, under, (serial, handle));
+            }
+            None => {}
+        }
+    }
+
+    /// Opens the month under the clock at `under` on the bar of `global`,
+    /// taking the click at `serial`; or, open, closes it.
+    fn month_under(
+        &mut self,
+        global: u32,
+        under: omorfos_ui::Area,
+        (serial, handle): (u32, &QueueHandle<Self>),
+    ) {
+        self.stale = true;
+        if self.month.take().is_some() {
+            self.popovers.close();
+            return;
+        }
+        let theme = &self.store.current().theme;
+        let month = Month::new(said(&self.words), self.today);
+        let screens = self.screens.iter();
+        let face = screens
+            .filter(|screen| screen.global == global)
+            .find_map(|screen| screen.face.as_ref());
+        let tools = self.compositor.as_ref().zip(self.viewporter.as_ref());
+        let opened =
+            face.zip(tools)
+                .zip(self.seat.as_ref())
+                .is_some_and(|((face, tools), seat)| {
+                    let hanging = Hanging {
+                        from: &face.layer,
+                        under,
+                        size: Month::size(theme),
+                        click: (seat, serial),
+                    };
+                    self.popovers.open(tools, hanging, handle)
+                });
+        self.month = opened.then_some((global, month));
+    }
+
+    /// Takes in where the pointer is on the month, while it is on it.
+    fn pointed(&mut self) {
+        let theme = &self.store.current().theme;
+        let (x, y) = self.on_month.unwrap_or((-1, -1));
+        let months = self.month.iter_mut();
+        self.stale |= months.fold(false, |changed, (_, month)| {
+            changed | month.point(x, y, theme)
+        });
+    }
+
+    /// Takes a key that was pressed, by Linux's number for it, while the
+    /// month has the keyboard: Escape closes it, and the arrows turn it.
+    fn press(&mut self, key: u32) {
+        self.stale = true;
+        if key == ESCAPE {
+            self.month = None;
+            self.popovers.close();
+        }
+        let turn = [(LEFT, false), (RIGHT, true)]
+            .into_iter()
+            .find(|(arrow, _)| *arrow == key);
+        let months = self.month.iter_mut();
+        months
+            .zip(turn)
+            .for_each(|((_, month), (_, after))| month.turn(after));
     }
 
     /// Puts a bar on every screen that has none, and draws those that no
     /// longer show what they should.
     fn show(&mut self, handle: &QueueHandle<Self>) -> io::Result<()> {
-        if !mem::take(&mut self.stale) {
+        let popover = self.popovers.changed();
+        if !mem::take(&mut self.stale) && !popover {
             return Ok(());
+        }
+        // Taken away by the compositor, at a click elsewhere.
+        if !self.popovers.is_open() {
+            self.month = None;
         }
         let globals = self.compositor.as_ref().zip(self.shm.as_ref());
         let globals = globals.zip(self.layers.as_ref());
@@ -469,13 +593,34 @@ impl Shell {
             theme: &self.store.current().theme,
             text: &mut self.text,
         };
+        let shm = shm.clone();
         let mut screens = self.screens.iter_mut();
-        screens.try_for_each(|screen| {
+        let drawn = screens.try_for_each(|screen| {
             let face = screen.face.take();
             let face = face.unwrap_or_else(|| Face::open(&tools, screen));
             let face = screen.face.insert(face);
             face.draw(&mut tools, &screen.name)
-        })
+        });
+        drawn.and_then(|()| self.show_month(&shm, handle))
+    }
+
+    /// Draws the month, if it is open, with as many pixels to a unit as its
+    /// screen has, under where its clock now is.
+    fn show_month(&mut self, shm: &wl_shm::WlShm, handle: &QueueHandle<Self>) -> io::Result<()> {
+        let theme = &self.store.current().theme;
+        let Some((global, month)) = &self.month else {
+            return Ok(());
+        };
+        let screens = self.screens.iter();
+        let face = screens
+            .filter(|screen| screen.global == *global)
+            .find_map(|screen| screen.face.as_ref());
+        let shown = face.and_then(|face| face.shown.as_ref());
+        let clock = shown.and_then(|(bar, ..)| bar.clock());
+        self.popovers.hang(clock, handle);
+        let scale = face.map_or(Scale::ONE, |face| face.scale);
+        let canvas = month.paint(&mut self.text, theme, scale);
+        self.popovers.draw(shm, &canvas, handle)
     }
 }
 
@@ -593,8 +738,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
                 "wp_fractional_scale_manager_v1" => {
                     shell.scales = Some(registry.bind(name, 1, handle, ()));
                 }
-                "wl_seat" => {
-                    let _: wl_seat::WlSeat = registry.bind(name, version.min(5), handle, ());
+                "wl_seat" => shell.seat = Some(registry.bind(name, version.min(5), handle, ())),
+                // The third version can place a popover anew.
+                "xdg_wm_base" => {
+                    shell
+                        .popovers
+                        .offered(registry.bind(name, version.min(3), handle, ()));
                 }
                 "wl_output" => shell.screens.push(Screen {
                     global: name,
@@ -684,6 +833,11 @@ impl Dispatch<wl_seat::WlSeat, ()> for Shell {
             let pointing = capabilities.contains(wl_seat::Capability::Pointer);
             let pointer = shell.pointer.take();
             shell.pointer = pointer.or_else(|| pointing.then(|| seat.get_pointer(handle, ())));
+            // The keyboard is the month's while it is open, and nothing's
+            // else of the panel's.
+            let typing = capabilities.contains(wl_seat::Capability::Keyboard);
+            let keyboard = shell.keyboard.take();
+            shell.keyboard = keyboard.or_else(|| typing.then(|| seat.get_keyboard(handle, ())));
         }
     }
 }
@@ -695,11 +849,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         event: wl_pointer::Event,
         (): &(),
         _: &Connection,
-        _: &QueueHandle<Self>,
+        handle: &QueueHandle<Self>,
     ) {
         match event {
             wl_pointer::Event::Enter {
-                surface, surface_x, ..
+                surface,
+                surface_x,
+                surface_y,
+                ..
             } => {
                 let mut screens = shell.screens.iter();
                 let entered = screens.find(|screen| {
@@ -707,20 +864,71 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                     face.is_some_and(|face| face.surface == surface)
                 });
                 shell.over = entered.map(|screen| (screen.global, surface_x));
+                let on = shell.popovers.is(&surface);
+                shell.on_month = on.then(|| (whole(surface_x), whole(surface_y)));
+                shell.pointed();
             }
-            wl_pointer::Event::Motion { surface_x, .. } => {
+            wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
                 shell.over = shell.over.map(|(global, _)| (global, surface_x));
+                let on = shell.on_month.map(|_| (whole(surface_x), whole(surface_y)));
+                shell.on_month = on;
+                shell.pointed();
             }
-            wl_pointer::Event::Leave { .. } => shell.over = None,
+            wl_pointer::Event::Leave { .. } => {
+                shell.over = None;
+                shell.on_month = None;
+                shell.pointed();
+            }
             wl_pointer::Event::Button {
+                serial,
                 button: LEFT_BUTTON,
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
-            } => shell.click(),
+            } => shell.click(serial, handle),
             _ => {}
         }
     }
 }
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Only what a key is matters, by its number: no layout is needed
+        // for Escape and the arrows, and the layout the compositor sends
+        // is let go of, closing it, with the event.
+        if let wl_keyboard::Event::Key {
+            key,
+            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+            ..
+        } = event
+        {
+            shell.press(key);
+        }
+    }
+}
+
+impl AsMut<Popovers> for Shell {
+    fn as_mut(&mut self) -> &mut Popovers {
+        &mut self.popovers
+    }
+}
+
+delegate_dispatch!(Shell: [xdg_surface::XdgSurface: ()] => Popovers);
+delegate_dispatch!(Shell: [xdg_popup::XdgPopup: ()] => Popovers);
+// What makes popovers says nothing but to be pinged, which omorfos does
+// not do to its components; a positioner says nothing at all.
+delegate_noop!(Shell: ignore xdg_wm_base::XdgWmBase);
+delegate_noop!(Shell: xdg_positioner::XdgPositioner);
 
 impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
     fn event(
@@ -745,6 +953,38 @@ delegate_noop!(Shell: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
 delegate_noop!(Shell: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
+
+/// What the month says, in the panel's words.
+fn said(words: &Words) -> month::Said {
+    let say = |name: &str| words.say(name, &[]);
+    month::Said {
+        months: [
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ]
+        .map(say),
+        weekdays: [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]
+        .map(|day| say(&format!("{day}-short"))),
+    }
+}
 
 #[cfg(test)]
 mod tests {

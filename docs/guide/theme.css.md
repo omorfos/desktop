@@ -26,7 +26,9 @@ away here; open it to see how a part is drawn before changing it.
   --surface-raised: #243364; /* a field, and a row under the pointer */
   --text: #e6eaf5;
   --text-dim: #9aa4c7;       /* what is beside the point */
+  --text-faint: #727b9c;     /* what is only there to fill, as other months' days */
   --border: #2b3a6b;         /* a hairline between or around surfaces */
+  --border-faint: #222e57;   /* fainter, as the lines between days */
   --border-strong: #7482b3;  /* the edge of what takes input */
   --accent: #22d3ee;         /* what has focus, and what is picked out */
   --on-accent: #0c1226;      /* text on the accent */
@@ -251,6 +253,44 @@ clock {
   padding: 0 12px;
   color: var(--text);
 }
+
+/* What hangs from a bar, as the month from the clock: a box as a menu's,
+ * and its rows and buttons. The days of a month are a faint grid, with
+ * room between them; the week and the weekday of the day under the
+ * pointer stand out more, that day the most, and today is in the accent.
+ * The days of the months beside it, filling its weeks, are faded. */
+popover {
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+popover-item {
+  color: var(--text);
+  border-radius: 6px;
+}
+popover-item:hover { background: var(--surface-raised); }
+popover-day, popover-day-outside {
+  height: 32px;
+  min-width: 32px;
+  margin: 2px;
+  color: var(--text);
+  border: 1px solid var(--border-faint);
+  border-radius: 6px;
+}
+popover-day-outside { color: var(--text-faint); }
+popover-day:focus, popover-day-outside:focus { border-color: var(--border); }
+popover-day:hover, popover-day-outside:hover {
+  background: var(--surface-raised);
+  border: 2px solid var(--accent);
+}
+popover-day:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+popover-day:active:hover { border-color: var(--text); }
 
 /* The launcher: where a name is typed, and the programs that match. The
  * launcher is as wide as its min-width. */
@@ -503,7 +543,9 @@ light:
   --surface-raised: #ffffff;
   --text: #0c1226;
   --text-dim: #5c6888;
+  --text-faint: #8d95a8;
   --border: #e4ddc4;
+  --border-faint: #efead7;
   --border-strong: #7a8099;
   --danger: #c4303a;
   --warning: #8a5a00;
@@ -580,7 +622,7 @@ workspace:active, task:active { border-bottom: none; }
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
 `menu-separator`, `menu-sign`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
-`clock`, `launcher`, `launcher-input`, `launcher-item`,
+`clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
 `question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
@@ -651,8 +693,8 @@ is measured to the outside of its border.
 | `outline-color`, `outline-width`, `outline-offset` | a color; `0` to `16px`; `0` to `16px` | how far out the outline is, with nothing drawn between |
 | `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
-| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input` and `launcher-item` |
-| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
+| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item` and `popover-day` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
 | `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu-item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name`. The variable `--font-monospace`, names as `font-family` takes them, is the monospaced font programs are told for code and terminals, at the same size, `JetBrains Mono, monospace 11`, through the settings portal's `monospace-font-name`; X11 has no setting for it |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |

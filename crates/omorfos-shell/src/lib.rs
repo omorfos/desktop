@@ -15,6 +15,8 @@ use std::path::Path;
 
 pub mod clock;
 pub mod ended;
+pub mod month;
+pub mod popover;
 pub mod said;
 pub mod shake;
 pub mod typing;

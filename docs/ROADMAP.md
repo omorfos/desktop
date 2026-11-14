@@ -1481,8 +1481,14 @@ way (ADR 28). The panel that is there today goes when both are done.
 
 What both need first:
 
-- [ ] Menus and small windows that hang from a bar: a popover with
-      content, placed by the compositor, closed by a click elsewhere.
+- [x] Menus and small windows that hang from a bar: a popover with
+      content, placed by the compositor, closed by a click elsewhere
+      (`omorfos_shell::popover`, an `xdg_popup` on the bar's layer surface,
+      which takes the click that opened it); drawn as the theme's
+      `popover` and `popover-item` say; resized as what is in it changes.
+      The compositor keeps every popup on its screen as far as it asks,
+      turned over or slid, as a bar's along the bottom is turned to hang
+      above it, and as a program's menu near an edge of the screen is.
 - [ ] Tooltips.
 - [x] Icons from the icon theme in use, at any size and scale: a theme's
       folders as its `index.theme` lists them (`Directories` and
@@ -1507,7 +1513,13 @@ a setting.
       Down, Lock Screen, each with its key beside it. Entries whose
       program is not there yet are left out, not shown and dead.
 - [ ] The clock, by default as "Wed Apr 1 9:41 AM", its format a setting.
-      A click opens a month, walked a month at a time.
+      A click opens a month, walked a month at a time: done in the panel
+      (`omorfos_shell::month`, in English and Polish), to move to the bar
+      with the clock.
+- [ ] Known gaps in the month: its weeks begin on Monday, where the
+      locale may begin them on Sunday or Saturday; it has no week
+      numbers, and no events; and a theme saved while it is open closes
+      it, rather than its being drawn anew as the bar is.
 - [ ] The system tray (`StatusNotifierItem`), for the programs that put
       an icon there.
 - [ ] The battery, if there is one: how full, and on a click how long to

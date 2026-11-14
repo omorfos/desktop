@@ -17,7 +17,7 @@ use std::time::Duration;
 use omorfos::{Input, Scale};
 use omorfos_config::{Color, Part, States, Theme};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Workspace, encode};
-use omorfos_panel::{Bar, Panel};
+use omorfos_panel::{Bar, Click, Panel};
 use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
@@ -115,7 +115,8 @@ fn button(session: &mut Session, request: &Request) -> i32 {
         &Theme::default(),
         &mut Text::new(),
     );
-    let found = (0..WIDTH).find(|x| bar.click(*x).as_ref() == Some(request));
+    let asks = |x: &i32| bar.click(*x) == Some(Click::Ask(request.clone()));
+    let found = (0..WIDTH).find(asks);
     // A little way in from its edge.
     found.unwrap() + 3
 }
@@ -747,4 +748,173 @@ fn the_panel_runs_by_itself_in_the_session_it_is_started_in() {
     drop(session);
     let failure = panel.join().unwrap();
     assert_ne!(failure.to_string(), "");
+}
+
+/// Where the clock is, at the right-hand end of the bar.
+fn on_the_clock() -> (i32, i32) {
+    (WIDTH - 20, HEIGHT - BAR / 2)
+}
+
+/// A panel on a session of four workspaces, on 14 November 2026, which
+/// has six weeks from Monday; settled.
+fn dated() -> (Session, Panel) {
+    let mut session = Session::with_workspaces();
+    let mut panel = panel(&mut session);
+    panel.date(omorfos_shell::month::Date::new(2026, 11, 14).unwrap());
+    settle(&mut session, &mut panel);
+    (session, panel)
+}
+
+/// Whether anything is drawn in the column `x` of the screen, `up` units
+/// above the bar.
+fn above_the_bar(session: &mut Session, x: i32, up: i32) -> bool {
+    session.draw().at(x, HEIGHT - BAR - up) != BACKGROUND
+}
+
+#[test]
+fn a_click_on_the_clock_opens_the_month_above_it_and_a_click_elsewhere_closes_it() {
+    let (mut session, mut panel) = dated();
+    assert!(!above_the_bar(&mut session, WIDTH - 100, 20));
+
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert!(
+        above_the_bar(&mut session, WIDTH - 100, 20),
+        "hung above the bar"
+    );
+
+    move_to(&mut session, 100, 100);
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert!(!above_the_bar(&mut session, WIDTH - 100, 20), "taken away");
+
+    // A click on the bar where there is no button opens nothing.
+    move_to(&mut session, WIDTH / 2, HEIGHT - BAR / 2);
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert!(!above_the_bar(&mut session, WIDTH - 100, 20));
+}
+
+/// Opens the month, by a click on the clock.
+fn open_month(session: &mut Session, panel: &mut Panel) {
+    let (x, y) = on_the_clock();
+    move_to(session, x, y);
+    click(session, LEFT);
+    settle(session, panel);
+}
+
+/// Presses and lets go of `code`.
+fn press(session: &mut Session, code: smithay::input::keyboard::Keycode) {
+    for pressed in [true, false] {
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+}
+
+#[test]
+fn escape_or_the_clock_again_closes_the_month() {
+    let (mut session, mut panel) = dated();
+    open_month(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, WIDTH - 100, 20));
+    press(&mut session, crate::common::key::ESCAPE);
+    settle(&mut session, &mut panel);
+    assert!(!above_the_bar(&mut session, WIDTH - 100, 20), "by Escape");
+
+    open_month(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, WIDTH - 100, 20));
+    open_month(&mut session, &mut panel);
+    assert!(
+        !above_the_bar(&mut session, WIDTH - 100, 20),
+        "by the clock again"
+    );
+}
+
+/// How large the month is in the default theme: six weeks under the
+/// heading and the days of the week, each row a day of 32 and the room of
+/// 2 round it, inside a padding and border of 9; and seven days across.
+const MONTH: (i32, i32) = (7 * 36 + 18, 8 * 36 + 18);
+
+#[test]
+fn the_arrows_turn_the_month_and_it_stays_as_large_with_the_arrows_where_they_are() {
+    let (wide, tall) = MONTH;
+    let (mut session, mut panel) = dated();
+    open_month(&mut session, &mut panel);
+    let x = WIDTH - 100;
+    assert!(above_the_bar(&mut session, x, tall - 4));
+    assert!(!above_the_bar(&mut session, x, tall + 4));
+
+    press(&mut session, crate::common::key::RIGHT);
+    settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, x, tall - 4), "December");
+    assert!(!above_the_bar(&mut session, x, tall + 4), "as tall");
+
+    press(&mut session, crate::common::key::LEFT);
+    settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, x, tall - 4), "November again");
+
+    // The arrow on the month, at its top left: the month is slid onto the
+    // screen, its right edge on the screen's.
+    let (left, top) = (WIDTH - wide, HEIGHT - BAR - tall);
+    let arrow = (left + 9 + 18, top + 9 + 18);
+    let before = session.draw().at(arrow.0 - 12, arrow.1);
+    move_to(&mut session, arrow.0 - 1, arrow.1);
+    move_to(&mut session, arrow.0, arrow.1);
+    settle(&mut session, &mut panel);
+    let lit = session.draw().at(arrow.0 - 12, arrow.1);
+    assert_ne!(lit, before, "lit under the pointer");
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, x, tall - 4), "October");
+    assert!(!above_the_bar(&mut session, x, tall + 4));
+    assert_eq!(
+        session.draw().at(arrow.0 - 12, arrow.1),
+        lit,
+        "the arrow still under the pointer"
+    );
+    move_to(&mut session, 100, 100);
+    settle(&mut session, &mut panel);
+}
+
+#[test]
+fn the_month_open_follows_its_clock_when_the_screen_narrows() {
+    let (wide, tall) = MONTH;
+    let (mut session, mut panel) = dated();
+    open_month(&mut session, &mut panel);
+    // Its right edge on the screen's, under the clock at the end of the bar.
+    let narrower = WIDTH - 200;
+    assert!(!above_the_bar(&mut session, narrower - wide + 10, tall / 2));
+    session.resize_screen((narrower, HEIGHT));
+    settle(&mut session, &mut panel);
+    assert!(
+        above_the_bar(&mut session, narrower - wide + 10, tall / 2),
+        "slid along with the clock"
+    );
+    assert!(!above_the_bar(&mut session, narrower - wide - 10, tall / 2));
+}
+
+#[test]
+fn a_theme_saved_while_the_month_is_open_closes_it_and_it_opens_again_as_the_theme_says() {
+    let (wide, tall) = MONTH;
+    let (mut session, mut panel) = dated();
+    open_month(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, WIDTH - 100, tall - 4));
+    assert!(!above_the_bar(&mut session, WIDTH - wide - 10, 20));
+    session.write_config(
+        "theme.css",
+        "popover-day, popover-day-outside { height: 40px; min-width: 40px; }\n",
+    );
+    let panel = RefCell::new(panel);
+    session.eventually(|session| {
+        settle(session, &mut panel.borrow_mut());
+        !above_the_bar(session, WIDTH - 100, 20)
+    });
+    // Days of 40, 44 apart with the room round them: eight more a row.
+    let mut panel = panel.into_inner();
+    open_month(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, WIDTH - wide - 10, 20));
+    assert!(above_the_bar(&mut session, WIDTH - 100, tall + 8 * 8 - 4));
+    assert!(!above_the_bar(&mut session, WIDTH - 100, tall + 8 * 8 + 4));
 }

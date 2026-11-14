@@ -115,7 +115,9 @@ not white.
 | `--surface-raised` | `#243364` | `#ffffff` | A field, a row under the pointer |
 | `--text` | `#e6eaf5` | `#0c1226` | |
 | `--text-dim` | `#9aa4c7` | `#5c6888` | What is beside the point |
+| `--text-faint` | `#727b9c` | `#8d95a8` | What is only there to fill, never to be read: other months' days in a month |
 | `--border` | `#2b3a6b` | `#e4ddc4` | A hairline between or around surfaces |
+| `--border-faint` | `#222e57` | `#efead7` | Fainter, as the lines between days in a month |
 | `--border-strong` | `#7482b3` | `#7a8099` | The edge of something that takes input |
 | `--accent` | `#22d3ee` | `#0e7490` | Focus, and what is picked out |
 | `--on-accent` | `#0c1226` | `#fffdf4` | Text on the accent |

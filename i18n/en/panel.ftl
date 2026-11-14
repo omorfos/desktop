@@ -29,3 +29,25 @@ radio = { $kind ->
 # until $at, a time of day as the clock shows it.
 awake = Awake
 awake-until = Awake until { $at }
+
+## The month the clock opens: the months' names, and the days of the week
+## as short as they go above a column of dates.
+january = January
+february = February
+march = March
+april = April
+may = May
+june = June
+july = July
+august = August
+september = September
+october = October
+november = November
+december = December
+monday-short = Mo
+tuesday-short = Tu
+wednesday-short = We
+thursday-short = Th
+friday-short = Fr
+saturday-short = Sa
+sunday-short = Su

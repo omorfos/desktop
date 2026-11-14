@@ -11,7 +11,9 @@
   --surface-raised: #243364; /* a field, and a row under the pointer */
   --text: #e6eaf5;
   --text-dim: #9aa4c7;       /* what is beside the point */
+  --text-faint: #727b9c;     /* what is only there to fill, as other months' days */
   --border: #2b3a6b;         /* a hairline between or around surfaces */
+  --border-faint: #222e57;   /* fainter, as the lines between days */
   --border-strong: #7482b3;  /* the edge of what takes input */
   --accent: #22d3ee;         /* what has focus, and what is picked out */
   --on-accent: #0c1226;      /* text on the accent */
@@ -236,6 +238,44 @@ clock {
   padding: 0 12px;
   color: var(--text);
 }
+
+/* What hangs from a bar, as the month from the clock: a box as a menu's,
+ * and its rows and buttons. The days of a month are a faint grid, with
+ * room between them; the week and the weekday of the day under the
+ * pointer stand out more, that day the most, and today is in the accent.
+ * The days of the months beside it, filling its weeks, are faded. */
+popover {
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+popover-item {
+  color: var(--text);
+  border-radius: 6px;
+}
+popover-item:hover { background: var(--surface-raised); }
+popover-day, popover-day-outside {
+  height: 32px;
+  min-width: 32px;
+  margin: 2px;
+  color: var(--text);
+  border: 1px solid var(--border-faint);
+  border-radius: 6px;
+}
+popover-day-outside { color: var(--text-faint); }
+popover-day:focus, popover-day-outside:focus { border-color: var(--border); }
+popover-day:hover, popover-day-outside:hover {
+  background: var(--surface-raised);
+  border: 2px solid var(--accent);
+}
+popover-day:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+popover-day:active:hover { border-color: var(--text); }
 
 /* The launcher: where a name is typed, and the programs that match. The
  * launcher is as wide as its min-width. */
