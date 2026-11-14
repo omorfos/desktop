@@ -489,7 +489,7 @@ fn the_screen_behind_is_blurred_unless_the_theme_says_not() {
 #[test]
 fn a_private_window_is_blank_on_its_workspace_in_the_strip_too() {
     let mut session = Session::with_workspaces();
-    let rules = "rules:\n  - match: { app_id: secret }\n    private: true\n";
+    let rules = "rules:\n  - match: { app_id: private }\n    private: true\n";
     session.write_config("rules.yaml", rules);
     // A blank of its own colour, which the built-in theme shares with the
     // desktop.
@@ -497,7 +497,7 @@ fn a_private_window_is_blank_on_its_workspace_in_the_strip_too() {
     session.write_config(UNBLURRED.0, &theme);
     session.compositor_mut().reload_config();
     let mut client = session.connect();
-    session.open(&mut client, "secret", (300, 200), RED);
+    session.open(&mut client, "private", (300, 200), RED);
     session.step();
     open(&mut session);
     let overviewed = session.compositor().overview_layout().unwrap();
@@ -521,29 +521,29 @@ fn apart(frame: &crate::common::Picture, (x, y): (i32, i32), by: i32) -> i32 {
 }
 
 /// A session with four workspaces, `rules` and a blank colour of its own,
-/// and on the first a window called `secret`, red on its left and white on
+/// and on the first a window called `private`, red on its left and white on
 /// its right, which an edge down its middle that blur softens.
-fn secret(rules: &str) -> (Session, Client) {
+fn private_window(rules: &str) -> (Session, Client) {
     let mut session = Session::with_workspaces();
     session.write_config("rules.yaml", rules);
     let theme = format!("{}capture {{ background: #ff00ff; }}\n", UNBLURRED.1);
     session.write_config(UNBLURRED.0, &theme);
     session.compositor_mut().reload_config();
     let mut client = session.connect();
-    let window = session.open(&mut client, "secret", (300, 200), RED);
+    let window = session.open(&mut client, "private", (300, 200), RED);
     let _white = client.subsurface(&window.surface, (150, 0), (150, 200), 0xffff_ffff);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     (session, client)
 }
 
-/// Where the middle of the window called `secret` is drawn in workspace
+/// Where the middle of the window called `private` is drawn in workspace
 /// `on` of the strip.
-fn secret_in(session: &Session, on: Rect) -> (i32, i32) {
+fn private_in(session: &Session, on: Rect) -> (i32, i32) {
     let desktop = session.compositor().desktop();
     let id = desktop
         .windows()
-        .find(|listed| listed.window.app_id == "secret");
+        .find(|listed| listed.window.app_id == "private");
     let id = id.map(|listed| listed.window.id);
     let frame = id.and_then(|id| desktop.frame_of(id));
     let frame = frame.map(|frame| frame.geometry).unwrap_or_default();
@@ -555,11 +555,11 @@ fn secret_in(session: &Session, on: Rect) -> (i32, i32) {
 
 #[test]
 fn a_window_private_by_blur_is_blurred_laid_out_and_on_a_workspace_not_shown() {
-    let rules = "rules:\n  - match: { app_id: secret }\n    private: blur\n";
-    let (mut session, _client) = secret(rules);
+    let rules = "rules:\n  - match: { app_id: private }\n    private: blur\n";
+    let (mut session, _client) = private_window(rules);
     // Laid out, where its edge is, blurred.
     open(&mut session);
-    let edge = middle(place(&session, "secret"));
+    let edge = middle(place(&session, "private"));
     let frame = session.draw();
     assert!(
         apart(&frame, edge, 2) < 0x20,
@@ -575,7 +575,7 @@ fn a_window_private_by_blur_is_blurred_laid_out_and_on_a_workspace_not_shown() {
     let overviewed = session.compositor().overview_layout().unwrap();
     let (first, shown) = overviewed.workspaces[0];
     assert!(!shown);
-    let edge = secret_in(&session, first);
+    let edge = private_in(&session, first);
     let frame = session.draw();
     assert!(
         apart(&frame, edge, 2) < 0x20,
@@ -586,14 +586,14 @@ fn a_window_private_by_blur_is_blurred_laid_out_and_on_a_workspace_not_shown() {
 
 #[test]
 fn a_window_private_by_blank_is_blank_on_a_workspace_not_shown() {
-    let rules = "rules:\n  - match: { app_id: secret }\n    private: true\n";
-    let (mut session, _client) = secret(rules);
+    let rules = "rules:\n  - match: { app_id: private }\n    private: true\n";
+    let (mut session, _client) = private_window(rules);
     session.compositor_mut().perform(&Action::NextWorkspace);
     session.settle();
     open(&mut session);
     let overviewed = session.compositor().overview_layout().unwrap();
     let (first, _) = overviewed.workspaces[0];
-    let (x, y) = secret_in(&session, first);
+    let (x, y) = private_in(&session, first);
     let frame = session.draw();
     for x in [x - 3, x, x + 3] {
         assert_eq!(frame.at(x, y), 0xffff_00ff, "at {x}");

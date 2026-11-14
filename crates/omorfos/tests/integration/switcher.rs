@@ -1095,15 +1095,15 @@ fn once_shown_the_switcher_and_its_dim_fade_in_quickly() {
 
 #[test]
 fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front() {
-    let rules = "rules:\n  - match: { app_id: secret }\n    private: blur\n";
+    let rules = "rules:\n  - match: { app_id: private }\n    private: blur\n";
     let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
     let mut client = session.connect();
     for number in 1..=5 {
         session.open(&mut client, &format!("w{number}"), (800, 500), GREEN);
     }
     // Red on the left and white on the right: an edge the blur softens.
-    let secret = session.open(&mut client, "secret", (800, 500), RED);
-    let _white = client.subsurface(&secret.surface, (400, 0), (400, 500), 0xffff_ffff);
+    let private = session.open(&mut client, "private", (800, 500), RED);
+    let _white = client.subsurface(&private.surface, (400, 0), (400, 500), 0xffff_ffff);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     // In use last, it is sixth, at the back, faintest, once the switcher
@@ -1116,7 +1116,7 @@ fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front()
     let name = desktop
         .window(back.window)
         .map(|window| window.app_id.clone());
-    assert_eq!(name.as_deref(), Some("secret"));
+    assert_eq!(name.as_deref(), Some("private"));
     // Either side of the edge, along its top, which those in front leave
     // in sight.
     let place = back.place;
