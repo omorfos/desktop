@@ -351,7 +351,7 @@ fn the_watcher_stops_once_nobody_listens_though_pipewire_says_nothing() {
     let pipewire = Pipewire::start();
     let mut watcher = Command::new(env!("CARGO_BIN_EXE_omorfos-recording"));
     watcher.env_clear();
-    watcher.envs(std::env::vars_os().filter(|(name, _)| name == "LLVM_PROFILE_FILE"));
+    watcher.envs(std::env::vars_os().filter(|(name, _)| instrumented(name)));
     watcher.env("XDG_RUNTIME_DIR", pipewire.folder.path());
     watcher.env("PIPEWIRE_RUNTIME_DIR", pipewire.folder.path());
     let mut watcher = watcher
@@ -447,4 +447,12 @@ fn a_camera_opened_directly_is_said_of_the_process_that_has_it_open() {
 
     stop.store(true, Ordering::Relaxed);
     assert_eq!(watcher.join().unwrap(), "stopped");
+}
+
+/// Whether the variable `name` tells an instrumented build what to do,
+/// and so is passed on to the watcher where nothing else is: where to
+/// record coverage, or what the address sanitizer is to look for, as the
+/// nightly stress run asks of a sanitized build.
+fn instrumented(name: &std::ffi::OsStr) -> bool {
+    name == "LLVM_PROFILE_FILE" || name == "ASAN_OPTIONS"
 }

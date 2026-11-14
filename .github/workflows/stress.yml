@@ -1,7 +1,8 @@
 name: Stress
 
 # Every night, the tests many times over and the coverage gate a few times,
-# on both architectures, so that what fails only sometimes is seen within a
+# on both architectures, and what touches memory of C's built with
+# AddressSanitizer, so that what fails only sometimes is seen within a
 # day of the change that made it so, rather than on some later push. A
 # failure is said in an issue labelled `flaky`, one for each architecture,
 # which a later failure adds to. See docs/TESTING.md, "Flaky tests".
@@ -22,6 +23,10 @@ env:
   # How many times the whole suite runs, and the coverage gate.
   RUNS: 30
   COVERAGE_RUNS: 3
+  # How many times what AddressSanitizer watches runs, and on which
+  # nightly toolchain: one of a known day, as the fuzzing has.
+  SANITIZED_RUNS: 10
+  NIGHTLY: nightly-2026-10-01
 
 jobs:
   stress:
@@ -29,8 +34,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     permissions:
-      contents: read
-      issues: write
+      contents: read # To check the code out.
+      issues: write # To say a failure in an issue.
     strategy:
       fail-fast: false
       matrix:
@@ -137,6 +142,99 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: failed-${{ matrix.arch }}
+          path: failed/
+          retention-days: 30
+      # One open issue for each architecture: a new one if there is none,
+      # or a comment on the one there is.
+      - name: Say so in an issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          title="Nightly stress fails on $ARCH"
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label flaky --state open \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" \
+              --body "It failed again at $GITHUB_SHA: $url"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label flaky --title "$title" \
+              --body "The nightly stress run at $GITHUB_SHA failed on $ARCH: $url. The logs of each run that failed are kept with it for 30 days."
+          fi
+
+  # Where `unsafe` and C's memory meet, built with AddressSanitizer, which
+  # stops at a write to memory that is not to be written, and says where it
+  # was freed: what glibc only notices now and then, at a later allocation
+  # in whatever test is running (issue #33). The tests of sharing the screen
+  # and of what records, through PipeWire, and of the two crates allowed
+  # `unsafe`. Not the whole suite: under a nightly toolchain the tests are
+  # not where the tests that look for our programs beside them look, and
+  # waits that are counted run out under the sanitizer with every test at
+  # once. Leaks are left out: PipeWire keeps what it sets up for good.
+  sanitized:
+    name: Sanitized (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read # To check the code out.
+      issues: write # To say a failure in an issue.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    env:
+      RUSTFLAGS: -Zsanitizer=address
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      # As the Test workflow has it.
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libpixman-1-dev libudev-dev libinput-dev libseat-dev libgbm-dev libpipewire-0.3-dev libpam0g-dev libclang-dev clang libpam-wrapper fonts-dejavu-core dbus-daemon xwayland libegl1 pipewire gnupg foot zenity flatpak
+      - name: Make room for X servers
+        run: sudo mkdir -p -m 1777 /tmp/.X11-unix
+      - name: Install the nightly toolchain
+        run: rustup toolchain install "$NIGHTLY" --profile minimal
+      # Built for the toolchain's own target, named, so that the sanitizer
+      # is not given to what runs as the build does, as build scripts.
+      - name: Build the tests
+        run: |
+          host=$(rustc "+$NIGHTLY" -vV | sed -n 's/^host: //p')
+          echo "HOST=$host" >> "$GITHUB_ENV"
+          cargo "+$NIGHTLY" test --locked --target "$host" --all-features \
+            -p omorfos-recording -p omorfos-pipewire -p omorfos-shm --lib --tests --no-run
+          cargo "+$NIGHTLY" test --locked --target "$host" --all-features \
+            -p omorfos --test integration --no-run
+      - name: Sanitized, many times over
+        run: |
+          mkdir -p failed
+          failures=0
+          for run in $(seq "$SANITIZED_RUNS"); do
+            if ! { cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
+                     -p omorfos-recording -p omorfos-pipewire -p omorfos-shm --lib --tests \
+                   && cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
+                     -p omorfos --test integration -- sharing:: portal:: versions::; } \
+                 > run.log 2>&1; then
+              failures=$((failures + 1))
+              echo "::error::sanitized run $run of $SANITIZED_RUNS failed"
+              grep -E "ERROR: AddressSanitizer|^test .* FAILED$|panicked at" -A12 run.log | head -60
+              mv run.log "failed/sanitized-$run.log"
+            fi
+          done
+          echo "sanitized=$failures of $SANITIZED_RUNS runs failed" >> "$GITHUB_STEP_SUMMARY"
+          test "$failures" -eq 0
+      - name: Keep the logs of what failed
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: failed-sanitized-${{ matrix.arch }}
           path: failed/
           retention-days: 30
       # One open issue for each architecture: a new one if there is none,

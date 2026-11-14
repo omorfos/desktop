@@ -391,7 +391,9 @@ tool that retries.
   a thread of its own, starts a process, uses a socket or watches a file
   is stressed as above, and the report says how many runs passed.
 - **Every night**, `.github/workflows/stress.yml` runs the whole suite 30
-  times and the coverage gate 3 times, on both architectures. A failure
+  times and the coverage gate 3 times, on both architectures, and the
+  tests of what touches memory of C's, PipeWire's and that of the crates
+  allowed `unsafe`, 10 times built with AddressSanitizer. A failure
   opens an issue labelled `flaky` for that architecture, or adds to the one
   that is open, and the logs of each run that failed are kept with it for
   30 days. One seen on a push gets an issue of its own, with the run.
