@@ -483,7 +483,7 @@ impl SessionLockHandler for Compositor {
         // lock the user out, or show what only looks like a lock.
         let client = confirmation.ext_session_lock().client();
         if !Self::roles(client.as_ref()).has(Roles::LOCK) {
-            self.refuse(client.as_ref(), "lock the session", "lock");
+            self.refuse(client.as_ref(), "lock", "lock");
             return;
         }
         let held = |lock: &Lock| lock.by.as_ref().is_some_and(Resource::is_alive);

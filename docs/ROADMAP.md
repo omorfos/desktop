@@ -1881,12 +1881,17 @@ Reaching people:
 - [x] The compositor's window menu, the pictures of where a window may
       go, and the question whether to keep the screens as the display key
       has them, through `omorfos-i18n`, in English and Polish.
-- [ ] The rest of the compositor's words through `omorfos-i18n`: its
-      notices, which it says in lower case as sentences of its own, About,
-      the list of problems, and the built-in root menu's labels, which are
-      the configuration's defaults; and the manual pages and `--help`,
-      which are English for now. The notifications program says nothing of
-      its own but what programs send it.
+- [x] The compositor's notices through `omorfos-i18n`, in English and
+      Polish: of its own new versions, its locker and X server stopping,
+      glass drawn solid, a program refused a role or given every key, and
+      what the mark of a screen being recorded says. What it says of a
+      mistake in the configuration, which names its keys and values, is
+      English, as the configuration's own diagnostics are.
+- [ ] The rest of the compositor's words through `omorfos-i18n`: About,
+      the heading of the list of problems, and the built-in root menu's
+      labels, which are the configuration's defaults; and the manual pages
+      and `--help`, which are English for now. The notifications program
+      says nothing of its own but what programs send it.
 - [ ] The launcher showing applications by their names in the user's
       language, as their desktop entries give them (`Name[pl]`), which it
       reads only in English now.

@@ -3,6 +3,7 @@
 use omorfos_config::{Action, Modifiers};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Button, Edges, Home, MenuKey, MenuOutcome, Part, Pattern, WindowId, resize};
+use omorfos_i18n::Value;
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, KeyboardTarget, Keycode, Keysym, ModifiersState};
@@ -1348,11 +1349,11 @@ impl KeyboardShortcutsInhibitHandler for Compositor {
         inhibitor.activate();
         let window = self.window_id(inhibitor.wl_surface());
         let window = window.and_then(|id| self.desktop.window(id));
-        let program = window.map_or("A program", |window| window.app_id.as_str());
-        let said = format!(
-            "{program} has every key while it has the keyboard, the desktop's among them: \
-             Super+Escape takes them back"
-        );
+        let unnamed = self.words.say("a-program", &[]);
+        let program = window.map_or(unnamed, |window| window.app_id.clone());
+        let said = self
+            .words
+            .say("every-key", &[("program", Value::Words(&program))]);
         self.refused.say(&said);
     }
 }

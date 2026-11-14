@@ -24,7 +24,6 @@ use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::rustix::net::sockopt::socket_peercred;
 use smithay::utils::{Logical, Rectangle};
 
-use crate::compositor::NO_LOCKER;
 use crate::outputs::Head;
 use crate::{Compositor, bridge};
 
@@ -421,7 +420,7 @@ impl Compositor {
                 .general
                 .locker
                 .is_none()
-                .then(|| NO_LOCKER.to_owned()),
+                .then(|| self.words.say("no-locker", &[])),
             _ => None,
         }
     }

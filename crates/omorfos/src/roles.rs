@@ -5,6 +5,7 @@
 //! that has the role. Nothing is given by a name, which a program can
 //! choose. See `docs/adr/0037-who-may-do-what.md`.
 
+use omorfos_i18n::Value;
 use std::fs;
 use std::sync::mpsc::{self, Receiver, Sender};
 
@@ -173,18 +174,22 @@ impl Compositor {
 
     /// Notes that a client was refused something it has no role for, so
     /// that the user is told once what asked, for what, and how it could
-    /// be let.
+    /// be let: `asked` is what, by the key the message `refused` chooses
+    /// its words by, as `capture`.
     pub(crate) fn refuse(&mut self, client: Option<&Client>, asked: &str, role: &str) {
         // What a program calls itself is only to tell the user which it
         // was. Nothing is decided by it.
         let process = client.and_then(|client| self.process(client));
         let called =
             process.and_then(|process| fs::read_to_string(format!("/proc/{process}/comm")).ok());
-        let name = called_by(called.as_deref());
-        let said = format!(
-            "`{name}` asked to {asked} and was not let; to let it, have omorfos start it with \
-             `may: [{role}]`, from `autostart` in config.yaml or a key in keys.yaml"
-        );
+        let unnamed = self.words.say("a-program", &[]);
+        let name = called_by(called.as_deref()).unwrap_or(&unnamed);
+        let given = [
+            ("program", Value::Words(name)),
+            ("asked", Value::Words(asked)),
+            ("role", Value::Words(role)),
+        ];
+        let said = self.words.say("refused", &given);
         self.refused.say(&said);
     }
 }
@@ -207,9 +212,8 @@ delegate_security_context!(Compositor);
 
 /// What to call a program, given what it calls itself if that could be
 /// found out.
-fn called_by(itself: Option<&str>) -> &str {
-    let name = itself.map(str::trim).filter(|name| !name.is_empty());
-    name.unwrap_or("a program")
+fn called_by(itself: Option<&str>) -> Option<&str> {
+    itself.map(str::trim).filter(|name| !name.is_empty())
 }
 
 #[cfg(test)]
@@ -237,8 +241,8 @@ mod tests {
 
     #[test]
     fn a_program_is_called_what_it_calls_itself_if_that_is_known() {
-        assert_eq!(called_by(Some("waybar\n")), "waybar");
-        assert_eq!(called_by(Some("  \n")), "a program");
-        assert_eq!(called_by(None), "a program");
+        assert_eq!(called_by(Some("waybar\n")), Some("waybar"));
+        assert_eq!(called_by(Some("  \n")), None, "said to be a program");
+        assert_eq!(called_by(None), None);
     }
 }

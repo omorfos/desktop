@@ -764,7 +764,11 @@ impl Compositor {
         let inserted = self.display.insert_client(stream, given);
         inserted.inspect(|client| {
             let pid = self.process(client);
-            let named = format!("{}, process {}", program(pid), pid.unwrap_or_default());
+            let named = format!(
+                "{}, process {}",
+                program(&self.words, pid),
+                pid.unwrap_or_default()
+            );
             let _ = state.named.set(named);
         })
     }
@@ -1642,17 +1646,17 @@ impl Compositor {
         // Locked by hand, the session is not kept awake any longer.
         self.presence.awake = None;
         let config = Arc::clone(self.store.current());
-        match &config.general.locker {
-            Some(locker) => {
-                // Kept by the relay as programs are, where there is one, so
-                // that a lock outlives the compositor (ADR 61).
-                let program: &OsStr = locker.program().as_ref();
-                let named = omorfos_journal::name(program);
-                let how = (Roles::LOCK, false, Relaying::Own);
-                let started = self.launch(program, locker.arguments(), how, Some(&named));
-                self.on_demand.locker.0 = started;
-            }
-            None => self.refused.say(NO_LOCKER),
+        if let Some(locker) = &config.general.locker {
+            // Kept by the relay as programs are, where there is one, so that
+            // a lock outlives the compositor (ADR 61).
+            let program: &OsStr = locker.program().as_ref();
+            let named = omorfos_journal::name(program);
+            let how = (Roles::LOCK, false, Relaying::Own);
+            let started = self.launch(program, locker.arguments(), how, Some(&named));
+            self.on_demand.locker.0 = started;
+        } else {
+            let said = self.words.say("no-locker", &[]);
+            self.refused.say(&said);
         }
     }
 
@@ -1694,11 +1698,8 @@ impl Compositor {
         if self.on_demand.locker.1.allow(now) {
             self.start_locker();
         } else {
-            self.problems.push(
-                "The locker keeps stopping with the session locked: from another virtual \
-                 terminal, `omorfosctl action lock` starts it again"
-                    .to_owned(),
-            );
+            let said = self.words.say("locker-keeps-stopping", &[]);
+            self.problems.push(said);
         }
     }
 
@@ -1905,7 +1906,9 @@ impl Compositor {
             .map_err(|error| format!("could not be made ({error})"))
             .and_then(|mut frosting| glass::check(renderer, &mut frosting).map(|()| frosting));
         tried.map_err(|why| {
-            let said = format!("Glass is drawn solid: the blur of this graphics card {why}");
+            let said = self
+                .words
+                .say("glass-solid", &[("why", Value::Words(&why))]);
             self.happened(&said, now);
             said
         })
@@ -2127,10 +2130,10 @@ impl Compositor {
                 let how = (component.kind.roles(), heard, component.kind.relaying());
                 component.process = self.launch(program, &[], how, None);
             } else {
-                self.problems.push(format!(
-                    "`{}` keeps stopping, and will not be started again until you log in",
-                    component.program.display()
-                ));
+                let program = component.program.display().to_string();
+                let program = [("program", Value::Words(&program))];
+                let said = self.words.say("keeps-stopping", &program);
+                self.problems.push(said);
             }
         }
         self.components = components;
@@ -2155,7 +2158,8 @@ impl Compositor {
         let parts = &self.autostarted.parts;
         if parts.relay.is_none() {
             if !std::mem::replace(&mut updates.told, true) {
-                self.problems.push(LOG_IN_AGAIN.to_owned());
+                let said = self.words.say("log-in-again", &[]);
+                self.problems.push(said);
             }
             return;
         }
@@ -2190,7 +2194,8 @@ impl Compositor {
             Own::Waits => {}
             Own::WaitsForX11 => {
                 if !std::mem::replace(&mut self.updates.told, true) {
-                    self.problems.push(WAITS_FOR_X11.to_owned());
+                    let said = self.words.say("waits-for-x11", &[]);
+                    self.problems.push(said);
                 }
             }
             Own::TakenUp { regardless } => {
@@ -2248,11 +2253,10 @@ impl Compositor {
     /// Tells the user that the compositor's own new version, at `own`, does
     /// not start, for `why`, and is not taken up.
     fn not_starting(&mut self, own: &Path, why: &str) {
-        self.problems.push(format!(
-            "the new version of omorfos, `{}`, does not start ({why}), so the one running \
-             stays until another is installed",
-            own.display()
-        ));
+        let own = own.display().to_string();
+        let given = [("program", Value::Words(&own)), ("why", Value::Words(why))];
+        let said = self.words.say("not-starting", &given);
+        self.problems.push(said);
     }
 
     /// Takes up the new versions of the programs that come with omorfos
@@ -3168,11 +3172,8 @@ impl Compositor {
         let mut said = Vec::new();
         for (client, window) in self.capture.takers(output) {
             let pid = self.process(&client);
-            let what = if window {
-                "a window on this screen"
-            } else {
-                "this screen"
-            };
+            let window = Value::Words(if window { "yes" } else { "no" });
+            let words = &self.words;
             // A program that shares what it takes, as the portal does, is
             // named with what it shares it with, which PipeWire knows.
             let shown = recorders.iter().filter(|recorder| {
@@ -3181,27 +3182,35 @@ impl Compositor {
             });
             let shown: Vec<String> = shown
                 .map(|recorder| {
-                    let (seer, sharer) = (program(Some(recorder.pid)), program(pid));
-                    format!("{seer} is shown {what}, through {sharer}")
+                    let (seer, sharer) = (program(words, Some(recorder.pid)), program(words, pid));
+                    let given = [
+                        ("program", Value::Words(&seer)),
+                        ("window", window),
+                        ("through", Value::Words(&sharer)),
+                    ];
+                    words.say("shown-through", &given)
                 })
                 .collect();
             if shown.is_empty() {
-                said.push(format!("{} is taking pictures of {what}", program(pid)));
+                let taker = program(words, pid);
+                let given = [("program", Value::Words(&taker)), ("window", window)];
+                said.push(words.say("taking", &given));
             }
             said.extend(shown);
         }
         let screen = !said.is_empty();
         let recording = recorders.iter().filter_map(|recorder| {
             let what = match recorder.kind {
-                Recorded::Microphone => "is recording from the microphone",
-                Recorded::Sound => "is recording the sound that plays",
-                Recorded::Camera => "is using the camera",
+                Recorded::Microphone => "records-microphone",
+                Recorded::Sound => "records-sound",
+                Recorded::Camera => "uses-camera",
                 Recorded::Screen => return None,
             };
-            Some((
-                recorder.kind,
-                format!("{} {what}", program(Some(recorder.pid))),
-            ))
+            let recorder_is = program(&self.words, Some(recorder.pid));
+            let said = self
+                .words
+                .say(what, &[("program", Value::Words(&recorder_is))]);
+            Some((recorder.kind, said))
         });
         let recording: Vec<(Recorded, String)> = recording.collect();
         let has = |kinds: &[Recorded]| recording.iter().any(|(kind, _)| kinds.contains(kind));
@@ -3213,15 +3222,12 @@ impl Compositor {
         // What has stopped, and is still on the mark for a moment.
         let signs = self.signs(output);
         let ago = [
-            (
-                signs.screen && !screen,
-                "Pictures of this screen were taken a moment ago",
-            ),
-            (signs.sound && !sound, "Sound was recorded a moment ago"),
-            (signs.camera && !camera, "The camera was used a moment ago"),
+            (signs.screen && !screen, "taken-ago"),
+            (signs.sound && !sound, "sound-ago"),
+            (signs.camera && !camera, "camera-ago"),
         ];
         let ago = ago.into_iter().filter(|(stopped, _)| *stopped);
-        said.extend(ago.map(|(_, line)| line.to_owned()));
+        said.extend(ago.map(|(_, line)| self.words.say(line, &[])));
         said
     }
 
@@ -4824,14 +4830,13 @@ impl About {
 }
 
 /// What the program running as the process numbered `pid` is called: the
-/// name of its file, which it cannot choose as it can a title.
-fn program(pid: Option<u32>) -> String {
+/// name of its file, which it cannot choose as it can a title; or, in
+/// `words`, a program.
+fn program(words: &Words, pid: Option<u32>) -> String {
     let file = pid.and_then(|pid| fs::read_link(format!("/proc/{pid}/exe")).ok());
     let name = file.as_deref().and_then(Path::file_name);
-    name.map_or_else(
-        || "A program".to_owned(),
-        |name| name.to_string_lossy().into_owned(),
-    )
+    let unnamed = words.say("a-program", &[]);
+    name.map_or(unnamed, |name| name.to_string_lossy().into_owned())
 }
 
 /// The programs the compositor starts when asked for, rather than with the
@@ -4921,13 +4926,9 @@ const LOCKER: &str = "locker";
 /// given to lock the session again, before it is taken to be stuck.
 const RELOCKING: Duration = Duration::from_secs(5);
 
-/// What is said when the session is to be locked and nothing is set to
-/// lock it with.
-pub(crate) const NO_LOCKER: &str = "nothing is set to lock the session with: name a screen \
-     locker as `locker` in config.yaml, such as `locker: [swaylock, -f]`";
-
 /// The width of a menu panel, in pixels: room for the longest of the
-/// labels of a window's menu, "Show on every workspace", after its sign.
+/// labels of a window's menu, "Show on every workspace", after its sign. A
+/// translation keeps its labels as short (ADR 79).
 const MENU_WIDTH: u32 = 240;
 /// How far a submenu lies over the edge of the menu it opens from: a
 /// little, so that the two are seen to belong together.
@@ -5070,16 +5071,6 @@ struct Component {
 /// of is left running, for the new one to take what it keeps: longer than
 /// a keeper waits for what it reads.
 const HANDOVER: Duration = Duration::from_secs(3);
-
-/// What the user is told of the compositor's own new version where nothing
-/// keeps the programs through its being taken up.
-const LOG_IN_AGAIN: &str =
-    "omorfos has been updated, and the new version is used once you log in again";
-
-/// What the user is told of it while a program written for X11 has a
-/// window, which would close as it is taken up.
-const WAITS_FOR_X11: &str = "omorfos has been updated, and the new version is taken up once \
-     the programs written for X11 have closed, or once you log in again";
 
 /// New versions of the programs that come with omorfos, heard of and being
 /// taken up.

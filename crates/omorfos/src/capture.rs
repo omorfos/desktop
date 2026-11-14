@@ -1082,7 +1082,7 @@ impl Compositor {
     ) {
         let may = Self::roles(Some(client)).has(Roles::CAPTURE);
         if !may {
-            self.refuse(Some(client), "take pictures of the screen", "capture");
+            self.refuse(Some(client), "capture", "capture");
         }
         let subject = source.data::<Option<Subject>>().cloned().flatten();
         let subject = subject.filter(|_| may);
@@ -1111,7 +1111,7 @@ impl Compositor {
     ) {
         let may = Self::roles(Some(client)).has(Roles::CAPTURE);
         if !may {
-            self.refuse(Some(client), "follow the pointer", "capture");
+            self.refuse(Some(client), "pointer", "capture");
         }
         let subject = source.data::<Option<Subject>>().cloned().flatten();
         let subject = subject.filter(|_| may);

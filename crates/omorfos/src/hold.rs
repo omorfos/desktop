@@ -22,21 +22,6 @@ use smithay::output::Output;
 use crate::compositor::{Compositor, Drawn};
 use crate::presentation::Feedback;
 
-/// What the user is told when the compositor is asked to start again with
-/// nothing to start it.
-const NOT_HELD: &str = "the compositor cannot be started again here: nothing would start \
-     it, as omorfos-hold does where omorfos is the whole session";
-
-/// What the user is told when the version of the compositor running is
-/// older than the one installed, which would not come up.
-const OLDER: &str = "omorfos was updated, but the new version would not start, so the one \
-     before it is running: whatever the update was to fix is not fixed yet";
-
-/// What the user is told by a compositor started for its new version, which
-/// the one before took up though the session was in use.
-const UPDATED: &str = "omorfos has been updated to its new version, which waited as long as it \
-     may for a moment the session was not in use";
-
 /// How long a compositor under a relay waits, at most, to be told that
 /// what the relay kept for it is ready before it shows the session. The
 /// relay makes it all again in a few turns of the two; one that does not
@@ -172,7 +157,8 @@ impl Compositor {
                 before: card,
             });
             if older {
-                self.problems.push(OLDER.to_owned());
+                let older = self.words.say("older", &[]);
+                self.problems.push(older);
             }
             if let Some(layout) = layout {
                 self.type_with(layout);
@@ -244,17 +230,17 @@ impl Compositor {
     /// version where one is installed, telling it the next is to say so if
     /// that is `regardless` of the session being in use.
     pub(crate) fn step_down(&mut self, regardless: bool) {
-        match self.holder.as_mut() {
-            Some(holder) => {
-                holder.stepping_down = Some(regardless);
-                self.running = false;
-                // Before any program's connection closes, which the relay
-                // would otherwise take for each being let go of, unless its
-                // own closes soon after (ADR 61).
-                let relay = self.autostarted.parts.relay.as_ref();
-                let _ = relay.map(|relay| relay::send(relay.as_fd(), &Hand::Going, &[]));
-            }
-            None => self.refused.say(NOT_HELD),
+        if let Some(holder) = self.holder.as_mut() {
+            holder.stepping_down = Some(regardless);
+            self.running = false;
+            // Before any program's connection closes, which the relay would
+            // otherwise take for each being let go of, unless its own closes
+            // soon after (ADR 61).
+            let relay = self.autostarted.parts.relay.as_ref();
+            let _ = relay.map(|relay| relay::send(relay.as_fd(), &Hand::Going, &[]));
+        } else {
+            let said = self.words.say("not-held", &[]);
+            self.refused.say(&said);
         }
     }
 
@@ -314,7 +300,8 @@ impl Compositor {
     pub(crate) fn say_if_updated(&mut self, now: Instant) {
         let holder = self.holder.as_mut();
         if holder.is_some_and(|holder| std::mem::take(&mut holder.told.updated)) {
-            self.happened(UPDATED, now);
+            let updated = self.words.say("updated", &[]);
+            self.happened(&updated, now);
         }
     }
 

@@ -735,14 +735,12 @@ impl Compositor {
         self.x11.told = None;
 
         if self.x11.restarts.allow(now) {
-            let said = "the X server stopped and has been started again; programs written for \
-                        X11 that were running have closed";
-            self.happened(said, now);
+            let said = self.words.say("x11-restarted", &[]);
+            self.happened(&said, now);
             self.x11.stopped = Some(server);
         } else {
-            let said = "the X server keeps stopping; programs written for X11 will not run \
-                        until you log in again";
-            self.problems.push(said.to_owned());
+            let said = self.words.say("x11-keeps-stopping", &[]);
+            self.problems.push(said);
         }
     }
 

@@ -54,3 +54,52 @@ keep-or-back = Enter keeps them. Escape, or { $left } { $left ->
 screens-kept = The screens are kept as they are
 screens-back = The screens are back as they were
 only-one-screen = There is only one screen, so it stands only one way
+
+## What the compositor says of itself, as a notice or among the problems.
+not-held = the compositor cannot be started again here: nothing would start it, as omorfos-hold does where omorfos is the whole session
+older = omorfos was updated, but the new version would not start, so the one before it is running: whatever the update was to fix is not fixed yet
+updated = omorfos has been updated to its new version, which waited as long as it may for a moment the session was not in use
+log-in-again = omorfos has been updated, and the new version is used once you log in again
+waits-for-x11 = omorfos has been updated, and the new version is taken up once the programs written for X11 have closed, or once you log in again
+# Its own new version, the file $program, does not start, for $why, in
+# the words of what failed.
+not-starting = the new version of omorfos, `{ $program }`, does not start ({ $why }), so the one running stays until another is installed
+# A program that comes with omorfos, the file $program, keeps stopping.
+keeps-stopping = `{ $program }` keeps stopping, and will not be started again until you log in
+locker-keeps-stopping = The locker keeps stopping with the session locked: from another virtual terminal, `omorfosctl action lock` starts it again
+no-locker = nothing is set to lock the session with: name a screen locker as `locker` in config.yaml, such as `locker: [swaylock, -f]`
+x11-restarted = the X server stopped and has been started again; programs written for X11 that were running have closed
+x11-keeps-stopping = the X server keeps stopping; programs written for X11 will not run until you log in again
+# What blurs glass could not be had, for $why, in the words of what failed.
+glass-solid = Glass is drawn solid: the blur of this graphics card { $why }
+
+## What programs did, or were not let do.
+# A program that is not named, or not named in a way that can be read.
+a-program = A program
+# $program asked for every key, and was given them.
+every-key = { $program } has every key while it has the keyboard, the desktop's among them: Super+Escape takes them back
+# $program asked to do what it may only if omorfos started it with the
+# role $role, and was refused: $asked is which of these it asked.
+refused = `{ $program }` asked to { $asked ->
+    [capture] take pictures of the screen
+    [pointer] follow the pointer
+    [panel] put a panel on the screen
+   *[lock] lock the session
+} and was not let; to let it, have omorfos start it with `may: [{ $role }]`, from `autostart` in config.yaml or a key in keys.yaml
+# What the mark of a screen being recorded says when the pointer rests on
+# it: $program takes pictures of it, or of a window on it if $window is
+# `yes`, or is shown them through $through.
+taking = { $program } is taking pictures of { $window ->
+    [yes] a window on this screen
+   *[no] this screen
+}
+shown-through = { $program } is shown { $window ->
+    [yes] a window on this screen
+   *[no] this screen
+}, through { $through }
+records-microphone = { $program } is recording from the microphone
+records-sound = { $program } is recording the sound that plays
+uses-camera = { $program } is using the camera
+taken-ago = Pictures of this screen were taken a moment ago
+sound-ago = Sound was recorded a moment ago
+camera-ago = The camera was used a moment ago
