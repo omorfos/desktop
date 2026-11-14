@@ -21,6 +21,7 @@ mod css;
 mod daylight;
 mod debounce;
 mod diagnostic;
+pub mod edit;
 mod general;
 mod gradient;
 mod keys;

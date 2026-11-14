@@ -28,6 +28,10 @@ serde = { version = "1.0.229", features = ["derive"] }
 # Writes the manual pages, as it does the programs'.
 omorfos-ipc = { path = "../omorfos-ipc", optional = true }
 serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
+# What serde-saphyr reads YAML with, and already in the tree under it: its
+# events say where in the file each key and value is written, so that one
+# can be changed with the rest of the file left as it is (ADR 81).
+granit-parser = { version = "2.1.0", default-features = false, features = ["std", "error_messages"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

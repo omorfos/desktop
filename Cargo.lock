@@ -1991,6 +1991,7 @@ dependencies = [
 name = "omorfos-config"
 version = "0.1.0"
 dependencies = [
+ "granit-parser",
  "inotify",
  "jiff",
  "omorfos-ipc",

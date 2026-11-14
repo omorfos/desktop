@@ -1534,7 +1534,8 @@ decision of stage 2.
 - [ ] **Settings** (wish 7): the common choices of `config.yaml` and the
       theme, written to the files as they are made and taking effect at
       once, since the files are already watched. It writes what a person
-      could have written, keeps what it does not understand, and offers
+      could have written, keeps what it does not understand (for
+      `config.yaml`, through `omorfos_config::edit`, ADR 81), and offers
       presets. Few options, well chosen; everything else stays in the
       files. The keyboard's settings key (`XF86Tools`) opens it.
 - [ ] **Files** (wish 9): places and starred places at the side; volumes

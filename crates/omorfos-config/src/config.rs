@@ -15,7 +15,7 @@ use crate::{Accent, Appearance, Diagnostic, General, Keys, Menu, Rules, Scheme, 
 /// Every file is optional; an absent or empty file means built-in defaults.
 pub const FILES: [&str; 5] = [GENERAL, KEYS, RULES, THEME, MENU];
 
-const GENERAL: &str = "config.yaml";
+pub(crate) const GENERAL: &str = "config.yaml";
 const KEYS: &str = "keys.yaml";
 const RULES: &str = "rules.yaml";
 const THEME: &str = "theme.css";
@@ -171,7 +171,7 @@ fn laid(
 }
 
 /// Reads a file, treating one that does not exist as empty.
-fn read(path: &Path) -> Result<String, Diagnostic> {
+pub(crate) fn read(path: &Path) -> Result<String, Diagnostic> {
     let mut text = String::new();
     match File::open(path) {
         Ok(file) => {
@@ -194,7 +194,10 @@ fn read(path: &Path) -> Result<String, Diagnostic> {
 }
 
 /// Parses a file. A document with no content yields the defaults.
-fn parse<T: DeserializeOwned + Default>(path: &Path, text: &str) -> Result<T, Diagnostic> {
+pub(crate) fn parse<T: DeserializeOwned + Default>(
+    path: &Path,
+    text: &str,
+) -> Result<T, Diagnostic> {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
     serde_saphyr::from_str_with_options::<Option<T>>(text, options)
