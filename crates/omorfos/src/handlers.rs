@@ -663,9 +663,12 @@ impl XdgActivationHandler for Compositor {
 
     fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
         // A token is the right to move focus. It is honoured only if the
-        // application tied it to something the user did (a click, a key),
-        // so that windows cannot raise themselves unprompted.
-        data.serial.is_some()
+        // application tied it to something the user did to it (a click, a
+        // key), so that windows cannot raise themselves unprompted.
+        self.forget_old_tokens();
+        let serial = data.serial.map(|(serial, _)| serial);
+        let asked = data.client_id.zip(serial);
+        asked.is_some_and(|(client, serial)| self.may_move_focus(&client, serial))
     }
 
     fn request_activation(

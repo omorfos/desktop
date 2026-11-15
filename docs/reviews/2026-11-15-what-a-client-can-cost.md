@@ -239,7 +239,21 @@ What else is sized by a window was looked for, as this finding asked:
 
 ### 3. Any program can take the keyboard with a serial it made up
 
-**Medium. Shown by a test.**
+**Medium. Shown by a test. Fixed the same day (ADR 36, amended).**
+
+What was changed differs a little from what is proposed below. Keeping
+the last few serials of each program would honour a click from before
+the user went to another program; so only the last key or button pressed
+counts, and a token is honoured if that press went to the program that
+made it and the token's serial is that press's or one given since,
+which takes in the release that toolkits often name. A serial no one
+has been given yet is refused. No more than 32 tokens are kept, the
+oldest forgotten first, and none longer than a minute. The tests are in
+`crates/omorfos/tests/integration/activation.rs`: a serial from before
+another program took the keyboard, a serial no one was given, a panel
+that was clicked, and forty tokens made in a row. That a token is
+forgotten after a minute is not tested, as the time is Smithay's own
+clock; the bound by number is.
 
 `token_created` in `crates/omorfos/src/handlers.rs` honours an activation
 token "only if the application tied it to something the user did", and

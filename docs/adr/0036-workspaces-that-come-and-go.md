@@ -205,7 +205,13 @@ Some things were settled in building solos that the above leaves open:
   They are heeded now, and it does. What says a window was asked for:
   the activation token omorfos hands each program it starts, in
   `XDG_ACTIVATION_TOKEN` and `DESKTOP_STARTUP_ID`, or one a program made
-  from something the user did, used to activate the window before it
+  from something the user did (added 2026-11-15: did to that program,
+  which is known by the serial the token names: the last key or button
+  pressed has to have gone to it, and the serial be that press's or one
+  given since; a serial it made up, or kept from before the user went
+  to another program, is not enough, as the review of what a client can
+  cost found it was; and no more than 32 tokens are kept, none longer
+  than a minute), used to activate the window before it
   opens or after, or named by a program written for X11 in
   `_NET_STARTUP_ID`; and, for the many programs that pass no token on,
   the window being the first of a process omorfos started. Each says so

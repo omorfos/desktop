@@ -457,7 +457,7 @@ impl Compositor {
         } else {
             KeyState::Released
         };
-        let serial = SERIAL_COUNTER.next_serial();
+        let serial = self.key_serial(pressed);
         let action = keyboard.input(self, code, state, serial, time, |compositor, held, key| {
             if !pressed {
                 return compositor.let_go(code, held);
@@ -1271,7 +1271,7 @@ impl Compositor {
         };
         let pointer = self.pointer.clone();
         let event = ButtonEvent {
-            serial: SERIAL_COUNTER.next_serial(),
+            serial: self.button_serial(pressed),
             time,
             button,
             state,

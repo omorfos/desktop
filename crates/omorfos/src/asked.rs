@@ -13,15 +13,32 @@
 //!   made from something the user did, as a launcher does. A program
 //!   written for Wayland activates its window with it, before the window
 //!   is shown or after; one written for X11 names it in `_NET_STARTUP_ID`.
+//!   A program's token is honoured only for the serial of the last key
+//!   or button pressed, or one since, when that press was the program's:
+//!   not for one it made up, nor for one from before the user went to
+//!   another program.
 //! - failing that, a window being the first of a process omorfos started,
 //!   for the many programs that say nothing of tokens.
 
+use std::time::{Duration, Instant};
+
+use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::utils::{SERIAL_COUNTER, Serial};
+use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::xdg_activation::{XdgActivationState, XdgActivationToken};
 
 use crate::compositor::Compositor;
+
+/// The most tokens kept at once: more than are ever in use together, as a
+/// browser makes one for each link it opens and uses few.
+const MOST_TOKENS: usize = 32;
+
+/// How long a token is good for once made: one that was for something the
+/// user just did is used at once.
+const TOKEN_LIFE: Duration = Duration::from_secs(60);
 
 /// What has been seen of windows being asked for, before they opened.
 #[derive(Debug)]
@@ -32,6 +49,9 @@ pub(crate) struct Asked {
     started: Vec<u32>,
     /// Windows activated with a token before they were shown.
     early: Vec<WlSurface>,
+    /// The serial of the last key or button pressed, and the program it
+    /// went to, if it went to one.
+    pressed: Option<(Serial, ClientId)>,
 }
 
 impl Asked {
@@ -41,6 +61,7 @@ impl Asked {
             tokens: XdgActivationState::new::<Compositor>(display),
             started: Vec::new(),
             early: Vec::new(),
+            pressed: None,
         }
     }
 }
@@ -51,6 +72,65 @@ impl Compositor {
     pub(crate) fn ticket(&mut self) -> String {
         let (token, _) = self.asked.tokens.create_external_token(None);
         token.to_string()
+    }
+
+    /// A serial for a key `pressed` or let go of; a press is noted as the
+    /// program's that has the keyboard.
+    pub(crate) fn key_serial(&mut self, pressed: bool) -> Serial {
+        let serial = SERIAL_COUNTER.next_serial();
+        let focus = self.keyboard.current_focus();
+        let surface = focus.as_ref().and_then(WaylandFocus::wl_surface);
+        if pressed {
+            self.pressed(serial, surface.as_deref());
+        }
+        serial
+    }
+
+    /// A serial for a button `pressed` or let go of; a press is noted as
+    /// the program's that has the pointer.
+    pub(crate) fn button_serial(&mut self, pressed: bool) -> Serial {
+        let serial = SERIAL_COUNTER.next_serial();
+        if pressed {
+            self.pressed(serial, self.pointer.current_focus().as_ref());
+        }
+        serial
+    }
+
+    /// Notes that a key or a button was pressed, with `serial`, and went to
+    /// `surface`'s program, or to none.
+    fn pressed(&mut self, serial: Serial, surface: Option<&WlSurface>) {
+        let client = surface.and_then(|surface| surface.client().map(|client| client.id()));
+        self.asked.pressed = client.map(|client| (serial, client));
+    }
+
+    /// Whether a program, `client`, may have a token that moves focus, for
+    /// it says it is for `serial`: the last key or button pressed went to
+    /// it, and `serial` is that press's or one given since; not one the
+    /// compositor has not given anyone yet.
+    pub(crate) fn may_move_focus(&self, client: &ClientId, serial: Serial) -> bool {
+        let given = SERIAL_COUNTER.next_serial().is_no_older_than(&serial);
+        let pressed = self.asked.pressed.as_ref();
+        let since =
+            pressed.is_some_and(|(pressed, to)| to == client && serial.is_no_older_than(pressed));
+        given && since
+    }
+
+    /// Forgets the tokens that are old, and those beyond the most kept, the
+    /// oldest first, so that a program making them without end costs
+    /// nothing that lasts.
+    pub(crate) fn forget_old_tokens(&mut self) {
+        let mut made: Vec<Instant> = self
+            .asked
+            .tokens
+            .tokens()
+            .map(|(_, data)| data.timestamp)
+            .collect();
+        made.sort_unstable_by(|one, other| other.cmp(one));
+        let oldest = made.get(MOST_TOKENS - 1).copied();
+        self.asked.tokens.retain_tokens(|_, data| {
+            data.timestamp.elapsed() < TOKEN_LIFE
+                && oldest.is_none_or(|oldest| data.timestamp >= oldest)
+        });
     }
 
     /// Notes that omorfos started the process numbered `pid`, or, with

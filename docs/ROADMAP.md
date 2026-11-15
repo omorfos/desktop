@@ -42,6 +42,10 @@ a known gap.
   that was then closed, which the keeper gives; and a picture
   `omorfos-screenshot` put on the clipboard, pasted whole into a
   program that takes pictures.
+- Activation (stage 8): a link clicked in a chat program or a mail
+  program should still open the browser in front, and a file opened
+  from a file manager its program in front; and a program asking for
+  attention by itself should not take the keyboard.
 - A window wider than a frame may be (stage 8), on a graphics card,
   which the tests do not draw with: `xterm -geometry 5000x40`, some
   thirty thousand pixels wide in xterm's own small letters, should open
@@ -1935,12 +1939,13 @@ Security:
         in what it asks of Smithay;
       - every window costs a titlebar painted as wide as its frame, and
         nothing holds a program to a number of windows.
-- [ ] Any program taking the keyboard with a serial it made up
+- [x] Any program taking the keyboard with a serial it made up
       ([finding 3](reviews/2026-11-15-what-a-client-can-cost.md#3-any-program-can-take-the-keyboard-with-a-serial-it-made-up)),
-      medium: an activation token is honoured for having a serial, not for
-      having one the compositor gave. It is to be one sent that program
-      for a key or a button, lately; and tokens are to be forgotten after
-      a time, which none is.
+      medium: an activation token was honoured for having a serial, not
+      for having one the compositor gave. Now the last key or button
+      pressed has to have gone to the program that made the token, and
+      its serial be that press's or one since (ADR 36); and at most 32
+      tokens are kept, none longer than a minute.
 - [ ] Descriptors running out, in the compositor and in the relay
       ([finding 4](reviews/2026-11-15-what-a-client-can-cost.md#4-descriptors-run-out-in-the-compositor-and-in-the-relay)),
       medium: the limit is never raised from 1024, and each pool of shared
