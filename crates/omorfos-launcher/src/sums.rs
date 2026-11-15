@@ -15,10 +15,25 @@ const DEEPEST: usize = 64;
 /// truly, so that `0.1+0.2` is `0.3`.
 const FIGURES: usize = 15;
 
+/// The signs a sum not yet finished may end with, and a bracket opened.
+const UNFINISHED: [char; 8] = ['+', '-', '*', '×', '/', '÷', '^', '('];
+
 /// The answer to what is typed, written as a person would write it, if
-/// it is a sum: a whole one, with at least one sign between two numbers,
-/// and a number for an answer.
+/// it is a sum, with at least one sign between two numbers and a number
+/// for an answer. A sum not yet finished, ending in a sign or with a
+/// bracket open, is answered as far as it goes, so that the answer stays
+/// as the next sign is typed: `60 + 60 +` is `120`.
 pub(crate) fn answer(typed: &str) -> Option<String> {
+    whole(typed).or_else(|| {
+        let begun = typed.trim_end_matches(|c: char| c.is_whitespace() || UNFINISHED.contains(&c));
+        let open = begun.matches('(').count();
+        let open = open.saturating_sub(begun.matches(')').count());
+        whole(&format!("{begun}{}", ")".repeat(open)))
+    })
+}
+
+/// The answer to what is typed, if it is a whole sum.
+fn whole(typed: &str) -> Option<String> {
     let mut reading = Reading {
         rest: typed.chars().peekable(),
         depth: 0,
@@ -194,11 +209,25 @@ mod tests {
     #[test]
     fn what_is_not_a_whole_sum_has_no_answer() {
         for typed in [
-            "2+", "2*", "2^", "*2", "2 3", "(2+3", "2+3)", "()", "1.2.3+1", "2+x", "firefox", ".",
+            "2+", "2*", "2^", "(2*", "*2", "2 3", "2+3)", "()", "1.2.3+1", "2+x", "firefox", ".",
             "2..+1",
         ] {
             assert_eq!(answer(typed), None, "{typed}");
         }
+    }
+
+    #[test]
+    fn a_sum_not_yet_finished_is_answered_as_far_as_it_goes() {
+        // As another sign is typed, the answer so far stays, to go on from.
+        assert_eq!(answer("60 + 60 +").as_deref(), Some("120"));
+        assert_eq!(answer("60 + 60 * ").as_deref(), Some("120"));
+        assert_eq!(answer("60+60+5").as_deref(), Some("125"));
+        // Brackets left open are closed.
+        assert_eq!(answer("2*(3+4").as_deref(), Some("14"));
+        assert_eq!(answer("2*(3+(").as_deref(), Some("6"));
+        // A number alone is still no sum, however it ends.
+        assert_eq!(answer("60 +"), None);
+        assert_eq!(answer("(60"), None);
     }
 
     #[test]

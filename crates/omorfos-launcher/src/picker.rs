@@ -938,11 +938,19 @@ mod tests {
         assert_eq!(picker.chosen(), Some("4"));
         assert_eq!(names_of(&picker), [""; 0], "no program is named so");
         assert_eq!(picker.key(Key::Enter), copy("4"));
-        // The answer changes as the sum is typed, and goes once it is no
-        // longer a sum.
+        // The answer changes as the sum is typed.
         typed(&mut picker, "*3");
         assert_eq!(picker.chosen(), Some("8"));
+        // Another sign keeps the answer so far, to go on from.
         typed(&mut picker, "+");
+        assert_eq!(picker.chosen(), Some("8"));
+        typed(&mut picker, "2");
+        assert_eq!(picker.chosen(), Some("10"));
+        // Taken back to a number alone, it is no sum.
+        for _ in 0..5 {
+            picker.key(Key::Backspace);
+        }
+        assert_eq!(picker.query(), "2+");
         assert_eq!(picker.chosen(), None);
         assert_eq!(picker.key(Key::Enter), Outcome::Stay);
     }
