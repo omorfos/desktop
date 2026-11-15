@@ -1476,6 +1476,31 @@ the first than on the last.
       forgets by default, and after how long; the launcher's icons and
       descriptions, shown by default since 15 November 2026, as asked; and
       the theme's parts made along the way.
+- [ ] Super as the key omorfos is driven by, everywhere, and a way back to
+      Ctrl and Alt as Windows, GNOME and KDE have them (asked on
+      15 November 2026). ADR 78 gave Super to the desktop, and hands a
+      chord with Super that nothing binds to the program as Ctrl, so that
+      `Super+C` copies as Cmd+C does on macOS; but what the other desktops
+      put on Ctrl and Alt is still there beside it. `Ctrl+C`, `Ctrl+V`
+      and the rest reach programs as they are typed, and do in the shell's
+      own fields too (the launcher's, the boxes that ask for a password);
+      `Alt+Tab` switches windows as `Super+Tab` does; `Alt+Print` takes a
+      picture of a window where `Print` takes one of the screen. To do:
+      - every common chord gone through and found on Super, the built-in
+        bindings and the shell's fields alike: switching windows, closing
+        and quitting (`Super+Q` closes the window today), pictures of the
+        screen and of a window, the launcher, locking, the overview,
+        copying, cutting, pasting, undoing, choosing all, finding;
+      - decided, for each, whether Ctrl or Alt keeps doing what it did as
+        well, or is left to programs alone, which takes `Alt+Tab` from
+        the desktop and gives the shell's fields `Ctrl+C` no more;
+      - a setting between the two ways, omorfos's with Super and the
+        ordinary one with Ctrl and Alt (`Alt+Tab`, `Alt+F4`, `Ctrl+C` as
+        typed everywhere, Super left to the launcher and the overview),
+        its name and place in `config.yaml` to be decided, taking effect
+        at once, and perhaps asked on the welcome card;
+      - decided with the review of the defaults above, as an ADR that
+        takes up ADR 78, and tested chord by chord in both ways.
 
 ## 5. The shell: a bar and a dock
 
