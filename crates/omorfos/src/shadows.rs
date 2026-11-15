@@ -80,6 +80,8 @@ pub(crate) struct Shadowing {
     pieces: Vec<(Cut, Painted)>,
     /// Where each piece goes, as it was last placed.
     placed: Vec<Piece>,
+    /// Where it was last placed: nowhere, until it is placed somewhere.
+    at: Option<Area>,
 }
 
 impl Shadowing {
@@ -95,6 +97,7 @@ impl Shadowing {
             pieces: pieces.collect(),
             shade,
             placed: Vec::new(),
+            at: None,
         }
     }
 
@@ -106,6 +109,11 @@ impl Shadowing {
     /// Places it under what has its box at `area`, or, with none, where it
     /// is not seen.
     pub(crate) fn place(&mut self, area: Option<Area>) {
+        // Placed where it is, it is where it was.
+        if self.at == area {
+            return;
+        }
+        self.at = area;
         self.placed = area.map_or_else(Vec::new, |area| self.shade.pieces(area));
     }
 

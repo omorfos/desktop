@@ -6,13 +6,12 @@ use std::time::Duration;
 use crate::common::Session;
 
 /// The most a turn of a session with nothing changing may allocate, which
-/// is what it allocates today, with one window in a frame of ours: 6 in
-/// `sync`, painting the frame's titlebar again; 23 in drawing, its frame,
-/// its rounded corners and Smithay's elements for what the program drew;
-/// and the rest in `reveal`, `update_seal` and Smithay's refreshing of the
-/// space. Each is let go of within the turn. It is to come down to
-/// nothing, and is lowered as each goes; never raised.
-pub(crate) const CEILING: u64 = 34;
+/// is what it allocates today, with one window in a frame of ours: 23 in
+/// drawing, its frame, its rounded corners and Smithay's elements for what
+/// the program drew; and the rest in `reveal`, `update_seal` and Smithay's
+/// refreshing of the space. Each is let go of within the turn. It is to
+/// come down to nothing, and is lowered as each goes; never raised.
+pub(crate) const CEILING: u64 = 28;
 
 #[test]
 fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates_little() {

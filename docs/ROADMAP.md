@@ -1863,14 +1863,16 @@ Hardware and performance:
       configuration or the scale has changed, not on every turn to find
       it the same; a program written for X11 costs a turn with nothing
       changing no more than any other.
+- [x] A frame's titlebar known again at no cost when it looks as it did:
+      asked of what it was painted as, part by part, rather than of a new
+      copy of all of it, its tabs' looks worked out in the room they had,
+      and its shadow not placed again where it is.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
       lowered as each goes. With one window in a frame of ours, as `quiet::`
-      has it since the X11 work showed the frame was being left out, 34:
-      6 in `sync` painting the frame's titlebar again, which is cached but
-      placed anew; 23 in drawing, the frame, its rounded corners and
-      Smithay's elements for what the program drew; and the rest in
-      `reveal`, `update_seal` and Smithay's refreshing of the space, which
-      may wait on Smithay.
+      has it since the X11 work showed the frame was being left out, 28:
+      23 in drawing, the frame, its rounded corners and Smithay's elements
+      for what the program drew; and the rest in `reveal`, `update_seal`
+      and Smithay's refreshing of the space, which may wait on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
 

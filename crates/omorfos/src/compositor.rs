@@ -5962,6 +5962,8 @@ struct Chrome {
     strips: Names,
     /// The shadow it casts, if the theme gives it one.
     shadow: Option<Shadowing>,
+    /// Room for its tabs' looks to be worked out in, the next time.
+    spare: Vec<Style>,
 }
 
 /// Everything a titlebar's pixels depend on. Its position is not part of
@@ -5985,7 +5987,7 @@ impl Chrome {
     fn paint(
         (text, motion, shades): (&mut Text, &mut Motion, &mut Shades),
         theme: &Theme,
-        cached: Option<Self>,
+        mut cached: Option<Self>,
         frame: &FrameInfo,
         decoration: Decoration,
     ) -> Self {
@@ -5993,7 +5995,11 @@ impl Chrome {
         let tabs = frame.tabs.iter().map(|window| window.raw());
         let shown = frame.shown.raw();
         let state = (frame.active, frame.hovered);
-        let looks = paint::Looks::of(theme, motion, shown, tabs, state, frame.focused);
+        let room = cached
+            .as_mut()
+            .map(|chrome| std::mem::take(&mut chrome.spare));
+        let room = room.unwrap_or_default();
+        let looks = paint::Looks::of_in(room, theme, motion, shown, tabs, state, frame.focused);
         let outline = looks.window.border.top.color;
         // A titlebar laid over a fullscreen window is as square as the
         // screen, and the window under it is not cut to any shape.
@@ -6003,20 +6009,31 @@ impl Chrome {
             looks.window.radius
         };
         let radius = corners::radius(&decoration, rounded);
-        let appearance = Appearance {
-            titles: frame.titles.clone(),
-            looks,
-            size: decoration.titlebar().size,
-            radius,
-            theme: theme.clone(),
-            scale,
-        };
+        let size = decoration.titlebar().size;
         let straight = corners::straight_borders(&decoration, radius);
-        let window = &appearance.looks.window;
-        let shade = shades.of(window.shadow, window.radius, scale);
-        // Everything painted is kept for as long as it would look the same.
-        let kept = cached.filter(|chrome| chrome.appearance == appearance);
-        let mut chrome = kept.unwrap_or_else(|| {
+        let shade = shades.of(looks.window.shadow, looks.window.radius, scale);
+        // Everything painted is kept for as long as it would look the same,
+        // which is asked of what it was painted as, part by part.
+        let same = |chrome: &Self| {
+            let had = &chrome.appearance;
+            had.titles == frame.titles
+                && had.looks == looks
+                && (had.size, had.radius, had.scale) == (size, radius, scale)
+                && had.theme == *theme
+        };
+        let kept = cached.filter(same);
+        let mut chrome = if let Some(mut chrome) = kept {
+            chrome.spare = looks.tabs;
+            chrome
+        } else {
+            let appearance = Appearance {
+                titles: frame.titles.clone(),
+                looks,
+                size,
+                radius,
+                theme: theme.clone(),
+                scale,
+            };
             let titles: Vec<&str> = appearance.titles.iter().map(String::as_str).collect();
             let looks = &appearance.looks;
             let titlebar = paint::titlebar(text, theme, &decoration, &titles, looks, scale);
@@ -6035,8 +6052,9 @@ impl Chrome {
                 corners: [corner(false), corner(true)],
                 strips: Names::default(),
                 shadow: shade.map(Shadowing::new),
+                spare: Vec::new(),
             }
-        });
+        };
         for (buffer, border) in chrome.borders.iter_mut().zip(straight) {
             // Updating with an unchanged size and colour is not damage.
             buffer.update(logical_size(border.size), color(outline));

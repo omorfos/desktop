@@ -77,8 +77,11 @@ impl Looks {
     /// for each of the windows numbered `tabs`, of which `active` is the
     /// one being shown, and the pointer over the button `hovered`, if over
     /// any. Whatever has just changed state is as far on its way as
-    /// `motion` has it.
-    pub(crate) fn of(
+    /// `motion` has it. The tabs' looks are worked out in the room `room`
+    /// has, so that a frame with as many tabs as before costs nothing to
+    /// look at again.
+    pub(crate) fn of_in(
+        mut room: Vec<Style>,
         theme: &Theme,
         motion: &mut Motion,
         shown: u64,
@@ -95,10 +98,12 @@ impl Looks {
             let states = Self::tab_states(focused, index == active);
             motion.style(theme, Part::Tab, window, states)
         });
+        room.clear();
+        room.extend(tabs);
         Self {
             focused,
             active,
-            tabs: tabs.collect(),
+            tabs: room,
             buttons,
             window: motion.style(theme, Part::Window, shown, states),
             titlebar: motion.style(theme, Part::Titlebar, shown, states),
@@ -1204,7 +1209,15 @@ mod tests {
     ) -> Canvas {
         let tabs = (0_u64..).take(titles.len());
         let state = (active, None);
-        let looks = Looks::of(theme, &mut Motion::new(), 0, tabs, state, focused);
+        let looks = Looks::of_in(
+            Vec::new(),
+            theme,
+            &mut Motion::new(),
+            0,
+            tabs,
+            state,
+            focused,
+        );
         super::titlebar(text, theme, decoration, titles, &looks, scale)
     }
 
@@ -1630,7 +1643,15 @@ mod tests {
         let mut text = Text::new();
         let ink = argb(theme.style(Part::Desktop, States::NONE).background);
         let mut hovering = |button: Option<Button>, focused: bool| {
-            let looks = Looks::of(&theme, &mut Motion::new(), 0, 0..1, (0, button), focused);
+            let looks = Looks::of_in(
+                Vec::new(),
+                &theme,
+                &mut Motion::new(),
+                0,
+                0..1,
+                (0, button),
+                focused,
+            );
             super::titlebar(
                 &mut text,
                 &theme,
