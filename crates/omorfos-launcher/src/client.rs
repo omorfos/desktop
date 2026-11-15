@@ -377,7 +377,10 @@ impl Shell {
     fn moved(&mut self, x: f64, y: f64) {
         self.over = (whole(x), whole(y));
         let (x, y) = self.over;
-        // Only on the box do places mean anything to the list.
+        // Only on the box do places mean anything to the list. Held down
+        // since it was pressed in the field, it chooses what it goes over.
+        let (theme, text) = (&self.theme, &mut self.text);
+        self.stale |= self.picker.drag(x, y, theme, text);
         self.stale |= self.on_box && self.picker.point(x, y, &self.theme);
     }
 
@@ -849,12 +852,17 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             } => {
                 // A click beside the box is a way of saying never mind.
                 let outcome = if shell.on_box {
-                    shell.picker.click(x, y, &shell.theme)
+                    shell.picker.click(x, y, &shell.theme, &mut shell.text)
                 } else {
                     Outcome::Close
                 };
                 shell.take(outcome);
             }
+            wl_pointer::Event::Button {
+                button: LEFT_BUTTON,
+                state: WEnum::Value(wl_pointer::ButtonState::Released),
+                ..
+            } => shell.picker.release(),
             _ => {}
         }
     }

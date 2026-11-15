@@ -90,6 +90,9 @@ pub struct Picker {
     /// The first row listed: as far down as the wheel has scrolled, or as
     /// the arrows have taken the chosen row.
     top: usize,
+    /// Whether the pointer was pressed in the field and is still held,
+    /// choosing what it moves over.
+    dragging: bool,
 }
 
 /// A row of the launcher's list.
@@ -167,6 +170,7 @@ impl Picker {
             chosen: 0,
             room: ROWS,
             top: 0,
+            dragging: false,
         }
     }
 
@@ -298,12 +302,71 @@ impl Picker {
         over.is_some()
     }
 
-    /// Takes a click at a point of the launcher: on a program's row it
-    /// starts that program, and anywhere else it does nothing.
-    pub fn click(&mut self, x: i32, y: i32, theme: &Theme) -> Outcome {
+    /// Takes a click at a point of the launcher: in the field it puts the
+    /// cursor there, and chooses what the pointer is then dragged over
+    /// until it is let go; on a program's row it starts that program; and
+    /// anywhere else it does nothing. `text` measures what is typed.
+    pub fn click(&mut self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Outcome {
+        let (left, top, width, height) = Layout::new(theme).input;
+        let across = x.checked_sub(left).and_then(|x| u32::try_from(x).ok());
+        let down = y.checked_sub(top).and_then(|y| u32::try_from(y).ok());
+        self.dragging = across.is_some_and(|x| x < width) && down.is_some_and(|y| y < height);
+        if self.dragging {
+            let at = self.place_at(x, text, theme);
+            self.field.place(at, false);
+            return Outcome::Stay;
+        }
         let over = self.row_at(x, y, theme);
         self.chosen = over.unwrap_or(self.chosen);
         over.map_or(Outcome::Stay, |_| self.start())
+    }
+
+    /// Takes the pointer moving to a point of the launcher while it is
+    /// held: pressed in the field, it chooses from where it was pressed to
+    /// there. Returns whether that changed anything.
+    pub fn drag(&mut self, x: i32, _: i32, theme: &Theme, text: &mut Text) -> bool {
+        let at = self.dragging.then(|| self.place_at(x, text, theme));
+        at.is_some_and(|at| self.field.place(at, true))
+    }
+
+    /// Takes the pointer being let go.
+    pub const fn release(&mut self) {
+        self.dragging = false;
+    }
+
+    /// Where what is typed is written: the field less its padding and its
+    /// border.
+    fn typed_area(theme: &Theme) -> Area {
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        inset(Layout::new(theme).input, input.inset())
+    }
+
+    /// The first place in what is typed that is shown: where what comes
+    /// before the cursor fits in the field from, as far back as it goes,
+    /// so that the cursor is always in sight.
+    fn first_shown(&self, text: &mut Text, theme: &Theme) -> usize {
+        let (_, _, room, _) = Self::typed_area(theme);
+        let font = theme.font(Part::LauncherInput, States::NONE);
+        let (typed, cursor) = (self.field.text(), self.field.cursor());
+        let mut places = self.field.boundaries().take_while(|at| *at <= cursor);
+        let fits = places.find(|at| text.measure(&typed[*at..cursor], font) < room);
+        fits.unwrap_or(cursor)
+    }
+
+    /// The place in what is typed nearest a point `x` across the launcher,
+    /// as it is shown.
+    fn place_at(&self, x: i32, text: &mut Text, theme: &Theme) -> usize {
+        let (left, ..) = Self::typed_area(theme);
+        let font = theme.font(Part::LauncherInput, States::NONE);
+        let first = self.first_shown(text, theme);
+        let typed = self.field.text();
+        let across = i64::from(x) - i64::from(left);
+        let places = self.field.boundaries().filter(|at| *at >= first);
+        let far = |at: &usize| {
+            let to = i64::from(text.measure(&typed[first..*at], font));
+            (to - across).abs()
+        };
+        places.min_by_key(far).unwrap_or(first)
     }
 
     /// Does `edit` to what is typed, and lists what matches it if that
@@ -349,43 +412,7 @@ impl Picker {
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
 
-        let input = theme.style(Part::LauncherInput, States::NONE);
-        let font = theme.font(Part::LauncherInput, States::NONE);
-        canvas.draw_box(layout.input, &input);
-        let typed = inset(layout.input, input.inset());
-        let (left, top, room, tall) = typed;
-        let typed_in = self.field.text();
-        let across = |text: &mut Text, at: usize| {
-            text.measure(&typed_in[..at], font)
-                .min(room.saturating_sub(1))
-        };
-        text.draw(&mut canvas, typed_in, typed, input.color, font);
-        let chosen = self.field.chosen();
-        if chosen.is_empty() {
-            // A line where the next character will go, which stays in the
-            // box however much has been typed.
-            let margin = tall / 5;
-            let caret = (
-                left.saturating_add_unsigned(across(text, self.field.cursor())),
-                top.saturating_add_unsigned(margin),
-                1,
-                tall.saturating_sub(margin * 2),
-            );
-            canvas.fill(caret, input.color);
-        } else {
-            // What is chosen on what the theme marks it with, and no line
-            // where the next character goes, as it goes in its place.
-            let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
-            let (start, end) = (across(text, chosen.start), across(text, chosen.end));
-            let mark = (
-                left.saturating_add_unsigned(start),
-                top,
-                end.saturating_sub(start),
-                tall,
-            );
-            canvas.fill(mark, marked.ground());
-            text.draw(&mut canvas, &typed_in[chosen], mark, marked.color, font);
-        }
+        self.paint_field(&mut canvas, text, theme, layout.input);
 
         // Under an answer, what Enter does with it, whatever is shown of
         // the programs.
@@ -456,6 +483,51 @@ impl Picker {
             text.draw(&mut canvas, &nothing, area, said.color, font);
         }
         canvas
+    }
+
+    /// Draws the field, at `field`, with what is typed in it as far as it
+    /// is in sight, and the cursor or what is chosen.
+    fn paint_field(&self, canvas: &mut Canvas, text: &mut Text, theme: &Theme, field: Area) {
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let font = theme.font(Part::LauncherInput, States::NONE);
+        canvas.draw_box(field, &input);
+        let typed = inset(field, input.inset());
+        let (left, top, room, tall) = typed;
+        // From where the cursor is in sight, what comes before it cut off.
+        let first = self.first_shown(text, theme);
+        let typed_in = self.field.text();
+        let across = |text: &mut Text, at: usize| {
+            text.measure(&typed_in[first..at.max(first)], font)
+                .min(room.saturating_sub(1))
+        };
+        text.draw(canvas, &typed_in[first..], typed, input.color, font);
+        let chosen = self.field.chosen();
+        if chosen.is_empty() {
+            // A line where the next character will go, which stays in the
+            // box however much has been typed.
+            let margin = tall / 5;
+            let caret = (
+                left.saturating_add_unsigned(across(text, self.field.cursor())),
+                top.saturating_add_unsigned(margin),
+                1,
+                tall.saturating_sub(margin * 2),
+            );
+            canvas.fill(caret, input.color);
+        } else {
+            // What is chosen on what the theme marks it with, and no line
+            // where the next character goes, as it goes in its place.
+            let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
+            let (start, end) = (across(text, chosen.start), across(text, chosen.end));
+            let mark = (
+                left.saturating_add_unsigned(start),
+                top,
+                end.saturating_sub(start),
+                tall,
+            );
+            canvas.fill(mark, marked.ground());
+            let shown = chosen.start.max(first)..chosen.end.max(first);
+            text.draw(canvas, &typed_in[shown], mark, marked.color, font);
+        }
     }
 
     /// The first row listed.
@@ -598,6 +670,13 @@ mod tests {
         let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
         let text = (&mut Text::new(), &words);
         picker.paint(text, theme, scale, icons, &mut Motion::new())
+    }
+
+    /// Where what is typed begins, across, and the middle of its line,
+    /// down, under the built-in theme.
+    fn field_at(theme: &Theme) -> (i32, i32) {
+        let (left, top, _, tall) = Picker::typed_area(theme);
+        (left, top + tall.cast_signed() / 2)
     }
 
     fn several() -> Picker {
@@ -937,14 +1016,20 @@ mod tests {
         let theme = Theme::default();
         let mut picker = several();
         let (x, y) = row(3);
-        assert_eq!(picker.click(x, y, &theme), spawn(&["terminal", "--go"]));
         assert_eq!(
-            picker.click(x, 2, &theme),
+            picker.click(x, y, &theme, &mut Text::new()),
+            spawn(&["terminal", "--go"])
+        );
+        assert_eq!(
+            picker.click(x, 2, &theme, &mut Text::new()),
             Outcome::Stay,
             "on the text field"
         );
         let (x, below) = row(7);
-        assert_eq!(picker.click(x, below, &theme), Outcome::Stay);
+        assert_eq!(
+            picker.click(x, below, &theme, &mut Text::new()),
+            Outcome::Stay
+        );
     }
 
     #[test]
@@ -1148,6 +1233,72 @@ mod tests {
     }
 
     #[test]
+    fn a_click_in_the_field_puts_the_cursor_there_and_a_drag_chooses() {
+        let theme = Theme::default();
+        let font = theme.font(Part::LauncherInput, States::NONE).clone();
+        let mut text = Text::new();
+        let mut picker = picker(&["Files", "Lens"]);
+        typed(&mut picker, "files");
+        let (left, y) = field_at(&theme);
+        // Before the first letter, and between the second and the third.
+        assert_eq!(picker.click(left, y, &theme, &mut text), Outcome::Stay);
+        picker.release();
+        typed(&mut picker, "x");
+        assert_eq!(picker.query(), "xfiles");
+        let between = left + text.measure("xfi", &font).cast_signed();
+        picker.click(between, y, &theme, &mut text);
+        picker.release();
+        typed(&mut picker, "y");
+        assert_eq!(picker.query(), "xfiyles");
+        // Pressed at the start and dragged past the end: all of it chosen,
+        // for what is typed next to take its place.
+        picker.click(left, y, &theme, &mut text);
+        assert!(picker.drag(left + 400, y, &theme, &mut text));
+        assert!(!picker.drag(left + 400, y, &theme, &mut text), "no further");
+        picker.release();
+        typed(&mut picker, "l");
+        assert_eq!(picker.query(), "l");
+        // Once let go, moving chooses nothing; nor does a press elsewhere.
+        assert!(!picker.drag(left, y, &theme, &mut text));
+        picker.click(left, y + 200, &theme, &mut text);
+        assert!(!picker.drag(left, y, &theme, &mut text));
+    }
+
+    #[test]
+    fn text_wider_than_the_field_is_shown_from_where_the_cursor_can_be_seen() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let mut picker = picker(&["Files"]);
+        assert_eq!(picker.first_shown(&mut text, &theme), 0, "nothing typed");
+        typed(&mut picker, &"w".repeat(60));
+        let first = picker.first_shown(&mut text, &theme);
+        assert!(first > 0, "{first}");
+        // The cursor is at the end, in sight: what comes before it, from
+        // there, fits, and from a character sooner it would not.
+        let (_, _, room, _) = Picker::typed_area(&theme);
+        let font = theme.font(Part::LauncherInput, States::NONE).clone();
+        assert!(text.measure(&picker.query()[first..], &font) < room);
+        assert!(text.measure(&picker.query()[first - 1..], &font) >= room);
+        // A click at the start of the field puts the cursor where it is
+        // shown from.
+        let (left, y) = field_at(&theme);
+        picker.click(left, y, &theme, &mut text);
+        picker.release();
+        typed(&mut picker, "x");
+        assert_eq!(picker.query().find('x'), Some(first));
+        // With the cursor at the start, it is shown from the start.
+        let home = Edit::Move {
+            way: Way::Back,
+            reach: Reach::Line,
+            choosing: false,
+        };
+        picker.key(Key::Edit(home));
+        assert_eq!(picker.first_shown(&mut text, &theme), 0);
+        let canvas = painted(&picker);
+        assert!(canvas.width() > 0);
+    }
+
+    #[test]
     fn a_sum_is_answered_above_the_programs_and_enter_copies_the_answer() {
         let mut picker = picker(&["Calculator", "Counter 2"]);
         typed(&mut picker, "2");
@@ -1216,9 +1367,12 @@ mod tests {
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
         let (x, y) = row(0);
-        assert_eq!(picker.click(x, y, &theme), copy("2"));
+        assert_eq!(picker.click(x, y, &theme, &mut Text::new()), copy("2"));
         let (x, below) = row(2);
-        assert_eq!(picker.click(x, below, &theme), Outcome::Stay);
+        assert_eq!(
+            picker.click(x, below, &theme, &mut Text::new()),
+            Outcome::Stay
+        );
     }
 
     #[test]

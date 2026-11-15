@@ -15,8 +15,10 @@ as in any text field: Left and Right move the cursor, by a word with
 `Ctrl` or `Alt`, and Home and End to an end; with Shift they choose what
 they go over; Backspace and Delete take out a
 character, or a word with `Ctrl` or `Alt`; `Ctrl+Z` undoes and
-`Ctrl+Shift+Z` does again; `Ctrl+C` copies what is chosen and `Ctrl+X`
-cuts it; `Ctrl+V` pastes in place of what is chosen the first line of
+`Ctrl+Shift+Z` does again; a click puts the cursor where it is and a
+drag chooses what it goes over; what is too long for the field is shown
+from as far back as keeps the cursor in sight; `Ctrl+C` copies what is
+chosen and `Ctrl+X` cuts it; `Ctrl+V` pastes in place of what is chosen the first line of
 what is on the clipboard, if it is text. `Super` does as `Ctrl` in each,
 but with Left or Right, which go to the workspace beside, as they do
 everywhere.

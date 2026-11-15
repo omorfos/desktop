@@ -21,6 +21,9 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- The launcher's field and the pointer (stage 6): a click in what is
+  typed puts the cursor there, a drag chooses, and a long sum or name
+  scrolls along with the cursor.
 - Pasting into the launcher (stage 6): text copied in a program, and
   then `Ctrl+V` in the launcher, in place of what is chosen there; and
   what the launcher copied itself with `Ctrl+C`, pasted back.
@@ -1644,9 +1647,14 @@ to false, as `launcher.sums` is (ADR 83).
       does (ADR 82). Fields that ask for a secret, on the lock screen and
       in the boxes that ask for a password, take no paste, as they give
       nothing to copy.
-- [ ] Known gaps in the text field: a click putting the cursor and a
-      drag choosing; and text wider than the field scrolled along to the
-      cursor.
+- [x] The launcher's text field and the pointer: a click putting the
+      cursor where it is, a drag from there choosing what it goes over,
+      and text wider than the field shown from as far back as keeps the
+      cursor in sight.
+- [ ] Known gaps in the text field: a double click choosing a word; and
+      text scrolled back to its start as soon as the cursor goes back
+      within sight of it, rather than kept where it was, as a text field
+      usually does.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

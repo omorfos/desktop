@@ -469,6 +469,37 @@ fn of_a_long_copy_only_so_much_is_read() {
 }
 
 #[test]
+fn what_is_typed_is_chosen_by_dragging_over_it_with_the_pointer() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    press(&mut session, F);
+    press(&mut session, I);
+    // Pressed where what is typed begins, and dragged past its end.
+    let (left, top) = corner();
+    let at = |x: i32| Input::Motion {
+        x: f64::from(left + x),
+        y: f64::from(top + 29),
+    };
+    let left_button = |pressed| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    session.compositor_mut().input(at(21), 0);
+    session.compositor_mut().input(left_button(true), 0);
+    settle(&mut session, &mut launcher);
+    session.compositor_mut().input(at(300), 0);
+    settle(&mut session, &mut launcher);
+    session.compositor_mut().input(left_button(false), 0);
+    // "fi" chosen, and "l" typed in its place: Lens.
+    press(&mut session, L);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "lens") == "x");
+    assert_eq!(mark(&session, "files"), "");
+}
+
+#[test]
 fn what_is_dragged_over_the_launcher_is_not_taken_and_goes_back() {
     let mut session = Session::new();
     let mut editor = session.connect();
