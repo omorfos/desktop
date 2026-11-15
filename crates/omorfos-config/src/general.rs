@@ -72,6 +72,8 @@ pub struct General {
     pub xwayland: Xwayland,
     /// omorfos's own new version, once it is installed.
     pub update: Update,
+    /// What the `restart` and `shut_down` actions do before they act.
+    pub power: Power,
     /// The program that locks the session, and its arguments, such as
     /// `[swaylock, -f]`. The `lock` action starts it, and it alone is let
     /// lock. Without one there is nothing to lock with.
@@ -173,6 +175,24 @@ impl Default for Update {
         Self {
             wait: Bounded::clamped(3600),
         }
+    }
+}
+
+/// What the `restart` and `shut_down` actions do before they act, from
+/// the root menu, a key or `omorfosctl`. Not what the lock screen offers,
+/// which is `lock.power`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Power {
+    /// Whether they ask the user first, so that a stray click or key does
+    /// not end what is not saved. False: they act at once.
+    pub ask: bool,
+}
+
+impl Default for Power {
+    fn default() -> Self {
+        Self { ask: true }
     }
 }
 
@@ -1502,6 +1522,14 @@ autostart:
         assert!(parse("panel: {}").unwrap().panel.enabled);
         assert!(!parse("panel: { enabled: false }").unwrap().panel.enabled);
         assert!(parse("panel: { position: top }").is_err());
+    }
+
+    #[test]
+    fn restarting_and_shutting_down_ask_first_unless_told_not_to() {
+        assert!(General::default().power.ask);
+        assert!(parse("power: {}").unwrap().power.ask);
+        assert!(!parse("power: { ask: false }").unwrap().power.ask);
+        assert!(parse("power: { confirm: false }").is_err());
     }
 
     #[test]

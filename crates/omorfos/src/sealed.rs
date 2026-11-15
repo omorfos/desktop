@@ -79,9 +79,20 @@ impl Compositor {
         })
     }
 
-    /// Where the prompt's box is on the screens, if one is up, and the
-    /// scale of the screen it is on.
-    fn sealed_box(&self) -> Option<(Area, Scale)> {
+    /// What seals the session, if anything does: the screen it is on, where
+    /// its box is on the screens and the scale of that screen. A prompt
+    /// that asks for a secret, or the question whether to start the
+    /// machine again or turn it off, which is drawn alike.
+    fn sealing(&self) -> Option<(Output, Area, Scale)> {
+        let asking = self.cards.leave.shown.as_ref();
+        let asking = asking.filter(|_| self.cards.leave.asked.is_some());
+        let asked = asking.map(crate::leaving::Asking::sealed);
+        self.sealed_box().or(asked)
+    }
+
+    /// Where the prompt's box is on the screens, if one is up, the screen
+    /// it is on and its scale.
+    fn sealed_box(&self) -> Option<(Output, Area, Scale)> {
         self.heads.iter().find_map(|head| {
             let layers = layer_map_for_output(&head.output);
             let asks = layers.layers_on(Layer::Overlay).find(|layer| asks(layer));
@@ -92,7 +103,7 @@ impl Compositor {
                 let at = at + within.loc;
                 let size = within.size;
                 let area = (at.x, at.y, size.w.unsigned_abs(), size.h.unsigned_abs());
-                (area, head.scale)
+                (head.output.clone(), area, head.scale)
             })
         })
     }
@@ -122,7 +133,7 @@ impl Compositor {
     /// Nothing half done goes on under a prompt: a menu or a drag would
     /// not see the keys or the button that end it.
     pub(crate) fn update_seal(&mut self) {
-        if self.sealed().is_some() {
+        if self.sealing().is_some() {
             self.menu = None;
             self.drag = None;
         }
@@ -131,8 +142,8 @@ impl Compositor {
         let question = theme.style(Part::Question, States::NONE);
         let had = self.seal.shadow.take();
         self.seal.shadow = self
-            .sealed_box()
-            .and_then(|(area, scale)| self.animation.shades.cast(&question, scale, area, had));
+            .sealing()
+            .and_then(|(_, area, scale)| self.animation.shades.cast(&question, scale, area, had));
         let heads = &self.heads;
         let dims = &mut self.seal.dims;
         dims.retain(|(output, _)| heads.iter().any(|head| head.output == *output));
@@ -160,14 +171,21 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let Some((on, surface, at)) = self.sealed() else {
-            return;
-        };
-        let here = (on == *output).then_some(&surface).into_iter();
-        let shown = here.flat_map(|surface| {
+        // The question whether to leave, over the dim as a prompt is.
+        let asked = self.cards.leave.asked.is_some();
+        let asking = self.cards.leave.shown.as_ref();
+        let asking = asking.filter(|asking| asked && asking.output == *output);
+        let card = asking.and_then(|asking| {
+            let at = asking.at.to_f64();
+            asking.pixels.element(renderer, at, view, 1.0)
+        });
+        elements.extend(card);
+        // The prompt itself, if it is a program's that asks for a secret.
+        let prompt = self.sealed().filter(|(on, ..)| on == output);
+        let shown = prompt.into_iter().flat_map(|(_, surface, at)| {
             render_elements_from_surface_tree(
                 renderer,
-                surface,
+                &surface,
                 view.pixel(at.to_f64()),
                 view.scale.factor(),
                 1.0,
@@ -175,11 +193,14 @@ impl Compositor {
             )
         });
         elements.extend(shown.map(Element::Surface));
+        let Some((on, ..)) = self.sealing() else {
+            return;
+        };
         // Its glass is under its box, and what is behind that begins under
         // its shadow: the dim, and the session under it.
         let question = self.config().theme.style(Part::Question, States::NONE);
-        let boxed = self.sealed_box().filter(|_| on == *output);
-        let glass = boxed.and_then(|((x, y, width, height), _)| {
+        let boxed = self.sealing().filter(|_| on == *output);
+        let glass = boxed.and_then(|(_, (x, y, width, height), _)| {
             let area = Rectangle::new(
                 (x, y).into(),
                 (width.cast_signed(), height.cast_signed()).into(),

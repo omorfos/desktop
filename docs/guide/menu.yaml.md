@@ -15,10 +15,10 @@ An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
 
 Without a `menu.yaml` the menu has a terminal, the launcher, staying
-awake, reloading the configuration, the welcome card, "About" and
-quitting, said in the user's language. So is an entry of `menu.yaml`
-named and doing just as one of those, as `{ label: Quit, action: quit }`
-is; one named otherwise is shown as it is named, in whatever language it
+awake, "About", locking the screen, sleep, logging out, restarting and
+shutting down, said in the user's language; the last three ask first, as
+`power.ask` in `config.yaml` says. So is an entry of `menu.yaml` named and
+doing just as one of those, as `{ label: Sleep, action: sleep }` is; one named otherwise is shown as it is named, in whatever language it
 is written.
 
 Before each label stands what it does. An entry that starts a program has
@@ -39,6 +39,14 @@ items:
     items:
       - { label: Quit, action: quit }
 ```
+
+At the end of a row stand the keys that do what it does, as `keys.yaml`
+binds them: Super, Ctrl, Alt and Shift by their signs, four squares, a
+caret, the option sign and a broad arrow up, and Enter, Space, Tab,
+Backspace and the arrows by theirs; other keys as written on them, as `Q`,
+`Esc` or `Del`; each a little apart, where a `+` would be. So Run… has the
+sign of Super and of Space beside it. A row whose action has no binding
+has none. Their colour is `menu-keys` in the theme.
 
 The menu a right click on a titlebar opens is the same: a sign for what
 each row does, those of "Maximize", "Shade", "Keep above" and "Show on

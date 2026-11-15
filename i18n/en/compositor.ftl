@@ -143,8 +143,35 @@ copied = Copied
 terminal = Terminal
 run = Run…
 stay-awake = Stay awake
-reload-configuration = Reload configuration
-# Shows the welcome card again.
-welcome = Welcome
 about-omorfos = About omorfos
-quit = Quit
+lock-screen = Lock screen
+sleep = Sleep
+log-out-session = Log out…
+# Each asks first, unless power.ask in config.yaml is false.
+restart-machine = Restart…
+shut-down-machine = Shut down…
+
+## Asked before the machine is started again or turned off, unless
+## power.ask in config.yaml is false: the question, what it means, and the
+## buttons that answer it.
+restart-ask = Restart now?
+shut-down-ask = Shut down now?
+log-out-ask = Log out now?
+# How many seconds, $left, before it is done, left alone.
+restart-in = Restarting in { $left } { $left ->
+    [one] second
+   *[other] seconds
+}
+shut-down-in = Shutting down in { $left } { $left ->
+    [one] second
+   *[other] seconds
+}
+log-out-in = Logging out in { $left } { $left ->
+    [one] second
+   *[other] seconds
+}
+leave-unsaved = Whatever is not saved in open programs will be lost.
+cancel = Cancel
+restart = Restart
+shut-down = Shut down
+log-out = Log out

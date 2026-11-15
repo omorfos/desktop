@@ -197,6 +197,8 @@ menu-sign:active {
   background: var(--accent-tint);
   color: var(--accent);
 }
+/* The keys that do what a row does, at its end. */
+menu-keys { color: var(--text-dim); }
 
 /* What is wrong with the configuration, when it was last read. */
 notice {
@@ -620,7 +622,7 @@ workspace:active, task:active { border-bottom: none; }
 
 **Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `menu-sign`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
+`menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
 `clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
 `launcher-description`, `launcher-backdrop`, `notification`,

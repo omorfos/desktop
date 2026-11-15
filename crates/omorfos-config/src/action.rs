@@ -123,6 +123,17 @@ pub enum Action {
     About,
     /// Lock the session, with the program `locker` in config.yaml names.
     Lock,
+    /// Put the machine to sleep, as `omorfos-session sleep` does.
+    Sleep,
+    /// Start the machine again, as `omorfos-session restart` does: once
+    /// the user has said so, unless `power.ask` in config.yaml is false.
+    Restart,
+    /// Turn the machine off, as `omorfos-session shut-down` does: once the
+    /// user has said so, unless `power.ask` in config.yaml is false.
+    ShutDown,
+    /// End the session, as `quit` does: once the user has said so, unless
+    /// `power.ask` in config.yaml is false.
+    LogOut,
     /// Keep the session from locking, the screens from going off and the
     /// machine from sleeping when the user is away, until asked again; or,
     /// while it is kept so, let it go.

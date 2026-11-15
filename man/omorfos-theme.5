@@ -12,7 +12,7 @@ omorfos\-theme \- theme.css, how the omorfos desktop looks
 The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, perhaps in some state, and gives them properties. Yours is laid over the built\-in theme, so you only write what you want changed. A rule of yours always wins over a built\-in one; among your own, the one that names more states wins, and then the later one. It is read again as soon as it is saved, and kept as it was before if it has a mistake.
 .SH PARTS
 .PP
-\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
+\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
 .SH STATES
 .PP
 \fB:focus\fR, \fB:active\fR, \fB:hover\fR, \fB:urgent\fR, \fB:closing\fR
@@ -206,6 +206,8 @@ menu\-sign:active {
   background: var(\-\-accent\-tint);
   color: var(\-\-accent);
 }
+/* The keys that do what a row does, at its end. */
+menu\-keys { color: var(\-\-text\-dim); }
 
 /* What is wrong with the configuration, when it was last read. */
 notice {

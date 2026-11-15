@@ -46,4 +46,34 @@ pub enum Sign {
     Quit,
     /// A padlock: to lock.
     Lock,
+    /// A moon: to sleep.
+    Sleep,
+    /// An arrow turning back: to start again.
+    Restart,
+    /// A switch's sign: to turn off.
+    ShutDown,
+    /// Four squares: the Super key.
+    Super,
+    /// A caret up: the Ctrl key.
+    Ctrl,
+    /// The option sign: the Alt key.
+    Alt,
+    /// A broad arrow up: the Shift key.
+    Shift,
+    /// An arrow down and back: the Enter key.
+    Enter,
+    /// A bracket lying down: the space bar.
+    Space,
+    /// An arrow to a line: the Tab key.
+    Tab,
+    /// An arrow up: the key of that arrow.
+    Up,
+    /// An arrow down: the key of that arrow.
+    Down,
+    /// An arrow left: the key of that arrow.
+    Left,
+    /// An arrow right: the key of that arrow.
+    Right,
+    /// A key with a cross: the Backspace key.
+    Backspace,
 }

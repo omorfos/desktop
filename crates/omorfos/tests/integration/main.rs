@@ -33,6 +33,7 @@ mod kde_blur;
 mod keeper;
 mod launcher;
 mod layers;
+mod leaving;
 mod lock;
 mod lock_screen;
 mod login;

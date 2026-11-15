@@ -34,7 +34,7 @@ pub use desktop::{
     Screen, Settings, Showing, Standing, States, Tab, Tile, Window, WindowId, WorkspaceId,
 };
 pub use keys::{KeyChains, KeyOutcome};
-pub use menu::{Item, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
+pub use menu::{Item, Keycap, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use overview::{OverviewLayout, OverviewMetrics, overview};
 pub use placement::{CASCADE_STEP, Placement, place};
 pub use rules::{Effects, Pattern, Private, Rule, resolve};

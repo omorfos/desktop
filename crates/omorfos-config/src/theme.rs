@@ -1535,6 +1535,7 @@ mod tests {
             (style(Part::MenuItem, States::NONE), Some(Part::Menu)),
             (style(Part::MenuItem, hovered), None),
             (style(Part::MenuSign, States::NONE), Some(Part::Menu)),
+            (style(Part::MenuKeys, States::NONE), Some(Part::Menu)),
             (style(Part::Notice, States::NONE), None),
             (style(Part::NoticeHeading, States::NONE), Some(Part::Notice)),
             (style(Part::About, States::NONE), None),

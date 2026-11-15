@@ -10,8 +10,8 @@ use omorfos_config::{
     Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
 };
 use omorfos_core::{
-    Button, Effects, Item, KeyChains, Mark, Metrics, Pattern, Placement, Private, Rule, Settings,
-    Sign, Standing,
+    Button, Effects, Item, KeyChains, Keycap, Mark, Metrics, Pattern, Placement, Private, Rule,
+    Settings, Sign, Standing,
 };
 use omorfos_i18n::Words;
 use smithay::input::keyboard::{ModifiersState, xkb};
@@ -103,14 +103,16 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
 
 /// The messages the entries of the built-in root menu are said by, in its
 /// order.
-const BUILT_IN: [&str; 7] = [
+const BUILT_IN: [&str; 9] = [
     "terminal",
     "run",
     "stay-awake",
-    "reload-configuration",
-    "welcome",
     "about-omorfos",
-    "quit",
+    "lock-screen",
+    "sleep",
+    "log-out-session",
+    "restart-machine",
+    "shut-down-machine",
 ];
 
 /// Converts the configured root menu into the domain's menu items. An
@@ -120,7 +122,7 @@ const BUILT_IN: [&str; 7] = [
 #[must_use]
 pub fn menu_items(
     items: &[omorfos_config::MenuItem],
-    on: Toggled,
+    (on, keys): (Toggled, &Keys),
     words: &Words,
 ) -> Vec<Item<Action>> {
     let built_in = omorfos_config::Menu::default();
@@ -130,14 +132,14 @@ pub fn menu_items(
     });
     let said = entries.zip(BUILT_IN);
     let said = said.map(|((label, action), name)| (label, action, words.say(name, &[])));
-    converted(items, on, &said.collect::<Vec<_>>())
+    converted(items, (on, keys), &said.collect::<Vec<_>>())
 }
 
 /// Converts `items`, saying an entry `said` has, by its label and action,
 /// as it says it.
 fn converted(
     items: &[omorfos_config::MenuItem],
-    on: Toggled,
+    (on, keys): (Toggled, &Keys),
     said: &[(String, Action, String)],
 ) -> Vec<Item<Action>> {
     let convert = |item: &omorfos_config::MenuItem| match item {
@@ -153,15 +155,72 @@ fn converted(
                 .clone(),
             action: action.clone(),
             mark: icon.clone().map_or_else(|| mark(action, on), Mark::Icon),
+            keys: keycaps(keys, action),
         },
         omorfos_config::MenuItem::Submenu { label, items, icon } => Item::Submenu {
             label: label.clone(),
-            items: converted(items, on, said),
+            items: converted(items, (on, keys), said),
             mark: icon.clone().map_or(Mark::Blank, Mark::Icon),
         },
         omorfos_config::MenuItem::Separator => Item::Separator,
     };
     items.iter().map(convert).collect()
+}
+
+/// The keys of the first binding that does `action`, as a menu shows them
+/// at the end of its row: Super, Ctrl, Alt and Shift, in that order, then
+/// the key, each by its sign where it has one, and what is written on it
+/// otherwise, as `Q`; the chords of a chain apart. None if no binding does
+/// it.
+#[must_use]
+pub fn keycaps(keys: &Keys, action: &Action) -> Vec<Keycap> {
+    let held = [
+        (Modifiers::SUPER, Sign::Super),
+        (Modifiers::CTRL, Sign::Ctrl),
+        (Modifiers::ALT, Sign::Alt),
+        (Modifiers::SHIFT, Sign::Shift),
+    ];
+    let mut bindings = keys.bindings().iter();
+    let binding = bindings.find(|binding| binding.action == *action);
+    let chords = binding
+        .into_iter()
+        .flat_map(|binding| binding.keys.chords());
+    let mut caps = Vec::new();
+    for (index, chord) in chords.enumerate() {
+        // A chord after another, as in a chain, stands apart from it.
+        caps.extend((index > 0).then(|| Keycap::Text(" ".to_owned())));
+        let modifiers = held
+            .iter()
+            .filter(|(modifier, _)| chord.modifiers.contains(*modifier));
+        caps.extend(modifiers.map(|(_, sign)| Keycap::Sign(*sign)));
+        caps.push(keycap(&chord.key));
+    }
+    caps
+}
+
+/// How a key, by its XKB name, is shown among the keys at a row's end.
+fn keycap(key: &str) -> Keycap {
+    let sign = match key {
+        "Return" | "KP_Enter" => Some(Sign::Enter),
+        "space" => Some(Sign::Space),
+        "Tab" => Some(Sign::Tab),
+        "Up" => Some(Sign::Up),
+        "Down" => Some(Sign::Down),
+        "Left" => Some(Sign::Left),
+        "Right" => Some(Sign::Right),
+        "BackSpace" => Some(Sign::Backspace),
+        _ => None,
+    };
+    let written = match key {
+        "Delete" => "Del".to_owned(),
+        "Escape" => "Esc".to_owned(),
+        // Begun with a capital, as on the key.
+        other => {
+            let first = other.chars().take(1).flat_map(char::to_uppercase);
+            first.chain(other.chars().skip(1)).collect()
+        }
+    };
+    sign.map_or(Keycap::Text(written), Keycap::Sign)
 }
 
 /// What is on, of what the rows of a menu turn on and off.
@@ -205,7 +264,10 @@ pub fn mark(action: &Action, on: Toggled) -> Mark {
         Action::ReloadConfig => Mark::Sign(Sign::Reload),
         Action::About | Action::ShowWelcome => Mark::Sign(Sign::About),
         Action::Lock => Mark::Sign(Sign::Lock),
-        Action::Quit => Mark::Sign(Sign::Quit),
+        Action::Quit | Action::LogOut => Mark::Sign(Sign::Quit),
+        Action::Sleep => Mark::Sign(Sign::Sleep),
+        Action::Restart => Mark::Sign(Sign::Restart),
+        Action::ShutDown => Mark::Sign(Sign::ShutDown),
         _ => Mark::Blank,
     }
 }
@@ -491,10 +553,16 @@ items:
       - { label: Away, action: quit, icon: system-suspend }
   - { label: Places, items: [], icon: folder }
 ";
+        // Each with the keys the built-in bindings give what it does.
         let quit = |label: &str, mark| Item::Entry {
             label: label.to_owned(),
             action: Action::Quit,
             mark,
+            keys: vec![
+                Keycap::Sign(Sign::Super),
+                Keycap::Sign(Sign::Shift),
+                Keycap::Text("E".to_owned()),
+            ],
         };
         let spawn = Action::Spawn(Command::terminal().into());
         let on = Toggled {
@@ -503,12 +571,17 @@ items:
             awake: false,
         };
         assert_eq!(
-            menu_items(&config("menu.yaml", yaml).menu.items, on, &english()),
+            menu_items(
+                &config("menu.yaml", yaml).menu.items,
+                (on, &Keys::default()),
+                &english()
+            ),
             [
                 Item::Entry {
                     label: "Terminal".to_owned(),
                     action: spawn,
                     mark: Mark::Program("foot".to_owned()),
+                    keys: vec![Keycap::Sign(Sign::Super), Keycap::Sign(Sign::Enter)],
                 },
                 Item::Separator,
                 Item::Submenu {
@@ -552,19 +625,84 @@ items:
     }
 
     #[test]
+    fn the_keys_of_an_action_are_shown_by_their_signs_or_what_is_written_on_them() {
+        let yaml = "
+defaults: false
+bindings:
+  - { keys: Super+space, action: show_launcher }
+  - { keys: Ctrl+Alt+Shift+Return, action: lock }
+  - { keys: Super+x t, action: close }
+  - { keys: Super+Shift+q, action: close }
+  - { keys: Super+Tab, action: switch_windows }
+  - { keys: Super+Up, action: maximize }
+  - { keys: Super+Down, action: minimize }
+  - { keys: Super+Left, action: previous_workspace }
+  - { keys: Super+Right, action: next_workspace }
+  - { keys: Super+BackSpace, action: quit }
+  - { keys: Super+Delete, action: about }
+  - { keys: Escape, action: show_menu }
+  - { keys: KP_Enter, action: show_welcome }
+";
+        let keys = config("keys.yaml", yaml).keys;
+        let caps = |action: &Action| keycaps(&keys, action);
+        let sign = Keycap::Sign;
+        let text = |written: &str| Keycap::Text(written.to_owned());
+        assert_eq!(
+            caps(&Action::ShowLauncher),
+            [sign(Sign::Super), sign(Sign::Space)]
+        );
+        assert_eq!(
+            caps(&Action::Lock),
+            [
+                sign(Sign::Ctrl),
+                sign(Sign::Alt),
+                sign(Sign::Shift),
+                sign(Sign::Enter)
+            ],
+            "Super, Ctrl, Alt, Shift: in that order"
+        );
+        assert_eq!(
+            caps(&Action::Close),
+            [sign(Sign::Super), text("X"), text(" "), text("T")],
+            "the first binding, a chain, its chords apart"
+        );
+        let signed = [
+            (Action::SwitchWindows, Sign::Tab),
+            (Action::Maximize, Sign::Up),
+            (Action::Minimize, Sign::Down),
+            (Action::PreviousWorkspace, Sign::Left),
+            (Action::NextWorkspace, Sign::Right),
+            (Action::Quit, Sign::Backspace),
+        ];
+        for (action, key) in signed {
+            assert_eq!(caps(&action), [sign(Sign::Super), sign(key)]);
+        }
+        assert_eq!(caps(&Action::About), [sign(Sign::Super), text("Del")]);
+        assert_eq!(caps(&Action::ShowMenu), [text("Esc")]);
+        assert_eq!(caps(&Action::ShowWelcome), [sign(Sign::Enter)]);
+        assert_eq!(caps(&Action::ReloadConfig), [], "none bound");
+    }
+
+    #[test]
     fn the_built_in_menu_is_said_in_the_users_language() {
         let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
         let built_in = omorfos_config::Menu::default();
         assert_eq!(
-            labels(&menu_items(&built_in.items, off(), &polish)),
+            labels(&menu_items(
+                &built_in.items,
+                (off(), &Keys::default()),
+                &polish
+            )),
             [
                 "Terminal",
                 "Uruchom\u{2026}",
                 "Nie usypiaj",
-                "Wczytaj konfigurację",
-                "Powitanie",
                 "O omorfos",
-                "Zakończ",
+                "Zablokuj ekran",
+                "Uśpij",
+                "Wyloguj\u{2026}",
+                "Uruchom ponownie\u{2026}",
+                "Wyłącz\u{2026}",
             ]
         );
     }
@@ -577,7 +715,7 @@ items:
             omorfos_config::MenuItem::Entry { label, .. } => Some(label.as_str()),
             _ => None,
         });
-        let said = menu_items(&built_in.items, off(), &english());
+        let said = menu_items(&built_in.items, (off(), &Keys::default()), &english());
         let configured: Vec<&str> = configured.collect();
         assert_eq!(configured.len(), BUILT_IN.len());
         assert_eq!(labels(&said), configured);
@@ -587,19 +725,24 @@ items:
     fn an_entry_the_configuration_names_or_points_elsewhere_keeps_its_label_in_every_language() {
         let yaml = "
 items:
-  - { label: Quit, action: about }
-  - { label: Leave, action: quit }
+  - { label: 'Log out…', action: about }
+  - { label: Leave, action: log_out }
   - label: Session
     items:
-      - { label: Quit, action: quit }
+      - { label: 'Log out…', action: log_out }
 ";
         let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
-        let items = menu_items(&config("menu.yaml", yaml).menu.items, off(), &polish);
-        assert_eq!(labels(&items), ["Quit", "Leave", "Session"]);
+        let items = menu_items(
+            &config("menu.yaml", yaml).menu.items,
+            (off(), &Keys::default()),
+            &polish,
+        );
+        assert_eq!(labels(&items), ["Log out\u{2026}", "Leave", "Session"]);
         let quit = Item::Entry {
-            label: "Zakończ".to_owned(),
-            action: Action::Quit,
+            label: "Wyloguj\u{2026}".to_owned(),
+            action: Action::LogOut,
             mark: Mark::Sign(Sign::Quit),
+            keys: Vec::new(),
         };
         let session = Item::Submenu {
             label: "Session".to_owned(),

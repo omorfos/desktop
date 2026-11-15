@@ -30,10 +30,13 @@ impl Default for Menu {
                 entry("Run\u{2026}", Action::ShowLauncher),
                 MenuItem::Separator,
                 entry("Stay awake", Action::StayAwake),
-                entry("Reload configuration", Action::ReloadConfig),
-                entry("Welcome", Action::ShowWelcome),
                 entry("About omorfos", Action::About),
-                entry("Quit", Action::Quit),
+                MenuItem::Separator,
+                entry("Lock screen", Action::Lock),
+                entry("Sleep", Action::Sleep),
+                entry("Log out\u{2026}", Action::LogOut),
+                entry("Restart\u{2026}", Action::Restart),
+                entry("Shut down\u{2026}", Action::ShutDown),
             ],
         }
     }
@@ -144,7 +147,8 @@ mod tests {
     }
 
     #[test]
-    fn the_built_in_menu_starts_programs_keeps_the_session_awake_says_what_it_is_and_ends_it() {
+    fn the_built_in_menu_starts_programs_keeps_the_session_awake_says_what_it_is_and_ends_it_or_the_machine()
+     {
         let menu = Menu::default();
         let labels: Vec<&str> = menu
             .items
@@ -160,13 +164,16 @@ mod tests {
                 "Terminal",
                 "Run\u{2026}",
                 "Stay awake",
-                "Reload configuration",
-                "Welcome",
                 "About omorfos",
-                "Quit"
+                "Lock screen",
+                "Sleep",
+                "Log out\u{2026}",
+                "Restart\u{2026}",
+                "Shut down\u{2026}"
             ]
         );
         assert_eq!(menu.items[2], MenuItem::Separator);
+        assert_eq!(menu.items[5], MenuItem::Separator, "before what ends");
     }
 
     #[test]

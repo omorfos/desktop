@@ -762,6 +762,18 @@
       },
       "type": "object"
     },
+    "Power": {
+      "additionalProperties": false,
+      "description": "What the `restart` and `shut_down` actions do before they act, from\nthe root menu, a key or `omorfosctl`. Not what the lock screen offers,\nwhich is `lock.power`.",
+      "properties": {
+        "ask": {
+          "default": true,
+          "description": "Whether they ask the user first, so that a stray click or key does\nnot end what is not saved. False: they act at once.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Role": {
       "description": "Something a program may do only if the compositor started it and was\ntold it may.",
       "oneOf": [
@@ -1203,6 +1215,10 @@
     "portals": {
       "$ref": "#/$defs/Portals",
       "description": "What applications ask the desktop through the portals."
+    },
+    "power": {
+      "$ref": "#/$defs/Power",
+      "description": "What the `restart` and `shut_down` actions do before they act."
     },
     "screenshots": {
       "$ref": "#/$defs/Screenshots",

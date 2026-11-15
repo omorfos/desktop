@@ -35,6 +35,15 @@ a known gap.
   programs said, and no `/media/<you>/...` paths but `/media/(left
   out)`. The log's bound is shown only by a login that says more than
   8 MiB; `session.log` should then begin with the line saying so.
+- [ ] The question before logging out, restarting or shutting down
+      (`Super+Escape`, then Log out…, Restart… or Shut down…), as changed
+      on 15 November 2026: the card over the screen dimmed and blurred as
+      round a password box, counting a minute down; Escape, Cancel or a
+      click beside it does nothing, Enter, the button or the minute's end
+      does it; with `power: { ask: false }` they act at once. Better
+      tried with Log out or Restart, and with work saved. The menu itself,
+      its keys as signs, its signs for these entries and the titlebar's
+      menu were tried that day.
 
 ## Where this is going
 
@@ -281,6 +290,12 @@ calls for them.
 - [x] The menus of a program written for X11 with a private window left
       out of pictures with it, the program known by the process it says
       each window is of (`_NET_WM_PID`).
+- [ ] A coverage gap that comes by timing, seen once on 15 November 2026
+      in the gates without a graphics card and not on the run after: a
+      picture PipeWire has taken away while it was held
+      (`omorfos-pipewire`'s `Held::drop`, and the portal's `held.gone()`
+      in `xdg-desktop-portal-omorfos`), which only some runs reach. The
+      tests are to bring it about for certain.
 - [ ] Known gaps in what is private: a notification about a private
       window is in a picture, as is a menu of a program written for X11
       that does not say what process it is of; a program cannot yet say
@@ -1554,6 +1569,13 @@ a setting.
       default: Run, About, Settings, Task Manager, Sleep, Restart, Shut
       Down, Lock Screen, each with its key beside it. Entries whose
       program is not there yet are left out, not shown and dead.
+      The maintainer chose (15 November 2026) that the bar's button
+      opens the compositor's root menu, `menu.yaml`'s, hanging from the
+      bar, rather than a menu of the bar's own. Done for it: the keys
+      beside each row, and Lock screen, Sleep, Restart and Shut down in
+      the root menu, the last two asking first unless `power.ask` is
+      false (ADR 88). To come: the menu hanging from a bar it is opened
+      from, and `omorfos-bar` with its button.
 - [ ] The clock, by default as "Wed Apr 1 9:41 AM", its format a setting.
       A click opens a month, walked a month at a time: done in the panel
       (`omorfos_shell::month`, in English and Polish), to move to the bar

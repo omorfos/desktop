@@ -20,6 +20,9 @@ pub enum Item<A> {
         action: A,
         /// What stands before the text.
         mark: Mark,
+        /// The keys that do the same, shown at the row's end; none if no
+        /// binding does.
+        keys: Vec<Keycap>,
     },
     /// Opens a further panel.
     Submenu {
@@ -32,6 +35,16 @@ pub enum Item<A> {
     },
     /// A dividing line. Cannot be chosen.
     Separator,
+}
+
+/// A piece of the keys at the end of a row: the sign of a key that has
+/// one, as an arrow up for Shift, or what is written on one that has none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Keycap {
+    /// A key shown by its sign.
+    Sign(Sign),
+    /// A key shown by what is written on it, such as `Q` or `Esc`.
+    Text(String),
 }
 
 /// What stands before the text of a row: a sign of what it does, or a
@@ -352,6 +365,7 @@ mod tests {
             label: label.to_owned(),
             action: Box::leak(label.to_owned().into_boxed_str()),
             mark: Mark::Blank,
+            keys: Vec::new(),
         }
     }
 

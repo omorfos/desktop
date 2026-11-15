@@ -113,7 +113,36 @@ copied = Skopiowano
 terminal = Terminal
 run = Uruchom…
 stay-awake = Nie usypiaj
-reload-configuration = Wczytaj konfigurację
-welcome = Powitanie
 about-omorfos = O omorfos
-quit = Zakończ
+lock-screen = Zablokuj ekran
+sleep = Uśpij
+log-out-session = Wyloguj…
+restart-machine = Uruchom ponownie…
+shut-down-machine = Wyłącz…
+
+restart-ask = Uruchomić ponownie teraz?
+shut-down-ask = Wyłączyć teraz?
+log-out-ask = Wylogować teraz?
+restart-in = Ponowne uruchomienie za { $left } { $left ->
+    [one] sekundę
+    [few] sekundy
+    [many] sekund
+   *[other] sekundy
+}
+shut-down-in = Wyłączenie za { $left } { $left ->
+    [one] sekundę
+    [few] sekundy
+    [many] sekund
+   *[other] sekundy
+}
+log-out-in = Wylogowanie za { $left } { $left ->
+    [one] sekundę
+    [few] sekundy
+    [many] sekund
+   *[other] sekundy
+}
+leave-unsaved = To, co nie jest zapisane w otwartych programach, przepadnie.
+cancel = Anuluj
+restart = Uruchom ponownie
+shut-down = Wyłącz
+log-out = Wyloguj

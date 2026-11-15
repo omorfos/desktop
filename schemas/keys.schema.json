@@ -221,6 +221,26 @@
           "type": "string"
         },
         {
+          "const": "sleep",
+          "description": "Put the machine to sleep, as `omorfos-session sleep` does.",
+          "type": "string"
+        },
+        {
+          "const": "restart",
+          "description": "Start the machine again, as `omorfos-session restart` does: once\nthe user has said so, unless `power.ask` in config.yaml is false.",
+          "type": "string"
+        },
+        {
+          "const": "shut_down",
+          "description": "Turn the machine off, as `omorfos-session shut-down` does: once the\nuser has said so, unless `power.ask` in config.yaml is false.",
+          "type": "string"
+        },
+        {
+          "const": "log_out",
+          "description": "End the session, as `quit` does: once the user has said so, unless\n`power.ask` in config.yaml is false.",
+          "type": "string"
+        },
+        {
           "const": "stay_awake",
           "description": "Keep the session from locking, the screens from going off and the\nmachine from sleeping when the user is away, until asked again; or,\nwhile it is kept so, let it go.",
           "type": "string"

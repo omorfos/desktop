@@ -23,10 +23,13 @@ items:
   \- { label: "Run\[u2026]", action: show_launcher }
   \- separator
   \- { label: Stay awake, action: stay_awake }
-  \- { label: Reload configuration, action: reload_config }
-  \- { label: Welcome, action: show_welcome }
   \- { label: About omorfos, action: about }
-  \- { label: Quit, action: quit }
+  \- separator
+  \- { label: Lock screen, action: lock }
+  \- { label: Sleep, action: sleep }
+  \- { label: "Log out\[u2026]", action: log_out }
+  \- { label: "Restart\[u2026]", action: restart }
+  \- { label: "Shut down\[u2026]", action: shut_down }
 .RE
 .fi
 .SH KEYS
@@ -114,6 +117,18 @@ Show "About omorfos": its version, and what it is made with that is someone else
 .TP
 \fBlock\fR
 Lock the session, with the program \fBlocker\fR in config.yaml names.
+.TP
+\fBsleep\fR
+Put the machine to sleep, as \fBomorfos\-session sleep\fR does.
+.TP
+\fBrestart\fR
+Start the machine again, as \fBomorfos\-session restart\fR does: once the user has said so, unless \fBpower.ask\fR in config.yaml is false.
+.TP
+\fBshut_down\fR
+Turn the machine off, as \fBomorfos\-session shut\-down\fR does: once the user has said so, unless \fBpower.ask\fR in config.yaml is false.
+.TP
+\fBlog_out\fR
+End the session, as \fBquit\fR does: once the user has said so, unless \fBpower.ask\fR in config.yaml is false.
 .TP
 \fBstay_awake\fR
 Keep the session from locking, the screens from going off and the machine from sleeping when the user is away, until asked again; or, while it is kept so, let it go.

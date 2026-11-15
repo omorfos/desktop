@@ -475,6 +475,11 @@ impl Compositor {
             // window, and is the window's all the same.
             compositor.hover.reveal.dismiss();
             compositor.hover.palette.dismiss();
+            // Whether to leave is answered by Enter and Escape.
+            if compositor.leaving_key(keysym) {
+                compositor.taken.suppressed.push(code);
+                return FilterResult::Intercept(None);
+            }
             // The screens tried another way are kept by Enter and put back
             // by Escape, which nothing else then sees.
             if compositor.interim.trying() {
@@ -708,9 +713,13 @@ impl Compositor {
             return;
         }
 
-        if self.over_notice() || self.cards.about.asked.is_some() {
+        if self.over_notice()
+            || self.cards.about.asked.is_some()
+            || self.cards.leave.asked.is_some()
+        {
             // The notice is ours, and "About" has the pointer while it is
-            // shown, like the menu; nothing underneath sees it.
+            // shown, like the menu, as the question whether to leave has;
+            // nothing underneath sees it.
             self.move_pointer(None, time);
             return;
         }
@@ -860,6 +869,7 @@ impl Compositor {
             || self.menu.is_some()
             || self.over_notice()
             || self.cards.about.asked.is_some()
+            || self.cards.leave.asked.is_some()
             || self.over_line().is_some()
             || self.over_palette()
             || self.over_offer().is_some();
@@ -914,6 +924,19 @@ impl Compositor {
         let shown = self.cards.about.shown.as_ref().filter(|_| about);
         let position = self.pointer_position();
         if shown.and_then(|about| about.button_at(position)).is_some() {
+            return Look::Icon(CursorIcon::Pointer);
+        }
+        // So are those of the question whether to leave.
+        let asking = self
+            .cards
+            .leave
+            .shown
+            .as_ref()
+            .filter(|_| self.cards.leave.asked.is_some());
+        if asking
+            .and_then(|asking| asking.choice_at(position))
+            .is_some()
+        {
             return Look::Icon(CursorIcon::Pointer);
         }
         if self.over_notice() || about || self.menu.is_some() || self.over_palette() {
@@ -1153,6 +1176,9 @@ impl Compositor {
                 self.switcher_press(position);
                 self.overview_press(position);
             }
+            return;
+        }
+        if self.leaving_press(pressed, position) {
             return;
         }
         if self.cards.about.asked.is_some() {

@@ -55,6 +55,9 @@ pub enum Part {
     /// [`State::Hovered`] with its row, and [`State::Active`] while what
     /// its row turns on and off is on.
     MenuSign,
+    /// The keys that do what a row of the menu does, at the row's end, in
+    /// its text colour. It is [`State::Hovered`] with its row.
+    MenuKeys,
     /// The notice that says something is wrong.
     Notice,
     /// The first line of the notice.
@@ -195,7 +198,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 55] = [
+    pub const ALL: [Self; 56] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -209,6 +212,7 @@ impl Part {
         Self::MenuItem,
         Self::MenuSeparator,
         Self::MenuSign,
+        Self::MenuKeys,
         Self::Notice,
         Self::NoticeHeading,
         Self::Capture,
@@ -270,6 +274,7 @@ impl Part {
             Self::MenuItem => "menu-item",
             Self::MenuSeparator => "menu-separator",
             Self::MenuSign => "menu-sign",
+            Self::MenuKeys => "menu-keys",
             Self::Notice => "notice",
             Self::NoticeHeading => "notice-heading",
             Self::Capture => "capture",
@@ -810,6 +815,7 @@ mod tests {
                 "menu-item",
                 "menu-separator",
                 "menu-sign",
+                "menu-keys",
                 "notice",
                 "notice-heading",
                 "capture",

@@ -34,6 +34,7 @@ mod input;
 mod ipc;
 mod kde_blur;
 mod kept;
+mod leaving;
 mod lock;
 mod night;
 mod outputs;

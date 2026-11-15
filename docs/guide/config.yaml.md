@@ -81,6 +81,8 @@ xwayland:
   scaling: stretched      # stretched | native, on a screen with a scale
 update:
   wait: 3600              # seconds omorfos's new version waits for a quiet moment; 0 however long
+power:
+  ask: true               # ask before restarting or shutting down
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -92,6 +94,14 @@ session after that many, with the `locker` named below, and `idle.sleep`
 puts the machine to sleep, locking it first. Each happens once for each
 time you are away. Something that asks for the session to stay awake, such
 as a film being played, holds off all three. They are off by default.
+
+`power.ask` has the `log_out`, `restart` and `shut_down` actions ask first, from the
+root menu, a key or `omorfosctl` alike: a card in the middle of the dimmed
+screen says what not saved will be lost and counts a minute down, after
+which it is done; Enter or its button goes on at once, while Escape,
+Cancel or a click elsewhere does not. Set it to `false` to have them act
+at once. `sleep` never asks. What the lock screen offers is
+`lock.power`, apart from this.
 
 `autostart` lists programs to start when the session does, each as a
 program and its arguments, as for `spawn`:

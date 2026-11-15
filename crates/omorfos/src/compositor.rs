@@ -1207,6 +1207,7 @@ impl Compositor {
             self.updates.next,
             self.shown_by(),
             self.interim.deadline(),
+            self.cards.leave.deadline(),
             match self.on_demand.ending {
                 Ending::By(by) => Some(by),
                 Ending::Not | Ending::Asked => None,
@@ -1298,6 +1299,7 @@ impl Compositor {
         self.rest_or_wake(now);
         self.take_up_own(now);
         self.time_screens(now);
+        self.ask_to_leave(now);
         // With the screens off a lock is shown without drawing, and is
         // said to be before the state is.
         self.confirm_lock();
@@ -1471,6 +1473,10 @@ impl Compositor {
                 }
             }
             Action::Lock => self.start_locker(),
+            Action::Sleep => self.ask_session(&["sleep"]),
+            Action::Restart => self.leave(crate::leaving::Leaving::Restart),
+            Action::ShutDown => self.leave(crate::leaving::Leaving::ShutDown),
+            Action::LogOut => self.leave(crate::leaving::Leaving::LogOut),
             Action::StayAwake => self.stay_awake(None),
             Action::StayAwakeFor(seconds) => self.stay_awake(Some(seconds.get())),
             Action::NightLight => self.switch_night_light(),
@@ -1488,7 +1494,8 @@ impl Compositor {
     /// Opens the root menu at the pointer.
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
-        let items = bridge::menu_items(&config.menu.items, self.toggled(), &self.words);
+        let on = (self.toggled(), &config.keys);
+        let items = bridge::menu_items(&config.menu.items, on, &self.words);
         self.open_menu_of(items);
     }
 
@@ -1518,9 +1525,11 @@ impl Compositor {
         // are; those that turn something on and off are ticked while it is.
         let on = self.toggled();
         let say = |name: &str| self.words.say(name, &[]);
+        let keys = &self.store.current().keys;
         let entry = |name: &str, action: Action| Item::Entry {
             label: say(name),
             mark: bridge::mark(&action, on),
+            keys: bridge::keycaps(keys, &action),
             action,
         };
         let here = self.desktop.current_output();
@@ -1533,6 +1542,7 @@ impl Compositor {
             label: self.workspace_name(&place),
             action: Action::MoveToWorkspace(WorkspaceNumber::clamped(number)),
             mark: Mark::Blank,
+            keys: Vec::new(),
         });
         // A workspace made for windows takes another where it has room,
         // unless it is where this window is already.
@@ -1547,6 +1557,7 @@ impl Compositor {
             },
             action: Action::JoinWorkspace(place.id.get()),
             mark: Mark::Blank,
+            keys: Vec::new(),
         });
         let send = send.chain(join).chain([
             Item::Separator,
@@ -1703,7 +1714,7 @@ impl Compositor {
     /// that they end as they would be asked to by any desktop, and not
     /// with the compositor gone from under them, which they say. With
     /// none, or asked again while they are waited for, at once.
-    fn quit(&mut self) {
+    pub(crate) fn quit(&mut self) {
         let asked = self.on_demand.ending == Ending::Not;
         for process in self.programs() {
             let _ = kill_process(process, Signal::TERM);
@@ -4696,7 +4707,7 @@ const ABOUT_WIDTH: u32 = 640;
 const CREDITS: &str = include_str!("../../../CREDITS.md");
 
 /// The cards the compositor shows over everything: the notice of what is
-/// wrong, "About", and the overview.
+/// wrong, "About", the overview, and whether to leave.
 #[derive(Debug, Default)]
 pub(crate) struct Cards {
     /// The overview of the windows of a workspace.
@@ -4707,6 +4718,9 @@ pub(crate) struct Cards {
     pub(crate) dismissed: Vec<String>,
     /// "About".
     pub(crate) about: AboutCard,
+    /// Whether to start the machine again or turn it off, while that is
+    /// asked.
+    pub(crate) leave: crate::leaving::Leave,
 }
 
 /// "About": whether it is to be shown, what the computer was as it was

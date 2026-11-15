@@ -6,7 +6,7 @@
 //! changes, not every frame.
 
 use omorfos_config::{Color, Edges, Font, Line, Part, State, States, Style, Theme};
-use omorfos_core::{Button, Decoration, Item, Mark, Menu, Panel, SwitcherLayout};
+use omorfos_core::{Button, Decoration, Item, Keycap, Mark, Menu, Panel, SwitcherLayout};
 use omorfos_i18n::{Value, Words};
 use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
@@ -324,14 +324,28 @@ pub(crate) fn menu_panel<A: Clone>(
         } else {
             0
         };
+        // The keys that do the same stand at the end of the row, each sign
+        // or word a little apart, and the label has what room is left
+        // before them.
+        let keys: &[Keycap] = match item {
+            Item::Entry { keys, .. } => keys,
+            _ => &[],
+        };
+        let written = theme.style(Part::MenuKeys, states);
+        let keys_font = theme.font(Part::MenuKeys, states);
         let room = room.saturating_sub(used + arrow);
+        let keys_wide = keys_width(text, keys, keys_font);
+        let apart = if keys_wide > 0 { KEYS_APART } else { 0 };
         text.draw(
             &mut canvas,
             label,
-            (left, top, room, tall),
+            (left, top, room.saturating_sub(keys_wide + apart), tall),
             style.color,
             font,
         );
+        let at = left.saturating_add_unsigned(room.saturating_sub(keys_wide));
+        let looks = (written.color, keys_font, scale);
+        draw_keys(&mut canvas, (text, icons), keys, (at, top, tall), looks);
         if arrow > 0 {
             let left = left.saturating_add_unsigned(room);
             let area = (left, top, ARROW, tall);
@@ -341,8 +355,57 @@ pub(crate) fn menu_panel<A: Clone>(
     canvas
 }
 
+/// How wide `keys` are drawn at the end of a row of a menu, in `font`,
+/// with the room between them.
+fn keys_width(text: &mut Text, keys: &[Keycap], font: &Font) -> u32 {
+    let widths = keys.iter().map(|cap| match cap {
+        Keycap::Sign(_) => KEYCAP,
+        Keycap::Text(said) => text.measure(said, font),
+    });
+    let count = u32::try_from(keys.len()).unwrap_or(u32::MAX);
+    widths.sum::<u32>() + KEYS_BETWEEN * count.saturating_sub(1)
+}
+
+/// Draws `keys` from `left`, on a row `tall` from `top`: each sign in the
+/// middle of the row, each word on it, in `color` and `font`.
+fn draw_keys(
+    canvas: &mut Canvas,
+    (text, icons): (&mut Text, &mut WindowIcons),
+    keys: &[Keycap],
+    (left, top, tall): (i32, i32, u32),
+    (color, font, scale): (Color, &Font, Scale),
+) {
+    let mut at = left;
+    for cap in keys {
+        let wide = match cap {
+            Keycap::Sign(sign) => {
+                let down = top.saturating_add_unsigned(tall.saturating_sub(KEYCAP) / 2);
+                let pixels = icon_pixels(KEYCAP, scale);
+                let drawn = icons.mark(&Mark::Sign(*sign), pixels, color);
+                let _ = drawn.inspect(|image| {
+                    canvas.draw_image((at, down, KEYCAP, KEYCAP), image);
+                });
+                KEYCAP
+            }
+            Keycap::Text(said) => {
+                let wide = text.measure(said, font);
+                text.draw(canvas, said, (at, top, wide, tall), color, font);
+                wide
+            }
+        };
+        at = at.saturating_add_unsigned(wide + KEYS_BETWEEN);
+    }
+}
+
 /// The height of one line of the problem notice, in pixels.
 const NOTICE_ROW: u32 = 22;
+
+/// How far the keys at the end of a row of a menu are from its label, at
+/// least; how large the sign of a key is among them; and the room between
+/// each sign or word of them and the next, which stands for the `+`.
+const KEYS_APART: u32 = 16;
+const KEYCAP: u32 = 14;
+const KEYS_BETWEEN: u32 = 4;
 
 /// The most problems the notice lists before summarising the rest.
 const NOTICE_LINES: usize = 6;
@@ -1262,6 +1325,64 @@ mod tests {
     }
 
     #[test]
+    fn a_row_with_keys_has_them_at_its_end_and_its_label_stops_short_of_them() {
+        use omorfos_core::MenuMetrics;
+
+        let theme = Theme::default();
+        let background = argb(palette(&theme).focused.titlebar);
+        let entry = |label: &str, keys: Vec<Keycap>| Item::Entry {
+            label: label.to_owned(),
+            action: (),
+            mark: Mark::Blank,
+            keys,
+        };
+        let long = "A label long enough to run the whole width of the row and on";
+        let super_q = vec![Keycap::Sign(Sign::Super), Keycap::Text("Q".to_owned())];
+        let items = vec![entry(long, super_q), entry(long, Vec::new())];
+        let metrics = MenuMetrics {
+            width: 240,
+            row: 28,
+            separator: 9,
+            above: 4,
+            below: 4,
+            overlap: 0,
+        };
+        let area = Rect::new(Point::new(0, 0), Size::new(1000, 800));
+        let menu = Menu::open(items, Point::new(0, 0), area, metrics);
+        let canvas = menu_panel(&mut Text::new(), &theme, &menu);
+        let ink = |rows: std::ops::Range<u32>, columns: std::ops::Range<u32>| {
+            let place = rows.flat_map(|y| columns.clone().map(move |x| (x, y)));
+            place
+                .filter(|&(x, y)| canvas.at(x, y) != background)
+                .count()
+        };
+        // Rows: the first at 4..32, the second at 32..60. The keys end
+        // where the row's padding begins, short of the menu's border.
+        let font = theme.font(Part::MenuKeys, States::NONE);
+        let keys = KEYCAP + KEYS_BETWEEN + Text::new().measure("Q", font);
+        let inked = |x: &u32| ink(8..28, *x..*x + 1) > 0;
+        let end = (0..236).rev().find(inked).unwrap_or_default();
+        assert!(end > 220, "at the row's end");
+        let start = end + 1 - keys;
+        assert!(ink(8..28, start..start + KEYCAP) > 10, "the sign of Super");
+        assert!(ink(8..28, start + KEYCAP + KEYS_BETWEEN..end + 1) > 5, "Q");
+        // Between the sign's last ink and the letter's first, the room that
+        // stands for the `+`: four units, and the sign's own margin.
+        let last_of_sign = (start..start + KEYCAP)
+            .rev()
+            .find(inked)
+            .unwrap_or_default();
+        let first_of_letter = (last_of_sign + 1..=end).find(inked).unwrap_or_default();
+        assert!(
+            first_of_letter - last_of_sign > 4,
+            "room between them: {last_of_sign} to {first_of_letter}"
+        );
+        let gap = start - KEYS_APART + 2..start - 2;
+        assert_eq!(ink(8..28, gap.clone()), 0, "clear before the keys");
+        assert!(ink(36..56, gap) > 0, "without keys, the label runs on");
+    }
+
+    #[test]
     fn a_menu_panel_shows_its_rows_with_the_hovered_one_highlighted() {
         use omorfos_core::MenuMetrics;
 
@@ -1273,6 +1394,7 @@ mod tests {
                 label: "Terminal".to_owned(),
                 action: (),
                 mark: Mark::Blank,
+                keys: Vec::new(),
             },
             Item::Separator,
             Item::Submenu {
@@ -1356,6 +1478,7 @@ mod tests {
             label: label.to_owned(),
             action: (),
             mark: Mark::Toggle(Sign::Pin, on),
+            keys: Vec::new(),
         };
         let metrics = MenuMetrics {
             width: 200,
@@ -1414,6 +1537,7 @@ mod tests {
             label: label.to_owned(),
             action: (),
             mark: Mark::Blank,
+            keys: Vec::new(),
         };
         let metrics = MenuMetrics {
             width: 200,

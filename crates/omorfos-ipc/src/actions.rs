@@ -215,6 +215,25 @@ pub const TOLD: &[Told] = &[
         "Turn night light on or off until it next turns",
     ),
     told!("Session", "lock", "", "Lock the session"),
+    told!("Session", "sleep", "", "Put the machine to sleep"),
+    told!(
+        "Session",
+        "restart",
+        "",
+        "Start the machine again, once the user says so",
+    ),
+    told!(
+        "Session",
+        "log_out",
+        "",
+        "End the session, once the user says so",
+    ),
+    told!(
+        "Session",
+        "shut_down",
+        "",
+        "Turn the machine off, once the user says so",
+    ),
     told!(
         "Session",
         "stay_awake",

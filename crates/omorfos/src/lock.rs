@@ -492,9 +492,10 @@ impl SessionLockHandler for Compositor {
             return;
         }
         // Nothing half done survives into, or out of, a locked session,
-        // nor "About".
+        // nor "About", nor the question whether to leave.
         self.menu = None;
         self.cards.about.asked = None;
+        self.cards.leave.asked = None;
         self.drag = None;
         for head in self.every_head() {
             head.blanked.set(false);

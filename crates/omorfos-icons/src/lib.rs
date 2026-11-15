@@ -185,7 +185,8 @@ const fn drawing(sign: Sign) -> &'static str {
         Sign::RightHalf => include_str!("../signs/panel-right.svg"),
         Sign::TopHalf => include_str!("../signs/panel-top.svg"),
         Sign::BottomHalf => include_str!("../signs/panel-bottom.svg"),
-        Sign::Send => include_str!("../signs/arrow-right-to-line.svg"),
+        // To send to the end of a line, as Tab does.
+        Sign::Send | Sign::Tab => include_str!("../signs/arrow-right-to-line.svg"),
         Sign::Add => include_str!("../signs/plus.svg"),
         Sign::Expand => include_str!("../signs/expand.svg"),
         Sign::Shade => include_str!("../signs/panel-top-close.svg"),
@@ -197,6 +198,20 @@ const fn drawing(sign: Sign) -> &'static str {
         Sign::About => include_str!("../signs/info.svg"),
         Sign::Quit => include_str!("../signs/log-out.svg"),
         Sign::Lock => include_str!("../signs/lock.svg"),
+        Sign::Sleep => include_str!("../signs/moon.svg"),
+        Sign::Restart => include_str!("../signs/rotate-ccw.svg"),
+        Sign::ShutDown => include_str!("../signs/power.svg"),
+        Sign::Super => include_str!("../signs/layout-grid.svg"),
+        Sign::Ctrl => include_str!("../signs/chevron-up.svg"),
+        Sign::Alt => include_str!("../signs/option.svg"),
+        Sign::Shift => include_str!("../signs/arrow-big-up.svg"),
+        Sign::Enter => include_str!("../signs/corner-down-left.svg"),
+        Sign::Space => include_str!("../signs/space.svg"),
+        Sign::Up => include_str!("../signs/arrow-up.svg"),
+        Sign::Down => include_str!("../signs/arrow-down.svg"),
+        Sign::Left => include_str!("../signs/arrow-left.svg"),
+        Sign::Right => include_str!("../signs/arrow-right.svg"),
+        Sign::Backspace => include_str!("../signs/delete.svg"),
     }
 }
 
@@ -762,7 +777,7 @@ mod tests {
     }
 
     /// Every sign there is.
-    const SIGNS: [Sign; 20] = [
+    const SIGNS: [Sign; 35] = [
         Sign::Close,
         Sign::Minimize,
         Sign::Fullscreen,
@@ -783,6 +798,21 @@ mod tests {
         Sign::About,
         Sign::Quit,
         Sign::Lock,
+        Sign::Sleep,
+        Sign::Restart,
+        Sign::ShutDown,
+        Sign::Super,
+        Sign::Ctrl,
+        Sign::Alt,
+        Sign::Shift,
+        Sign::Enter,
+        Sign::Space,
+        Sign::Tab,
+        Sign::Up,
+        Sign::Down,
+        Sign::Left,
+        Sign::Right,
+        Sign::Backspace,
     ];
 
     /// How much ink there is down the column `x` of `image` drawn on white,

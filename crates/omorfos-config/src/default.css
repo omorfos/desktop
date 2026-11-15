@@ -182,6 +182,8 @@ menu-sign:active {
   background: var(--accent-tint);
   color: var(--accent);
 }
+/* The keys that do what a row does, at its end. */
+menu-keys { color: var(--text-dim); }
 
 /* What is wrong with the configuration, when it was last read. */
 notice {

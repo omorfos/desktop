@@ -13,8 +13,8 @@ written, so the desktop behind the card changes at once. Next goes on and
 Back goes back; the arrows, Tab and Enter, or the pointer, choose. Skip,
 the close button in its corner, Escape, or Finish on the last step
 closes it, keeping what was chosen, and it is not shown at a login
-again. **Welcome** in the menu, or the `show_welcome` action, shows it
-again. Where `config.yaml` is written in a way it will not change, as a
+again. The `show_welcome` action shows it again, from a key or an entry
+of `menu.yaml`. Where `config.yaml` is written in a way it will not change, as a
 section written on one line, it says so and leaves the file alone. It is
 drawn with the launcher's parts of the theme, its buttons as a question's
 (`question-button`).

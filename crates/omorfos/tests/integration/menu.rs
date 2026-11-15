@@ -28,8 +28,12 @@ items:
       - { label: Quit, action: quit }
 ";
 
+/// No bindings, so that no row has keys at its end, where the colour of
+/// a row is looked at.
+const KEYS: &str = "defaults: false\nbindings: []\n";
+
 fn session() -> Session {
-    Session::with_config(&[("menu.yaml", MENU)])
+    Session::with_config(&[("menu.yaml", MENU), ("keys.yaml", KEYS)])
 }
 
 fn move_to(session: &mut Session, x: i32, y: i32) {
@@ -80,6 +84,21 @@ fn a_right_click_on_the_desktop_opens_the_menu_at_the_pointer() {
         let beside = picture.at(x, 220);
         assert!(shaded(beside, BACKGROUND), "at {x}: {beside:#x}");
     }
+}
+
+#[test]
+fn a_row_has_at_its_end_the_keys_bound_to_what_it_does() {
+    // Where Super+2, which the built-in bindings have show the second
+    // workspace, ends the row; and with no bindings, nothing.
+    let inked = |session: &mut Session| {
+        open_menu(session);
+        let picture = session.draw();
+        let place = (480..532).flat_map(|x| (205..229).map(move |y| (x, y)));
+        place.filter(|&(x, y)| picture.at(x, y) != PANEL).count()
+    };
+    let mut bound = Session::with_config(&[("menu.yaml", MENU)]);
+    assert!(inked(&mut bound) > 20, "the keys");
+    assert_eq!(inked(&mut session()), 0, "none bound, none shown");
 }
 
 #[test]
@@ -140,7 +159,12 @@ fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
 fn a_row_gets_to_the_colour_of_being_pointed_at_over_the_time_the_theme_gives() {
     let theme = "menu-item { background: #ff0000; transition: 100ms linear; }\n\
                  menu-item:hover { background: #0000ff; }\n";
-    let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
+    let files = [
+        ("menu.yaml", MENU),
+        ("keys.yaml", KEYS),
+        ("theme.css", theme),
+    ];
+    let mut session = Session::with_config(&files);
     let (red, blue) = (0xffff_0000, 0xff00_00ff);
     open_menu(&mut session);
     session.step();

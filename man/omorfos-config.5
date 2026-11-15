@@ -451,6 +451,12 @@ What applications ask the desktop through the portals.
 \fBportals.enabled\fR
 Whether omorfos answers them. Turn it off to have another program answer, or none. By default \fBtrue\fR.
 .TP
+\fBpower\fR
+What the \fBrestart\fR and \fBshut_down\fR actions do before they act.
+.TP
+\fBpower.ask\fR
+Whether they ask the user first, so that a stray click or key does not end what is not saved. False: they act at once. By default \fBtrue\fR.
+.TP
 \fBscreenshots\fR
 Pictures of the screen.
 .TP
@@ -709,6 +715,8 @@ xwayland:
   scaling: stretched      # stretched | native, on a screen with a scale
 update:
   wait: 3600              # seconds omorfos's new version waits for a quiet moment; 0 however long
+power:
+  ask: true               # ask before restarting or shutting down
 .RE
 .fi
 .SH SEE ALSO
