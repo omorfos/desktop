@@ -1871,13 +1871,17 @@ Hardware and performance:
       domain without listing every workspace (`Desktop::shows_tiles`), the
       dims of the sealed prompt kept up to date without a list of the
       screens, and a screen's name borrowed, not copied, to draw its glass.
+- [x] The strips a window is cut into for its frame's rounded corners
+      kept with the frame, and worked out again only when the frame, the
+      window or the radius changes, rather than twice a turn.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
       lowered as each goes. With one window in a frame of ours, as `quiet::`
-      has it since the X11 work showed the frame was being left out, 24:
-      22 in drawing, the frame, its rounded corners and Smithay's elements
-      for what the program drew, of which the rounded corners' strips are
-      ours; and 2 in Smithay's refreshing of the space, which may wait on
-      Smithay.
+      has it since the X11 work showed the frame was being left out, 18:
+      16 in drawing, where what is drawn is made anew each time, as lists
+      of elements, much of it Smithay's for what the program drew, which
+      keeping them from frame to frame would take a rework of drawing and
+      part of it Smithay's; and 2 in Smithay's refreshing of the space,
+      which waits on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
 

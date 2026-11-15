@@ -2,7 +2,7 @@
 
 use omorfos_i18n::{COMPOSITOR, Value, Words};
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -4148,10 +4148,10 @@ impl Compositor {
         }
         // What lands on each strip of the frame, once stretched.
         let first = elements.len();
-        let cut = Self::cut(view, chrome).into_iter();
-        let cut = cut.map(|area| {
+        let strips = chrome.cut(view);
+        let cut = strips.iter().map(|area| {
             let by = shown.stretch.map_or((1.0, 1.0), |stretched| stretched.by);
-            scaling::unstretched(area, about, by)
+            scaling::unstretched(*area, about, by)
         });
         for (strip, area) in cut.enumerate() {
             let whole: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
@@ -4177,21 +4177,6 @@ impl Compositor {
         self.animation.note(&shown.surface, noting.done());
     }
 
-    /// What of a window in a frame with rounded corners is drawn, in
-    /// pixels of the output: its own area, cut where the frame's bottom
-    /// corners turn.
-    fn cut(view: View, chrome: &Chrome) -> Vec<Rectangle<i32, Physical>> {
-        let pixels = |area: Rect| {
-            let corner = Point::<i32, Logical>::from((area.origin.x, area.origin.y));
-            view.pixels(Rectangle::new(corner, logical_size(area.size)))
-        };
-        corners::strips(
-            pixels(chrome.decoration.outer()),
-            pixels(chrome.decoration.client()),
-            view.scale.pixels(chrome.radius.cast_signed()),
-        )
-    }
-
     /// The glass a window's program asked for behind it, cut to the window
     /// proper, and not the shadow a program that draws its own frame draws
     /// round it on the same surface, and to its frame's rounded corners if
@@ -4200,12 +4185,13 @@ impl Compositor {
         let geometry = shown.window.geometry();
         let origin = shown.origin - geometry.loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
-        let proper = || vec![view.pixels(Rectangle::new(shown.origin, geometry.size))];
-        let bounds = rounded.map_or_else(proper, |chrome| Self::cut(view, chrome));
+        let proper = [view.pixels(Rectangle::new(shown.origin, geometry.size))];
+        let cut = rounded.map(|chrome| chrome.cut(view));
+        let bounds = cut.as_deref().unwrap_or(&proper);
         self.backdrop(
             &shown.surface,
             (origin, view),
-            Some(&bounds),
+            Some(bounds),
             (at, shown.seen.opacity),
         )
     }
@@ -5972,7 +5958,22 @@ struct Chrome {
     shadow: Option<Shadowing>,
     /// Room for its tabs' looks to be worked out in, the next time.
     spare: Vec<Style>,
+    /// The strips its window is cut into for its rounded corners, as last
+    /// worked out.
+    cut: RefCell<Cut>,
 }
+
+/// The strips a window is cut into for its frame's rounded corners, and
+/// what they were worked out from.
+#[derive(Debug, Default)]
+struct Cut {
+    /// Its frame, its window and how far the corners are rounded.
+    from: Option<(Pixels, Pixels, i32)>,
+    strips: Vec<Pixels>,
+}
+
+/// An area in pixels of an output.
+type Pixels = Rectangle<i32, Physical>;
 
 /// Everything a titlebar's pixels depend on. Its position is not part of
 /// this, so moving a frame does not repaint it.
@@ -5990,6 +5991,29 @@ struct Appearance {
 }
 
 impl Chrome {
+    /// What of its window is drawn, in pixels of the output seen through
+    /// `view`: its own area, cut where the frame's bottom corners turn.
+    /// Worked out again only when the frame, the window or the radius is
+    /// not as it was.
+    fn cut(&self, view: View) -> Ref<'_, [Rectangle<i32, Physical>]> {
+        let pixels = |area: Rect| {
+            let corner = Point::<i32, Logical>::from((area.origin.x, area.origin.y));
+            view.pixels(Rectangle::new(corner, logical_size(area.size)))
+        };
+        let outer = pixels(self.decoration.outer());
+        let client = pixels(self.decoration.client());
+        let radius = view.scale.pixels(self.radius.cast_signed());
+        let from = Some((outer, client, radius));
+        {
+            let mut cut = self.cut.borrow_mut();
+            if cut.from != from {
+                cut.strips = corners::strips(outer, client, radius);
+                cut.from = from;
+            }
+        }
+        Ref::map(self.cut.borrow(), |cut| cut.strips.as_slice())
+    }
+
     /// Brings a frame's decoration up to date, reusing `cached` pixels when
     /// nothing they depend on has changed.
     fn paint(
@@ -6061,6 +6085,7 @@ impl Chrome {
                 strips: Names::default(),
                 shadow: shade.map(Shadowing::new),
                 spare: Vec::new(),
+                cut: RefCell::default(),
             }
         };
         for (buffer, border) in chrome.borders.iter_mut().zip(straight) {
