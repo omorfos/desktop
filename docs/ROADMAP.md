@@ -14,6 +14,22 @@ before the bar and dock wear the same look.
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
 
+## To be tried by hand
+
+What has passed the tests but has not yet been tried on real hardware by
+the maintainer. An agent starting work reminds them of what is here, and
+an item goes once it has been tried: what was wrong goes to its stage as
+a known gap.
+
+- [ ] The launcher (`Super+Space`), since 15 November 2026: each program
+      on two lines, its name over what it says of itself, with an icon as
+      tall as both, shown by default; the box as tall as what it lists, up
+      to half the screen, and the text field alone when nothing matches,
+      the field staying where it is as the list grows and shrinks. `6*7`
+      shows `= 42` above the programs, chosen, and Enter puts `42` on the
+      clipboard, to paste anywhere, X11 programs too; `0.1+0.2` is `0.3`;
+      `7` alone is no sum.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
