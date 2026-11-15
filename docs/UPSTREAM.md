@@ -21,6 +21,22 @@ The checks read the source of the version in `Cargo.lock`:
 S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; print $3}' Cargo.lock | tr -d '"'))
 ```
 
+### What is added to an object is kept without end
+
+- **Wrong:** Smithay keeps every rectangle added to a `wl_region`
+  (`RegionAttributes::rects`) and every kind a clipboard source offers,
+  with no most: a program that adds a million costs the compositor a
+  million. The protocols set no most, but a compositor may end a program
+  that asks for more than it will keep, with `no_memory`.
+- **Meanwhile:** the relay ends a program that adds more than 4096 to one
+  object (`journal::MOST_ADDED`, finding 5 of
+  `docs/reviews/2026-11-15-what-a-client-can-cost.md`), so a program
+  connected through it never reaches Smithay with more. One connected
+  without the relay, as in the nested backend or once the relay has been
+  given up, is not held to it.
+- **Check:** `grep -n 'rects.push\|fn add' "$S"/src/wayland/compositor/handlers.rs "$S"/src/wayland/selection/*/source.rs`
+  shows whether anything counts them first.
+
 ### A second input method puts out the first
 
 - **Wrong:** asked for a second input method while there is one,

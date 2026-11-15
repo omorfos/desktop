@@ -44,6 +44,12 @@ use crate::wire::{self, Broken, HEADER, Header};
 pub type Sending = (Vec<u8>, Vec<Rc<OwnedFd>>);
 
 /// The display, which every connection starts with.
+/// The most a program may add to one object, as rectangles to a region or
+/// kinds to what it offers to paste, which are each kept to be made again:
+/// far more than any program adds, and few enough that one cannot fill the
+/// relay with them.
+pub const MOST_ADDED: usize = 4096;
+
 const DISPLAY: u32 = 1;
 
 /// Which of the display's events says a number may be taken again.
@@ -435,6 +441,11 @@ impl Journal {
     /// Keeps what the request `bytes` to `header`'s object, `described`,
     /// which came with `fds` and which `read` says made or did, does that
     /// lasts.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the program is to be let go if it has added more to one
+    /// object than any program adds, [`MOST_ADDED`].
     pub fn request(
         &mut self,
         header: Header,
@@ -442,7 +453,7 @@ impl Journal {
         fds: &[Rc<OwnedFd>],
         read: &Read,
         described: &MessageDesc,
-    ) {
+    ) -> Result<(), Broken> {
         if let Some((made, interface, version)) = read.made {
             let message = Message::kept(bytes, fds, described);
             self.stacked(made, interface.name, &message.names);
@@ -463,7 +474,7 @@ impl Journal {
                 named: 0,
             };
             self.kept.insert(made, kept);
-            return;
+            return Ok(());
         }
         let mut object = header.object;
         let mut rule = rule(read.interface.name, described.name);
@@ -485,8 +496,9 @@ impl Journal {
             self.ended(object, message);
         } else if rule != Rule::Passing {
             let message = Message::kept(bytes, fds, described);
-            self.keep(object, rule, message);
+            return self.keep(object, rule, message);
         }
+        Ok(())
     }
 
     /// Takes in that `made`, of `interface`, was made by a request naming
@@ -530,11 +542,19 @@ impl Journal {
         let _ = placed;
     }
 
-    /// Keeps `message`, to `object`, as `rule` says.
-    fn keep(&mut self, object: u32, rule: Rule, message: Message) {
+    /// Keeps `message`, to `object`, as `rule` says; or says why the
+    /// program is to be let go, as one that has added more to an object
+    /// than any program adds.
+    fn keep(&mut self, object: u32, rule: Rule, message: Message) -> Result<(), Broken> {
         let names = message.names.clone();
         // A request whose rule keeps something is to an object kept.
         let kept = self.kept.get_mut(&object);
+        let full = kept
+            .as_ref()
+            .is_some_and(|kept| kept.adding.len() >= MOST_ADDED);
+        if rule == Rule::Adding && full {
+            return Err(wire::ADDED_TOO_MUCH);
+        }
         let dropped: Vec<Message> = kept
             .map(|kept| match rule {
                 Rule::Lasting => replace(&mut kept.lasting, message).into_iter().collect(),
@@ -556,6 +576,7 @@ impl Journal {
         for message in dropped {
             self.unname(object, &message.names);
         }
+        Ok(())
     }
 
     /// Takes in that `object` was destroyed by `message`: kept as gone if
@@ -1089,7 +1110,9 @@ mod tests {
             let header = wire::header(bytes).unwrap().unwrap();
             let read = self.objects.request(bytes, header).unwrap();
             let described = &read.interface.requests[usize::from(read.opcode)];
-            self.journal.request(header, bytes, fds, &read, described);
+            self.journal
+                .request(header, bytes, fds, &read, described)
+                .unwrap();
         }
 
         /// Is sent the event `bytes`; says whether it is passed on.

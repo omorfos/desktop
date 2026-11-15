@@ -358,7 +358,19 @@ To change:
 
 ### 5. What is added to an object is kept without end
 
-**Medium. Shown by reading.**
+**Medium. Shown by reading; fixed in the relay the same day, shown by a
+test.**
+
+The relay now ends a program that adds more than 4096 to one object
+(`journal::MOST_ADDED`), with `no_memory` and the reason in its log, as
+it ends one past `objects::MOST` objects; the test is
+`a_program_that_adds_more_to_an_object_than_any_adds_is_let_go_and_said_to_be`
+in `crates/omorfos-relay/tests/relay.rs`, which fails without the bound.
+The fuzzer's target `messages` takes the journal's new answer. A
+compositor with no relay is not held to it: that is asked of Smithay in
+`docs/UPSTREAM.md`.
+
+As it was first written:
 
 The relay keeps, to make a program's state again, every request that
 adds to an object: `Rule::Adding` in `crates/omorfos-relay/src/journal.rs`

@@ -507,7 +507,7 @@ impl Link {
                 self.held.retain(|held| held.strong_count() > 0);
                 self.held.extend(fds.iter().map(Rc::downgrade));
                 if self.held.len() > MOST_DESCRIPTORS {
-                    return Err(Broken("more descriptors than any program holds").into());
+                    return Err(wire::HOLDING_TOO_MANY.into());
                 }
             }
             let described = &read.interface.requests[usize::from(read.opcode)];
@@ -532,7 +532,7 @@ impl Link {
             }
             self.keeping
                 .journal
-                .request(header, &message, &fds, &read, described);
+                .request(header, &message, &fds, &read, described)?;
             if self.keeping.request(&read, &mut message, described) {
                 self.send_up((message, fds));
             }
@@ -1523,6 +1523,29 @@ mod tests {
         }
         let holding = Broken("more descriptors than any program holds");
         assert_eq!(read, Err(Ended::Broken(holding)));
+    }
+
+    #[test]
+    fn a_program_may_not_add_more_to_an_object_than_any_adds() {
+        let (mut link, program, compositor) = linked();
+        let mut setup = get_registry();
+        let mut body = words(&[1]);
+        body.extend(text("wl_compositor"));
+        body.extend(words(&[6, 3]));
+        setup.extend(message(2, 0, &body));
+        // A region, added to as many times as may be, and once more.
+        setup.extend(message(3, 1, &words(&[4])));
+        send(&program, &setup, &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        let mut read = Ok(());
+        for _ in 0..=journal::MOST_ADDED {
+            send(&program, &message(4, 1, &words(&[0, 0, 1, 1])), &[]);
+            read = read_through(&mut link, &compositor);
+            if read.is_err() {
+                break;
+            }
+        }
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
     }
 
     #[test]

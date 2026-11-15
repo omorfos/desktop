@@ -1957,7 +1957,8 @@ mod tests {
             let described = &read.interface.requests[usize::from(read.opcode)];
             self.keeping
                 .journal
-                .request(header, bytes, &[], &read, described);
+                .request(header, bytes, &[], &read, described)
+                .unwrap();
             let mut passed = bytes.to_vec();
             self.keeping
                 .request(&read, &mut passed, described)
@@ -2481,7 +2482,8 @@ mod tests {
                     let described = &read.interface.requests[usize::from(read.opcode)];
                     keeping
                         .journal
-                        .request(header, &bytes, &[], &read, described);
+                        .request(header, &bytes, &[], &read, described)
+                        .unwrap();
                     keeping
                         .request(&read, &mut bytes, described)
                         .then_some(bytes)

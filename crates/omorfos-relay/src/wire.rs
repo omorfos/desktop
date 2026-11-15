@@ -58,6 +58,14 @@ pub const VERSION_NOT_OFFERED: Broken = Broken("a version the compositor does no
 pub const GLOBAL_GONE: Broken = Broken("a global that is no longer offered");
 /// More descriptors sent than are kept.
 pub const TOO_MANY_DESCRIPTORS: Broken = Broken("more descriptors than are kept");
+/// More descriptors handed over and held than any program holds.
+pub const HOLDING_TOO_MANY: Broken = Broken("more descriptors than any program holds");
+/// More added to one object, as rectangles to a region, than any program
+/// adds.
+pub const ADDED_TOO_MUCH: Broken = Broken("more added to one object than any program adds");
+
+/// What a program breaks by asking the relay to keep more than it does.
+const MORE_THAN_KEPT: [Broken; 3] = [TOO_MANY_DESCRIPTORS, HOLDING_TOO_MANY, ADDED_TOO_MUCH];
 
 /// What a program breaks by naming an object that is not there, or one
 /// that cannot be made.
@@ -79,7 +87,7 @@ impl Broken {
     pub fn code(self) -> u32 {
         if NO_SUCH_OBJECT.contains(&self) {
             INVALID_OBJECT
-        } else if self == TOO_MANY_DESCRIPTORS {
+        } else if MORE_THAN_KEPT.contains(&self) {
             NO_MEMORY
         } else {
             INVALID_METHOD
@@ -343,6 +351,12 @@ pub(crate) mod tests {
         assert_eq!(NO_OBJECT.code(), 0, "an object that is not");
         assert_eq!(GLOBAL_GONE.code(), 0, "or cannot be made");
         assert_eq!(TOO_MANY_DESCRIPTORS.code(), 2, "more than is kept");
+        assert_eq!(
+            HOLDING_TOO_MANY.code(),
+            2,
+            "more held than any program holds"
+        );
+        assert_eq!(ADDED_TOO_MUCH.code(), 2, "more added than any program adds");
         assert_eq!(SHORT.code(), 1, "what cannot be read");
     }
 

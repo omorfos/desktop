@@ -861,3 +861,41 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
     let handed = held.handed(&compositor);
     assert!(matches!(handed.hand, Some(Hand::Program(_))));
 }
+
+#[test]
+fn a_program_that_adds_more_to_an_object_than_any_adds_is_let_go_and_said_to_be() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (mut program, connection, _) = held.connect(&compositor);
+    program.set_nonblocking(true).unwrap();
+    // A region, as the object 4, added to as many times as may be, which
+    // is kept, the compositor reading it all.
+    let mut setup = get_registry();
+    setup.extend(bind(1, "wl_compositor", 6, 3));
+    setup.extend(message(3, 1, &[4]));
+    program.write_all(&setup).unwrap();
+    let most = omorfos_relay::journal::MOST_ADDED;
+    for _ in 0..most {
+        program.write_all(&message(4, 1, &[0, 0, 1, 1])).unwrap();
+        held.step();
+        drain(&connection);
+    }
+    held.step();
+    assert_eq!(
+        held.relay.programs(),
+        1,
+        "{}",
+        String::from_utf8_lossy(&held.said)
+    );
+    // And once more.
+    program.write_all(&message(4, 1, &[0, 0, 1, 1])).unwrap();
+    held.until(|held| held.relay.programs() == 0);
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was let go, for more added to one object than any program adds",
+            named()
+        )),
+        "{said}"
+    );
+}

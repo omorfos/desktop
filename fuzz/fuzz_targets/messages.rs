@@ -59,7 +59,8 @@ fn sent(objects: &mut Objects, keeping: &mut Keeping, message: &mut [u8]) -> Opt
     let described = &read.interface.requests[usize::from(read.opcode)];
     keeping
         .journal
-        .request(header, message, &[], &read, described);
+        .request(header, message, &[], &read, described)
+        .ok()?;
     keeping.request(&read, message, described);
     Some(())
 }
