@@ -133,21 +133,17 @@ impl Compositor {
         self.seal.shadow = self
             .sealed_box()
             .and_then(|(area, scale)| self.animation.shades.cast(&question, scale, area, had));
-        let heads = self
-            .heads
-            .iter()
-            .map(|head| (head.output.clone(), head.area().size));
-        let heads: Vec<_> = heads.collect();
-        self.seal
-            .dims
-            .retain(|(output, _)| heads.iter().any(|(head, _)| head == output));
-        for (output, size) in heads {
-            let known = self.seal.dims.iter().position(|(kept, _)| *kept == output);
+        let heads = &self.heads;
+        let dims = &mut self.seal.dims;
+        dims.retain(|(output, _)| heads.iter().any(|head| head.output == *output));
+        for head in heads {
+            let (output, size) = (&head.output, head.area().size);
+            let known = dims.iter().position(|(kept, _)| kept == output);
             let index = known.unwrap_or_else(|| {
-                self.seal.dims.push((output, SolidColorBuffer::default()));
-                self.seal.dims.len() - 1
+                dims.push((output.clone(), SolidColorBuffer::default()));
+                dims.len() - 1
             });
-            self.seal.dims[index].1.update(size, color(dim));
+            dims[index].1.update(size, color(dim));
         }
     }
 

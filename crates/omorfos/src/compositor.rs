@@ -3173,11 +3173,19 @@ impl Compositor {
         let desktop = self.config().theme.style(Part::Desktop, States::NONE);
         let behind = color(desktop.ground());
         let size = self.head(output).map(Head::upright).unwrap_or_default();
-        let name = output.name();
-        let screen = (name.as_str(), size, view.scale.factor());
         let solid = self.config().general.appearance.reduce_transparency;
-        let glass = &mut self.animation.glass;
-        glass.frost::<R, P>(renderer, screen, scene, (behind, solid), frosting)
+        // Set aside while the screen's name is borrowed, which costs nothing.
+        let mut glass = std::mem::take(&mut self.animation.glass);
+        // Its name as it is kept, rather than copied out of Smithay. Every
+        // screen drawn on is among the heads, a mirror's too.
+        let name = self
+            .every_head()
+            .find(|head| head.output == *output)
+            .map_or("", Head::name);
+        let screen = (name, size, view.scale.factor());
+        let frosted = glass.frost::<R, P>(renderer, screen, scene, (behind, solid), frosting);
+        self.animation.glass = glass;
+        frosted
     }
 
     /// What drawing `output` came to, with what was drawn before it in the

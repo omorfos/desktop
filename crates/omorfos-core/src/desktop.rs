@@ -1158,6 +1158,12 @@ impl Workspace {
         parts.filter_map(|frame| self.tile(frame)).collect()
     }
 
+    /// Whether it has any of [`Workspace::tiles`], without listing them.
+    fn has_tiles(&self) -> bool {
+        let mut parts = self.solo.into_iter().flat_map(Tiling::tiles);
+        parts.any(|frame| self.tile(frame).is_some())
+    }
+
     /// Drops emptied groups and, if the focused group is gone or hidden,
     /// focuses the topmost one that can take focus.
     fn repair(&mut self) {
@@ -2513,6 +2519,17 @@ impl Desktop {
     #[must_use]
     pub fn workspace_count(&self) -> usize {
         self.sets[self.current].desktops().len()
+    }
+
+    /// Whether an output, counted in the order the outputs were given, is
+    /// showing a workspace made for windows to fill between them with any
+    /// of them on it, as [`Desktop::workspaces`] would say without listing
+    /// them all.
+    #[must_use]
+    pub fn shows_tiles(&self, output: usize) -> bool {
+        let set = self.sets.get(output);
+        let shown = set.and_then(|set| set.workspaces.get(set.active));
+        shown.is_some_and(Workspace::has_tiles)
     }
 
     /// Every workspace there is, output by output and in order.
@@ -6259,6 +6276,36 @@ mod tests {
         assert_eq!(desktop.current_output(), 1);
         assert_eq!(desktop.focused(), Some(dragged));
         assert_eq!(frame(&desktop, dragged).geometry, across);
+    }
+
+    #[test]
+    fn an_output_is_said_to_show_tiles_as_its_workspaces_list_them() {
+        let mut desktop = two_outputs();
+        // As each workspace listed says, for the one each output shows.
+        let listed = |desktop: &Desktop, output: usize| {
+            let mut places = desktop.workspaces();
+            places.any(|place| place.output == output && place.shown && !place.tiles.is_empty())
+        };
+        let agree = |desktop: &Desktop| {
+            for output in 0..3 {
+                assert_eq!(
+                    desktop.shows_tiles(output),
+                    listed(desktop, output),
+                    "{output}"
+                );
+            }
+        };
+        assert!(!desktop.shows_tiles(0));
+        agree(&desktop);
+        let [a, ..] = quarters(&mut desktop);
+        assert!(desktop.shows_tiles(0));
+        assert!(!desktop.shows_tiles(1));
+        agree(&desktop);
+        // Shown elsewhere, the workspace made for them is not shown here.
+        desktop.switch_workspace(0);
+        agree(&desktop);
+        desktop.remove_window(a);
+        agree(&desktop);
     }
 
     #[test]

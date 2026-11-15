@@ -264,8 +264,7 @@ impl Compositor {
     /// Whether an output, counted in the order they were added, is showing
     /// a workspace made for a fullscreen window.
     fn given_over(&self, output: usize) -> bool {
-        let mut places = self.desktop.workspaces();
-        places.any(|place| place.output == output && place.shown && !place.tiles.is_empty())
+        self.desktop.shows_tiles(output)
     }
 
     /// The edge of an output given over to a fullscreen window that the
