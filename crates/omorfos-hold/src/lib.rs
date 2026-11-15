@@ -34,6 +34,7 @@ use omorfos_ipc::relay::{self, Hand};
 use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
 use smithay::backend::session::libseat::LibSeatSessionNotifier;
 use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{
     EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
 };
@@ -98,6 +99,9 @@ pub struct Hold {
     stood: Option<Stood>,
     /// What is to be said on the log, as the holder next can.
     logged: Vec<String>,
+    /// Where this login's log is, to be kept within its bound while the
+    /// session writes to it.
+    log: Option<PathBuf>,
 }
 
 /// The relay running, as far as the holder is concerned.
@@ -159,7 +163,17 @@ impl Hold {
             ended: false,
             stood: None,
             logged: Vec::new(),
+            log: None,
         }
+    }
+
+    /// Keeps the log at `log`, if there is one, within its bound while the
+    /// session writes to it as the holder's own output: at once, and then
+    /// once a minute.
+    #[must_use]
+    pub fn logging_to(mut self, log: Option<PathBuf>) -> Self {
+        self.log = log;
+        self
     }
 
     /// Takes up the holder's own new versions installed at `own`.
@@ -201,6 +215,14 @@ impl Hold {
         log: &mut dyn Write,
     ) -> bool {
         seat::watch(self, &event_loop.handle());
+        if let Some(log) = self.log.clone() {
+            let _ = event_loop
+                .handle()
+                .insert_source(Timer::immediate(), move |_, (), _| {
+                    let _ = logged::bound(io::stderr().as_fd(), &log);
+                    TimeoutAction::ToDuration(BOUNDED_EVERY)
+                });
+        }
         loop {
             match self.once(event_loop, which, log) {
                 Next::Start { which: next, after } => {
@@ -513,15 +535,22 @@ impl Hold {
 
 /// Holds the session in `runtime`, the user's runtime directory, for the
 /// compositor installed beside the holder, which is installed at `own`,
-/// until it ends. Returns whether it was given up.
+/// until it ends, keeping the log `kept` within its bound. Returns whether
+/// it was given up.
 ///
 /// # Errors
 ///
 /// Returns an error if no socket can be bound for it.
-pub fn hold(runtime: &Path, own: PathBuf, log: &mut dyn Write) -> io::Result<bool> {
+pub fn hold(
+    runtime: &Path,
+    own: PathBuf,
+    kept: Option<PathBuf>,
+    log: &mut dyn Write,
+) -> io::Result<bool> {
     let socket = Socket::bind(runtime)?;
     let compositor = own.with_file_name("omorfos");
-    let mut hold = Hold::new(socket, compositor, Policy::default()).seated();
+    let hold = Hold::new(socket, compositor, Policy::default()).seated();
+    let mut hold = hold.logging_to(kept);
     hold.relay_program = relay_beside(&own);
     Ok(hold.renewed_from(own).run(log))
 }
@@ -531,6 +560,9 @@ pub fn hold(runtime: &Path, own: PathBuf, log: &mut dyn Write) -> io::Result<boo
 pub(crate) fn relay_beside(own: &Path) -> Option<PathBuf> {
     Some(own.with_file_name(RELAY)).filter(|relay| relay.is_file())
 }
+
+/// How often the log is kept within its bound.
+const BOUNDED_EVERY: Duration = Duration::from_secs(60);
 
 /// What the relay is called, installed beside the holder.
 const RELAY: &str = "omorfos-relay";

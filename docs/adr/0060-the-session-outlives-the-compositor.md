@@ -140,9 +140,19 @@ had needed the log found by hand: kept in one place, `omorfosctl report`
 can gather it. The directory and the logs are the user's alone, as what
 programs say may say what they do. A holder that takes up its own new
 version writes on to the same log, and one that cannot keep it says why
-and writes where it would have. Nothing bounds how large a login's log
-grows: what programs say goes to the journal where there is one, and the
-compositor's own words are few.
+and writes where it would have. A login's log is kept within 8 MiB:
+once a minute, and as it starts, the holder looks at how large it is,
+and one that has grown past that is cut to its last 2 MiB from the
+start of a line, with a line saying so (added 2026-11-15). It is cut
+where it is, because everything the session starts writes to the end of
+the file itself: passing what they write through the holder, to write
+it out or let it go, would let a holder that is busy hold up every
+program that writes, and the holder is the last thing to be made a
+part of each program's way out. The cost is a line or two lost, or put
+before what was kept, if one is written in the moment the log is cut.
+Only the log the holder's own
+output goes to is cut, so that output a login screen kept elsewhere is
+never the holder's to cut.
 
 It is ordinary, covered code, tested by running it: with stand-ins for
 the compositor, as the tests of ADR 59 run stand-ins for the programs,

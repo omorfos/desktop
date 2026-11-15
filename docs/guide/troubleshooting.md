@@ -30,9 +30,11 @@ What omorfos and the programs that come with it say, a configuration it
 cannot read and why, a program it sent away for asking what Wayland does
 not allow, and why, is kept in `~/.local/state/omorfos/session.log`, or
 under `$XDG_STATE_HOME` if you set it, and what the login before said
-beside it, in `session.log.old`. Only you can read them. Where they cannot
-be written, what omorfos says goes where your login screen keeps what a
-session says, with a line saying why.
+beside it, in `session.log.old`. Only you can read them. A log that grows
+past 8 MiB keeps its last 2 MiB, beginning with a line that says what
+came before was left out. Where they cannot be written, what omorfos
+says goes where your login screen keeps what a session says, with a line
+saying why.
 
 ```sh
 tail -f ~/.local/state/omorfos/session.log

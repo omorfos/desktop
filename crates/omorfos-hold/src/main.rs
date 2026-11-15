@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 use omorfos_hold::renew::{self, CHECK, TAKING, TAKING_BACK};
 use omorfos_ipc::help::help;
+use omorfos_ipc::session_log::NAME;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
@@ -46,14 +47,12 @@ fn hold(err: &mut dyn Write) -> ExitCode {
         let _ = writeln!(err, "omorfos-hold: XDG_RUNTIME_DIR is not set");
         return ExitCode::FAILURE;
     };
-    let state = env::var_os("XDG_STATE_HOME");
-    let home = env::var_os("HOME");
-    let kept = omorfos_ipc::session_log::directory(state.as_deref(), home.as_deref());
-    if let Some(directory) = kept {
-        keep_log(&directory, err);
+    let kept = kept();
+    if let Some(directory) = &kept {
+        keep_log(directory, err);
     }
     let own = env::current_exe().unwrap_or_default();
-    match omorfos_hold::hold(&runtime, own, err) {
+    match omorfos_hold::hold(&runtime, own, log(), err) {
         Ok(failed) => ended(failed),
         Err(error) => {
             let _ = writeln!(err, "omorfos-hold: cannot hold the session: {error}");
@@ -100,7 +99,7 @@ fn taking(back: bool, err: &mut dyn Write) -> ExitCode {
         }
     };
     match renew::take(&text, fds) {
-        Ok((hold, which)) => ended(hold.seated().run_from(which, err)),
+        Ok((hold, which)) => ended(hold.seated().logging_to(log()).run_from(which, err)),
         Err((text, fds)) if !back => {
             let said = "cannot take what the version before handed over; going back to it";
             let _ = writeln!(err, "omorfos-hold: {said}");
@@ -116,6 +115,19 @@ fn taking(back: bool, err: &mut dyn Write) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Where the session's logs are kept, as the environment says, for a
+/// holder that begins this login's and for one that takes up another's.
+fn kept() -> Option<PathBuf> {
+    let state = env::var_os("XDG_STATE_HOME");
+    let home = env::var_os("HOME");
+    omorfos_ipc::session_log::directory(state.as_deref(), home.as_deref())
+}
+
+/// This login's log, where the environment says the logs are kept.
+fn log() -> Option<PathBuf> {
+    kept().map(|directory| directory.join(NAME))
 }
 
 /// How the holder ends, as the session did.

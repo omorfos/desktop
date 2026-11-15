@@ -150,6 +150,21 @@ fn a_compositor_that_comes_up_and_ends_ends_the_session() {
 }
 
 #[test]
+fn a_log_the_session_does_not_write_to_is_not_cut_however_large() {
+    let place = Place::new();
+    place.install(&place.compositor(), "printf 'up\\n' >&0; exit 0");
+    let log = place.path().join("session.log");
+    let large = usize::try_from(omorfos_hold::logged::BOUND).unwrap() + 1;
+    fs::write(&log, "a".repeat(large)).unwrap();
+    let (failed, _) = place.held_by(|hold| hold.logging_to(Some(log.clone())));
+    assert!(!failed);
+    assert_eq!(
+        fs::metadata(&log).unwrap().len(),
+        u64::try_from(large).unwrap()
+    );
+}
+
+#[test]
 fn one_that_steps_down_is_started_again_and_told_what_it_left() {
     let place = Place::new();
     let then = "if [ $n = 1 ]; then printf 'up\\nlocked\\ndisplay 3\\nstepping down\\n' >&0; \

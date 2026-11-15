@@ -21,6 +21,12 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- The report (stage 8): `omorfosctl report` from a session started by
+  the login screen, with a disk mounted under `/media/<you>`, should
+  have a section "The journal, this login's" with what the session's
+  programs said, and no `/media/<you>/...` paths but `/media/(left
+  out)`. The log's bound is shown only by a login that says more than
+  8 MiB; `session.log` should then begin with the line saying so.
 - Sums in the launcher (stage 6): numbers read as the locale for
   numbers writes them, as `1 000,5+1` in Polish and `1,000.5+1` in
   English; `%`, as `200+10%`; `sqrt` or `√`, and `pi` or `π`; and
@@ -1859,11 +1865,16 @@ Reports and recovery:
       handing it on. Window titles and paths in the home are left out
       unless `--whole` is given, and nothing is sent anywhere. Made
       without a compositor too.
-- [ ] Known gaps in the report: how large a login's log grows is not
-      bounded, and the report puts in only its last 256 KiB; what the
-      programs said is in the journal, which the report does not read;
-      and a path is left out only where it is in the home, so one
-      elsewhere that names the user, as a mount under `/media`, stays.
+- [x] What the report lacked: a path elsewhere that names the user, as
+      a mount under `/media`, left out after the parts before it; the
+      journal's last thousand lines of this login, or of the user since
+      the computer started where the login is not known; and a login's
+      log kept within 8 MiB by the holder, cut to its last 2 MiB (ADR 60).
+- [ ] Known gaps in the report: a user whose name is a common part of a
+      path, as `share` or `bin`, has those parts of every path left out
+      too; the journal's lines of this login are all its programs', not
+      only omorfos's; and a line written in the moment the log is cut is
+      lost, or put before what was kept.
 - [ ] The screen kept lit while the compositor is started again (ADR
       60): the holder holding the screen's device, so that the last frame
       stays until the next compositor draws over it. The hardware
