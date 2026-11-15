@@ -157,6 +157,29 @@ fn what_is_kept_is_each_form_of_data_once_that_comes_in_time() {
 }
 
 #[test]
+fn what_the_compositor_is_asked_to_copy_can_be_pasted_with_the_keeper_running() {
+    let (mut session, keeper, mut editor) = kept(Limits::default());
+    // The keeper holds something copied before.
+    copied(
+        &mut session,
+        &mut editor,
+        (TEXT, &["text/plain"]),
+        |editor| editor.state.replaced,
+    );
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    let copy = omorfos_ipc::Request::Copy {
+        text: "42".to_owned(),
+    };
+    assert_eq!(session.ask(&mut peer, &copy), omorfos_ipc::Reply::Done);
+    drop(peer);
+    for _ in 0..20 {
+        session.step();
+    }
+    assert_eq!(pasted(&mut session).as_deref(), Some("42"));
+    assert_eq!(end(session, keeper), "the session ended");
+}
+
+#[test]
 fn what_a_password_manager_copies_is_not_kept() {
     let (mut session, keeper, mut editor) = kept(Limits::default());
     editor.copy_as("secret", &[TEXT, SECRET]);
