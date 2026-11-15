@@ -54,9 +54,12 @@ again. Where there is no journal, they say it where omorfos does.
 To report a fault, `omorfosctl report` gathers what a report needs into
 one text: the versions of omorfos, the kernel and the system, the graphics
 cards and screens, what the compositor says of its state, your
-configuration, and the end of both logs. Window titles, any path in your
-home, and any path elsewhere with your name as a part of it, as a disk
-mounted at `/media/you`, are left out; `--whole` keeps them. It is only written out,
+configuration, the end of both logs, and the last thousand lines the
+journal holds of this login, which is where the programs it starts say
+what they say (or, where the login is not known, of yours since the
+computer started). Window titles, any path in your home, and any path
+elsewhere with your name as a part of it, as a disk mounted at
+`/media/you`, are left out; `--whole` keeps them. It is only written out,
 never sent: read it over before you hand it on. It is made without a
 running compositor too, saying why that part is missing.
 

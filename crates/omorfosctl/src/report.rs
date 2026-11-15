@@ -2,11 +2,12 @@
 //! text for the user to look over before handing it on. It is only
 //! written out, never sent anywhere.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use omorfos_ipc::State;
 use omorfos_ipc::session_log::{BEFORE, NAME};
@@ -24,6 +25,9 @@ pub(crate) const CONFIGURATION: [&str; 5] = [
 /// bounded, and what came last is what a report is for.
 const LOGGED: u64 = 256 * 1024;
 
+/// How many of the last lines of the journal are asked for.
+const JOURNALED: u32 = 1000;
+
 /// What a window's title says in a report that leaves titles out.
 const NO_TITLE: &str = "(left out)";
 
@@ -39,6 +43,11 @@ pub(crate) struct Places {
     /// The user's names, a path elsewhere with one of which as a part is
     /// left out, as a disk mounted at `/media/me` is.
     pub(crate) names: Vec<String>,
+    /// The program that reads the journal, and what it is given before
+    /// what the report asks of it: `journalctl`, but in tests.
+    pub(crate) journal: (OsString, Vec<OsString>),
+    /// Whose of what the journal holds is put in.
+    pub(crate) whose: Whose,
     /// Where the system is read from: `/`, but in tests.
     pub(crate) root: PathBuf,
 }
@@ -63,6 +72,8 @@ impl Places {
             logs: omorfos_ipc::session_log::directory(state_home, home),
             home: absolute(home),
             names: Vec::new(),
+            journal: (OsString::from("/usr/bin/journalctl"), Vec::new()),
+            whose: Whose::Nobody,
             root: PathBuf::from("/"),
         }
     }
@@ -79,6 +90,37 @@ impl Places {
             }
         }
         self
+    }
+}
+
+/// Whose of what the journal holds a report puts in: what the programs
+/// the session starts write goes there (`omorfos-journal`), with what
+/// everything else the user and the system run writes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Whose {
+    /// This login's, by logind's name for it.
+    Session(String),
+    /// The user's, by their number, since the computer started, where the
+    /// login is not known.
+    User(u32),
+    /// No one's, where neither is known: never everyone's.
+    Nobody,
+}
+
+impl Whose {
+    /// This login's, if `session`, as `XDG_SESSION_ID` gives it, names one;
+    /// or else `user`'s, the user's number, if it is known.
+    pub(crate) fn of(session: Option<&OsStr>, user: Option<u32>) -> Self {
+        // logind names a login by letters and figures; anything else would
+        // be read by the journal as more than the name of one.
+        let session = session.and_then(OsStr::to_str).filter(|session| {
+            !session.is_empty() && session.chars().all(|c| c.is_ascii_alphanumeric())
+        });
+        match (session, user) {
+            (Some(session), _) => Self::Session(session.to_owned()),
+            (None, Some(user)) => Self::User(user),
+            (None, None) => Self::Nobody,
+        }
     }
 }
 
@@ -155,6 +197,7 @@ pub(crate) fn write(
             .and_then(|logs| end_of(&logs.join(file)));
         text.push_str(logged.as_deref().unwrap_or("not there\n"));
     }
+    journal(&places.journal, &places.whose, &mut text);
 
     if !whole {
         if let Some(home) = &places.home {
@@ -221,6 +264,55 @@ fn cards(root: &Path) -> Vec<String> {
     cards
 }
 
+/// Puts in what `whose` said in the journal, asking `journal` for the last
+/// [`JOURNALED`] lines of it this boot, and of those as much of the end as
+/// a log's is put in.
+fn journal((program, given): &(OsString, Vec<OsString>), whose: &Whose, text: &mut String) {
+    let (title, matched) = match whose {
+        Whose::Session(session) => ("this login's", format!("_SYSTEMD_SESSION={session}")),
+        Whose::User(user) => (
+            "the user's since the computer started",
+            format!("_UID={user}"),
+        ),
+        Whose::Nobody => {
+            heading(text, "The journal, of no one known");
+            text.push_str("not there\n");
+            return;
+        }
+    };
+    heading(text, &format!("The journal, {title}"));
+    let lines = format!("--lines={JOURNALED}");
+    let asked = [
+        "--no-pager",
+        "--quiet",
+        "--output=short-iso",
+        &lines,
+        "--boot",
+    ];
+    let output = Command::new(program)
+        .args(given)
+        .args(asked)
+        .arg(&matched)
+        .stdin(Stdio::null())
+        .output();
+    match output {
+        Err(_) => text.push_str("not there\n"),
+        Ok(output) if output.status.success() => {
+            let said = &output.stdout;
+            let from = said
+                .len()
+                .saturating_sub(usize::try_from(LOGGED).unwrap_or(usize::MAX));
+            text.push_str(&tail(&String::from_utf8_lossy(&said[from..]), from > 0));
+        }
+        Ok(output) => {
+            let why = String::from_utf8_lossy(&output.stderr);
+            let why = why.lines().next().map(str::to_owned);
+            let why = why.unwrap_or_else(|| output.status.to_string());
+            let _ = writeln!(text, "did not answer: {why}");
+        }
+    }
+}
+
 /// `state` with each window's title left out.
 fn untitled(mut state: State) -> State {
     for window in &mut state.windows {
@@ -243,12 +335,17 @@ fn end_of(path: &Path) -> Option<String> {
     file.seek(SeekFrom::Start(from))
         .and_then(|_| file.read_to_end(&mut bytes))
         .ok()?;
-    let text = String::from_utf8_lossy(&bytes);
-    if from == 0 {
-        return Some(text.into_owned());
+    Some(tail(&String::from_utf8_lossy(&bytes), from > 0))
+}
+
+/// The end of something said, as `text`: all of it, or, if what came
+/// before it was `cut` off, from the start of a line, saying so.
+fn tail(text: &str, cut: bool) -> String {
+    if !cut {
+        return text.to_owned();
     }
     let whole_lines = text.split_once('\n').map_or("", |(_, rest)| rest);
-    Some(format!("(what came before is left out)\n{whole_lines}"))
+    format!("(what came before is left out)\n{whole_lines}")
 }
 
 /// `text` with each path in `home` left out, from the home's path to the
@@ -355,8 +452,20 @@ mod tests {
             logs: Some(root.join("home/me/.local/state/omorfos")),
             home: Some(root.join("home/me")),
             names: vec!["me".to_owned()],
+            journal: said(&format!(
+                "printf '%s\\n' \"$@\" {}/home/me/Documents/a.txt",
+                root.display()
+            )),
+            whose: Whose::Session("3".to_owned()),
             root: root.to_path_buf(),
         }
+    }
+
+    /// A journal that is `sh` running `script`, with what the report asks
+    /// of the journal as its arguments.
+    fn said(script: &str) -> (OsString, Vec<OsString>) {
+        let given = ["-c", script, "journalctl"].map(OsString::from).to_vec();
+        ("sh".into(), given)
     }
 
     fn written(
@@ -460,6 +569,8 @@ mod tests {
             "== theme.css\nwindow { color: red; }\n",
             "== session.log, this login's log\nomorfos: cannot draw on eDP-1\n",
             "== session.log.old, the login before's log\nnot there\n",
+            "== The journal, this login's\n--no-pager\n--quiet\n--output=short-iso\n\
+             --lines=1000\n--boot\n_SYSTEMD_SESSION=3\n~/(left out)\n",
         ] {
             assert!(report.contains(said), "{said:?} in:\n{report}");
         }
@@ -480,6 +591,8 @@ mod tests {
             logs: None,
             home: None,
             names: Vec::new(),
+            journal: (place.path().join("journalctl").into(), Vec::new()),
+            whose: Whose::Nobody,
             root: place.path().to_path_buf(),
         };
         let report = written(&places, Err("no socket".to_owned()), false);
@@ -490,9 +603,79 @@ mod tests {
             "== Graphics cards\n\n== Screens\n\n== State\nnone\n",
             "== config.yaml\nnot there\n",
             "== session.log, this login's log\nnot there\n",
+            "== The journal, of no one known\nnot there\n",
         ] {
             assert!(report.contains(said), "{said:?} in:\n{report}");
         }
+    }
+
+    #[test]
+    fn the_journal_is_asked_for_what_this_login_said_or_else_what_the_user_said() {
+        let asked = |whose: &Whose| {
+            let mut out = String::new();
+            journal(&said("printf '%s\\n' \"$@\""), whose, &mut out);
+            out
+        };
+        let session = asked(&Whose::Session("c2".to_owned()));
+        assert!(
+            session.starts_with("\n== The journal, this login's\n"),
+            "{session}"
+        );
+        assert!(
+            session.ends_with("--boot\n_SYSTEMD_SESSION=c2\n"),
+            "{session}"
+        );
+        let user = asked(&Whose::User(1000));
+        assert!(user.starts_with("\n== The journal, the user's since the computer started\n"));
+        assert!(user.ends_with("--boot\n_UID=1000\n"), "{user}");
+        // Never everyone's.
+        assert_eq!(
+            asked(&Whose::Nobody),
+            "\n== The journal, of no one known\nnot there\n"
+        );
+    }
+
+    #[test]
+    fn whose_the_journal_is_read_for_is_the_login_or_else_the_user() {
+        let os = |value: &'static str| Some(OsStr::new(value));
+        assert_eq!(
+            Whose::of(os("7"), Some(1000)),
+            Whose::Session("7".to_owned())
+        );
+        assert_eq!(Whose::of(None, Some(1000)), Whose::User(1000));
+        assert_eq!(Whose::of(os(""), Some(1000)), Whose::User(1000));
+        // What would be read as more than one login's is not taken as one.
+        assert_eq!(Whose::of(os("7 _UID=0"), Some(1000)), Whose::User(1000));
+        assert_eq!(Whose::of(os("+"), None), Whose::Nobody);
+    }
+
+    #[test]
+    fn a_journal_that_fails_says_why_and_a_long_one_is_put_in_by_its_end() {
+        let mut out = String::new();
+        let failing = said("echo cannot read the journal >&2; exit 1");
+        journal(&failing, &Whose::User(1), &mut out);
+        assert!(
+            out.ends_with("\ndid not answer: cannot read the journal\n"),
+            "{out}"
+        );
+        let mut out = String::new();
+        let missing = (OsString::from("/nonexistent/journalctl"), Vec::new());
+        journal(&missing, &Whose::User(1), &mut out);
+        assert!(
+            out.ends_with("since the computer started\nnot there\n"),
+            "{out}"
+        );
+        let mut out = String::new();
+        journal(&said("exit 3"), &Whose::User(1), &mut out);
+        assert!(out.contains("did not answer: "), "{out}");
+        let mut out = String::new();
+        let long = format!("yes 'a line the journal said' | head -n {}", LOGGED / 10);
+        journal(&said(&long), &Whose::User(1), &mut out);
+        assert!(
+            out.contains("(what came before is left out)\na line"),
+            "{out:.200}"
+        );
+        assert!(out.len() <= usize::try_from(LOGGED).unwrap() + 100);
     }
 
     #[test]

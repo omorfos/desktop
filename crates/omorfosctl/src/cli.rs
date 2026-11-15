@@ -47,7 +47,8 @@ pub(crate) const ABOUT: About = About {
         (
             "report [--whole]",
             "Print what a report of a fault needs, for you to look over before handing it on: \
-             versions, graphics cards, screens, state, configuration and the session's logs. \
+             versions, graphics cards, screens, state, configuration, the session's logs and \
+             what this login's programs said in the journal. \
              Window titles, paths in your home and paths elsewhere that name you are left out \
              unless --whole is given. Works \
              without a running compositor",
@@ -485,6 +486,8 @@ mod tests {
             logs: None,
             home: None,
             names: Vec::new(),
+            journal: ("/nonexistent/journalctl".into(), Vec::new()),
+            whose: report::Whose::Nobody,
             root: PathBuf::from("/nonexistent"),
         }
     }
