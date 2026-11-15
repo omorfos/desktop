@@ -64,6 +64,7 @@ use crate::paint;
 use crate::paint::Signs;
 use crate::recording::{Recorded, Recording};
 use crate::roles::Roles;
+use crate::surfaces;
 
 /// How long the mark stays after the last picture of a screen was asked
 /// for, so that one picture cannot be taken unseen.
@@ -845,7 +846,8 @@ impl Compositor {
         if !frame.standing.shaded {
             let client = frame.client().origin;
             let drawn = mapped.window.bbox();
-            let at = Point::from((client.x, client.y)) - mapped.window.geometry().loc + drawn.loc;
+            let at = Point::from((client.x, client.y)) - surfaces::proper(&mapped.window).loc
+                + drawn.loc;
             area = area.merge(Rectangle::new(at, drawn.size));
         }
         // A window as large as it can be, or larger, casts none.

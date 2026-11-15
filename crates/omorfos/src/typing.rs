@@ -13,7 +13,6 @@
 //! See `docs/adr/0047-input-methods.md`.
 
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
@@ -41,6 +40,7 @@ use smithay::{delegate_text_input_manager, delegate_virtual_keyboard_manager};
 
 use crate::compositor::{Compositor, Element, View};
 use crate::outputs::Head;
+use crate::surfaces;
 
 impl Compositor {
     /// Where the top left of `surface` is, if it is the main surface of a
@@ -49,7 +49,7 @@ impl Compositor {
     /// shown at all.
     pub(crate) fn surface_origin(&self, surface: &WlSurface) -> Option<Point<i32, Logical>> {
         let window = self.scene.iter().find(|shown| shown.surface == *surface);
-        let window = window.map(|shown| shown.origin - shown.window.geometry().loc);
+        let window = window.map(|shown| shown.origin - surfaces::proper(&shown.window).loc);
         let panel = || {
             self.heads.iter().find_map(|head| {
                 let layers = layer_map_for_output(&head.output);
@@ -101,7 +101,7 @@ impl Compositor {
         let placed = self.typing.popups.iter();
         let placed = placed.filter_map(|popup| self.popup_area(popup).map(|area| (popup, area)));
         for (popup, area) in placed {
-            let shown = render_elements_from_surface_tree(
+            let shown = surfaces::tree(
                 renderer,
                 popup.wl_surface(),
                 view.pixel(area.loc.to_f64()),

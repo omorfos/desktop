@@ -31,7 +31,7 @@ compositor or the domain.
 | `omorfos-config` | done | YAML schema, defaults, validation with file, line and column diagnostics, directory watcher, debouncer, last-known-good store, JSON Schema generation and the files' manual pages (`schema` feature), and `edit`, which changes a value in `config.yaml` as a person would, the rest of the file kept as it is written (ADR 81). The theme is a stylesheet in a small part of CSS, laid over a built-in one and worked out when loaded; it answers how a `Part` looks in its `States` with a `Style` and a `Font`, which is all that anything drawing asks of it. Depends on no other workspace crate, but on `omorfos-ipc` for the roff of the manual pages, with the `schema` feature only. |
 | `omorfos-ipc` | done | The IPC protocol's message types (one line of JSON each), where to find the socket, a small blocking client, and a connection made again once the compositor is back from being started anew; the words between `omorfos-hold` and the compositor, and the records the relay is handed and hands the compositor; and the list of Wayland protocols the compositor offers, each with how a program's state in it is made again, which the relay is built from (ADR 60); and what each program says of itself, as `--help` and as its manual page (ADR 77), and every action as `omorfosctl action` lists it; and `handing`, which hands bytes to a program through a pipe it gave without ever waiting on it, as what was copied is handed to a program that pastes, for the compositor, `omorfos-clipboard` and `omorfos-screenshot` (ADR 90). Depends on no other workspace crate. |
 | `omorfos-i18n` | started | The words of the programs in the user's language (ADR 79): each program's Fluent messages in English and in each language they are translated into, from `i18n/`, built in; the language the environment asks for, with English beneath it a message at a time; and the tests that hold every language to the English. Depends on no other workspace crate. The panel, the lock screen, the boxes that ask for passwords, `omorfos-session`'s notices and the compositor's menus and questions say what they say through it. |
-| `omorfos-ui` | done | Drawing on the CPU, independent of where the pixels go: `Canvas` (fills, a part drawn as a box with its borders and rounded corners, in units of layout at any `Scale`, and pictures drawn as they are or stretched to any size, smoothed), `Text` (measuring and drawing a line), `Scale`, and `Motion` (the looks of parts on their way from one state's to another's, by a time it is told). Depends only on `omorfos-config`, for colours and fonts. |
+| `omorfos-ui` | done | Drawing on the CPU, independent of where the pixels go: `Canvas` (fills, a part drawn as a box with its borders and rounded corners, in units of layout at any `Scale`, and pictures drawn as they are or stretched to any size, smoothed; never more pixels than `Canvas::MOST_PIXELS`, whatever size it is asked to be, ADR 91), `Text` (measuring and drawing a line), `Scale`, and `Motion` (the looks of parts on their way from one state's to another's, by a time it is told). Depends only on `omorfos-config`, for colours and fonts. |
 | `omorfos-panel` | started | The panel. `Bar` decides what is on one screen's bar from an IPC `State`, where, how it is drawn and what a click asks for. `Panel` is the Wayland client around it: a layer-shell surface per screen, pictures handed over as shared memory, clicks sent back over the socket. |
 | `omorfos-wallpaper` | started | The wallpaper (ADR 49). `Slides` picks the picture of a file or a directory to show and when the next is due; `lay` lays it on a screen as the configuration says; `Wallpaper` is the Wayland client around them: a surface behind everything on each screen with something to show, a picture handed over as shared memory or a plain colour as a single pixel. It reads the configuration itself, PNG through the decoder icons use and JPEG through `zune-jpeg`; that reader, `picture`, also reads the lock screen's face. |
 | `omorfos-lock` | started | The lock screen (ADR 52). `check` is the helper it starts again for each way of unlocking, the one file that asks PAM, through `nonstick`, in the line protocol polkit's helper speaks; `Ways` runs a helper for the password and for each other way the configuration offers, at once, and hears what they say; `Lock` is the Wayland client around them: the session locked, a surface on every screen with the time, and once a key or a button is pressed the user's face and name, the password field and what the ways say, with the power buttons along the bottom, asked of `omorfos-session` (ADR 53); and unlocked when a way says yes. |
@@ -89,10 +89,15 @@ Crates are created when their first task starts, not before.
   user they are, but cannot make the compositor wait or grow: I/O is
   non-blocking and sizes are capped. See [IPC.md](IPC.md) and
   [adr/0008-ipc-and-components.md](adr/0008-ipc-and-components.md).
-- **A program is not waited on.** What a program is handed through a
-  descriptor it gave is written without waiting on it, in one place for
-  every program of ours that hands anything over. See
-  [adr/0090-what-a-program-is-handed-is-written-without-waiting-on-it.md](adr/0090-what-a-program-is-handed-is-written-without-waiting-on-it.md)
+- **A program is not waited on, nor taken at its word for a size.** What
+  a program is handed through a descriptor it gave is written without
+  waiting on it, in one place for every program of ours that hands
+  anything over. See
+  [adr/0090-what-a-program-is-handed-is-written-without-waiting-on-it.md](adr/0090-what-a-program-is-handed-is-written-without-waiting-on-it.md).
+  How large a program says something is is held to a most where it
+  comes in: a frame in the domain, a canvas where it is allocated, and
+  a surface where it becomes something to draw. See
+  [adr/0091-nothing-a-program-shows-is-larger-than-a-frame-may-be.md](adr/0091-nothing-a-program-shows-is-larger-than-a-frame-may-be.md)
   and the reviews in [reviews/](reviews/).
 
 ## How the compositor is put together
@@ -131,6 +136,12 @@ and uploaded as textures, repainted only when their appearance changes. See
 frame's bottom corners are rounded by drawing its window in strips under a
 painted border, which any renderer can do; see
 [adr/0016-rounded-corners.md](adr/0016-rounded-corners.md).
+What a program shows, a window, a pop-up, a panel or a pointer, becomes
+what is drawn in one module, `surfaces`, which leaves out a surface said
+to be larger than a frame may be and takes a window to be no larger;
+`clippy.toml` refuses the functions of Smithay's it stands in front of
+anywhere else. See
+[adr/0091-nothing-a-program-shows-is-larger-than-a-frame-may-be.md](adr/0091-nothing-a-program-shows-is-larger-than-a-frame-may-be.md).
 
 Everything above is in units of layout, not pixels, in one space that
 all the outputs show a part of. Each output has a position in it and a

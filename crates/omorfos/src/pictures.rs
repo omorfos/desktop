@@ -3,8 +3,6 @@
 //! a private window whole on the screen, and in pictures of the screen as
 //! it is in them, blank or under glass that blurs it (ADR 84).
 
-use smithay::backend::renderer::element::AsRenderElements as _;
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::utils::{Logical, Point, Rectangle};
@@ -14,6 +12,7 @@ use omorfos_core::WindowId;
 
 use crate::compositor::{Compositor, Element, Mapped, PRIVATE_BLUR, View};
 use crate::glass::{self, Pane};
+use crate::surfaces;
 
 /// A rectangle worked out in fractions of units of layout: its left, its
 /// top, how wide and how tall.
@@ -41,7 +40,7 @@ pub(crate) fn whole(length: f64) -> i32 {
 
 /// The size of `mapped`, as its frame has it.
 pub(crate) fn shape(mapped: &Mapped) -> (i32, i32) {
-    let size = mapped.window.geometry().size;
+    let size = surfaces::proper(&mapped.window).size;
     (size.w, size.h)
 }
 
@@ -58,12 +57,15 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Texture + Send + 'static,
 {
-    let size = mapped.window.geometry().size;
+    let size = surfaces::proper(&mapped.window).size;
     let factor = across / f64::from(size.w.max(1));
     let shown = (across, down);
     let corner = view.pixel(Point::<f64, Logical>::from((left, top)));
     let scale = view.scale.factor() * factor;
-    let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
+    let within = surfaces::proper(&mapped.window)
+        .loc
+        .to_f64()
+        .to_physical(scale);
     let at = corner - within.to_i32_round();
     let picture = smithay::utils::Size::<f64, Logical>::from(shown);
     let crop = Rectangle::new(
@@ -76,9 +78,7 @@ where
     let clip = Rectangle::new(from, size.to_physical(view.scale.factor()).to_i32_round());
     let crop = crop.intersection(clip).unwrap_or_default();
     let scale = smithay::utils::Scale::from(scale);
-    let surfaces = mapped
-        .window
-        .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, opacity);
+    let surfaces = surfaces::of(renderer, &mapped.window, at, scale, opacity);
     surfaces
         .into_iter()
         .filter_map(move |surface| CropRenderElement::from_element(surface, scale, crop))
@@ -142,7 +142,10 @@ impl Compositor {
         // the screen: made as small as the picture, and cut where it is.
         let (left, top, across, _) = picture;
         let factor = across / f64::from(shape(mapped).0.max(1));
-        let inside = mapped.window.geometry().loc.to_f64().upscale(factor);
+        let inside = surfaces::proper(&mapped.window)
+            .loc
+            .to_f64()
+            .upscale(factor);
         let origin = Point::<f64, Logical>::from((left, top)) - inside;
         let cut = |(left, top, across, down): Exact| {
             let from = view.pixel(Point::<f64, Logical>::from((left, top)));

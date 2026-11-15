@@ -21,10 +21,8 @@ use std::time::Duration;
 use omorfos_config::{Config, Easing, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect};
 use omorfos_core::{OverviewMetrics, WindowId, overview};
-use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::layer_map_for_output;
@@ -39,6 +37,7 @@ use crate::glass::{self, Pane};
 use crate::outputs::domain;
 use crate::paint;
 use crate::pictures::{Exact, whole};
+use crate::surfaces;
 
 /// How long a window takes to glide to its place in the overview, and
 /// back, as long as `docs/DESIGN.md` gives something moving to where it
@@ -400,7 +399,7 @@ impl Compositor {
             let id = listed.window.id;
             let on = self.scene.iter().find(|shown| shown.id == id);
             let on = on.zip(self.mapped(id)).map(|(shown, mapped)| {
-                let size = mapped.window.geometry().size;
+                let size = surfaces::proper(&mapped.window).size;
                 let origin = DomainPoint::new(shown.origin.x, shown.origin.y);
                 let size = omorfos_core::geometry::Size::new(
                     size.w.max(1).cast_unsigned(),
@@ -892,12 +891,7 @@ impl Compositor {
                 origin.x.mul_add(factor, place.0),
                 origin.y.mul_add(factor, place.1),
             ));
-            let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
-                renderer,
-                view.pixel(corner),
-                scale,
-                open,
-            );
+            let surfaces = surfaces::of(renderer, surface, view.pixel(corner), scale, open);
             let cropped = surfaces
                 .into_iter()
                 .filter_map(|surface| CropRenderElement::from_element(surface, scale, crop));

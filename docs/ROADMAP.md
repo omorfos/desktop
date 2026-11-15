@@ -42,6 +42,13 @@ a known gap.
   that was then closed, which the keeper gives; and a picture
   `omorfos-screenshot` put on the clipboard, pasted whole into a
   program that takes pictures.
+- A window wider than a frame may be (stage 8), on a graphics card,
+  which the tests do not draw with: `xterm -geometry 5000x40`, some
+  thirty thousand pixels wide in xterm's own small letters, should open
+  in a frame 16384 units wide and be drawn in it, and the overview and
+  the switcher should show it small like any other. One more than
+  32767 pixels wide is not a test of this: an X server draws nothing
+  of it, and it never opens.
 
 ## Where this is going
 
@@ -1895,14 +1902,16 @@ Security:
       which had the same write (ADR 90): through a pipe of our own and
       `splice`, on a thread for each, sixteen at most, for half a minute
       at most.
-- [ ] A window said to be enormous ending the compositor
+- [x] A window said to be enormous ending the compositor
       ([finding 2](reviews/2026-11-15-what-a-client-can-cost.md#2-a-window-said-to-be-enormous-ends-the-compositor)),
       high: a titlebar as wide as a window said to be two thousand million
-      units across is 224 GB to allocate, and the process is aborted. A
-      window's size is to be held to a most where it enters the desktop,
-      and a canvas to a most number of pixels.
-- [ ] What fixing the first showed and left open, each small and none a
-      way to stop or end the session as far as was read:
+      units across was 224 GB to allocate, and the process was aborted.
+      A frame is now at most 16384 units a side, held in the domain; a
+      canvas has a most number of pixels; and what a program shows
+      becomes what is drawn in one module, which leaves out a surface
+      said to be larger and takes a window to be no larger (ADR 91).
+- [ ] What fixing the first two showed and left open, each small and
+      none a way to stop or end the session as far as was read:
       - the keeper of the clipboard reads what was copied on a thread
         for each kind it is offered in, uncounted, each held until the
         program that copied closes its pipe, and started in a way that
@@ -1915,7 +1924,17 @@ Security:
         from being handed it for as long: a paste then comes out empty.
         Whoever gives is not told who asks, so this wants either that,
         asked of Smithay for the compositor's own text, or one thread
-        that hands everything over in place of one for each (ADR 90).
+        that hands everything over in place of one for each (ADR 90);
+      - a picture of a window by itself is as large as all its program
+        says it draws, and one that large is asked of the renderer. To
+        be held to what a frame may be, and shown with a graphics card
+        ([finding 2](reviews/2026-11-15-what-a-client-can-cost.md#2-a-window-said-to-be-enormous-ends-the-compositor));
+      - where a surface is, which its program says as it says how large,
+        is added to in whole numbers that wrap in a release build and
+        panic in the tests': to be read through, in the compositor and
+        in what it asks of Smithay;
+      - every window costs a titlebar painted as wide as its frame, and
+        nothing holds a program to a number of windows.
 - [ ] Any program taking the keyboard with a serial it made up
       ([finding 3](reviews/2026-11-15-what-a-client-can-cost.md#3-any-program-can-take-the-keyboard-with-a-serial-it-made-up)),
       medium: an activation token is honoured for having a serial, not for
@@ -1954,7 +1973,8 @@ Security:
       decoder read, which is to be shown.
 - [ ] What the review did not look at, each a review of its own: the relay
       beyond what it keeps, the portal and the services on D-Bus, buffers
-      of the graphics card, the hardware backend, and the helpers that
+      of the graphics card, the hardware backend and what a graphics
+      card's renderer does with what it is handed, and the helpers that
       check a secret.
 
 Accessibility:

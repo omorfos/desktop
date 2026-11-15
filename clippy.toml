@@ -4,3 +4,11 @@ allow-unwrap-in-tests = true
 # Names of things that are not code, which documentation may write as
 # they are spelt.
 doc-valid-idents = ["..", "GnuPG", "PipeWire", "PulseAudio", "WirePlumber"]
+# What a program shows is made into what is drawn in one place,
+# `crates/omorfos/src/surfaces.rs`, which leaves out a surface said to be
+# larger than anything is (ADR 91). These are what it stands in front of.
+disallowed-methods = [
+    { path = "smithay::backend::renderer::element::surface::render_elements_from_surface_tree", reason = "use `surfaces::tree`, which leaves out a surface larger than a frame may be" },
+    { path = "smithay::backend::renderer::element::AsRenderElements::render_elements", reason = "use `surfaces::of`, which leaves out a surface larger than a frame may be" },
+    { path = "smithay::desktop::Window::geometry", reason = "use `surfaces::proper`, which takes a window to be no larger than a frame may be" },
+]

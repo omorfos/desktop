@@ -19,6 +19,7 @@ use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
 use crate::paint::{self, AboutButton};
 use crate::reveal::Placing;
+use crate::surfaces;
 use crate::x11::Focus;
 use omorfos_core::KeyOutcome;
 use smithay::delegate_keyboard_shortcuts_inhibit;
@@ -1143,7 +1144,7 @@ impl Compositor {
                 // A window may draw outside what it calls its geometry, for
                 // a shadow say, so its surface can begin above and left of
                 // where the window is placed.
-                let surface_origin = shown.origin - shown.window.geometry().loc;
+                let surface_origin = shown.origin - surfaces::proper(&shown.window).loc;
                 let within = self.pointer_location - surface_origin.to_f64();
                 window
                     .surface_under(within, WindowSurfaceType::ALL)

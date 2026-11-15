@@ -1421,6 +1421,23 @@ impl Desktop {
     /// nothing.
     pub const MOST_WORKSPACES: usize = 32;
 
+    /// The most a frame is across, or down, in units of layout: more than
+    /// twice an 8K screen across, and the widest picture many graphics
+    /// cards hold. A program says how large its window is, and can say
+    /// two thousand million; what is painted for a frame, its titlebar
+    /// first, is as large as the frame is kept, so a frame is kept no
+    /// larger than this whatever is said of its window (ADR 91).
+    pub const MOST_SIDE: u32 = 16_384;
+
+    /// `size` as a frame may be: no more than [`Self::MOST_SIDE`] either
+    /// way. Every size said of a frame from outside is kept through this.
+    fn held(size: Size) -> Size {
+        Size::new(
+            size.width.min(Self::MOST_SIDE),
+            size.height.min(Self::MOST_SIDE),
+        )
+    }
+
     /// Creates an empty desktop with `workspaces` workspaces that are
     /// always there (at least one). More are made as they are asked for.
     #[must_use]
@@ -1642,13 +1659,13 @@ impl Desktop {
         let decorated = effects.decorations.unwrap_or(wants_decoration);
         let area = self.output_at(pointer).usable;
         let fills = effects.maximized == Some(true) || effects.fullscreen == Some(true);
-        let size = match (fills, decorated) {
+        let size = Self::held(match (fills, decorated) {
             // The window drew itself to fill the output, so its own idea of
             // a size was never seen. When restored it gets a moderate one.
             (true, _) => Size::new(area.size.width / 3 * 2, area.size.height / 3 * 2),
             (false, true) => self.settings.decoration.outer_size(size),
             (false, false) => size,
-        };
+        });
         let index = self.sets[set].workspaces[workspace].groups.len();
         let origin = place(self.settings.placement, size, area, pointer, index);
         let id = WindowId(self.serial());
@@ -1788,7 +1805,7 @@ impl Desktop {
             serial,
             tabs: vec![window],
             active: 0,
-            geometry: kept.geometry,
+            geometry: Rect::new(kept.geometry.origin, Self::held(kept.geometry.size)),
             maximized: kept.states.maximized,
             // A frame that fills a part is fullscreen on its workspace.
             fullscreen: tiled.is_some(),
@@ -2059,11 +2076,11 @@ impl Desktop {
         let metrics = self.settings.decoration;
         let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         if group.active == at.tab && !group.maximized && !group.fullscreen {
-            group.geometry.size = if group.decorated() {
+            group.geometry.size = Self::held(if group.decorated() {
                 metrics.outer_size(size)
             } else {
                 size
-            };
+            });
         }
     }
 
@@ -2084,6 +2101,7 @@ impl Desktop {
     pub fn set_geometry(&mut self, id: WindowId, geometry: Rect) {
         let Some(at) = self.locate(id) else { return };
         let at = self.grounded(id, at);
+        let geometry = Rect::new(geometry.origin, Self::held(geometry.size));
         let group = &mut self.sets[at.set].workspaces[at.workspace].groups[at.group];
         group.geometry = geometry;
         group.maximized = false;
@@ -3889,6 +3907,40 @@ mod tests {
         desktop.set_decorated(id, false);
         desktop.set_client_size(id, Size::new(100, 100));
         assert_eq!(frame(&desktop, id).geometry.size, Size::new(100, 100));
+    }
+
+    #[test]
+    fn a_frame_is_no_larger_than_a_window_may_be_whatever_is_said_of_it() {
+        // Two thousand million units a side, as a program can say of a
+        // window of four pixels.
+        let enormous = Size::new(2_000_000_000, 2_000_000_000);
+        let most = Size::new(Desktop::MOST_SIDE, Desktop::MOST_SIDE);
+        let mut desktop = decorated_desktop();
+        // As it opens, in a frame of ours or without one.
+        let framed = desktop.add_window("big", "big", enormous, POINTER, true);
+        assert_eq!(frame(&desktop, framed).geometry.size, most);
+        let bare = desktop.add_window("big", "big", enormous, POINTER, false);
+        assert_eq!(frame(&desktop, bare).geometry.size, most);
+        // As it says it has resized itself.
+        let id = open(&mut desktop, "app");
+        desktop.set_client_size(id, enormous);
+        assert_eq!(frame(&desktop, id).geometry.size, most);
+        desktop.set_decorated(id, false);
+        desktop.set_client_size(id, enormous);
+        assert_eq!(frame(&desktop, id).geometry.size, most);
+        // As it is moved and resized, where it is put being kept.
+        let corner = Point::new(5, 7);
+        desktop.set_geometry(id, Rect::new(corner, enormous));
+        assert_eq!(frame(&desktop, id).geometry, Rect::new(corner, most));
+        // And as it is put back as it was kept by a compositor before.
+        let mut kept = desktop.kept(id).unwrap();
+        kept.geometry.size = enormous;
+        let (back, ids) = kept_back(&[kept]);
+        assert_eq!(frame(&back, ids[0]).geometry.size, most);
+        // One within that is as large as was said.
+        let wide = Size::new(Desktop::MOST_SIDE, 10);
+        desktop.set_geometry(id, Rect::new(corner, wide));
+        assert_eq!(frame(&desktop, id).geometry.size, wide);
     }
 
     #[test]

@@ -13,9 +13,7 @@ use std::time::Duration;
 use omorfos_config::{Color, Config, Edges, Line, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Arrangement, Home, Offer, WindowId};
-use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{Id, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
@@ -32,6 +30,7 @@ use crate::input::Drag;
 use crate::outputs::Head;
 use crate::paint::{self, Text};
 use crate::sent::Way;
+use crate::surfaces;
 use crate::x11::Role;
 
 /// How far either side of a line the pointer takes hold of it, in units
@@ -633,12 +632,15 @@ impl Compositor {
         let pictures = shown.flat_map(|(offer, mapped)| {
             // As small as it has to be to fit, which with its shape kept is
             // as small across as down.
-            let size = mapped.window.geometry().size;
+            let size = surfaces::proper(&mapped.window).size;
             let factor = f64::from(offer.at.size.width) / f64::from(size.w.max(1));
             let scale = view.scale.factor() * factor;
             let corner = Point::<i32, Logical>::from((offer.at.origin.x, offer.at.origin.y));
             let corner = view.pixel(corner.to_f64());
-            let within = mapped.window.geometry().loc.to_f64().to_physical(scale);
+            let within = surfaces::proper(&mapped.window)
+                .loc
+                .to_f64()
+                .to_physical(scale);
             let at = corner - within.to_i32_round();
             let picture = logical_size(offer.at.size).to_f64();
             let crop = Rectangle::new(
@@ -646,9 +648,7 @@ impl Compositor {
                 picture.to_physical(view.scale.factor()).to_i32_round(),
             );
             let scale = smithay::utils::Scale::from(scale);
-            let surfaces = mapped
-                .window
-                .render_elements::<WaylandSurfaceRenderElement<R>>(renderer, at, scale, 1.0);
+            let surfaces = surfaces::of(renderer, &mapped.window, at, scale, 1.0);
             surfaces
                 .into_iter()
                 .filter_map(move |surface| CropRenderElement::from_element(surface, scale, crop))

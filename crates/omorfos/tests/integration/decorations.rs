@@ -10,7 +10,7 @@ use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 use std::time::Duration;
 
 use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
-use crate::windows::{BACKGROUND, RED, shaded};
+use crate::windows::{BACKGROUND, BLUE, RED, shaded};
 
 /// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
 const BORDER: i32 = 1;
@@ -1206,4 +1206,112 @@ fn a_theme_change_restyles_existing_frames() {
     );
     assert_eq!(picture.at(2, 60), 0xff00_ff00, "a wider border");
     assert_eq!(picture.at(190, 14), 0xff00_00ff);
+}
+
+/// As large as a program can say a window of four pixels is.
+const ENORMOUS: (i32, i32) = (2_000_000_000, 2_000_000_000);
+
+/// Opens a window that has four pixels to show and says they are `size`
+/// units large, in a frame of ours if it is `decorated`.
+fn open_said_to_be(session: &mut Session, client: &mut Client, size: (i32, i32), decorated: bool) {
+    let window = client.toplevel_uncommitted("big", "big window");
+    if decorated {
+        client.decoration(&window);
+    }
+    window.surface.commit();
+    session.roundtrip(client);
+    client.fill_scaled(&window.surface, (4, 4), size, RED);
+    session.roundtrip(client);
+    session.roundtrip(client);
+}
+
+#[test]
+fn a_window_said_to_be_enormous_is_kept_in_a_frame_that_can_be_drawn() {
+    // What is behind the overview not blurred, which takes a while.
+    let theme = "overview-backdrop { backdrop-filter: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    open_said_to_be(&mut session, &mut client, ENORMOUS, true);
+    // Its frame is as large as one may be, and its program is told what
+    // that leaves it.
+    let most = omorfos_core::Desktop::MOST_SIDE;
+    let frame = first_frame(&session).geometry.size;
+    assert_eq!((frame.width, frame.height), (most, most));
+    let most = most.cast_signed();
+    let (told, _) = client.last_configure();
+    assert_eq!(told, (most - 2 * BORDER, most - TITLEBAR - BORDER));
+    // Its titlebar is painted as wide as that and no wider, where one as
+    // wide as was said took more memory than there is.
+    let picture = session.draw();
+    assert_eq!(picture.at(190, 14), FOCUSED_TITLEBAR);
+    // Nothing that large is drawn, so in its frame there is nothing.
+    let within = picture.at(100, 100);
+    assert!(shaded(within, BACKGROUND), "{within:#x}");
+    // And it is pictured small among the others, where it is as little.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Overview);
+    session.step();
+    drop(session.draw());
+}
+
+#[test]
+fn a_window_with_no_frame_of_ours_said_to_be_enormous_does_not_stop_the_screen_being_drawn() {
+    // What is behind the switcher not blurred, which takes a while.
+    let theme = "switcher-backdrop { backdrop-filter: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    open_said_to_be(&mut session, &mut client, ENORMOUS, false);
+    let most = omorfos_core::Desktop::MOST_SIDE;
+    let frame = first_frame(&session).geometry.size;
+    assert_eq!((frame.width, frame.height), (most, most));
+    // The screen is drawn, with nothing of it: all of it would be red.
+    assert_eq!(session.draw().at(100, 100), BACKGROUND);
+    // Another window is drawn over it as over any other.
+    let mut other = session.connect();
+    session.open(&mut other, "small", (200, 100), BLUE);
+    let frames = session.compositor().desktop().frames();
+    let small = frames
+        .map(|frame| (frame.window().app_id.clone(), frame.geometry.origin))
+        .find(|(name, _)| name == "small");
+    let (_, inside) = small.unwrap();
+    let picture = session.draw();
+    assert_eq!(picture.at(inside.x + 10, inside.y + 10), BLUE);
+    // And both are pictured small while one is chosen.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::SwitchWindows);
+    session.step();
+    drop(session.draw());
+}
+
+#[test]
+fn a_surface_said_to_be_enormous_is_left_out_of_what_its_window_shows() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    // Two parts of the window, each one pixel of blue, which any renderer
+    // can draw however large it is said to be: over its left, one said to
+    // be taller than anything is; and beside that, one as tall as a frame
+    // may be and no taller.
+    let most = omorfos_core::Desktop::MOST_SIDE.cast_signed();
+    let enormous = client.surface();
+    let _over_the_left = client.part_of(&enormous, &window.surface);
+    client.fill_plain(&enormous, (50, ENORMOUS.1), BLUE);
+    let tall = client.surface();
+    let beside = client.part_of(&tall, &window.surface);
+    beside.set_position(100, 0);
+    client.fill_plain(&tall, (50, most), BLUE);
+    window.surface.commit();
+    session.roundtrip(&mut client);
+
+    let picture = session.draw();
+    assert_eq!(picture.at(10, 50), RED, "the enormous part is left out");
+    let below = picture.at(10, 300);
+    assert!(shaded(below, BACKGROUND), "below the window: {below:#x}");
+    // The rest of what the window shows is drawn, the other part as far
+    // as it reaches.
+    assert_eq!(picture.at(110, 50), BLUE);
+    assert_eq!(picture.at(110, 300), BLUE);
+    assert_eq!(picture.at(160, 50), RED, "beside the parts");
 }

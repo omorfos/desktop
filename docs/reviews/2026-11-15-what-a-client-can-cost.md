@@ -5,6 +5,12 @@ security). Each finding is written so that it can be taken up on its own:
 where it is, how it was shown, what to change, and the test to write
 first. The roadmap lists them in the order to take them.
 
+The first two, which let a program stop or end the session, were fixed
+the same day, before this was published; each says what was changed,
+where that differs from what was first proposed, what the fixing showed
+that the review had not, and what it leaves open. The rest are as they
+were found.
+
 ## What was asked, and of whom
 
 [ADR 37](../adr/0037-who-may-do-what.md) says what can honestly be
@@ -123,28 +129,42 @@ over through `Handing` too.
 
 ### 2. A window said to be enormous ends the compositor
 
-**High. Shown by a test.**
+**High. Shown by a test. Fixed on the day it was found
+([ADR 91](../adr/0091-nothing-a-program-shows-is-larger-than-a-frame-may-be.md)).**
 
 A window is as large as its program says. With `wp_viewporter`, a buffer
-of four pixels is said to be two thousand million units across, and the
-frame the desktop keeps is that large: `domain_size(window.geometry().size)`
-in `crates/omorfos/src/handlers.rs` goes to the desktop unclamped, as
-does a program written for X11's in `crates/omorfos/src/x11.rs`.
+of four pixels is said to be two thousand million units across, and
+the frame the desktop kept was that large:
+`domain_size(window.geometry().size)` in `crates/omorfos/src/handlers.rs`
+went to the desktop unclamped, as did a program written for X11's in
+`crates/omorfos/src/x11.rs`.
 
-- **In a frame of ours**, the titlebar is painted on the CPU as wide as
+- **In a frame of ours**, the titlebar was painted on the CPU as wide as
   the frame: `Canvas::scaled` in `crates/omorfos-ui/src/canvas.rs`
-  allocates width by height by four bytes, here 224 GB. The allocation
-  fails and the process is aborted: `memory allocation of 224000000224
+  allocated width by height by four bytes, here 224 GB. The allocation
+  failed and the process was aborted: `memory allocation of 224000000224
   bytes failed`, `SIGABRT`. A width that the machine does have memory
-  for, some tens of millions, is allocated and zeroed instead, which
-  takes the memory.
-- **With no frame of ours**, drawing the screen fails
-  (`RenderError::Unsupported` from the software renderer), on every
-  frame for as long as the window is there. On the hardware backend that
-  is "cannot draw on …" and a screen that shows nothing new; the nested
-  backend ends.
+  for, some tens of millions, was allocated and zeroed instead, which
+  took the memory.
+- **With no frame of ours**, drawing the screen failed
+  (`RenderError::Unsupported`) on every frame for as long as the window
+  was there. **This was seen with the software renderer only**, which
+  the tests draw with and the shipped compositor does not have: it
+  cannot draw a picture stretched more than some sixty-five thousand
+  times. As first written, this finding said the hardware backend then
+  shows nothing new and the nested one ends. That was inferred, not
+  shown: what a graphics card's renderer does with such a surface was
+  not tried, as the machine the review was made on has no card it may
+  use. It no longer has to be known, as no renderer is handed one now.
 
-The test, for `crates/omorfos/tests/integration/decorations.rs`:
+The tests are in `crates/omorfos/tests/integration/decorations.rs`:
+`a_window_said_to_be_enormous_is_kept_in_a_frame_that_can_be_drawn`,
+`a_window_with_no_frame_of_ours_said_to_be_enormous_does_not_stop_the_screen_being_drawn`
+and `a_surface_said_to_be_enormous_is_left_out_of_what_its_window_shows`;
+and, for a program written for X11,
+`a_window_of_a_program_written_for_x11_is_kept_in_a_frame_no_larger_than_one_may_be`
+in `x11.rs` there. The first, as it was written against the compositor
+as it was, where it ended the process:
 
 ```rust
 #[test]
@@ -165,24 +185,57 @@ fn a_window_said_to_be_enormous_is_held_to_a_size_that_can_be_drawn() {
 }
 ```
 
-Run it with memory held down, `(ulimit -v 8000000; cargo test …)`, or it
-may take the machine's. Write the same without `client.decoration`, and
-for a program written for X11.
+To see any of them fail, take the change it is about out and run it
+with memory held down, `(ulimit -v 8000000; cargo test …)`, or it may
+take the machine's.
 
-To change, in two places, so that neither rests on the other:
+**What was changed**, in three places, none of which rests on another:
 
-- **At the edge**: a window's size is taken to be no more than a most
-  there is a reason for, as 16384 units a side or a few times the
-  largest screen, wherever a program's size enters the desktop:
-  `map_if_ready` and `commit` in `handlers.rs`, `map_x11_if_ready` and
-  `configure_notify` in `x11.rs`. What is drawn of it is cut to that.
-- **Where it is allocated**: `Canvas::scaled` makes nothing larger than a
-  most number of pixels, as `omorfos-wallpaper`'s `MOST_PIXELS` is, and
-  gives an empty canvas past it. Look for every other allocation sized
-  by a window: the pictures of windows in the switcher and the overview
-  (`crates/omorfos/src/pictures.rs`, `switcher.rs`, `overview.rs`), the
-  ghost of a window going (`ghost.rs`), and what glass keeps behind a
-  pane (`glass.rs`).
+- **In the domain**, not at the four handlers first named here: every
+  size said of a frame goes through `Desktop::held` in
+  `crates/omorfos-core/src/desktop.rs`, which keeps it to
+  `Desktop::MOST_SIDE`, 16384 units a side, for programs written for
+  Wayland and for X11 alike.
+- **Where it is allocated**: `Canvas::scaled` makes nothing of more than
+  `Canvas::MOST_PIXELS` and gives a single clear pixel past it.
+- **Where it is drawn**, which this finding had not seen the whole of.
+  With the frame held, the overview still laid the window out by the
+  size its program gave, and drew its own label for it two thousand
+  million units wide; and the surface itself still reached the
+  renderer. Everything a program shows now becomes what is drawn in one
+  module, `crates/omorfos/src/surfaces.rs`, which leaves out a surface
+  said to be larger than a frame may be, and takes what a window says
+  is the window to be no larger. `clippy.toml` refuses the functions of
+  Smithay's it stands in front of anywhere else.
+
+What else is sized by a window was looked for, as this finding asked:
+
+- **Pictures of windows in the switcher, the overview and the tiles'
+  offers** are the window's own surfaces drawn small, with nothing
+  allocated for them; they go through `surfaces` now.
+- **The ghost of a window going** keeps what the window was drawn from,
+  and makes nothing new.
+- **What glass keeps behind a pane** is cut to the screen before it is
+  made.
+- **Shadows** are one picture for each look, drawn in nine pieces,
+  whatever the size of what casts them.
+
+**Still open**, and on the roadmap:
+
+- **A picture of a window by itself** (`portrait_area` in
+  `crates/omorfos/src/capture.rs`) is as large as all the window's
+  program says it draws, `Window::bbox`, which a part of a window far
+  from it makes as large as it likes; and a picture that large is asked
+  of the renderer (`Capture::alone`). Read, a renderer that cannot make
+  one says so and the picture is not taken; to be shown with a card.
+  Only a program that may take pictures, or the user, has one taken.
+- **Where a surface is** is its program's to say as well, and is added
+  to in whole numbers of 32 bits, in Smithay and in the compositor. A
+  release build wraps where they run out, and the tests' build panics.
+  Not looked at beyond that nothing found allocates by one.
+- **Every window costs a titlebar** painted as wide as its frame, up to
+  16384 units now: many wide windows cost memory in proportion, and
+  nothing holds a program to a number of windows.
 
 ### 3. Any program can take the keyboard with a serial it made up
 
@@ -390,6 +443,14 @@ So that it is not looked at again for the same thing:
   portal's backend is spoken to by `xdg-desktop-portal` and not by
   programs.
 - Buffers of the graphics card: what a program's is taken for on import.
-- The hardware backend, which no test runs.
+- The hardware backend, which no test runs, and what a graphics card's
+  renderer does with what it is handed: the review was made on a machine
+  with no card it may use, so whatever is said here of drawing was seen
+  with the software renderer.
+- The numbers a program gives for where something is, as apart from how
+  large: the offset of a part of a window, a pop-up's place, where a
+  window says it begins in what it shows. They are added to in whole
+  numbers of 32 bits, in Smithay and in the compositor, which a release
+  build wraps and the tests' build panics on.
 - The helpers that check a secret (`omorfos-lock`'s, `omorfos-ask`'s), and
   the session's own services.

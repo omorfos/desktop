@@ -164,6 +164,13 @@ instant.
   than the window is; pictures are never made larger, which is the rule
   anyway. Give a window drawn small in a test a size larger than its
   place.
+- The software renderer cannot draw a picture stretched more than some
+  sixty-five thousand times, and then draws nothing of the screen at
+  all: the frame fails, `Unsupported`. No surface that large reaches it
+  (ADR 91). One pixel of a colour (`fill_plain`) it draws however large
+  it is said to be, so a test that something enormous is left out fills
+  with that, and sees the colour missing, where a test that the screen
+  is still drawn fills with pixels (`fill_scaled`).
 - Text depends on the fonts installed. Assert where ink may and may not
   be, never on exact pixels. CI has DejaVu only; `AGENTS.md` says how to
   have the same.
@@ -177,6 +184,22 @@ instant.
   started again holds it to write (`session_alone`).
 - A call to the X server that waits for an answer is made inside
   `meanwhile`, which keeps the compositor running until it returns.
+- An X server draws no window more than 32767 pixels a side, though a
+  program may say one is up to 65535: a window said to be larger never
+  has anything to show, and so never joins the desktop.
+- An X server hands over a window's next picture only once it has been
+  told that a frame was shown, and the harness says so only when a test
+  asks it to (`Session::send_frames`). A test that waits for a window to
+  be drawn again, as after it was made another size, asks first.
+- Where the directory X servers keep their sockets in cannot be written
+  to, as under WSL, every test here fails as it looks for the display.
+  The tests' binary can be given a directory of its own:
+
+  ```sh
+  bin=$(cargo test -p omorfos --all-features --locked --test integration --no-run 2>&1 \
+    | grep -o 'target/debug/deps/integration-[0-9a-f]*')
+  (cd crates/omorfos && bwrap --dev-bind / / --tmpfs /tmp/.X11-unix -- "../../$bin" x11::)
+  ```
 
 ### The graphics card
 
@@ -340,6 +363,14 @@ runs, has not yet shown that it tests anything. Put the fault in for one
 run, the line it is about taken out or made wrong, and see it fail; then
 put the line back. Say in the handover which faults were tried.
 
+Where the fault is one that takes memory, as an allocation as large as a
+program says something is, run it with memory held down, or it may take
+the machine's before it fails:
+
+```sh
+(ulimit -v 8000000; cargo test -p omorfos --all-features --test integration enormous)
+```
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X
@@ -484,6 +515,7 @@ done about them, which is never to allow them:
 | `struct_excessive_bools` (3) | Group the booleans that are one idea into a struct of their own. |
 | `unwrap_used`, `expect_used`, `panic` | Return the error. In test support files: `#![expect(clippy::unwrap_used, reason = "test support code fails the test on any error")]`. |
 | `similar_names` | Other names. |
+| `disallowed_methods` | What a program shows is drawn, and a window asked how large it is, through `surfaces` in the compositor, which holds both to what a frame may be (ADR 91). `clippy.toml` lists what it stands in front of. |
 | `missing_docs` | Document it. |
 
 ## After changing configuration types

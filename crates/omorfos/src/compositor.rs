@@ -41,14 +41,12 @@ use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::{
-    WaylandSurfaceRenderElement, render_elements_from_surface_tree,
-};
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::utils::{
     CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement,
 };
-use smithay::backend::renderer::element::{AsRenderElements, Kind, render_elements};
+use smithay::backend::renderer::element::{Kind, render_elements};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{
@@ -139,6 +137,7 @@ use crate::sealed::Seal;
 use crate::sent::Way;
 use crate::shadows::{Shades, Shadowing};
 use crate::standing::Interim;
+use crate::surfaces;
 use crate::switcher::Switch;
 use crate::system;
 use crate::tiles::Lines;
@@ -1016,7 +1015,7 @@ impl Compositor {
         let whole = capture::POINTER.cast_signed();
         let size = Size::<i32, Physical>::from((whole, whole));
         let factor = scale.factor();
-        let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+        let elements: Vec<WaylandSurfaceRenderElement<R>> = surfaces::tree(
             renderer,
             surface,
             Point::<i32, Physical>::default(),
@@ -2576,11 +2575,11 @@ impl Compositor {
                 .enumerate()
                 .find(|(_, frame)| frame.shown == *id);
             let placed = frame.as_ref().and_then(|(_, frame)| frame.placed());
-            role.arrange(Some(*id) == focused, placed, window.geometry().size);
+            role.arrange(Some(*id) == focused, placed, surfaces::proper(window).size);
             match frame {
                 Some((order, frame)) => {
                     let before = previous.iter_mut().find(|shown| shown.id == *id);
-                    let shows = window.geometry().size;
+                    let shows = surfaces::proper(window).size;
                     let clock = self.animation.clock;
                     let (way, sizes) = frame.travel(before.as_deref(), shows, (clock, moves));
                     let noted = (&self.animation.drawn, surface);
@@ -3585,7 +3584,7 @@ impl Compositor {
         self.pointer_elements(renderer, view, &mut elements);
         let surface = self.lock_surface_on(output).into_iter();
         let shown = surface.flat_map(|surface| {
-            render_elements_from_surface_tree(
+            surfaces::tree(
                 renderer,
                 surface,
                 (0, 0),
@@ -3824,7 +3823,7 @@ impl Compositor {
             }
             (Look::Surface(surface), _) => {
                 let at = self.pointer_location - cursor_hotspot(surface).to_f64();
-                let picture = render_elements_from_surface_tree(
+                let picture = surfaces::tree(
                     renderer,
                     surface,
                     view.pixel(at),
@@ -3847,7 +3846,7 @@ impl Compositor {
     {
         if let Some(icon) = &self.hover.dragged {
             let at = self.pointer_location + icon.offset.to_f64();
-            let picture = render_elements_from_surface_tree(
+            let picture = surfaces::tree(
                 renderer,
                 &icon.surface,
                 view.pixel(at),
@@ -3889,7 +3888,7 @@ impl Compositor {
         let menus = self.x11.unmanaged().rev();
         for (window, surface) in menus.filter(|(menu, _)| !private(menu)) {
             let at = window.geometry().loc.to_f64();
-            let picture = render_elements_from_surface_tree(
+            let picture = surfaces::tree(
                 renderer,
                 surface,
                 view.pixel(at),
@@ -4171,7 +4170,7 @@ impl Compositor {
         }
         // A window's surface may start above and left of its visible
         // geometry, where it draws its own shadows.
-        let location = shown.origin - shown.window.geometry().loc;
+        let location = shown.origin - surfaces::proper(&shown.window).loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
         let first = elements.len();
         let Some(chrome) = rounded else {
@@ -4179,16 +4178,9 @@ impl Compositor {
             let opacity = shown.seen.opacity;
             let surfaces: Vec<WaylandSurfaceRenderElement<R>> = if alone {
                 let kind = Kind::Unspecified;
-                render_elements_from_surface_tree(
-                    renderer,
-                    &shown.surface,
-                    at,
-                    scale,
-                    opacity,
-                    kind,
-                )
+                surfaces::tree(renderer, &shown.surface, at, scale, opacity, kind)
             } else {
-                shown.window.render_elements(renderer, at, scale, opacity)
+                surfaces::of(renderer, &shown.window, at, scale, opacity)
             };
             for surface in &surfaces {
                 noting.add(surface, noting.paint(surface.texture()));
@@ -4203,8 +4195,8 @@ impl Compositor {
         // Pop-ups reach beyond the frame and are not cut to it.
         let popups = PopupManager::popups_for_surface(&shown.surface);
         for (popup, offset) in popups.filter(|_| !alone) {
-            let at = location + shown.window.geometry().loc + offset - popup.geometry().loc;
-            let picture: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+            let at = location + surfaces::proper(&shown.window).loc + offset - popup.geometry().loc;
+            let picture: Vec<WaylandSurfaceRenderElement<R>> = surfaces::tree(
                 renderer,
                 popup.wl_surface(),
                 view.pixel(at.to_f64()),
@@ -4225,7 +4217,7 @@ impl Compositor {
             scaling::unstretched(*area, about, by)
         });
         for (strip, area) in cut.enumerate() {
-            let whole: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+            let whole: Vec<WaylandSurfaceRenderElement<R>> = surfaces::tree(
                 renderer,
                 &shown.surface,
                 view.pixel(location.to_f64()),
@@ -4253,7 +4245,7 @@ impl Compositor {
     /// round it on the same surface, and to its frame's rounded corners if
     /// it has them, to go at `at` in what is drawn.
     fn window_backdrop(&self, view: View, shown: &Shown, at: usize) -> Option<Pane> {
-        let geometry = shown.window.geometry();
+        let geometry = surfaces::proper(&shown.window);
         let origin = shown.origin - geometry.loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
         let proper = [view.pixels(Rectangle::new(shown.origin, geometry.size))];
@@ -4326,10 +4318,11 @@ impl Compositor {
                 // is drawn from is noted, to fade it out by when it goes.
                 let mut known = self.animation.layers.iter();
                 let known = known.find(|known| known.surface == *surface.wl_surface());
-                let surfaces = surface.render_elements::<WaylandSurfaceRenderElement<R>>(
+                let surfaces = surfaces::of(
                     renderer,
+                    surface,
                     view.pixel(at.to_f64()),
-                    smithay::utils::Scale::from(view.scale.factor()),
+                    view.scale.factor(),
                     known.map_or(1.0, |known| known.seen.opacity),
                 );
                 if let Some(known) = known.filter(|known| fades(known.part)) {

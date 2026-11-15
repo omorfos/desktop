@@ -40,6 +40,13 @@ pub struct Canvas {
 }
 
 impl Canvas {
+    /// The most pixels a canvas has: more than the largest screen there is
+    /// to draw on has, 15360 by 8640. What a canvas is asked to be is
+    /// worked out from what is to be drawn, some of which programs say, as
+    /// how wide a window is; and memory for more than the machine has is
+    /// not refused but ends whoever asks for it (ADR 91).
+    pub const MOST_PIXELS: u64 = 1 << 27;
+
     /// A canvas with one pixel to a unit.
     #[must_use]
     pub fn new(width: u32, height: u32) -> Self {
@@ -47,16 +54,26 @@ impl Canvas {
     }
 
     /// A canvas `width` by `height` units, with `scale` pixels to a unit.
+    ///
+    /// One that would have more than [`Self::MOST_PIXELS`] is a single
+    /// pixel, with nothing on it: it is drawn on as any canvas is, to no
+    /// effect, and whoever asked for it goes on.
     #[must_use]
     pub fn scaled(width: u32, height: u32, scale: Scale) -> Self {
         let (_, pixels_wide) = span(scale, 0, width);
         let (_, pixels_high) = span(scale, 0, height);
+        let fits = u64::from(pixels_wide) * u64::from(pixels_high) <= Self::MOST_PIXELS;
+        let ((pixels_wide, pixels_high), units) = if fits {
+            ((pixels_wide, pixels_high), (width, height))
+        } else {
+            ((1, 1), (1, 1))
+        };
         let bytes =
             usize::try_from(u64::from(pixels_wide) * u64::from(pixels_high) * 4).unwrap_or(0);
         Self {
             width: pixels_wide,
             height: pixels_high,
-            units: (width, height),
+            units,
             scale,
             pixels: vec![0; bytes],
         }
@@ -1213,6 +1230,26 @@ mod tests {
             family: family.to_owned(),
             ..Font::default()
         }
+    }
+
+    #[test]
+    fn a_canvas_asked_to_be_larger_than_any_may_be_is_a_single_pixel_with_nothing_on_it() {
+        // As wide as a window can be said to be, and as tall as a titlebar:
+        // 224 GB, were it made.
+        let mut canvas = Canvas::new(2_000_000_000, 28);
+        assert_eq!((canvas.width(), canvas.height()), (1, 1));
+        assert_eq!(canvas.units(), (1, 1));
+        assert_eq!(canvas.bytes(), [0; 4]);
+        // It is drawn on as any canvas is, and what is drawn stays on it.
+        canvas.fill((0, 0, 2_000_000_000, 28), RED);
+        assert_eq!(canvas.at(0, 0), argb(RED));
+        // At twice the pixels to a unit, half as many units are too many.
+        let most = u32::try_from(Canvas::MOST_PIXELS).unwrap();
+        let scaled = Canvas::scaled(most / 2 + 1, 1, Scale::new(2.0));
+        assert_eq!((scaled.width(), scaled.height()), (1, 1));
+        // The most there may be is a canvas still, and one more is not.
+        assert_eq!(Canvas::new(most, 1).width(), most);
+        assert_eq!(Canvas::new(most + 1, 1).width(), 1);
     }
 
     #[test]

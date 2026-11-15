@@ -14,7 +14,6 @@ use omorfos_config::{Part, States};
 use omorfos_ui::Area;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::{LayerSurface, WindowSurfaceType, layer_map_for_output};
 use smithay::output::Output;
@@ -29,6 +28,7 @@ use crate::compositor::{Compositor, Element, View, color};
 use crate::glass::{self, Pane};
 use crate::roles::Roles;
 use crate::shadows::Shadowing;
+use crate::surfaces;
 
 /// What is drawn round a prompt that asks for a secret.
 #[derive(Debug, Default)]
@@ -183,7 +183,7 @@ impl Compositor {
         // The prompt itself, if it is a program's that asks for a secret.
         let prompt = self.sealed().filter(|(on, ..)| on == output);
         let shown = prompt.into_iter().flat_map(|(_, surface, at)| {
-            render_elements_from_surface_tree(
+            surfaces::tree(
                 renderer,
                 &surface,
                 view.pixel(at.to_f64()),

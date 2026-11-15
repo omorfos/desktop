@@ -61,6 +61,7 @@ use smithay::{
 
 use crate::compositor::{ClientState, Compositor, DragIcon, Mapped, logical_size, set};
 use crate::roles::Roles;
+use crate::surfaces;
 use crate::tiles;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::xwayland::XWaylandClientData;
@@ -113,7 +114,7 @@ impl CompositorHandler for Compositor {
                 Role::Xdg(toplevel) => toplevel.current_state().size.map(domain_size),
                 Role::X11(_) => None,
             };
-            let actual = domain_size(mapped.window.geometry().size);
+            let actual = domain_size(surfaces::proper(&mapped.window).size);
             if asked.is_some() && acknowledged == asked && asked != Some(actual) {
                 self.desktop.set_client_size(mapped.id, actual);
             }
@@ -207,7 +208,7 @@ impl Compositor {
         let toplevel = self.unmapped.remove(index);
         let window = Window::new_wayland_window(toplevel.clone());
         window.on_commit();
-        let size = domain_size(window.geometry().size);
+        let size = domain_size(surfaces::proper(&window).size);
         let listed = self.foreign_toplevels.new_toplevel::<Self>(&title, &app_id);
         // A dialog says which window it belongs to, and opens where that
         // one is.

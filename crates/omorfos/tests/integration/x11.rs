@@ -447,6 +447,29 @@ fn a_window_is_the_size_its_program_asked_for_before_it_was_shown_and_stays_so()
 }
 
 #[test]
+fn a_window_of_a_program_written_for_x11_is_kept_in_a_frame_no_larger_than_one_may_be() {
+    let (mut session, program) = session();
+    // Nearly as wide as an X server draws a window, which is less than a
+    // program may say one is.
+    let window = open(&mut session, &program, "xapp", (30_000, 100), 0x00ff_0000);
+    let most = omorfos_core::Desktop::MOST_SIDE;
+    let (geometry, ..) = frame(&session);
+    assert_eq!(geometry.size.width, most);
+    // The desktop says how large it is, as of any other window, so its
+    // program finds it as wide as its frame has room for.
+    for _ in 0..50 {
+        session.step();
+    }
+    let room = u16::try_from(most).unwrap() - 2;
+    assert_eq!(size_of(&mut session, &program, window), (room, 100));
+    // Once a frame has been shown, the X server hands over the window at
+    // that size, and it is drawn in its frame: as wide as it first was,
+    // it is not drawn at all.
+    session.send_frames(Duration::from_millis(16));
+    session.eventually(|session| session.draw().at(100, 60) == RED);
+}
+
+#[test]
 fn a_window_of_a_program_written_for_x11_is_maximized_and_made_fullscreen_like_any_other() {
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);

@@ -56,6 +56,7 @@ mod shader;
 mod shadows;
 mod slide;
 mod standing;
+mod surfaces;
 mod switcher;
 mod system;
 mod tiles;
