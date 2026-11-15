@@ -156,10 +156,16 @@ in, for windows, the launcher and notifications: in it, then in the
 themes its `index.theme` says it inherits from, then in `hicolor`, where
 programs install their own, each in `~/.local/share/icons` before the
 system's; and then among pictures with no theme, as in
-`/usr/share/pixmaps`. It is a directory's name, as a cursor theme's is,
-and is told to programs as the font is: in the settings toolkits follow
-under X11, `Net/IconThemeName`, and through the settings portal's
-`icon-theme`.
+`/usr/share/pixmaps`. Within a theme, its icons are looked for in the
+folders its `index.theme` lists, however it lays them out (`48x48/apps`,
+or `apps/48` as Breeze does), each at the sizes the index gives it; at
+the size an icon is drawn at, in pixels on the screen it is on, or else
+the next larger, or else the largest. It is a directory's name, as a
+cursor theme's is, and is told to programs as the font is: in the
+settings toolkits follow under X11, `Net/IconThemeName`, and through the
+settings portal's `icon-theme`. An icon installed while the session runs
+is seen once `config.yaml` is next read, or the program looking for it
+starts again.
 
 How the screens stand, and how large everything is drawn on them
 (`outputs` and `output`), is on [Screens](screens.md); the workspaces,

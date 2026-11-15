@@ -29,6 +29,12 @@ a known gap.
       shows `= 42` above the programs, chosen, and Enter puts `42` on the
       clipboard, to paste anywhere, X11 programs too; `0.1+0.2` is `0.3`;
       `7` alone is no sum.
+- [ ] Icons from an icon theme laid out as its `index.theme` lists it,
+      since 15 November 2026: with `icons.theme: breeze` (or another theme
+      that keeps its sizes under its kinds, as `apps/48`), the launcher,
+      the switcher (`Alt+Tab`) and notifications show that theme's icons,
+      sharp at a scale of 1 and of 2; and the launcher opens as quickly as
+      before.
 
 ## Where this is going
 
@@ -1470,7 +1476,19 @@ What both need first:
 - [ ] Menus and small windows that hang from a bar: a popover with
       content, placed by the compositor, closed by a click elsewhere.
 - [ ] Tooltips.
-- [ ] Icons from the icon theme in use, at any size and scale.
+- [x] Icons from the icon theme in use, at any size and scale: a theme's
+      folders as its `index.theme` lists them (`Directories` and
+      `ScaledDirectories`), each with the sizes its `Size`, `Scale`,
+      `Type`, `MinSize`, `MaxSize` and `Threshold` give it, as the icon
+      theme specification has them, so that Breeze's `apps/48` is found
+      as well as `48x48/apps`; and what is in each folder read once, as
+      the theme is chosen.
+- [ ] Known gaps in icons from a theme: an icon installed while a program
+      runs is seen by it only once the configuration is next read or it
+      starts again; a theme's `icon-theme.cache` is not used, nor are
+      `.xpm` pictures; a folder's `Context` is not looked at; and where no
+      folder takes in the size, the next larger is taken rather than the
+      nearest, as the specification would.
 
 `omorfos-bar`, along the top, see-through with enough of a tint to be
 read over any wallpaper. What is on it is fixed; how each thing behaves is

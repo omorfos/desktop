@@ -9,11 +9,11 @@
 //! The signs of the interface are omorfos's own, built in: those of
 //! Lucide that are used, in `signs/` as Lucide gives them (ADR 70).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use omorfos_config::Color;
 use omorfos_core::Sign;
@@ -40,10 +40,16 @@ const HICOLOR: &str = "hicolor";
 /// may name more, or name one that names it back.
 const MOST_THEMES: usize = 8;
 
-/// The most of a theme's `index.theme` that is read, in bytes.
-const LONGEST_INDEX: u64 = 64 * 1024;
+/// The most of a theme's `index.theme` that is read, in bytes. hicolor's
+/// lists some five hundred folders in 55 KiB.
+const LONGEST_INDEX: u64 = 256 * 1024;
 
-/// The kinds of icon a theme sorts its pictures into, each a directory.
+/// How far either side of its size a folder's pictures do, unless its
+/// index says otherwise.
+const THRESHOLD: u32 = 2;
+
+/// The kinds of icon a theme sorts its pictures into, each a directory,
+/// where its index does not list its folders.
 const KINDS: [&str; 8] = [
     "apps",
     "status",
@@ -64,8 +70,9 @@ const SHAPE: &str = "-symbolic";
 pub struct Icons {
     /// Where icons are installed, the user's own first.
     directories: Vec<PathBuf>,
-    /// The themes icons are looked for in, in order.
-    themes: Vec<String>,
+    /// The themes icons are looked for in, in order, each with its
+    /// folders as its index lists them.
+    themes: Vec<Theme>,
     /// What each name came to at each size it was wanted at.
     found: HashMap<(String, u32, Color), Option<Image>>,
     /// Each sign as it was drawn at each size and in each colour.
@@ -86,7 +93,7 @@ impl Icons {
     /// They are looked for in Adwaita's theme until another is chosen.
     #[must_use]
     pub fn new(directories: Vec<PathBuf>) -> Self {
-        let themes = chain(THEME, &directories);
+        let themes = laid_out(chain(THEME, &directories), &directories);
         Self {
             directories,
             themes,
@@ -100,7 +107,8 @@ impl Icons {
     /// `hicolor`, each in every directory before the next. What was found
     /// in the theme before is forgotten.
     pub fn set_theme(&mut self, theme: &str) {
-        self.themes = chain(theme, &self.directories);
+        let names = chain(theme, &self.directories);
+        self.themes = laid_out(names, &self.directories);
         self.found.clear();
     }
 
@@ -323,9 +331,9 @@ fn plain(name: &str) -> bool {
         && !name.chars().any(char::is_control)
 }
 
-/// The themes the theme called `name` says it inherits from, in the first
-/// of `directories` that has it.
-fn inherits(name: &str, directories: &[PathBuf]) -> Vec<String> {
+/// The index of the theme called `name`, `index.theme`, in the first of
+/// `directories` that has one; nothing written if none has.
+fn index(name: &str, directories: &[PathBuf]) -> String {
     let indexes = directories
         .iter()
         .map(|directory| directory.join(name).join("index.theme"));
@@ -335,7 +343,13 @@ fn inherits(name: &str, directories: &[PathBuf]) -> Vec<String> {
         let read = file.and_then(|file| file.take(LONGEST_INDEX).read_to_string(&mut index).ok());
         read.map(|_| index)
     });
-    let index = read.next().unwrap_or_default();
+    read.next().unwrap_or_default()
+}
+
+/// The themes the theme called `name` says it inherits from, in the first
+/// of `directories` that has it.
+fn inherits(name: &str, directories: &[PathBuf]) -> Vec<String> {
+    let index = index(name, directories);
     let named = value(&index, "[Icon Theme]", "Inherits").unwrap_or_default();
     let named = named
         .split(',')
@@ -344,11 +358,128 @@ fn inherits(name: &str, directories: &[PathBuf]) -> Vec<String> {
     named.map(str::to_owned).collect()
 }
 
+/// A theme icons are looked for in.
+#[derive(Debug)]
+struct Theme {
+    /// Its name, which is a directory's in each directory of icons.
+    name: String,
+    /// The folders its index lists, in its order; or nothing, if it lists
+    /// none, and its folders are known by their names.
+    folders: Option<Vec<Folder>>,
+}
+
+/// A folder of a theme, the sizes in pixels its pictures do for, from the
+/// least to the most, and the names of the files in it in each directory
+/// of icons, in their order.
+#[derive(Debug)]
+struct Folder {
+    path: PathBuf,
+    sizes: (u32, u32),
+    /// Read once, when the theme is chosen: a theme lists hundreds of
+    /// folders, mostly empty, and looking in each for each icon not there
+    /// took a tenth of a second.
+    files: Vec<HashSet<String>>,
+}
+
+/// The themes called `names`, each with its folders as its index, in the
+/// first of `directories` that has one, lists them, and what is in each.
+fn laid_out(names: Vec<String>, directories: &[PathBuf]) -> Vec<Theme> {
+    let themes = names.into_iter().map(|name| {
+        let mut folders = folders(&index(&name, directories));
+        for folder in folders.iter_mut().flatten() {
+            let places = directories.iter();
+            let places = places.map(|directory| directory.join(&name).join(&folder.path));
+            folder.files = places.map(|place| listing(&place)).collect();
+        }
+        Theme { name, folders }
+    });
+    themes.collect()
+}
+
+/// The names of the files in the folder at `place`; none if there is no
+/// such folder.
+fn listing(place: &Path) -> HashSet<String> {
+    let entries = fs::read_dir(place).into_iter().flatten().flatten();
+    entries
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect()
+}
+
+/// The folders a theme's `index` lists, in `Directories` and then in
+/// `ScaledDirectories`, as the icon theme specification has them; nothing
+/// if it lists none. A folder is left out that is not described, has no
+/// size, or would be outside the theme.
+fn folders(index: &str) -> Option<Vec<Folder>> {
+    let sections = sections(index);
+    let theme = sections.get("Icon Theme")?;
+    let lists = ["Directories", "ScaledDirectories"].map(|key| theme.get(key));
+    let named = lists.into_iter().flatten().flat_map(|list| list.split(','));
+    let named: Vec<&str> = named.map(str::trim).filter(|name| inside(name)).collect();
+    (!named.is_empty()).then(|| {
+        let described = named.into_iter().filter_map(|name| {
+            let section = sections.get(name)?;
+            let number = |key: &str| section.get(key).and_then(|value| value.parse::<u32>().ok());
+            let size = number("Size")?;
+            // A picture twice as sharp is twice as many pixels.
+            let scale = number("Scale").unwrap_or(1).max(1);
+            let (least, most) = match section.get("Type").copied() {
+                Some("Fixed") => (size, size),
+                Some("Scalable") => (
+                    number("MinSize").unwrap_or(size),
+                    number("MaxSize").unwrap_or(size),
+                ),
+                _ => {
+                    let either = number("Threshold").unwrap_or(THRESHOLD);
+                    (size.saturating_sub(either), size.saturating_add(either))
+                }
+            };
+            let sizes = (least.saturating_mul(scale), most.saturating_mul(scale));
+            Some(Folder {
+                path: PathBuf::from(name),
+                sizes,
+                files: Vec::new(),
+            })
+        });
+        described.collect()
+    })
+}
+
+/// Whether a folder an index names is one inside its theme: a path of
+/// names alone, with no `..`, no root and nothing unseen.
+fn inside(name: &str) -> bool {
+    let path = Path::new(name);
+    !name.is_empty()
+        && !name.chars().any(char::is_control)
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+}
+
+/// Each section of a theme's index with its keys and their values, read
+/// once: the first value of a key counts, and what comes before any
+/// section is no part of one.
+fn sections(index: &str) -> HashMap<&str, HashMap<&str, &str>> {
+    let mut sections: HashMap<&str, HashMap<&str, &str>> = HashMap::new();
+    let mut section = None;
+    for line in index.lines().map(str::trim) {
+        if let Some(name) = line
+            .strip_prefix('[')
+            .and_then(|line| line.strip_suffix(']'))
+        {
+            section = Some(name);
+        } else if let Some(((key, value), name)) = line.split_once('=').zip(section) {
+            let keys = sections.entry(name).or_default();
+            keys.entry(key.trim()).or_insert(value.trim());
+        }
+    }
+    sections
+}
+
 /// Finds the file of the icon called `name` that suits `pixels` best: the
 /// icon itself if any theme has it, in the order of `themes`, or a picture
 /// with no theme does, and failing that its shape.
 fn locate(
-    (directories, themes): (&[PathBuf], &[String]),
+    (directories, themes): (&[PathBuf], &[Theme]),
     name: &str,
     pixels: u32,
 ) -> Option<PathBuf> {
@@ -362,11 +493,13 @@ fn locate(
     let wanted = [name.to_owned(), format!("{name}{SHAPE}")];
     wanted.iter().find_map(|name| {
         let mut places = themes.iter().flat_map(|theme| {
-            directories
-                .iter()
-                .map(move |directory| directory.join(theme))
+            let directories = directories.iter().enumerate();
+            directories.map(move |(which, directory)| (which, directory.join(&theme.name), theme))
         });
-        let found = places.find_map(|theme| within(&theme, name, pixels));
+        let found = places.find_map(|(which, place, theme)| match &theme.folders {
+            Some(folders) => listed((which, &place), folders, name, pixels),
+            None => within(&place, name, pixels),
+        });
         // Pictures with no theme lie in a directory as they are.
         found.or_else(|| {
             let files = ["png", "svg"].map(|extension| format!("{name}.{extension}"));
@@ -378,8 +511,42 @@ fn locate(
     })
 }
 
+/// Finds the file of the icon called `name` in one theme, in the directory
+/// of icons that is the `which`th, among the `folders` its index lists, as
+/// they were when it was chosen: the first whose sizes
+/// take in `pixels`; failing that, the one whose least size is the least
+/// above it; and failing that, the one whose most is the most below it. A
+/// PNG comes before a drawing in the same folder.
+fn listed(
+    (which, theme): (usize, &Path),
+    folders: &[Folder],
+    name: &str,
+    pixels: u32,
+) -> Option<PathBuf> {
+    let files = ["png", "svg"].map(|extension| format!("{name}.{extension}"));
+    let candidates = folders.iter().flat_map(|folder| {
+        let held = folder.files.get(which);
+        let files = files
+            .iter()
+            .filter(move |file| held.is_some_and(|held| held.contains(*file)));
+        files.map(move |file| (folder.sizes, theme.join(&folder.path).join(file)))
+    });
+    let candidates = candidates.enumerate();
+    let best = candidates.min_by_key(|(order, ((least, most), _))| {
+        let fit = if *least > pixels {
+            (1, least - pixels)
+        } else if *most < pixels {
+            (2, pixels - most)
+        } else {
+            (0, 0)
+        };
+        (fit, *order)
+    });
+    best.map(|(_, (_, file))| file)
+}
+
 /// Finds the file of the icon called `name` in one theme, in one directory
-/// of icons.
+/// of icons, whose index lists no folders: by the names of its folders.
 fn within(theme: &Path, name: &str, pixels: u32) -> Option<PathBuf> {
     let files = ["png", "svg"].map(|extension| format!("{name}.{extension}"));
     let themes = sizes(theme);
@@ -840,6 +1007,112 @@ mod tests {
         icons.set_theme("Missing");
         assert_eq!(side(&mut icons, "tool"), None);
         assert_eq!(side(&mut icons, "everywhere"), Some(29));
+    }
+
+    #[test]
+    fn a_theme_is_looked_through_as_its_index_lays_it_out() {
+        let root = tempfile::TempDir::new().unwrap();
+        // As Breeze lays itself out: the kind first, then the size, with
+        // kinds of its own, and its pictures twice as sharp listed apart.
+        let index = "[Icon Theme]\n\
+                     Directories=apps/16,apps/24,apps/48,emblems/16,apps/scalable\n\
+                     ScaledDirectories=apps/24@2\n\
+                     [apps/16]\nSize=16\n\
+                     [apps/24]\nSize=24\nType=Fixed\n\
+                     [apps/24@2]\nSize=24\nScale=2\nType=Fixed\n\
+                     [apps/48]\nSize=48\nType=Threshold\nThreshold=4\n\
+                     [emblems/16]\nSize=16\n\
+                     [apps/scalable]\nSize=64\nType=Scalable\nMinSize=64\nMaxSize=256\n";
+        write(root.path(), "Breeze/index.theme", index.as_bytes());
+        write(root.path(), "Breeze/apps/16/tool.png", &png_of(16, [0; 4]));
+        write(root.path(), "Breeze/apps/48/tool.png", &png_of(48, [0; 4]));
+        write(
+            root.path(),
+            "Breeze/apps/scalable/tool.svg",
+            WIDE_SVG.as_bytes(),
+        );
+        // A folder the index does not list is not looked in.
+        write(root.path(), "Breeze/apps/32/tool.png", &png_of(32, [0; 4]));
+        write(root.path(), "Breeze/apps/24/sharp.png", &png_of(24, [0; 4]));
+        write(
+            root.path(),
+            "Breeze/apps/24@2/sharp.png",
+            &png_of(48, [0; 4]),
+        );
+        write(
+            root.path(),
+            "Breeze/emblems/16/mark.png",
+            &png_of(16, [0; 4]),
+        );
+        let mut icons = Icons::new(vec![root.path().to_owned()]);
+        icons.set_theme("Breeze");
+        let side = |icons: &mut Icons, name, pixels| {
+            icons.get(name, pixels, INK).map(|icon| icon.size().0)
+        };
+        assert_eq!(side(&mut icons, "tool", 16), Some(16));
+        assert_eq!(side(&mut icons, "tool", 18), Some(16), "near enough");
+        assert_eq!(
+            side(&mut icons, "tool", 32),
+            Some(48),
+            "the next large enough"
+        );
+        assert_eq!(side(&mut icons, "tool", 52), Some(48), "near enough");
+        assert_eq!(side(&mut icons, "tool", 100), Some(100), "drawn to size");
+        assert_eq!(side(&mut icons, "tool", 400), Some(400), "the largest");
+        assert_eq!(side(&mut icons, "sharp", 24), Some(24));
+        assert_eq!(side(&mut icons, "sharp", 48), Some(48), "twice as sharp");
+        assert_eq!(side(&mut icons, "mark", 16), Some(16));
+    }
+
+    #[test]
+    fn what_an_index_says_of_its_folders_is_taken_with_care() {
+        let root = tempfile::TempDir::new().unwrap();
+        let outside = root.path().join("outside");
+        let index = format!(
+            "stray=before any section\n\
+             [Icon Theme]\n\
+             Directories=../outside,{},./here,unlisted,sizeless,odd,flat,backwards,here\n\
+             [../outside]\nSize=16\n\
+             [{}]\nSize=16\n\
+             [./here]\nSize=16\n\
+             [sizeless]\nType=Fixed\n\
+             [odd]\nSize=20\nType=Sideways\n\
+             [flat]\nSize=30\nScale=0\nType=Fixed\n\
+             [backwards]\nSize=40\nType=Scalable\nMinSize=50\nMaxSize=10\n\
+             [here]\nSize=16\nSize=99\n",
+            outside.display(),
+            outside.display(),
+        );
+        write(root.path(), "T/index.theme", index.as_bytes());
+        // Nothing outside the theme is looked at, however the index names it.
+        write(&outside, "away.png", &png_of(16, [0; 4]));
+        write(root.path(), "T/here/near.png", &png_of(16, [0; 4]));
+        write(root.path(), "T/odd/near.png", &png_of(20, [0; 4]));
+        // A folder named but not described, or without a size, is not
+        // looked in.
+        write(root.path(), "T/unlisted/plain.png", &png_of(16, [0; 4]));
+        write(root.path(), "T/sizeless/plain.png", &png_of(16, [0; 4]));
+        // A kind not known is the usual, a scale of nothing is one, and a
+        // range the wrong way round holds nothing.
+        write(root.path(), "T/odd/odd.png", &png_of(20, [0; 4]));
+        write(root.path(), "T/flat/flat.png", &png_of(30, [0; 4]));
+        write(root.path(), "T/here/flat.png", &png_of(16, [0; 4]));
+        write(root.path(), "T/backwards/turned.png", &png_of(40, [0; 4]));
+        let mut icons = Icons::new(vec![root.path().to_owned()]);
+        icons.set_theme("T");
+        let side = |icons: &mut Icons, name, pixels| {
+            icons.get(name, pixels, INK).map(|icon| icon.size().0)
+        };
+        assert_eq!(side(&mut icons, "away", 16), None);
+        assert_eq!(
+            side(&mut icons, "near", 16),
+            Some(16),
+            "the first size said"
+        );
+        assert_eq!(side(&mut icons, "plain", 16), None);
+        assert_eq!(side(&mut icons, "odd", 22), Some(20), "two either side");
+        assert_eq!(side(&mut icons, "flat", 30), Some(30));
+        assert_eq!(side(&mut icons, "turned", 20), Some(40), "large enough");
     }
 
     #[test]
