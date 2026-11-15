@@ -17,7 +17,7 @@ mod panel;
 use std::ffi::OsStr;
 use std::path::Path;
 
-pub use bar::{Bar, Click};
+pub use bar::{Bar, Click, Hint};
 use omorfos_ipc::help::About;
 pub use panel::{Failure, Panel};
 

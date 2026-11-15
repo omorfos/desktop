@@ -30,6 +30,36 @@ radio = { $kind ->
 awake = Awake
 awake-until = Awake until { $at }
 
+# The tooltip over what says the session is kept awake: what a click on it
+# does.
+awake-tip = Click to let the screen sleep again
+
+# The tooltip over the clock: the whole date. $weekday is the day of the
+# week, as "monday", and $month the month, as "january"; $day and $year
+# are as they are written, as "14" and "2026".
+date = { $weekday ->
+    [monday] Monday
+    [tuesday] Tuesday
+    [wednesday] Wednesday
+    [thursday] Thursday
+    [friday] Friday
+    [saturday] Saturday
+   *[sunday] Sunday
+} { $day } { $month ->
+    [january] January
+    [february] February
+    [march] March
+    [april] April
+    [may] May
+    [june] June
+    [july] July
+    [august] August
+    [september] September
+    [october] October
+    [november] November
+   *[december] December
+} { $year }
+
 ## The month the clock opens: the months' names, and the days of the week
 ## as short as they go above a column of dates.
 january = January

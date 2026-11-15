@@ -30,12 +30,25 @@ pub enum Click {
     Month(Area),
 }
 
+/// What the tooltip of something on the bar is to say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Hint {
+    /// The date, over the clock.
+    Date,
+    /// What a click on what says the session is kept awake does.
+    Awake,
+    /// The whole of a label that is cut short on the bar.
+    Whole(String),
+}
+
 /// Something on the bar: a workspace, a window or the clock.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Item {
     /// The box it is drawn as, which is also where it is clicked.
     area: Area,
     label: String,
+    /// Whether its box is too narrow for all of its label.
+    cut: bool,
     part: Part,
     /// Whether it is the workspace being shown or the window with focus.
     states: States,
@@ -138,14 +151,14 @@ impl Bar {
         for workspace in workspaces.clone() {
             let (part, states) = (Part::Workspace, lit(workspace.active));
             let label = workspace_label(workspace);
-            let wide = theme
-                .style(part, states)
-                .fit(row.needed(part, states, &label));
+            let needed = row.needed(part, states, &label);
+            let wide = theme.style(part, states).fit(needed);
             let (area, next) = row.place(part, states, left, wide);
             left = next;
             items.push(Item {
                 area,
                 label,
+                cut: needed > wide,
                 part,
                 states,
                 target: Target::Workspace(workspace.number),
@@ -159,13 +172,15 @@ impl Bar {
             (!label.is_empty()).then(|| {
                 let (part, states) = (Part::Clock, States::NONE);
                 let style = theme.style(part, states);
-                let wide = style.fit(row.needed(part, states, label));
+                let needed = row.needed(part, states, label);
+                let wide = style.fit(needed);
                 let outer = wide.saturating_add(style.margin.across());
                 end = end.saturating_sub_unsigned(outer);
                 let (area, _) = row.place(part, states, end, wide);
                 Item {
                     area,
                     label: label.to_owned(),
+                    cut: needed > wide,
                     part,
                     states,
                     target,
@@ -192,9 +207,11 @@ impl Bar {
             let wide = style.fit(share.saturating_sub(style.margin.across()));
             let (area, next) = row.place(part, states, left, wide);
             left = next;
+            let label = window_label(window);
             items.push(Item {
                 area,
-                label: window_label(window),
+                cut: row.needed(part, states, &label) > wide,
+                label,
                 part,
                 states,
                 target: Target::Window(window.id),
@@ -223,12 +240,7 @@ impl Bar {
     /// where there is no button, or one that is only read.
     #[must_use]
     pub fn click(&self, x: i32) -> Option<Click> {
-        let mut items = self.items.iter();
-        let item = items.find(|item| {
-            let (left, _, width, _) = item.area;
-            let along = u32::try_from(x.saturating_sub(left)).ok();
-            along.is_some_and(|along| along < width)
-        })?;
+        let item = self.at(x)?;
         match item.target {
             // The compositor switches workspace on the screen the pointer
             // is on, which for a click on this bar is this bar's screen.
@@ -243,6 +255,33 @@ impl Bar {
             Target::Clock => Some(Click::Month(item.area)),
             Target::Radios => None,
         }
+    }
+
+    /// What the tooltip of what is `x` units from the bar's left edge
+    /// says, and where that is: the date over the clock, what a click does
+    /// over what says the session is kept awake, and over anything whose
+    /// label is cut short, all of it. Nothing over anything else.
+    #[must_use]
+    pub fn hint(&self, x: i32) -> Option<(Area, Hint)> {
+        let item = self.at(x)?;
+        let hint = match item.target {
+            Target::Clock => Some(Hint::Date),
+            Target::Awake => Some(Hint::Awake),
+            Target::Workspace(_) | Target::Window(_) | Target::Radios => {
+                item.cut.then(|| Hint::Whole(item.label.clone()))
+            }
+        };
+        hint.map(|hint| (item.area, hint))
+    }
+
+    /// What is `x` units from the bar's left edge, if anything is.
+    fn at(&self, x: i32) -> Option<&Item> {
+        let mut items = self.items.iter();
+        items.find(|item| {
+            let (left, _, width, _) = item.area;
+            let along = u32::try_from(x.saturating_sub(left)).ok();
+            along.is_some_and(|along| along < width)
+        })
     }
 
     /// Where the clock is on the bar, if it is on it.
@@ -431,6 +470,45 @@ mod tests {
             Some(Click::Ask(request)) => Some(request),
             _ => None,
         }
+    }
+
+    /// What the tooltip `x` along `bar` says, without where it is.
+    fn hinted(bar: &Bar, x: i32) -> Option<Hint> {
+        bar.hint(x).map(|(_, hint)| hint)
+    }
+
+    #[test]
+    fn the_clock_tells_the_date_awake_what_a_click_does_and_a_label_cut_short_all_of_it() {
+        let long = "A title far too long for the room a window's button has on the bar";
+        let mut state = state();
+        state.windows[1].title = long.to_owned();
+        let theme = Theme::default();
+        let said = ("14:05", "Awake", "Wi-Fi off");
+        let bar = Bar::new(&state, "left", WIDTH, said, &theme, &mut Text::new());
+        let found = |wanted: &Hint| (0..800).find(|x| hinted(&bar, *x).as_ref() == Some(wanted));
+
+        let clock = found(&Hint::Date).unwrap();
+        let (left, _, width, _) = bar.clock().unwrap();
+        assert!((left..left + width.cast_signed()).contains(&clock));
+        assert_eq!(bar.hint(clock).map(|(area, _)| area), bar.clock());
+        assert!(found(&Hint::Awake).is_some());
+        let whole = found(&Hint::Whole(long.to_owned()));
+        assert!(whole.is_some(), "the long title, whole");
+
+        // What fits has none: the workspaces, the other window, the radios.
+        let hints: Vec<Hint> = (0..800).filter_map(|x| hinted(&bar, x)).collect();
+        assert!(!hints.contains(&Hint::Whole("terminal".to_owned())));
+        assert!(!hints.contains(&Hint::Whole("Wi-Fi off".to_owned())));
+        assert!(!hints.contains(&Hint::Whole("code".to_owned())));
+        assert_eq!(hinted(&bar, 800), None, "past the bar");
+
+        // A workspace's name, and what says the radios are off, cut short
+        // by the theme too.
+        let narrow = Theme::parse("workspace, clock { max-width: 20px; }").unwrap();
+        let named = Bar::new(&state, "left", WIDTH, said, &narrow, &mut Text::new());
+        let all: Vec<Hint> = (0..800).filter_map(|x| hinted(&named, x)).collect();
+        assert!(all.contains(&Hint::Whole("code".to_owned())));
+        assert!(all.contains(&Hint::Whole("Wi-Fi off".to_owned())));
     }
 
     #[test]

@@ -797,6 +797,107 @@ fn a_click_on_the_clock_opens_the_month_above_it_and_a_click_elsewhere_closes_it
     assert!(!above_the_bar(&mut session, WIDTH - 100, 20));
 }
 
+/// Lets the panel and the compositor talk, as `settle` does, with the panel
+/// told it has been running for `now`.
+fn settle_at(session: &mut Session, panel: &mut Panel, now: Duration) {
+    for _ in 0..20 {
+        panel.turn(TIME, now).unwrap();
+        session.step();
+    }
+}
+
+/// Whether anything is drawn just above the clock, where its tooltip goes:
+/// at the bar's right-hand end, as far in as a tooltip is slid to stay on
+/// the screen.
+fn tooltip_over_the_clock(session: &mut Session) -> bool {
+    above_the_bar(session, WIDTH - 20, 6)
+}
+
+#[test]
+fn the_pointer_resting_on_the_clock_shows_a_tooltip_until_it_leaves() {
+    let (mut session, mut panel) = dated();
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    assert!(!tooltip_over_the_clock(&mut session), "not at once");
+
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    assert!(tooltip_over_the_clock(&mut session), "once it has rested");
+
+    move_to(&mut session, 100, 100);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    assert!(!tooltip_over_the_clock(&mut session), "gone as it leaves");
+}
+
+#[test]
+fn a_window_whose_title_is_cut_short_on_the_bar_has_it_whole_in_a_tooltip() {
+    let (mut session, mut panel) = dated();
+    let mut client = session.connect();
+    let long = "A title far longer than the room a window's button has on the bar, by a lot";
+    session.open(&mut client, long, (200, 100), RED);
+    session.open(&mut client, "short", (200, 100), BLUE);
+    settle(&mut session, &mut panel);
+    let windows = state(&mut session).windows;
+    let activate = |window: &omorfos_ipc::Window| Request::Activate { window: window.id };
+    let cut = button(&mut session, &activate(&windows[0]));
+    let whole = button(&mut session, &activate(&windows[1]));
+
+    move_to(&mut session, whole, HEIGHT - BAR / 2);
+    settle_at(&mut session, &mut panel, Duration::from_secs(1));
+    settle_at(&mut session, &mut panel, Duration::from_secs(2));
+    assert!(
+        !above_the_bar(&mut session, whole, 6),
+        "a title that fits has none"
+    );
+
+    move_to(&mut session, cut, HEIGHT - BAR / 2);
+    settle_at(&mut session, &mut panel, Duration::from_secs(3));
+    assert!(!above_the_bar(&mut session, cut, 6));
+    settle_at(&mut session, &mut panel, Duration::from_secs(4));
+    assert!(
+        above_the_bar(&mut session, cut, 6),
+        "the whole title over it"
+    );
+
+    // From one tooltip to the next, the next shows at once.
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(4010));
+    assert!(tooltip_over_the_clock(&mut session), "at once");
+    assert!(!above_the_bar(&mut session, cut, 6), "the one before gone");
+
+    // A click takes it away, and it stays away while the pointer is there.
+    move_to(&mut session, cut, HEIGHT - BAR / 2);
+    settle_at(&mut session, &mut panel, Duration::from_millis(4020));
+    assert!(above_the_bar(&mut session, cut, 6));
+    click(&mut session, LEFT);
+    settle_at(&mut session, &mut panel, Duration::from_secs(5));
+    settle_at(&mut session, &mut panel, Duration::from_secs(6));
+    assert!(!above_the_bar(&mut session, cut, 6), "gone at the click");
+}
+
+#[test]
+fn no_tooltip_shows_while_the_month_is_open() {
+    let (mut session, mut panel) = dated();
+    let mut client = session.connect();
+    let long = "A title far longer than the room a window's button has on the bar, by a lot";
+    session.open(&mut client, long, (200, 100), RED);
+    settle(&mut session, &mut panel);
+    let window = state(&mut session).windows[0].id;
+    let cut = button(&mut session, &Request::Activate { window });
+    open_month(&mut session, &mut panel);
+
+    // Its tooltip would hang well to the left of the month.
+    move_to(&mut session, cut, HEIGHT - BAR / 2);
+    settle_at(&mut session, &mut panel, Duration::from_secs(1));
+    settle_at(&mut session, &mut panel, Duration::from_secs(2));
+    assert!(
+        above_the_bar(&mut session, WIDTH - 100, 20),
+        "the month open"
+    );
+    assert!(!above_the_bar(&mut session, cut, 6), "and no tooltip");
+}
+
 /// Opens the month, by a click on the clock.
 fn open_month(session: &mut Session, panel: &mut Panel) {
     let (x, y) = on_the_clock();

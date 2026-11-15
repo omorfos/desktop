@@ -274,8 +274,11 @@ calls for them.
       each window is of (`_NET_WM_PID`).
 - [ ] Known gaps in what is private: a notification about a private
       window is in a picture, as is a menu of a program written for X11
-      that does not say what process it is of; and a program cannot yet
-      say of its own window that it is private.
+      that does not say what process it is of; a program cannot yet say
+      of its own window that it is private; and the panel lists every
+      window by its title, a private one's too, with a title cut short
+      whole in its tooltip, all of it in pictures, as the panel is not
+      told which windows are private (ADR 84).
 - [ ] Sharing the screen in Firefox froze once, on real hardware, just
       after a private window opened, and not again with every picture
       logged: what failed, if anything, is not known. Waits on: its
@@ -1481,7 +1484,20 @@ What both need first:
       The compositor keeps every popup on its screen as far as it asks,
       turned over or slid, as a bar's along the bottom is turned to hang
       above it, and as a program's menu near an edge of the screen is.
-- [ ] Tooltips.
+- [x] Tooltips (ADR 87): a popup of the component's surface that takes
+      no grab and lets the pointer through, beside the popover that may be
+      open (`Popovers::tip`), shown once the pointer has rested half a
+      second, at once on the next while one is showing, and not again on
+      what was clicked until the pointer leaves it
+      (`omorfos_shell::tooltip`); drawn as the compositor's own over the
+      capture mark is (`omorfos_ui::tooltip`). On the panel: the date over
+      the time, a label cut short whole, and what a click on what says the
+      session is kept awake does.
+- [ ] Known gaps in tooltips: a component's casts no shadow, though the
+      theme gives `tooltip` one, as its surface is only as large as its
+      box; how long the pointer rests before one shows is fixed, not a
+      setting; and that the pointer goes through one is not tested by
+      what the pointer does.
 - [x] Icons from the icon theme in use, at any size and scale: a theme's
       folders as its `index.theme` lists them (`Directories` and
       `ScaledDirectories`), each with the sizes its `Size`, `Scale`,

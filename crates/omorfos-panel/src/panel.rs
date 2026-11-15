@@ -15,14 +15,15 @@ use omorfos_config::{Store, Theme, Watcher};
 use omorfos_i18n::{PANEL, Value, Words};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Steady};
 use omorfos_shell::month::{self, Month};
-use omorfos_shell::popover::{Hanging, Popovers};
+use omorfos_shell::popover::{Hanging, Popovers, Tip};
+use omorfos_shell::tooltip::Resting;
 use omorfos_shell::{picture, whole};
-use omorfos_ui::{Motion, Scale, Text};
+use omorfos_ui::{Area, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat,
+    wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_dispatch, delegate_noop,
@@ -34,7 +35,7 @@ use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{Bar, Click};
+use crate::{Bar, Click, Hint};
 
 /// Why the panel could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -126,6 +127,8 @@ impl Panel {
         self.shell.now = now;
         // A button on its way to another look is drawn again as it goes.
         self.shell.stale |= self.deadline().is_some_and(|due| due <= now);
+        // So is a tooltip that has been waited for long enough.
+        self.shell.stale |= self.shell.resting.at(now);
         self.hear()
             .and_then(|()| self.learn().map_err(Failure::from))
             .and_then(|()| {
@@ -163,8 +166,8 @@ impl Panel {
 
     /// When there will next be something to do without anything having
     /// happened, other than the time changing: when a button that is
-    /// changing colour is due to be drawn again, or the next step of day
-    /// turning into night.
+    /// changing colour is due to be drawn again, a tooltip to be shown, or
+    /// the next step of day turning into night.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let faces = self
@@ -173,7 +176,8 @@ impl Panel {
             .iter()
             .filter_map(|screen| screen.face.as_ref());
         let moving = faces.filter_map(|face| face.motion.deadline());
-        moving.chain(self.shell.store.turns()).min()
+        let tip = self.shell.resting.deadline();
+        moving.chain(tip).chain(self.shell.store.turns()).min()
     }
 
     /// Sleeps until one of the connections has something to read, the
@@ -267,6 +271,10 @@ struct Shell {
     month: Option<(u32, Month)>,
     /// Where on the month the pointer is, while it is on it.
     on_month: Option<(i32, i32)>,
+    /// Which tooltip the pointer rests on, and whether it is to be shown.
+    resting: Resting<Tipped>,
+    /// The tooltip shown.
+    tipped: Option<Tipped>,
     /// What the compositor last said of the session.
     state: State,
     /// What the clocks read.
@@ -285,6 +293,16 @@ struct Shell {
     now: Duration,
     /// Whether anything happened that may change what a bar shows.
     stale: bool,
+}
+
+/// A tooltip on a bar: of the bar of which screen, by the number the
+/// compositor announced it under; what it hangs from there; and what it
+/// says, a line at a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Tipped {
+    global: u32,
+    under: Area,
+    lines: Vec<String>,
 }
 
 /// A screen, by the number the compositor announced it under.
@@ -394,6 +412,8 @@ impl Shell {
             popovers: Popovers::default(),
             month: None,
             on_month: None,
+            resting: Resting::new(),
+            tipped: None,
             state: State::default(),
             time: String::new(),
             today: month::Date::default(),
@@ -430,6 +450,10 @@ impl Shell {
         // as large as the theme now makes it.
         self.month = None;
         self.popovers.close();
+        // A tooltip too, and it waits to be rested on anew.
+        self.popovers.untip();
+        self.tipped = None;
+        self.resting = Resting::new();
         let faces = self
             .screens
             .iter_mut()
@@ -438,8 +462,11 @@ impl Shell {
         self.stale = true;
     }
 
-    /// Lets go of a screen that is no longer there.
+    /// Lets go of a screen that is no longer there, and of the tooltip,
+    /// which may hang from its bar.
     fn forget(&mut self, global: u32) {
+        self.popovers.untip();
+        self.tipped = None;
         let gone = self
             .screens
             .extract_if(.., |screen| screen.global == global);
@@ -467,6 +494,8 @@ impl Shell {
     /// asks of the compositor, or the month opened under the clock, or
     /// closed if it is open.
     fn click(&mut self, serial: u32, handle: &QueueHandle<Self>) {
+        // What was clicked shows no tooltip until the pointer leaves it.
+        self.stale |= self.resting.clicked();
         let theme = self.store.current().theme.clone();
         if let Some((x, y)) = self.on_month {
             let months = self.month.iter_mut();
@@ -500,7 +529,7 @@ impl Shell {
     fn month_under(
         &mut self,
         global: u32,
-        under: omorfos_ui::Area,
+        under: Area,
         (serial, handle): (u32, &QueueHandle<Self>),
     ) {
         self.stale = true;
@@ -530,7 +559,8 @@ impl Shell {
         self.month = opened.then_some((global, month));
     }
 
-    /// Takes in where the pointer is on the month, while it is on it.
+    /// Takes in where the pointer is: on the month, while it is on it,
+    /// and on what has a tooltip on a bar.
     fn pointed(&mut self) {
         let theme = &self.store.current().theme;
         let (x, y) = self.on_month.unwrap_or((-1, -1));
@@ -538,6 +568,25 @@ impl Shell {
         self.stale |= months.fold(false, |changed, (_, month)| {
             changed | month.point(x, y, theme)
         });
+        let hovered = self.hovered();
+        self.stale |= self.resting.over(hovered, self.now);
+    }
+
+    /// The tooltip of what the pointer is over on a bar, if it has one.
+    /// None while the month is open.
+    fn hovered(&self) -> Option<Tipped> {
+        let (global, along) = self.over.filter(|_| self.month.is_none())?;
+        let screens = self.screens.iter();
+        let screens = screens.filter(|screen| screen.global == global);
+        let faces = screens.filter_map(|screen| screen.face.as_ref());
+        let mut bars = faces.filter_map(|face| face.shown.as_ref());
+        let (under, hint) = bars.find_map(|(bar, ..)| bar.hint(whole(along)))?;
+        let lines = vec![says(&self.words, self.today, hint)];
+        Some(Tipped {
+            global,
+            under,
+            lines,
+        })
     }
 
     /// Takes a key that was pressed, by Linux's number for it, while the
@@ -601,7 +650,9 @@ impl Shell {
             let face = screen.face.insert(face);
             face.draw(&mut tools, &screen.name)
         });
-        drawn.and_then(|()| self.show_month(&shm, handle))
+        drawn
+            .and_then(|()| self.show_month(&shm, handle))
+            .and_then(|()| self.show_tip(&shm, handle))
     }
 
     /// Draws the month, if it is open, with as many pixels to a unit as its
@@ -621,6 +672,42 @@ impl Shell {
         let scale = face.map_or(Scale::ONE, |face| face.scale);
         let canvas = month.paint(&mut self.text, theme, scale);
         self.popovers.draw(shm, &canvas, handle)
+    }
+
+    /// Shows the tooltip the pointer has rested on long enough, if any,
+    /// with as many pixels to a unit as its screen has, and takes away one
+    /// no longer wanted.
+    fn show_tip(&mut self, shm: &wl_shm::WlShm, handle: &QueueHandle<Self>) -> io::Result<()> {
+        // What is under the pointer may have changed under it, as a bar
+        // drawn anew does.
+        let hovered = self.hovered();
+        self.resting.over(hovered, self.now);
+        let wanted = self.resting.shown().cloned();
+        let anew = wanted != self.tipped;
+        if anew {
+            self.popovers.untip();
+        }
+        self.tipped = wanted;
+        let Some(tipped) = &self.tipped else {
+            return Ok(());
+        };
+        let theme = &self.store.current().theme;
+        let screens = self.screens.iter();
+        let face = screens
+            .filter(|screen| screen.global == tipped.global)
+            .find_map(|screen| screen.face.as_ref());
+        let scale = face.map_or(Scale::ONE, |face| face.scale);
+        let canvas = omorfos_ui::tooltip(&mut self.text, theme, &tipped.lines, scale);
+        let tools = self.compositor.as_ref().zip(self.viewporter.as_ref());
+        if let Some((face, tools)) = face.zip(tools).filter(|_| anew) {
+            let tip = Tip {
+                from: &face.layer,
+                under: tipped.under,
+                size: canvas.units(),
+            };
+            self.popovers.tip(tools, tip, handle);
+        }
+        self.popovers.draw_tip(shm, &canvas, handle)
     }
 }
 
@@ -949,6 +1036,7 @@ delegate_noop!(Shell: wl_compositor::WlCompositor);
 delegate_noop!(Shell: ignore wl_shm::WlShm);
 delegate_noop!(Shell: wl_shm_pool::WlShmPool);
 delegate_noop!(Shell: ignore wl_surface::WlSurface);
+delegate_noop!(Shell: wl_region::WlRegion);
 delegate_noop!(Shell: zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(Shell: wp_viewporter::WpViewporter);
 delegate_noop!(Shell: wp_viewport::WpViewport);
@@ -986,9 +1074,88 @@ fn said(words: &Words) -> month::Said {
     }
 }
 
+/// What a tooltip on the bar says, in the panel's words, `today` being
+/// the date.
+fn says(words: &Words, today: month::Date, hint: Hint) -> String {
+    match hint {
+        Hint::Date => date(words, today),
+        Hint::Awake => words.say("awake-tip", &[]),
+        Hint::Whole(label) => label,
+    }
+}
+
+/// The days of the week from Monday, and the months, as the panel's
+/// messages choose by them.
+const WEEKDAYS: [&str; 7] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
+const MONTHS: [&str; 12] = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+];
+
+/// The whole of `today`, as "Saturday 14 November 2026".
+fn date(words: &Words, today: month::Date) -> String {
+    let weekday = usize::from(today.weekday().to_monday_zero_offset().unsigned_abs());
+    let month = usize::from(today.month().unsigned_abs()).saturating_sub(1);
+    let weekday = WEEKDAYS.get(weekday).copied().unwrap_or_default();
+    let month = MONTHS.get(month).copied().unwrap_or_default();
+    let (day, year) = (today.day().to_string(), today.year().to_string());
+    let given = [
+        ("weekday", Value::Words(weekday)),
+        ("day", Value::Words(&day)),
+        ("month", Value::Words(month)),
+        ("year", Value::Words(&year)),
+    ];
+    words.say("date", &given)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tooltip_on_the_bar_says_the_date_what_a_click_does_or_a_whole_label() {
+        let english = Words::in_languages(&PANEL, &[]);
+        let saturday = month::Date::new(2026, 11, 14).unwrap();
+        assert_eq!(
+            says(&english, saturday, Hint::Date),
+            "Saturday 14 November 2026"
+        );
+        let sunday = month::Date::new(2027, 2, 28).unwrap();
+        assert_eq!(
+            says(&english, sunday, Hint::Date),
+            "Sunday 28 February 2027"
+        );
+        assert_eq!(
+            says(&english, saturday, Hint::Awake),
+            "Click to let the screen sleep again"
+        );
+        let whole = Hint::Whole("All of a title".to_owned());
+        assert_eq!(says(&english, saturday, whole), "All of a title");
+        // In Polish the month is said as a date has it, not as a heading.
+        let polish = Words::in_languages(&PANEL, &["pl".to_owned()]);
+        assert_eq!(
+            says(&polish, saturday, Hint::Date),
+            "sobota, 14 listopada 2026"
+        );
+    }
 
     #[test]
     fn the_bar_says_which_radios_are_off_and_aeroplane_mode_when_all_are() {

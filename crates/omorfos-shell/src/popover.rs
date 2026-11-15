@@ -10,12 +10,16 @@
 //! says nothing, and what makes popovers says nothing but to be pinged,
 //! which omorfos does not do to its components: both are left to
 //! `delegate_noop!`.
+//!
+//! A tooltip hangs from the surface the same way, beside the popover that
+//! may be open, but takes no click: it is only shown, and the pointer goes
+//! through it to what is under it. [`crate::tooltip`] says when.
 
 use std::io;
 
 use omorfos_ui::{Area, Canvas};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_region, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
@@ -25,12 +29,14 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 use crate::picture;
 
 /// What a component keeps of its popovers: what makes them, once the
-/// compositor has offered it, and the one that is open.
+/// compositor has offered it, the one that is open, and the tooltip shown.
 #[derive(Debug, Default)]
 pub struct Popovers {
     shell: Option<xdg_wm_base::XdgWmBase>,
     open: Option<Popover>,
-    /// Whether the one open, or its going, is yet to be shown.
+    tip: Option<Popover>,
+    /// Whether the one open or the tooltip, or their going, is yet to be
+    /// shown.
     changed: bool,
 }
 
@@ -49,6 +55,18 @@ struct Popover {
     ready: bool,
     /// The picture on it, which the compositor is reading from.
     buffer: Option<wl_buffer::WlBuffer>,
+}
+
+/// Where a tooltip hangs from, and how large it is.
+#[derive(Debug, Clone, Copy)]
+pub struct Tip<'a> {
+    /// The component's surface it hangs from.
+    pub from: &'a zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    /// What it is the tooltip of, on that surface, in its units of layout:
+    /// it hangs below it, as a popover does.
+    pub under: Area,
+    /// How large it is, in units of layout.
+    pub size: (u32, u32),
 }
 
 /// Where a popover hangs from, how large it is, and the click it takes.
@@ -90,32 +108,66 @@ impl Popovers {
             + 'static,
     {
         self.close();
-        let opened = self.shell.as_ref().map(|shell| {
-            let surface = compositor.create_surface(handle, ());
-            let viewport = viewporter.get_viewport(&surface, handle, ());
-            let xdg = shell.get_xdg_surface(&surface, handle, ());
-            let positioner = placed(shell, hanging.under, hanging.size, handle);
-            let popup = xdg.get_popup(None, &positioner, handle, ());
-            hanging.from.get_popup(&popup);
-            positioner.destroy();
-            let (seat, serial) = hanging.click;
-            popup.grab(seat, serial);
-            // The compositor answers this by saying it may be drawn on.
-            surface.commit();
-            Popover {
-                surface,
-                viewport,
-                xdg,
-                popup,
-                size: hanging.size,
+        // What it hangs from is taken up by what is opened.
+        self.untip();
+        let made = self.shell.as_ref().map(|shell| {
+            let tip = Tip {
+                from: hanging.from,
                 under: hanging.under,
-                ready: false,
-                buffer: None,
-            }
+                size: hanging.size,
+            };
+            Popover::made(shell, (compositor, viewporter), tip, handle)
+        });
+        let opened = made.inspect(|popover| {
+            let (seat, serial) = hanging.click;
+            popover.popup.grab(seat, serial);
+            // The compositor answers this by saying it may be drawn on.
+            popover.surface.commit();
         });
         self.changed |= opened.is_some();
         self.open = opened;
         self.open.is_some()
+    }
+
+    /// Shows a tooltip hanging as `tip` says, in place of any shown, with
+    /// the compositor's `compositor` and `viewporter`. Says whether it
+    /// could be: not before the compositor has offered what makes it.
+    pub fn tip<S>(
+        &mut self,
+        (compositor, viewporter): (&wl_compositor::WlCompositor, &wp_viewporter::WpViewporter),
+        tip: Tip<'_>,
+        handle: &QueueHandle<S>,
+    ) -> bool
+    where
+        S: Dispatch<wl_surface::WlSurface, ()>
+            + Dispatch<wl_region::WlRegion, ()>
+            + Dispatch<wp_viewport::WpViewport, ()>
+            + Dispatch<xdg_surface::XdgSurface, ()>
+            + Dispatch<xdg_popup::XdgPopup, ()>
+            + Dispatch<xdg_positioner::XdgPositioner, ()>
+            + 'static,
+    {
+        self.untip();
+        let shown = self.shell.as_ref().map(|shell| {
+            let popover = Popover::made(shell, (compositor, viewporter), tip, handle);
+            // Nowhere on it takes the pointer, which goes on to what is
+            // under it as if it were not there.
+            let nowhere = compositor.create_region(handle, ());
+            popover.surface.set_input_region(Some(&nowhere));
+            nowhere.destroy();
+            popover.surface.commit();
+            popover
+        });
+        self.changed |= shown.is_some();
+        self.tip = shown;
+        self.tip.is_some()
+    }
+
+    /// Takes away the tooltip shown, if one is.
+    pub fn untip(&mut self) {
+        let tip = self.tip.take();
+        self.changed |= tip.is_some();
+        tip.into_iter().for_each(Popover::destroy);
     }
 
     /// Has the popover that is open, if one is, hang below `under`, if it
@@ -183,22 +235,91 @@ impl Popovers {
         let Some(open) = self.open.as_mut().filter(|open| open.ready) else {
             return Ok(());
         };
-        picture(shm, canvas, handle).map(|buffer| {
-            let (width, height) = open.size;
-            open.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers this much.
-            open.viewport
-                .set_destination(width.cast_signed(), height.cast_signed());
-            open.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            open.surface.commit();
-            // The picture before this one is let go of when the compositor
-            // says it has finished with it.
-            open.buffer = Some(buffer);
-        })
+        open.put(shm, canvas, handle)
+    }
+
+    /// Puts `canvas` on the tooltip shown, once the compositor has said it
+    /// may be drawn on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the picture cannot be handed over.
+    pub fn draw_tip<S>(
+        &mut self,
+        shm: &wl_shm::WlShm,
+        canvas: &Canvas,
+        handle: &QueueHandle<S>,
+    ) -> io::Result<()>
+    where
+        S: Dispatch<wl_buffer::WlBuffer, ()> + Dispatch<wl_shm_pool::WlShmPool, ()> + 'static,
+    {
+        let Some(tip) = self.tip.as_mut().filter(|tip| tip.ready) else {
+            return Ok(());
+        };
+        tip.put(shm, canvas, handle)
     }
 }
 
 impl Popover {
+    /// Makes a popover's surface and popup, hanging from and as large as
+    /// `tip` says, neither yet committed.
+    fn made<S>(
+        shell: &xdg_wm_base::XdgWmBase,
+        (compositor, viewporter): (&wl_compositor::WlCompositor, &wp_viewporter::WpViewporter),
+        tip: Tip<'_>,
+        handle: &QueueHandle<S>,
+    ) -> Self
+    where
+        S: Dispatch<wl_surface::WlSurface, ()>
+            + Dispatch<wp_viewport::WpViewport, ()>
+            + Dispatch<xdg_surface::XdgSurface, ()>
+            + Dispatch<xdg_popup::XdgPopup, ()>
+            + Dispatch<xdg_positioner::XdgPositioner, ()>
+            + 'static,
+    {
+        let surface = compositor.create_surface(handle, ());
+        let viewport = viewporter.get_viewport(&surface, handle, ());
+        let xdg = shell.get_xdg_surface(&surface, handle, ());
+        let positioner = placed(shell, tip.under, tip.size, handle);
+        let popup = xdg.get_popup(None, &positioner, handle, ());
+        tip.from.get_popup(&popup);
+        positioner.destroy();
+        Self {
+            surface,
+            viewport,
+            xdg,
+            popup,
+            size: tip.size,
+            under: tip.under,
+            ready: false,
+            buffer: None,
+        }
+    }
+
+    /// Puts `canvas` on it, covering it whatever its pixels.
+    fn put<S>(
+        &mut self,
+        shm: &wl_shm::WlShm,
+        canvas: &Canvas,
+        handle: &QueueHandle<S>,
+    ) -> io::Result<()>
+    where
+        S: Dispatch<wl_buffer::WlBuffer, ()> + Dispatch<wl_shm_pool::WlShmPool, ()> + 'static,
+    {
+        picture(shm, canvas, handle).map(|buffer| {
+            let (width, height) = self.size;
+            self.surface.attach(Some(&buffer), 0, 0);
+            // However many pixels the picture has, it covers this much.
+            self.viewport
+                .set_destination(width.cast_signed(), height.cast_signed());
+            self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+            self.surface.commit();
+            // The picture before this one is let go of when the compositor
+            // says it has finished with it.
+            self.buffer = Some(buffer);
+        })
+    }
+
     /// Destroys its objects, the popup first, as the protocol has it.
     fn destroy(self) {
         self.popup.destroy();
@@ -272,8 +393,11 @@ where
         // placed is said again on its surface, and its size is its own.
         if matches!(event, xdg_popup::Event::PopupDone) {
             let popovers = state.as_mut();
-            let done = popovers.open.take_if(|open| open.popup == *popup);
-            popovers.changed |= done.is_some();
+            let slots = [&mut popovers.open, &mut popovers.tip].into_iter();
+            let done: Vec<Popover> = slots
+                .filter_map(|slot| slot.take_if(|open| open.popup == *popup))
+                .collect();
+            popovers.changed |= !done.is_empty();
             done.into_iter().for_each(Popover::destroy);
         }
     }
@@ -284,7 +408,8 @@ where
 /// anew, it moves once it has said so, with what is drawn on it.
 fn first(popovers: &mut Popovers, xdg: &xdg_surface::XdgSurface, serial: u32) -> bool {
     xdg.ack_configure(serial);
-    let open = popovers.open.iter_mut().find(|open| open.xdg == *xdg);
+    let mut slots = popovers.open.iter_mut().chain(popovers.tip.iter_mut());
+    let open = slots.find(|open| open.xdg == *xdg);
     open.is_some_and(|open| {
         let first = !std::mem::replace(&mut open.ready, true);
         (!first).then(|| open.surface.commit());

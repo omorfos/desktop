@@ -16,11 +16,17 @@ month back or on; Escape, a click anywhere else or on the time again puts
 it away, and so does saving the theme, after which it opens as the theme
 now has it.
 
+Rest the pointer on the time for half a second and a tooltip says the whole
+date; on a window whose title is cut short, the whole title; and on what
+says the session is kept awake, that a click lets the screen sleep again.
+Once one is showing, the next shows as soon as the pointer is on it. A
+click puts it away until the pointer leaves what was clicked.
+
 It is a program of its own, started with the session, and started again if
 it crashes. How it looks is in `theme.css`, under `panel`, `workspace`,
-`task` and `clock`, and the month under `popover`, `popover-item`,
-`popover-day` and `popover-day-outside`; it follows the file as you save
-it.
+`task` and `clock`, the month under `popover`, `popover-item`,
+`popover-day` and `popover-day-outside`, and its tooltips under `tooltip`;
+it follows the file as you save it.
 
 To go without it, or to use another panel that speaks layer-shell, such as
 `waybar`, turn it off in `config.yaml`:

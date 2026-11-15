@@ -3256,7 +3256,7 @@ impl Compositor {
             let same =
                 |note: &MarkNote| note.says == says && note.scale == scale && note.theme == *theme;
             had.filter(same).unwrap_or_else(|| {
-                let canvas = paint::tooltip(&mut self.text, theme, &says, scale);
+                let canvas = omorfos_ui::tooltip(&mut self.text, theme, &says, scale);
                 let (width, height) = canvas.units();
                 // Under the mark, at its right.
                 let left = mark.loc.x + mark.size.w - width.cast_signed();

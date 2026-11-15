@@ -13,6 +13,7 @@ mod glide;
 mod motion;
 mod scale;
 mod shadow;
+mod tooltip;
 
 pub use blur::Blur;
 pub use canvas::{Area, Canvas, Image, Text, inset};
@@ -21,3 +22,4 @@ pub use glide::Glide;
 pub use motion::{Motion, Seen};
 pub use scale::Scale;
 pub use shadow::{Cut, Piece, Shade, falls};
+pub use tooltip::{ROW as TOOLTIP_ROW, tooltip};

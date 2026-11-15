@@ -707,37 +707,6 @@ pub(crate) fn keep_screens(
     canvas
 }
 
-/// Paints what the compositor says of what the pointer rests on: a line of
-/// text for each of `lines`, in a box as wide as the widest.
-pub(crate) fn tooltip(text: &mut Text, theme: &Theme, lines: &[String], scale: Scale) -> Canvas {
-    let style = theme.style(Part::Tooltip, States::NONE);
-    let font = theme.font(Part::Tooltip, States::NONE);
-    let widest = lines
-        .iter()
-        .map(|line| text.measure(line, font))
-        .max()
-        .unwrap_or(0);
-    let inset = style.inset();
-    let width = widest.saturating_add(inset.across());
-    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
-    let height = rows.saturating_mul(NOTICE_ROW).saturating_add(inset.down());
-    let whole = (0, 0, width, height);
-    let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.draw_box(whole, &style);
-    let (left, mut top, room, _) = omorfos_ui::inset(whole, inset);
-    for line in lines {
-        text.draw(
-            &mut canvas,
-            line,
-            (left, top, room, NOTICE_ROW),
-            style.color,
-            font,
-        );
-        top += NOTICE_ROW.cast_signed();
-    }
-    canvas
-}
-
 /// Paints a window's title as it is written under its picture where it is
 /// offered in a part with nothing in it: in the `offer` part's colour and
 /// font in `states`, `height` tall and only as wide as it is, but no wider

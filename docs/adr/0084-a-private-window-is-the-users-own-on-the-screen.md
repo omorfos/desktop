@@ -60,6 +60,10 @@ without its title.**
   is still blank on the screen, and its title is written under its blank
   in pictures of the screen as on it: a leak as the switcher's was. Both
   are to follow, and are on the roadmap.
+- The panel lists every window by its title, a private one's as well, and
+  a title cut short there is whole in its tooltip (ADR 87): both are in
+  pictures of the screen, as the panel is drawn there as it is, and is not
+  told which windows are private. This too is on the roadmap.
 - Tests read the switcher and the overview both on the screen and in a
   picture a program is given.
 - Showing on the screen what a picture leaves out made a fault in how

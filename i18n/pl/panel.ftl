@@ -24,6 +24,33 @@ radio = { $kind ->
 awake = Nie zasypia
 awake-until = Nie zasypia do { $at }
 
+awake-tip = Kliknij, aby ekran znów mógł zasnąć
+
+# The month in a date is in the genitive: "14 listopada", not the
+# "Listopad" the month's heading says.
+date = { $weekday ->
+    [monday] poniedziałek
+    [tuesday] wtorek
+    [wednesday] środa
+    [thursday] czwartek
+    [friday] piątek
+    [saturday] sobota
+   *[sunday] niedziela
+}, { $day } { $month ->
+    [january] stycznia
+    [february] lutego
+    [march] marca
+    [april] kwietnia
+    [may] maja
+    [june] czerwca
+    [july] lipca
+    [august] sierpnia
+    [september] września
+    [october] października
+    [november] listopada
+   *[december] grudnia
+} { $year }
+
 january = Styczeń
 february = Luty
 march = Marzec
