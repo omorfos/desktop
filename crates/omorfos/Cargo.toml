@@ -97,6 +97,9 @@ jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-sy
 omorfos-core = { path = "../omorfos-core" }
 # Finds and reads the icons of windows' programs, for the switcher.
 omorfos-icons = { path = "../omorfos-icons" }
+# Reads what opens what by default, and desktop entries, for the root menu's
+# Browser, Files and Editor.
+omorfos-entries = { path = "../omorfos-entries" }
 # Draws omorfos's own pointer, at whatever size it is needed.
 omorfos-brand = { path = "../omorfos-brand" }
 omorfos-ipc = { path = "../omorfos-ipc" }

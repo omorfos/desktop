@@ -142,6 +142,10 @@ copied = Copied
 ## menu.yaml named and doing just as one of these is said by it too.
 terminal = Terminal
 run = Run…
+browser = Browser
+files = Files
+editor = Editor
+settings = Settings
 stay-awake = Stay awake
 about-omorfos = About omorfos
 lock-screen = Lock screen
@@ -175,3 +179,12 @@ cancel = Cancel
 restart = Restart
 shut-down = Shut down
 log-out = Log out
+
+# Said when the root menu's Browser, Files, Editor or Settings is chosen
+# and nothing is set to open it, by $application.
+nothing-opens = { $application ->
+    [browser] No web browser is set: choose one in your system's settings, or set x-scheme-handler/https in mimeapps.list
+    [files] No file manager is set: set inode/directory in mimeapps.list
+    [editor] No text editor is set: set text/plain in mimeapps.list
+   *[settings] omorfos has no settings of its own yet
+}

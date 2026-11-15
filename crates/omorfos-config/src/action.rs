@@ -31,6 +31,35 @@ pub enum Half {
     Bottom,
 }
 
+/// A kind of application the `open` action opens: whichever the system
+/// has as the default for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema, serde::Serialize))]
+#[serde(rename_all = "snake_case")]
+pub enum Application {
+    /// What opens web links (`x-scheme-handler/https`).
+    Browser,
+    /// What opens folders (`inode/directory`).
+    Files,
+    /// What opens plain text (`text/plain`).
+    Editor,
+    /// omorfos's settings, which are not there yet.
+    Settings,
+}
+
+impl Application {
+    /// What it is called in the configuration, as `browser`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Browser => "browser",
+            Self::Files => "files",
+            Self::Editor => "editor",
+            Self::Settings => "settings",
+        }
+    }
+}
+
 /// An action triggered by a key binding or a menu entry.
 ///
 /// In YAML, actions without a parameter are plain strings (`close`) and
@@ -134,6 +163,9 @@ pub enum Action {
     /// End the session, as `quit` does: once the user has said so, unless
     /// `power.ask` in config.yaml is false.
     LogOut,
+    /// Open the application the system has as the default for this, as
+    /// `mimeapps.list` says; or, with none, say so.
+    Open(Application),
     /// Keep the session from locking, the screens from going off and the
     /// machine from sleeping when the user is away, until asked again; or,
     /// while it is kept so, let it go.
@@ -358,6 +390,20 @@ mod tests {
 
     fn parse(yaml: &str) -> Result<Action, String> {
         serde_saphyr::from_str(yaml).map_err(|error| error.without_snippet().to_string())
+    }
+
+    #[test]
+    fn each_application_is_named_as_the_configuration_writes_it() {
+        let all = [
+            Application::Browser,
+            Application::Files,
+            Application::Editor,
+            Application::Settings,
+        ];
+        for application in all {
+            let written = format!("open: {}", application.name());
+            assert_eq!(parse(&written), Ok(Action::Open(application)));
+        }
     }
 
     #[test]

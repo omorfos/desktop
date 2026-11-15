@@ -35,15 +35,11 @@ a known gap.
   programs said, and no `/media/<you>/...` paths but `/media/(left
   out)`. The log's bound is shown only by a login that says more than
   8 MiB; `session.log` should then begin with the line saying so.
-- [ ] The question before logging out, restarting or shutting down
-      (`Super+Escape`, then Log out…, Restart… or Shut down…), as changed
-      on 15 November 2026: the card over the screen dimmed and blurred as
-      round a password box, counting a minute down; Escape, Cancel or a
-      click beside it does nothing, Enter, the button or the minute's end
-      does it; with `power: { ask: false }` they act at once. Better
-      tried with Log out or Restart, and with work saved. The menu itself,
-      its keys as signs, its signs for these entries and the titlebar's
-      menu were tried that day.
+- [ ] The root menu's first section, as changed on 15 November 2026:
+      Run…, Browser, Files, Editor, Terminal and Settings, each with a
+      sign. Browser, Files and Editor open the default for web links,
+      folders and plain text; with none set, and always for Settings, a
+      notice in the corner says so, each time.
 
 ## Where this is going
 

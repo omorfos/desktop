@@ -1,6 +1,7 @@
 //! The applications that open each kind of thing by default, as the
 //! `mimeapps.list` files of freedesktop.org's specification say: read only,
-//! for the card to show. Choosing them is for Settings.
+//! for the welcome card to show and the root menu to open. Choosing them
+//! is for Settings.
 
 use std::path::{Path, PathBuf};
 
@@ -81,17 +82,37 @@ pub fn entry(entry: &str, data: &[PathBuf]) -> Option<PathBuf> {
 /// `locales` that it has it in has it.
 #[must_use]
 pub fn named(text: &str, locales: &[String]) -> Option<(String, Option<String>)> {
-    let fields: Vec<(&str, &str)> = omorfos_entries::fields(text).collect();
+    let fields: Vec<(&str, &str)> = crate::fields(text).collect();
     let pick = |key: &str| {
         let best = fields
             .iter()
-            .filter_map(|(field, value)| {
-                omorfos_entries::fit(field, key, locales).map(|fit| (fit, *value))
-            })
+            .filter_map(|(field, value)| crate::fit(field, key, locales).map(|fit| (fit, *value)))
             .min_by_key(|(fit, _)| *fit);
         best.map(|(_, value)| value.to_owned())
     };
     pick("Name").map(|name| (name, pick("Icon")))
+}
+
+/// The command that opens a thing of `types` by default, as the first of
+/// them that has a default in the `mimeapps.list` files of `config` and
+/// `data` says, its desktop entry found among `data` and its `Exec` split
+/// into the program and its arguments. None if nothing is set for any of
+/// them, or the entry it names is not there or runs nothing.
+#[must_use]
+pub fn command(
+    types: &[&str],
+    (config, data): (&[PathBuf], &[PathBuf]),
+) -> Option<(String, Vec<String>)> {
+    let texts: Vec<String> = lists(config, data)
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .collect();
+    let named = default_for(types, &texts)?;
+    let text = entry(&named, data).and_then(|path| std::fs::read_to_string(path).ok())?;
+    let mut fields = crate::fields(&text);
+    let exec = fields.find_map(|(field, value)| (field == "Exec").then_some(value))?;
+    let mut words = crate::arguments(exec).into_iter();
+    words.next().map(|program| (program, words.collect()))
 }
 
 /// The places of configuration, as the specification has them: the user's
@@ -177,6 +198,40 @@ mod tests {
             configuration(None, None, Some("")),
             [PathBuf::from("/etc/xdg")]
         );
+    }
+
+    #[test]
+    fn the_command_of_a_default_is_the_exec_of_its_entry_without_what_files_would_fill() {
+        let config = tempfile::TempDir::new().unwrap();
+        let data = tempfile::TempDir::new().unwrap();
+        let applications = data.path().join("applications");
+        fs::create_dir_all(&applications).unwrap();
+        let list = "[Default Applications]\nx-scheme-handler/https=browser.desktop\n\
+                    text/plain=gone.desktop\ninode/directory=bare.desktop\n\
+                    image/png=empty.desktop\n";
+        fs::write(config.path().join("mimeapps.list"), list).unwrap();
+        let browser = "[Desktop Entry]\nName=Browser\nExec=firefox --new-window %u\n";
+        fs::write(applications.join("browser.desktop"), browser).unwrap();
+        fs::write(
+            applications.join("bare.desktop"),
+            "[Desktop Entry]\nName=Bare\n",
+        )
+        .unwrap();
+        fs::write(
+            applications.join("empty.desktop"),
+            "[Desktop Entry]\nExec=%u\n",
+        )
+        .unwrap();
+        let places = ([config.path().to_owned()], [data.path().to_owned()]);
+        let command = |types: &[&str]| command(types, (&places.0, &places.1));
+        assert_eq!(
+            command(KINDS[0].1),
+            Some(("firefox".to_owned(), vec!["--new-window".to_owned()]))
+        );
+        assert_eq!(command(&["text/plain"]), None, "an entry that is not there");
+        assert_eq!(command(&["inode/directory"]), None, "an entry without Exec");
+        assert_eq!(command(&["image/png"]), None, "nothing left to run");
+        assert_eq!(command(&["audio/flac"]), None, "nothing set");
     }
 
     #[test]

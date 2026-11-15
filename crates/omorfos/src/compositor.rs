@@ -18,8 +18,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use omorfos_brand::pointer::Shape;
 use omorfos_config::{
-    Action, Config, Debouncer, Font, Half, Part, Scheme, State, States, Store, Style, Theme,
-    Watcher, WorkspaceNumber,
+    Action, Application, Config, Debouncer, Font, Half, Part, Scheme, State, States, Store, Style,
+    Theme, Watcher, WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
@@ -886,9 +886,42 @@ impl Compositor {
     /// [`omorfos_icons::data_directories`]). Until this is called windows
     /// have only the icons their programs give as pixels.
     pub fn set_data_directories(&mut self, data: Vec<PathBuf>) {
+        self.on_demand.applications.1.clone_from(&data);
         self.switch.icons = WindowIcons::new(data);
         let theme = &self.store.current().general.icons.theme;
         self.switch.icons.set_theme(theme);
+    }
+
+    /// Says where the configuration of the system's programs is, the
+    /// user's first (`XDG_CONFIG_HOME`, then `XDG_CONFIG_DIRS`), where their
+    /// `mimeapps.list` files say which opens what by default.
+    pub fn set_config_directories(&mut self, config: Vec<PathBuf>) {
+        self.on_demand.applications.0 = config;
+    }
+
+    /// Opens the application the system has as the default for `kind`, or
+    /// says that none is set.
+    fn open(&mut self, kind: Application) {
+        let types: &[&str] = match kind {
+            Application::Browser => omorfos_entries::defaults::KINDS[0].1,
+            Application::Files => &["inode/directory"],
+            Application::Editor => &["text/plain"],
+            // Until omorfos has settings, nothing opens them.
+            Application::Settings => &[],
+        };
+        let (config, data) = &self.on_demand.applications;
+        if let Some((program, arguments)) =
+            omorfos_entries::defaults::command(types, (config, data))
+        {
+            let program = OsStr::new(&program);
+            let named = omorfos_journal::name(program);
+            let how = (Roles::NONE, false, Relaying::Users);
+            self.launch(program, &arguments, how, Some(&named));
+        } else {
+            let what = Value::Words(kind.name());
+            let said = self.words.say("nothing-opens", &[("application", what)]);
+            self.refused.tell(&said);
+        }
     }
 
     /// Works out what the pointer looks like now and readies its picture.
@@ -1477,6 +1510,7 @@ impl Compositor {
             Action::Restart => self.leave(crate::leaving::Leaving::Restart),
             Action::ShutDown => self.leave(crate::leaving::Leaving::ShutDown),
             Action::LogOut => self.leave(crate::leaving::Leaving::LogOut),
+            Action::Open(kind) => self.open(*kind),
             Action::StayAwake => self.stay_awake(None),
             Action::StayAwakeFor(seconds) => self.stay_awake(Some(seconds.get())),
             Action::NightLight => self.switch_night_light(),
@@ -4948,6 +4982,9 @@ struct OnDemand {
     /// Whether the session is to end, and the programs started in it are
     /// being waited for.
     ending: Ending,
+    /// Where the system's programs say which of them opens what by
+    /// default: its places of configuration, then of data.
+    applications: (Vec<PathBuf>, Vec<PathBuf>),
 }
 
 /// How far the session has got towards ending.

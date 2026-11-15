@@ -85,6 +85,7 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
     let compositor = session.compositor_mut();
     compositor.set_cursor_themes(cursor_themes());
     compositor.set_data_directories(data_directories());
+    compositor.set_config_directories(config_directories());
     compositor.show_pointer();
     compositor.set_panel(panel());
     compositor.set_wallpaper(wallpaper());
@@ -182,6 +183,19 @@ pub(super) fn data_directories() -> Vec<PathBuf> {
         env::var_os("XDG_DATA_HOME").as_deref(),
         env::var_os("HOME").as_deref(),
         env::var_os("XDG_DATA_DIRS").as_deref(),
+    )
+}
+
+/// Where the configuration of the system's programs is, the user's first,
+/// from the environment, as `mimeapps.list` is looked for in.
+pub(super) fn config_directories() -> Vec<PathBuf> {
+    let config_home = env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    let home = env::var_os("HOME").map(PathBuf::from);
+    let config_dirs = env::var("XDG_CONFIG_DIRS").ok();
+    omorfos_entries::defaults::configuration(
+        config_home.as_deref(),
+        home.as_deref(),
+        config_dirs.as_deref(),
     )
 }
 

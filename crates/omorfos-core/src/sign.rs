@@ -76,4 +76,12 @@ pub enum Sign {
     Right,
     /// A key with a cross: the Backspace key.
     Backspace,
+    /// A globe: the web browser.
+    Browser,
+    /// A folder: what manages files.
+    Files,
+    /// A pen on a page: the text editor.
+    Editor,
+    /// A cog: the settings.
+    Settings,
 }

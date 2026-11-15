@@ -180,6 +180,12 @@ pub const TOLD: &[Told] = &[
     told!("Programs", "show_launcher", "", "Open the launcher"),
     told!(
         "Programs",
+        "open",
+        "KIND",
+        "Open the default application of KIND",
+    ),
+    told!(
+        "Programs",
         "show_welcome",
         "",
         "Show the welcome card, as at the first login",

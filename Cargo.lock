@@ -1921,6 +1921,7 @@ dependencies = [
  "omorfos-clipboard",
  "omorfos-config",
  "omorfos-core",
+ "omorfos-entries",
  "omorfos-hold",
  "omorfos-i18n",
  "omorfos-icons",

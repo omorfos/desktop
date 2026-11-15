@@ -55,8 +55,8 @@ use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::{DeviceFd, Rectangle, Transform};
 
 use super::winit::{
-    cursor_themes, data_directories, keeper, launcher, listen, notifier, on_input, panel, recorder,
-    wallpaper, welcome,
+    config_directories, cursor_themes, data_directories, keeper, launcher, listen, notifier,
+    on_input, panel, recorder, wallpaper, welcome,
 };
 use crate::cli::Start;
 use crate::{Compositor, Feedback, Frosting, Gles, Handed, HeldSeat, Scale, Session, Shader};
@@ -196,6 +196,7 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     offer_gpu_buffers(&mut hardware.borrow_mut(), compositor);
     compositor.set_cursor_themes(cursor_themes());
     compositor.set_data_directories(data_directories());
+    compositor.set_config_directories(config_directories());
     compositor.show_pointer();
     announce_session(compositor);
     set_components(compositor);

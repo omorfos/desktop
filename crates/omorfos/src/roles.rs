@@ -130,6 +130,12 @@ impl Refused {
         }
     }
 
+    /// Notes something to tell the user, each time it happens, as what
+    /// they asked for that cannot be done.
+    pub(crate) fn tell(&mut self, said: &str) {
+        self.pending.push(said.to_owned());
+    }
+
     /// What has been refused since this was last asked.
     pub(crate) fn take(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pending)

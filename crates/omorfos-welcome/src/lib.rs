@@ -14,8 +14,8 @@
 
 mod card;
 mod client;
-pub mod defaults;
 
+use omorfos_entries::defaults;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};

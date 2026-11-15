@@ -112,6 +112,10 @@ copied = Skopiowano
 
 terminal = Terminal
 run = Uruchom…
+browser = Przeglądarka
+files = Pliki
+editor = Edytor
+settings = Ustawienia
 stay-awake = Nie usypiaj
 about-omorfos = O omorfos
 lock-screen = Zablokuj ekran
@@ -146,3 +150,10 @@ cancel = Anuluj
 restart = Uruchom ponownie
 shut-down = Wyłącz
 log-out = Wyloguj
+
+nothing-opens = { $application ->
+    [browser] Nie ustawiono przeglądarki: wybierz ją w ustawieniach systemu albo ustaw x-scheme-handler/https w mimeapps.list
+    [files] Nie ustawiono menedżera plików: ustaw inode/directory w mimeapps.list
+    [editor] Nie ustawiono edytora tekstu: ustaw text/plain w mimeapps.list
+   *[settings] omorfos nie ma jeszcze własnych ustawień
+}

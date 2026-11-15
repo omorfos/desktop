@@ -212,6 +212,10 @@ const fn drawing(sign: Sign) -> &'static str {
         Sign::Left => include_str!("../signs/arrow-left.svg"),
         Sign::Right => include_str!("../signs/arrow-right.svg"),
         Sign::Backspace => include_str!("../signs/delete.svg"),
+        Sign::Browser => include_str!("../signs/globe.svg"),
+        Sign::Files => include_str!("../signs/folder.svg"),
+        Sign::Editor => include_str!("../signs/file-pen.svg"),
+        Sign::Settings => include_str!("../signs/settings.svg"),
     }
 }
 
@@ -777,7 +781,7 @@ mod tests {
     }
 
     /// Every sign there is.
-    const SIGNS: [Sign; 35] = [
+    const SIGNS: [Sign; 39] = [
         Sign::Close,
         Sign::Minimize,
         Sign::Fullscreen,
@@ -813,6 +817,10 @@ mod tests {
         Sign::Left,
         Sign::Right,
         Sign::Backspace,
+        Sign::Browser,
+        Sign::Files,
+        Sign::Editor,
+        Sign::Settings,
     ];
 
     /// How much ink there is down the column `x` of `image` drawn on white,

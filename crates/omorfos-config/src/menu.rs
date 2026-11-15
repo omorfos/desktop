@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::de::value::MapAccessDeserializer;
 use serde::de::{Deserializer, Error, MapAccess, Unexpected, Visitor};
 
-use crate::{Action, Command};
+use crate::{Action, Application, Command};
 
 /// The contents of `menu.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -26,8 +26,12 @@ impl Default for Menu {
         };
         Self {
             items: vec![
-                entry("Terminal", Action::Spawn(Command::terminal().into())),
                 entry("Run\u{2026}", Action::ShowLauncher),
+                entry("Browser", Action::Open(Application::Browser)),
+                entry("Files", Action::Open(Application::Files)),
+                entry("Editor", Action::Open(Application::Editor)),
+                entry("Terminal", Action::Spawn(Command::terminal().into())),
+                entry("Settings", Action::Open(Application::Settings)),
                 MenuItem::Separator,
                 entry("Stay awake", Action::StayAwake),
                 entry("About omorfos", Action::About),
@@ -161,8 +165,12 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "Terminal",
                 "Run\u{2026}",
+                "Browser",
+                "Files",
+                "Editor",
+                "Terminal",
+                "Settings",
                 "Stay awake",
                 "About omorfos",
                 "Lock screen",
@@ -172,8 +180,8 @@ mod tests {
                 "Shut down\u{2026}"
             ]
         );
-        assert_eq!(menu.items[2], MenuItem::Separator);
-        assert_eq!(menu.items[5], MenuItem::Separator, "before what ends");
+        assert_eq!(menu.items[6], MenuItem::Separator);
+        assert_eq!(menu.items[9], MenuItem::Separator, "before what ends");
     }
 
     #[test]

@@ -642,7 +642,11 @@ mod tests {
         let built_in = menu.find(".SH BUILT\\-IN MENU\n").unwrap();
         assert!(built_in < menu.find(".SH KEYS\n").unwrap(), "first: {menu}");
         assert!(
-            menu.contains("\nitems:\n  \\- { label: Terminal, action: { spawn: [foot] } }\n"),
+            menu.contains("\n  \\- { label: Browser, action: { open: browser } }\n"),
+            "{menu}"
+        );
+        assert!(
+            menu.contains("\n  \\- { label: Terminal, action: { spawn: [foot] } }\n"),
             "{menu}"
         );
         let rules = &pages[2].1;

@@ -336,6 +336,23 @@ At least 0.
 \fBbindings[].action.move_to_workspace\fR
 From 1 to 32.
 .TP
+\fBbindings[].action.open\fR
+A kind of application the \fBopen\fR action opens: whichever the system has as the default for it.
+.RS
+.TP
+\fBbrowser\fR
+What opens web links (\fBx\-scheme\-handler/https\fR).
+.TP
+\fBfiles\fR
+What opens folders (\fBinode/directory\fR).
+.TP
+\fBeditor\fR
+What opens plain text (\fBtext/plain\fR).
+.TP
+\fBsettings\fR
+omorfos's settings, which are not there yet.
+.RE
+.TP
 \fBbindings[].action.spawn\fR
 A program to start with the session: its name and arguments, or that and what it may do.
 .TP

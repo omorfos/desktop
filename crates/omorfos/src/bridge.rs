@@ -7,7 +7,8 @@
 use std::path::Path;
 
 use omorfos_config::{
-    Action, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules, States,
+    Action, Application, Config, Diagnostic, FocusModel, Keys, Modifiers, OutputScale, Part, Rules,
+    States,
 };
 use omorfos_core::{
     Button, Effects, Item, KeyChains, Keycap, Mark, Metrics, Pattern, Placement, Private, Rule,
@@ -103,9 +104,13 @@ pub fn rules(rules: &Rules) -> Vec<Rule> {
 
 /// The messages the entries of the built-in root menu are said by, in its
 /// order.
-const BUILT_IN: [&str; 9] = [
-    "terminal",
+const BUILT_IN: [&str; 13] = [
     "run",
+    "browser",
+    "files",
+    "editor",
+    "terminal",
+    "settings",
     "stay-awake",
     "about-omorfos",
     "lock-screen",
@@ -266,6 +271,10 @@ pub fn mark(action: &Action, on: Toggled) -> Mark {
         Action::Lock => Mark::Sign(Sign::Lock),
         Action::Quit | Action::LogOut => Mark::Sign(Sign::Quit),
         Action::Sleep => Mark::Sign(Sign::Sleep),
+        Action::Open(Application::Browser) => Mark::Sign(Sign::Browser),
+        Action::Open(Application::Files) => Mark::Sign(Sign::Files),
+        Action::Open(Application::Editor) => Mark::Sign(Sign::Editor),
+        Action::Open(Application::Settings) => Mark::Sign(Sign::Settings),
         Action::Restart => Mark::Sign(Sign::Restart),
         Action::ShutDown => Mark::Sign(Sign::ShutDown),
         _ => Mark::Blank,
@@ -694,8 +703,12 @@ bindings:
                 &polish
             )),
             [
-                "Terminal",
                 "Uruchom\u{2026}",
+                "Przeglądarka",
+                "Pliki",
+                "Edytor",
+                "Terminal",
+                "Ustawienia",
                 "Nie usypiaj",
                 "O omorfos",
                 "Zablokuj ekran",

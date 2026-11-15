@@ -241,6 +241,19 @@
           "type": "string"
         },
         {
+          "additionalProperties": false,
+          "description": "Open the application the system has as the default for this, as\n`mimeapps.list` says; or, with none, say so.",
+          "properties": {
+            "open": {
+              "$ref": "#/$defs/Application"
+            }
+          },
+          "required": [
+            "open"
+          ],
+          "type": "object"
+        },
+        {
           "const": "stay_awake",
           "description": "Keep the session from locking, the screens from going off and the\nmachine from sleeping when the user is away, until asked again; or,\nwhile it is kept so, let it go.",
           "type": "string"
@@ -288,6 +301,31 @@
         {
           "const": "quit",
           "description": "End the session.",
+          "type": "string"
+        }
+      ]
+    },
+    "Application": {
+      "description": "A kind of application the `open` action opens: whichever the system\nhas as the default for it.",
+      "oneOf": [
+        {
+          "const": "browser",
+          "description": "What opens web links (`x-scheme-handler/https`).",
+          "type": "string"
+        },
+        {
+          "const": "files",
+          "description": "What opens folders (`inode/directory`).",
+          "type": "string"
+        },
+        {
+          "const": "editor",
+          "description": "What opens plain text (`text/plain`).",
+          "type": "string"
+        },
+        {
+          "const": "settings",
+          "description": "omorfos's settings, which are not there yet.",
           "type": "string"
         }
       ]

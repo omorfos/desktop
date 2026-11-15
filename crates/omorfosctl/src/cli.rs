@@ -862,6 +862,7 @@ mod tests {
                 "" => Vec::new(),
                 "N" | "ID" | "SECONDS" => vec!["2"],
                 "PROGRAM [ARG]..." => vec!["foot", "--title", "scratch"],
+                "KIND" => vec!["browser"],
                 choices => vec![choices.split('|').next().unwrap_or_default()],
             };
             let built = action(told.name, &words);

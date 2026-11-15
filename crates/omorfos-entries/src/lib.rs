@@ -6,6 +6,8 @@
 //! each, and whatever does not make sense is passed over. See the Desktop
 //! Entry Specification.
 
+pub mod defaults;
+
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;

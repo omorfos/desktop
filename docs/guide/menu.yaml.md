@@ -14,10 +14,15 @@ items:
 An item is the word `separator`, or a `label` with either an `action` or
 nested `items`.
 
-Without a `menu.yaml` the menu has a terminal, the launcher, staying
+Without a `menu.yaml` the menu has the launcher, the web browser, what
+manages files, the text editor, a terminal and Settings, then staying
 awake, "About", locking the screen, sleep, logging out, restarting and
 shutting down, said in the user's language; the last three ask first, as
-`power.ask` in `config.yaml` says. So is an entry of `menu.yaml` named and
+`power.ask` in `config.yaml` says. Browser, Files and Editor open
+whatever your system has as the default for web links, folders and plain
+text, as its `mimeapps.list` says (the action `open`, of `browser`,
+`files`, `editor` or `settings`); with none set, or for Settings, which
+omorfos does not have yet, a notice in the corner says so. So is an entry of `menu.yaml` named and
 doing just as one of those, as `{ label: Sleep, action: sleep }` is; one named otherwise is shown as it is named, in whatever language it
 is written.
 

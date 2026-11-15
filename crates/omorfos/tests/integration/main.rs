@@ -42,6 +42,7 @@ mod mirroring;
 mod night;
 mod notice;
 mod notifications;
+mod opening;
 mod outputs;
 mod overview;
 mod palette;
