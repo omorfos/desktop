@@ -54,6 +54,12 @@ a known gap.
   32767 pixels wide is not a test of this: an X server draws nothing
   of it, and it never opens.
 
+- Buttons alike everywhere, as changed on 15 November 2026: the lock
+  screen's power buttons a little larger (36 tall, from 32); the
+  password box's, pinentry's and the portal's question's buttons with
+  their words in the middle; the portal's question laid out as the leave
+  question is. Nothing else should look different.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -305,6 +311,10 @@ calls for them.
       (`omorfos-pipewire`'s `Held::drop`, and the portal's `held.gone()`
       in `xdg-desktop-portal-omorfos`), which only some runs reach. The
       tests are to bring it about for certain.
+- [ ] The portal's question is said in English whatever the user's
+      language, its words in the code rather than messages, and does not
+      light the button under the pointer, as it is not drawn again as the
+      pointer moves.
 - [ ] Known gaps in what is private: a notification about a private
       window is in a picture, as is a menu of a program written for X11
       that does not say what process it is of; a program cannot yet say
@@ -2416,7 +2426,12 @@ specification already says is not said again in a way of omorfos's own.
       such thing; each becomes one widget in `omorfos-ui`, drawn as one
       part of the theme with its states, that every component takes up,
       the parts it replaces kept as names for it until a major version, as
-      ADR 73 has it; and what is left apart says why.
+      ADR 73 has it; and what is left apart says why. Begun on
+      15 November 2026 with the buttons and the boxes that ask (ADR 92):
+      one button and one box in `omorfos-ui`, taken up by the leave
+      question, the portal's question, the welcome card, the lock screen
+      and the password box's buttons. Next: the password box's layout, as
+      a change of its own; the fields typed in; and the backdrops.
 - [ ] Whether, and what: an ADR on what is offered to others and how
       firmly it is promised. Nothing loaded into the compositor's own
       process: a plugin there would run with every key and every window

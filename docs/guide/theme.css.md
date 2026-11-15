@@ -370,6 +370,7 @@ notification-level {
  * what asks for a password. The button that gives is :active. The border
  * is also the ring of the loupe a colour on the screen is picked with. */
 question {
+  padding: 20px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -697,7 +698,7 @@ is measured to the outside of its border.
 | `outline-color`, `outline-width`, `outline-offset` | a color; `0` to `16px`; `0` to `16px` | how far out the outline is, with nothing drawn between |
 | `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
-| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item` and `popover-day` |
+| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item`, `popover-day` and `question-button` |
 | `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
 | `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu-item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name`. The variable `--font-monospace`, names as `font-family` takes them, is the monospaced font programs are told for code and terminals, at the same size, `JetBrains Mono, monospace 11`, through the settings portal's `monospace-font-name`; X11 has no setting for it |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
@@ -791,7 +792,9 @@ Not every part uses every property yet:
   cross, a plus and a bar. They stand at the right, the cross outermost,
   and programs that draw their own titlebars are told the same.
 - `padding` is honoured by `tab`, `menu-item`, `menu-sign`, `notice`,
-  `panel`, `workspace`, `task` and `clock`.
+  `panel`, `workspace`, `task`, `clock`, `question` (the room round what
+  a box that asks holds) and `question-button` (the room either side of
+  its words, which with them makes it as wide as it is).
 - `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
   `menu-sign`, `notice`, `capture`, `panel`, `workspace`, `task` and
   `clock`.

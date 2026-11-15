@@ -13,6 +13,7 @@
 use omorfos_config::{Part, State, States, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_i18n::{Value, Words};
+use omorfos_ui::question::Asked;
 use omorfos_ui::{Area, Canvas};
 use smithay::input::keyboard::Keysym;
 use smithay::output::Output;
@@ -26,15 +27,8 @@ use crate::paint::Text;
 /// How long the question waits, left alone, before it is taken as a yes.
 const WAITS: Duration = Duration::from_secs(60);
 
-/// How wide the card is, and the room inside it on every side.
+/// How wide the card is; the rest of its layout is a question's.
 const WIDTH: u32 = 380;
-const PADDING: u32 = 20;
-/// How tall its question and each line under it are.
-const QUESTION: u32 = 26;
-const LINE: u32 = 20;
-/// The room between the words and the buttons, and between the buttons.
-const APART: u32 = 16;
-const BETWEEN: u32 = 8;
 
 /// The question whether to start the machine again or turn it off.
 #[derive(Debug, Default)]
@@ -299,54 +293,31 @@ fn paint(
     let left = i64::try_from(left).unwrap_or(i64::MAX);
     let counting = words.say(counting, &[("left", Value::Number(left))]);
     let (unsaved, cancel) = (words.say("leave-unsaved", &[]), words.say("cancel", &[]));
-    let style = theme.style(Part::Question, States::NONE);
-    let font = theme.font(Part::Question, States::NONE);
-    let detail = theme.style(Part::QuestionDetail, States::NONE);
     let detail_font = theme.font(Part::QuestionDetail, States::NONE);
-    let room = WIDTH - 2 * PADDING;
+    let inset = theme.style(Part::Question, States::NONE).inset();
     let mut lines = vec![counting];
-    lines.extend(text.wrap(&unsaved, room, detail_font, 3));
-    let count = u32::try_from(lines.len()).unwrap_or(u32::MAX);
-    let (_, button) = omorfos_ui::button_size(text, theme, &going);
-    let height = PADDING + QUESTION + count * LINE + APART + button + PADDING;
-    let mut canvas = Canvas::scaled(WIDTH, height, scale);
-    canvas.draw_box((0, 0, WIDTH, height), &style);
-    let left = PADDING.cast_signed();
-    let mut top = PADDING.cast_signed();
-    text.draw(
-        &mut canvas,
-        &question,
-        (left, top, room, QUESTION),
-        style.color,
-        font,
-    );
-    top += QUESTION.cast_signed();
-    for line in &lines {
-        let area = (left, top, room, LINE);
-        text.draw(&mut canvas, line, area, detail.color, detail_font);
-        top += LINE.cast_signed();
-    }
-    top += APART.cast_signed();
-    // The button that goes on at the end, the one that cancels before it,
-    // each as the theme sizes it; the one that goes on has the keyboard.
-    let (going_wide, tall) = omorfos_ui::button_size(text, theme, &going);
-    let (cancel_wide, _) = omorfos_ui::button_size(text, theme, &cancel);
-    let end = (WIDTH - PADDING).cast_signed();
-    let go_on = (end - going_wide.cast_signed(), top, going_wide, tall);
-    let before = go_on.0 - (BETWEEN + cancel_wide).cast_signed();
-    let cancelling = (before, top, cancel_wide, tall);
-    let buttons = [
-        (Choice::Cancel, cancelling, &cancel),
-        (Choice::GoOn, go_on, &going),
-    ];
-    for (choice, area, said) in buttons {
+    lines.extend(text.wrap(
+        &unsaved,
+        WIDTH.saturating_sub(inset.across()),
+        detail_font,
+        3,
+    ));
+    let asked = Asked {
+        question: &question,
+        lines: &lines,
+        room: 0,
+        buttons: [cancel.as_str(), going.as_str()],
+    };
+    let laid = omorfos_ui::question::lay_out(text, theme, WIDTH, &asked);
+    // The one that goes on is picked out and has the keyboard.
+    let states = [Choice::Cancel, Choice::GoOn].map(|choice| {
         let going_on = choice == Choice::GoOn;
-        let states = States::NONE
+        States::NONE
             .when(State::Hovered, hovered == Some(choice))
             .when(State::Active, going_on)
-            .when(State::Focused, going_on);
-        let (style, font) = omorfos_ui::button_look(theme, states);
-        omorfos_ui::button(&mut canvas, text, (&style, font), (said, area));
-    }
+            .when(State::Focused, going_on)
+    });
+    let canvas = omorfos_ui::question::paint_question(text, theme, (&asked, &laid), states, scale);
+    let [cancelling, go_on] = laid.buttons;
     (canvas, (cancelling, go_on))
 }

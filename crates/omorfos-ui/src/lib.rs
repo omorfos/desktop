@@ -12,6 +12,7 @@ mod canvas;
 pub mod field;
 mod glide;
 mod motion;
+pub mod question;
 mod scale;
 mod shadow;
 mod tooltip;

@@ -22,7 +22,8 @@ use std::os::unix::net::UnixStream;
 
 use omorfos_config::{Color, Part, State, States, Store, Theme};
 use omorfos_shell::{picture, whole};
-use omorfos_ui::{Area, Canvas, Scale, Text};
+use omorfos_ui::question::{self, Asked, Laid};
+use omorfos_ui::{Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -42,15 +43,13 @@ use xkbcommon::xkb;
 
 use crate::Failure;
 
-/// How large the box is, in units of layout.
-const SIZE: (u32, u32) = (440, 150);
+/// How wide the box is, in units of layout; the rest of its layout is a
+/// question's (`omorfos_ui::question`).
+const WIDTH: u32 = 440;
 
-/// The room between the edge of the box and what is in it.
-const MARGIN: i32 = 20;
-
-/// Where the buttons are: to give, and not to.
-const GIVE: Area = (300, 98, 120, 32);
-const KEEP: Area = (168, 98, 120, 32);
+/// The size a picture of a screen is taken to be until its surface is
+/// placed, as large as a box.
+const UNPLACED: (u32, u32) = (WIDTH, 150);
 
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
@@ -260,16 +259,38 @@ pub fn asking(app: &str, question: Question) -> String {
     format!("{who} {}", question.words().0)
 }
 
-/// The button at a place on the box, if there is one.
+/// What a box asking `question` of `app` says: what is asked, the line
+/// that warns, and its buttons, the one that keeps last but one and the
+/// one that gives last.
+fn asked(app: &str, question: Question) -> (String, [&'static str; 2]) {
+    let (_, _, give) = question.words();
+    (asking(app, question), ["Cancel", give])
+}
+
+/// The lines under what is asked: the warning.
+fn lines(question: Question) -> Vec<String> {
+    vec![question.words().1.to_owned()]
+}
+
+/// How the box asking `question` of `app` is laid out under `theme`.
 #[must_use]
-pub fn button_at((x, y): (i32, i32)) -> Option<Answer> {
-    let inside = |(left, top, width, height): Area| {
-        let (right, bottom) = (left + width.cast_signed(), top + height.cast_signed());
-        (left..right).contains(&x) && (top..bottom).contains(&y)
+pub(crate) fn laid(theme: &Theme, text: &mut Text, (app, question): (&str, Question)) -> Laid<2> {
+    let lines = lines(question);
+    let (said, buttons) = asked(app, question);
+    let asked = Asked {
+        question: &said,
+        lines: &lines,
+        room: 0,
+        buttons,
     };
-    [(GIVE, Answer::Give), (KEEP, Answer::Keep)]
-        .into_iter()
-        .find_map(|(area, answer)| inside(area).then_some(answer))
+    question::lay_out(text, theme, WIDTH, &asked)
+}
+
+/// The button at a place on the box laid out as `laid`, if there is one.
+#[must_use]
+pub fn button_at(laid: &Laid<2>, at: (i32, i32)) -> Option<Answer> {
+    let answers = [Answer::Keep, Answer::Give];
+    question::button_at(laid, at).and_then(|index| answers.get(index).copied())
 }
 
 /// Paints the box: what is asked, and the two buttons, the one that gives
@@ -281,32 +302,17 @@ pub fn paint(
     scale: Scale,
     (app, question): (&str, Question),
 ) -> Canvas {
-    let (width, height) = SIZE;
-    let mut canvas = Canvas::scaled(width, height, scale);
-    let whole_box = theme.style(Part::Question, States::NONE);
-    canvas.draw_box((0, 0, width, height), &whole_box);
-    let room = width - MARGIN.unsigned_abs() * 2;
-    let font = theme.font(Part::Question, States::NONE);
-    let line = (MARGIN, MARGIN, room, 24);
-    text.draw(
-        &mut canvas,
-        &asking(app, question),
-        line,
-        whole_box.color,
-        font,
-    );
-    let said = theme.style(Part::QuestionDetail, States::NONE);
-    let font = theme.font(Part::QuestionDetail, States::NONE);
-    let line = (MARGIN, MARGIN + 28, room, 20);
-    let (_, warning, give) = question.words();
-    text.draw(&mut canvas, warning, line, said.color, font);
-    let picked = States::NONE.with(State::Active);
-    let buttons = [(GIVE, give, picked), (KEEP, "Cancel", States::NONE)];
-    for (area, label, states) in buttons {
-        let (style, font) = omorfos_ui::button_look(theme, states);
-        omorfos_ui::button(&mut canvas, text, (&style, font), (label, area));
-    }
-    canvas
+    let lines = lines(question);
+    let (said, buttons) = asked(app, question);
+    let asked = Asked {
+        question: &said,
+        lines: &lines,
+        room: 0,
+        buttons,
+    };
+    let laid = question::lay_out(text, theme, WIDTH, &asked);
+    let states = [States::NONE, States::NONE.with(State::Active)];
+    question::paint_question(text, theme, (&asked, &laid), states, scale)
 }
 
 /// Says in the session's log how far putting the question up has got,
@@ -376,6 +382,8 @@ struct Shell {
     answer: Option<Answer>,
     /// Which of the faces the pointer is over, and where on it.
     over: Option<(usize, (i32, i32))>,
+    /// How the box asking the question is laid out, while one is asked.
+    laid: Option<Laid<2>>,
     /// The surface of this program's that the keyboard is on, if any.
     keyboard: Option<wl_surface::WlSurface>,
     store: Store,
@@ -481,7 +489,10 @@ impl Shell {
         let answer = match (picking, button) {
             (true, LEFT_BUTTON) => self.giving(),
             (true, _) => Some(Answer::Keep),
-            (false, LEFT_BUTTON) => self.over.and_then(|(_, at)| button_at(at)),
+            (false, LEFT_BUTTON) => {
+                let on = self.laid.as_ref().zip(self.over);
+                on.and_then(|(laid, (_, at))| button_at(laid, at))
+            }
             (false, _) => None,
         };
         self.answered(answer);
@@ -532,7 +543,7 @@ impl Shell {
         });
         // Nothing, while where the pointer is is not known.
         still.zip(at).map_or(Ok(()), |((face, still), at)| {
-            let shown = face.ready.unwrap_or(SIZE);
+            let shown = face.ready.unwrap_or(UNPLACED);
             let parent = &face.surface;
             let loupe = face.loupe.get_or_insert_with(|| {
                 let surface = globals.compositor.create_surface(handle, ());
@@ -590,7 +601,20 @@ impl Shell {
                 }
                 Asking::Question(..) => vec![(None, None)],
             };
-            let made = on.into_iter().map(|on| Face::new(globals, on, handle));
+            // A box is as large as its layout makes it; a picture is as
+            // large as its screen.
+            let laid = match asking {
+                Asking::Question(app, question) => {
+                    let theme = &self.store.current().theme;
+                    Some(laid(theme, &mut self.text, (app, *question)))
+                }
+                Asking::Pick(_) => None,
+            };
+            let size = laid.as_ref().map(|laid| laid.size);
+            self.laid = laid;
+            let made = on
+                .into_iter()
+                .map(|on| Face::new(globals, on, size, handle));
             self.faces = made.collect();
             note("putting the question up");
         }
@@ -636,6 +660,7 @@ impl Face {
     fn new(
         globals: &Globals,
         (still, on): (Option<usize>, Option<wl_output::WlOutput>),
+        size: Option<(u32, u32)>,
         handle: &QueueHandle<Shell>,
     ) -> Self {
         let surface = globals.compositor.create_surface(handle, ());
@@ -656,11 +681,11 @@ impl Face {
             handle,
             (),
         );
-        if still.is_some() {
+        if let Some((width, height)) = size {
+            layer.set_size(width, height);
+        } else {
             layer.set_anchor(zwlr_layer_surface_v1::Anchor::all());
             layer.set_exclusive_zone(-1);
-        } else {
-            layer.set_size(SIZE.0, SIZE.1);
         }
         let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
         layer.set_keyboard_interactivity(exclusive);
@@ -715,6 +740,7 @@ impl Desk {
                 asked: None,
                 answer: None,
                 over: None,
+                laid: None,
                 keyboard: None,
                 store,
                 text: Text::new(),
@@ -1182,15 +1208,28 @@ mod tests {
         );
     }
 
+    /// The layout of the box asking for a picture of the screen.
+    fn laid_out(theme: &Theme) -> Laid<2> {
+        let asked = ("org.example.App", Question::Picture);
+        laid(theme, &mut Text::new(), asked)
+    }
+
     #[test]
-    fn each_button_is_where_it_is_drawn_and_nowhere_else() {
-        assert_eq!(button_at((300, 98)), Some(Answer::Give));
-        assert_eq!(button_at((419, 129)), Some(Answer::Give));
-        assert_eq!(button_at((420, 129)), None);
-        assert_eq!(button_at((168, 110)), Some(Answer::Keep));
-        assert_eq!(button_at((295, 110)), None, "between them");
-        assert_eq!(button_at((200, 20)), None, "on what is said");
-        assert_eq!(button_at((-1, -1)), None);
+    fn each_button_is_where_it_is_laid_out_and_nowhere_else() {
+        let laid = laid_out(&Theme::default());
+        let [keep, give] = laid.buttons;
+        let (right, bottom) = (give.0 + give.2.cast_signed(), give.1 + give.3.cast_signed());
+        assert_eq!(button_at(&laid, (give.0, give.1)), Some(Answer::Give));
+        assert_eq!(
+            button_at(&laid, (right - 1, bottom - 1)),
+            Some(Answer::Give)
+        );
+        assert_eq!(button_at(&laid, (right, bottom - 1)), None);
+        assert_eq!(button_at(&laid, (keep.0, keep.1)), Some(Answer::Keep));
+        assert_eq!(button_at(&laid, (give.0 - 1, give.1)), None, "between them");
+        assert_eq!(button_at(&laid, (40, 30)), None, "on what is said");
+        assert_eq!(button_at(&laid, (-1, -1)), None);
+        assert!(keep.0 < give.0, "the one that gives last");
     }
 
     #[test]
@@ -1207,8 +1246,15 @@ mod tests {
         let argb =
             |color: Color| u32::from_be_bytes([color.alpha, color.red, color.green, color.blue]);
         // Near the top left corner of each, clear of the label.
-        assert_eq!(canvas.at(304, 100), argb(picked.background));
-        assert_eq!(canvas.at(172, 100), argb(unpicked.background));
-        assert_eq!(canvas.units(), SIZE);
+        let laid = laid_out(&theme);
+        let [keep, give] = laid.buttons;
+        let near = |(left, top, _, _): (i32, i32, u32, u32)| {
+            ((left + 4).unsigned_abs(), (top + 2).unsigned_abs())
+        };
+        let (x, y) = near(give);
+        assert_eq!(canvas.at(x, y), argb(picked.background));
+        let (x, y) = near(keep);
+        assert_eq!(canvas.at(x, y), argb(unpicked.background));
+        assert_eq!(canvas.units(), laid.size);
     }
 }
