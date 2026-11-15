@@ -4366,11 +4366,16 @@ impl Compositor {
                 Some(output.clone())
             });
         }
-        // An application may animate the picture it gave for the pointer.
+        // An application may animate the picture it gave for the pointer,
+        // and that of what it drags, which is drawn where the pointer is.
         if let Look::Surface(surface) = &self.shown
             && here(self.pointer_head())
         {
             shown(surface);
+        }
+        let pointed = here(self.pointer_head());
+        if let Some(icon) = self.hover.dragged.as_ref().filter(|_| pointed) {
+            shown(&icon.surface);
         }
     }
 }

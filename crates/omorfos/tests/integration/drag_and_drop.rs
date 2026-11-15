@@ -60,7 +60,7 @@ fn text_dragged_from_one_application_can_be_dropped_on_another() {
     session.roundtrip(&mut to);
     assert!(to.take_events().contains(&Event::DragEntered));
     assert_eq!(to.state.formats, ["text/plain;charset=utf-8"]);
-    to.accept_drag();
+    to.accept_drag(false);
     session.roundtrip(&mut to);
 
     // Let go there, it is dropped there, and what was dragged arrives.
@@ -80,6 +80,34 @@ fn text_dragged_from_one_application_can_be_dropped_on_another() {
     session.roundtrip(&mut from);
     let told = from.take_events();
     assert!(told.contains(&Event::DropPerformed), "{told:?}");
+    assert!(told.contains(&Event::DragFinished), "{told:?}");
+    assert!(!told.contains(&Event::DragMoves(true)), "copied: {told:?}");
+}
+
+#[test]
+fn what_is_dropped_where_it_is_to_be_moved_is_told_to_its_program_as_moved() {
+    let mut session = Session::new();
+    let (mut from, mut to, window) = side_by_side(&mut session);
+    start_dragging(&mut session, &mut from, &window);
+    move_to(&mut session, 420, 50);
+    session.roundtrip(&mut to);
+    // Taken to be moved, as a file dragged to another folder is.
+    to.accept_drag(true);
+    session.roundtrip(&mut to);
+    button(&mut session, false);
+    session.roundtrip(&mut to);
+    let mut pipe = to.take_drop();
+    session.roundtrip(&mut to);
+    session.roundtrip(&mut from);
+    let mut dropped = String::new();
+    pipe.read_to_string(&mut dropped).unwrap();
+    to.finish_drop();
+    session.roundtrip(&mut to);
+    session.roundtrip(&mut from);
+
+    // Its program is told so, for it to let go of what it moved.
+    let told = from.take_events();
+    assert!(told.contains(&Event::DragMoves(true)), "{told:?}");
     assert!(told.contains(&Event::DragFinished), "{told:?}");
 }
 
@@ -125,6 +153,13 @@ fn what_is_dragged_is_shown_by_its_icon_under_the_pointer_until_it_is_let_go() {
     let picture = session.draw();
     assert_eq!(picture.at(400, 280), GREEN, "moved up and to the left");
     assert_ne!(picture.at(452, 332), GREEN, "and no longer down there");
+    // A picture that moves is told when to draw the next, as a window is.
+    from.take_events();
+    from.request_frame(&icon);
+    session.roundtrip(&mut from);
+    session.send_frames(std::time::Duration::from_millis(16));
+    session.roundtrip(&mut from);
+    assert!(from.take_events().contains(&Event::FrameDone));
     button(&mut session, false);
     session.roundtrip(&mut from);
     assert_ne!(session.draw().at(400, 280), GREEN, "gone once let go");

@@ -837,6 +837,9 @@ pub(crate) enum Event {
     DropPerformed,
     /// What the client dragged has been taken, and the drag is over.
     DragFinished,
+    /// What is done with what the client drags where it is let go, as it
+    /// is now: whether it is moved rather than copied.
+    DragMoves(bool),
     /// What the client dragged was let go where nothing took it, or it
     /// was put on the clipboard and something else has been since.
     SourceCancelled,
@@ -2033,8 +2036,8 @@ impl Client {
 
     /// Starts dragging `text` from `surface`, as an application does when
     /// the pointer is pressed on something and moved: with the serial of
-    /// that press, and to be copied where it is let go; shown by `icon`,
-    /// if there is one, under the pointer.
+    /// that press, and to be copied or moved where it is let go, as is
+    /// asked there; shown by `icon`, if there is one, under the pointer.
     pub(crate) fn drag(
         &mut self,
         surface: &wl_surface::WlSurface,
@@ -2045,17 +2048,23 @@ impl Client {
         let clipboards = self.state.clipboards.as_ref().unwrap();
         let source = clipboards.create_data_source(&self.handle(), ());
         source.offer(TEXT.to_owned());
-        source.set_actions(wl_data_device_manager::DndAction::Copy);
+        let actions = wl_data_device_manager::DndAction::Copy;
+        source.set_actions(actions | wl_data_device_manager::DndAction::Move);
         let device = self.state.data_device.as_ref().unwrap();
         device.start_drag(Some(&source), surface, icon, self.state.pressed);
     }
 
-    /// Takes what is being dragged over it, as text, to copy it.
-    pub(crate) fn accept_drag(&self) {
+    /// Takes what is being dragged over it, as text, to copy it, or to
+    /// move it if `moving`.
+    pub(crate) fn accept_drag(&self, moving: bool) {
         let (offer, serial) = self.state.dragged.as_ref().unwrap();
         offer.accept(*serial, Some(TEXT.to_owned()));
-        let copy = wl_data_device_manager::DndAction::Copy;
-        offer.set_actions(copy, copy);
+        let action = if moving {
+            wl_data_device_manager::DndAction::Move
+        } else {
+            wl_data_device_manager::DndAction::Copy
+        };
+        offer.set_actions(action, action);
     }
 
     /// Asks for what was dropped on it, as text. Returns where it will
@@ -2640,6 +2649,12 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
             }
             wl_data_source::Event::DndDropPerformed => state.events.push(Event::DropPerformed),
             wl_data_source::Event::DndFinished => state.events.push(Event::DragFinished),
+            wl_data_source::Event::Action {
+                dnd_action: WEnum::Value(action),
+            } => {
+                let moves = action == wl_data_device_manager::DndAction::Move;
+                state.events.push(Event::DragMoves(moves));
+            }
             _ => {}
         }
     }

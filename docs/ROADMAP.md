@@ -2000,10 +2000,12 @@ Known gaps carried forward:
       while it drags, where the program has it hang, and gone once it is
       let go: Smithay hands it over and leaves the drawing to the
       compositor, which drew nothing.
-- [ ] Known gaps in dragging and dropping: a picture dragged that moves is
-      not told when to draw its next, as it is not one of a window; no
-      test moves rather than copies; and none drags between a program
-      written for X11 and one written for Wayland.
+- [x] A picture dragged that moves told when to draw its next, as the
+      pointer's is; and what is dropped to be moved, rather than copied,
+      told to its program as moved, which a file manager lets go of what
+      it moved by, tested.
+- [ ] Known gaps in dragging and dropping: no test drags between a
+      program written for X11 and one written for Wayland.
 - [ ] The nested backend has not been run by hand since the event loop
       moved into `Session`.
 - [x] Two tests that failed only sometimes, both mended on 20 October
