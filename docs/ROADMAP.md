@@ -1879,10 +1879,15 @@ usage; there are no manual pages; the guide is `CONFIGURATION.md` alone):
 
 Reviews, and what is still to decide (asked for on 14 November 2026):
 
-- [ ] Whether the `unsafe` there is still has to be: `omorfos-shm` and
+- [ ] Whether the `unsafe` there still has to be: `omorfos-shm` and
       `omorfos-pipewire`, each against the safe ways its dependencies
       offer by then, with the checks of `docs/UPSTREAM.md` run; and each
-      that can go, gone.
+      that can go, gone. Looked at on 15 November 2026: `omorfos-shm` has
+      none since ADR 61, but reaches a program's memory through `/proc`
+      for want of a safe write, asked of Smithay as Smithay#2288; the
+      sixteen blocks of `omorfos-pipewire` all wait on the PipeWire
+      bindings, asked of them as pipewire-rs#124. Open until either
+      answers.
 - [ ] The standards omorfos does not follow, and those it should take
       up: freedesktop.org's and Wayland's, the portals', the
       accessibility ones, the desktop entries' and the icon themes', the
