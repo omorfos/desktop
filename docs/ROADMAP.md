@@ -1903,19 +1903,21 @@ Known gaps carried forward:
       defaults and has no test.
 - [ ] The nested backend has not been run by hand since the event loop
       moved into `Session`.
-- [ ] One branch for programs written for X11 (something asked of a
-      window the compositor does not manage yet) is reached by the tests
-      only by timing, so the coverage gate has been seen to miss it once.
-      A test is to bring it about for certain. Likewise the test of the
-      launcher run by itself has failed a few times in some hundreds of
-      runs: the launcher shows, Enter is pressed, and the program picked
-      is never started. It could not be made to happen again in two
-      hundred and fifty runs with the test saying more, so the test now
-      says what the launcher and the compositor made of it when it does.
-      It did once more, under the coverage run: the launcher had sent its
-      request and ended well, and the compositor had no problem to tell.
-      So the request was sent, and either it was not read or the program
-      started from it never ran.
+- [x] Two tests that failed only sometimes, both mended on 20 October
+      2026 and found so on 15 November: what a program written for X11
+      asks of a window not on the desktop is now waited for until it is
+      heard (`a066bea`), and the region it reaches was covered in each of
+      five coverage runs of `x11::`; and the launcher run by itself waits
+      30 seconds by the clock for the program it starts (`fb49475`), where
+      some five seconds of turns had been too few on a busy runner. Neither
+      has failed in the nightly stress since, some 780 runs of the whole
+      suite, nor in 400 runs of the launcher's, four at a time.
+- [ ] A program the compositor ends by its number, as a keeper retired
+      after a new one takes over or a component that is to be started
+      anew, may have ended already, and its number been given to another
+      process, which is then sent `TERM` instead. Numbers come round only
+      after millions, so it is unlikely, but a pidfd held from the start
+      would make it impossible.
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Waits on:
       people wanting to bring their own, as ours use the IPC socket.
