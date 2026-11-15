@@ -15,7 +15,7 @@ where an entry has none in it. One that needs a terminal is started in
 `foot`.
 
 Each program is shown by its icon and its name, with what it says of
-itself after the name. `config.yaml` can leave either out:
+itself under the name. `config.yaml` can leave either out:
 
 ```yaml
 launcher:
@@ -23,11 +23,12 @@ launcher:
   descriptions: false
 ```
 
-`icons` puts each program's icon before its name. Icons are looked for by
-name in the `hicolor` theme of `~/.local/share/icons` and the system's
-`icons` directories, and in `/usr/share/pixmaps`; PNG and SVG are read.
+`icons` puts each program's icon before its name, as tall as the row's
+two lines. Icons are looked for by name in the `hicolor` theme of
+`~/.local/share/icons` and the system's `icons` directories, and in
+`/usr/share/pixmaps`; PNG and SVG are read.
 Icons a program does not bring itself are taken from `Adwaita`.
-`descriptions` writes what each program says of itself after its name, and
+`descriptions` writes what each program says of itself under its name, and
 has that searched too, after the names. Both take effect the next time the
 launcher is opened.
 

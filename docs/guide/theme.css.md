@@ -271,9 +271,11 @@ launcher-input {
   color: var(--text);
   border-radius: 6px;
 }
+/* A row has two lines: the name, and under it what the program says of
+ * itself, if the launcher shows that; its icon is as tall as both. */
 launcher-item {
-  height: 28px;
-  padding: 0 8px;
+  height: 48px;
+  padding: 6px 8px;
   color: var(--text);
   border-radius: 6px;
 }

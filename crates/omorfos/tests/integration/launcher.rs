@@ -124,7 +124,7 @@ fn row(place: i32) -> (i32, i32) {
     let (left, top) = corner();
     // A border and padding, the text field and the room under it.
     let list = top + 9 + 32 + 8;
-    (left + 400, list + place * 28 + 14)
+    (left + 400, list + place * 48 + 24)
 }
 
 #[test]
@@ -515,13 +515,13 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
     let green = across.clone().filter(|x| picture.at(*x, y) == 0xff00_ff00);
     assert_eq!(
         green.count(),
-        21,
-        "the icon, three quarters of the row across"
+        36,
+        "the icon, as tall as the row's two lines"
     );
-    // Something is written on the row past where the four letters of the
-    // name end, as only what the program says of itself reaches.
-    let beyond = (left + 120..left + 480).flat_map(|x| (y - 6..=y + 6).map(move |y| (x, y)));
-    let written = beyond.filter(|(x, y)| picture.at(*x, *y) != lit());
+    // Something is written in the bottom half of the row, under the name,
+    // as only what the program says of itself is.
+    let under = across.flat_map(|x| (y + 4..y + 18).map(move |y| (x, y)));
+    let written = under.filter(|(x, y)| picture.at(*x, *y) != lit());
     assert!(written.count() > 20, "what it says of itself");
 }
 

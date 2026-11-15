@@ -83,10 +83,12 @@ pub enum Part {
     Launcher,
     /// Where what is being looked for is typed in the launcher.
     LauncherInput,
-    /// A program in the launcher's list. It is [`State::Active`] when it
-    /// is the one that would be started.
+    /// A program in the launcher's list: its name, and under it what it
+    /// says of itself, if that is shown, each in half of the room inside
+    /// its padding, and its icon as tall as both. It is
+    /// [`State::Active`] when it is the one that would be started.
     LauncherItem,
-    /// What a program in the launcher's list says of itself, after its
+    /// What a program in the launcher's list says of itself, under its
     /// name. It is [`State::Active`] with its program.
     LauncherDescription,
     /// The whole of the screen behind the launcher while it is open. Only

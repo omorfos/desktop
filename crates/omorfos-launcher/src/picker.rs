@@ -16,7 +16,7 @@ const ROWS: usize = 8;
 /// The most that can be typed, in characters. No program's name is longer.
 const LONGEST: usize = 64;
 
-/// The room between a program's icon, its name and what it says of itself.
+/// The room between a program's icon and its name.
 const GAP: u32 = 10;
 
 /// The narrowest the launcher is made, whatever the theme says.
@@ -239,11 +239,9 @@ impl Picker {
             canvas.draw_box(area, &style);
             let mut room = inset(area, style.inset());
             if self.show.icons {
-                // A square somewhat shorter than the row, level with the
-                // middle of it.
-                let side = room.3 * 3 / 4;
-                let down = (room.3 - side) / 2;
-                let square = (room.0, room.1.saturating_add_unsigned(down), side, side);
+                // A square as tall as the row's two lines.
+                let side = room.3;
+                let square = (room.0, room.1, side, side);
                 let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
                 if let Some(icon) = icons.get(&app.icon, pixels, style.color) {
                     canvas.draw_image(square, icon);
@@ -251,14 +249,29 @@ impl Picker {
                 room = inset(room, on_the_left(side.saturating_add(GAP)));
             }
             let font = theme.font(Part::LauncherItem, states);
-            text.draw(&mut canvas, &app.name, room, style.color, font);
             if self.show.descriptions {
-                let named = text.measure(&app.name, font).saturating_add(GAP);
-                let rest = inset(room, on_the_left(named.min(room.2)));
+                // The name in the top half, what it says under it.
+                let (left, top, width, height) = room;
+                let half = height / 2;
+                let under = (
+                    left,
+                    top.saturating_add_unsigned(half),
+                    width,
+                    height - half,
+                );
+                text.draw(
+                    &mut canvas,
+                    &app.name,
+                    (left, top, width, half),
+                    style.color,
+                    font,
+                );
                 let said = motion.style(theme, Part::LauncherDescription, key, states);
                 let ink = said.color;
                 let font = theme.font(Part::LauncherDescription, states);
-                text.draw(&mut canvas, &app.description, rest, ink, font);
+                text.draw(&mut canvas, &app.description, under, ink, font);
+            } else {
+                text.draw(&mut canvas, &app.name, room, style.color, font);
             }
         }
         canvas
@@ -565,8 +578,8 @@ mod tests {
     fn the_launcher_is_as_large_as_the_theme_makes_it_whatever_matches() {
         let theme = Theme::default();
         // A border and padding each side, the text field with the room
-        // under it, and eight rows.
-        assert_eq!(Picker::size(&theme), (480, 2 * 13 + 32 + 8 + 8 * 28));
+        // under it, and eight rows, each of two lines.
+        assert_eq!(Picker::size(&theme), (480, 2 * 13 + 32 + 8 + 8 * 48));
         let wide = Theme::parse(
             "launcher { min-width: 600px; padding: 0; border: none; }\n\
              launcher-input { margin: 0; height: 40px; }\n\
@@ -641,17 +654,26 @@ mod tests {
         };
         let mut described = Picker::new(names.iter().map(|name| app(name)).collect(), show);
 
-        // After each name there is more written than without.
-        let y = row(1).1.unsigned_abs();
-        let inked = |picker: &Picker| {
+        // Under each name there is something written, and nothing
+        // without; the name is in the top half of its row with it, and in
+        // the middle without.
+        let (_, middle) = row(1);
+        let layout = Layout::new(&Theme::default());
+        let (left, _, width) = layout.list;
+        let half = layout.pitch.cast_signed() / 2;
+        let inked = |picker: &Picker, lines: std::ops::Range<i32>| {
             let canvas = painted(picker);
-            let surface = canvas.at(canvas.width() - 20, y);
-            let columns = 0..canvas.width();
-            columns
-                .filter(|column| canvas.at(*column, y) != surface)
-                .count()
+            let surface = canvas.at(canvas.width() - 20, middle.unsigned_abs());
+            let columns = left.unsigned_abs()..left.unsigned_abs() + width;
+            let points = columns.flat_map(|x| lines.clone().map(move |y| (x, y)));
+            let inked = points.filter(|(x, y)| canvas.at(*x, y.unsigned_abs()) != surface);
+            inked.count()
         };
-        assert!(inked(&described) > inked(&plain) + 20);
+        let (top, bottom) = (middle - half + 8..middle - 2, middle + 6..middle + half - 6);
+        assert!(inked(&described, bottom.clone()) > 20);
+        assert_eq!(inked(&plain, bottom), 0);
+        assert!(inked(&described, top.clone()) > 20);
+        assert!(inked(&plain, middle - 3..middle + 3) > 20);
 
         // "sort" is in what every one of them says, and in one's name,
         // which comes first.
@@ -682,16 +704,16 @@ mod tests {
             let columns = 0..canvas.width();
             columns.filter(|x| canvas.at(*x, y) == 0xff00_ff00).count()
         };
-        // Files has an icon, three quarters of the row across; Calculator
-        // has none, and room is left where it would be.
-        assert_eq!(green(&canvas, 1), 21);
+        // Files has an icon as tall as the row's two lines; Calculator has
+        // none, and room is left where it would be.
+        assert_eq!(green(&canvas, 1), 36);
         assert_eq!(green(&canvas, 0), 0);
         let layout = Layout::new(&theme);
         let item = theme.style(Part::LauncherItem, States::NONE);
         let start = layout.list.0.unsigned_abs() + item.padding.left;
         let y = row(0).1.unsigned_abs();
         let chosen = lit(&theme);
-        let beside = start..start + 21 + GAP;
+        let beside = start..start + 36 + GAP;
         assert!(beside.clone().all(|x| canvas.at(x, y) == chosen));
 
         // Without icons asked for, none is drawn and the name starts there.
