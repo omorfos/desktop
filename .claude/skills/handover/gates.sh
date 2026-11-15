@@ -175,9 +175,6 @@ card() {
     fi
 }
 
-integration() {
-    cargo test -p omorfos --all-features --locked --test integration -- "$@"
-}
 
 area() {
     local crates=() tests=()
@@ -191,7 +188,8 @@ area() {
         fi
     done
     [ ${#crates[@]} -eq 0 ] || step cargo test --all-features --locked "${crates[@]}"
-    [ ${#tests[@]} -eq 0 ] || step tested integration "${tests[@]}"
+    [ ${#tests[@]} -eq 0 ] ||
+        step tested cargo test -p omorfos --all-features --locked --test integration -- "${tests[@]}"
 }
 
 # What every commit needs, in a few minutes: the checks that are quick,
