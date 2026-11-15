@@ -33,7 +33,10 @@ characters and words as Unicode has them, from `unicode-segmentation`.**
   `Ctrl+X`; and `Super` as `Ctrl` in each, as ADR 78 has it, which is also
   how the compositor hands `Super` on to a field: so a Mac's `Cmd` and an
   arrow, to an end, is not offered, as it would be told from `Ctrl` and an
-  arrow by nothing. A word typed is undone at once, as GTK undoes it. It
+  arrow by nothing. `Super` with Left or Right never comes to the field,
+  being bound by default to the workspace beside: the maintainer kept that
+  on 15 November 2026, and left going by a word to `Ctrl` and `Alt`. A
+  word typed is undone at once, as GTK undoes it. It
   knows nothing of keys or drawing: `omorfos_shell::typing` reads the
   keys, and each component draws it.
 - **`unicode-segmentation`** is already in the tree through cosmic-text,

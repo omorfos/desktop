@@ -16,8 +16,9 @@ as in any text field: Left and Right move the cursor, by a word with
 they go over; Backspace and Delete take out a
 character, or a word with `Ctrl` or `Alt`; `Ctrl+Z` undoes and
 `Ctrl+Shift+Z` does again; `Ctrl+C` copies what is chosen and `Ctrl+X`
-cuts it. `Super` does as `Ctrl` in each. Pasting into it is not there
-yet.
+cuts it. `Super` does as `Ctrl` in each, but with Left or Right, which go
+to the workspace beside, as they do everywhere. Pasting into it is not
+there yet.
 
 The launcher is as tall as what it lists, up to half the height of the
 screen, and the list scrolls past that. Its top stays where it would be

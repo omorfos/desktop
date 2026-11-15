@@ -21,18 +21,9 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- [ ] The launcher's text field, as changed on 15 November 2026: Left and
-      Right, with `Ctrl` or `Alt` by a word, Home and End to an end, Shift
-      choosing as they go; Backspace and Delete, by a
-      word with `Ctrl` or `Alt`; `Ctrl+Z`, `Ctrl+Shift+Z`; `Ctrl+C` and
-      `Ctrl+X` on what is chosen, pasting elsewhere. Not yet: pasting into
-      it, or a click in it.
-- [ ] The launcher's list, as changed on 15 November 2026: the wheel and
-      the touchpad scroll it, a notch a row, without choosing each program
-      on the way; the pointer chooses the one it is over and the list stays
-      where it was scrolled to; the arrows move the chosen one and the
-      list follows it. With nothing matching what is typed, a line under
-      the field says so, in English or Polish.
+Nothing, since 15 November 2026: the launcher's list and text field, the
+welcome card in steps, private windows in the switcher and the overview,
+and pictures of the screen drawn apart from it were tried that day.
 
 ## Where this is going
 
@@ -1432,8 +1423,10 @@ the first than on the last.
       titlebar is back only once it has glided home; the miniatures show
       windows without their frames; a fullscreen window's workspace is not
       in the strip; `Super+Right` while it is open goes along the row of
-      the screen the pointer is on, not the overview's; and three fingers
-      swiped across do nothing while it is open.
+      the screen the pointer is on, not the overview's; three fingers
+      swiped across do nothing while it is open; and a screenshot taken
+      while it is open is of the window with focus, not of the overview,
+      as the maintainer found on 15 November 2026.
 - [x] Night light: the screens warmer after dark (ADR 74), by the day
       and night `scheme: auto` goes by, turning over twenty minutes either
       side, through each screen's gamma table; `night_light` in
@@ -1583,8 +1576,10 @@ to false, as `launcher.sums` is (ADR 83).
       Shift choosing; Backspace and Delete by a word; undo and redo; and
       copying and cutting what is chosen. One field, `omorfos_ui::Field`,
       for the other components to take up.
-- [ ] Known gaps in the text field: pasting, which needs a request of the
-      launcher's to read the clipboard; a click putting the cursor and a
+- [ ] Pasting into the launcher, `Ctrl+V`: the launcher cannot read the
+      clipboard yet, and needs a request of its own to, one that only the
+      launcher may make, and only while it has the keyboard.
+- [ ] Known gaps in the text field: a click putting the cursor and a
       drag choosing; and text wider than the field scrolled along to the
       cursor.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
