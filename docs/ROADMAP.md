@@ -35,6 +35,14 @@ a known gap.
       the switcher (`Alt+Tab`) and notifications show that theme's icons,
       sharp at a scale of 1 and of 2; and the launcher opens as quickly as
       before.
+- [ ] The launcher, as changed on 15 November 2026: `Ctrl+A` and
+      `Super+A` choose all that is typed, drawn on the accent, for the
+      next key to type over or Backspace to take out; the wheel and the
+      touchpad scroll through the programs, a notch a program; and
+      `60 + 60 +` keeps `= 120` shown, to go on from. Whether Enter on an
+      answer, or a click on it, puts it on the clipboard on real hardware:
+      it was said not to, and it does in every test, with
+      `omorfos-clipboard` running too.
 
 ## Where this is going
 
@@ -1536,6 +1544,10 @@ a setting.
 
 ## 6. More of the shell
 
+What the launcher is given to do here comes with a key of its own under
+`launcher` in `config.yaml`, on by default and turned off by setting it
+to false, as `launcher.sums` is (ADR 83).
+
 - [ ] Launchpad (wish 9): every installed program on a full screen, as a
       grid or a list, in pages, arranged by dragging, with folders that
       can be named.
@@ -1549,7 +1561,8 @@ a setting.
       programs to start.
 - [x] Sums in the launcher: what is typed is worked out as it is typed,
       and Enter copies the answer. Worked out by code of ours; nothing
-      typed is ever run. The compositor copies for it (ADR 82).
+      typed is ever run. The compositor copies for it (ADR 82), and
+      `launcher.sums: false` turns it off (ADR 83).
 - [ ] Known gaps in sums: a comma for the decimals, as Polish and German
       write them, and spaces or commas between thousands, are not read;
       nor percentages, functions such as `sqrt`, or `pi`. Nothing says

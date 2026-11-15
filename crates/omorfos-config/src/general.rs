@@ -355,7 +355,8 @@ impl Appearance {
 }
 
 /// The launcher that comes with omorfos: what it shows of each program
-/// besides its name.
+/// besides its name, and what else it does with what is typed. Each is on
+/// unless turned off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
@@ -365,14 +366,19 @@ pub struct Launcher {
     /// Whether what each program says of itself is shown under its name,
     /// and looked through for what is typed.
     pub descriptions: bool,
+    /// Whether a sum typed is worked out as it is typed, its answer above
+    /// the programs to be copied.
+    pub sums: bool,
 }
 
 impl Default for Launcher {
-    /// Both: a name alone says too little of a program not met before.
+    /// All: a name alone says too little of a program not met before, and
+    /// what the launcher can do is there to be found.
     fn default() -> Self {
         Self {
             icons: true,
             descriptions: true,
+            sums: true,
         }
     }
 }
@@ -1330,7 +1336,9 @@ mod tests {
     #[test]
     fn the_launcher_shows_icons_and_descriptions_unless_told_not_to() {
         let launcher = General::default().launcher;
-        assert!(launcher.icons && launcher.descriptions);
+        assert!(launcher.icons && launcher.descriptions && launcher.sums);
+        let launcher = parse("launcher: { sums: false }").unwrap().launcher;
+        assert!(launcher.icons && launcher.descriptions && !launcher.sums);
         let launcher = parse("launcher: { icons: false }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
         let launcher = parse("launcher: { descriptions: false }").unwrap().launcher;

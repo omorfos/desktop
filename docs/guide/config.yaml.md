@@ -63,6 +63,7 @@ night_light:
 launcher:
   icons: true             # show each program's icon
   descriptions: true      # show, and search, what each program says of itself
+  sums: true              # work out a sum typed, its answer to copy
 switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:

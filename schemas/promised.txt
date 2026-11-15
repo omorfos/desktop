@@ -80,6 +80,7 @@ config.yaml keyboard.variant
 config.yaml launcher
 config.yaml launcher.descriptions
 config.yaml launcher.icons
+config.yaml launcher.sums
 config.yaml lock
 config.yaml lock.fingerprint
 config.yaml lock.forget

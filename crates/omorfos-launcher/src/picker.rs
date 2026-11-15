@@ -401,10 +401,11 @@ impl Picker {
     /// begins with it first, then those that have it anywhere in their
     /// name, then, if what programs say of themselves is shown, those that
     /// have it there. Each lot is in the order the programs came in. If it
-    /// is a sum, its answer comes before them all. The first of all is
-    /// chosen.
+    /// is a sum, and sums are worked out, its answer comes before them all.
+    /// The first of all is chosen.
     fn search(&mut self) {
-        let answer = sums::answer(&self.query);
+        let answer = self.show.sums.then(|| sums::answer(&self.query));
+        let answer = answer.flatten();
         self.answer = answer.map(|answer| {
             let shown = format!("= {answer}");
             (answer, shown)
@@ -465,10 +466,12 @@ mod tests {
 
     use super::*;
 
-    /// Names alone, which most of what is tested here is easiest seen in.
+    /// Names alone, which most of what is tested here is easiest seen in,
+    /// with sums worked out.
     const NAMES: Show = Show {
         icons: false,
         descriptions: false,
+        sums: true,
     };
 
     fn app(name: &str) -> App {
@@ -953,6 +956,21 @@ mod tests {
         assert_eq!(picker.query(), "2+");
         assert_eq!(picker.chosen(), None);
         assert_eq!(picker.key(Key::Enter), Outcome::Stay);
+    }
+
+    #[test]
+    fn sums_turned_off_are_looked_for_among_the_programs_as_anything_typed() {
+        let show = Show {
+            sums: false,
+            ..NAMES
+        };
+        let apps = ["Calculator", "Counter 1+1"].map(app).to_vec();
+        let mut picker = Picker::new(apps, show);
+        typed(&mut picker, "1+1");
+        assert_eq!(picker.chosen(), Some("Counter 1+1"));
+        assert_eq!(names_of(&picker), ["Counter 1+1"]);
+        typed(&mut picker, "0");
+        assert_eq!(picker.chosen(), None);
     }
 
     #[test]

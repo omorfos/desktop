@@ -394,7 +394,7 @@
     },
     "Launcher": {
       "additionalProperties": false,
-      "description": "The launcher that comes with omorfos: what it shows of each program\nbesides its name.",
+      "description": "The launcher that comes with omorfos: what it shows of each program\nbesides its name, and what else it does with what is typed. Each is on\nunless turned off.",
       "properties": {
         "descriptions": {
           "default": true,
@@ -404,6 +404,11 @@
         "icons": {
           "default": true,
           "description": "Whether each program's icon is shown beside its name.",
+          "type": "boolean"
+        },
+        "sums": {
+          "default": true,
+          "description": "Whether a sum typed is worked out as it is typed, its answer above\nthe programs to be copied.",
           "type": "boolean"
         }
       },
