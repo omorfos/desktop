@@ -289,6 +289,13 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Wrong:** a buffer of a stream is held, and one is made, only through
   raw pointers (`dequeue_raw_buffer`, `queue_raw_buffer`, `add_buffer`,
   `remove_buffer`), so sharing the screen without copying needs `unsafe`.
+- **Reported:** <https://gitlab.freedesktop.org/pipewire/pipewire-rs/-/work_items/124>,
+  on 15 November 2026, as five changes that together take every
+  `unsafe` block out: a buffer that keeps its stream and can be queued
+  later, `Data::fd` as a `BorrowedFd`, a setter for a chunk's flags,
+  writable cursor metadata with its bitmap, and a safe `add_buffer` that
+  takes the memory's descriptor. The maintainers are asked how they
+  would have the first shaped before it is written.
 - **Meanwhile:** `omorfos-pipewire`, the second place `unsafe` is
   allowed (ADR 41). Wanted soon.
 - **Check:** in the version in `Cargo.lock`,
