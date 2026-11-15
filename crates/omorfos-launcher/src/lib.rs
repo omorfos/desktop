@@ -13,6 +13,7 @@
 
 mod apps;
 mod client;
+mod pasting;
 mod picker;
 
 use std::ffi::OsString;

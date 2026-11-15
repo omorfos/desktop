@@ -651,6 +651,7 @@ impl Shell {
             | Key::Redo
             | Key::Copy
             | Key::Cut
+            | Key::Paste
             | Key::Nothing => {}
         }
     }

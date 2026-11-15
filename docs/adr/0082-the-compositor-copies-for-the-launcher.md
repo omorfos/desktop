@@ -31,6 +31,16 @@ the clipboard as its own, as "About" does.**
   or an entry in a menu that copies fixed text, and one would be a
   promise of `keys.yaml` and `menu.yaml` to keep.
 
+**Pasting goes the other way, through Wayland's own clipboard** (added
+2026-11-15). The compositor offers the clipboard to whichever program
+has the keyboard, and the launcher has it for as long as it is open, so
+it pastes as any program does: it asks the offer for text into a pipe,
+which the program that copied writes into, and reads it as it comes,
+never waiting on it, and no more than 4096 bytes of it. No request of
+its own was needed for it, as the roadmap had thought: who may read the
+clipboard, and when, is already what Wayland says. The fields that ask
+for a secret take no paste, as they give nothing to copy.
+
 ## Alternatives
 
 - **The launcher holding the clipboard**, as `omorfos-screenshot` does.

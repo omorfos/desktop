@@ -7,7 +7,7 @@
 
 use std::error::Error;
 use std::io;
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -22,16 +22,17 @@ use omorfos_ui::{Canvas, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_keyboard,
+    wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
 };
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+use crate::pasting::{self, Pasting};
 use crate::{App, Icons, Key, Numbers, Outcome, Picker};
 
 /// Why the launcher could not go on.
@@ -117,6 +118,7 @@ impl Launcher {
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
         let handled = self.queue.dispatch_pending(&mut self.shell);
         let handled = handled.map(drop).map_err(Failure::from);
+        self.shell.take_paste();
         self.shell.repeat(now);
         // A row on its way to another look is drawn again as it goes.
         self.shell.stale |= self.shell.motion.due(now);
@@ -146,7 +148,14 @@ impl Launcher {
             if self.turn(now)? {
                 return Ok(());
             }
-            let mut sources = [PollFd::new(&self.connection, PollFlags::IN)];
+            // What is being pasted, as it arrives, wakes it too; with
+            // nothing being pasted, the connection is waited on twice.
+            let pasting = self.shell.pasting.as_ref().map(Pasting::source);
+            let pasting = pasting.unwrap_or_else(|| self.connection.as_fd());
+            let mut sources = [
+                PollFd::new(&self.connection, PollFlags::IN),
+                PollFd::new(&pasting, PollFlags::IN),
+            ];
             let longest = self.deadline().map(|due| due.saturating_sub(now));
             let longest = longest.and_then(|longest| Timespec::try_from(longest).ok());
             // A wait that is interrupted is a wake-up like any other, and
@@ -194,6 +203,15 @@ struct Shell {
     scales: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<wl_pointer::WlPointer>,
+    clipboards: Option<wl_data_device_manager::WlDataDeviceManager>,
+    /// What the clipboard is offered to it through, while it has the
+    /// keyboard, as to any program that has it.
+    clipboard: Option<wl_data_device::WlDataDevice>,
+    /// What is on the clipboard, as last offered, with the forms it can be
+    /// had in.
+    copied: Option<wl_data_offer::WlDataOffer>,
+    /// What is being pasted, as far as it has arrived.
+    pasting: Option<Pasting>,
     /// What covers the rest of the screen, so that a click beside the
     /// launcher is the launcher's to hear of.
     backdrop: Option<Backdrop>,
@@ -312,6 +330,10 @@ impl Shell {
             scales: None,
             keyboard: None,
             pointer: None,
+            clipboards: None,
+            clipboard: None,
+            copied: None,
+            pasting: None,
             backdrop: None,
             face: None,
             on_box: false,
@@ -389,6 +411,36 @@ impl Shell {
         self.take(outcome);
     }
 
+    /// Asks for what is on the clipboard, as text, if it can be had so; it
+    /// is typed once it has arrived. Pasting again before then pastes the
+    /// later.
+    fn paste(&mut self) {
+        let copied = self.copied.as_ref();
+        let forms = copied.and_then(|copied| copied.data::<Forms>());
+        let forms = forms.map(Forms::taken).unwrap_or_default();
+        let text = pasting::TEXTS
+            .into_iter()
+            .find(|text| forms.iter().any(|form| form == text));
+        // A pipe that cannot be made is nothing pasted.
+        let piped = copied
+            .zip(text)
+            .and_then(|asked| io::pipe().ok().map(|pipe| (asked, pipe)));
+        let asked = piped.map(|((copied, text), (from, to))| {
+            copied.receive(text.to_owned(), to.as_fd());
+            Pasting::new(from)
+        });
+        self.pasting = asked;
+    }
+
+    /// Types what was pasted once it has all arrived.
+    fn take_paste(&mut self) {
+        let typed = self.pasting.as_mut().and_then(Pasting::take);
+        if let Some(typed) = typed {
+            self.pasting = None;
+            self.take_key(Key::Text(typed));
+        }
+    }
+
     /// Takes in the keyboard layout the compositor sent.
     fn learn_layout(&mut self, layout: OwnedFd, size: u32) {
         self.typing.learn_layout(layout, size);
@@ -461,6 +513,10 @@ impl Shell {
             Typed::Redo => Some(Key::Edit(Edit::Redo)),
             Typed::Copy => Some(Key::Copy),
             Typed::Cut => Some(Key::Cut),
+            Typed::Paste => {
+                self.paste();
+                None
+            }
             Typed::All => Some(Key::All),
             Typed::Up => Some(Key::Up),
             Typed::Down => Some(Key::Down),
@@ -620,6 +676,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Shell {
                 "wl_seat" => {
                     let _: wl_seat::WlSeat = registry.bind(name, version.min(5), handle, ());
                 }
+                "wl_data_device_manager" => {
+                    shell.clipboards = Some(registry.bind(name, version.min(3), handle, ()));
+                }
                 _ => {}
             }
         }
@@ -696,6 +755,12 @@ impl Dispatch<wl_seat::WlSeat, ()> for Shell {
             let pointing = capabilities.contains(wl_seat::Capability::Pointer);
             let pointer = shell.pointer.take();
             shell.pointer = pointer.or_else(|| pointing.then(|| seat.get_pointer(handle, ())));
+            // Announced with the seat, as every global is at the start.
+            let clipboards = shell.clipboards.as_ref();
+            let clipboard = shell.clipboard.take();
+            shell.clipboard = clipboard.or_else(|| {
+                clipboards.map(|clipboards| clipboards.get_data_device(seat, handle, ()))
+            });
         }
     }
 }
@@ -810,7 +875,55 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
     }
 }
 
+/// The forms what is on the clipboard can be had in, as they are offered.
+#[derive(Debug, Default)]
+struct Forms(std::sync::Mutex<Vec<String>>);
+
+impl Forms {
+    /// The forms offered so far.
+    fn taken(&self) -> Vec<String> {
+        self.0.lock().map(|forms| forms.clone()).unwrap_or_default()
+    }
+}
+
+impl Dispatch<wl_data_device::WlDataDevice, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_data_device::WlDataDevice,
+        event: wl_data_device::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Of what is dragged over it, nothing is taken.
+        if let wl_data_device::Event::Selection { id } = event {
+            shell.copied = id;
+        }
+    }
+
+    wayland_client::event_created_child!(Shell, wl_data_device::WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, Forms::default()),
+    ]);
+}
+
+impl Dispatch<wl_data_offer::WlDataOffer, Forms> for Shell {
+    fn event(
+        _: &mut Self,
+        _: &wl_data_offer::WlDataOffer,
+        event: wl_data_offer::Event,
+        forms: &Forms,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_data_offer::Event::Offer { mime_type } = event {
+            // Only this thread ever holds it.
+            let _ = forms.0.lock().map(|mut forms| forms.push(mime_type));
+        }
+    }
+}
+
 delegate_noop!(Shell: wl_compositor::WlCompositor);
+delegate_noop!(Shell: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(Shell: ignore wl_shm::WlShm);
 delegate_noop!(Shell: wl_shm_pool::WlShmPool);
 delegate_noop!(Shell: ignore wl_surface::WlSurface);

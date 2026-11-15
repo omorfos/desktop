@@ -45,6 +45,9 @@ pub enum Key {
     Copy,
     /// Ctrl and X, or Super and X: what is chosen copied and taken out.
     Cut,
+    /// Ctrl and V, or Super and V: what is on the clipboard put in place of
+    /// what is chosen.
+    Paste,
     /// Tab: on to what comes next, as a button.
     Next,
     /// Shift and Tab: back to what came before.
@@ -161,6 +164,7 @@ fn typed(state: &xkb::State, code: u32) -> Key {
         (b'z', true) | (b'y', false) => Some(Key::Redo),
         (b'c', false) => Some(Key::Copy),
         (b'x', false) => Some(Key::Cut),
+        (b'v', false) => Some(Key::Paste),
         _ => None,
     });
     if let Some(found) = found {
@@ -374,14 +378,15 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_or_super_with_z_y_c_or_x_undoes_does_again_copies_or_cuts() {
-        let (key_z, key_y, key_c, key_x, key_b) = (44, 21, 46, 45, 48);
+    fn ctrl_or_super_with_z_y_c_x_or_v_undoes_does_again_copies_cuts_or_pastes() {
+        let (key_z, key_y, key_c, key_x, key_b, key_v) = (44, 21, 46, 45, 48, 47);
         for command in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_LOGO] {
             let held = holding(&[command]);
             assert_eq!(typed(&held, key_z), Key::Undo);
             assert_eq!(typed(&held, key_y), Key::Redo);
             assert_eq!(typed(&held, key_c), Key::Copy);
             assert_eq!(typed(&held, key_x), Key::Cut);
+            assert_eq!(typed(&held, key_v), Key::Paste);
             assert_eq!(typed(&held, key_b), Key::Nothing, "no shortcut");
             let shifted = holding(&[command, xkb::MOD_NAME_SHIFT]);
             assert_eq!(typed(&shifted, key_z), Key::Redo);

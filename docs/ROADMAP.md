@@ -21,6 +21,9 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- Pasting into the launcher (stage 6): text copied in a program, and
+  then `Ctrl+V` in the launcher, in place of what is chosen there; and
+  what the launcher copied itself with `Ctrl+C`, pasted back.
 - The report (stage 8): `omorfosctl report` from a session started by
   the login screen, with a disk mounted under `/media/<you>`, should
   have a section "The journal, this login's" with what the session's
@@ -1608,9 +1611,14 @@ to false, as `launcher.sums` is (ADR 83).
       Shift choosing; Backspace and Delete by a word; undo and redo; and
       copying and cutting what is chosen. One field, `omorfos_ui::Field`,
       for the other components to take up.
-- [ ] Pasting into the launcher, `Ctrl+V`: the launcher cannot read the
-      clipboard yet, and needs a request of its own to, one that only the
-      launcher may make, and only while it has the keyboard.
+- [x] Pasting into the launcher, `Ctrl+V` or `Super+V`: the first line of
+      what is on the clipboard, if it is text, in place of what is chosen.
+      No request of its own was needed, as was thought: the clipboard is
+      offered to whichever program has the keyboard, which is the launcher
+      while it is open, and it pastes through Wayland's own, as any program
+      does (ADR 82). Fields that ask for a secret, on the lock screen and
+      in the boxes that ask for a password, take no paste, as they give
+      nothing to copy.
 - [ ] Known gaps in the text field: a click putting the cursor and a
       drag choosing; and text wider than the field scrolled along to the
       cursor.

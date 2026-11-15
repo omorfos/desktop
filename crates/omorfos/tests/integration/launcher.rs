@@ -21,7 +21,7 @@ use omorfos_launcher::{App, Launcher, Numbers, Picker};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{Event, HEIGHT, Session, WIDTH, between, half_way, key, wait};
+use crate::common::{Client, Event, HEIGHT, Session, WIDTH, between, half_way, key, wait};
 use crate::windows::{BACKGROUND, RED, shaded};
 
 const LEFT: u32 = 0x110;
@@ -37,6 +37,7 @@ const TWO: Keycode = Keycode::new(11);
 const MINUS: Keycode = Keycode::new(20);
 const Z: Keycode = Keycode::new(52);
 const DELETE: Keycode = Keycode::new(119);
+const V: Keycode = Keycode::new(55);
 
 fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
@@ -370,6 +371,131 @@ fn ctrl_a_or_super_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_plac
         session.eventually(|session| mark(session, "lens") == "x");
         assert_eq!(mark(&session, "files"), "");
     }
+}
+
+/// Presses Ctrl and `code` together.
+fn ctrl(session: &mut Session, code: Keycode) {
+    hold(session, key::CONTROL, true);
+    press(session, code);
+    hold(session, key::CONTROL, false);
+}
+
+/// Pastes with Ctrl and V, letting the launcher, the compositor and the
+/// program that copied, if one did, talk until what was pasted has
+/// arrived, and presses Enter.
+fn paste_and_enter(session: &mut Session, launcher: &mut Launcher, from: Option<&mut Client>) {
+    ctrl(session, V);
+    let mut from = from;
+    for _ in 0..20 {
+        launcher.turn(Duration::ZERO).unwrap();
+        session.step();
+        if let Some(from) = from.as_deref_mut() {
+            session.roundtrip(from);
+        }
+    }
+    press(session, key::RETURN);
+    settle(session, launcher);
+}
+
+#[test]
+fn what_is_copied_is_pasted_into_the_launcher_with_ctrl_v_its_first_line_in_place_of_what_is_chosen()
+ {
+    let mut session = Session::new();
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), RED);
+    editor.copy("lens\nand a second line, which is left out");
+    session.roundtrip(&mut editor);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    // "fi" typed and chosen, for what is pasted to take its place.
+    press(&mut session, F);
+    press(&mut session, I);
+    ctrl(&mut session, key::A);
+    paste_and_enter(&mut session, &mut launcher, Some(&mut editor));
+    session.eventually(|session| mark(session, "lens") == "x");
+    assert_eq!(mark(&session, "files"), "");
+}
+
+#[test]
+fn what_the_launcher_copied_itself_is_pasted_back() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    // "fi" copied, which the compositor gives from then on; then "l" typed
+    // in its place, which would start Lens, and "fi" pasted over that.
+    press(&mut session, F);
+    press(&mut session, I);
+    ctrl(&mut session, key::A);
+    ctrl(&mut session, key::C);
+    settle(&mut session, &mut launcher);
+    press(&mut session, L);
+    ctrl(&mut session, key::A);
+    paste_and_enter(&mut session, &mut launcher, None);
+    session.eventually(|session| mark(session, "files") == "x");
+    assert_eq!(mark(&session, "lens"), "");
+}
+
+#[test]
+fn nothing_is_pasted_where_nothing_is_copied_or_nothing_that_is_text() {
+    for copied in [None, Some("image/png")] {
+        let mut session = Session::new();
+        let mut editor = session.connect();
+        session.open(&mut editor, "editor", (200, 100), RED);
+        if let Some(kind) = copied {
+            editor.copy_as("lens", &[kind]);
+            session.roundtrip(&mut editor);
+        }
+        let mut launcher = launcher(&mut session);
+        settle(&mut session, &mut launcher);
+        paste_and_enter(&mut session, &mut launcher, Some(&mut editor));
+        // Nothing typed: the first of them all, as ever.
+        session.eventually(|session| mark(session, "files") == "x");
+        assert_eq!(mark(&session, "lens"), "", "{copied:?}");
+    }
+}
+
+#[test]
+fn of_a_long_copy_only_so_much_is_read() {
+    let mut session = Session::new();
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), RED);
+    // Far more than a launcher holds, and more than is read of it.
+    editor.copy(&format!("lens\n{}", "and on ".repeat(2000)));
+    session.roundtrip(&mut editor);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    paste_and_enter(&mut session, &mut launcher, Some(&mut editor));
+    session.eventually(|session| mark(session, "lens") == "x");
+}
+
+#[test]
+fn what_is_dragged_over_the_launcher_is_not_taken_and_goes_back() {
+    let mut session = Session::new();
+    let mut editor = session.connect();
+    let window = session.open(&mut editor, "editor", (200, 100), RED);
+    // Pressed on the editor's window, which starts dragging from there.
+    let at = |x: f64, y: f64| Input::Motion { x, y };
+    session.compositor_mut().input(at(100.0, 50.0), 0);
+    let left = |pressed| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    session.compositor_mut().input(left(true), 0);
+    session.step();
+    session.roundtrip(&mut editor);
+    editor.drag(&window.surface, "dragged");
+    session.roundtrip(&mut editor);
+
+    // The launcher opens, and what is dragged comes over it.
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    session.compositor_mut().input(at(320.0, 240.0), 0);
+    assert!(!settle(&mut session, &mut launcher));
+    session.compositor_mut().input(left(false), 0);
+    assert!(!settle(&mut session, &mut launcher), "it stays open");
+    session.roundtrip(&mut editor);
+    let told = editor.take_events();
+    assert!(told.contains(&Event::SourceCancelled), "{told:?}");
 }
 
 /// Scrolls by `vertical`, downwards, where the pointer is.
