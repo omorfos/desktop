@@ -2,11 +2,13 @@
 
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+use std::sync::Arc;
 
+use omorfos_ipc::handing::Handing;
 use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -111,7 +113,9 @@ struct State {
     clipboards: Option<ExtDataControlManagerV1>,
     seat: Option<wl_seat::WlSeat>,
     /// The picture held for whatever asks to paste it.
-    held: Vec<u8>,
+    held: Arc<[u8]>,
+    /// The picture on its way to programs that paste it.
+    handing: Handing,
     /// Whether something else has been copied since.
     replaced: bool,
 }
@@ -243,11 +247,13 @@ impl Camera {
         let source = clipboards.create_data_source(&handle, ());
         source.offer("image/png".to_owned());
         device.set_selection(Some(&source));
-        self.state.held = png;
+        self.state.held = Arc::from(png);
         let mut alive = true;
         while alive && !self.state.replaced {
             alive = self.queue.blocking_dispatch(&mut self.state).is_ok();
         }
+        // A program still reading the picture is given the rest of it.
+        self.state.handing.finish();
         Ok(())
     }
 }
@@ -505,9 +511,9 @@ impl Dispatch<ExtDataControlSourceV1, ()> for State {
         // It is asked for the picture, or told that something else has
         // been copied: there is nothing else it is told.
         if let source::Event::Send { fd, .. } = event {
-            // A program that asked and then went away is no trouble of
-            // ours.
-            drop(File::from(fd).write_all(&state.held));
+            // Handed over without waiting on the program that asked, which
+            // may never read it, or have gone (ADR 90).
+            let _ = state.handing.hand(Arc::clone(&state.held), fd);
         } else {
             state.replaced = true;
         }

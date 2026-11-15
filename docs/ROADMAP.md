@@ -35,6 +35,13 @@ a known gap.
   programs said, and no `/media/<you>/...` paths but `/media/(left
   out)`. The log's bound is shown only by a login that says more than
   8 MiB; `session.log` should then begin with the line saying so.
+- Pasting what omorfos itself gives (stage 8), which is now handed over
+  on a thread and through a pipe of its own: what "About" copied and an
+  answer the launcher copied, pasted into a terminal, into an editor
+  and into a program written for X11; something copied in a program
+  that was then closed, which the keeper gives; and a picture
+  `omorfos-screenshot` put on the clipboard, pasted whole into a
+  program that takes pictures.
 
 ## Where this is going
 
@@ -1878,17 +1885,37 @@ Security:
       test to write first. What it found is below, in the order to take
       it; each is a change of its own, and none waits on another. What it
       did not look at is at its end.
-- [ ] The compositor waiting for ever on a pipe a program hands it
+- [x] The compositor waiting for ever on a pipe a program hands it
       ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it)),
-      high: a program with the keyboard that asks for the compositor's own
-      text on the clipboard through a pipe already full freezes the
-      session. `hand_over` is to write without waiting.
+      high: a program with the keyboard that asked for the compositor's
+      own text on the clipboard through a pipe already full froze the
+      session. What a program is handed is now written without waiting
+      on it, by one type, `omorfos_ipc::handing::Handing`, for the
+      compositor, the keeper of the clipboard and the screenshot tool,
+      which had the same write (ADR 90): through a pipe of our own and
+      `splice`, on a thread for each, sixteen at most, for half a minute
+      at most.
 - [ ] A window said to be enormous ending the compositor
       ([finding 2](reviews/2026-11-15-what-a-client-can-cost.md#2-a-window-said-to-be-enormous-ends-the-compositor)),
       high: a titlebar as wide as a window said to be two thousand million
       units across is 224 GB to allocate, and the process is aborted. A
       window's size is to be held to a most where it enters the desktop,
       and a canvas to a most number of pixels.
+- [ ] What fixing the first showed and left open, each small and none a
+      way to stop or end the session as far as was read:
+      - the keeper of the clipboard reads what was copied on a thread
+        for each kind it is offered in, uncounted, each held until the
+        program that copied closes its pipe, and started in a way that
+        panics where a thread cannot be; and reading a paste is written
+        twice, in the launcher and in the keeper. One reader, beside
+        `Handing` in `omorfos-ipc`, bounded as it is
+        ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it));
+      - a program that asks sixteen times each half minute for what is
+        being given, through pipes it does not read, keeps anything else
+        from being handed it for as long: a paste then comes out empty.
+        Whoever gives is not told who asks, so this wants either that,
+        asked of Smithay for the compositor's own text, or one thread
+        that hands everything over in place of one for each (ADR 90).
 - [ ] Any program taking the keyboard with a serial it made up
       ([finding 3](reviews/2026-11-15-what-a-client-can-cost.md#3-any-program-can-take-the-keyboard-with-a-serial-it-made-up)),
       medium: an activation token is honoured for having a serial, not for

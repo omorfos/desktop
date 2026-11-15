@@ -393,6 +393,10 @@ fn paste_and_enter(session: &mut Session, launcher: &mut Launcher, from: Option<
             session.roundtrip(from);
         }
     }
+    // What the compositor copied itself, it hands over on a thread of its
+    // own: the launcher reads it once that is done.
+    session.eventually(|session| session.compositor_mut().handing_over() == 0);
+    settle(session, launcher);
     press(session, key::RETURN);
     settle(session, launcher);
 }

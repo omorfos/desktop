@@ -24,6 +24,7 @@
 
 pub mod actions;
 mod client;
+pub mod handing;
 pub mod help;
 pub mod hold;
 pub mod manual;

@@ -26,6 +26,7 @@ use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Mark, Menu, MenuMetrics, Monitor, Place,
     Screen, Showing, Sign, Standing, System, WindowId, WorkspaceId,
 };
+use omorfos_ipc::handing::Handing;
 use omorfos_ui::{Area, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open, pidfd_send_signal};
@@ -324,6 +325,8 @@ pub struct Compositor {
     /// The clipboard as given to a program that may read and set it at
     /// any time.
     pub(crate) clipboards: DataControlState,
+    /// Text of the compositor's own on its way to programs that paste it.
+    pub(crate) handing: Handing,
     pub(crate) primary_selection: PrimarySelectionState,
     pub(crate) foreign_toplevels: ForeignToplevelListState,
 
@@ -514,6 +517,7 @@ impl Compositor {
                     seal: Seal::default(),
                     protocols: Protocols::offer(&display),
                     clipboards: DataControlState::new::<Self, _>(&display, None, Self::copies),
+                    handing: Handing::default(),
                     x11: X11::new(&display),
                     shm: ShmState::new::<Self>(&display, Vec::new()),
                     gpu_buffers: GpuBuffers::default(),

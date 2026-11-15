@@ -24,9 +24,11 @@ nothing else is copied, and told to programs written for X11 too.
 the clipboard as its own, as "About" does.**
 
 - The text is at most 4096 bytes, `LONGEST_COPY`, and a request for
-  more is refused. A program pasting is handed it in one write, which a
-  pipe takes whole however small it is made, so the compositor is never
-  kept waiting by one.
+  more is refused. A program pasting is handed it without the
+  compositor waiting on it, in the way ADR 90 decides (corrected 2026-11-15:
+  this said that one write of so little is taken whole by a pipe
+  however small it is made, which is so only of a pipe with room, and a
+  program can hand over one that is full).
 - It is a request of the socket, not an action: nothing asked for a key
   or an entry in a menu that copies fixed text, and one would be a
   promise of `keys.yaml` and `menu.yaml` to keep.

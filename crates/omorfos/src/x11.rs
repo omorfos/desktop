@@ -51,7 +51,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use crate::compositor::{Compositor, Mapped, logical_size, set};
-use crate::handlers::{Offer, hand_over};
+use crate::handlers::Offer;
 use crate::input::Wanted;
 use crate::restarts::Restarts;
 use crate::tiles;
@@ -1019,7 +1019,7 @@ impl XwmHandler for Compositor {
                     .as_deref()
                     .cloned();
                 match offer {
-                    Some(Offer::Text(text)) => hand_over(&text, to),
+                    Some(Offer::Text(text)) => self.hand_over(&text, to),
                     _ => {
                         let _ = request_data_device_client_selection(&self.seat, kind, to);
                     }

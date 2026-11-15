@@ -20,8 +20,7 @@
 
 use std::error::Error;
 use std::ffi::OsString;
-use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::os::fd::AsFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +29,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use omorfos_ipc::handing::Handing;
 use omorfos_ipc::help::About;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat};
@@ -363,6 +363,8 @@ struct State {
     /// clipboard is set, for the same.
     kept: Arc<AtomicU64>,
     held: Arc<Mutex<()>>,
+    /// What is kept on its way to programs that paste it.
+    handing: Handing,
 }
 
 impl State {
@@ -454,11 +456,11 @@ impl Dispatch<ExtDataControlSourceV1, Kept> for State {
         _: &QueueHandle<Self>,
     ) {
         if let source::Event::Send { mime_type, fd } = event {
-            // Handed over on a thread of its own, since a program that asks
-            // may take its time reading, or never read at all.
+            // Handed over without waiting on the program that asks, which
+            // may take its time reading, or never read at all (ADR 90).
             let found = kept.iter().find(|(kind, _)| *kind == mime_type);
             let data = found.map(|(_, data)| Arc::clone(data));
-            let _ = data.map(|data| thread::spawn(move || drop(File::from(fd).write_all(&data))));
+            let _ = data.map(|data| state.handing.hand(data, fd));
         } else {
             // Something else has been copied, and what this held is let go,
             // and nothing is to be forgotten of it now. It only ever keeps

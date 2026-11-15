@@ -35,26 +35,30 @@ follows from what was read, and wants a test before it is believed).
 
 ### 1. The compositor waits for ever on a pipe a program hands it
 
-**High. Shown by a test.**
+**High. Shown by a test. Fixed on the day it was found
+([ADR 90](../adr/0090-what-a-program-is-handed-is-written-without-waiting-on-it.md)).**
 
 When the clipboard holds text of the compositor's own, as after "About"
 copies, the launcher copies an answer, or `omorfosctl` asks for a copy,
-a program pasting is written to at once:
-`hand_over` in `crates/omorfos/src/handlers.rs` does
+a program pasting was written to at once:
+`hand_over` in `crates/omorfos/src/handlers.rs` did
 `File::from(to).write_all(text.as_bytes())`, called from
 `SelectionHandler::send_selection` there and from
 `XwmHandler::send_selection` in `crates/omorfos/src/x11.rs`. Its comment
-says the text is shorter than a pipe holds, so the write never waits.
+said the text is shorter than a pipe holds, so the write never waits.
 That holds only for an empty pipe. The descriptor is the program's: one
-that fills its pipe first and then asks for the text has the compositor
-wait in `write` until the pipe is read, which is never. Every screen
-freezes, and no key reaches anything.
+that fills its pipe first and then asks for the text had the compositor
+wait in `write` until the pipe was read, which was never. Every screen
+froze, and no key reached anything.
 
-Any program with the keyboard can do it, as that is whom the clipboard
+Any program with the keyboard could do it, as that is whom the clipboard
 is offered to; and one with the `clipboard` role at any time.
 
-The test, for `crates/omorfos/tests/integration/clipboard.rs`; it hangs
-today, so run it under `timeout`:
+The test is
+`a_program_that_pastes_through_a_pipe_already_full_does_not_stop_the_compositor`
+in `crates/omorfos/tests/integration/clipboard.rs`. As it was first
+written, against the write that waited, it hung, and was run under
+`timeout`:
 
 ```rust
 #[test]
@@ -80,14 +84,42 @@ fn a_pipe_already_full_does_not_stop_the_compositor() {
 }
 ```
 
-To change: `hand_over` sets `O_NONBLOCK` on the descriptor before it
-writes (`rustix::fs::fcntl_setfl`), and writes once. The text is at most
-`LONGEST_COPY`, 4096 bytes, which is `PIPE_BUF`: a pipe takes all of it
-or none, so a pipe with no room gives `EAGAIN` and the program gets
-nothing, as one that has gone does. Hold "About"'s text to the same
-length, which nothing does today. The flag is the program's too, being
-on what the descriptor names; a program that asked for its pipe to be
-written to has no use for a write that waits.
+**What was changed** is not what was first proposed here, which was to
+set `O_NONBLOCK` on the descriptor and write once. That flag is on what
+the descriptor names, which the program holds too: it can take the flag
+off again between its being set and the write, and the write waits as
+before. So nothing rests on the flag. What is handed over goes through
+`omorfos_ipc::handing::Handing`: on a thread for each, sixteen at most;
+into a pipe only; written into a pipe of our own and moved from there
+into the program's with `splice`, told at each move not to wait; and
+given up on after half a minute. ADR 90 has the reasons, and what else
+was weighed.
+
+The same write was in two more programs, which is why it is one type
+now and not a change to `hand_over`. `omorfos-clipboard` wrote what it
+keeps on a thread for each paste, with a write that waits: nothing
+stopped it, but a paste never read held its thread for good, and
+nothing counted the threads. `omorfos-screenshot` wrote its picture
+where it waits to hear that something else has been copied, so a paste
+never read stopped it there, still holding the clipboard. Both hand
+over through `Handing` too.
+
+**Still open**, found while this was fixed, and on the roadmap:
+
+- `ask` in `crates/omorfos-clipboard/src/lib.rs` reads what was copied
+  on a thread for each kind it is offered in, each held until the
+  program that copied closes its pipe, as its comment says, and
+  uncounted; and it starts them with `thread::spawn`, which panics
+  where a thread cannot be started.
+- Reading a paste is written twice, in the launcher (`Pasting`) and in
+  the keeper (`ask`), each with its own bounds. One reader beside
+  `Handing` would hold both to the same.
+- A program can keep all sixteen of a giver's threads busy, asking again
+  each half minute through pipes it does not read. While it does, a
+  paste of what that giver gives comes out empty: of the compositor's
+  own text, or of what the keeper keeps. Nothing else is stopped. Who
+  asks is not told to whoever gives, so they cannot be counted by
+  program (ADR 90).
 
 ### 2. A window said to be enormous ends the compositor
 

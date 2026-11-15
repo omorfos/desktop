@@ -32,8 +32,6 @@ use smithay::wayland::foreign_toplevel_list::{ForeignToplevelListHandler, Foreig
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::selection::ext_data_control::{DataControlHandler, DataControlState};
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
-use std::fs::File;
-use std::io::Write;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use smithay::wayland::selection::primary_selection::{
@@ -579,11 +577,20 @@ pub(crate) const TEXT: [&str; 5] = [
     "STRING",
 ];
 
-/// Writes `text` to `to`, for a program that pastes it. It is far shorter
-/// than a pipe holds, so it is written at once, without waiting on the
-/// program to read it; if it has gone, it gets nothing.
-pub(crate) fn hand_over(text: &str, to: OwnedFd) {
-    let _ = File::from(to).write_all(text.as_bytes());
+impl Compositor {
+    /// Hands `text` of the compositor's own to a program that pastes it,
+    /// through `to`, the pipe the program gave for it, without waiting on
+    /// the program (ADR 90): one that does not read, or gave no pipe, gets
+    /// nothing, as one that has gone does.
+    pub(crate) fn hand_over(&mut self, text: &Arc<str>, to: OwnedFd) {
+        let _ = self.handing.hand(Arc::from(Arc::clone(text)), to);
+    }
+
+    /// How many programs are being handed text of the compositor's own
+    /// just now, each on a thread of its own: for tests, which wait for it.
+    pub fn handing_over(&mut self) -> usize {
+        self.handing.busy()
+    }
 }
 
 impl SelectionHandler for Compositor {
@@ -612,7 +619,7 @@ impl SelectionHandler for Compositor {
         // what is the compositor's own, it writes.
         match offer {
             Offer::X11 => self.send_from_x11(which, kind, to),
-            Offer::Text(text) => hand_over(text, to),
+            Offer::Text(text) => self.hand_over(text, to),
         }
     }
 }

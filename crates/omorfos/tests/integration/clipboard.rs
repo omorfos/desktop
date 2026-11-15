@@ -29,6 +29,51 @@ fn text_copied_in_one_application_can_be_pasted_in_another() {
 }
 
 #[test]
+fn a_program_that_pastes_through_a_pipe_already_full_does_not_stop_the_compositor() {
+    use std::io::Write;
+    use std::os::fd::AsFd;
+
+    use rustix::fs::{OFlags, fcntl_setfl};
+
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    // Text of the compositor's own is on the clipboard, as after a sum is
+    // copied from the launcher.
+    let socket = session.listen();
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let text = "from the compositor".to_owned();
+    let copy = omorfos_ipc::Request::Copy { text: text.clone() };
+    session.ask(&mut peer, &copy);
+    session.roundtrip(&mut client);
+    let offer = client.state.selection.clone().unwrap();
+
+    // The program asks for it through a pipe with no room left, which
+    // waits when it is written to.
+    let (mut reader, mut writer) = std::io::pipe().unwrap();
+    fcntl_setfl(&writer, OFlags::NONBLOCK).unwrap();
+    let mut filled = 0;
+    while let Ok(more) = writer.write(&[b'.'; 4096]) {
+        filled += more;
+    }
+    fcntl_setfl(&writer, OFlags::empty()).unwrap();
+    offer.receive(crate::common::TEXT.to_owned(), writer.as_fd());
+    drop(writer);
+
+    // The compositor goes on, with the program not reading.
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(session.compositor_mut().handing_over(), 1);
+    // And once the program does read, what it asked for is there.
+    let mut read = vec![0; filled];
+    reader.read_exact(&mut read).unwrap();
+    let mut pasted = String::new();
+    reader.read_to_string(&mut pasted).unwrap();
+    assert_eq!(pasted, text);
+    session.eventually(|session| session.compositor_mut().handing_over() == 0);
+}
+
+#[test]
 fn an_application_can_paste_what_it_copied_itself() {
     let mut session = Session::new();
     let mut client = session.connect();
