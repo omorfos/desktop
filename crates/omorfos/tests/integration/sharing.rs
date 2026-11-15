@@ -113,9 +113,12 @@ impl Pipewire {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
+        // Its socket is there a moment before it listens on it, and a
+        // connection made in that moment is refused: it is ready once one
+        // is taken.
         let socket = folder.path().join("pipewire-0");
         for _ in 0..500 {
-            if socket.exists() {
+            if std::os::unix::net::UnixStream::connect(&socket).is_ok() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(5));

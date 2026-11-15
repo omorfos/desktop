@@ -387,6 +387,10 @@ tool that retries.
   Coverage that falls short only sometimes is a test reaching something by
   luck. Where nothing can be waited for, shape the code so that the path
   does not depend on the order.
+- **Ready is when it answers.** A program a test starts, as PipeWire, is
+  ready once it takes a connection, not once its socket is there: the
+  file is made a moment before it is listened on, and a connection in
+  that moment is refused. Wait by connecting.
 - **Stressed before it is handed over.** A change to anything that runs on
   a thread of its own, starts a process, uses a socket or watches a file
   is stressed as above, and the report says how many runs passed.

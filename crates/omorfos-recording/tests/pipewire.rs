@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
 use pipewire as pw;
@@ -48,9 +48,12 @@ impl Pipewire {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
+        // Its socket is there a moment before it listens on it, and a
+        // connection made in that moment is refused: it is ready once one
+        // is taken.
         let socket = folder.path().join("pipewire-0");
         for _ in 0..500 {
-            if socket.exists() {
+            if std::os::unix::net::UnixStream::connect(&socket).is_ok() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(5));
@@ -106,7 +109,10 @@ fn watching(
     socket: PathBuf,
     cameras: &Path,
     stop: Arc<AtomicBool>,
-) -> (Receiver<Vec<String>>, std::thread::JoinHandle<String>) {
+) -> (
+    Receiver<Vec<String>>,
+    Option<std::thread::JoinHandle<String>>,
+) {
     let (to, from) = channel();
     let cameras = cameras.to_owned();
     let watcher = std::thread::spawn(move || {
@@ -120,15 +126,25 @@ fn watching(
         let watched = omorfos_recording::watch(Some(&remote), &cameras, &mut reports, &done);
         watched.map_or_else(|failure| failure.to_string(), |()| "stopped".to_owned())
     });
-    (from, watcher)
+    (from, Some(watcher))
 }
 
-/// The next report that `wanted` picks out, waiting a while for it.
-fn report(from: &Receiver<Vec<String>>, wanted: impl Fn(&[String]) -> bool) -> Vec<String> {
+/// The next report that `wanted` picks out, waiting a while for it; or,
+/// where none comes, what the watcher said as it ended, if it has.
+fn report(
+    from: &Receiver<Vec<String>>,
+    watcher: &mut Option<std::thread::JoinHandle<String>>,
+    wanted: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
     let until = Instant::now() + Duration::from_secs(10);
     loop {
         let left = until.saturating_duration_since(Instant::now());
-        let report = from.recv_timeout(left).unwrap();
+        let report = from.recv_timeout(left);
+        if report == Err(RecvTimeoutError::Disconnected) {
+            let said = watcher.take().map(|watcher| watcher.join().unwrap());
+            assert_eq!(said, None, "no report, as the watcher ended");
+        }
+        let report = report.unwrap();
         if wanted(&report) {
             return report;
         }
@@ -315,9 +331,9 @@ fn what_records_is_said_and_said_again_when_it_stops() {
     let socket = pipewire.socket();
     let finished = Arc::new(AtomicBool::new(false));
     let cameras = tempfile::tempdir().unwrap();
-    let (reports, watcher) = watching(socket.clone(), cameras.path(), Arc::clone(&finished));
+    let (reports, mut watcher) = watching(socket.clone(), cameras.path(), Arc::clone(&finished));
     assert_eq!(
-        report(&reports, |_| true),
+        report(&reports, &mut watcher, |_| true),
         [""; 0],
         "nothing records at first"
     );
@@ -331,17 +347,23 @@ fn what_records_is_said_and_said_again_when_it_stops() {
         format!("screen {me} {me}"),
         format!("sound {me}"),
     ];
-    assert_eq!(report(&reports, |report| report.len() == 4), said);
+    assert_eq!(
+        report(&reports, &mut watcher, |report| report.len() == 4),
+        said
+    );
 
     // When they stop, nothing records.
     recording.store(true, Ordering::Relaxed);
     streams.join().unwrap();
-    assert_eq!(report(&reports, <[String]>::is_empty), [""; 0]);
+    assert_eq!(
+        report(&reports, &mut watcher, <[String]>::is_empty),
+        [""; 0]
+    );
 
     // And when PipeWire goes, there is no more to watch.
     let _ = pipewire.child.kill();
     let _ = pipewire.child.wait();
-    let ended = watcher.join().unwrap();
+    let ended = watcher.unwrap().join().unwrap();
     assert_eq!(ended, "PipeWire has gone");
     finished.store(true, Ordering::Relaxed);
 }
@@ -397,10 +419,10 @@ fn it_watches_until_told_to_stop_and_says_where_there_is_no_pipewire() {
     let stop = Arc::new(AtomicBool::new(false));
     // Nor are cameras where there are none to watch.
     let nowhere = pipewire.socket().with_file_name("no-cameras");
-    let (reports, watcher) = watching(pipewire.socket(), &nowhere, Arc::clone(&stop));
-    report(&reports, |_| true);
+    let (reports, mut watcher) = watching(pipewire.socket(), &nowhere, Arc::clone(&stop));
+    report(&reports, &mut watcher, |_| true);
     stop.store(true, Ordering::Relaxed);
-    assert_eq!(watcher.join().unwrap(), "stopped");
+    assert_eq!(watcher.unwrap().join().unwrap(), "stopped");
 
     // Nor once what it says cannot be written.
     let remote = pipewire.socket().to_str().unwrap().to_owned();
@@ -412,7 +434,7 @@ fn it_watches_until_told_to_stop_and_says_where_there_is_no_pipewire() {
         &nowhere,
         stop,
     );
-    assert_ne!(watcher.join().unwrap(), "stopped");
+    assert_ne!(watcher.unwrap().join().unwrap(), "stopped");
 }
 
 #[test]
@@ -423,30 +445,30 @@ fn a_camera_opened_directly_is_said_of_the_process_that_has_it_open() {
     std::fs::write(folder.join("video0"), "").unwrap();
     std::fs::write(folder.join("media0"), "").unwrap();
     let stop = Arc::new(AtomicBool::new(false));
-    let (reports, watcher) = watching(pipewire.socket(), &folder, Arc::clone(&stop));
+    let (reports, mut watcher) = watching(pipewire.socket(), &folder, Arc::clone(&stop));
     let me = format!("camera {}", std::process::id());
     let mine = |report: &[String]| report.contains(&me);
     assert!(
-        !mine(&report(&reports, |_| true)),
+        !mine(&report(&reports, &mut watcher, |_| true)),
         "nothing records at first"
     );
 
     // What is in the folder but is not a camera is not one.
     let other = File::open(folder.join("media0")).unwrap();
     let camera = File::open(folder.join("video0")).unwrap();
-    assert_eq!(report(&reports, mine), [me.as_str()]);
+    assert_eq!(report(&reports, &mut watcher, mine), [me.as_str()]);
     drop(camera);
-    report(&reports, |report| !mine(report));
+    report(&reports, &mut watcher, |report| !mine(report));
 
     // Nor is a camera that comes later missed.
     std::fs::write(folder.join("video1"), "").unwrap();
     let later = File::open(folder.join("video1")).unwrap();
-    report(&reports, mine);
+    report(&reports, &mut watcher, mine);
     drop((later, other));
-    report(&reports, |report| !mine(report));
+    report(&reports, &mut watcher, |report| !mine(report));
 
     stop.store(true, Ordering::Relaxed);
-    assert_eq!(watcher.join().unwrap(), "stopped");
+    assert_eq!(watcher.unwrap().join().unwrap(), "stopped");
 }
 
 /// Whether the variable `name` tells an instrumented build what to do,
