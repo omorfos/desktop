@@ -303,6 +303,31 @@ fn a_window_of_a_program_written_for_x11_is_a_window_like_any_other() {
 }
 
 #[test]
+fn a_program_written_for_x11_with_nothing_changing_costs_a_turn_nothing_more() {
+    // No more than a window of any other program in a frame of ours: what
+    // it is told is not worked out again, nor is the X server heard from.
+    let (mut session, program) = session();
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    // What the X server and the window had to say has been heard and drawn,
+    // and the turn after that taken.
+    session.eventually(|session| !session.render());
+    session.advance(Duration::from_millis(16));
+    for turn in 0..10 {
+        assert_eq!(session.compositor().deadline(), None, "turn {turn}");
+        let made = allocation_counter::measure(|| {
+            session.advance(Duration::from_millis(16));
+            session.render();
+        });
+        assert!(
+            made.count_total <= crate::quiet::CEILING,
+            "turn {turn} allocated {} times, more than {}",
+            made.count_total,
+            crate::quiet::CEILING
+        );
+    }
+}
+
+#[test]
 fn a_chord_with_super_reaches_a_program_written_for_x11_as_ctrl() {
     let (mut session, program) = session();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
@@ -1446,6 +1471,27 @@ fn programs_written_for_x11_are_told_of_a_new_pointer_though_the_screen_is_as_it
         has(&followed, b":minimize,maximize,close"),
         "and where the buttons of a titlebar stand"
     );
+}
+
+#[test]
+fn programs_written_for_x11_are_not_told_again_of_a_change_that_is_nothing_to_them() {
+    let (mut session, program) = session_with("");
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let before = settings(&mut session, &program);
+
+    // The launcher's sums are nothing to them: the settings are as they
+    // were, down to the number that goes up each time they are sent.
+    session.write_config("config.yaml", "launcher: { sums: false }\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(settings(&mut session, &program), before);
+
+    // Whether things move is something to them.
+    let still = "launcher: { sums: false }\nappearance: { reduce_motion: true }\n";
+    session.write_config("config.yaml", still);
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_ne!(settings(&mut session, &program), before);
 }
 
 #[test]

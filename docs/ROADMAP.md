@@ -1854,15 +1854,21 @@ Hardware and performance:
       nothing changing, a window open, draws nothing, has nothing due to
       wake it, and keeps nothing it allocates, turn after turn; and that
       a turn allocates no more than it does today, 42 times then.
-- [x] `sync` allocating nothing on a turn in which no window came or
-      went: what it builds in is kept from turn to turn, the screens'
-      names are kept rather than copied out of Smithay to work out which
-      comes first, and nothing is put aside for titles when there are
-      none; 22 a turn now.
+- [x] `sync` allocating nothing for a window with no frame of ours on a
+      turn in which no window came or went: what it builds in is kept
+      from turn to turn, the screens' names are kept rather than copied
+      out of Smithay to work out which comes first, and nothing is put
+      aside for titles when there are none.
+- [x] What programs written for X11 are told worked out only when the
+      configuration or the scale has changed, not on every turn to find
+      it the same; a program written for X11 costs a turn with nothing
+      changing no more than any other.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
-      lowered as each goes: 12 in `scale_x11`, which works out again what
-      programs written for X11 are told only to find it the same; 7 in
-      drawing, part of them Smithay's damage tracking; and the rest in
+      lowered as each goes. With one window in a frame of ours, as `quiet::`
+      has it since the X11 work showed the frame was being left out, 34:
+      6 in `sync` painting the frame's titlebar again, which is cached but
+      placed anew; 23 in drawing, the frame, its rounded corners and
+      Smithay's elements for what the program drew; and the rest in
       `reveal`, `update_seal` and Smithay's refreshing of the space, which
       may wait on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept

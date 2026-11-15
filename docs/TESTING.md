@@ -86,8 +86,8 @@ let events = client.take_events();                    // what the client was tol
 
 ### A session with nothing changing
 
-`quiet::` is the third priority as a test: a session with a window open
-and nothing changing draws nothing, has no deadline to wake for, and
+`quiet::` is the third priority as a test: a session with a window open,
+in a frame of ours, and nothing changing draws nothing, has no deadline to wake for, and
 keeps nothing it allocates, turn after turn. What a turn allocates is
 counted on the test's own thread by `allocation-counter`, which is the
 allocator of the integration tests, and is held under a ceiling that only

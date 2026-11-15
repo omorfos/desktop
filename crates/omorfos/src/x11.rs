@@ -13,9 +13,10 @@ use std::fmt::Display;
 use std::io;
 use std::os::fd::OwnedFd;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Cursor, X11Scaling};
+use omorfos_config::{Config, Cursor, X11Scaling};
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Desktop, WindowId};
 use smithay::backend::input::KeyState;
@@ -391,8 +392,8 @@ pub(crate) struct X11 {
     /// When the X server was started again after stopping, lately.
     restarts: Restarts,
     /// What programs written for X11 have been told, once the X server
-    /// could be told.
-    told: Option<Told>,
+    /// could be told, and the configuration it was worked out from.
+    told: Option<(Told, Arc<Config>)>,
     /// An X server that has stopped and is to be replaced, once its window
     /// manager has heard the last of it. It is kept until then because it
     /// holds its number, which the next is to have.
@@ -567,8 +568,21 @@ impl Compositor {
     /// programs look: the settings toolkits follow as they change, and the
     /// resources older programs read once.
     fn scale_x11(&mut self) {
+        if self.x11.wm.is_none() {
+            return;
+        }
         let scale = self.x11_scale();
-        let config = self.config();
+        // Nothing it is worked out from has changed if the scale has not,
+        // nor the configuration, which a reload, or day turning into night,
+        // puts another in the place of.
+        let current = self.store.current();
+        let asked = self.x11.told.as_ref().is_some_and(|(told, from)| {
+            Arc::ptr_eq(from, current) && told.scale.total_cmp(&scale).is_eq()
+        });
+        if asked {
+            return;
+        }
+        let config = Arc::clone(current);
         let told = Told {
             scale,
             cursor: Cursor {
@@ -580,10 +594,13 @@ impl Compositor {
             buttons: config.theme.button_layout(),
             animated: !config.general.appearance.reduce_motion,
         };
-        if self.x11.wm.is_none() || self.x11.told.as_ref() == Some(&told) {
+        // A configuration that changed in something else tells them nothing
+        // new.
+        let same = self.x11.told.as_ref().is_some_and(|(had, _)| *had == told);
+        self.x11.told = Some((told.clone(), Arc::clone(&config)));
+        if same {
             return;
         }
-        self.x11.told = Some(told.clone());
         let Told {
             cursor,
             font,
