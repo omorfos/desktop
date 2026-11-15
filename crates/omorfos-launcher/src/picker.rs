@@ -10,7 +10,8 @@ use serde_json::json;
 
 use crate::{App, Icons, sums};
 
-/// How many programs are listed at once.
+/// How many rows are listed at most until the launcher is told how tall
+/// its screen is.
 const ROWS: usize = 8;
 
 /// The most that can be typed, in characters. No program's name is longer.
@@ -68,6 +69,8 @@ pub struct Picker {
     /// Which of the rows would be taken: the answer's first, if there is
     /// one, then the programs'.
     chosen: usize,
+    /// How many rows are listed at most.
+    room: usize,
 }
 
 /// A row of the launcher's list.
@@ -80,7 +83,11 @@ enum Row<'a> {
 
 /// Where the launcher's boxes are, under a theme.
 struct Layout {
-    whole: Area,
+    /// How wide the launcher is.
+    width: u32,
+    /// How tall it is with no rows: its text field, and its border and
+    /// padding.
+    bare: u32,
     input: Area,
     /// The room the list has: its left, its top and its width.
     list: (i32, i32, u32),
@@ -94,19 +101,25 @@ impl Layout {
         let input = theme.style(Part::LauncherInput, States::NONE);
         let item = theme.style(Part::LauncherItem, States::NONE);
         let pitch = item.height.saturating_add(item.margin.down());
-        let rows = u32::try_from(ROWS).unwrap_or(u32::MAX);
         let field = input.height.saturating_add(input.margin.down());
-        let height = rows.saturating_mul(pitch).saturating_add(field);
-        let height = height.saturating_add(launcher.inset().down());
-        let whole = (0, 0, launcher.min_width.max(NARROWEST), height);
+        let bare = field.saturating_add(launcher.inset().down());
+        let whole = (0, 0, launcher.min_width.max(NARROWEST), bare);
         let (left, top, width, _) = inset(whole, launcher.inset());
         let (x, y, wide, _) = inset((left, top, width, field), input.margin);
         Self {
-            whole,
+            width: whole.2,
+            bare,
             input: (x, y, wide, input.height),
             list: (left, top.saturating_add_unsigned(field), width),
             pitch,
         }
+    }
+
+    /// The whole launcher, with `rows` rows.
+    fn whole(&self, rows: usize) -> Area {
+        let rows = u32::try_from(rows).unwrap_or(u32::MAX);
+        let height = self.bare.saturating_add(rows.saturating_mul(self.pitch));
+        (0, 0, self.width, height)
     }
 
     /// The room for the row that is `place` rows down the list.
@@ -132,15 +145,39 @@ impl Picker {
             answer: None,
             found,
             chosen: 0,
+            room: ROWS,
         }
     }
 
-    /// How large the launcher is under `theme`, in units of layout. It
-    /// does not depend on how many programs match.
+    /// Lists as many rows as fit in half of a screen `height` units tall,
+    /// under `theme`, and one at least.
+    pub fn fit(&mut self, theme: &Theme, height: u32) {
+        let layout = Layout::new(theme);
+        let room = (height / 2).saturating_sub(layout.bare) / layout.pitch.max(1);
+        self.room = usize::try_from(room).unwrap_or(usize::MAX).max(1);
+    }
+
+    /// How large the launcher is under `theme`, in units of layout: as
+    /// tall as the rows it lists, up to as many as it has room for.
     #[must_use]
-    pub fn size(theme: &Theme) -> (u32, u32) {
-        let (_, _, width, height) = Layout::new(theme).whole;
+    pub fn size(&self, theme: &Theme) -> (u32, u32) {
+        let (_, _, width, height) = Layout::new(theme).whole(self.shown());
         (width, height)
+    }
+
+    /// How far from the top of a screen `height` units tall the launcher
+    /// is put: where it would be in the middle with every row it has room
+    /// for, so that the text field stays where it is however many rows
+    /// are listed.
+    #[must_use]
+    pub fn top(&self, theme: &Theme, height: u32) -> u32 {
+        let (_, _, _, tallest) = Layout::new(theme).whole(self.room);
+        height.saturating_sub(tallest) / 2
+    }
+
+    /// How many rows are listed.
+    fn shown(&self) -> usize {
+        self.count().min(self.room)
     }
 
     /// What has been typed.
@@ -238,9 +275,10 @@ impl Picker {
         motion: &mut Motion,
     ) -> Canvas {
         let layout = Layout::new(theme);
-        let (_, _, width, height) = layout.whole;
+        let whole = layout.whole(self.shown());
+        let (_, _, width, height) = whole;
         let mut canvas = Canvas::scaled(width, height, scale);
-        canvas.draw_box(layout.whole, &theme.style(Part::Launcher, States::NONE));
+        canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
 
         let input = theme.style(Part::LauncherInput, States::NONE);
         let font = theme.font(Part::LauncherInput, States::NONE);
@@ -260,7 +298,7 @@ impl Picker {
         );
         canvas.fill(caret, input.color);
 
-        let listed = self.rows().enumerate().skip(self.first()).take(ROWS);
+        let listed = self.rows().enumerate().skip(self.first()).take(self.room);
         for (place, (row, item)) in listed.enumerate() {
             let (name, says, icon) = match item {
                 Row::Answer(_, shown) => (shown, self.query.as_str(), None),
@@ -316,7 +354,7 @@ impl Picker {
     /// The first program listed: the list moves down only as far as it
     /// takes to keep the chosen one in sight.
     fn first(&self) -> usize {
-        (self.chosen + 1).saturating_sub(ROWS)
+        (self.chosen + 1).saturating_sub(self.room)
     }
 
     /// Which of the programs that match is listed at a point, if any is.
@@ -329,7 +367,7 @@ impl Picker {
         let place = inside.and_then(|(_, down)| down.checked_div(layout.pitch));
         let place = place.and_then(|place| usize::try_from(place).ok());
         let row = place
-            .filter(|place| *place < ROWS)
+            .filter(|place| *place < self.room)
             .map(|place| self.first() + place);
         row.filter(|row| *row < self.count())
     }
@@ -620,27 +658,59 @@ mod tests {
     }
 
     #[test]
-    fn the_launcher_is_as_large_as_the_theme_makes_it_whatever_matches() {
+    fn the_launcher_is_as_tall_as_what_it_lists_up_to_half_the_screen() {
         let theme = Theme::default();
-        // A border and padding each side, the text field with the room
-        // under it, and eight rows, each of two lines.
-        assert_eq!(Picker::size(&theme), (480, 2 * 13 + 32 + 8 + 8 * 48));
+        // A border and padding each side, and the text field with the
+        // room under it.
+        let bare = 2 * 13 + 32 + 8;
+        let mut picker = several();
+        // Five rows, each of two lines, with room for nine.
+        picker.fit(&theme, 1080);
+        assert_eq!(picker.size(&theme), (480, bare + 5 * 48));
+        typed(&mut picker, "fi");
+        assert_eq!(picker.size(&theme), (480, bare + 2 * 48));
+        typed(&mut picker, "zzz");
+        assert_eq!(picker.size(&theme), (480, bare), "the field alone");
+        // A smaller screen has room for fewer.
+        let mut picker = several();
+        picker.fit(&theme, 480);
+        assert_eq!(picker.size(&theme), (480, bare + 3 * 48));
+        picker.fit(&theme, 100);
+        assert_eq!(picker.size(&theme), (480, bare + 48), "one at least");
+        // Shorter rows, more of them.
         let wide = Theme::parse(
             "launcher { min-width: 600px; padding: 0; border: none; }\n\
              launcher-input { margin: 0; height: 40px; }\n\
              launcher-item { height: 20px; margin: 1px 0; }",
-        );
-        assert_eq!(Picker::size(&wide.unwrap()), (600, 40 + 8 * 22));
+        )
+        .unwrap();
+        let many: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
+        let mut long = self::picker(&many.iter().map(String::as_str).collect::<Vec<_>>());
+        long.fit(&wide, 480);
+        assert_eq!(long.size(&wide), (600, 40 + 9 * 22));
         let narrow = Theme::parse("launcher { min-width: 10px; }").unwrap();
-        assert_eq!(Picker::size(&narrow).0, NARROWEST);
+        assert_eq!(long.size(&narrow).0, NARROWEST);
 
         let mut picker = several();
         let canvas = painted(&picker);
-        assert_eq!((canvas.width(), canvas.height()), Picker::size(&theme));
+        assert_eq!((canvas.width(), canvas.height()), picker.size(&theme));
         typed(&mut picker, "zzz");
         let canvas = still(&picker, &theme, Scale::new(2.0), &mut Icons::default());
-        let (width, height) = Picker::size(&theme);
+        let (width, height) = picker.size(&theme);
         assert_eq!((canvas.width(), canvas.height()), (width * 2, height * 2));
+    }
+
+    #[test]
+    fn the_launcher_stands_where_it_would_in_the_middle_were_it_full() {
+        let theme = Theme::default();
+        let mut picker = several();
+        picker.fit(&theme, 1080);
+        // Nine rows at most: 498 tall in all.
+        assert_eq!(picker.top(&theme, 1080), (1080 - 498) / 2);
+        typed(&mut picker, "zzz");
+        assert_eq!(picker.top(&theme, 1080), (1080 - 498) / 2, "however few");
+        picker.fit(&theme, 100);
+        assert_eq!(picker.top(&theme, 100), 0, "however small the screen");
     }
 
     #[test]
@@ -658,7 +728,12 @@ mod tests {
         assert_eq!(at(1), lit(&theme));
         assert_eq!(at(0), surface);
         assert_eq!(at(2), surface);
-        assert_eq!(at(6), surface, "no program there");
+        // Nor is there anything where there is no program: the launcher
+        // ends under the last.
+        let (_, last) = row(4);
+        let (_, after) = row(5);
+        assert!(canvas.height() > last.unsigned_abs());
+        assert!(canvas.height() < after.unsigned_abs());
     }
 
     #[test]

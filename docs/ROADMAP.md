@@ -1521,6 +1521,10 @@ a setting.
       nor percentages, functions such as `sqrt`, or `pi`. Nothing says
       on the launcher that Enter copies the answer, as the launcher has
       no messages of its own to translate yet.
+- [ ] Known gaps in the launcher's size: the share of the screen it takes
+      at most, half, is fixed, and is to be a setting of the theme once
+      it is asked for; a launcher wider than its screen is put against the
+      screen's left edge, not in the middle.
 - [ ] Files in the launcher: those in the home directory that are not
       hidden, found by name and opened with the program for their kind.
       Which directories are looked in is a setting, and nothing is kept

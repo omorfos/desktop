@@ -1,11 +1,17 @@
 # The launcher
 
-`Super+Space`, or **Run…** in the root menu, opens the launcher: a box in the
-middle of the screen the pointer is on. Type part of a program's name and
-the list narrows to the programs that have it, those that begin with it
-first. Up and Down choose among them, Enter starts the chosen one, and
-Escape closes the launcher. A click on a program starts it too, and a
-click anywhere beside the launcher closes it.
+`Super+Space`, or **Run…** in the root menu, opens the launcher: a box on
+the screen the pointer is on. Type part of a program's name and the list
+narrows to the programs that have it, those that begin with it first. Up
+and Down choose among them, Enter starts the chosen one, and Escape
+closes the launcher. A click on a program starts it too, and a click
+anywhere beside the launcher closes it.
+
+The launcher is as tall as what it lists, up to half the height of the
+screen, and the list scrolls past that. Its top stays where it would be
+if it stood in the middle of the screen at its tallest, so that the
+field typed in does not move as the list grows and shrinks; with nothing
+matching, it is the field alone.
 
 The programs are those with a desktop entry installed, in
 `~/.local/share/applications` and the system's `applications` directories,

@@ -112,13 +112,17 @@ fn press(session: &mut Session, code: Keycode) {
     }
 }
 
-/// Where on the screen the launcher's top-left corner is: it is centred.
+/// Where on the screen the launcher's top-left corner is: across, it is
+/// in the middle; down, where it would be in the middle with as many rows
+/// as the screen has room for, which is three, as many as the programs
+/// `launcher` offers.
 fn corner() -> (i32, i32) {
-    let (width, height) = Picker::size(&Theme::default());
-    (
-        (WIDTH - width.cast_signed()) / 2,
-        (HEIGHT - height.cast_signed()) / 2,
-    )
+    let theme = Theme::default();
+    let mut picker = Picker::new(Vec::new(), omorfos_config::Launcher::default());
+    picker.fit(&theme, HEIGHT.unsigned_abs());
+    let (width, _) = picker.size(&theme);
+    let top = picker.top(&theme, HEIGHT.unsigned_abs());
+    ((WIDTH - width.cast_signed()) / 2, top.cast_signed())
 }
 
 /// A point on the screen towards the right-hand end of a row of the list,
@@ -168,7 +172,9 @@ fn what_is_typed_reaches_the_launcher_and_enter_starts_the_program() {
     let picture = session.draw();
     let x = row(0).0;
     assert_eq!(picture.at(x, row(1).1), lit());
-    assert_eq!(picture.at(x, row(2).1), surface(), "Lens does not match");
+    // Lens does not match, and the launcher ends above where it would be.
+    let below = picture.at(x, row(2).1);
+    assert!(![surface(), lit()].contains(&below), "{below:#x}");
 
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher), "it is done with");
@@ -187,17 +193,26 @@ fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
     let window = session.open(&mut client, "app", (200, 100), RED);
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
+    // Inside the text field, to the right of anything typed.
+    let (left, top) = corner();
+    let field = (left + 400, top + 13 + 16);
+    let input = Theme::default().style(Part::LauncherInput, States::NONE);
+    let input = argb(input.background);
+    assert_eq!(session.draw().at(field.0, field.1), input);
 
     for code in [FIVE, MINUS, TWO] {
         press(&mut session, code);
     }
     assert!(!settle(&mut session, &mut launcher));
+    // A row now, not three, and the field where it was.
+    assert_eq!(session.draw().at(field.0, field.1), input);
     // The answer's row, chosen, and none of the programs, which do not
-    // match.
+    // match: the launcher ends under it.
     let picture = session.draw();
     let x = row(0).0;
     assert_eq!(picture.at(x, row(0).1), lit());
-    assert_eq!(picture.at(x, row(1).1), surface());
+    let below = picture.at(x, row(1).1);
+    assert!(![surface(), lit()].contains(&below), "{below:#x}");
 
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher), "it is done with");
@@ -572,9 +587,13 @@ fn the_launcher_is_drawn_with_as_many_pixels_as_its_screen_has() {
     settle(&mut session, &mut launcher);
 
     // Twice the size on a screen of the same pixels, it reaches the edges.
+    // The first row is half-way down, and lit; the launcher, wider than
+    // the screen, is put against its left edge, so its padding is there.
     let picture = session.draw();
-    assert_eq!(picture.at(4, HEIGHT / 2), surface());
-    assert_eq!(picture.at(WIDTH - 5, HEIGHT / 2), surface());
+    for x in [4, WIDTH - 5] {
+        let there = picture.at(x, HEIGHT / 2);
+        assert!([surface(), lit()].contains(&there), "{x}: {there:#x}");
+    }
 }
 
 #[test]
@@ -586,7 +605,9 @@ fn the_launcher_is_done_with_when_its_screen_goes() {
     session.compositor_mut().input(Input::Motion { x, y }, 0);
     let mut launcher = launcher(&mut session);
     assert!(!settle(&mut session, &mut launcher));
-    assert_eq!(session.draw_on(1).at(400, 300), surface());
+    // The launcher, whichever row the pointer has chosen there.
+    let there = session.draw_on(1).at(400, 300);
+    assert!([surface(), lit()].contains(&there), "{there:#x}");
 
     session.compositor_mut().remove_output(&other);
 

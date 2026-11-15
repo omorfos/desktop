@@ -277,7 +277,12 @@ impl Backdrop {
 /// The launcher's surface.
 struct Face {
     surface: wl_surface::WlSurface,
+    layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
     viewport: wp_viewport::WpViewport,
+    /// How large it was last asked to be, and how far from the top of
+    /// the screen.
+    size: (u32, u32),
+    top: u32,
     /// Whether the compositor has said the surface may be drawn on.
     ready: bool,
     /// How many pixels the screen has to a unit.
@@ -460,8 +465,16 @@ impl Shell {
             }
         });
         let behind = self.backdrop.insert(backdrop);
+        let screen = behind.size.map(|(_, height)| height);
         let behind = behind.draw(shm, &self.theme, handle);
-        let (width, height) = Picker::size(&self.theme);
+        // Until the backdrop is told how tall the screen is, the box cannot
+        // be told where to stand, nor how many rows it has room for.
+        let Some(screen) = screen else {
+            return behind;
+        };
+        self.picker.fit(&self.theme, screen);
+        let (width, height) = self.picker.size(&self.theme);
+        let top = self.picker.top(&self.theme, screen);
         let face = self.face.take().unwrap_or_else(|| {
             let surface = compositor.create_surface(handle, ());
             // On the screen the compositor chooses, which is the one the
@@ -474,6 +487,13 @@ impl Shell {
                 handle,
                 Which::Box,
             );
+            // Its top stays where it is put, and it grows and shrinks
+            // downwards, so that what is typed does not move; it is put
+            // from the very top of the screen, panels and all, as the
+            // backdrop covers it.
+            layer.set_anchor(zwlr_layer_surface_v1::Anchor::Top);
+            layer.set_exclusive_zone(-1);
+            layer.set_margin(top.cast_signed(), 0, 0, 0);
             layer.set_size(width, height);
             let exclusive = zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive;
             layer.set_keyboard_interactivity(exclusive);
@@ -483,7 +503,10 @@ impl Shell {
             surface.commit();
             Face {
                 surface,
+                layer,
                 viewport,
+                size: (width, height),
+                top,
                 ready: false,
                 scale: Scale::ONE,
                 buffer: None,
@@ -492,6 +515,12 @@ impl Shell {
         let face = self.face.insert(face);
         if !face.ready {
             return behind;
+        }
+        // As many rows as match, and the screen it is on may have changed.
+        if (face.size, face.top) != ((width, height), top) {
+            face.layer.set_size(width, height);
+            face.layer.set_margin(top.cast_signed(), 0, 0, 0);
+            (face.size, face.top) = ((width, height), top);
         }
         let (text, icons) = (&mut self.text, &mut self.icons);
         self.motion.begin(self.now);
