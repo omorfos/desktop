@@ -1,0 +1,15 @@
+[package]
+name = "omorfos-sums"
+description = "Works out sums as they are typed, for the omorfos launcher and calculator"
+keywords = ["calculator", "arithmetic", "expression"]
+categories = ["mathematics", "parsing"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

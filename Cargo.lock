@@ -2074,6 +2074,7 @@ dependencies = [
  "omorfos-icons",
  "omorfos-ipc",
  "omorfos-shell",
+ "omorfos-sums",
  "omorfos-ui",
  "rustix 1.1.6",
  "serde_json",
@@ -2231,6 +2232,10 @@ version = "0.1.0"
 dependencies = [
  "smithay",
 ]
+
+[[package]]
+name = "omorfos-sums"
+version = "0.1.0"
 
 [[package]]
 name = "omorfos-ui"

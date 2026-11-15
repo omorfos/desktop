@@ -10,7 +10,7 @@ use omorfos_ui::field::{Edit, Field, Reach, Way};
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
-use crate::{App, Icons, sums};
+use crate::{App, Icons};
 
 /// How many rows are listed at most until the launcher is told how tall
 /// its screen is.
@@ -482,7 +482,10 @@ impl Picker {
     /// is a sum, and sums are worked out, its answer comes before them all.
     /// The first of all is chosen.
     fn search(&mut self) {
-        let answer = self.show.sums.then(|| sums::answer(self.field.text()));
+        let answer = self
+            .show
+            .sums
+            .then(|| omorfos_sums::answer(self.field.text()));
         let answer = answer.flatten();
         self.answer = answer.map(|answer| {
             let shown = format!("= {answer}");

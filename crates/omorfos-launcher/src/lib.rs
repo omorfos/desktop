@@ -14,7 +14,6 @@
 mod apps;
 mod client;
 mod picker;
-mod sums;
 
 use std::ffi::OsString;
 use std::path::Path;

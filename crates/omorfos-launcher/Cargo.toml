@@ -18,6 +18,7 @@ omorfos-i18n = { path = "../omorfos-i18n" }
 omorfos-icons = { path = "../omorfos-icons" }
 omorfos-ipc = { path = "../omorfos-ipc" }
 omorfos-shell = { path = "../omorfos-shell" }
+omorfos-sums = { path = "../omorfos-sums" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay. Waits for the compositor to say
 # something (`event`).

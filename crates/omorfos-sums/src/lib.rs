@@ -1,4 +1,5 @@
-//! Sums typed into the launcher, worked out as they are typed.
+//! Sums, worked out as they are typed: in the launcher, and in the
+//! calculator that is to come, so that a sum comes out the same in each.
 //!
 //! What is typed is read here and nowhere else: numbers, `+`, `-`, `*` or
 //! `×`, `/` or `÷`, `^` and brackets. Nothing typed is ever run.
@@ -23,7 +24,8 @@ const UNFINISHED: [char; 8] = ['+', '-', '*', '×', '/', '÷', '^', '('];
 /// for an answer. A sum not yet finished, ending in a sign or with a
 /// bracket open, is answered as far as it goes, so that the answer stays
 /// as the next sign is typed: `60 + 60 +` is `120`.
-pub(crate) fn answer(typed: &str) -> Option<String> {
+#[must_use]
+pub fn answer(typed: &str) -> Option<String> {
     whole(typed).or_else(|| {
         let begun = typed.trim_end_matches(|c: char| c.is_whitespace() || UNFINISHED.contains(&c));
         let open = begun.matches('(').count();
