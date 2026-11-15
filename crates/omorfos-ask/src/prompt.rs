@@ -413,12 +413,8 @@ fn paint_buttons(
         ),
     ];
     for (area, label, states) in buttons {
-        let style = theme.style(Part::QuestionButton, states);
-        canvas.draw_box(along(area, by), &style);
-        let font = theme.font(Part::QuestionButton, states);
-        let (left, top, across, down) = along(area, by);
-        let within = (left + 10, top + 6, across - 20, down - 12);
-        text.draw(canvas, label, within, style.color, font);
+        let (style, font) = omorfos_ui::button_look(theme, states);
+        omorfos_ui::button(canvas, text, (&style, font), (label, along(area, by)));
     }
 }
 

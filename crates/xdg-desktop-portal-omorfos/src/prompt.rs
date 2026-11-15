@@ -301,16 +301,10 @@ pub fn paint(
     let (_, warning, give) = question.words();
     text.draw(&mut canvas, warning, line, said.color, font);
     let picked = States::NONE.with(State::Active);
-    let buttons = [
-        (GIVE, give, Part::QuestionButton, picked),
-        (KEEP, "Cancel", Part::QuestionButton, States::NONE),
-    ];
-    for ((left, top, across, down), label, part, states) in buttons {
-        let style = theme.style(part, states);
-        canvas.draw_box((left, top, across, down), &style);
-        let font = theme.font(part, states);
-        let within = (left + 12, top + 6, across - 24, down - 12);
-        text.draw(&mut canvas, label, within, style.color, font);
+    let buttons = [(GIVE, give, picked), (KEEP, "Cancel", States::NONE)];
+    for (area, label, states) in buttons {
+        let (style, font) = omorfos_ui::button_look(theme, states);
+        omorfos_ui::button(&mut canvas, text, (&style, font), (label, area));
     }
     canvas
 }

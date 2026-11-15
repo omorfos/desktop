@@ -28,7 +28,10 @@ const FRAME: u32 = 4;
 const BAR: u32 = 3;
 
 /// How wide each of Back and Next is, and how tall all the buttons are.
-const BUTTON: (u32, u32) = (120, 36);
+/// How wide Back and Next are, alike so that the dots between them stay
+/// where they are as Next becomes Finish; as tall as the theme makes a
+/// question's button.
+const BUTTON: u32 = 120;
 
 /// How large the mark is on the first step.
 const MARK: u32 = 96;
@@ -236,7 +239,10 @@ impl Layout {
         let body = (left, at(pitch), room, ROWS * pitch);
         let problem = (left, at(pitch + ROWS * pitch), room, pitch / 2);
         let foot = pitch + ROWS * pitch + pitch / 2 + GAP;
-        let (wide, tall) = BUTTON;
+        let (wide, tall) = (
+            BUTTON,
+            theme.style(Part::QuestionButton, States::NONE).height,
+        );
         let next = (
             left.saturating_add_unsigned(room - wide),
             at(foot),
@@ -685,11 +691,12 @@ impl Card {
             canvas.draw_box(layout.skip, &ring);
         }
         let mut button = |canvas: &mut Canvas, focus: Focus, area: Area, said: &str| {
-            let states = self.states(focus).when(State::Active, focus == Focus::Next);
-            let style = theme.style(Part::QuestionButton, states);
-            canvas.draw_box(area, &ringed(style, theme, self.focus == focus));
-            let font = theme.font(Part::QuestionButton, states);
-            text.draw_centered(canvas, said, area, style.color, font);
+            let states = self
+                .states(focus)
+                .when(State::Active, focus == Focus::Next)
+                .when(State::Focused, self.focus == focus);
+            let (style, font) = omorfos_ui::button_look(theme, states);
+            omorfos_ui::button(canvas, text, (&style, font), (said, area));
         };
         if self.step > 0 {
             button(canvas, Focus::Back, layout.back, &self.said.back);

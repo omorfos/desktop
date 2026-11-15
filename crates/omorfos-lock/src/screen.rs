@@ -69,10 +69,8 @@ const INITIALS: u32 = 32;
 /// "far", as the design has it.
 const MARGIN: u32 = 24;
 
-/// How tall a power button is, the room inside it beside its label, the
-/// room between two, and below them, in units of layout.
-const BUTTON: u32 = 32;
-const PADDING: u32 = 16;
+/// The room between two power buttons, and below them, in units of
+/// layout; they are as large as the theme makes a question's button.
 const GAP: u32 = 12;
 const BOTTOM: u32 = 24;
 
@@ -879,7 +877,7 @@ fn paint(
     // With the power buttons, in what is left above them.
     let all = CLOCK * 2 + 16 + FACE + 8 + LINE + 12 + FIELD.1;
     let row = if shown.power.0.is_some() {
-        BUTTON + BOTTOM
+        theme.style(Part::QuestionButton, States::NONE).height + BOTTOM
     } else {
         0
     };
@@ -1030,7 +1028,8 @@ fn paint_power(
     let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
     let said = faint(theme.style(Part::Question, States::NONE).color);
     let font = theme.font(Part::Question, States::NONE);
-    let row = height.saturating_sub(BOTTOM + BUTTON).cast_signed();
+    let tall = theme.style(Part::QuestionButton, States::NONE).height;
+    let row = height.saturating_sub(BOTTOM + tall).cast_signed();
     let asked = power.confirming.and_then(Act::question);
     let asked = asked.map(|asked| power.say(asked));
     let failed = Some(power.failed.clone()).filter(|failed| !failed.is_empty());
@@ -1047,14 +1046,13 @@ fn paint_power(
         top += LINE.cast_signed();
     }
     let buttons = power.buttons();
-    let font = theme.font(Part::QuestionButton, States::NONE);
     let labels: Vec<String> = buttons
         .iter()
         .map(|button| power.say(button.label()))
         .collect();
     let wide: Vec<u32> = labels
         .iter()
-        .map(|label| text.measure(label, font) + PADDING * 2)
+        .map(|label| omorfos_ui::button_size(text, theme, label).0)
         .collect();
     let gaps = GAP * u32::try_from(wide.len().saturating_sub(1)).unwrap_or(0);
     let all = wide.iter().sum::<u32>() + gaps;
@@ -1071,13 +1069,11 @@ fn paint_power(
         if focused == Some(button) {
             states = states.with(State::Focused);
         }
-        let style = theme
-            .style(Part::QuestionButton, states)
-            .blended(&Style::NONE, share);
-        let area = (along, row, wide, BUTTON);
-        canvas.draw_box(area, &style);
-        let font = theme.font(Part::QuestionButton, states);
-        text.draw_centered(canvas, label, area, style.color, font);
+        // Faded in as the rest of the screen is.
+        let (style, font) = omorfos_ui::button_look(theme, states);
+        let style = style.blended(&Style::NONE, share);
+        let area = (along, row, wide, tall);
+        omorfos_ui::button(canvas, text, (&style, font), (label, area));
         placed.push((button, area));
         along += (wide + GAP).cast_signed();
     }

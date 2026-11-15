@@ -7,6 +7,7 @@
 //! the window frames beside it.
 
 mod blur;
+mod button;
 mod canvas;
 pub mod field;
 mod glide;
@@ -16,6 +17,7 @@ mod shadow;
 mod tooltip;
 
 pub use blur::Blur;
+pub use button::{button, button_look, button_size};
 pub use canvas::{Area, Canvas, Image, Text, inset};
 pub use field::{Edit, Field};
 pub use glide::Glide;

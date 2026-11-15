@@ -10,7 +10,7 @@
 //! as GNOME's does: whoever walked away from a machine being turned off
 //! did not mean it to stay on.
 
-use omorfos_config::{Part, State, States, Style, Theme};
+use omorfos_config::{Part, State, States, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_i18n::{Value, Words};
 use omorfos_ui::{Area, Canvas};
@@ -35,9 +35,6 @@ const LINE: u32 = 20;
 /// The room between the words and the buttons, and between the buttons.
 const APART: u32 = 16;
 const BETWEEN: u32 = 8;
-/// How tall a button is, and the room either side of its words.
-const BUTTON: u32 = 36;
-const BUTTON_PADDING: u32 = 20;
 
 /// The question whether to start the machine again or turn it off.
 #[derive(Debug, Default)]
@@ -310,7 +307,8 @@ fn paint(
     let mut lines = vec![counting];
     lines.extend(text.wrap(&unsaved, room, detail_font, 3));
     let count = u32::try_from(lines.len()).unwrap_or(u32::MAX);
-    let height = PADDING + QUESTION + count * LINE + APART + BUTTON + PADDING;
+    let (_, button) = omorfos_ui::button_size(text, theme, &going);
+    let height = PADDING + QUESTION + count * LINE + APART + button + PADDING;
     let mut canvas = Canvas::scaled(WIDTH, height, scale);
     canvas.draw_box((0, 0, WIDTH, height), &style);
     let left = PADDING.cast_signed();
@@ -329,44 +327,26 @@ fn paint(
         top += LINE.cast_signed();
     }
     top += APART.cast_signed();
-    // The button that goes on at the end, the one that cancels before it.
-    let states = |choice| States::NONE.when(State::Hovered, hovered == Some(choice));
-    let wide = |choice, said: &str, text: &mut Text| {
-        let font = theme.font(Part::QuestionButton, states(choice));
-        text.measure(said, font) + 2 * BUTTON_PADDING
-    };
-    let going_wide = wide(Choice::GoOn, &going, text);
-    let cancel_wide = wide(Choice::Cancel, &cancel, text);
+    // The button that goes on at the end, the one that cancels before it,
+    // each as the theme sizes it; the one that goes on has the keyboard.
+    let (going_wide, tall) = omorfos_ui::button_size(text, theme, &going);
+    let (cancel_wide, _) = omorfos_ui::button_size(text, theme, &cancel);
     let end = (WIDTH - PADDING).cast_signed();
-    let go_on = (end - going_wide.cast_signed(), top, going_wide, BUTTON);
+    let go_on = (end - going_wide.cast_signed(), top, going_wide, tall);
     let before = go_on.0 - (BETWEEN + cancel_wide).cast_signed();
-    let cancelling = (before, top, cancel_wide, BUTTON);
+    let cancelling = (before, top, cancel_wide, tall);
     let buttons = [
         (Choice::Cancel, cancelling, &cancel),
         (Choice::GoOn, go_on, &going),
     ];
     for (choice, area, said) in buttons {
         let going_on = choice == Choice::GoOn;
-        let states = states(choice).when(State::Active, going_on);
-        let style = theme.style(Part::QuestionButton, states);
-        canvas.draw_box(area, &ringed(style, theme, going_on));
-        let font = theme.font(Part::QuestionButton, states);
-        text.draw_centered(&mut canvas, said, area, style.color, font);
+        let states = States::NONE
+            .when(State::Hovered, hovered == Some(choice))
+            .when(State::Active, going_on)
+            .when(State::Focused, going_on);
+        let (style, font) = omorfos_ui::button_look(theme, states);
+        omorfos_ui::button(&mut canvas, text, (&style, font), (said, area));
     }
     (canvas, (cancelling, go_on))
-}
-
-/// `style`, with the ring round what has the keyboard if `focused`, as the
-/// theme draws it round a question's button.
-fn ringed(style: Style, theme: &Theme, focused: bool) -> Style {
-    let ring = theme.style(Part::QuestionButton, States::NONE.with(State::Focused));
-    if focused {
-        Style {
-            outline: ring.outline,
-            outline_offset: ring.outline_offset,
-            ..style
-        }
-    } else {
-        style
-    }
 }

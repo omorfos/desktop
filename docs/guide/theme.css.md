@@ -378,6 +378,8 @@ question {
 }
 question-detail { color: var(--text-dim); }
 question-button {
+  height: 36px;
+  padding: 0 20px;
   background: var(--surface-dim);
   color: var(--text);
   border-radius: 6px;
