@@ -282,15 +282,57 @@ fn an_empty_workspace_opens_an_empty_overview_and_a_minimized_window_is_in_it() 
     assert_eq!(session.draw().at(x, y), BLUE);
 }
 
+/// Where the title of the window picked is written in the overview, in
+/// the foot of its `place`: well inside the box it is written in.
+fn foot(place: Rect) -> (i32, i32, i32, i32) {
+    let theme = Theme::default();
+    let style = theme.style(Part::OverviewTitle, States::NONE);
+    let font = theme.font(Part::OverviewTitle, States::NONE);
+    let tall = (font.size.get() * 5 / 3 + style.inset().down()).cast_signed();
+    let (left, right) = (
+        place.origin.x + 16,
+        place.origin.x + place.size.width.cast_signed() - 16,
+    );
+    let bottom = place.origin.y + place.size.height.cast_signed() - 8;
+    (left, bottom - tall + 4, right, bottom - 4)
+}
+
 #[test]
-fn a_private_window_is_blank_in_the_overview() {
-    let rules = "rules:\n  - match: { app_id: two }\n    private: true\n";
+fn a_private_window_is_whole_in_the_overview_on_the_screen_and_blank_untitled_in_a_picture() {
+    let rules = "rules:\n  - match: { app_id: three }\n    private: true\n";
     let (mut session, _client) = three(&[UNBLURRED, ("rules.yaml", rules)]);
     open(&mut session);
-    let (x, y) = middle(place(&session, "two"));
+    let picked = shown(&session).and_then(|(_, picked)| picked);
+    assert_eq!(picked.as_deref(), Some("three"));
+    let place = place(&session, "three");
+    let (x, y) = middle(place);
     let blank = Theme::default().style(Part::Capture, States::NONE).ground();
     let blank = u32::from_be_bytes([blank.alpha, blank.red, blank.green, blank.blue]);
-    assert_eq!(session.draw().at(x, y), blank);
+    let screen = session.draw();
+    let shot = crate::capture::photographed(&mut session);
+    assert_eq!(screen.at(x, y), GREEN, "the user sees it");
+    assert!(crate::capture::colours(&screen, foot(place)) > 2, "titled");
+    assert_eq!(shot.at(x, y), blank, "a picture does not");
+    assert_eq!(crate::capture::colours(&shot, foot(place)), 1, "untitled");
+}
+
+#[test]
+fn a_window_private_by_blur_is_untitled_in_a_picture_of_the_overview() {
+    let rules = "rules:\n  - match: { app_id: three }\n    private: blur\n";
+    let (mut session, _client) = three(&[UNBLURRED, ("rules.yaml", rules)]);
+    open(&mut session);
+    let place = place(&session, "three");
+    // Inside the box its title is written in, left of where the title
+    // begins: the box's own colour where it is drawn.
+    let (left, top, _, bottom) = foot(place);
+    let (x, y) = (left - 4, i32::midpoint(top, bottom));
+    let surface = Theme::default()
+        .style(Part::OverviewTitle, States::NONE)
+        .background;
+    let surface = u32::from_be_bytes([surface.alpha, surface.red, surface.green, surface.blue]);
+    assert_eq!(session.draw().at(x, y), surface, "titled on the screen");
+    let shot = crate::capture::photographed(&mut session);
+    assert_ne!(shot.at(x, y), surface, "untitled in a picture");
 }
 
 #[test]
@@ -487,7 +529,7 @@ fn the_screen_behind_is_blurred_unless_the_theme_says_not() {
 }
 
 #[test]
-fn a_private_window_is_blank_on_its_workspace_in_the_strip_too() {
+fn a_private_window_is_whole_on_its_workspace_in_the_strip_on_the_screen_and_blank_in_a_picture() {
     let mut session = Session::with_workspaces();
     let rules = "rules:\n  - match: { app_id: private }\n    private: true\n";
     session.write_config("rules.yaml", rules);
@@ -508,7 +550,9 @@ fn a_private_window_is_blank_on_its_workspace_in_the_strip_too() {
     let (x, y) = middle(frame);
     let x = first.origin.x + x * first.size.width.cast_signed() / WIDTH;
     let y = first.origin.y + y * first.size.width.cast_signed() / WIDTH;
-    assert_eq!(session.draw().at(x, y), 0xffff_00ff);
+    assert_eq!(session.draw().at(x, y), RED, "whole on the screen");
+    let shot = crate::capture::photographed(&mut session);
+    assert_eq!(shot.at(x, y), 0xffff_00ff, "blank in a picture");
     // Each window it shows is kept drawing as on the screen.
     session.send_frames(Duration::from_millis(16));
 }
@@ -557,14 +601,21 @@ fn private_in(session: &Session, on: Rect) -> (i32, i32) {
 fn a_window_private_by_blur_is_blurred_laid_out_and_on_a_workspace_not_shown() {
     let rules = "rules:\n  - match: { app_id: private }\n    private: blur\n";
     let (mut session, _client) = private_window(rules);
-    // Laid out, where its edge is, blurred.
+    // Laid out, where its edge is, blurred in a picture and sharp on the
+    // screen.
     open(&mut session);
     let edge = middle(place(&session, "private"));
-    let frame = session.draw();
+    let frame = crate::capture::photographed(&mut session);
     assert!(
         apart(&frame, edge, 2) < 0x20,
         "sharp laid out: {:#x}",
         apart(&frame, edge, 2)
+    );
+    let screen = session.draw();
+    assert!(
+        apart(&screen, edge, 2) > 0x80,
+        "blurred laid out on the screen: {:#x}",
+        apart(&screen, edge, 2)
     );
     session.compositor_mut().perform(&Action::Overview);
     session.advance(GLIDE);
@@ -576,11 +627,17 @@ fn a_window_private_by_blur_is_blurred_laid_out_and_on_a_workspace_not_shown() {
     let (first, shown) = overviewed.workspaces[0];
     assert!(!shown);
     let edge = private_in(&session, first);
-    let frame = session.draw();
+    let frame = crate::capture::photographed(&mut session);
     assert!(
         apart(&frame, edge, 2) < 0x20,
         "sharp in the strip: {:#x}",
         apart(&frame, edge, 2)
+    );
+    let screen = session.draw();
+    assert!(
+        apart(&screen, edge, 2) > 0x80,
+        "blurred in the strip on the screen: {:#x}",
+        apart(&screen, edge, 2)
     );
 }
 
@@ -594,9 +651,11 @@ fn a_window_private_by_blank_is_blank_on_a_workspace_not_shown() {
     let overviewed = session.compositor().overview_layout().unwrap();
     let (first, _) = overviewed.workspaces[0];
     let (x, y) = private_in(&session, first);
-    let frame = session.draw();
+    let frame = crate::capture::photographed(&mut session);
+    let screen = session.draw();
     for x in [x - 3, x, x + 3] {
         assert_eq!(frame.at(x, y), 0xffff_00ff, "at {x}");
+        assert_ne!(screen.at(x, y), 0xffff_00ff, "on the screen at {x}");
     }
 }
 

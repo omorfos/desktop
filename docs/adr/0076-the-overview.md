@@ -10,7 +10,9 @@ workspaces, to come after the switcher (ADR 75), as GNOME's: the windows
 laid out small side by side, to pick one from with the pointer or the
 keys, and the workspaces along the top, to go to another. ADR 38 had
 already said it is the compositor's to draw, as the switcher is, and that
-a private window is shown in it as it is in pictures of the screen.
+a private window is shown in it as it is in pictures of the screen (in
+pictures of the screen only, and there without its title: on the screen
+it is shown whole, ADR 84).
 
 ## Decision
 

@@ -76,7 +76,8 @@ A rule can say a window is private:
 
 A private window is shown as its icon and title wherever a picture
 would be, in the switcher, in previews and in the overview, and is left
-blank in any capture of the screen. A program can say the same of its
+blank in any capture of the screen. (In pictures of the screen only, and
+there without its title: on the screen it is shown whole, ADR 84.) A program can say the same of its
 own window where a protocol for it exists.
 
 ## Alternatives

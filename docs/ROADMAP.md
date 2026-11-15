@@ -1415,6 +1415,14 @@ the first than on the last.
 - [x] A private window in the switcher as its rule has it in pictures:
       blurred with `private: blur`, and blank otherwise, in the `capture`
       part's colour.
+- [x] A private window whole in the switcher and the overview on the
+      screen, and in pictures of the screen blank or blurred without its
+      title (ADR 84).
+- [ ] A private window offered in a part of a workspace with nothing in
+      it shown whole on the screen too, and without its title in a
+      picture, as in the switcher (ADR 84): it is blank on the screen
+      still, and its title is in pictures of the screen, which it should
+      not be.
 - [ ] Known gaps in the switcher on a diagonal: the borders further back
       are thinner, being drawn smaller; a theme's `box-shadow` on
       `switcher-window` is not drawn; the pictures are not rounded at the

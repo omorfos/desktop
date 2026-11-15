@@ -61,8 +61,10 @@ window is where and how it moves, not only how it looks.
   before it has turned takes it on from where it has got to, but no more
   than two windows behind the keys, so that Tab held down does not send
   it spinning. With `appearance.reduce_motion`, it stands at once.
-- **A private window is shown as in pictures of the screen**, as the
-  switcher is drawn onto it and so into them: blank, in the `capture`
+- **A private window is shown as in pictures of the screen** (in
+  pictures of the screen only, and there without its title: on the
+  screen it is shown whole, ADR 84), as the switcher is drawn onto it and
+  so into them: blank, in the `capture`
   part's background, with its icon large in the middle; or, if its rule
   says `private: blur`, its picture under glass that blurs it as much as
   in pictures (32 units), blank where glass cannot blur. The glass is

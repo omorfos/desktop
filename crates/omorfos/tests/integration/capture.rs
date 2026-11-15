@@ -69,6 +69,30 @@ fn picture(file: &File) -> Picture {
     Picture::read(file, WIDTH)
 }
 
+/// A picture of the whole screen, as a program that may take one is given
+/// it.
+pub(crate) fn photographed(session: &mut Session) -> Picture {
+    let mut camera = camera(session);
+    let taking = camera.capture(0, false);
+    snap(session, &mut camera, &taking).0
+}
+
+/// How many colours there are in `picture` from `left`, `top` to before
+/// `right`, `bottom`: one where nothing is written, more where anything
+/// is.
+pub(crate) fn colours(
+    picture: &Picture,
+    (left, top, right, bottom): (i32, i32, i32, i32),
+) -> usize {
+    let mut seen: Vec<u32> = (top..bottom)
+        .flat_map(|y| (left..right).map(move |x| (x, y)))
+        .map(|(x, y)| picture.at(x, y))
+        .collect();
+    seen.sort_unstable();
+    seen.dedup();
+    seen.len()
+}
+
 #[test]
 fn a_program_that_may_is_given_what_the_screen_shows() {
     let mut session = Session::new();

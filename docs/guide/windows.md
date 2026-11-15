@@ -59,10 +59,12 @@ The order stands still while the switcher is open: a window passed over
 on the way has not been used. Each window's icon is beside its title:
 the one its program gives it, or else the one its application is
 installed with (the `Icon` of its desktop entry, or the icon named as
-its `app_id` is). A window a rule says is `private` is shown as it is
-in pictures of the screen: blank, in the background colour of the
-`capture` part, with its icon large in the middle; or, with `private:
-blur`, its picture blurred, and blank where blur cannot be drawn. How the switcher looks is `switcher`,
+its `app_id` is). A window a rule says is `private` is shown to you as
+any other is; in a picture of the screen, as a call or a recording has
+it, it is blank, in the background colour of the `capture` part, with
+its icon large in the middle and no title; or, with `private: blur`, its
+picture blurred, and blank where blur cannot be drawn, with no title.
+How the switcher looks is `switcher`,
 `switcher-item` (the one picked is `:active`, and `min-width` is how wide
 each is in rows) and `switcher-title` in `theme.css`. On a diagonal,
 `switcher` is the box under the queue that the title is in, and each
@@ -110,7 +112,8 @@ its wallpaper and its windows where they stand, the one shown in the
 accent. Point at one and it is lit; click it and the overview shows its
 windows, which glide in from where they are. The plus after the last
 makes a new workspace and goes to it, empty, for windows to come. A
-private window is blank or blurred, as in pictures of the screen.
+private window is shown to you as any other is; in a picture of the
+screen it is blank or blurred, as its rule says, without its title.
 
 How it looks is `overview-window` (the border round the window picked,
 `:active`), `overview-title`, `overview-workspace` (the one shown is

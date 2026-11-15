@@ -297,8 +297,25 @@ fn each_window_is_shown_small_in_its_place_and_the_one_picked_is_set_apart() {
     press(&mut session, key::ALT, false);
 }
 
+/// The colour a private window is blank in, in a picture of the screen.
+fn blank(theme: &Theme) -> u32 {
+    let blank = theme.style(Part::Capture, States::NONE).ground();
+    u32::from_be_bytes([blank.alpha, blank.red, blank.green, blank.blue])
+}
+
+/// Where the title of the window in a row's `place` is written, after its
+/// icon.
+fn title_in(place: Rect, theme: &Theme) -> (i32, i32, i32, i32) {
+    let inset = theme.style(Part::SwitcherItem, States::NONE).inset();
+    let tall = theme.font(Part::SwitcherTitle, States::NONE).size.get() * 5 / 3;
+    let left = place.origin.x + (inset.left + tall + 8).cast_signed();
+    let right = place.origin.x + (place.size.width - inset.right).cast_signed();
+    let bottom = place.origin.y + (place.size.height - inset.bottom).cast_signed();
+    (left, bottom - tall.cast_signed(), right, bottom)
+}
+
 #[test]
-fn a_private_window_is_shown_by_its_title_and_not_its_picture() {
+fn a_private_window_is_whole_on_the_screen_and_in_a_picture_neither_shown_nor_named() {
     let rules = "rules:\n  - match: { app_id: two }\n    private: true\n";
     let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
     let mut client = session.connect();
@@ -306,18 +323,52 @@ fn a_private_window_is_shown_by_its_title_and_not_its_picture() {
     session.open(&mut client, "two", (200, 100), BLUE);
     alt_tab(&mut session, 1, false);
     let layout = session.compositor().switcher_layout().unwrap();
-    let frame = session.draw();
     let theme = Theme::default();
-    let colours: Vec<u32> = layout
-        .items
-        .iter()
-        .map(|item| {
-            let (x, y) = picture(item.place, &theme);
-            frame.at(x, y)
-        })
-        .collect();
-    assert_eq!(colours[1], RED, "the other is shown");
-    assert_ne!(colours[0], BLUE, "the private one is not");
+    let (two, one) = (layout.items[0].place, layout.items[1].place);
+    let screen = session.draw();
+    let shot = crate::capture::photographed(&mut session);
+    let at = |frame: &crate::common::Picture, place| {
+        let (x, y) = picture(place, &theme);
+        frame.at(x, y)
+    };
+    let written = |frame, place| crate::capture::colours(frame, title_in(place, &theme)) > 1;
+    assert_eq!(at(&screen, two), BLUE, "the user sees the private one");
+    assert!(written(&screen, two), "and its title");
+    assert_eq!(at(&shot, two), blank(&theme), "a picture does not");
+    assert!(!written(&shot, two), "nor its title");
+    assert_eq!(at(&shot, one), RED, "but the other");
+    assert!(written(&shot, one), "and its title");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_window_whose_title_comes_to_make_it_private_is_hidden_in_the_next_picture() {
+    let rules = "rules:\n  - match: { title: '*Bank*' }\n    private: true\n";
+    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
+    let mut client = session.connect();
+    let browser = session.open(&mut client, "browser", (200, 100), BLUE);
+    session.open(&mut client, "notes", (200, 100), RED);
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let theme = Theme::default();
+    // Second, the notes having been used since.
+    let place = layout.items[1].place;
+    let shown = |session: &mut Session| {
+        let shot = crate::capture::photographed(session);
+        let (x, y) = picture(place, &theme);
+        (
+            shot.at(x, y),
+            crate::capture::colours(&shot, title_in(place, &theme)) > 1,
+        )
+    };
+    assert_eq!(shown(&mut session), (BLUE, true), "not private yet");
+    browser.role.set_title("My Bank".to_owned());
+    session.roundtrip(&mut client);
+    assert_eq!(shown(&mut session), (blank(&theme), false), "private now");
+    browser.role.set_title("News".to_owned());
+    session.roundtrip(&mut client);
+    assert_eq!(shown(&mut session), (BLUE, true), "and no longer");
+    press(&mut session, key::ALT, false);
 }
 
 #[test]
@@ -512,13 +563,19 @@ fn beside_title(place: Rect, theme: &Theme) -> (i32, i32) {
 
 /// The colours where each window's icon goes beside its title, and where
 /// its picture goes, in the order the switcher shows them.
+fn icons_shown(session: &mut Session) -> Vec<(u32, u32)> {
+    let frame = session.draw();
+    icons_in(session, &frame)
+}
+
+/// The colours where each window's icon goes beside its title, and where
+/// its picture goes, in `frame`, in the order the switcher shows them.
 #[expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
 )]
-fn icons_shown(session: &mut Session) -> Vec<(u32, u32)> {
+fn icons_in(session: &Session, frame: &crate::common::Picture) -> Vec<(u32, u32)> {
     let layout = session.compositor().switcher_layout().unwrap();
-    let frame = session.draw();
     let theme = Theme::default();
     let at = |(x, y)| frame.at(x, y);
     let places = layout.items.iter().map(|item| item.place);
@@ -677,7 +734,7 @@ fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused(
 }
 
 #[test]
-fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
+fn in_a_picture_a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
     let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
@@ -691,6 +748,13 @@ fn a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     session.roundtrip(&mut client);
     alt_tab(&mut session, 1, false);
     let shown = icons_shown(&mut session);
+    assert_eq!(
+        shown,
+        [(MAGENTA, BLUE), (YELLOW, RED)],
+        "whole on the screen"
+    );
+    let shot = crate::capture::photographed(&mut session);
+    let shown = icons_in(&session, &shot);
     assert_eq!(shown, [(MAGENTA, MAGENTA), (YELLOW, YELLOW)]);
     press(&mut session, key::ALT, false);
 }
@@ -855,8 +919,20 @@ fn beside_queued_title(area: Rect, theme: &Theme) -> (i32, i32) {
     (x, y)
 }
 
+/// Where the title of the window picked is written in the box under the
+/// queue, `area`, after its icon.
+fn queued_title(area: Rect, theme: &Theme) -> (i32, i32, i32, i32) {
+    let inset = theme.style(Part::Switcher, States::NONE).inset();
+    let font = theme.font(Part::SwitcherTitle, States::NONE.with(State::Active));
+    let tall = font.size.get() * 5 / 3;
+    let left = area.origin.x + (inset.left + tall + 8).cast_signed();
+    let right = area.origin.x + (area.size.width - inset.right).cast_signed();
+    let top = area.origin.y + inset.top.cast_signed();
+    (left, top, right, top + tall.cast_signed())
+}
+
 #[test]
-fn in_the_queue_a_private_window_is_shown_by_its_icon_large_and_beside_its_title() {
+fn in_the_queue_a_private_window_is_whole_on_the_screen_and_in_a_picture_an_icon_untitled() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
     let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
@@ -869,20 +945,34 @@ fn in_the_queue_a_private_window_is_shown_by_its_icon_large_and_beside_its_title
     client.set_icon(&two, None, Some((32, MAGENTA)));
     session.roundtrip(&mut client);
     let theme = Theme::default();
+    // The colour in the middle of the window in front, beside the title,
+    // and whether the title is written, on the screen and in a picture.
     let seen = |session: &mut Session| {
         let layout = session.compositor().switcher_layout().unwrap();
-        let frame = session.draw();
         let (x, y) = middle(layout.items[0].place);
         let (beside_x, beside_y) = beside_queued_title(layout.area, &theme);
-        (frame.at(x, y), frame.at(beside_x, beside_y))
+        let title = queued_title(layout.area, &theme);
+        let screen = session.draw();
+        let shot = crate::capture::photographed(session);
+        let seen = |frame: &crate::common::Picture| {
+            let written = crate::capture::colours(frame, title) > 1;
+            (frame.at(x, y), frame.at(beside_x, beside_y), written)
+        };
+        (seen(&screen), seen(&shot))
     };
     // The icon of its application, painted, and the one its program gave,
     // drawn by the renderer.
     alt_tab(&mut session, 1, false);
-    assert_eq!(seen(&mut session), (YELLOW, YELLOW));
+    assert_eq!(
+        seen(&mut session),
+        ((RED, YELLOW, true), (YELLOW, YELLOW, false))
+    );
     tap(&mut session, key::TAB);
     session.advance(std::time::Duration::from_millis(300));
-    assert_eq!(seen(&mut session), (MAGENTA, MAGENTA));
+    assert_eq!(
+        seen(&mut session),
+        ((BLUE, MAGENTA, true), (MAGENTA, MAGENTA, false))
+    );
     press(&mut session, key::ALT, false);
 }
 
@@ -1023,10 +1113,12 @@ fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_
         session.step();
         drop(session.draw());
         let before = session.compositor().blurs();
-        // Two is picked, and blank; one is blurred.
+        // Two is picked, and blank; one is blurred: in a picture of the
+        // screen. On the screen, two is as it is.
         alt_tab(&mut session, 1, false);
         let layout = session.compositor().switcher_layout().unwrap();
-        let frame = session.draw();
+        let screen = session.draw();
+        let frame = crate::capture::photographed(&mut session);
         assert!(session.compositor().blurs() > before, "{style:?}");
         let theme = Theme::default();
         let place = |name: &str| {
@@ -1056,6 +1148,21 @@ fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_
             middle(place("two"))
         };
         assert_eq!(frame.at(x, y), blank, "the blank of two, {style:?}");
+        assert_eq!(screen.at(x, y), BLUE, "two on the screen, {style:?}");
+        if style == FLAT {
+            // One blurred, but its title left out of the picture all the
+            // same.
+            let title = title_in(place("one"), &theme);
+            assert!(
+                crate::capture::colours(&screen, title) > 1,
+                "titled on the screen"
+            );
+            assert_eq!(
+                crate::capture::colours(&frame, title),
+                1,
+                "untitled in a picture"
+            );
+        }
         press(&mut session, key::ALT, false);
     }
 }
@@ -1122,10 +1229,15 @@ fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front()
     let place = back.place;
     let edge = place.origin.x + place.size.width.cast_signed() / 2;
     let y = place.origin.y + 6;
-    let frame = session.draw();
-    let green = |x: i32| i32::try_from((frame.at(x, y) >> 8) & 0xff).unwrap_or_default();
-    let apart = (green(edge + 6) - green(edge - 6)).abs();
-    // Seen through as much as it is, unblurred it is 0x3e apart.
-    assert!(apart < 0x10, "the edge is sharp: {apart:#x}");
+    let apart = |frame: &crate::common::Picture| {
+        let green = |x: i32| i32::try_from((frame.at(x, y) >> 8) & 0xff).unwrap_or_default();
+        (green(edge + 6) - green(edge - 6)).abs()
+    };
+    // Seen through as much as it is, unblurred it is 0x3e apart, as it is
+    // on the screen.
+    let screen = apart(&session.draw());
+    assert!(screen > 0x30, "the edge is soft on the screen: {screen:#x}");
+    let shot = apart(&crate::capture::photographed(&mut session));
+    assert!(shot < 0x10, "the edge is sharp in a picture: {shot:#x}");
     press(&mut session, key::ALT, false);
 }

@@ -33,7 +33,8 @@ long as the window matches: a window whose title comes to match is
 private from then on, and one whose title no longer does is not. A
 private window is left blank in any picture a program takes of the
 screen, titlebar and all, and so is a window that shares its frame as a
-tab. You see it as ever.
+tab, there and in the switcher and the overview, which show no title
+for it in a picture either. You see it as ever, in them too.
 
 `private: blur` has the window blurred in pictures instead, frame and
 all, so that someone you share your screen with can see that a window is

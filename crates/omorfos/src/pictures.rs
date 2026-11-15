@@ -1,7 +1,7 @@
 //! Windows drawn small, in the switcher and the overview (ADR 38): each
-//! window's picture as large as fits where it goes, no larger than it is,
-//! and a private window as it is in pictures of the screen, blank or under
-//! glass that blurs it.
+//! window's picture as large as fits where it goes, no larger than it is;
+//! a private window whole on the screen, and in pictures of the screen as
+//! it is in them, blank or under glass that blurs it (ADR 84).
 
 use smithay::backend::renderer::element::AsRenderElements as _;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -86,23 +86,23 @@ where
 }
 
 impl Compositor {
-    /// Whether `window` is shown blank where it is pictured small, as in
-    /// pictures of the screen: private, and not to be blurred.
+    /// Whether `window` is shown blank where it is pictured small in a
+    /// picture of the screen: private, and not to be blurred.
     pub(crate) fn blank(&self, window: WindowId) -> bool {
         self.desktop.private(window) && !self.desktop.blurred(window)
     }
 
     /// Adds `window`'s picture, as large as fits in `room` and as
-    /// see-through as `opacity` says: under glass that blurs it, and is
-    /// blank where glass cannot, if a rule says it is private but to be
-    /// blurred, as in pictures of the screen; and not at all if it is to be
-    /// blank, or is not there.
+    /// see-through as `opacity` says, as it is on the `screen` itself; in a
+    /// picture of the screen, under glass that blurs it, and is blank where
+    /// glass cannot, if a rule says it is private but to be blurred; and
+    /// not at all if it is to be blank. Nothing if it is not there.
     pub(crate) fn picture_elements<R>(
         &self,
         renderer: &mut R,
         window: (WindowId, f32),
         room: Exact,
-        view: View,
+        view: (View, bool),
         drawn: (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -121,13 +121,18 @@ impl Compositor {
         renderer: &mut R,
         (window, opacity): (WindowId, f32),
         (room, within, place): (Exact, Exact, usize),
-        view: View,
+        (view, screen): (View, bool),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let Some(mapped) = self.mapped(window).filter(|_| !self.blank(window)) else {
+        // On the screen, a private window is seen whole by the user it
+        // belongs to, as it is where it stands; only a picture of the
+        // screen keeps it from whoever else sees that.
+        let hidden = !screen;
+        let shown = self.mapped(window);
+        let Some(mapped) = shown.filter(|_| !(hidden && self.blank(window))) else {
             return;
         };
         let picture = fitted(shape(mapped), room);
@@ -150,7 +155,7 @@ impl Compositor {
         let backdrop =
             self.backdrop_within(&mapped.surface, placed, Some(&[bounds]), behind, place + 1);
         panes.extend(backdrop);
-        if self.desktop.blurred(window) {
+        if hidden && self.desktop.blurred(window) {
             let blank = self
                 .config()
                 .theme

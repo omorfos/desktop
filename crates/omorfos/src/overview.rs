@@ -723,11 +723,14 @@ impl Compositor {
     /// Adds the overview, on the screen it is on: over each window's
     /// picture, the border of the one picked and its title, and under them
     /// all the dim and blur of the screen, each as open as the overview is.
+    /// A private window is shown as any other on the `screen` itself, to
+    /// the user it belongs to; in a picture of the screen, blank or blurred
+    /// as its rule says, and without its title.
     pub(crate) fn overview_elements<R>(
         &self,
         renderer: &mut R,
         output: &Output,
-        view: View,
+        (view, screen): (View, bool),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -764,11 +767,14 @@ impl Compositor {
                 .as_ref()
                 .filter(|picked| picked.window == card.window);
             if let Some(picked) = picked {
-                picked_elements(renderer, (picked, card), theme, (view, open), elements);
+                let titled = screen || !self.desktop.private(card.window);
+                let picked = (picked, card, titled);
+                picked_elements(renderer, picked, theme, (view, open), elements);
             }
             let blanks = &self.cards.overview.blanks;
             let blank = blanks
                 .iter()
+                .filter(|_| !screen)
                 .find(|(blank, _)| *blank == (None, card.window));
             let solid = blank.map(|(_, blank)| {
                 let at = view.pixel(Point::<f64, Logical>::from((card.now.0, card.now.1)));
@@ -777,7 +783,8 @@ impl Compositor {
             });
             elements.extend(solid.map(Element::Solid));
             let window = (card.window, card.seen);
-            self.picture_elements(renderer, window, card.now, view, (elements, panes));
+            let pass = (view, screen);
+            self.picture_elements(renderer, window, card.now, pass, (elements, panes));
         }
         for (at, (rect, index, _, shown)) in self.strip(looking).into_iter().enumerate() {
             let place = (at, index, shown, looking.hovered == Some(at));
@@ -785,7 +792,7 @@ impl Compositor {
             self.miniature_elements(
                 renderer,
                 (drawn, place, miniature),
-                (view, open),
+                (view, open, screen),
                 (elements, panes),
             );
         }
@@ -824,7 +831,9 @@ impl Compositor {
     /// Adds a workspace in the overview's strip, `rect` on `screen`, its
     /// place among `output`'s workspaces `index`, as open as `open`: its
     /// border, lit if it is `shown` or `hovered`, over its windows where
-    /// they stand on it, over its wallpaper, over the desktop's colour.
+    /// they stand on it, as they are on the screen itself or in pictures of
+    /// it as `on_screen` says, over its wallpaper, over the desktop's
+    /// colour.
     #[expect(
         clippy::type_complexity,
         reason = "what is drawn, where, and how, each a few things"
@@ -837,7 +846,7 @@ impl Compositor {
             (usize, usize, bool, bool),
             (&Output, Rect, Rect),
         ),
-        (view, open): (View, f32),
+        (view, open, on_screen): (View, f32, bool),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -858,6 +867,7 @@ impl Compositor {
         for (window, room) in self.miniature_windows(looking, (index, shown), place) {
             let blank = blanks
                 .iter()
+                .filter(|_| !on_screen)
                 .find(|(blank, _)| *blank == (Some(strip_at), window));
             let solid = blank.map(|(_, blank)| {
                 let at = within(room, place);
@@ -866,8 +876,8 @@ impl Compositor {
                 SolidColorRenderElement::from_buffer(blank, at, scale, open, Kind::Unspecified)
             });
             elements.extend(solid.map(Element::Solid));
-            let rooms = (room, place, strip_at + 1);
-            self.picture_within(renderer, (window, open), rooms, view, (elements, panes));
+            let (rooms, pass) = ((room, place, strip_at + 1), (view, on_screen));
+            self.picture_within(renderer, (window, open), rooms, pass, (elements, panes));
         }
         // Its wallpaper, as the screen's is, cut to it.
         let layers = layer_map_for_output(output);
@@ -1048,11 +1058,11 @@ impl Compositor {
 }
 
 /// Adds the border round the window picked in the overview, `card`, and
-/// its title inside its foot, as `picked` has them painted, where it is
-/// drawn now and as open as the overview is.
+/// its title inside its foot if it is `titled`, as `picked` has them
+/// painted, where it is drawn now and as open as the overview is.
 fn picked_elements<R>(
     renderer: &mut R,
-    (picked, card): (&Picked, &Card),
+    (picked, card, titled): (&Picked, &Card, bool),
     theme: &omorfos_config::Theme,
     (view, open): (View, f32),
     elements: &mut Vec<Element<R>>,
@@ -1070,11 +1080,9 @@ fn picked_elements<R>(
     let label = Point::<f64, Logical>::from((left + inside, top + down - inside - tall));
     let wide = whole(2.0f64.mul_add(-inside, across)).max(1);
     let size = (wide, whole(tall).max(1));
-    elements.extend(
-        picked
-            .label
-            .stretched(renderer, (label, size.into()), view, open),
-    );
+    let label = (label, size.into());
+    let label = titled.then(|| picked.label.stretched(renderer, label, view, open));
+    elements.extend(label.into_iter().flatten());
     let ring = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
     let size = (
         whole(across + out(edges.left) + out(edges.right)),

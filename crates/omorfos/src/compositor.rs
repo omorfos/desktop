@@ -227,7 +227,8 @@ struct Extras {
     pointer: bool,
     /// The mark that says the screen is being captured, which is also to
     /// say that this is what the user sees and not a picture for a
-    /// program: in a picture, windows that are private are left blank.
+    /// program: in a picture, windows that are private are left blank,
+    /// there and in the switcher and the overview.
     mark: bool,
 }
 
@@ -3563,8 +3564,11 @@ impl Compositor {
                 notice.elements(renderer, view, seen.opacity, drawn);
             });
         }
-        self.switcher_elements(renderer, output, view, (&mut elements, &mut panes));
-        self.overview_elements(renderer, output, view, (&mut elements, &mut panes));
+        // A private window in them is shown whole on the screen, which is
+        // the user's, and not in pictures of it (ADR 84).
+        let seen = (view, shown.mark);
+        self.switcher_elements(renderer, output, seen, (&mut elements, &mut panes));
+        self.overview_elements(renderer, output, seen, (&mut elements, &mut panes));
         if let Some(chrome) = &self.menu_chrome {
             let seen = self.animation.menu_seen;
             let drawn = (&mut elements, &mut panes);
@@ -5456,8 +5460,8 @@ impl Protocols {
 
 /// Something the compositor painted: its pixels, and the size it stands for
 /// on screen. The two differ by the scale it was painted at, at which it is
-/// drawn pixel for pixel.
-#[derive(Debug)]
+/// drawn pixel for pixel. A copy shares the pixels.
+#[derive(Debug, Clone)]
 pub(crate) struct Painted {
     pixels: MemoryRenderBuffer,
     /// The size on screen, in units of layout.
