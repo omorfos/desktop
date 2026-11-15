@@ -8,7 +8,7 @@ use omorfos_ipc::Request;
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
-use crate::{App, Icons};
+use crate::{App, Icons, sums};
 
 /// How many programs are listed at once.
 const ROWS: usize = 8;
@@ -46,23 +46,36 @@ pub enum Outcome {
     Stay,
     /// The launcher is done with and nothing is started.
     Close,
-    /// The compositor is asked for this, which starts the program, and the
-    /// launcher is done with.
+    /// The compositor is asked for this, which starts the program or copies
+    /// the answer, and the launcher is done with.
     Start(Request),
 }
 
-/// The launcher's state: the programs there are, what has been typed, and
-/// which of those that match is chosen.
+/// The launcher's state: the programs there are, what has been typed, the
+/// answer to it if it is a sum, and which of the answer and the programs
+/// that match is chosen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Picker {
     apps: Vec<App>,
     /// What is shown of each program besides its name.
     show: Show,
     query: String,
+    /// The answer to what has been typed, if it is a sum, and how it is
+    /// written on its row.
+    answer: Option<(String, String)>,
     /// The programs that match, best first, as places in `apps`.
     found: Vec<usize>,
-    /// Which of `found` would be started.
+    /// Which of the rows would be taken: the answer's first, if there is
+    /// one, then the programs'.
     chosen: usize,
+}
+
+/// A row of the launcher's list.
+enum Row<'a> {
+    /// The answer to a sum, to copy: as it is copied, and as it is shown.
+    Answer(&'a str, &'a str),
+    /// A program to start.
+    App(&'a App),
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -116,6 +129,7 @@ impl Picker {
             apps,
             show,
             query: String::new(),
+            answer: None,
             found,
             chosen: 0,
         }
@@ -146,10 +160,27 @@ impl Picker {
         self.found.iter().filter_map(|place| self.apps.get(*place))
     }
 
-    /// The name of the program that would be started, if any matches.
+    /// The rows of the list: the answer, if there is one, then the
+    /// programs that match.
+    fn rows(&self) -> impl Iterator<Item = Row<'_>> {
+        let answer = self.answer.iter();
+        let answer = answer.map(|(copied, shown)| Row::Answer(copied, shown));
+        answer.chain(self.listed().map(Row::App))
+    }
+
+    /// How many rows the list has.
+    fn count(&self) -> usize {
+        usize::from(self.answer.is_some()) + self.found.len()
+    }
+
+    /// The name of the program that would be started, or the answer that
+    /// would be copied, if there is either.
     #[must_use]
     pub fn chosen(&self) -> Option<&str> {
-        self.matches().nth(self.chosen)
+        self.rows().nth(self.chosen).map(|row| match row {
+            Row::Answer(answer, _) => answer,
+            Row::App(app) => app.name.as_str(),
+        })
     }
 
     /// Takes a key.
@@ -167,7 +198,7 @@ impl Picker {
             }
             Key::Up => self.chosen = self.chosen.saturating_sub(1),
             Key::Down => {
-                let last = self.found.len().saturating_sub(1);
+                let last = self.count().saturating_sub(1);
                 self.chosen = (self.chosen + 1).min(last);
             }
             Key::Enter => return self.start(),
@@ -229,8 +260,12 @@ impl Picker {
         );
         canvas.fill(caret, input.color);
 
-        let listed = self.listed().enumerate().skip(self.first()).take(ROWS);
-        for (place, (row, app)) in listed.enumerate() {
+        let listed = self.rows().enumerate().skip(self.first()).take(ROWS);
+        for (place, (row, item)) in listed.enumerate() {
+            let (name, says, icon) = match item {
+                Row::Answer(_, shown) => (shown, self.query.as_str(), None),
+                Row::App(app) => (app.name.as_str(), app.description.as_str(), Some(&app.icon)),
+            };
             let states = States::NONE.when(State::Active, row == self.chosen);
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
@@ -243,7 +278,8 @@ impl Picker {
                 let side = room.3;
                 let square = (room.0, room.1, side, side);
                 let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
-                if let Some(icon) = icons.get(&app.icon, pixels, style.color) {
+                let icon = icon.and_then(|icon| icons.get(icon, pixels, style.color));
+                if let Some(icon) = icon {
                     canvas.draw_image(square, icon);
                 }
                 room = inset(room, on_the_left(side.saturating_add(GAP)));
@@ -261,7 +297,7 @@ impl Picker {
                 );
                 text.draw(
                     &mut canvas,
-                    &app.name,
+                    name,
                     (left, top, width, half),
                     style.color,
                     font,
@@ -269,9 +305,9 @@ impl Picker {
                 let said = motion.style(theme, Part::LauncherDescription, key, states);
                 let ink = said.color;
                 let font = theme.font(Part::LauncherDescription, states);
-                text.draw(&mut canvas, &app.description, under, ink, font);
+                text.draw(&mut canvas, says, under, ink, font);
             } else {
-                text.draw(&mut canvas, &app.name, room, style.color, font);
+                text.draw(&mut canvas, name, room, style.color, font);
             }
         }
         canvas
@@ -295,15 +331,21 @@ impl Picker {
         let row = place
             .filter(|place| *place < ROWS)
             .map(|place| self.first() + place);
-        row.filter(|row| *row < self.found.len())
+        row.filter(|row| *row < self.count())
     }
 
     /// Finds the programs that match what has been typed: those whose name
     /// begins with it first, then those that have it anywhere in their
     /// name, then, if what programs say of themselves is shown, those that
-    /// have it there. Each lot is in the order the programs came in. The
-    /// first of all is chosen.
+    /// have it there. Each lot is in the order the programs came in. If it
+    /// is a sum, its answer comes before them all. The first of all is
+    /// chosen.
     fn search(&mut self) {
+        let answer = sums::answer(&self.query);
+        self.answer = answer.map(|answer| {
+            let shown = format!("= {answer}");
+            (answer, shown)
+        });
         let query = self.query.to_lowercase();
         let described = self.show.descriptions;
         // How well each program matches: the lower the better.
@@ -322,24 +364,27 @@ impl Picker {
         self.chosen = 0;
     }
 
-    /// Asks for the chosen program to be started, if there is one.
+    /// Asks for the chosen program to be started, or the chosen answer to
+    /// be copied, if there is either.
     fn start(&self) -> Outcome {
-        let app = self
-            .found
-            .get(self.chosen)
-            .and_then(|place| self.apps.get(*place));
-        app.map_or(Outcome::Stay, |app| {
-            // One that needs a terminal is started in the one the built-in
-            // bindings start.
-            let terminal = app.terminal.then(Command::terminal);
-            let terminal = terminal.iter().map(Command::program);
-            let command: Vec<&str> = terminal
-                .chain(app.command.iter().map(String::as_str))
-                .collect();
-            Outcome::Start(Request::Perform {
-                action: json!({ "spawn": command }),
-            })
-        })
+        match self.rows().nth(self.chosen) {
+            Some(Row::Answer(answer, _)) => Outcome::Start(Request::Copy {
+                text: answer.to_owned(),
+            }),
+            Some(Row::App(app)) => {
+                // One that needs a terminal is started in the one the
+                // built-in bindings start.
+                let terminal = app.terminal.then(Command::terminal);
+                let terminal = terminal.iter().map(Command::program);
+                let command: Vec<&str> = terminal
+                    .chain(app.command.iter().map(String::as_str))
+                    .collect();
+                Outcome::Start(Request::Perform {
+                    action: json!({ "spawn": command }),
+                })
+            }
+            None => Outcome::Stay,
+        }
     }
 }
 
@@ -721,6 +766,98 @@ mod tests {
         let canvas = still(&without, &theme, Scale::ONE, &mut icons);
         assert_eq!(green(&canvas, 1), 0);
         assert!(beside.into_iter().any(|x| canvas.at(x, y) != chosen));
+    }
+
+    fn copy(text: &str) -> Outcome {
+        Outcome::Start(Request::Copy {
+            text: text.to_owned(),
+        })
+    }
+
+    #[test]
+    fn a_sum_is_answered_above_the_programs_and_enter_copies_the_answer() {
+        let mut picker = picker(&["Calculator", "Counter 2"]);
+        typed(&mut picker, "2");
+        assert_eq!(picker.chosen(), Some("Counter 2"), "a number alone");
+        typed(&mut picker, "+2");
+        assert_eq!(picker.chosen(), Some("4"));
+        assert_eq!(names_of(&picker), [""; 0], "no program is named so");
+        assert_eq!(picker.key(Key::Enter), copy("4"));
+        // The answer changes as the sum is typed, and goes once it is no
+        // longer a sum.
+        typed(&mut picker, "*3");
+        assert_eq!(picker.chosen(), Some("8"));
+        typed(&mut picker, "+");
+        assert_eq!(picker.chosen(), None);
+        assert_eq!(picker.key(Key::Enter), Outcome::Stay);
+    }
+
+    #[test]
+    fn the_programs_that_match_a_sum_are_listed_under_its_answer() {
+        let mut picker = picker(&["Calculator", "Counter 1+1"]);
+        typed(&mut picker, "1+1");
+        assert_eq!(picker.chosen(), Some("2"));
+        assert_eq!(picker.key(Key::Down), Outcome::Stay);
+        assert_eq!(picker.chosen(), Some("Counter 1+1"));
+        picker.key(Key::Down);
+        assert_eq!(picker.chosen(), Some("Counter 1+1"), "the last");
+        assert_eq!(picker.key(Key::Enter), spawn(&["counter 1+1", "--go"]));
+        picker.key(Key::Up);
+        assert_eq!(picker.key(Key::Enter), copy("2"));
+
+        // The pointer and clicks find the answer's row as a program's.
+        let theme = Theme::default();
+        let (x, y) = row(1);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("Counter 1+1"));
+        let (x, y) = row(0);
+        assert_eq!(picker.click(x, y, &theme), copy("2"));
+        let (x, below) = row(2);
+        assert_eq!(picker.click(x, below, &theme), Outcome::Stay);
+    }
+
+    #[test]
+    fn an_answer_is_written_on_its_row_with_the_sum_under_it() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let (left, _, width) = layout.list;
+        let (_, middle) = row(0);
+        let half = layout.pitch.cast_signed() / 2;
+        let inked = |picker: &Picker, lines: std::ops::Range<i32>| {
+            let canvas = painted(picker);
+            let columns = left.unsigned_abs()..left.unsigned_abs() + width;
+            let points = columns.flat_map(|x| lines.clone().map(move |y| (x, y)));
+            let inked = points.filter(|(x, y)| canvas.at(*x, y.unsigned_abs()) != lit(&theme));
+            inked.count()
+        };
+        let (top, bottom) = (middle - half + 8..middle - 2, middle + 6..middle + half - 6);
+        let sum = |show: Show| {
+            let mut picker = Picker::new(Vec::new(), show);
+            typed(&mut picker, "6*7");
+            picker
+        };
+        let described = sum(Show {
+            descriptions: true,
+            ..NAMES
+        });
+        assert!(inked(&described, top) > 20, "the answer");
+        assert!(inked(&described, bottom.clone()) > 20, "the sum");
+        let plain = sum(NAMES);
+        assert!(inked(&plain, middle - 3..middle + 3) > 20, "the answer");
+        assert_eq!(inked(&plain, bottom), 0);
+        // With icons, it is written where the programs' names are.
+        let iconed = sum(Show {
+            icons: true,
+            ..NAMES
+        });
+        let canvas = painted(&iconed);
+        let item = theme.style(Part::LauncherItem, States::NONE);
+        let start = left.unsigned_abs() + item.padding.left;
+        let y = middle.unsigned_abs();
+        let beside = start..start + 36 + GAP;
+        assert!(beside.clone().all(|x| canvas.at(x, y) == lit(&theme)));
+        let past = beside.end..beside.end + 40;
+        assert!(past.into_iter().any(|x| canvas.at(x, y) != lit(&theme)));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "omorfos-launcher"
-description = "The launcher of the omorfos desktop: type a program's name to start it"
+description = "The launcher of the omorfos desktop: type a program's name to start it, or a sum to copy its answer"
 keywords = ["wayland", "compositor", "launcher"]
 categories = ["gui"]
 readme = "../../README.md"

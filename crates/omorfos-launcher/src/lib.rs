@@ -1,5 +1,6 @@
 //! The launcher of the omorfos desktop: a box in which a program's name is
-//! typed, and the programs that match to pick from.
+//! typed, and the programs that match to pick from; or a sum, and its
+//! answer to copy.
 //!
 //! The launcher is a program of its own, started by the compositor when it
 //! is asked for and gone once a program is picked or Escape is pressed. It
@@ -13,6 +14,7 @@
 mod apps;
 mod client;
 mod picker;
+mod sums;
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -26,7 +28,8 @@ pub use picker::{Key, Outcome, Picker};
 /// What it says of itself, when asked and in its manual page.
 pub const ABOUT: About = About {
     name: "omorfos-launcher",
-    what: "The launcher of the omorfos desktop: type a program's name to start it.",
+    what: "The launcher of the omorfos desktop: type a program's name to start it, or a sum \
+           to copy its answer.",
     usage: "",
     commands: &[],
     options: &[],

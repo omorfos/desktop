@@ -2746,16 +2746,22 @@ impl Compositor {
     }
 
     /// Puts what the computer is, as "About" shows it, on the clipboard as
-    /// text, for any program to paste: those written for X11 are told of
-    /// it as well, since the compositor setting it is not a program doing
-    /// so, which is what tells them otherwise.
+    /// text, for any program to paste.
     pub(crate) fn copy_about(&mut self) {
         let text = self.cards.about.system.text(env!("CARGO_PKG_VERSION"));
-        let kinds: Vec<String> = handlers::TEXT.map(str::to_owned).into();
-        let offer = Offer::Text(text.into());
-        set_data_device_selection(&self.display, &self.seat, kinds.clone(), offer);
+        self.copy(text.into());
         // Its button says so for a while.
         self.cards.about.copied = Some(self.animation.clock);
+    }
+
+    /// Puts text of the compositor's own on the clipboard, for any program
+    /// to paste: those written for X11 are told of it as well, since the
+    /// compositor setting it is not a program doing so, which is what
+    /// tells them otherwise.
+    pub(crate) fn copy(&mut self, text: Arc<str>) {
+        let kinds: Vec<String> = handlers::TEXT.map(str::to_owned).into();
+        let offer = Offer::Text(text);
+        set_data_device_selection(&self.display, &self.seat, kinds.clone(), offer);
         self.offer_to_x11(SelectionTarget::Clipboard, Some(kinds));
     }
 

@@ -71,7 +71,20 @@ pub enum Request {
         /// Each kind of radio there is.
         radios: Vec<Radio>,
     },
+    /// Put text on the clipboard, for any program to paste, as the
+    /// compositor's own: it stays there after the program that asked has
+    /// gone, until something else is copied. It is at most
+    /// [`LONGEST_COPY`] bytes long.
+    Copy {
+        /// What is to be pasted.
+        text: String,
+    },
 }
+
+/// The longest text [`Request::Copy`] puts on the clipboard, in bytes: as
+/// much as a pipe takes at once, so that a program pasting it can never
+/// keep the compositor waiting.
+pub const LONGEST_COPY: usize = 4096;
 
 /// A kind of radio the machine has, as the kernel knows them: all of that
 /// kind together.
@@ -492,6 +505,9 @@ mod tests {
                     off: true,
                     switched: false,
                 }],
+            },
+            Request::Copy {
+                text: "42".to_owned(),
             },
         ] {
             round_trip(&request);

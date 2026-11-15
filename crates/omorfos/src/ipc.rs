@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Action, OfferedMode};
 use omorfos_core::WindowId;
 use omorfos_ipc::{
-    MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, State, Window, Workspace, decode, encode,
+    LONGEST_COPY, MAX_MESSAGE, PROTOCOL, Placed, Reply, Request, State, Window, Workspace, decode,
+    encode,
 };
 use serde::Deserialize;
 use smithay::reexports::calloop::RegistrationToken;
@@ -384,6 +385,13 @@ impl Compositor {
                     message: format!("not an action: {error}"),
                 },
             },
+            Request::Copy { text } if text.len() > LONGEST_COPY => Reply::Error {
+                message: format!("too long to copy: {} bytes, of {LONGEST_COPY}", text.len()),
+            },
+            Request::Copy { text } => {
+                self.copy(text.into());
+                Reply::Done
+            }
             Request::Activate { window } => {
                 let id = WindowId::from_raw(window);
                 if self.desktop.window(id).is_some() {

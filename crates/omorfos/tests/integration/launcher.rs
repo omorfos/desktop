@@ -32,6 +32,9 @@ const L: Keycode = Keycode::new(46);
 const BACKSPACE: Keycode = Keycode::new(22);
 const DOWN: Keycode = Keycode::new(116);
 const UP: Keycode = Keycode::new(111);
+const FIVE: Keycode = Keycode::new(14);
+const TWO: Keycode = Keycode::new(11);
+const MINUS: Keycode = Keycode::new(20);
 
 fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
@@ -175,6 +178,40 @@ fn what_is_typed_reaches_the_launcher_and_enter_starts_the_program() {
     // Gone, it leaves the screen.
     drop(launcher);
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
+}
+
+#[test]
+fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+
+    for code in [FIVE, MINUS, TWO] {
+        press(&mut session, code);
+    }
+    assert!(!settle(&mut session, &mut launcher));
+    // The answer's row, chosen, and none of the programs, which do not
+    // match.
+    let picture = session.draw();
+    let x = row(0).0;
+    assert_eq!(picture.at(x, row(0).1), lit());
+    assert_eq!(picture.at(x, row(1).1), surface());
+
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher), "it is done with");
+    drop(launcher);
+    session.roundtrip(&mut client);
+    let pipe = client.paste();
+    session.roundtrip(&mut client);
+    let mut text = String::new();
+    let _ = pipe.map(|mut pipe| std::io::Read::read_to_string(&mut pipe, &mut text));
+    assert_eq!(text, "3");
+    for name in ["files", "firefox", "lens"] {
+        assert_eq!(mark(&session, name), "", "{name} is not started");
+    }
+    drop(window);
 }
 
 #[test]

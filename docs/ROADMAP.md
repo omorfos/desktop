@@ -1513,9 +1513,14 @@ a setting.
 - [ ] The launcher: looser matching, as the English name of a program
       named in the user's language, and windows to go to as well as
       programs to start.
-- [ ] Sums in the launcher: what is typed is worked out as it is typed,
+- [x] Sums in the launcher: what is typed is worked out as it is typed,
       and Enter copies the answer. Worked out by code of ours; nothing
-      typed is ever run.
+      typed is ever run. The compositor copies for it (ADR 82).
+- [ ] Known gaps in sums: a comma for the decimals, as Polish and German
+      write them, and spaces or commas between thousands, are not read;
+      nor percentages, functions such as `sqrt`, or `pi`. Nothing says
+      on the launcher that Enter copies the answer, as the launcher has
+      no messages of its own to translate yet.
 - [ ] Files in the launcher: those in the home directory that are not
       hidden, found by name and opened with the program for their kind.
       Which directories are looked in is a setting, and nothing is kept

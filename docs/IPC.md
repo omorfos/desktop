@@ -61,6 +61,7 @@ and reads one reply.
 | `"frames"` | `{"frames": [...]}`, how each screen's last frame was drawn |
 | `{"hold": {"idle": true, "sleep": false}}` | `"done"` |
 | `{"radios": {"radios": [...]}}` | `"done"` |
+| `{"copy": {"text": "42"}}` | `"done"` |
 
 Anything that cannot be understood or carried out is answered with
 `{"error": {"message": "..."}}`, and the connection stays open. That
@@ -81,6 +82,12 @@ away, but not once it is locked, since nobody is watching then; or only
 connection does, so a client that ends lets go of it. The portal backend
 that comes with omorfos speaks so for programs that ask the desktop over
 D-Bus; a program that speaks Wayland asks by `idle-inhibit` instead.
+
+`"copy"` puts text on the clipboard as the compositor's own, for any
+program to paste, until something else is copied; it stays after the
+client that asked has gone. The launcher copies the answer to a sum so,
+as it ends at once ([ADR 82](adr/0082-the-compositor-copies-for-the-launcher.md)).
+The text is at most 4096 bytes; more is refused.
 
 After `"subscribe"` the connection carries updates only. Each update is the
 whole state, not a difference, so a client never has to reconstruct

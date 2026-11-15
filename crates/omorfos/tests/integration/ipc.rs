@@ -230,6 +230,46 @@ fn a_window_can_be_activated_by_its_identifier() {
     assert!(state(&mut session, &mut peer).windows[0].focused);
 }
 
+/// What a program pasting gets, once it has asked: nothing, if nothing is
+/// on offer.
+fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
+    let pipe = client.paste();
+    session.roundtrip(client);
+    let mut text = String::new();
+    let _ = pipe.map(|mut pipe| pipe.read_to_string(&mut text));
+    text
+}
+
+#[test]
+fn text_can_be_put_on_the_clipboard_for_a_window_to_paste() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let copy = |text: &str| Request::Copy {
+        text: text.to_owned(),
+    };
+
+    assert_eq!(session.ask(&mut peer, &copy("42")), Reply::Done);
+    session.roundtrip(&mut client);
+    assert_eq!(pasted(&mut session, &mut client), "42");
+
+    // Only so much: what a pipe takes at once, which a program pasting
+    // cannot then keep the compositor waiting on.
+    let long = "x".repeat(omorfos_ipc::LONGEST_COPY + 1);
+    let Reply::Error { message } = session.ask(&mut peer, &copy(&long)) else {
+        unreachable!("too long to copy")
+    };
+    assert!(message.contains("too long"), "{message}");
+    session.roundtrip(&mut client);
+    assert_eq!(pasted(&mut session, &mut client), "42", "as it was");
+    let longest = "y".repeat(omorfos_ipc::LONGEST_COPY);
+    assert_eq!(session.ask(&mut peer, &copy(&longest)), Reply::Done);
+    session.roundtrip(&mut client);
+    assert_eq!(pasted(&mut session, &mut client), longest);
+    drop(window);
+}
+
 #[test]
 fn activating_a_window_that_does_not_exist_is_refused() {
     let mut session = Session::new();
