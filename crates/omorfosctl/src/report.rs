@@ -380,6 +380,40 @@ pub(crate) fn left_out(text: &str, home: &Path) -> String {
     kept
 }
 
+/// Parts of the paths of the system common enough that a user called by
+/// one is named by it only where [`MOUNTS`] are.
+const COMMON_PARTS: [&str; 26] = [
+    "applications",
+    "bin",
+    "boot",
+    "cache",
+    "dev",
+    "doc",
+    "etc",
+    "fonts",
+    "games",
+    "home",
+    "icons",
+    "include",
+    "lib",
+    "lib64",
+    "local",
+    "log",
+    "media",
+    "mnt",
+    "opt",
+    "run",
+    "sbin",
+    "share",
+    "src",
+    "srv",
+    "tmp",
+    "usr",
+];
+
+/// Where a user's own disks are mounted, under a directory of their name.
+const MOUNTS: [&str; 3] = ["/media", "/run/media", "/mnt"];
+
 /// `text` with each path that has one of `names` as a whole part of it
 /// left out after the parts before it, as `/media/me/USB` is written
 /// `/media/(left out)`. A path begins with `/`, and ends at a space, a
@@ -392,6 +426,9 @@ fn named_out(text: &str, names: &[String]) -> String {
         .iter()
         .filter(|name| !name.is_empty() && !name.contains('/'));
     for name in names {
+        // A name that is also a common part of the system's paths names
+        // the user only where the user's own disks are mounted.
+        let common = COMMON_PARTS.contains(&name.to_lowercase().as_str());
         let part = format!("/{name}");
         let mut kept = String::with_capacity(text.len());
         // Where what is not yet kept begins.
@@ -402,7 +439,8 @@ fn named_out(text: &str, names: &[String]) -> String {
             let end = text[..at].char_indices().rev().find(|(_, c)| ends(*c));
             let begun = end.map_or(0, |(end, c)| end + c.len_utf8());
             let path = text[begun..at].is_empty() || text[begun..at].starts_with('/');
-            if at >= from && whole && path {
+            let mounted = MOUNTS.contains(&&text[begun..at]);
+            if at >= from && whole && path && (mounted || !common) {
                 kept.push_str(&text[from..at]);
                 kept.push_str("/(left out)");
                 from = text.len() - after.trim_start_matches(|c: char| !ends(c)).len();
@@ -745,6 +783,18 @@ mod tests {
         // A name that could not be a part of a path names nothing.
         let odd = [String::new(), "a/b".to_owned()];
         assert_eq!(named_out("/x/a/b /y//z", &odd), "/x/a/b /y//z");
+    }
+
+    #[test]
+    fn a_name_that_is_also_a_common_part_of_paths_is_left_out_only_where_disks_are_mounted() {
+        let names = ["share".to_owned(), "Local".to_owned()];
+        let said = "/usr/share/icons /usr/local/bin /media/share/USB /run/media/share \
+                    /mnt/share/x /home/Local/y /media/Local";
+        assert_eq!(
+            named_out(said, &names),
+            "/usr/share/icons /usr/local/bin /media/(left out) /run/media/(left out) \
+             /mnt/(left out) /home/Local/y /media/(left out)"
+        );
     }
 
     #[test]

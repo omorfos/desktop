@@ -61,9 +61,11 @@ journal holds of this login, which is where the programs it starts say
 what they say (or, where the login is not known, of yours since the
 computer started). Window titles, any path in your home, and any path
 elsewhere with your name as a part of it, as a disk mounted at
-`/media/you`, are left out; `--whole` keeps them. It is only written out,
-never sent: read it over before you hand it on. It is made without a
-running compositor too, saying why that part is missing.
+`/media/you`, are left out (for a name that is also a common part of the
+system's paths, as `share`, only under `/media`, `/run/media` and
+`/mnt`); `--whole` keeps them. It is only written out, never sent: read
+it over before you hand it on. It is made without a running compositor
+too, saying why that part is missing.
 
 ```sh
 omorfosctl report > omorfos-report.txt

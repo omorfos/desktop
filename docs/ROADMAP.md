@@ -1965,9 +1965,11 @@ Reports and recovery:
       journal's last thousand lines of this login, or of the user since
       the computer started where the login is not known; and a login's
       log kept within 8 MiB by the holder, cut to its last 2 MiB (ADR 60).
-- [ ] Known gaps in the report: a user whose name is a common part of a
-      path, as `share` or `bin`, has those parts of every path left out
-      too; the journal's lines of this login are all its programs', not
+- [x] A user whose name is also a common part of the system's paths, as
+      `share` or `bin`, named in a report only where the user's own disks
+      are mounted, under `/media`, `/run/media` or `/mnt`, and not in
+      every `/usr/share`.
+- [ ] Known gaps in the report: the journal's lines of this login are all its programs', not
       only omorfos's; and a line written in the moment the log is cut is
       lost, or put before what was kept.
 - [ ] The screen kept lit while the compositor is started again (ADR
