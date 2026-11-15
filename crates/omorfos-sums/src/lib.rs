@@ -1,13 +1,17 @@
 //! Sums, worked out as they are typed: in the launcher, and in the
-//! calculator that is to come, so that a sum comes out the same in each.
+//! calculator that is to come (ADR 86), so that a sum comes out the same
+//! in each.
 //!
-//! What is typed is read here and nowhere else: numbers, `+`, `-`, `*` or
-//! `×`, `/` or `÷`, `^` and brackets. Nothing typed is ever run.
+//! What is typed is read here and nowhere else: numbers, written as where
+//! the user is writes them ([`Numbers`]), `+`, `-`, `*` or `×`, `/` or `÷`,
+//! `^`, `%`, brackets, `sqrt` or `√`, and `pi` or `π`. Nothing typed is ever
+//! run.
 
+use std::f64::consts::PI;
 use std::iter::Peekable;
 use std::str::Chars;
 
-/// The deepest that brackets, signs and powers may stand one inside
+/// The deepest that brackets, signs, powers and roots may stand one inside
 /// another. The launcher holds no more characters than this, so it is only
 /// reached by what is typed to overflow the stack.
 const DEEPEST: usize = 64;
@@ -16,56 +20,162 @@ const DEEPEST: usize = 64;
 /// truly, so that `0.1+0.2` is `0.3`.
 const FIGURES: usize = 15;
 
-/// The signs a sum not yet finished may end with, and a bracket opened.
-const UNFINISHED: [char; 8] = ['+', '-', '*', '×', '/', '÷', '^', '('];
+/// The signs a sum not yet finished may end with, a bracket or a root
+/// opened, and the decimals or a thousand begun with no figure after them.
+const UNFINISHED: [char; 11] = ['+', '-', '*', '×', '/', '÷', '^', '(', '√', ',', '.'];
 
-/// The answer to what is typed, written as a person would write it, if
-/// it is a sum, with at least one sign between two numbers and a number
-/// for an answer. A sum not yet finished, ending in a sign or with a
+/// The words that stand for something, written in letters: a function,
+/// which needs something after it, and a constant, which does not.
+const SQRT: &str = "sqrt";
+const PI_WORD: &str = "pi";
+
+/// The languages that write a comma for the decimals, by their codes, as
+/// the Unicode CLDR has them, but for the places in [`POINT_PLACES`].
+const COMMA_LANGUAGES: [&str; 47] = [
+    "af", "az", "be", "bg", "bs", "ca", "cs", "da", "de", "el", "es", "et", "eu", "fi", "fo", "fr",
+    "gl", "hr", "hu", "hy", "id", "is", "it", "ka", "kk", "ky", "lb", "lt", "lv", "mk", "nb", "nl",
+    "nn", "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sr", "sv", "tr", "uk", "uz", "vi",
+];
+
+/// The places where a language of [`COMMA_LANGUAGES`] writes a point.
+const POINT_PLACES: [&str; 13] = [
+    "de_ch", "de_li", "it_ch", "es_do", "es_gt", "es_hn", "es_mx", "es_ni", "es_pa", "es_pe",
+    "es_pr", "es_sv", "es_us",
+];
+
+/// How numbers are written where the user is: what marks the decimals, and
+/// what may stand between thousands. Something between thousands is read
+/// only where three figures follow it, and before the decimals, so that
+/// `2 3` is no number; an answer is written with the decimals marked as
+/// they are read, and nothing between its thousands, to be copied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Numbers {
+    /// As in English, `1,234.5`: a point for the decimals, and a comma or
+    /// a space between thousands.
+    Point,
+    /// As in Polish or German, `1 234,5` or `1.234,5`: a comma for the
+    /// decimals, and a space or a point between thousands. A point not
+    /// before three figures marks the decimals too, as a keypad's does.
+    Comma,
+}
+
+impl Numbers {
+    /// How numbers are written in the locale `named`, as `pl_PL.UTF-8`:
+    /// with a point where it is not known to write a comma.
+    #[must_use]
+    pub fn of_locale(named: &str) -> Self {
+        let place = named.split(['.', '@']).next().unwrap_or_default();
+        let place = place.to_lowercase().replace('-', "_");
+        let language = place.split('_').next().unwrap_or_default();
+        let comma = COMMA_LANGUAGES.contains(&language) && !POINT_PLACES.contains(&place.as_str());
+        if comma { Self::Comma } else { Self::Point }
+    }
+
+    /// How numbers are written in the locale the environment asks for them
+    /// in: the first of `LC_ALL`, `LC_NUMERIC` and `LANG` that is set, as
+    /// the C library reads them; `get` looks a variable up.
+    #[must_use]
+    pub fn asked(get: &dyn Fn(&str) -> Option<String>) -> Self {
+        let set = |name: &str| get(name).filter(|value| !value.is_empty());
+        let named = ["LC_ALL", "LC_NUMERIC", "LANG"].into_iter().find_map(set);
+        Self::of_locale(&named.unwrap_or_default())
+    }
+
+    /// Whether `sign` marks the decimals.
+    fn decimal(self, sign: char) -> bool {
+        sign == '.' || (self == Self::Comma && sign == ',')
+    }
+
+    /// Whether `sign` may stand between thousands.
+    fn between(self, sign: char) -> bool {
+        let other = match self {
+            Self::Point => ',',
+            Self::Comma => '.',
+        };
+        sign.is_whitespace() || sign == other
+    }
+}
+
+/// The answer to what is typed, written as a person would write it where
+/// numbers are written as `numbers`, if it is a sum, with something worked
+/// out and a number for an answer. A number or a constant alone is no sum.
+/// A sum not yet finished, ending in a sign, a word begun or with a
 /// bracket open, is answered as far as it goes, so that the answer stays
 /// as the next sign is typed: `60 + 60 +` is `120`.
 #[must_use]
-pub fn answer(typed: &str) -> Option<String> {
-    whole(typed).or_else(|| {
-        let begun = typed.trim_end_matches(|c: char| c.is_whitespace() || UNFINISHED.contains(&c));
-        let open = begun.matches('(').count();
-        let open = open.saturating_sub(begun.matches(')').count());
-        whole(&format!("{begun}{}", ")".repeat(open)))
-    })
+pub fn answer(typed: &str, numbers: Numbers) -> Option<String> {
+    whole(typed, numbers).or_else(|| whole(&finished(typed), numbers))
+}
+
+/// What is typed with what is not yet finished at its end taken off, and
+/// the brackets left open closed.
+fn finished(typed: &str) -> String {
+    let mut begun = typed;
+    loop {
+        let signed = begun.trim_end_matches(|c: char| c.is_whitespace() || UNFINISHED.contains(&c));
+        let before = signed.trim_end_matches(|c: char| c.is_alphabetic());
+        let word = &signed[before.len()..];
+        let trimmed = if unfinished(word) { before } else { signed };
+        if trimmed.len() == begun.len() {
+            break;
+        }
+        begun = trimmed;
+    }
+    let open = begun.matches('(').count();
+    let open = open.saturating_sub(begun.matches(')').count());
+    format!("{begun}{}", ")".repeat(open))
+}
+
+/// Whether `word` is the beginning of a word that stands for something,
+/// or a function with nothing after it yet.
+fn unfinished(word: &str) -> bool {
+    let begins = |whole: &str| {
+        let start = whole.get(..word.len());
+        start.is_some_and(|start| start.eq_ignore_ascii_case(word))
+    };
+    !word.is_empty() && (begins(SQRT) || (begins(PI_WORD) && word.len() < PI_WORD.len()))
 }
 
 /// The answer to what is typed, if it is a whole sum.
-fn whole(typed: &str) -> Option<String> {
+fn whole(typed: &str, numbers: Numbers) -> Option<String> {
     let mut reading = Reading {
         rest: typed.chars().peekable(),
+        numbers,
         depth: 0,
         worked: false,
     };
     let value = reading.sum()?;
     let whole = reading.next().is_none();
-    (whole && reading.worked && value.is_finite()).then(|| written(value))
+    (whole && reading.worked && value.is_finite()).then(|| written(value, numbers))
 }
 
 /// An answer, rounded to [`FIGURES`] figures, without a sign if it is
-/// nothing, and with a power of ten if it is very large or very small.
-fn written(value: f64) -> String {
+/// nothing, with a power of ten if it is very large or very small, and its
+/// decimals marked as `numbers` mark them.
+fn written(value: f64, numbers: Numbers) -> String {
     let rounded: f64 = format!("{value:.*e}", FIGURES - 1).parse().unwrap_or(value);
     // Nothing is written without a sign, however it came.
     let rounded = rounded + 0.0;
     let size = rounded.abs();
-    if size != 0.0 && !(1e-9..1e15).contains(&size) {
+    let written = if size != 0.0 && !(1e-9..1e15).contains(&size) {
         format!("{rounded:e}")
     } else {
         format!("{rounded}")
+    };
+    match numbers {
+        Numbers::Point => written,
+        Numbers::Comma => written.replace('.', ","),
     }
 }
 
 /// What is left to read of what was typed.
 struct Reading<'a> {
     rest: Peekable<Chars<'a>>,
+    /// How numbers are written in it.
+    numbers: Numbers,
     /// How deep inside one another what is being read stands.
     depth: usize,
-    /// Whether two numbers have been put together, which makes it a sum.
+    /// Whether something has been worked out, which makes it a sum.
     worked: bool,
 }
 
@@ -96,11 +206,13 @@ impl Reading<'_> {
         next.and_then(|_| self.rest.next())
     }
 
-    /// Terms added or taken away, from the left.
+    /// Terms added or taken away, from the left. A percentage alone is
+    /// of what it is added to or taken from: `200+10%` is `220`.
     fn sum(&mut self) -> Option<f64> {
-        let mut value = self.product()?;
+        let (mut value, _) = self.product()?;
         while let Some(sign) = self.take(&['+', '-']) {
-            let term = self.product()?;
+            let (term, share) = self.product()?;
+            let term = if share { value * term } else { term };
             value = if sign == '+' {
                 value + term
             } else {
@@ -111,32 +223,56 @@ impl Reading<'_> {
         Some(value)
     }
 
-    /// Factors multiplied or divided, from the left.
-    fn product(&mut self) -> Option<f64> {
+    /// Factors multiplied or divided, from the left, and whether it was a
+    /// percentage alone.
+    fn product(&mut self) -> Option<(f64, bool)> {
         let mut value = self.signed()?;
+        let mut share = self.percent(&mut value);
         while let Some(sign) = self.take(&['*', '×', '/', '÷']) {
-            let factor = self.signed()?;
+            let mut factor = self.signed()?;
+            self.percent(&mut factor);
             value = if matches!(sign, '*' | '×') {
                 value * factor
             } else {
                 value / factor
             };
+            share = false;
             self.worked = true;
         }
-        Some(value)
+        Some((value, share))
+    }
+
+    /// Makes `value` a hundredth of itself if `%` follows it, and says
+    /// whether it did.
+    fn percent(&mut self, value: &mut f64) -> bool {
+        let share = self.take(&['%']).is_some();
+        if share {
+            *value /= 100.0;
+            self.worked = true;
+        }
+        share
     }
 
     /// A power, with as many signs before it as there are: `-2^2` is
     /// `-4`, as it is written by hand.
     fn signed(&mut self) -> Option<f64> {
+        self.deeper(|reading| {
+            if let Some(sign) = reading.take(&['+', '-']) {
+                let value = reading.signed();
+                value.map(|value| if sign == '-' { -value } else { value })
+            } else {
+                reading.power()
+            }
+        })
+    }
+
+    /// What `read` reads, one deeper, if that is not too deep.
+    fn deeper(&mut self, read: impl FnOnce(&mut Self) -> Option<f64>) -> Option<f64> {
         self.depth += 1;
         let value = if self.depth > DEEPEST {
             None
-        } else if let Some(sign) = self.take(&['+', '-']) {
-            let value = self.signed();
-            value.map(|value| if sign == '-' { -value } else { value })
         } else {
-            self.power()
+            read(self)
         };
         self.depth -= 1;
         value
@@ -155,18 +291,68 @@ impl Reading<'_> {
         }
     }
 
-    /// A number written out, or a sum in brackets.
+    /// A number written out, a constant, a square root, or a sum in
+    /// brackets.
     fn number(&mut self) -> Option<f64> {
         if self.take(&['(']).is_some() {
             let value = self.sum()?;
             return self.take(&[')']).map(|_| value);
         }
-        self.skip_spaces();
-        let mut digits = String::new();
-        while let Some(digit) = self.rest.next_if(|c| c.is_ascii_digit() || *c == '.') {
-            digits.push(digit);
+        if self.take(&['√']).is_some() {
+            return self.root();
         }
-        digits.parse().ok()
+        if self.take(&['π']).is_some() {
+            return Some(PI);
+        }
+        let mut word = self.rest.clone();
+        let letters = word.by_ref().take_while(char::is_ascii_alphabetic).count();
+        if letters > 0 {
+            let spelt: String = self.rest.by_ref().take(letters).collect();
+            return if spelt.eq_ignore_ascii_case(SQRT) {
+                self.root()
+            } else if spelt.eq_ignore_ascii_case(PI_WORD) {
+                Some(PI)
+            } else {
+                None
+            };
+        }
+        self.figures()
+    }
+
+    /// The square root of the number after it.
+    fn root(&mut self) -> Option<f64> {
+        self.worked = true;
+        self.deeper(|reading| reading.number().map(f64::sqrt))
+    }
+
+    /// A number written in figures, with its decimals and what stands
+    /// between its thousands as [`Numbers`] has them.
+    fn figures(&mut self) -> Option<f64> {
+        let numbers = self.numbers;
+        let mut figures = String::new();
+        let mut decimals = false;
+        while let Some(&next) = self.rest.peek() {
+            if next.is_ascii_digit() {
+                figures.push(next);
+            } else if !decimals && !figures.is_empty() && numbers.between(next) && self.thousand() {
+                // Read, and left out.
+            } else if numbers.decimal(next) {
+                decimals = true;
+                figures.push('.');
+            } else {
+                break;
+            }
+            self.rest.next();
+        }
+        figures.parse().ok()
+    }
+
+    /// Whether three figures, and no more, follow the next character.
+    fn thousand(&self) -> bool {
+        let mut ahead = self.rest.clone();
+        ahead.next();
+        let three = (0..3).all(|_| ahead.next().is_some_and(|c| c.is_ascii_digit()));
+        three && !ahead.peek().is_some_and(char::is_ascii_digit)
     }
 }
 
@@ -174,88 +360,267 @@ impl Reading<'_> {
 mod tests {
     use super::*;
 
+    /// The answer to what is typed, as numbers are written in English.
+    fn english(typed: &str) -> Option<String> {
+        answer(typed, Numbers::Point)
+    }
+
+    /// The answer to what is typed, as numbers are written in Polish.
+    fn polish(typed: &str) -> Option<String> {
+        answer(typed, Numbers::Comma)
+    }
+
     #[test]
     fn a_sum_is_worked_out() {
-        assert_eq!(answer("2+2").as_deref(), Some("4"));
-        assert_eq!(answer(" 12 - 20 ").as_deref(), Some("-8"));
-        assert_eq!(answer("6 * 7").as_deref(), Some("42"));
-        assert_eq!(answer("6×7").as_deref(), Some("42"));
-        assert_eq!(answer("7/2").as_deref(), Some("3.5"));
-        assert_eq!(answer("7÷2").as_deref(), Some("3.5"));
-        assert_eq!(answer("2^10").as_deref(), Some("1024"));
-        assert_eq!(answer(".5 + 1.").as_deref(), Some("1.5"));
+        assert_eq!(english("2+2").as_deref(), Some("4"));
+        assert_eq!(english(" 12 - 20 ").as_deref(), Some("-8"));
+        assert_eq!(english("6 * 7").as_deref(), Some("42"));
+        assert_eq!(english("6×7").as_deref(), Some("42"));
+        assert_eq!(english("7/2").as_deref(), Some("3.5"));
+        assert_eq!(english("7÷2").as_deref(), Some("3.5"));
+        assert_eq!(english("2^10").as_deref(), Some("1024"));
+        assert_eq!(english(".5 + 1.").as_deref(), Some("1.5"));
     }
 
     #[test]
     fn multiplying_comes_before_adding_and_powers_before_both() {
-        assert_eq!(answer("2+3*4").as_deref(), Some("14"));
-        assert_eq!(answer("(2+3)*4").as_deref(), Some("20"));
-        assert_eq!(answer("10-4-3").as_deref(), Some("3"), "from the left");
-        assert_eq!(answer("2^3^2").as_deref(), Some("512"), "from the right");
-        assert_eq!(answer("-2^2").as_deref(), Some("-4"));
-        assert_eq!(answer("2*-3").as_deref(), Some("-6"));
-        assert_eq!(answer("2^-1").as_deref(), Some("0.5"));
-        assert_eq!(answer("--3+1").as_deref(), Some("4"));
-        assert_eq!(answer("+3-1").as_deref(), Some("2"));
+        assert_eq!(english("2+3*4").as_deref(), Some("14"));
+        assert_eq!(english("(2+3)*4").as_deref(), Some("20"));
+        assert_eq!(english("10-4-3").as_deref(), Some("3"), "from the left");
+        assert_eq!(english("2^3^2").as_deref(), Some("512"), "from the right");
+        assert_eq!(english("-2^2").as_deref(), Some("-4"));
+        assert_eq!(english("2*-3").as_deref(), Some("-6"));
+        assert_eq!(english("2^-1").as_deref(), Some("0.5"));
+        assert_eq!(english("--3+1").as_deref(), Some("4"));
+        assert_eq!(english("+3-1").as_deref(), Some("2"));
     }
 
     #[test]
     fn a_number_alone_is_not_a_sum() {
         // Else "7" would put itself above 7-Zip, with nothing to work out.
-        assert_eq!(answer("7"), None);
-        assert_eq!(answer("-7"), None);
-        assert_eq!(answer("(7)"), None);
-        assert_eq!(answer(""), None);
+        assert_eq!(english("7"), None);
+        assert_eq!(english("-7"), None);
+        assert_eq!(english("(7)"), None);
+        assert_eq!(english(""), None);
     }
 
     #[test]
-    fn what_is_not_a_whole_sum_has_no_answer() {
+    fn what_is_not_a_whole_sum_has_no_english() {
         for typed in [
             "2+", "2*", "2^", "(2*", "*2", "2 3", "2+3)", "()", "1.2.3+1", "2+x", "firefox", ".",
             "2..+1",
         ] {
-            assert_eq!(answer(typed), None, "{typed}");
+            assert_eq!(english(typed), None, "{typed}");
         }
     }
 
     #[test]
     fn a_sum_not_yet_finished_is_answered_as_far_as_it_goes() {
         // As another sign is typed, the answer so far stays, to go on from.
-        assert_eq!(answer("60 + 60 +").as_deref(), Some("120"));
-        assert_eq!(answer("60 + 60 * ").as_deref(), Some("120"));
-        assert_eq!(answer("60+60+5").as_deref(), Some("125"));
+        assert_eq!(english("60 + 60 +").as_deref(), Some("120"));
+        assert_eq!(english("60 + 60 * ").as_deref(), Some("120"));
+        assert_eq!(english("60+60+5").as_deref(), Some("125"));
         // Brackets left open are closed.
-        assert_eq!(answer("2*(3+4").as_deref(), Some("14"));
-        assert_eq!(answer("2*(3+(").as_deref(), Some("6"));
+        assert_eq!(english("2*(3+4").as_deref(), Some("14"));
+        assert_eq!(english("2*(3+(").as_deref(), Some("6"));
         // A number alone is still no sum, however it ends.
-        assert_eq!(answer("60 +"), None);
-        assert_eq!(answer("(60"), None);
+        assert_eq!(english("60 +"), None);
+        assert_eq!(english("(60"), None);
     }
 
     #[test]
     fn what_has_no_number_for_an_answer_has_none() {
-        assert_eq!(answer("1/0"), None);
-        assert_eq!(answer("0/0"), None);
-        assert_eq!(answer("10^400"), None);
+        assert_eq!(english("1/0"), None);
+        assert_eq!(english("0/0"), None);
+        assert_eq!(english("10^400"), None);
     }
 
     #[test]
     fn an_answer_is_rounded_as_a_person_would_write_it() {
-        assert_eq!(answer("0.1+0.2").as_deref(), Some("0.3"));
-        assert_eq!(answer("1/3").as_deref(), Some("0.333333333333333"));
-        assert_eq!(answer("2/3").as_deref(), Some("0.666666666666667"));
-        assert_eq!(answer("0*-1").as_deref(), Some("0"), "never -0");
-        assert_eq!(answer("10^20+1").as_deref(), Some("1e20"));
-        assert_eq!(answer("10^15-1").as_deref(), Some("999999999999999"));
-        assert_eq!(answer("1/10^10").as_deref(), Some("1e-10"));
-        assert_eq!(answer("-3/2^40").as_deref(), Some("-2.72848410531878e-12"));
+        assert_eq!(english("0.1+0.2").as_deref(), Some("0.3"));
+        assert_eq!(english("1/3").as_deref(), Some("0.333333333333333"));
+        assert_eq!(english("2/3").as_deref(), Some("0.666666666666667"));
+        assert_eq!(english("0*-1").as_deref(), Some("0"), "never -0");
+        assert_eq!(english("10^20+1").as_deref(), Some("1e20"));
+        assert_eq!(english("10^15-1").as_deref(), Some("999999999999999"));
+        assert_eq!(english("1/10^10").as_deref(), Some("1e-10"));
+        assert_eq!(english("-3/2^40").as_deref(), Some("-2.72848410531878e-12"));
     }
 
     #[test]
     fn brackets_deeper_than_a_launcher_holds_are_not_followed() {
         let deep = |depth: usize| format!("{}1+1{}", "(".repeat(depth), ")".repeat(depth));
-        assert_eq!(answer(&deep(DEEPEST - 1)).as_deref(), Some("2"));
-        assert_eq!(answer(&deep(10_000)), None);
-        assert_eq!(answer(&format!("1+{}1", "-".repeat(10_000))), None);
+        assert_eq!(english(&deep(DEEPEST - 1)).as_deref(), Some("2"));
+        assert_eq!(english(&deep(10_000)), None);
+        assert_eq!(english(&format!("1+{}1", "-".repeat(10_000))), None);
+    }
+
+    #[test]
+    fn numbers_are_read_as_where_the_user_is_writes_them() {
+        assert_eq!(polish("1,5+1").as_deref(), Some("2,5"));
+        assert_eq!(polish(",5*2").as_deref(), Some("1"));
+        assert_eq!(
+            english("1,5+1"),
+            None,
+            "a comma in English is between thousands"
+        );
+        // A point, as on a keypad, is still the decimals where a comma is.
+        assert_eq!(polish("1.5+1").as_deref(), Some("2,5"));
+        assert_eq!(polish("1,5.5+1"), None);
+        assert_eq!(english("1.5.5+1"), None);
+    }
+
+    #[test]
+    fn what_stands_between_thousands_is_read_only_before_three_figures() {
+        assert_eq!(english("1,000+1").as_deref(), Some("1001"));
+        assert_eq!(english("1,234,567.5*2").as_deref(), Some("2469135"));
+        assert_eq!(english("1 000 + 1").as_deref(), Some("1001"));
+        assert_eq!(english("1\u{a0}000+1").as_deref(), Some("1001"));
+        assert_eq!(polish("1 000,5+1").as_deref(), Some("1001,5"));
+        assert_eq!(polish("1.000,5+1").as_deref(), Some("1001,5"));
+        assert_eq!(polish("1\u{202f}000+1").as_deref(), Some("1001"));
+        for typed in [
+            "2 3",
+            "1 0000+1",
+            "1,0000+1",
+            "1,00+1",
+            "1.5,000+1",
+            "1 00 + 1",
+        ] {
+            assert_eq!(english(typed), None, "{typed}");
+        }
+        // After the decimals, nothing stands between thousands.
+        assert_eq!(polish("1,000.000+1"), None);
+        assert_eq!(polish("1 000 0+1"), None);
+        // The point of a keypad is the decimals where it is not before three.
+        assert_eq!(polish("1.5000+1").as_deref(), Some("2,5"));
+    }
+
+    #[test]
+    fn an_answer_is_written_with_the_decimals_where_the_user_is_writes_them() {
+        assert_eq!(polish("7/2").as_deref(), Some("3,5"));
+        assert_eq!(polish("1/10^10").as_deref(), Some("1e-10"));
+        assert_eq!(polish("25/10^21").as_deref(), Some("2,5e-20"));
+        assert_eq!(
+            polish("1000*1000").as_deref(),
+            Some("1000000"),
+            "never grouped"
+        );
+    }
+
+    #[test]
+    fn a_percentage_added_or_taken_away_is_of_what_it_is_added_to() {
+        assert_eq!(english("200+10%").as_deref(), Some("220"));
+        assert_eq!(english("200 - 10 %").as_deref(), Some("180"));
+        assert_eq!(english("100+10%+10%").as_deref(), Some("121"));
+        assert_eq!(english("200+-10%").as_deref(), Some("180"));
+        // Anywhere else, it is a hundredth.
+        assert_eq!(english("50%").as_deref(), Some("0.5"));
+        assert_eq!(english("200*10%").as_deref(), Some("20"));
+        assert_eq!(english("200+10%*2").as_deref(), Some("200.2"));
+        assert_eq!(english("200+(10%)").as_deref(), Some("200.1"));
+        assert_eq!(english("10%+5").as_deref(), Some("5.1"));
+        assert_eq!(english("(10+5)%").as_deref(), Some("0.15"));
+        assert_eq!(polish("12,5%").as_deref(), Some("0,125"));
+        for typed in ["%", "10%%", "%10", "2+%"] {
+            assert_eq!(english(typed), None, "{typed}");
+        }
+    }
+
+    #[test]
+    fn square_roots_and_pi_are_worked_out() {
+        assert_eq!(english("sqrt(16)").as_deref(), Some("4"));
+        assert_eq!(english("sqrt 16 + 1").as_deref(), Some("5"));
+        assert_eq!(english("√16").as_deref(), Some("4"));
+        assert_eq!(english("√√16").as_deref(), Some("2"));
+        assert_eq!(english("SQRT(2)^2").as_deref(), Some("2"));
+        assert_eq!(english("2*pi").as_deref(), Some("6.28318530717959"));
+        assert_eq!(english("π*2").as_deref(), Some("6.28318530717959"));
+        assert_eq!(english("Pi + 1").as_deref(), Some("4.14159265358979"));
+        assert_eq!(english("sqrt(pi*pi)").as_deref(), Some("3.14159265358979"));
+        assert_eq!(polish("√6,25").as_deref(), Some("2,5"));
+        // A constant alone, as a number alone, is no sum.
+        assert_eq!(english("pi"), None);
+        assert_eq!(english("π"), None);
+        for typed in [
+            "sqrt", "√", "sqrt(-1)", "2pi", "pi2", "sqr(4)", "sqrtt(4)", "pie+1", "e+1",
+        ] {
+            assert_eq!(english(typed), None, "{typed}");
+        }
+    }
+
+    #[test]
+    fn a_word_or_a_sign_not_yet_finished_is_answered_as_far_as_it_goes() {
+        assert_eq!(english("4*2+sqrt(").as_deref(), Some("8"));
+        assert_eq!(english("4*2+sq").as_deref(), Some("8"));
+        assert_eq!(english("4*2+√").as_deref(), Some("8"));
+        assert_eq!(english("4*2*p").as_deref(), Some("8"));
+        assert_eq!(english("9+sqrt(16").as_deref(), Some("13"));
+        assert_eq!(english("1,000+1,").as_deref(), Some("1001"));
+        assert_eq!(polish("2,5+1,").as_deref(), Some("3,5"));
+        assert_eq!(english("2.5+1.").as_deref(), Some("3.5"));
+        // What could begin no word is no sum, however it ends.
+        assert_eq!(english("4*2+x"), None);
+        assert_eq!(english("firefox"), None);
+    }
+
+    #[test]
+    fn roots_deeper_than_a_launcher_holds_are_not_followed() {
+        assert_eq!(
+            english(&format!("{}16", "√".repeat(DEEPEST - 1))).as_deref(),
+            Some("1")
+        );
+        assert_eq!(english(&format!("{}16", "√".repeat(10_000))), None);
+    }
+
+    #[test]
+    fn how_numbers_are_written_is_known_by_the_locale() {
+        for named in [
+            "pl_PL.UTF-8",
+            "de_DE",
+            "fr_FR.UTF-8@euro",
+            "pt_BR",
+            "ru",
+            "es_ES",
+        ] {
+            assert_eq!(Numbers::of_locale(named), Numbers::Comma, "{named}");
+        }
+        for named in [
+            "en_US.UTF-8",
+            "en_GB",
+            "C",
+            "POSIX",
+            "",
+            "ja_JP",
+            "de_CH.UTF-8",
+            "es_MX",
+        ] {
+            assert_eq!(Numbers::of_locale(named), Numbers::Point, "{named}");
+        }
+    }
+
+    #[test]
+    fn the_locale_for_numbers_is_taken_as_the_c_library_takes_it() {
+        let asked = |set: &[(&str, &str)]| {
+            let set: Vec<(String, String)> = set
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect();
+            Numbers::asked(&|name| {
+                set.iter()
+                    .find(|(set, _)| set == name)
+                    .map(|(_, value)| value.clone())
+            })
+        };
+        assert_eq!(asked(&[]), Numbers::Point);
+        assert_eq!(asked(&[("LANG", "pl_PL.UTF-8")]), Numbers::Comma);
+        let numeric = [("LANG", "en_GB.UTF-8"), ("LC_NUMERIC", "pl_PL.UTF-8")];
+        assert_eq!(asked(&numeric), Numbers::Comma);
+        let all = [("LC_ALL", "en_US.UTF-8"), ("LC_NUMERIC", "pl_PL.UTF-8")];
+        assert_eq!(asked(&all), Numbers::Point);
+        // What is set empty is not set; the messages' language is not looked at.
+        let empty = [("LC_ALL", ""), ("LANG", "de_DE"), ("LANGUAGE", "en")];
+        assert_eq!(asked(&empty), Numbers::Comma);
+        assert_eq!(asked(&[("LC_MESSAGES", "pl_PL")]), Numbers::Point);
     }
 }

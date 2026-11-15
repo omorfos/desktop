@@ -21,9 +21,11 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-Nothing, since 15 November 2026: the launcher's list and text field, the
-welcome card in steps, private windows in the switcher and the overview,
-and pictures of the screen drawn apart from it were tried that day.
+- Sums in the launcher (stage 6): numbers read as the locale for
+  numbers writes them, as `1 000,5+1` in Polish and `1,000.5+1` in
+  English; `%`, as `200+10%`; `sqrt` or `√`, and `pi` or `π`; and
+  "Enter copies the answer" under the answer, with descriptions shown
+  and without.
 
 ## Where this is going
 
@@ -1565,11 +1567,19 @@ to false, as `launcher.sums` is (ADR 83).
       and Enter copies the answer. Worked out by code of ours; nothing
       typed is ever run. The compositor copies for it (ADR 82), and
       `launcher.sums: false` turns it off (ADR 83).
-- [ ] Known gaps in sums: a comma for the decimals, as Polish and German
-      write them, and spaces or commas between thousands, are not read;
-      nor percentages, functions such as `sqrt`, or `pi`. Nothing says
-      on the launcher that Enter copies the answer, though the launcher
-      has messages of its own to translate now.
+- [x] What sums lacked: numbers read as the locale for numbers writes
+      them, a comma for the decimals where it is Polish or German and
+      what stands between thousands; percentages, `200+10%` being `220`
+      as on a calculator; `sqrt` or `√`, and `pi` or `π`; and "Enter
+      copies the answer" under the answer. Read in `omorfos-sums`, which
+      the calculator is to share (ADR 86).
+- [ ] Known gaps in sums: no functions but the square root, as `sin` or
+      `ln`, and no `e`; a percentage in brackets, as `200+(10%)`, is a
+      hundredth, not of what it is added to; which locales write a comma
+      for the decimals is a table of omorfos's own, from the CLDR, and
+      not what the C library says; and an answer is never written with
+      anything between its thousands, which a long one would be easier
+      to read with.
 - [x] The launcher's text field as any text field is (ADR 85), as the
       maintainer found it wanting on 15 November 2026: the arrows, by a
       word with `Ctrl` or `Alt`, and Home and End to an end;
@@ -1697,10 +1707,11 @@ desktop, as stage 8 has it for Files, the task manager and the image
 viewer.
 
 - [ ] **Calculator**, standalone: the sums the launcher works out, with
-      a history of them to go back to, a memory, and the
-      functions and constants the launcher leaves out (`sqrt`, `pi`,
-      percentages). The same code as the launcher's, moved into a crate
-      both use, so that a sum comes out the same in each. The keyboard's
+      a history of them to go back to, and a memory. The same code as the
+      launcher's, `omorfos-sums`, so that a sum comes out the same in
+      each (ADR 86): a function or a constant the calculator wants is
+      added there, and so to the launcher too, and the launcher never
+      depends on the calculator. The keyboard's
       calculator key (`XF86Calculator`) opens it where it is installed,
       and the launcher where it is not.
 - [ ] **Player**, standalone: one program for a sound or a video, opened

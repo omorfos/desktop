@@ -56,15 +56,34 @@ the next time the launcher is opened.
 
 With `sums` on, as it is unless turned off, a sum typed in the launcher is
 worked out as it is typed, and its answer shown above the programs,
-chosen: `6*7` shows `= 42`. Enter, or a click on it, puts the answer on
-the clipboard and closes the launcher. Numbers are written with a point
-for the decimals, as `1.5`; `+`, `-`, `*` or `×`, `/` or `÷`, and `^` for
-a power are understood, with brackets, and multiplying before adding, as
-by hand. A sum not yet finished is answered as far as it goes, so that the
-answer stays as the next sign is typed: `60 + 60 +` shows `= 120`, and a
-bracket left open is closed. A number alone is no sum, and nothing typed
-is ever run: it is read by the launcher's own code. An answer has at most
-15 figures, and a very large or very small one is written with a power of
+chosen, with "Enter copies the answer" under it: `6*7` shows `= 42`.
+Enter, or a click on it, puts the answer on the clipboard and closes the
+launcher. `+`, `-`, `*` or `×`, `/` or `÷`, and `^` for a power are
+understood, with brackets, and multiplying before adding, as by hand;
+`sqrt` or `√` for a square root, as `sqrt(2)` or `√2`; and `pi` or `π`.
+
+Numbers are written as the locale for numbers writes them: the first of
+`LC_ALL`, `LC_NUMERIC` and `LANG` that is set. In English, and wherever
+the locale is not known to write a comma, the decimals take a point and
+thousands a comma or a space: `1,234.5`. Where it writes a comma, as in
+Polish or German, the decimals take a comma and thousands a space or a
+point: `1 234,5` or `1.234,5`. What stands between thousands is read only
+where three figures follow it, so `2 3` is no number; a point not before
+three figures is the decimals there too, as a keypad types it, so `1.5`
+is one and a half and `1.500` fifteen hundred. The answer marks its
+decimals in the same way, and has nothing between its thousands, so
+that it can be pasted anywhere.
+
+`%` makes a number a hundredth, as `50%` is `0.5` and `200*10%` is `20`;
+a percentage alone added or taken away is of what it is added to or
+taken from, as on a calculator: `200+10%` is `220`.
+
+A sum not yet finished is answered as far as it goes, so that the answer
+stays as the next sign is typed: `60 + 60 +` shows `= 120`, `2*3+sq` shows
+`= 6`, and a bracket left open is closed. A number or `pi` alone is no
+sum, and nothing typed is ever run: it is read by omorfos's own code,
+which the calculator is to share (ADR 86). An answer has at most 15
+figures, and a very large or very small one is written with a power of
 ten, as `1e20`.
 
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,

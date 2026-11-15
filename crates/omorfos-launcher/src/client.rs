@@ -32,7 +32,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{App, Icons, Key, Outcome, Picker};
+use crate::{App, Icons, Key, Numbers, Outcome, Picker};
 
 /// Why the launcher could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -66,8 +66,9 @@ pub struct Launcher {
 impl Launcher {
     /// A launcher on the Wayland connection `wayland`, offering `apps` with
     /// their pictures from `icons`, themed and set up from the
-    /// configuration in `config`. What is picked is asked for over
-    /// `commands`, a connection to the compositor's own socket.
+    /// configuration in `config`, reading sums as `numbers`. What is picked
+    /// is asked for over `commands`, a connection to the compositor's own
+    /// socket.
     ///
     /// # Errors
     ///
@@ -78,6 +79,7 @@ impl Launcher {
         config: &Path,
         apps: Vec<App>,
         icons: Icons,
+        numbers: Numbers,
     ) -> Result<Self, Failure> {
         let connection = Connection::from_socket(wayland);
         connection.map_err(Failure::from).map(|connection| {
@@ -85,7 +87,7 @@ impl Launcher {
             connection.display().get_registry(&queue.handle(), ());
             let store = Store::open(config);
             let config = store.current();
-            let picker = Picker::new(apps, config.general.launcher);
+            let picker = Picker::new(apps, config.general.launcher, numbers);
             let mut icons = icons;
             icons.set_theme(&config.general.icons.theme);
             Self {
@@ -166,18 +168,20 @@ impl Launcher {
 
 /// Runs a launcher offering `apps`, with their pictures from `icons`, in
 /// the session whose Wayland socket is at `wayland` and whose own socket is
-/// at `socket`, themed and set up from `config`.
+/// at `socket`, themed and set up from `config`, reading sums as `numbers`.
 pub(crate) fn run(
     wayland: &Path,
     socket: &Path,
     config: &Path,
-    (apps, icons): (Vec<App>, Icons),
+    (apps, icons, numbers): (Vec<App>, Icons, Numbers),
 ) -> Result<(), Failure> {
     let streams = omorfos_shell::connect(wayland);
     let streams = streams.and_then(|wayland| Ipc::connect(socket).map(|ipc| (wayland, ipc)));
     let launcher = streams
         .map_err(Failure::from)
-        .and_then(|(wayland, commands)| Launcher::new(wayland, commands, config, apps, icons));
+        .and_then(|(wayland, commands)| {
+            Launcher::new(wayland, commands, config, apps, icons, numbers)
+        });
     launcher.and_then(|mut launcher| launcher.serve())
 }
 

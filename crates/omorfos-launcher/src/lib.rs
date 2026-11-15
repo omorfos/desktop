@@ -22,6 +22,7 @@ pub use apps::{App, directories, installed};
 pub use client::{Failure, Launcher};
 pub use omorfos_icons::Icons;
 use omorfos_ipc::help::About;
+pub use omorfos_sums::Numbers;
 pub use picker::{Key, Outcome, Picker};
 
 /// What it says of itself, when asked and in its manual page.
@@ -70,7 +71,8 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
         Some(((wayland, socket), config)) => {
             let asked = omorfos_i18n::asked(&|name| get(name)?.into_string().ok());
             let locales = omorfos_entries::locales(&asked);
-            let offered = (installed(&places, &locales), Icons::new(icons));
+            let numbers = Numbers::asked(&|name| get(name)?.into_string().ok());
+            let offered = (installed(&places, &locales), Icons::new(icons), numbers);
             client::run(&wayland, &socket, &config, offered)
         }
         None => Err(

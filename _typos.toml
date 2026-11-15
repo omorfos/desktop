@@ -1,3 +1,8 @@
+[default]
+# Faroese's code, among the languages that write a decimal comma, in quotes
+# only, so that "fo" written for "of" is still found.
+extend-ignore-re = ['"fo"']
+
 [default.extend-words]
 # The project name, Greek for "beautiful".
 omorfos = "omorfos"

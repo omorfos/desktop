@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use omorfos::{Input, Scale};
 use omorfos_config::{Action, Color, Part, State, States, Theme};
 use omorfos_ipc::Client as Ipc;
-use omorfos_launcher::{App, Launcher, Picker};
+use omorfos_launcher::{App, Launcher, Numbers, Picker};
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
@@ -99,7 +99,7 @@ fn launcher_of(session: &mut Session, names: &[&str]) -> Launcher {
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
-    Launcher::new(theirs, commands, &config, apps, icons).unwrap()
+    Launcher::new(theirs, commands, &config, apps, icons, Numbers::Point).unwrap()
 }
 
 /// Lets the launcher and the compositor talk until they have nothing more
@@ -126,7 +126,11 @@ fn press(session: &mut Session, code: Keycode) {
 /// `launcher` offers.
 fn corner() -> (i32, i32) {
     let theme = Theme::default();
-    let mut picker = Picker::new(Vec::new(), omorfos_config::Launcher::default());
+    let mut picker = Picker::new(
+        Vec::new(),
+        omorfos_config::Launcher::default(),
+        Numbers::Point,
+    );
     picker.fit(&theme, HEIGHT.unsigned_abs());
     let (width, _) = picker.size(&theme);
     let top = picker.top(&theme, HEIGHT.unsigned_abs());
@@ -713,7 +717,8 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
-    let mut launcher = Launcher::new(theirs, commands, &config, vec![app], icons).unwrap();
+    let mut launcher =
+        Launcher::new(theirs, commands, &config, vec![app], icons, Numbers::Point).unwrap();
 
     settle(&mut session, &mut launcher);
 

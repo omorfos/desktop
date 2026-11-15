@@ -10,7 +10,7 @@ use omorfos_ui::field::{Edit, Field, Reach, Way};
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
-use crate::{App, Icons};
+use crate::{App, Icons, Numbers};
 
 /// How many rows are listed at most until the launcher is told how tall
 /// its screen is.
@@ -73,6 +73,8 @@ pub struct Picker {
     apps: Vec<App>,
     /// What is shown of each program besides its name.
     show: Show,
+    /// How numbers are written in a sum.
+    numbers: Numbers,
     /// What has been typed, where the cursor is in it, and what is chosen.
     field: Field,
     /// The answer to what has been typed, if it is a sum, and how it is
@@ -151,13 +153,14 @@ impl Layout {
 
 impl Picker {
     /// A launcher offering `apps`, in the order they are given, showing
-    /// of each what `show` says.
+    /// of each what `show` says, and reading sums as `numbers`.
     #[must_use]
-    pub fn new(apps: Vec<App>, show: Show) -> Self {
+    pub fn new(apps: Vec<App>, show: Show, numbers: Numbers) -> Self {
         let found = (0..apps.len()).collect();
         Self {
             apps,
             show,
+            numbers,
             field: Field::new(LONGEST),
             answer: None,
             found,
@@ -384,11 +387,18 @@ impl Picker {
             text.draw(&mut canvas, &typed_in[chosen], mark, marked.color, font);
         }
 
+        // Under an answer, what Enter does with it, whatever is shown of
+        // the programs.
+        let copies = self.answer.as_ref().map(|_| words.say("enter-copies", &[]));
+        let described = self.show.descriptions;
         let listed = self.rows().enumerate().skip(self.first()).take(self.room);
         for (place, (row, item)) in listed.enumerate() {
             let (name, says, icon) = match item {
-                Row::Answer(_, shown) => (shown, self.field.text(), None),
-                Row::App(app) => (app.name.as_str(), app.description.as_str(), Some(&app.icon)),
+                Row::Answer(_, shown) => (shown, copies.as_deref(), None),
+                Row::App(app) => {
+                    let says = described.then_some(app.description.as_str());
+                    (app.name.as_str(), says, Some(&app.icon))
+                }
             };
             let states = States::NONE.when(State::Active, row == self.chosen);
             // A row is the same row whichever program is in it.
@@ -409,7 +419,7 @@ impl Picker {
                 room = inset(room, on_the_left(side.saturating_add(GAP)));
             }
             let font = theme.font(Part::LauncherItem, states);
-            if self.show.descriptions {
+            if let Some(says) = says {
                 // The name in the top half, what it says under it.
                 let (left, top, width, height) = room;
                 let half = height / 2;
@@ -485,7 +495,7 @@ impl Picker {
         let answer = self
             .show
             .sums
-            .then(|| omorfos_sums::answer(self.field.text()));
+            .then(|| omorfos_sums::answer(self.field.text(), self.numbers));
         let answer = answer.flatten();
         self.answer = answer.map(|answer| {
             let shown = format!("= {answer}");
@@ -574,7 +584,7 @@ mod tests {
 
     fn picker(names: &[&str]) -> Picker {
         let apps = names.iter().map(|name| app(name)).collect();
-        Picker::new(apps, NAMES)
+        Picker::new(apps, NAMES, Numbers::Point)
     }
 
     /// The launcher's picture under the built-in theme.
@@ -889,7 +899,7 @@ mod tests {
             terminal: true,
             ..app("top")
         };
-        let mut picker = Picker::new(vec![top], NAMES);
+        let mut picker = Picker::new(vec![top], NAMES, Numbers::Point);
         let terminal = Command::terminal();
         assert_eq!(
             picker.key(Key::Enter),
@@ -1052,7 +1062,11 @@ mod tests {
             descriptions: true,
             ..NAMES
         };
-        let mut described = Picker::new(names.iter().map(|name| app(name)).collect(), show);
+        let mut described = Picker::new(
+            names.iter().map(|name| app(name)).collect(),
+            show,
+            Numbers::Point,
+        );
 
         // Under each name there is something written, and nothing
         // without; the name is in the top half of its row with it, and in
@@ -1097,7 +1111,11 @@ mod tests {
             icons: true,
             ..NAMES
         };
-        let with = Picker::new(names.iter().map(|name| app(name)).collect(), show);
+        let with = Picker::new(
+            names.iter().map(|name| app(name)).collect(),
+            show,
+            Numbers::Point,
+        );
         let canvas = still(&with, &theme, Scale::ONE, &mut icons);
         let green = |canvas: &Canvas, place: i32| {
             let y = row(place).1.unsigned_abs();
@@ -1156,13 +1174,22 @@ mod tests {
     }
 
     #[test]
+    fn a_sum_is_read_and_answered_as_numbers_are_written_where_the_user_is() {
+        let apps = ["Calculator"].map(app).to_vec();
+        let mut picker = Picker::new(apps, NAMES, Numbers::Comma);
+        typed(&mut picker, "1 000,5+1");
+        assert_eq!(picker.chosen(), Some("1001,5"));
+        assert_eq!(picker.key(Key::Enter), copy("1001,5"));
+    }
+
+    #[test]
     fn sums_turned_off_are_looked_for_among_the_programs_as_anything_typed() {
         let show = Show {
             sums: false,
             ..NAMES
         };
         let apps = ["Calculator", "Counter 1+1"].map(app).to_vec();
-        let mut picker = Picker::new(apps, show);
+        let mut picker = Picker::new(apps, show, Numbers::Point);
         typed(&mut picker, "1+1");
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
         assert_eq!(names_of(&picker), ["Counter 1+1"]);
@@ -1195,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_is_written_on_its_row_with_the_sum_under_it() {
+    fn an_answer_is_written_on_its_row_with_how_to_copy_it_under_it() {
         let theme = Theme::default();
         let layout = Layout::new(&theme);
         let (left, _, width) = layout.list;
@@ -1210,7 +1237,7 @@ mod tests {
         };
         let (top, bottom) = (middle - half + 8..middle - 2, middle + 6..middle + half - 6);
         let sum = |show: Show| {
-            let mut picker = Picker::new(Vec::new(), show);
+            let mut picker = Picker::new(Vec::new(), show, Numbers::Point);
             typed(&mut picker, "6*7");
             picker
         };
@@ -1218,11 +1245,12 @@ mod tests {
             descriptions: true,
             ..NAMES
         });
-        assert!(inked(&described, top) > 20, "the answer");
-        assert!(inked(&described, bottom.clone()) > 20, "the sum");
+        assert!(inked(&described, top.clone()) > 20, "the answer");
+        assert!(inked(&described, bottom.clone()) > 20, "how to copy it");
+        // Whether or not what programs say of themselves is shown.
         let plain = sum(NAMES);
-        assert!(inked(&plain, middle - 3..middle + 3) > 20, "the answer");
-        assert_eq!(inked(&plain, bottom), 0);
+        assert!(inked(&plain, top.clone()) > 20, "the answer");
+        assert!(inked(&plain, bottom) > 20, "how to copy it");
         // With icons, it is written where the programs' names are.
         let iconed = sum(Show {
             icons: true,
@@ -1231,11 +1259,12 @@ mod tests {
         let canvas = painted(&iconed);
         let item = theme.style(Part::LauncherItem, States::NONE);
         let start = left.unsigned_abs() + item.padding.left;
-        let y = middle.unsigned_abs();
+        let lines = (middle - half + 4..middle + half - 4).map(i32::unsigned_abs);
+        let lit_at = |x: u32| lines.clone().all(|y| canvas.at(x, y) == lit(&theme));
         let beside = start..start + 36 + GAP;
-        assert!(beside.clone().all(|x| canvas.at(x, y) == lit(&theme)));
+        assert!(beside.clone().all(lit_at));
         let past = beside.end..beside.end + 40;
-        assert!(past.into_iter().any(|x| canvas.at(x, y) != lit(&theme)));
+        assert!(!past.into_iter().all(lit_at));
     }
 
     #[test]

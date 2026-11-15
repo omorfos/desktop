@@ -4,3 +4,6 @@
 # Under the text field, when no program matches what is typed. $typed is
 # what is typed.
 nothing-matches = Nothing matches “{ $typed }”
+
+# Under the answer to a sum typed, which Enter puts on the clipboard.
+enter-copies = Enter copies the answer
