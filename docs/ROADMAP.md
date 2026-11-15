@@ -1628,8 +1628,11 @@ to false, as `launcher.sums` is (ADR 83).
       as on a calculator; `sqrt` or `√`, and `pi` or `π`; and "Enter
       copies the answer" under the answer. Read in `omorfos-sums`, which
       the calculator is to share (ADR 86).
-- [ ] Known gaps in sums: no functions but the square root, as `sin` or
-      `ln`, and no `e`; a percentage in brackets, as `200+(10%)`, is a
+- [x] Sums with `sin`, `cos` and `tan` of angles in degrees, as a
+      desktop's calculator has them, rounded so that what is nothing
+      comes out as nothing; `ln` and `log`; and `e`.
+- [ ] Known gaps in sums: angles only in degrees, with no way to ask for
+      radians; a percentage in brackets, as `200+(10%)`, is a
       hundredth, not of what it is added to; which locales write a comma
       for the decimals is a table of omorfos's own, from the CLDR, and
       not what the C library says; and an answer is never written with

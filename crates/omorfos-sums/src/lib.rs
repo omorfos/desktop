@@ -4,10 +4,11 @@
 //!
 //! What is typed is read here and nowhere else: numbers, written as where
 //! the user is writes them ([`Numbers`]), `+`, `-`, `*` or `×`, `/` or `÷`,
-//! `^`, `%`, brackets, `sqrt` or `√`, and `pi` or `π`. Nothing typed is ever
+//! `^`, `%`, brackets, the functions `sqrt` or `√`, `sin`, `cos`, `tan`, `ln`
+//! and `log`, and the constants `pi` or `π` and `e`. Nothing typed is ever
 //! run.
 
-use std::f64::consts::PI;
+use std::f64::consts::{E, PI};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -24,10 +25,45 @@ const FIGURES: usize = 15;
 /// opened, and the decimals or a thousand begun with no figure after them.
 const UNFINISHED: [char; 11] = ['+', '-', '*', '×', '/', '÷', '^', '(', '√', ',', '.'];
 
-/// The words that stand for something, written in letters: a function,
-/// which needs something after it, and a constant, which does not.
-const SQRT: &str = "sqrt";
-const PI_WORD: &str = "pi";
+/// The functions written in letters, which need something after them,
+/// as `sin 30` or `sin(30)`: angles are in degrees, as on a desktop's
+/// calculator, and `log` is of ten.
+const FUNCTIONS: [(&str, Function); 6] = [
+    ("sqrt", f64::sqrt),
+    ("sin", sine),
+    ("cos", cosine),
+    ("tan", tangent),
+    ("ln", f64::ln),
+    ("log", f64::log10),
+];
+
+/// What a function does to the number after it.
+type Function = fn(f64) -> f64;
+
+/// The constants written in letters, which stand alone.
+const CONSTANTS: [(&str, f64); 2] = [("pi", PI), ("e", E)];
+
+/// The sine of an angle in degrees, to 15 places, so that what is nothing
+/// comes out as nothing: `sin 180` is 0, not what is left over.
+fn sine(degrees: f64) -> f64 {
+    places(degrees.to_radians().sin())
+}
+
+/// The cosine of an angle in degrees, as [`sine`].
+fn cosine(degrees: f64) -> f64 {
+    places(degrees.to_radians().cos())
+}
+
+/// The tangent of an angle in degrees, as [`sine`]: none where its
+/// cosine is nothing, as `tan 90`, which divides by it.
+fn tangent(degrees: f64) -> f64 {
+    sine(degrees) / cosine(degrees)
+}
+
+/// `value` rounded to 15 places after the point.
+fn places(value: f64) -> f64 {
+    (value * 1e15).round() / 1e15
+}
 
 /// The languages that write a comma for the decimals, by their codes, as
 /// the Unicode CLDR has them, but for the places in [`POINT_PLACES`].
@@ -133,7 +169,11 @@ fn unfinished(word: &str) -> bool {
         let start = whole.get(..word.len());
         start.is_some_and(|start| start.eq_ignore_ascii_case(word))
     };
-    !word.is_empty() && (begins(SQRT) || (begins(PI_WORD) && word.len() < PI_WORD.len()))
+    let mut functions = FUNCTIONS.iter().map(|(name, _)| *name);
+    let mut constants = CONSTANTS.iter().map(|(name, _)| *name);
+    let function = functions.any(begins);
+    let constant = constants.any(|name| begins(name) && word.len() < name.len());
+    !word.is_empty() && (function || constant)
 }
 
 /// The answer to what is typed, if it is a whole sum.
@@ -291,15 +331,15 @@ impl Reading<'_> {
         }
     }
 
-    /// A number written out, a constant, a square root, or a sum in
-    /// brackets.
+    /// A number written out, a constant, a function of what follows, or a
+    /// sum in brackets.
     fn number(&mut self) -> Option<f64> {
         if self.take(&['(']).is_some() {
             let value = self.sum()?;
             return self.take(&[')']).map(|_| value);
         }
         if self.take(&['√']).is_some() {
-            return self.root();
+            return self.apply(f64::sqrt);
         }
         if self.take(&['π']).is_some() {
             return Some(PI);
@@ -308,21 +348,21 @@ impl Reading<'_> {
         let letters = word.by_ref().take_while(char::is_ascii_alphabetic).count();
         if letters > 0 {
             let spelt: String = self.rest.by_ref().take(letters).collect();
-            return if spelt.eq_ignore_ascii_case(SQRT) {
-                self.root()
-            } else if spelt.eq_ignore_ascii_case(PI_WORD) {
-                Some(PI)
-            } else {
-                None
-            };
+            let named = |name: &&str| spelt.eq_ignore_ascii_case(name);
+            let function = FUNCTIONS.iter().find(|(name, _)| named(name));
+            if let Some((_, function)) = function {
+                return self.apply(*function);
+            }
+            let constant = CONSTANTS.iter().find(|(name, _)| named(name));
+            return constant.map(|(_, value)| *value);
         }
         self.figures()
     }
 
-    /// The square root of the number after it.
-    fn root(&mut self) -> Option<f64> {
+    /// `function` of the number after it.
+    fn apply(&mut self, function: Function) -> Option<f64> {
         self.worked = true;
-        self.deeper(|reading| reading.number().map(f64::sqrt))
+        self.deeper(|reading| reading.number().map(function))
     }
 
     /// A number written in figures, with its decimals and what stands
@@ -543,8 +583,27 @@ mod tests {
         assert_eq!(english("pi"), None);
         assert_eq!(english("π"), None);
         for typed in [
-            "sqrt", "√", "sqrt(-1)", "2pi", "pi2", "sqr(4)", "sqrtt(4)", "pie+1", "e+1",
+            "sqrt", "√", "sqrt(-1)", "2pi", "pi2", "sqr(4)", "sqrtt(4)", "pie+1", "x+1",
         ] {
+            assert_eq!(english(typed), None, "{typed}");
+        }
+    }
+
+    #[test]
+    fn angles_are_in_degrees_and_logarithms_natural_or_of_ten() {
+        assert_eq!(english("sin(30)").as_deref(), Some("0.5"));
+        assert_eq!(english("cos 60").as_deref(), Some("0.5"));
+        assert_eq!(english("tan(45)").as_deref(), Some("1"));
+        assert_eq!(english("SIN(90)*2").as_deref(), Some("2"));
+        // What is nothing comes out as nothing, not as what is left over.
+        assert_eq!(english("sin(180)").as_deref(), Some("0"));
+        assert_eq!(english("cos(90)+1").as_deref(), Some("1"));
+        assert_eq!(english("ln(e)").as_deref(), Some("1"));
+        assert_eq!(english("log(1000)").as_deref(), Some("3"));
+        assert_eq!(english("2*e").as_deref(), Some("5.43656365691809"));
+        assert_eq!(polish("sin(30)+0,5").as_deref(), Some("1"));
+        // What has no number for an answer has none.
+        for typed in ["tan(90)", "ln(0)", "ln(-1)", "log(0)", "e", "E"] {
             assert_eq!(english(typed), None, "{typed}");
         }
     }
@@ -555,6 +614,9 @@ mod tests {
         assert_eq!(english("4*2+sq").as_deref(), Some("8"));
         assert_eq!(english("4*2+√").as_deref(), Some("8"));
         assert_eq!(english("4*2*p").as_deref(), Some("8"));
+        assert_eq!(english("2*3+co").as_deref(), Some("6"));
+        assert_eq!(english("2*3+lo").as_deref(), Some("6"));
+        assert_eq!(english("2*3+sin(").as_deref(), Some("6"));
         assert_eq!(english("9+sqrt(16").as_deref(), Some("13"));
         assert_eq!(english("1,000+1,").as_deref(), Some("1001"));
         assert_eq!(polish("2,5+1,").as_deref(), Some("3,5"));

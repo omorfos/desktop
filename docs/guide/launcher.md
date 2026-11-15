@@ -63,7 +63,10 @@ chosen, with "Enter copies the answer" under it: `6*7` shows `= 42`.
 Enter, or a click on it, puts the answer on the clipboard and closes the
 launcher. `+`, `-`, `*` or `×`, `/` or `÷`, and `^` for a power are
 understood, with brackets, and multiplying before adding, as by hand;
-`sqrt` or `√` for a square root, as `sqrt(2)` or `√2`; and `pi` or `π`.
+`sqrt` or `√` for a square root, as `sqrt(2)` or `√2`; `sin`, `cos` and
+`tan` of an angle in degrees, as on a calculator, so that `sin(30)` is
+`0.5`; `ln` and `log`, the logarithms natural and of ten; and `pi` or `π`,
+and `e`.
 
 Numbers are written as the locale for numbers writes them: the first of
 `LC_ALL`, `LC_NUMERIC` and `LANG` that is set. In English, and wherever
