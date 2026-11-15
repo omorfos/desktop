@@ -701,3 +701,163 @@ fn where_a_programs_windows_were_is_handed_back_with_it_and_the_session_first() 
         ]
     );
 }
+
+/// `wl_registry.bind` of `wl_shm`, as the object 3.
+fn bind_shm() -> Vec<u8> {
+    let mut words = vec![1, 7];
+    words.extend(
+        b"wl_shm\0\0"
+            .chunks(4)
+            .map(|word| u32::from_ne_bytes(word.try_into().unwrap())),
+    );
+    words.extend([1, 3]);
+    message(2, 0, &words)
+}
+
+/// Sends `bytes` over `to`, with `fd` handed over beside them.
+fn send_with(to: &UnixStream, bytes: &[u8], fd: &std::fs::File) {
+    use rustix::net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags, sendmsg};
+    let fds = [fd.as_fd()];
+    let mut space = vec![std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
+    let mut ancillary = SendAncillaryBuffer::new(&mut space);
+    assert!(ancillary.push(SendAncillaryMessage::ScmRights(&fds)));
+    let sent = sendmsg(
+        to,
+        &[std::io::IoSlice::new(bytes)],
+        &mut ancillary,
+        SendFlags::empty(),
+    );
+    assert_eq!(sent.unwrap(), bytes.len());
+}
+
+/// Reads and lets go of everything waiting on `from`, descriptors too.
+fn drain(from: &UnixStream) {
+    use rustix::net::{RecvAncillaryBuffer, RecvFlags, recvmsg};
+    let mut bytes = [0; 4096];
+    loop {
+        let mut space = vec![std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(28))];
+        let mut ancillary = RecvAncillaryBuffer::new(&mut space);
+        let read = recvmsg(
+            from,
+            &mut [std::io::IoSliceMut::new(&mut bytes)],
+            &mut ancillary,
+            RecvFlags::DONTWAIT,
+        );
+        if !read.is_ok_and(|read| read.bytes > 0) {
+            return;
+        }
+    }
+}
+
+#[test]
+fn a_program_that_hands_over_more_descriptors_than_any_holds_is_let_go_and_said_to_be() {
+    // More than a login allows at first, as the relay itself has.
+    omorfos_ipc::limits::raise();
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, connection, _) = held.connect(&compositor);
+    program.set_nonblocking(true).unwrap();
+    let mut setup = get_registry();
+    setup.extend(bind_shm());
+    (&program).write_all(&setup).unwrap();
+    // A pool of memory after another, each a descriptor, as the relay
+    // keeps each for the next compositor; the compositor reads them all.
+    let memory = std::fs::File::open("/dev/null").unwrap();
+    let most = u32::try_from(omorfos_relay::link::MOST_DESCRIPTORS).unwrap();
+    for pool in 0..=most {
+        send_with(&program, &message(3, 0, &[4 + pool, 4096]), &memory);
+        held.step();
+        drain(&connection);
+    }
+    held.until(|held| held.relay.programs() == 0);
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was let go, for more descriptors than any program holds",
+            named()
+        )),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_program_that_holds_fewer_descriptors_than_the_most_is_let_be() {
+    omorfos_ipc::limits::raise();
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, connection, _) = held.connect(&compositor);
+    program.set_nonblocking(true).unwrap();
+    let mut setup = get_registry();
+    setup.extend(bind_shm());
+    (&program).write_all(&setup).unwrap();
+    let memory = std::fs::File::open("/dev/null").unwrap();
+    let most = u32::try_from(omorfos_relay::link::MOST_DESCRIPTORS).unwrap();
+    // Each pool let go of as the next is made: never more than one held.
+    for pool in 0..=most {
+        send_with(&program, &message(3, 0, &[4 + pool, 4096]), &memory);
+        (&program).write_all(&message(4 + pool, 1, &[])).unwrap();
+        held.step();
+        drain(&connection);
+    }
+    held.step();
+    assert_eq!(
+        held.relay.programs(),
+        1,
+        "{}",
+        String::from_utf8_lossy(&held.said)
+    );
+}
+
+/// Set in the test of a relay with no descriptors left, run by itself as a
+/// process of its own: the limit on descriptors is the process's.
+const STARVED: &str = "OMORFOS_TEST_STARVED";
+
+#[test]
+fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
+    use rustix::process::{Resource, getrlimit, setrlimit};
+    let name = "a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is";
+    if std::env::var_os(STARVED).is_none() {
+        let ran = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env(STARVED, "1")
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stdout);
+        let err = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "{said}{err}");
+        assert!(said.contains("1 passed"), "{said}");
+        return;
+    }
+    let mut limit = getrlimit(Resource::Nofile);
+    limit.current = Some(256);
+    setrlimit(Resource::Nofile, limit).unwrap();
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    // Every descriptor taken but one, for the program's end.
+    let mut taken = Vec::new();
+    while let Ok(file) = std::fs::File::open("/dev/null") {
+        taken.push(file);
+    }
+    drop(taken.pop());
+    let _waiting = UnixStream::connect(&held.socket).unwrap();
+    // It is said, once, and the relay waits rather than spins: a step with
+    // nothing it can do waits as long as it was told to.
+    held.step();
+    held.step();
+    // Each step waits for as long as is left, or for something to happen:
+    // a few in a while for a relay that waits, hundreds for one that spins.
+    let until = Instant::now() + Duration::from_millis(300);
+    let mut steps = 0;
+    while let Some(left) = until.checked_duration_since(Instant::now()) {
+        held.relay.step(Some(left), &mut held.said);
+        steps += 1;
+    }
+    assert!(steps < 20, "it spun, {steps} steps");
+    let said = String::from_utf8_lossy(&held.said);
+    assert_eq!(said.matches("no descriptor is left").count(), 1, "{said}");
+    // Once there are descriptors again, it is let in.
+    drop(taken);
+    held.until(|held| held.relay.programs() == 1);
+    let handed = held.handed(&compositor);
+    assert!(matches!(handed.hand, Some(Hand::Program(_))));
+}

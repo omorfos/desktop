@@ -1962,13 +1962,19 @@ Security:
       pressed has to have gone to the program that made the token, and
       its serial be that press's or one since (ADR 36); and at most 32
       tokens are kept, none longer than a minute.
-- [ ] Descriptors running out, in the compositor and in the relay
-      ([finding 4](reviews/2026-11-15-what-a-client-can-cost.md#4-descriptors-run-out-in-the-compositor-and-in-the-relay)),
-      medium: the limit is never raised from 1024, and each pool of shared
-      memory is one kept in each. To be shown by a test first; then the
-      limit raised, a program held to a most, and a failure to accept
-      neither the end nor a loop that spins. An ADR, for what programs
-      started inherit.
+- [x] Descriptors running out, in the compositor and in the relay
+      ([finding 4](reviews/2026-11-15-what-a-client-can-cost.md#4-descriptors-run-out-in-the-compositor-and-in-the-relay)):
+      shown worse than written, as a program connecting with none left
+      ended the compositor. A socket that cannot be accepted from is now
+      listened to again a moment later, in the compositor, its IPC server
+      and the relay; the three programs raise their limit to the hard one
+      (ADR 93); and the relay holds a program to 4096 descriptors.
+- [ ] What fixing descriptors left open: text drawn for the first time
+      with none left panics in cosmic-text, as no font can be opened (to
+      load the fonts as the compositor starts, or not to panic); the
+      sockets of sandboxes the relay listens on still spin when one
+      cannot be accepted; and the compositor holds no program that
+      connects without the relay to a most number of descriptors.
 - [ ] What is added to an object kept without end
       ([finding 5](reviews/2026-11-15-what-a-client-can-cost.md#5-what-is-added-to-an-object-is-kept-without-end)),
       medium: the relay keeps every `wl_region.add`, every kind a source

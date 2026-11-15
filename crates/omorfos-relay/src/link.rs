@@ -17,7 +17,7 @@ use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use omorfos_ipc::relay::{Hand, Program};
 use rustix::event::PollFlags;
@@ -44,6 +44,13 @@ const DESCRIPTORS: usize = 256;
 
 /// The most descriptors sent or read at once, as libwayland sends them.
 const AT_ONCE: usize = 28;
+
+/// The most descriptors a program may have the relay hold for it at once,
+/// in what it keeps for the next compositor and what is still to be sent
+/// to this one: far more than any program holds, a pool of shared memory
+/// and a buffer of the graphics card each one, and few enough that one
+/// program cannot take what the session has (ADR 93).
+pub const MOST_DESCRIPTORS: usize = 4096;
 
 /// The display, and its event that says the program did what it may not.
 const DISPLAY: u32 = 1;
@@ -136,6 +143,8 @@ pub struct Link {
     again: bool,
     up: Passing,
     down: Passing,
+    /// What the program has handed over, while the relay holds it.
+    held: Vec<Weak<OwnedFd>>,
 }
 
 impl Link {
@@ -163,6 +172,7 @@ impl Link {
             again: false,
             up: Passing::default(),
             down: Passing::default(),
+            held: Vec::new(),
         })
     }
 
@@ -493,6 +503,13 @@ impl Link {
                 return Err(Broken("a message without its descriptors").into());
             }
             let fds: Vec<Rc<OwnedFd>> = self.up.read_fds.drain(..read.fds).map(Rc::new).collect();
+            if !fds.is_empty() {
+                self.held.retain(|held| held.strong_count() > 0);
+                self.held.extend(fds.iter().map(Rc::downgrade));
+                if self.held.len() > MOST_DESCRIPTORS {
+                    return Err(Broken("more descriptors than any program holds").into());
+                }
+            }
             let described = &read.interface.requests[usize::from(read.opcode)];
             self.up.read.drain(..header.size);
             if self
@@ -1468,6 +1485,44 @@ mod tests {
             read = link.read(Way::Up);
         }
         assert_eq!(read, too_many, "in all");
+    }
+
+    /// Reads what `program` sent, and lets the compositor take what was
+    /// passed on, until the link says why it ends, or there is nothing
+    /// more.
+    fn read_through(link: &mut Link, compositor: &UnixStream) -> Result<(), Ended> {
+        let read = link.read(Way::Up);
+        let _ = link.write(Way::Up);
+        while !received(compositor).0.is_empty() {}
+        read
+    }
+
+    #[test]
+    fn a_program_may_not_have_more_descriptors_held_than_any_holds() {
+        // More than a login allows at first, as the relay has.
+        omorfos_ipc::limits::raise();
+        let (mut link, program, compositor) = linked();
+        let mut setup = get_registry();
+        setup.extend(bind_shm());
+        send(&program, &setup, &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        let memory = File::open("/dev/null").unwrap();
+        let most = u32::try_from(MOST_DESCRIPTORS).unwrap();
+        // A pool of memory after another, each a descriptor kept.
+        let mut read = Ok(());
+        for pool in 0..=most {
+            send(
+                &program,
+                &message(3, 0, &words(&[4 + pool, 4096])),
+                &[memory.as_fd()],
+            );
+            read = read_through(&mut link, &compositor);
+            if read.is_err() {
+                break;
+            }
+        }
+        let holding = Broken("more descriptors than any program holds");
+        assert_eq!(read, Err(Ended::Broken(holding)));
     }
 
     #[test]

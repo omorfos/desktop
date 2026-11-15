@@ -284,7 +284,45 @@ turn or as one is made; every browser makes them and uses few.
 
 ### 4. Descriptors run out, in the compositor and in the relay
 
-**Medium. To be shown.**
+**High, as shown. Shown by tests, and fixed the same day (ADR 93).**
+
+Shown worse than it was written: when a program connected with no
+descriptor left, accepting it failed, the error went up through the
+event loop, and `Session::run` returned it, which **ended the
+compositor**. Any program could use up the compositor's descriptors with
+pools of shared memory and so end the session for the next to connect.
+The IPC socket did not end the session but spun, as below; so did the
+relay.
+
+What was changed:
+
+- **A socket that cannot be accepted from is listened to again a moment
+  later**, in the compositor (`serve_on` in `session.rs`), its IPC server
+  (`Server::accept` in `ipc.rs`) and the relay (`Relay::pause`), so that
+  none ends or spins; each says so once.
+- **The compositor, the relay and the holder raise their soft limit to
+  the hard one** as they start (`omorfos_ipc::limits::raise`, ADR 93).
+- **The relay holds a program to 4096 descriptors**
+  (`link::MOST_DESCRIPTORS`), counted as what it still holds for it, and
+  lets one past it go, as it does one past `objects::MOST` objects.
+
+The tests that run out of descriptors run as processes of their own, as
+the limit is the process's: `session::a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is`
+and `ipc::a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is`
+in the compositor's, and three in `crates/omorfos-relay/tests/relay.rs`.
+
+**Still open**, and on the roadmap:
+
+- Text drawn for the first time with no descriptor left panics in
+  cosmic-text (`no default font found`): no font can be opened. A session
+  has drawn text long before, so the tests draw a titlebar first.
+- The sockets of sandboxes the relay listens on accept as before, and
+  would spin the same way.
+- The compositor holds no program to a most number of descriptors; a
+  program connected without the relay, as in the nested backend, is
+  bounded only by the limit.
+
+The finding as it was first written:
 
 Nothing raises the limit on open descriptors: there is no `setrlimit` in
 any crate. Under a login it is 1024, of 524288 allowed. A pool of shared

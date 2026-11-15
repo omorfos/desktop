@@ -17,12 +17,13 @@ pub mod sandbox;
 pub mod serials;
 pub mod wire;
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos_ipc::help::About;
 use omorfos_ipc::relay::{self, Hand, Program, Received, Started};
@@ -61,6 +62,11 @@ const GRACE: Duration = Duration::from_millis(500);
 /// may make as many as it likes, so past this one made is let go.
 const SANDBOXES: usize = 64;
 
+/// How long the socket is not listened to once a program waiting at it
+/// could not be taken, as when no descriptor is left: it stays ready, and
+/// listened to it would be woken for at once, again and again.
+const AGAIN: Duration = Duration::from_millis(100);
+
 /// The relay, and every program's connection through it.
 #[derive(Debug)]
 pub struct Relay {
@@ -87,6 +93,10 @@ pub struct Relay {
     /// Whether the compositor has said it is going: each program's
     /// connection it closes from then is it going, and the program kept.
     going: bool,
+    /// Until when the socket is not listened to, as a program waiting at
+    /// it could not be taken; and whether that has been said since a
+    /// program last was.
+    paused: (Option<Instant>, bool),
 }
 
 impl Relay {
@@ -104,6 +114,7 @@ impl Relay {
             listed: BTreeMap::new(),
             readying: false,
             going: false,
+            paused: (None, false),
         }
     }
 
@@ -199,7 +210,10 @@ impl Relay {
             let (links, next) = (&mut self.links, &mut self.next);
             let compositor = self.compositor.as_ref().map(AsFd::as_fd);
             let socket = self.socket.as_ref().filter(|_| socket_ready == Some(true));
-            let programs = socket.into_iter().flat_map(waiting);
+            let failed = Cell::new(false);
+            let programs = socket
+                .into_iter()
+                .flat_map(|socket| waiting(socket, &failed));
             let waiting_inside = self.sandboxes.iter().zip(&through);
             let waiting_inside = waiting_inside.filter(|(_, (_, waiting))| *waiting);
             let inside = waiting_inside.flat_map(|(sandbox, _)| sandbox.waiting());
@@ -207,6 +221,7 @@ impl Relay {
                 admit(programs, false, compositor, links, next, log);
                 admit(inside, true, compositor, links, next, log);
             });
+            self.pause(socket_ready == Some(true), failed.get(), log);
         }
         // A sandbox ended lets nothing more in; what came in stays.
         let mut ended = through.iter().map(|(ended, _)| *ended);
@@ -214,6 +229,23 @@ impl Relay {
         self.take_sandboxes(log);
         self.tell_ready();
         true
+    }
+
+    /// Stops listening to the socket for a moment if, `tried`, a program
+    /// waiting at it could not be taken, `failed`; and says so once, until
+    /// the socket is tried and all waiting are taken.
+    fn pause(&mut self, tried: bool, failed: bool, log: &mut dyn Write) {
+        if !tried {
+            return;
+        }
+        if failed && !self.paused.1 {
+            let _ = writeln!(
+                log,
+                "omorfos-relay: a program could not be let in, as no descriptor is left; it is \
+                 let in once one is free"
+            );
+        }
+        self.paused = (failed.then(|| Instant::now() + AGAIN), failed);
     }
 
     /// Tells the compositor, once, that every program kept for it is ready
@@ -250,14 +282,30 @@ impl Relay {
     /// the compositor.
     fn wait(&self, timeout: Option<Duration>) -> Vec<PollFlags> {
         let mut polled = vec![PollFd::new(&self.holder, PollFlags::IN)];
+        // A socket not listened to is still among what is polled, asking
+        // for nothing, so that each is where it is expected to be.
+        let left = self
+            .paused
+            .0
+            .map(|until| until.saturating_duration_since(Instant::now()));
+        let paused = left.filter(|left| !left.is_zero());
+        let socket = if paused.is_some() {
+            PollFlags::empty()
+        } else {
+            PollFlags::IN
+        };
         if let Some(compositor) = &self.compositor {
             polled.push(PollFd::new(compositor, PollFlags::IN));
             polled.extend(
                 self.socket
                     .as_ref()
-                    .map(|socket| PollFd::new(socket, PollFlags::IN)),
+                    .map(|listening| PollFd::new(listening, socket)),
             );
         }
+        let timeout = match (timeout, paused) {
+            (Some(timeout), Some(paused)) => Some(timeout.min(paused)),
+            (timeout, paused) => timeout.or(paused),
+        };
         for sandbox in &self.sandboxes {
             polled.push(PollFd::from_borrowed_fd(sandbox.closing(), PollFlags::IN));
             if self.compositor.is_some() {
@@ -539,9 +587,19 @@ fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write
     }
 }
 
-/// Each program waiting at `socket`, without waiting for one.
-fn waiting(socket: &UnixListener) -> impl Iterator<Item = UnixStream> + '_ {
-    std::iter::from_fn(|| socket.accept().ok().map(|(program, _)| program))
+/// Each program waiting at `socket`, without waiting for one; `failed` is
+/// set if one waiting could not be taken.
+fn waiting<'a>(
+    socket: &'a UnixListener,
+    failed: &'a Cell<bool>,
+) -> impl Iterator<Item = UnixStream> + 'a {
+    std::iter::from_fn(move || match socket.accept() {
+        Ok((program, _)) => Some(program),
+        Err(error) => {
+            failed.set(error.kind() != io::ErrorKind::WouldBlock);
+            None
+        }
+    })
 }
 
 /// Takes each of `programs`, numbering each from `next`, and hands

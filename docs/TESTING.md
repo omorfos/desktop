@@ -388,6 +388,11 @@ the machine's before it fails:
 (ulimit -v 8000000; cargo test -p omorfos --all-features --test integration enormous)
 ```
 
+A test of what happens when a process has no descriptor left runs as a
+process of its own, as the limit is the process's and every other test
+runs in this one: `common::starved` runs the test so, with a lowered
+limit, and `common::take_descriptors` takes what is left.
+
 ## Stress
 
 After adding a test that starts a process, watches a file or starts an X
