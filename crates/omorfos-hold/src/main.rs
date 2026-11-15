@@ -13,6 +13,9 @@ use omorfos_ipc::help::help;
 use omorfos_ipc::session_log::NAME;
 
 fn main() -> ExitCode {
+    // As many descriptors as may be had, for the compositor and the relay
+    // it starts as well as its own (ADR 93).
+    omorfos_ipc::limits::raise();
     let arguments: Vec<String> = env::args().skip(1).collect();
     let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let (mut out, mut err) = (io::stdout(), io::stderr());

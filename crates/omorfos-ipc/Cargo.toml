@@ -19,8 +19,9 @@ serde_json = "1.0"
 # copied to a program that pastes it without waiting on the program: tells
 # a pipe from anything else (`fs`), moves what is handed over into it
 # through a pipe of our own (`pipe`), and waits by the clock for one with no
-# room (`event`).
-rustix = { version = "1.1.5", default-features = false, features = ["event", "fs", "net", "pipe", "std"] }
+# room (`event`); and raises the limit on descriptors of each program of
+# the session (`process`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "fs", "net", "pipe", "process", "std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

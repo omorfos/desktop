@@ -11,6 +11,9 @@ use omorfos_ipc::help::help;
 use omorfos_relay::Relay;
 
 fn main() -> ExitCode {
+    // As many descriptors as may be had: one is kept for each pool of
+    // memory a program shares (ADR 93).
+    omorfos_ipc::limits::raise();
     let arguments: Vec<String> = env::args().skip(1).collect();
     let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let (mut out, mut err) = (io::stdout(), io::stderr());

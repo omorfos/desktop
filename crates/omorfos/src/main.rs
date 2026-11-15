@@ -6,6 +6,9 @@ use std::{env, io};
 use omorfos::backend::Backend;
 
 fn main() -> ExitCode {
+    // As many descriptors as may be had: one is kept for each pool of
+    // memory a program shares (ADR 93).
+    omorfos_ipc::limits::raise();
     let arguments = env::args_os().skip(1);
     let backend = Backend::choose(
         env::var_os("WAYLAND_DISPLAY").as_deref(),
