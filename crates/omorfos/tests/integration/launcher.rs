@@ -299,6 +299,53 @@ fn ctrl_a_or_super_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_plac
     }
 }
 
+/// Scrolls by `vertical`, downwards, where the pointer is.
+fn scroll(session: &mut Session, vertical: f64) {
+    let scrolled = Input::Scroll {
+        horizontal: 0.0,
+        vertical,
+    };
+    session.compositor_mut().input(scrolled, 0);
+}
+
+#[test]
+fn the_wheel_and_the_touchpad_scroll_through_the_programs() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    // Over the text field, where the pointer chooses nothing.
+    let (left, top) = corner();
+    let (x, y) = (f64::from(left + 40), f64::from(top + 20));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0));
+
+    // A notch of the wheel is a row.
+    scroll(&mut session, 15.0);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(1));
+    // A touchpad goes by less at a time, and gets there as it adds up.
+    for _ in 0..2 {
+        scroll(&mut session, 7.0);
+        settle(&mut session, &mut launcher);
+        assert_eq!(chosen(&mut session), Some(1));
+    }
+    scroll(&mut session, 7.0);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(2));
+    // Back up by as much, and no further than the first, however far.
+    scroll(&mut session, -21.0);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(1));
+    scroll(&mut session, -1.0e9);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0));
+    // Nor is what was beyond the first kept, to be scrolled back first.
+    scroll(&mut session, 15.0);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(1));
+}
+
 #[test]
 fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
     let mut session = Session::new();

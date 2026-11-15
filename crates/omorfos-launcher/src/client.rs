@@ -38,6 +38,14 @@ pub type Failure = Box<dyn Error + Send + Sync>;
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
 
+/// How far a notch of a wheel scrolls, as the compositor says it: a row
+/// of the list. A touchpad says less at a time.
+const NOTCH: f64 = 15.0;
+
+/// The most rows one turn of the wheel goes by, more than the list ever
+/// shows.
+const MOST_SCROLLED: f64 = 64.0;
+
 /// The most times a held key is taken again in one turn. A program that
 /// was kept from running for a while does not then type a screenful.
 const MOST_REPEATS: usize = 8;
@@ -202,6 +210,8 @@ struct Shell {
     held: Option<(u32, Duration)>,
     /// Where on the launcher the pointer is.
     over: (i32, i32),
+    /// How far it has been scrolled since it last went by a row, downwards.
+    scrolled: f64,
     /// Where what was picked is asked for.
     commands: Ipc,
     /// Whether it could be asked for.
@@ -306,6 +316,7 @@ impl Shell {
             repeating: None,
             held: None,
             over: (-1, -1),
+            scrolled: 0.0,
             commands,
             sent: Ok(()),
             motion: Motion::new(),
@@ -333,6 +344,29 @@ impl Shell {
         let (x, y) = self.over;
         // Only on the box do places mean anything to the list.
         self.stale |= self.on_box && self.picker.point(x, y, &self.theme);
+    }
+
+    /// Takes in a scroll of the wheel or the touchpad, `by` so far downwards:
+    /// a row for each notch, as the arrows go, and what is less than a
+    /// notch kept for the next.
+    fn scroll(&mut self, by: f64) {
+        let scrolled = self.scrolled + by;
+        let whole = (scrolled / NOTCH).trunc();
+        let mut rows = whole.clamp(-MOST_SCROLLED, MOST_SCROLLED);
+        // Beyond the most, nothing is kept: it went past the end anyway.
+        self.scrolled = if whole.abs() > MOST_SCROLLED {
+            0.0
+        } else {
+            scrolled % NOTCH
+        };
+        while rows >= 1.0 {
+            self.take_key(Key::Down);
+            rows -= 1.0;
+        }
+        while rows <= -1.0 {
+            self.take_key(Key::Up);
+            rows += 1.0;
+        }
     }
 
     /// Does what `key` does to the list.
@@ -703,6 +737,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_y,
                 ..
             } => shell.moved(surface_x, surface_y),
+            // Anywhere: over the backdrop as well as the box.
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(wl_pointer::Axis::VerticalScroll),
+                value,
+                ..
+            } => shell.scroll(value),
             wl_pointer::Event::Button {
                 button: LEFT_BUTTON,
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
