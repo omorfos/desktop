@@ -27,37 +27,13 @@ fn clients_that_connect_to_a_served_socket_are_taken_on() {
     assert_eq!(session.compositor().desktop().windows().count(), 2);
 }
 
-/// Set for the test of a session with no descriptors left, which is run
-/// by itself as a process of its own: the limit on descriptors is the
-/// process's, and every other test runs in this one.
-const STARVED: &str = "OMORFOS_TEST_STARVED";
-
 #[test]
 fn a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is() {
-    use std::fs::File;
-
-    use rustix::process::{Resource, getrlimit, setrlimit};
-
     let name =
         "session::a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is";
-    if std::env::var_os(STARVED).is_none() {
-        let ran = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", name, "--nocapture"])
-            .env(STARVED, "1")
-            .output()
-            .unwrap();
-        let said = String::from_utf8_lossy(&ran.stdout);
-        assert!(
-            ran.status.success(),
-            "{said}{}",
-            String::from_utf8_lossy(&ran.stderr)
-        );
-        assert!(said.contains("1 passed"), "{said}");
+    if !crate::common::starved(name) {
         return;
     }
-    let mut limit = getrlimit(Resource::Nofile);
-    limit.current = Some(256);
-    setrlimit(Resource::Nofile, limit).unwrap();
     let mut session = Session::new();
     let path = session.config.path().join("wayland-test");
     let socket = ListeningSocket::bind_absolute(path.clone()).unwrap();
@@ -70,11 +46,7 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is() 
 
     // Every descriptor taken, as a program can take them, but the one the
     // program that connects next has for its end.
-    let mut taken = Vec::new();
-    while let Ok(file) = File::open("/dev/null") {
-        taken.push(file);
-    }
-    drop(taken.pop());
+    let taken = crate::common::take_descriptors(1);
     let waiting = UnixStream::connect(&path).unwrap();
 
     // The session goes on, and does not spin on what it cannot take: a

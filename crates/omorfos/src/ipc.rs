@@ -49,8 +49,15 @@ pub(crate) struct Server {
     peers: Vec<Peer>,
     /// The state last sent to subscribers.
     published: Option<State>,
-    /// When peers that could not be sent everything are tried again.
+    /// When peers that could not be sent everything are tried again, or
+    /// the socket listened to again.
     pub(crate) retry: Option<Instant>,
+    /// What wakes the event loop when a peer connects.
+    listening: Option<RegistrationToken>,
+    /// Whether the socket is not being listened to, as one that could not
+    /// be accepted from, when no descriptor was left; it is tried again at
+    /// each turn, and listened to again once it can be.
+    paused: bool,
 }
 
 /// What a peer that is sent the state whenever it changes wants it for.
@@ -117,14 +124,22 @@ impl Server {
                 peers: Vec::new(),
                 published: None,
                 retry: None,
+                listening: None,
+                paused: false,
             })
     }
 
     /// Takes on the connections waiting, up to the limit, turning away any
     /// that are not from the socket's owner. `wake` arranges for the event
-    /// loop to be woken when a peer that was taken on writes.
-    fn accept(&mut self, wake: impl Fn(&UnixStream) -> Option<RegistrationToken>) {
-        while let Ok((stream, _)) = self.listener.accept() {
+    /// loop to be woken when a peer that was taken on writes. Returns
+    /// whether one waiting could not be taken, as when no descriptor is
+    /// left for it.
+    fn accept(&mut self, wake: impl Fn(&UnixStream) -> Option<RegistrationToken>) -> bool {
+        loop {
+            let (stream, _) = match self.listener.accept() {
+                Ok(accepted) => accepted,
+                Err(error) => return error.kind() != io::ErrorKind::WouldBlock,
+            };
             let trusted = same_user(
                 socket_peercred(&stream).ok().map(|peer| peer.uid.as_raw()),
                 self.owner,
@@ -238,9 +253,9 @@ impl Compositor {
     ///
     /// Returns an error if the socket cannot be created.
     pub fn listen_ipc(&mut self, path: impl Into<PathBuf>) -> io::Result<()> {
-        Server::bind(path.into()).map(|server| {
+        Server::bind(path.into()).map(|mut server| {
             // Lasts as long as the session: the socket is never replaced.
-            self.wake_on(&server.listener);
+            server.listening = self.wake_on(&server.listener);
             self.ipc = Some(server);
         })
     }
@@ -274,7 +289,25 @@ impl Compositor {
         let Some(mut server) = self.ipc.take() else {
             return;
         };
-        server.accept(|stream| self.wake_on(stream));
+        // One that cannot be taken on is neither the end of the session nor
+        // a reason to spin on a socket that stays ready: the socket is not
+        // listened to, but tried again a moment later.
+        let failed = server.accept(|stream| self.wake_on(stream));
+        if failed != server.paused {
+            server.paused = failed;
+            let listening = server.listening;
+            let _ = listening.map(|token| {
+                if failed {
+                    self.event_loop.disable(&token)
+                } else {
+                    self.event_loop.enable(&token)
+                }
+            });
+        }
+        if failed {
+            let said = self.words.say("no-descriptors", &[]);
+            self.refused.say(&said);
+        }
         for peer in &mut server.peers {
             for line in peer.read_lines() {
                 let request = String::from_utf8(line).map_err(|error| error.to_string());
@@ -342,7 +375,7 @@ impl Compositor {
         let said = server.peers.iter().find_map(|peer| peer.radios.clone());
         self.radios = said.unwrap_or_default();
         let behind = server.peers.iter().any(|peer| !peer.outbox.is_empty());
-        server.retry = behind.then(|| now + RETRY);
+        server.retry = (behind || server.paused).then(|| now + RETRY);
         self.ipc = Some(server);
     }
 

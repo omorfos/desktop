@@ -3533,6 +3533,44 @@ pub(crate) fn open_on(file: &std::fs::File) -> usize {
         .count()
 }
 
+/// Set in a test run by itself as a process of its own, by [`starved`].
+const STARVED: &str = "OMORFOS_TEST_STARVED";
+
+/// Whether the test `name` is to go on, as a process of its own with few
+/// descriptors: in the test binary, as every test runs, it runs itself so,
+/// sees that pass, and says it is not to go on; in that process it lowers
+/// the limit on descriptors, which is the process's, and says to go on.
+pub(crate) fn starved(name: &str) -> bool {
+    use rustix::process::{Resource, getrlimit, setrlimit};
+    if std::env::var_os(STARVED).is_none() {
+        let ran = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env(STARVED, "1")
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stdout);
+        let err = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "{said}{err}");
+        assert!(said.contains("1 passed"), "{said}");
+        return false;
+    }
+    let mut limit = getrlimit(Resource::Nofile);
+    limit.current = Some(256);
+    setrlimit(Resource::Nofile, limit).unwrap();
+    true
+}
+
+/// Takes every descriptor the process may have but `left`, as a program
+/// can make the compositor take them, until what is returned is dropped.
+pub(crate) fn take_descriptors(left: usize) -> Vec<std::fs::File> {
+    let mut taken = Vec::new();
+    while let Ok(file) = std::fs::File::open("/dev/null") {
+        taken.push(file);
+    }
+    taken.truncate(taken.len().saturating_sub(left));
+    taken
+}
+
 /// How many turns the session takes in `time`, each waiting for as long as
 /// is left of it, or for something to happen: a few, once a moment, for a
 /// session that waits; hundreds for one that spins on something always

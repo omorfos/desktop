@@ -917,3 +917,34 @@ fn how_long_each_screens_last_frame_took_and_how_many_blurs_it_made_is_told() {
     let next = frames(&mut session, &mut peer).remove(0);
     assert_eq!((next.frames, next.blurs), (first.frames + 1, 0), "{next:?}");
 }
+
+#[test]
+fn a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is() {
+    let name = "ipc::a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is";
+    if !crate::common::starved(name) {
+        return;
+    }
+    let mut session = Session::new();
+    let socket = session.listen();
+    // A window in a frame of ours, so that text has been drawn and the
+    // fonts found, as in any session by the time descriptors run out.
+    let mut first = session.connect();
+    session.open_decorated(&mut first, "first", (200, 100), RED);
+    drop(session.draw());
+    let taken = crate::common::take_descriptors(1);
+    let waiting = UnixStream::connect(&socket).unwrap();
+
+    // The session goes on, and does not spin on what it cannot take: a
+    // turn with nothing it can do waits as long as it was told to.
+    for _ in 0..3 {
+        session.step();
+    }
+    let turns = crate::common::turns_within(&mut session, Duration::from_millis(300));
+    assert!(turns < 20, "it spun, {turns} turns");
+
+    // Once there are descriptors again, the peer is served.
+    drop(taken);
+    let mut peer = Client::from_stream(waiting);
+    let reply = session.ask(&mut peer, &Request::State);
+    assert!(matches!(reply, Reply::State(_)), "{reply:?}");
+}
