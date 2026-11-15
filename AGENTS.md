@@ -31,8 +31,10 @@ It is a fresh implementation, not a port: see
 - What is to go back to the projects omorfos is built on, and how to see
   whether it still has to: [docs/UPSTREAM.md](docs/UPSTREAM.md)
 - Routines, step by step, in [.claude/skills/](.claude/skills/): handing a
-  change over (`handover`), a failed pipeline (`ci-failure`), and
-  Dependabot's updates (`dependencies`).
+  change over (`handover`), a failed pipeline (`ci-failure`),
+  Dependabot's updates (`dependencies`), and a review of any kind
+  (`review`), which starts the read-only reviewers in
+  [.claude/agents/](.claude/agents/), one for each dimension, at once.
 
 ## Priorities, in order
 
