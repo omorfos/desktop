@@ -8,17 +8,20 @@
 //!
 //! See `docs/adr/0009-session-and-event-loop.md`.
 
+use std::cell::Cell;
 use std::error::Error;
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use omorfos_ipc::hold::{self, Told};
 use omorfos_ipc::relay::{Hand, Received};
 
 use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{
     EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken,
 };
@@ -194,12 +197,29 @@ impl Session {
         roles: Roles,
     ) -> Result<(), Box<dyn Error>> {
         let socket = Generic::new(socket, Interest::READ, Mode::Level);
+        // The source is told which it is through a cell, not given a handle
+        // to the loop, which would hold the loop and never let it go.
+        let token = Rc::new(Cell::new(None));
+        let ours = Rc::clone(&token);
         self.event_loop
             .handle()
             .insert_source(socket, move |_, socket, compositor| {
-                accept_all(&**socket, compositor, roles).map(|()| PostAction::Continue)
+                // A program that cannot be taken on, as when no descriptor
+                // is left, is neither the end of the session nor a reason
+                // to spin on a socket that stays ready: it is listened to
+                // again a moment later.
+                let accepted = accept_all(&**socket, compositor, roles);
+                Ok(accepted.map_or_else(
+                    |_| {
+                        let said = compositor.words.say("no-descriptors", &[]);
+                        compositor.refused.say(&said);
+                        listen_again(&compositor.event_loop, ours.get());
+                        PostAction::Disable
+                    },
+                    |()| PostAction::Continue,
+                ))
             })
-            .map(drop)
+            .map(|inserted| token.set(Some(inserted)))
             .map_err(Box::from)
     }
 
@@ -421,6 +441,19 @@ fn take_relayed(relay: BorrowedFd<'_>, compositor: &mut Compositor) -> PostActio
             }
         }
     }
+}
+
+/// How long a socket that could not be accepted from is left before it is
+/// listened to again.
+const AGAIN: Duration = Duration::from_millis(100);
+
+/// Listens to the socket `token` is for again, after [`AGAIN`].
+fn listen_again(handle: &LoopHandle<'static, Compositor>, token: Option<RegistrationToken>) {
+    let timer = Timer::from_duration(AGAIN);
+    let _ = handle.insert_source(timer, move |_, (), compositor| {
+        let _ = token.map(|token| compositor.event_loop.enable(&token));
+        TimeoutAction::Drop
+    });
 }
 
 /// Takes on every client waiting to connect.

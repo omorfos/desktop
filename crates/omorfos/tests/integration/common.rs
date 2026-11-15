@@ -3532,3 +3532,18 @@ pub(crate) fn open_on(file: &std::fs::File) -> usize {
     fds.filter(|fd| std::fs::metadata(fd.as_ref().unwrap().path()).is_ok_and(of))
         .count()
 }
+
+/// How many turns the session takes in `time`, each waiting for as long as
+/// is left of it, or for something to happen: a few, once a moment, for a
+/// session that waits; hundreds for one that spins on something always
+/// ready.
+pub(crate) fn turns_within(session: &mut Session, time: Duration) -> usize {
+    let until = Instant::now() + time;
+    let mut turns = 0;
+    while let Some(left) = until.checked_duration_since(Instant::now()) {
+        let now = session.now;
+        session.inner().dispatch(Some(left), now).unwrap();
+        turns += 1;
+    }
+    turns
+}

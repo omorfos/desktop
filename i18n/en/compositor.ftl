@@ -76,6 +76,9 @@ glass-solid = Glass is drawn solid: the blur of this graphics card { $why }
 ## What programs did, or were not let do.
 # A program that is not named, or not named in a way that can be read.
 a-program = A program
+# omorfos could not take on a program that connected, as it had no file
+# descriptors left; it tries again a moment later.
+no-descriptors = A program could not be connected, as omorfos has no file descriptors left: it is taken on once one is free. A program may be holding many open
 # $program asked for every key, and was given them.
 every-key = { $program } has every key while it has the keyboard, the desktop's among them: Super+Escape takes them back
 # $program asked to do what it may only if omorfos started it with the
