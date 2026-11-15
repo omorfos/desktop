@@ -2243,6 +2243,24 @@ with, rather than each copying it. The open standards come first, as
 everywhere: what a Wayland protocol, a portal or a freedesktop.org
 specification already says is not said again in a way of omorfos's own.
 
+- [ ] First, what is made more than once made once (asked on
+      15 November 2026), so that what is offered is one way of each thing
+      and not several, nor a copy frozen by a promise. The components were
+      written one at a time, and each made its own of what they share:
+      buttons, drawn by the lock screen, the boxes that ask for a password,
+      the welcome card, the panel, the portal's question and "About", as
+      the theme's `question-button` and `about-button`; fields typed in,
+      `omorfos_ui::Field` in the launcher only, the lock screen and the
+      boxes for a password their own, as `launcher-input` and
+      `question-input`; what dims or blurs the rest of the screen behind
+      something, as `launcher-backdrop`, `switcher-backdrop`,
+      `overview-backdrop` and `sealed`; and boxes that ask or tell, the
+      question, "About", the notice, the welcome card and the lock screen,
+      each laid out in its own way. A review of the components finds each
+      such thing; each becomes one widget in `omorfos-ui`, drawn as one
+      part of the theme with its states, that every component takes up,
+      the parts it replaces kept as names for it until a major version, as
+      ADR 73 has it; and what is left apart says why.
 - [ ] Whether, and what: an ADR on what is offered to others and how
       firmly it is promised. Nothing loaded into the compositor's own
       process: a plugin there would run with every key and every window
