@@ -296,7 +296,7 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   writable cursor metadata with its bitmap, and a safe `add_buffer` that
   takes the memory's descriptor. The maintainers are asked how they
   would have the first shaped before it is written.
-- **Meanwhile:** `omorfos-pipewire`, the second place `unsafe` is
+- **Meanwhile:** `omorfos-pipewire`, the one place `unsafe` is
   allowed (ADR 41). Wanted soon.
 - **Check:** in the version in `Cargo.lock`,
   `grep -n -A3 'pub fn dequeue_buffer\|pub fn add_buffer' $(ls -d ~/.cargo/registry/src/*/pipewire-*)/src/stream/mod.rs`.

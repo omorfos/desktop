@@ -1,11 +1,11 @@
 //! Holds PipeWire's buffers while a picture is put in them.
 //!
-//! This is the second place in omorfos that uses `unsafe`, after
-//! `omorfos-shm`, and it is a crate of its own for the same reason: so
-//! that every other crate can go on forbidding it. The PipeWire bindings
-//! hand a buffer that is to be kept for a while, or given memory of the
-//! caller's own, only as a raw pointer. Why that was accepted, and what
-//! would let it be taken out, is in `docs/adr/0041-pipewire-buffers.md`.
+//! This is the one place in omorfos that uses `unsafe`, and it is a crate
+//! of its own so that every other crate can go on forbidding it. The
+//! PipeWire bindings hand a buffer that is to be kept for a while, or given
+//! memory of the caller's own, only as a raw pointer. Why that was
+//! accepted, and what would let it be taken out, is in
+//! `docs/adr/0041-pipewire-buffers.md`.
 //!
 //! What is offered is safe to call with anything. The memory of each
 //! buffer is made by the caller, as a file of its own that the compositor

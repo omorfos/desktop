@@ -1,6 +1,6 @@
 [package]
 name = "omorfos-pipewire"
-description = "Holds PipeWire's buffers while a picture is put in them: the second place omorfos uses unsafe"
+description = "Holds PipeWire's buffers while a picture is put in them: the one place omorfos uses unsafe"
 keywords = ["wayland", "compositor"]
 categories = ["gui"]
 readme = "../../README.md"
