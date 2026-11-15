@@ -379,8 +379,22 @@ impl Components {
 }
 
 impl Drop for Components {
+    /// Waits for the components to stop, and kills those that have not a
+    /// minute later. With the session gone they stop of their own accord,
+    /// once they have waited for a compositor to come back, about ten
+    /// seconds; and a build that counts what runs writes that down as it
+    /// stops: one killed while it writes leaves it cut short, and then the
+    /// coverage of every test cannot be read.
     fn drop(&mut self) {
-        for pid in self.programs.iter().flat_map(|program| running(program)) {
+        let left = || -> Vec<u32> {
+            let programs = self.programs.iter();
+            programs.flat_map(|program| running(program)).collect()
+        };
+        let until = Instant::now() + WAITING;
+        while !left().is_empty() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for pid in left() {
             let pid = Pid::from_raw(pid.cast_signed());
             let _ = pid.map(|pid| kill_process(pid, Signal::KILL));
         }
