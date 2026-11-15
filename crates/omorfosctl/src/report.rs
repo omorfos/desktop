@@ -36,6 +36,9 @@ pub(crate) struct Places {
     pub(crate) logs: Option<PathBuf>,
     /// The user's home, whose paths are left out.
     pub(crate) home: Option<PathBuf>,
+    /// The user's names, a path elsewhere with one of which as a part is
+    /// left out, as a disk mounted at `/media/me` is.
+    pub(crate) names: Vec<String>,
     /// Where the system is read from: `/`, but in tests.
     pub(crate) root: PathBuf,
 }
@@ -59,8 +62,23 @@ impl Places {
             config,
             logs: omorfos_ipc::session_log::directory(state_home, home),
             home: absolute(home),
+            names: Vec::new(),
             root: PathBuf::from("/"),
         }
+    }
+
+    /// The same places, with the user's names: `user` and `logname`, as
+    /// `USER` and `LOGNAME` give them, and the home's last part, each once.
+    #[must_use]
+    pub(crate) fn named(mut self, user: Option<&OsStr>, logname: Option<&OsStr>) -> Self {
+        let homed = self.home.as_deref().and_then(Path::file_name);
+        for name in [user, logname, homed].into_iter().flatten() {
+            let name = name.to_string_lossy().into_owned();
+            if !self.names.contains(&name) {
+                self.names.push(name);
+            }
+        }
+        self
     }
 }
 
@@ -81,10 +99,10 @@ pub(crate) fn write(
         env!("CARGO_PKG_VERSION")
     );
     let kept = if whole {
-        "Window titles and paths in your home are kept, as `--whole` was given."
+        "Window titles and paths in your home or naming you are kept, as `--whole` was given."
     } else {
-        "Window titles and paths in your home are left out; `omorfosctl report \
-         --whole` keeps them."
+        "Window titles, paths in your home and paths elsewhere naming you are left out; \
+         `omorfosctl report --whole` keeps them."
     };
     let _ = writeln!(text, "Look it over before handing it on. {kept}");
 
@@ -138,8 +156,12 @@ pub(crate) fn write(
         text.push_str(logged.as_deref().unwrap_or("not there\n"));
     }
 
-    let home = places.home.as_ref().filter(|_| !whole);
-    let text = home.map_or_else(|| text.clone(), |home| left_out(&text, home));
+    if !whole {
+        if let Some(home) = &places.home {
+            text = left_out(&text, home);
+        }
+        text = named_out(&text, &places.names);
+    }
     let _ = out.write_all(text.as_bytes());
 }
 
@@ -261,6 +283,40 @@ pub(crate) fn left_out(text: &str, home: &Path) -> String {
     kept
 }
 
+/// `text` with each path that has one of `names` as a whole part of it
+/// left out after the parts before it, as `/media/me/USB` is written
+/// `/media/(left out)`. A path begins with `/`, and ends at a space, a
+/// quote, a bracket, or the `:` between the paths of a list.
+fn named_out(text: &str, names: &[String]) -> String {
+    let ends = |c: char| c.is_whitespace() || "\"'`()[]{}<>,;:=".contains(c);
+    let mut text = text.to_owned();
+    // A name that could not be a part of a path names none.
+    let names = names
+        .iter()
+        .filter(|name| !name.is_empty() && !name.contains('/'));
+    for name in names {
+        let part = format!("/{name}");
+        let mut kept = String::with_capacity(text.len());
+        // Where what is not yet kept begins.
+        let mut from = 0;
+        for (at, _) in text.match_indices(&part) {
+            let after = &text[at + part.len()..];
+            let whole = after.chars().next().is_none_or(|c| c == '/' || ends(c));
+            let end = text[..at].char_indices().rev().find(|(_, c)| ends(*c));
+            let begun = end.map_or(0, |(end, c)| end + c.len_utf8());
+            let path = text[begun..at].is_empty() || text[begun..at].starts_with('/');
+            if at >= from && whole && path {
+                kept.push_str(&text[from..at]);
+                kept.push_str("/(left out)");
+                from = text.len() - after.trim_start_matches(|c: char| !ends(c)).len();
+            }
+        }
+        kept.push_str(&text[from..]);
+        text = kept;
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use omorfos_ipc::{Screen, Window};
@@ -298,6 +354,7 @@ mod tests {
             config: Some(root.join("home/me/.config/omorfos")),
             logs: Some(root.join("home/me/.local/state/omorfos")),
             home: Some(root.join("home/me")),
+            names: vec!["me".to_owned()],
             root: root.to_path_buf(),
         }
     }
@@ -377,6 +434,7 @@ mod tests {
         )
         .unwrap();
         fs::write(config.join("theme.css"), "window { color: red; }\n").unwrap();
+        fs::write(config.join("rules.yaml"), "- icon: /media/me/USB/a.png\n").unwrap();
         let logs = places.logs.clone().unwrap();
         fs::create_dir_all(&logs).unwrap();
         fs::write(logs.join(NAME), "omorfos: cannot draw on eDP-1\n").unwrap();
@@ -398,6 +456,7 @@ mod tests {
             "a problem",
             "== config.yaml\nwallpaper: ~/(left out)\n",
             "== keys.yaml\nnot there\n",
+            "== rules.yaml\n- icon: /media/(left out)\n",
             "== theme.css\nwindow { color: red; }\n",
             "== session.log, this login's log\nomorfos: cannot draw on eDP-1\n",
             "== session.log.old, the login before's log\nnot there\n",
@@ -410,6 +469,7 @@ mod tests {
         let whole = written(&places, Ok((String::new(), state())), true);
         assert!(whole.contains("\"title\": \"secret plans\""), "{whole}");
         assert!(whole.contains(&picture.display().to_string()), "{whole}");
+        assert!(whole.contains("/media/me/USB/a.png"), "{whole}");
     }
 
     #[test]
@@ -419,6 +479,7 @@ mod tests {
             config: None,
             logs: None,
             home: None,
+            names: Vec::new(),
             root: place.path().to_path_buf(),
         };
         let report = written(&places, Err("no socket".to_owned()), false);
@@ -481,5 +542,36 @@ mod tests {
             "/home/me",
             "not the root"
         );
+    }
+
+    #[test]
+    fn a_path_elsewhere_that_names_the_user_is_left_out_after_the_parts_before_it() {
+        let names = ["me".to_owned(), "mine".to_owned()];
+        let said = "mounted /media/me/USB stick, (/run/media/mine) and PATH=/opt/me/bin:/mnt/me";
+        assert_eq!(
+            named_out(said, &names),
+            "mounted /media/(left out) stick, (/run/media/(left out)) and \
+             PATH=/opt/(left out):/mnt/(left out)"
+        );
+        // Only a whole part of a path names the user, and only in a path.
+        let kept = "/media/meg/x /media/ame/x /meme me said so, a/me/b and http://x/me";
+        assert_eq!(
+            named_out(kept, &names),
+            kept.replace("http://x/me", "http://x/(left out)")
+        );
+        // A name that could not be a part of a path names nothing.
+        let odd = [String::new(), "a/b".to_owned()];
+        assert_eq!(named_out("/x/a/b /y//z", &odd), "/x/a/b /y//z");
+    }
+
+    #[test]
+    fn whom_the_report_leaves_out_is_the_user_by_each_name_the_environment_gives() {
+        let os = |value: &'static str| Some(OsStr::new(value));
+        let given = Places::of(None, None, os("/home/me")).named(os("rafal"), os("rafal"));
+        assert_eq!(given.names, ["rafal", "me"]);
+        let homeless = Places::of(None, None, None).named(None, os("me"));
+        assert_eq!(homeless.names, ["me"]);
+        let rooted = Places::of(None, None, os("/")).named(None, None);
+        assert_eq!(rooted.names, [""; 0]);
     }
 }

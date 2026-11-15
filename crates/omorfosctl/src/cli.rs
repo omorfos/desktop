@@ -48,7 +48,8 @@ pub(crate) const ABOUT: About = About {
             "report [--whole]",
             "Print what a report of a fault needs, for you to look over before handing it on: \
              versions, graphics cards, screens, state, configuration and the session's logs. \
-             Window titles and paths in your home are left out unless --whole is given. Works \
+             Window titles, paths in your home and paths elsewhere that name you are left out \
+             unless --whole is given. Works \
              without a running compositor",
         ),
     ],
@@ -483,6 +484,7 @@ mod tests {
             config: None,
             logs: None,
             home: None,
+            names: Vec::new(),
             root: PathBuf::from("/nonexistent"),
         }
     }

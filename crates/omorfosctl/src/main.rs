@@ -13,6 +13,10 @@ fn main() -> ExitCode {
         env::var_os("XDG_CONFIG_HOME").as_deref(),
         env::var_os("XDG_STATE_HOME").as_deref(),
         env::var_os("HOME").as_deref(),
+    )
+    .named(
+        env::var_os("USER").as_deref(),
+        env::var_os("LOGNAME").as_deref(),
     );
     cli::run(
         &arguments,
