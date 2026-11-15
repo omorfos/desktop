@@ -1715,7 +1715,8 @@ decision of stage 2.
       files. The keyboard's settings key (`XF86Tools`) opens it.
 - [ ] **Files** (wish 9), where Space shows what is chosen without
       opening it, as Quick Look does in macOS's Finder: a picture, a sound
-      or a video playing, a document's pages, and text; Space again or
+      or a video playing, a document's pages, and text, a Markdown file
+      drawn as the Markdown viewer draws it; Space again or
       Escape puts it away, and the arrows go to the next. Places and
       starred places at the side; volumes
       mounted when plugged in, and unmounted; list, details and
@@ -1804,9 +1805,24 @@ viewer.
       played back in the player and renamed or thrown away. Through
       PipeWire and the portal, as the camera; the microphone's being on
       shown as for any program.
+- [ ] **Markdown viewer**, standalone (asked on 15 November 2026): a
+      Markdown file drawn as it reads, with its headings, lists, tables,
+      quotes, code and pictures, drawn again as the file changes on disk,
+      and its links opened by the program for their kind. How a Markdown
+      file is read and drawn is made once, in a crate the viewer, Files'
+      quick look and the text editor's preview share, so that a file looks
+      the same in each, as `omorfos-sums` is shared (ADR 86). Every file it
+      opens is someone else's: it is read by a parser of CommonMark that
+      is widely used, `pulldown-cmark` the likely one, decided with it;
+      what is HTML in it is shown as text, not run; and nothing is fetched
+      from elsewhere, a picture on another machine shown as its link
+      until it is clicked, so that opening a file tells no one it was
+      opened. Settings offers it for `text/markdown`.
 - [ ] **Text editor**, standalone, last of these: plain text, with undo
       and redo, find and replace, lines
-      numbered, and a file that changed on disk said so. Programs as
+      numbered, and a file that changed on disk said so; a Markdown file
+      previewed beside it as it is typed, drawn as the Markdown viewer
+      draws it. Programs as
       good exist (GNOME's Text Editor, Kate), and Settings chooses
       among them; it is built only if the toolkit decided on makes it
       small, and it never becomes an editor of code.
