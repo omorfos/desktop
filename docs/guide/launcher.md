@@ -14,12 +14,13 @@ by the names their entries give them in the language the session is in
 where an entry has none in it. One that needs a terminal is started in
 `foot`.
 
-It shows names alone unless `config.yaml` asks for more:
+Each program is shown by its icon and its name, with what it says of
+itself after the name. `config.yaml` can leave either out:
 
 ```yaml
 launcher:
-  icons: true
-  descriptions: true
+  icons: false
+  descriptions: false
 ```
 
 `icons` puts each program's icon before its name. Icons are looked for by

@@ -61,8 +61,8 @@ night_light:
   enabled: false          # the screens warmer after dark, by appearance's day and night
   temperature: 4000       # kelvin at night, 1900 to 6500: lower is warmer
 launcher:
-  icons: false            # show each program's icon
-  descriptions: false     # show, and search, what each program says of itself
+  icons: true             # show each program's icon
+  descriptions: true      # show, and search, what each program says of itself
 switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:

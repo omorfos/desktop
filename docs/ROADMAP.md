@@ -1439,8 +1439,9 @@ the first than on the last.
       playing; `XF86Display` for `next_screens`; one of `Ctrl+A` and
       `Super+A` to choose all that is typed in a field for a secret, not
       both, with the keys to copy and paste; whether `clipboard.forget`
-      forgets by default, and after how long; and the theme's parts made
-      along the way.
+      forgets by default, and after how long; the launcher's icons and
+      descriptions, shown by default since 15 November 2026, as asked; and
+      the theme's parts made along the way.
 
 ## 5. The shell: a bar and a dock
 

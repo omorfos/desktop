@@ -344,6 +344,12 @@ mod tests {
 
     use super::*;
 
+    /// Names alone, which most of what is tested here is easiest seen in.
+    const NAMES: Show = Show {
+        icons: false,
+        descriptions: false,
+    };
+
     fn app(name: &str) -> App {
         App {
             name: name.to_owned(),
@@ -356,7 +362,7 @@ mod tests {
 
     fn picker(names: &[&str]) -> Picker {
         let apps = names.iter().map(|name| app(name)).collect();
-        Picker::new(apps, Show::default())
+        Picker::new(apps, NAMES)
     }
 
     /// The launcher's picture under the built-in theme.
@@ -507,7 +513,7 @@ mod tests {
             terminal: true,
             ..app("top")
         };
-        let mut picker = Picker::new(vec![top], Show::default());
+        let mut picker = Picker::new(vec![top], NAMES);
         let terminal = Command::terminal();
         assert_eq!(
             picker.key(Key::Enter),
@@ -631,7 +637,7 @@ mod tests {
         let plain = picker(&names);
         let show = Show {
             descriptions: true,
-            ..Show::default()
+            ..NAMES
         };
         let mut described = Picker::new(names.iter().map(|name| app(name)).collect(), show);
 
@@ -667,7 +673,7 @@ mod tests {
         let names = ["Calculator", "Files"];
         let show = Show {
             icons: true,
-            ..Show::default()
+            ..NAMES
         };
         let with = Picker::new(names.iter().map(|name| app(name)).collect(), show);
         let canvas = still(&with, &theme, Scale::ONE, &mut icons);

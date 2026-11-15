@@ -397,12 +397,12 @@
       "description": "The launcher that comes with omorfos: what it shows of each program\nbesides its name.",
       "properties": {
         "descriptions": {
-          "default": false,
-          "description": "Whether what each program says of itself is shown after its name,\nand looked through for what is typed.",
+          "default": true,
+          "description": "Whether what each program says of itself is shown under its name,\nand looked through for what is typed.",
           "type": "boolean"
         },
         "icons": {
-          "default": false,
+          "default": true,
           "description": "Whether each program's icon is shown beside its name.",
           "type": "boolean"
         }

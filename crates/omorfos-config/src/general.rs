@@ -356,15 +356,25 @@ impl Appearance {
 
 /// The launcher that comes with omorfos: what it shows of each program
 /// besides its name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Launcher {
     /// Whether each program's icon is shown beside its name.
     pub icons: bool,
-    /// Whether what each program says of itself is shown after its name,
+    /// Whether what each program says of itself is shown under its name,
     /// and looked through for what is typed.
     pub descriptions: bool,
+}
+
+impl Default for Launcher {
+    /// Both: a name alone says too little of a program not met before.
+    fn default() -> Self {
+        Self {
+            icons: true,
+            descriptions: true,
+        }
+    }
 }
 
 /// The switcher on `Alt+Tab`.
@@ -1318,13 +1328,13 @@ mod tests {
     }
 
     #[test]
-    fn the_launcher_shows_names_alone_unless_more_is_asked_for() {
+    fn the_launcher_shows_icons_and_descriptions_unless_told_not_to() {
         let launcher = General::default().launcher;
-        assert!(!launcher.icons && !launcher.descriptions);
-        let launcher = parse("launcher: { icons: true }").unwrap().launcher;
-        assert!(launcher.icons && !launcher.descriptions);
-        let launcher = parse("launcher: { descriptions: true }").unwrap().launcher;
+        assert!(launcher.icons && launcher.descriptions);
+        let launcher = parse("launcher: { icons: false }").unwrap().launcher;
         assert!(!launcher.icons && launcher.descriptions);
+        let launcher = parse("launcher: { descriptions: false }").unwrap().launcher;
+        assert!(launcher.icons && !launcher.descriptions);
         assert!(parse("launcher: { fuzzy: true }").is_err());
     }
 
