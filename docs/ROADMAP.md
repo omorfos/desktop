@@ -1872,8 +1872,63 @@ Security:
       buffer and to give one memory of the caller's own, so that
       `omorfos-pipewire` can go (ADR 41). Wanted soon. Waits on: the
       PipeWire bindings, to which it is to be offered.
-- [ ] A review of everything a client can make the compositor allocate or
-      wait for.
+- [x] A review of everything a client can make the compositor allocate or
+      wait for: done on 15 November 2026, by Mythos 5.2, and written up in
+      [reviews/2026-11-15-what-a-client-can-cost.md](reviews/2026-11-15-what-a-client-can-cost.md), with how each finding was shown, what to change and the
+      test to write first. What it found is below, in the order to take
+      it; each is a change of its own, and none waits on another. What it
+      did not look at is at its end.
+- [ ] The compositor waiting for ever on a pipe a program hands it
+      ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it)),
+      high: a program with the keyboard that asks for the compositor's own
+      text on the clipboard through a pipe already full freezes the
+      session. `hand_over` is to write without waiting.
+- [ ] A window said to be enormous ending the compositor
+      ([finding 2](reviews/2026-11-15-what-a-client-can-cost.md#2-a-window-said-to-be-enormous-ends-the-compositor)),
+      high: a titlebar as wide as a window said to be two thousand million
+      units across is 224 GB to allocate, and the process is aborted. A
+      window's size is to be held to a most where it enters the desktop,
+      and a canvas to a most number of pixels.
+- [ ] Any program taking the keyboard with a serial it made up
+      ([finding 3](reviews/2026-11-15-what-a-client-can-cost.md#3-any-program-can-take-the-keyboard-with-a-serial-it-made-up)),
+      medium: an activation token is honoured for having a serial, not for
+      having one the compositor gave. It is to be one sent that program
+      for a key or a button, lately; and tokens are to be forgotten after
+      a time, which none is.
+- [ ] Descriptors running out, in the compositor and in the relay
+      ([finding 4](reviews/2026-11-15-what-a-client-can-cost.md#4-descriptors-run-out-in-the-compositor-and-in-the-relay)),
+      medium: the limit is never raised from 1024, and each pool of shared
+      memory is one kept in each. To be shown by a test first; then the
+      limit raised, a program held to a most, and a failure to accept
+      neither the end nor a loop that spins. An ADR, for what programs
+      started inherit.
+- [ ] What is added to an object kept without end
+      ([finding 5](reviews/2026-11-15-what-a-client-can-cost.md#5-what-is-added-to-an-object-is-kept-without-end)),
+      medium: the relay keeps every `wl_region.add`, every kind a source
+      offers, and the like, uncounted. A most for each object, and the
+      same asked of Smithay.
+- [ ] Each kind a program offers costing the X server an atom and the
+      compositor a wait
+      ([finding 6](reviews/2026-11-15-what-a-client-can-cost.md#6-each-kind-a-program-offers-costs-the-x-server-an-atom-and-the-compositor-a-wait)),
+      medium: at most a few dozen kinds, each of a kind's length, are to
+      be handed on to programs written for X11.
+- [ ] What was refused remembered without end, by a name the program chose
+      ([finding 7](reviews/2026-11-15-what-a-client-can-cost.md#7-what-was-refused-is-remembered-without-end-by-a-name-the-program-chose)),
+      low to medium.
+- [ ] Every notification of idleness set again at every key and every move
+      ([finding 8](reviews/2026-11-15-what-a-client-can-cost.md#8-every-notification-of-idleness-is-set-again-at-every-key-and-every-move)),
+      low to medium: a program held to a few, and whether one in a sandbox
+      is told at all decided.
+- [ ] Smaller things the review found
+      ([finding 9](reviews/2026-11-15-what-a-client-can-cost.md#9-smaller-things)), low: the icons of applications
+      looked up never forgotten; titles and identifiers as long as they
+      came; a peer of the IPC socket read from for as long as it writes;
+      and what a notification's picture, named by its path, has the
+      decoder read, which is to be shown.
+- [ ] What the review did not look at, each a review of its own: the relay
+      beyond what it keeps, the portal and the services on D-Bus, buffers
+      of the graphics card, the hardware backend, and the helpers that
+      check a secret.
 
 Accessibility:
 
