@@ -21,6 +21,8 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- Dragging something with a picture of it (stage 8), as files from a
+  file manager: the picture under the pointer, and gone once dropped.
 - The launcher's field and the pointer (stage 6): a click in what is
   typed puts the cursor there, a drag chooses, and a long sum or name
   scrolls along with the cursor.
@@ -1658,7 +1660,10 @@ to false, as `launcher.sums` is (ADR 83).
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the
-      screen's left edge, not in the middle.
+      screen's left edge, not in the middle, as Smithay makes it as wide as
+      the screen and puts it there, and the launcher draws itself as wide
+      as it would be anyway: it is to lay itself out at the width it is
+      given. Only a screen less than 480 units wide shows it.
 - [ ] Files in the launcher: those in the home directory that are not
       hidden, found by name and opened with the program for their kind.
       Which directories are looked in is a setting, and nothing is kept
@@ -1975,9 +1980,14 @@ Known gaps carried forward:
       text dragged from one and dropped on the other arrives, and both are
       told the drop was taken; one let go where nothing takes it is given
       back.
-- [ ] Known gaps in dragging and dropping: no test drags an icon with
-      what is dragged, nor moves rather than copies, nor drags between a
-      program written for X11 and one written for Wayland.
+- [x] The picture a program drags something with drawn under the pointer
+      while it drags, where the program has it hang, and gone once it is
+      let go: Smithay hands it over and leaves the drawing to the
+      compositor, which drew nothing.
+- [ ] Known gaps in dragging and dropping: a picture dragged that moves is
+      not told when to draw its next, as it is not one of a window; no
+      test moves rather than copies; and none drags between a program
+      written for X11 and one written for Wayland.
 - [ ] The nested backend has not been run by hand since the event loop
       moved into `Session`.
 - [x] Two tests that failed only sometimes, both mended on 20 October

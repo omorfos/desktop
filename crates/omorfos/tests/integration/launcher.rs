@@ -514,7 +514,7 @@ fn what_is_dragged_over_the_launcher_is_not_taken_and_goes_back() {
     session.compositor_mut().input(left(true), 0);
     session.step();
     session.roundtrip(&mut editor);
-    editor.drag(&window.surface, "dragged");
+    editor.drag(&window.surface, None, "dragged");
     session.roundtrip(&mut editor);
 
     // The launcher opens, and what is dragged comes over it.

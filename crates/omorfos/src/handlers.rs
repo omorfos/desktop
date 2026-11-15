@@ -18,13 +18,15 @@ use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{ResizeEdge, State as ToplevelState};
 use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
+use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
-    CompositorClientState, CompositorHandler, CompositorState, get_parent, with_states,
+    CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes, get_parent,
+    with_states,
 };
 use smithay::wayland::foreign_toplevel_list::{ForeignToplevelListHandler, ForeignToplevelListState};
 use smithay::wayland::output::OutputHandler;
@@ -59,7 +61,7 @@ use smithay::{
     delegate_alpha_modifier, delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_foreign_toplevel_list, delegate_fractional_scale, delegate_single_pixel_buffer, delegate_viewporter, delegate_layer_shell, delegate_primary_selection, delegate_xdg_activation, delegate_xdg_foreign, delegate_output, delegate_xdg_decoration, delegate_seat, delegate_shm, delegate_xdg_shell,
 };
 
-use crate::compositor::{ClientState, Compositor, Mapped, logical_size, set};
+use crate::compositor::{ClientState, Compositor, DragIcon, Mapped, logical_size, set};
 use crate::roles::Roles;
 use crate::tiles;
 use smithay::wayland::seat::WaylandFocus;
@@ -124,6 +126,16 @@ impl CompositorHandler for Compositor {
 
         self.map_if_ready(surface);
         self.map_x11_if_ready(surface);
+        // A picture of what is dragged may be moved as it is given, to hang
+        // from the pointer elsewhere.
+        let icon = self.hover.dragged.as_mut();
+        if let Some(icon) = icon.filter(|icon| icon.surface == *surface) {
+            let moved = with_states(surface, |states| {
+                let mut attributes = states.cached_state.get::<SurfaceAttributes>();
+                attributes.current().buffer_delta.take()
+            });
+            icon.offset += moved.unwrap_or_default();
+        }
         // The pointer an application draws may be what has changed.
         self.pointer_changed(&root);
 
@@ -623,7 +635,16 @@ impl ForeignToplevelListHandler for Compositor {
     }
 }
 
-impl ClientDndGrabHandler for Compositor {}
+impl ClientDndGrabHandler for Compositor {
+    fn started(&mut self, _: Option<WlDataSource>, icon: Option<WlSurface>, _: Seat<Self>) {
+        let offset = Point::default();
+        self.hover.dragged = icon.map(|surface| DragIcon { surface, offset });
+    }
+
+    fn dropped(&mut self, _: Option<WlSurface>, _: bool, _: Seat<Self>) {
+        self.hover.dragged = None;
+    }
+}
 
 impl ServerDndGrabHandler for Compositor {}
 

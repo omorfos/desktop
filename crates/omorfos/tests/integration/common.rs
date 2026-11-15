@@ -1455,6 +1455,20 @@ impl Client {
         surface.commit();
     }
 
+    /// Fills `surface` again, its picture moved by `offset` from where the
+    /// last one was, as a program moves the picture something dragged is
+    /// shown by.
+    pub(crate) fn fill_moved(
+        &self,
+        surface: &wl_surface::WlSurface,
+        size: (i32, i32),
+        color: u32,
+        offset: (i32, i32),
+    ) {
+        surface.offset(offset.0, offset.1);
+        self.fill(surface, size, color);
+    }
+
     /// Asks for the session to be locked.
     pub(crate) fn lock(&self) -> ext_session_lock_v1::ExtSessionLockV1 {
         let lockers = self.state.lockers.as_ref().unwrap();
@@ -2019,15 +2033,21 @@ impl Client {
 
     /// Starts dragging `text` from `surface`, as an application does when
     /// the pointer is pressed on something and moved: with the serial of
-    /// that press, and to be copied where it is let go.
-    pub(crate) fn drag(&mut self, surface: &wl_surface::WlSurface, text: &str) {
+    /// that press, and to be copied where it is let go; shown by `icon`,
+    /// if there is one, under the pointer.
+    pub(crate) fn drag(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+        icon: Option<&wl_surface::WlSurface>,
+        text: &str,
+    ) {
         text.clone_into(&mut self.state.copied);
         let clipboards = self.state.clipboards.as_ref().unwrap();
         let source = clipboards.create_data_source(&self.handle(), ());
         source.offer(TEXT.to_owned());
         source.set_actions(wl_data_device_manager::DndAction::Copy);
         let device = self.state.data_device.as_ref().unwrap();
-        device.start_drag(Some(&source), surface, None, self.state.pressed);
+        device.start_drag(Some(&source), surface, icon, self.state.pressed);
     }
 
     /// Takes what is being dragged over it, as text, to copy it.

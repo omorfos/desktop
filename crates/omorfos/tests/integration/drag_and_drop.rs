@@ -8,6 +8,8 @@ use omorfos_config::{Action, Half};
 use crate::common::{Client, Event, Session};
 use crate::windows::{BLUE, RED};
 
+const GREEN: u32 = 0xff00_ff00;
+
 const LEFT: u32 = 0x110;
 
 /// Two applications side by side, the first on the left half of the
@@ -43,7 +45,7 @@ fn start_dragging(session: &mut Session, from: &mut Client, window: &crate::comm
     move_to(session, 100, 50);
     button(session, true);
     session.roundtrip(from);
-    from.drag(&window.surface, "dragged from the editor");
+    from.drag(&window.surface, None, "dragged from the editor");
     session.roundtrip(from);
 }
 
@@ -99,4 +101,31 @@ fn what_is_let_go_where_nothing_takes_it_is_given_back() {
     let told = from.take_events();
     assert!(told.contains(&Event::SourceCancelled), "{told:?}");
     assert!(!told.contains(&Event::DropPerformed), "{told:?}");
+}
+
+#[test]
+fn what_is_dragged_is_shown_by_its_icon_under_the_pointer_until_it_is_let_go() {
+    let mut session = Session::new();
+    let (mut from, _to, window) = side_by_side(&mut session);
+    move_to(&mut session, 100, 50);
+    button(&mut session, true);
+    session.roundtrip(&mut from);
+    let icon = from.surface();
+    from.drag(&window.surface, Some(&icon), "dragged with an icon");
+    from.fill(&icon, (40, 40), GREEN);
+    session.roundtrip(&mut from);
+
+    // Over the empty part of the right half, the icon hangs from the
+    // pointer, beyond where the pointer itself is drawn.
+    move_to(&mut session, 420, 300);
+    assert_eq!(session.draw().at(452, 332), GREEN);
+    // Its program may have it hang elsewhere: here, up and to the left.
+    from.fill_moved(&icon, (40, 40), GREEN, (-30, -30));
+    session.roundtrip(&mut from);
+    let picture = session.draw();
+    assert_eq!(picture.at(400, 280), GREEN, "moved up and to the left");
+    assert_ne!(picture.at(452, 332), GREEN, "and no longer down there");
+    button(&mut session, false);
+    session.roundtrip(&mut from);
+    assert_ne!(session.draw().at(400, 280), GREEN, "gone once let go");
 }

@@ -3626,6 +3626,7 @@ impl Compositor {
         }
         if shown.pointer {
             self.pointer_elements(renderer, view, &mut elements);
+            self.drag_icon_elements(renderer, view, &mut elements);
         }
         // A prompt that asks for a secret is over all but the pointer and the
         // mark, and dims the rest; no input method types into it.
@@ -3785,6 +3786,27 @@ impl Compositor {
                 elements.extend(picture.into_iter().map(Element::Surface));
             }
             (Look::Hidden | Look::Icon(_), _) => {}
+        }
+    }
+
+    /// Adds the picture of what is being dragged, if its program gave one,
+    /// under the pointer, where it hangs from it.
+    fn drag_icon_elements<R>(&self, renderer: &mut R, view: View, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        if let Some(icon) = &self.hover.dragged {
+            let at = self.pointer_location + icon.offset.to_f64();
+            let picture = render_elements_from_surface_tree(
+                renderer,
+                &icon.surface,
+                view.pixel(at),
+                view.scale.factor(),
+                1.0,
+                Kind::Unspecified,
+            );
+            elements.extend(picture.into_iter().map(Element::Surface));
         }
     }
 
@@ -5190,6 +5212,18 @@ pub(crate) struct Hover {
     /// What the mark that says a screen is captured says, while it rests
     /// on it.
     mark: Option<MarkNote>,
+    /// The picture a program dragging something gave to show it by, while
+    /// it drags.
+    pub(crate) dragged: Option<DragIcon>,
+}
+
+/// The picture something dragged is shown by, under the pointer.
+#[derive(Debug)]
+pub(crate) struct DragIcon {
+    pub(crate) surface: WlSurface,
+    /// Where it hangs from the pointer, as its program has moved it with
+    /// each picture it gave.
+    pub(crate) offset: Point<i32, Logical>,
 }
 
 /// What the mark that says a screen is captured says, painted.
