@@ -1,0 +1,46 @@
+#!/bin/sh
+# Refuses to push a commit the gates have not passed on. It runs nothing
+# itself: `.claude/skills/handover/gates.sh` writes down in
+# target/gates/passed the tree each tier passed on, and this reads it. A
+# commit changed after it passed, as one amended, has another tree, and is
+# checked again.
+#
+# What it takes: for the last commit of what is pushed, `push` or `all`,
+# or `handover` and `rest` both, on its tree; for each other commit,
+# `commits` or any of those. Only branches are checked; a branch deleted
+# has nothing to check.
+#
+# Git runs it once told where it is: git config core.hooksPath .githooks
+set -eu
+remote=$1
+passed=target/gates/passed
+
+has() {
+    [ -f "$passed" ] && grep -qx "$1 $2" "$passed"
+}
+
+whole() {
+    has push "$1" || has all "$1" || { has handover "$1" && has rest "$1"; }
+}
+
+missing=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+    # What the remote does not have yet, the last first.
+    for commit in $(git rev-list "$local_sha" --not --remotes="$remote"); do
+        tree=$(git rev-parse "$commit^{tree}")
+        if [ "$commit" = "$local_sha" ]; then
+            whole "$tree" || missing="$missing
+  $(git log -1 --format='%h %s' "$commit")"
+        else
+            has commits "$tree" || whole "$tree" || missing="$missing
+  $(git log -1 --format='%h %s' "$commit")"
+        fi
+    done
+done
+if [ -n "$missing" ]; then
+    echo "The gates have not passed on what would be pushed:$missing" >&2
+    echo "Run .claude/skills/handover/gates.sh push, which checks each of them, and push again." >&2
+    exit 1
+fi

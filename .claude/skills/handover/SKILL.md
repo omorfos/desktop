@@ -91,9 +91,10 @@ may use one, and the nightly build.
 The `rest` tier, clippy without features, the coverage gate without the
 tests that need a graphics card, the doctests, `cargo deny`, `zizmor` and
 `cargo doc`, is started in
-the background as the build is handed over (step 5), and has to have
-passed before anything is committed. Never two runs of the gates at
-once: they share the machine, and the X11 tests time out.
+the background as the build is handed over (step 5). Before a commit,
+the `commit` tier has to have passed; before the maintainer is told
+`main` is ready to push, the `push` tier (step 6). Never two runs of the
+gates at once: they share the machine, and the X11 tests time out.
 
 The tools are in `~/.cargo/bin`, but for `gh actions-lock`, an extension
 of `gh`, at the version CI installs. Each tier keeps its whole output in
@@ -142,16 +143,13 @@ the tests; say so when a change depends on it.
 
 ## 6. On "commit and merge"
 
-- The `rest` tier has to have passed. If anything changed since the gates
-  ran, run `gates.sh all` again, as the last thing before `git commit`.
+- The `commit` tier has to have passed on the tree as it is committed. If
+  anything changed since it ran, run it again, as the last thing before
+  `git commit`.
 - One logical change per commit, each of which builds and passes alone. If
   a change has to be split, split it by whole files. Never by staging
-  hunks and stashing the rest: that broke `main` once. With more than one
-  commit, run `gates.sh commits` before merging: it checks out each in a
-  worktree of its own and runs formatting, clippy and the coverage gate
-  on it alone. Where `all` passed on the last commit's tree, leave that
-  one out, `gates.sh commits main HEAD~1`, as each costs a coverage run.
-  Split only where the parts are changes someone would revert alone.
+  hunks and stashing the rest: that broke `main` once. Split only where
+  the parts are changes someone would revert alone.
 - Where one file holds parts of two commits, give the first commit a
   version of the whole file that has only its part: `main`'s version with
   that part made, or, where the work went in steps, the file as it was
@@ -165,5 +163,12 @@ the tests; say so when a change depends on it.
   why and what and the trade-off, wrapped at 100 columns. Check it:
   `committed --config committed.toml main..HEAD`.
 - Merge into `main` by fast-forward only, and delete the branch.
+- Then, on `main` with nothing uncommitted, run `gates.sh push`: every
+  gate on the last commit, and each other commit not yet pushed alone in
+  a worktree of its own. If it fails, put the commit right where it is,
+  amending it or, for one further back, rebasing onto `origin/main`, and
+  run it again: nothing of it has been pushed. The push hook refuses
+  any commit it has not passed. If `origin/main` has moved, rebase onto
+  it first, as what is pushed is what has to have passed.
 - Never push. The maintainer pushes. Say how far `main` is ahead of
-  `origin/main`.
+  `origin/main`, and that `push` passed on it.

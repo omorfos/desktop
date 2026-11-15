@@ -49,7 +49,7 @@ It is a fresh implementation, not a port: see
    config never breaks the session.
 6. **Lean.** Every dependency and feature has to justify itself.
 
-## Before every commit
+## Before every push
 
 ```sh
 cargo fmt --all --check
@@ -59,11 +59,18 @@ cargo test --workspace --all-features --doc
 cargo deny check
 ```
 
-All five must pass. CI runs the same commands. While working,
-`.claude/skills/handover/gates.sh` runs them in tiers, the quickest first,
-as [docs/TESTING.md](docs/TESTING.md) says under "Tiers". Once per clone,
-`git config core.hooksPath .githooks` sets up the commit hook, which
-refuses a line left in from debugging.
+All five must pass, on every commit that is pushed, each alone. CI runs
+the same commands on what is pushed. `.claude/skills/handover/gates.sh
+push` runs them on the last commit and each before it that is not yet
+pushed, and writes down what passed; the push hook refuses a commit
+it has not written down. Before every commit, `gates.sh commit` runs
+what is quick: formatting, clippy and every test once, without the
+coverage gate. A commit the push finds wanting is put right before it
+goes, as nothing of it has left the machine. The tiers are in
+[docs/TESTING.md](docs/TESTING.md), under "Tiers". Once per clone,
+`git config core.hooksPath .githooks` sets up the hooks: the commit hook
+refuses a line left in from debugging, and the push hook what the gates
+have not passed.
 
 To try a change by hand on real hardware, build with the `nightly` profile
 and install from `target/nightly/`. It is optimised like a release but skips

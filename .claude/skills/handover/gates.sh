@@ -3,11 +3,17 @@
 # docs/TESTING.md, "Tiers".
 #
 #   .claude/skills/handover/gates.sh area <filter>...  the tests of what is being changed
+#   .claude/skills/handover/gates.sh commit            what every commit needs: every test once, no coverage
 #   .claude/skills/handover/gates.sh handover          what a build for trying by hand needs
 #   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
 #   .claude/skills/handover/gates.sh all               handover, then rest
 #   .claude/skills/handover/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
+#   .claude/skills/handover/gates.sh push              all, then commits for each commit not yet pushed
 #   .claude/skills/handover/gates.sh uncovered         what the last coverage run missed
+#
+# What passed is written down by the tree it passed on, in
+# target/gates/passed, and `.githooks/pre-push` refuses to push a commit
+# whose tree is not there (see docs/TESTING.md, "Tiers").
 #
 # Each tier's whole output is kept in target/gates/<tier>.log. `area` takes
 # what to run: a crate, as `-p omorfos-core`, or tests of the
@@ -32,6 +38,47 @@ step() {
         exit 1
     fi
     echo "--- $((SECONDS - started))s" | tee -a "$log"
+}
+
+# Runs a command that runs tests. Where the directory X servers keep
+# their sockets in cannot be written to, as under WSL, every test of a
+# program written for X11 would fail; the command then has one of its own,
+# through bubblewrap, and sees the rest of the machine as it is.
+tested() {
+    if [ -w /tmp/.X11-unix ] || [ ! -e /tmp/.X11-unix ]; then
+        "$@"
+    elif command -v bwrap >/dev/null; then
+        bwrap --dev-bind / / --tmpfs /tmp/.X11-unix -- "$@"
+    else
+        echo "/tmp/.X11-unix cannot be written to and bwrap is not installed:" \
+            "the tests of programs written for X11 will fail." >&2
+        "$@"
+    fi
+}
+
+# The tree of what is in the working copy now, untracked files that are
+# not ignored included: what a tier ran on, and what a commit of it all
+# would hold. Worked out in an index of its own, so that what is staged
+# is left as it is.
+tree_now() {
+    local index
+    index=$(mktemp)
+    rm -f "$index"
+    GIT_INDEX_FILE=$index git read-tree HEAD &&
+        GIT_INDEX_FILE=$index git add -A &&
+        GIT_INDEX_FILE=$index git write-tree
+    rm -f "$index"
+}
+
+# Writes down that `tier` passed on `tree`, for the hook that checks a
+# push and for `rest`, which need not run again what `handover` ran.
+passed() {
+    echo "$1 $2" >> "$top/target/gates/passed"
+}
+
+# Whether `tier` has passed on `tree`.
+has_passed() {
+    grep -qx "$1 $2" "$top/target/gates/passed" 2>/dev/null
 }
 
 # Each line on which a region begins that the last coverage run did not
@@ -88,16 +135,32 @@ commits() {
                 export CARGO_TARGET_DIR="$top/target/commits" &&
                 step cargo fmt --all --check &&
                 step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings &&
-                explain=uncovered step cargo coverage --locked -- $(card)
+                explain=uncovered step tested cargo coverage --locked -- $(card)
         ); then
             git worktree remove --force "$tree"
             rmdir "${tree%/*}"
             echo "FAILED at $(git log -1 --format='%h %s' "$commit"), the whole of it in $log"
             exit 1
         fi
+        passed commits "$(git rev-parse "$commit^{tree}")"
     done
     git worktree remove --force "$tree"
     rmdir "${tree%/*}"
+}
+
+# Before a push: everything, on the tree as it is, which must be what
+# is committed; and each commit not yet pushed but the last alone, as the
+# last is what everything ran on.
+push() {
+    local upstream
+    [ -z "$(git status --porcelain)" ] || {
+        echo "Commit first: what is pushed is what is committed." >&2
+        exit 1
+    }
+    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || echo origin/main)
+    handover
+    rest
+    commits "$upstream" HEAD~1
 }
 
 # What to ask the tests for besides what CI runs: the tests that need a
@@ -128,7 +191,17 @@ area() {
         fi
     done
     [ ${#crates[@]} -eq 0 ] || step cargo test --all-features --locked "${crates[@]}"
-    [ ${#tests[@]} -eq 0 ] || step integration "${tests[@]}"
+    [ ${#tests[@]} -eq 0 ] || step tested integration "${tests[@]}"
+}
+
+# What every commit needs, in a few minutes: the checks that are quick,
+# and every test once, without the coverage gate, which `push` runs.
+commit() {
+    step typos
+    step .githooks/pre-commit --tree
+    step cargo fmt --all --check
+    step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    step tested cargo test --workspace --all-features --locked
 }
 
 handover() {
@@ -138,7 +211,8 @@ handover() {
     step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
     # `cargo coverage` is an alias defined in .cargo/config.toml. This is
     # every test, once, with the coverage gate.
-    explain=uncovered step cargo coverage --locked -- $(card)
+    explain=uncovered step tested cargo coverage --locked -- $(card)
+    passed coverage "$tree"
     step make nightly
     ls -l target/nightly/omorfos
 }
@@ -146,8 +220,13 @@ handover() {
 rest() {
     step cargo clippy --workspace --all-targets --locked -- -D warnings
     # As CI has it, without the tests that need a graphics card: what only
-    # the card reaches counts here and not there.
-    explain=uncovered step cargo coverage --locked
+    # the card reaches counts here and not there. Where no card was used,
+    # that is the run `handover` made, if it made one on this tree.
+    if [ -n "$(card 2>/dev/null)" ] || ! has_passed coverage "$tree"; then
+        explain=uncovered step tested cargo coverage --locked
+    else
+        echo "=== the coverage gate passed on this tree in handover, with no card: not run again" | tee -a "$log"
+    fi
     step cargo test --workspace --all-features --doc --locked
     step cargo deny check
     # The workflows, as CI checks them but for what needs the network:
@@ -161,16 +240,31 @@ tier=${1:-}
 mkdir -p target/gates
 log="$top/target/gates/${tier:-none}.log"
 : > "$log"
+# What the tier runs on. A tier whose tree changes while it runs has
+# passed on neither, and is not written down as passed.
+tree=$(tree_now)
 case "$tier" in
     area) shift; area "$@" ;;
+    commit) commit ;;
     handover) handover ;;
     rest) rest ;;
     all) handover; rest ;;
     commits) shift; commits "$@" ;;
+    push) push ;;
     uncovered) uncovered | tee -a "$log" ;;
     *)
-        echo "usage: $0 area <filter>... | handover | rest | all | commits [base [tip]] | uncovered" >&2
+        echo "usage: $0 area <filter>... | commit | handover | rest | all | commits [base [tip]] | push | uncovered" >&2
         exit 2
+        ;;
+esac
+case "$tier" in
+    handover | rest | all | push)
+        if [ "$(tree_now)" = "$tree" ]; then
+            passed "$tier" "$tree"
+        else
+            echo "The working copy changed while the gates ran: run them again." >&2
+            exit 1
+        fi
         ;;
 esac
 echo "PASSED: $tier"

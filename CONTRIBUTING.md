@@ -43,7 +43,9 @@ cargo deny check
 ```
 
 `.claude/skills/handover/gates.sh` runs them in tiers, the quickest
-first. To try a change on your own machine, `make nightly` and
+first: `commit` before each commit, and `push`, every gate on each
+commit not yet pushed, before a push, which the push hook holds to once
+`git config core.hooksPath .githooks` has set it up. To try a change on your own machine, `make nightly` and
 `sudo make install PROFILE=nightly` build and install it in seconds after
 a change.
 

@@ -33,9 +33,11 @@ slowest are run while the maintainer tries a change rather than before.
 | Tier | When | What | About |
 |---|---|---|---|
 | `area <filter>...` | While writing a change, after each step | The tests of what is being changed: a crate (`-p omorfos-core`) or tests of the integration binary by name (`tiles::`) | 1–2 s, and the build |
+| `commit` | Before every commit | `typos`, the commit hook's check, `cargo fmt`, clippy with all features, every test once without the coverage gate | a few minutes |
 | `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, with those that need a graphics card where there is one, the nightly build | 15 min |
 | `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it, without the tests that need a graphics card, the doctests, `cargo deny`, `zizmor` and the actions' lockfile, `cargo doc` | 18 min |
 | `commits [base [tip]]` | Before merging more than one commit | Each commit after `base` (`main`) alone, up to `tip` (`HEAD`), in a worktree of its own: formatting, clippy, the coverage gate. Where `all` passed on the last commit's tree, `HEAD~1` as `tip` leaves out the one already checked | 13 min a commit |
+| `push` | Before every push | `all` on the last commit, which must be the working copy, and `commits` for each other commit not yet pushed | `all`, and 5–13 min a commit |
 | `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
 
 A failed coverage gate lists what it did not reach in the tier itself.
@@ -44,10 +46,25 @@ is how a line put in only to find something out is marked, as does the
 commit hook in `.githooks/` once `git config core.hooksPath .githooks`
 has told git where it is.
 
-Nothing is committed until `handover` and `rest` have both passed on
-the tree as it is committed, and, for more than one commit, `commits`. CI runs them all again on every push, and
-the nightly stress run (see "Flaky tests") runs the suite many times
-over.
+Every commit passes `commit`. Nothing is pushed until every gate has
+passed on each commit that is pushed: `push` runs them, and writes down
+in `target/gates/passed` the tree each tier passed on, and
+`.githooks/pre-push` refuses a commit whose tree is not written down.
+A commit changed after it passed, as one amended to put right what the
+gates found, has another tree and is checked again. So a commit on
+`main` that has not been pushed may have passed only `commit`, and
+nothing that leaves the machine has passed less than every gate. CI runs
+them all again on every push, and the nightly stress run (see "Flaky
+tests") runs the suite many times over.
+
+The tests run on the machine itself. Where the directory X servers keep
+their sockets in cannot be written to, as under WSL, the tiers give the
+tests one of their own through bubblewrap (`bwrap`), which they then
+need installed; nothing else about the machine changes for them. The
+container of `.claude/skills/ci-failure/reproduce.sh` is for what CI
+does differently, not for every run. `rest` does not run the coverage
+gate again where `handover` ran it on the same tree without a graphics
+card, as the two runs would be the same.
 
 The failing test comes first, in `area`, and so does what a change is
 likeliest to break: its own module, then those beside it. A whole run
