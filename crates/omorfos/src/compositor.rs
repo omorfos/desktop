@@ -334,6 +334,8 @@ pub struct Compositor {
     pub(crate) unmapped: Vec<ToplevelSurface>,
     /// What is on screen, bottom to top, as of the last sync.
     pub(crate) scene: Vec<Shown>,
+    /// What `sync` builds in, kept from one turn to the next.
+    sync_room: SyncRoom,
     /// The move, resize or tab drag in progress.
     pub(crate) drag: Option<Drag>,
     /// The root menu, while it is open.
@@ -471,6 +473,10 @@ impl Compositor {
     ///
     /// Returns an error if the keyboard cannot be set up, which means XKB
     /// data is missing from the system.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one struct literal, which names each of the compositor's fields"
+    )]
     pub fn new(
         display: DisplayHandle,
         event_loop: LoopHandle<'static, Self>,
@@ -531,6 +537,7 @@ impl Compositor {
                     windows: Vec::new(),
                     unmapped: Vec::new(),
                     scene: Vec::new(),
+                    sync_room: SyncRoom::default(),
                     drag: None,
                     menu: None,
                     menu_chrome: None,
@@ -803,9 +810,8 @@ impl Compositor {
         // draw itself for a screen it is not on, and some change size
         // doing so.
         for mapped in &self.windows {
-            let mut listed = self.desktop.windows();
-            let listed = listed.find(|listed| listed.window.id == mapped.id);
-            let head = listed.and_then(|listed| self.heads.get(listed.output));
+            let output = self.desktop.output_of(mapped.id);
+            let head = output.and_then(|output| self.heads.get(output));
             mapped
                 .window
                 .with_surfaces(|surface, states| tell_scale(head, surface, states));
@@ -2451,6 +2457,38 @@ impl Compositor {
             .map(|mapped| mapped.id)
     }
 
+    /// Knows each frame of the desktop as it is now, in `frames`, which held
+    /// what was known of them last turn: renewed where there was one, so
+    /// that a frame still there costs nothing to know again.
+    fn know_frames(&self, frames: &mut Vec<FrameInfo>) {
+        let over = self.hover.button;
+        let mut count = 0;
+        for frame in self.desktop.frames() {
+            // A frame's decoration is painted for the output most of it is
+            // on.
+            let head = self.head_for(frame.geometry);
+            let scale = head.map_or(Scale::ONE, |head| head.scale);
+            match frames.get_mut(count) {
+                Some(known) => known.renew(&frame, scale, over),
+                None => frames.push(FrameInfo::of(&frame, scale, over)),
+            }
+            count += 1;
+        }
+        frames.truncate(count);
+    }
+
+    /// Makes the scene of `scene`, each with its place in it, in the room
+    /// the scene before last had, and keeps the room of each for the next.
+    fn order_scene(&mut self, mut scene: Vec<(usize, Shown)>) {
+        // Mapping raises an element, so mapping bottom to top sets the order.
+        // No two frames are in the same place in it.
+        scene.sort_unstable_by_key(|(order, _)| *order);
+        let mut ordered = std::mem::take(&mut self.sync_room.spare);
+        ordered.extend(scene.drain(..).map(|(_, shown)| shown));
+        self.sync_room.ordered = scene;
+        self.scene = ordered;
+    }
+
     /// Makes Smithay's view of the windows match the desktop model: which
     /// are shown, where, in what order and state, and which has focus. Also
     /// repaints the decoration of any frame whose appearance changed.
@@ -2460,17 +2498,8 @@ impl Compositor {
         }
         self.update_screens();
         let focused = self.desktop.focused();
-        // A frame's decoration is painted for the output most of it is on.
-        let scale_for = |geometry: Rect| {
-            self.head_for(geometry)
-                .map_or(Scale::ONE, |head| head.scale)
-        };
-        let over = self.hover.button;
-        let mut frames: Vec<FrameInfo> = self
-            .desktop
-            .frames()
-            .map(|frame| FrameInfo::of(&frame, scale_for(frame.geometry), over))
-            .collect();
+        let mut frames = std::mem::take(&mut self.sync_room.frames);
+        self.know_frames(&mut frames);
         let config = Arc::clone(self.store.current());
         let mut previous = std::mem::take(&mut self.scene);
         let mut veils = Veils::kept(&mut previous, &config.theme);
@@ -2484,7 +2513,7 @@ impl Compositor {
         motion.begin(self.animation.clock);
         let shades = self.animation.shades.begun();
 
-        let mut scene = Vec::new();
+        let mut scene = std::mem::take(&mut self.sync_room.ordered);
         for Mapped {
             id,
             window,
@@ -2541,15 +2570,15 @@ impl Compositor {
                 None => self.space.unmap_elem(window),
             }
         }
-        // Mapping raises an element, so mapping bottom to top sets the order.
-        scene.sort_by_key(|(order, _)| *order);
-        self.scene = scene.into_iter().map(|(_, shown)| shown).collect();
+        self.sync_room.frames = frames;
+        self.order_scene(scene);
         self.lay_lines(moves);
         for shown in &self.scene {
             self.space
                 .map_element(shown.window.clone(), shown.origin, false);
         }
-        self.animation.leave(previous, &self.scene);
+        self.animation.leave(&mut previous, &self.scene);
+        self.sync_room.spare = previous;
         self.portray(&config.theme);
 
         self.fade_layers(&config.theme);
@@ -5335,8 +5364,8 @@ impl Animation {
 
     /// Has the windows that were on the screen and no longer are go on
     /// being drawn, as they last were, while they fade.
-    fn leave(&mut self, previous: Vec<Shown>, scene: &[Shown]) {
-        for shown in previous {
+    fn leave(&mut self, previous: &mut Vec<Shown>, scene: &[Shown]) {
+        for shown in previous.drain(..) {
             // What slid from the screen with its workspace has not gone.
             let beside = shown.on == Showing::Beside;
             let still = beside || scene.iter().any(|now| now.id == shown.id);
@@ -6031,7 +6060,21 @@ impl Chrome {
     }
 }
 
+/// What `sync` builds in, kept from one turn to the next, empty but for
+/// the room each had, so that a turn in which nothing came or went
+/// allocates nothing for it.
+#[derive(Debug, Default)]
+struct SyncRoom {
+    /// What is known of each frame, as of the last turn.
+    frames: Vec<FrameInfo>,
+    /// The scene, each with its place in it, before it is put in order.
+    ordered: Vec<(usize, Shown)>,
+    /// The scene before last, emptied, to be the next.
+    spare: Vec<Shown>,
+}
+
 /// What `sync` needs to know about a frame, copied out of the desktop.
+#[derive(Debug)]
 struct FrameInfo {
     shown: WindowId,
     /// The scale of the output most of the frame is on.
@@ -6100,6 +6143,36 @@ impl FrameInfo {
     /// What is known of a frame, drawn at `scale`, with the pointer `over`
     /// a button of some frame's titlebar or of none.
     fn of(frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) -> Self {
+        Self::with((Vec::new(), Vec::new()), frame, scale, over)
+    }
+
+    /// Makes it what [`FrameInfo::of`] would, in the room it has for the
+    /// tabs and their titles.
+    fn renew(&mut self, frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) {
+        let room = (
+            std::mem::take(&mut self.tabs),
+            std::mem::take(&mut self.titles),
+        );
+        *self = Self::with(room, frame, scale, over);
+    }
+
+    /// What is known of a frame, as [`FrameInfo::of`], with its tabs and
+    /// their titles written over those in `(tabs, titles)`.
+    fn with(
+        (mut tabs, mut titles): (Vec<WindowId>, Vec<String>),
+        frame: &Frame<'_>,
+        scale: Scale,
+        over: Option<(WindowId, Button)>,
+    ) -> Self {
+        tabs.clear();
+        tabs.extend(frame.tabs.iter().map(|window| window.id));
+        titles.truncate(frame.tabs.len());
+        for (at, window) in frame.tabs.iter().enumerate() {
+            match titles.get_mut(at) {
+                Some(title) => title.clone_from(&window.title),
+                None => titles.push(window.title.clone()),
+            }
+        }
         let shown = frame.window().id;
         let over = over.filter(|(window, _)| *window == shown);
         Self {
@@ -6115,12 +6188,8 @@ impl FrameInfo {
             home: frame.home,
             focused: frame.focused,
             decoration: frame.decoration,
-            tabs: frame.tabs.iter().map(|window| window.id).collect(),
-            titles: frame
-                .tabs
-                .iter()
-                .map(|window| window.title.clone())
-                .collect(),
+            tabs,
+            titles,
             active: frame.active,
         }
     }

@@ -32,6 +32,9 @@ use crate::{Scale, bridge};
 #[derive(Debug)]
 pub(crate) struct Head {
     pub(crate) output: Output,
+    /// The output's name, which never changes, kept so that it can be
+    /// looked at without Smithay making a copy of it each time.
+    name: String,
     /// What clients see the output as, withdrawn when it goes or mirrors
     /// another; none until it is first settled where it stands.
     global: Option<GlobalId>,
@@ -54,6 +57,11 @@ pub(crate) struct Head {
 }
 
 impl Head {
+    /// The output's name, as `eDP-1`.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     /// The size of the output in pixels, as the screen is made.
     pub(crate) fn pixels(&self) -> Size<i32, Physical> {
         let mode = self.output.current_mode();
@@ -156,6 +164,7 @@ impl Compositor {
             // Told to programs once it is known not to mirror another.
             global: None,
             output: output.clone(),
+            name: name.to_owned(),
             transform,
             rotation: self.rotation_for(name),
             modes: Vec::new(),
@@ -220,7 +229,7 @@ impl Compositor {
 
     /// Every output: those that stand in the space, those that mirror one
     /// of them, and those that are off.
-    pub(crate) fn every_head(&self) -> impl Iterator<Item = &Head> {
+    pub(crate) fn every_head(&self) -> impl Iterator<Item = &Head> + Clone {
         let mirrors = self.aside.mirrors.iter().map(|mirror| &mirror.head);
         self.heads.iter().chain(mirrors).chain(&self.aside.dark)
     }
@@ -359,16 +368,17 @@ impl Compositor {
         &self,
         names: &(impl Iterator<Item = &'a str> + Clone),
     ) -> &omorfos_config::Outputs {
-        let owned: Vec<String> = names.clone().map(str::to_owned).collect();
-        let stood = self.stood_for(&owned);
-        stood.unwrap_or_else(|| self.configured_for(&owned))
+        let stood = self.stood_for(names);
+        stood.unwrap_or_else(|| self.configured_for(names))
     }
 
     /// The screens as the configuration has them for those called `names`:
     /// the first arrangement that names just those, or else `outputs`.
-    pub(crate) fn configured_for(&self, names: &[String]) -> &omorfos_config::Outputs {
+    pub(crate) fn configured_for<'a>(
+        &self,
+        names: &(impl Iterator<Item = &'a str> + Clone),
+    ) -> &omorfos_config::Outputs {
         let general = &self.config().general;
-        let names = names.iter().map(String::as_str);
         let mut arrangements = general.arrangements.iter();
         let found = arrangements.find(|arrangement| arrangement.are(names.clone()));
         found.unwrap_or(&general.outputs)
@@ -376,24 +386,19 @@ impl Compositor {
 
     /// The screens as the configuration has them for those plugged in.
     pub(crate) fn arrangement(&self) -> &omorfos_config::Outputs {
-        let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
-        self.arrangement_for(&names.iter().map(String::as_str))
+        self.arrangement_for(&self.every_head().map(Head::name))
     }
 
     /// Where among the outputs the one that comes first is: the one the
     /// configuration makes primary, if it is plugged in, or else the
     /// first plugged in.
     pub(crate) fn primary(&self) -> usize {
-        let listed = self.arrangement().listed().iter();
-        let named = listed
-            .filter(|listed| listed.primary)
-            .map(|listed| listed.name.as_str());
-        let named: Vec<&str> = named.collect();
-        let at = self
-            .heads
-            .iter()
-            .position(|head| named.contains(&head.output.name().as_str()));
-        at.unwrap_or(0)
+        let listed = self.arrangement().listed();
+        let primary = |head: &Head| {
+            let mut primaries = listed.iter().filter(|listed| listed.primary);
+            primaries.any(|listed| listed.name == head.name())
+        };
+        self.heads.iter().position(primary).unwrap_or(0)
     }
 
     /// The output that comes first, if there is one.
@@ -567,10 +572,15 @@ impl Compositor {
                 usable: domain(usable),
             }
         };
-        let screens: Vec<Screen> = self.heads.iter().map(screen).collect();
-        if screens != self.screens {
-            self.desktop.set_outputs(screens.iter().copied());
-            self.screens = screens;
+        // Worked out again only where one changed.
+        let same = self
+            .heads
+            .iter()
+            .map(screen)
+            .eq(self.screens.iter().copied());
+        if !same {
+            self.screens = self.heads.iter().map(screen).collect();
+            self.desktop.set_outputs(self.screens.iter().copied());
         }
     }
 }

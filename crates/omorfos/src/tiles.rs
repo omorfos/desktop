@@ -482,6 +482,11 @@ impl Compositor {
     /// Paints the title of each window offered in a part with nothing in it,
     /// keeping those that would be painted as they were.
     fn paint_titles(&mut self) {
+        // With no window offered, and none written before, there is nothing
+        // to write, nor to put the icons aside for.
+        if self.hover.lines.offers.is_empty() && self.hover.lines.titles.is_empty() {
+            return;
+        }
         let config = Arc::clone(self.store.current());
         let point = self.pointer_position();
         let mut icons = std::mem::take(&mut self.switch.icons);

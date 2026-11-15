@@ -6,11 +6,12 @@ use std::time::Duration;
 use crate::common::Session;
 
 /// The most a turn of a session with nothing changing may allocate, which
-/// is what it allocates today: 20 in `sync`, 2 in `reveal`, 1 in
-/// `update_seal`, 7 in drawing, and the rest in dispatching and Smithay's
-/// own refreshing. Each is let go of within the turn. It is to come down
-/// to nothing, and is lowered as each goes; never raised.
-const CEILING: u64 = 42;
+/// is what it allocates today: 12 in working out again what programs
+/// written for X11 are told, 7 in drawing, much of it Smithay's, and the
+/// rest in `reveal`, `update_seal` and Smithay's refreshing of the space.
+/// Each is let go of within the turn. It is to come down to nothing, and
+/// is lowered as each goes; never raised.
+const CEILING: u64 = 22;
 
 #[test]
 fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates_little() {

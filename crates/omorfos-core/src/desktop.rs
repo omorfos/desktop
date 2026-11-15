@@ -1955,6 +1955,13 @@ impl Desktop {
             .map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs[at.tab])
     }
 
+    /// Which output a window is on, as [`Desktop::windows`] lists it, without
+    /// listing them all.
+    #[must_use]
+    pub fn output_of(&self, id: WindowId) -> Option<usize> {
+        self.locate(id).map(|at| at.set)
+    }
+
     /// Whether a window is to be left out of pictures taken of the
     /// screen: a rule says so of it, or of a window it shares a frame
     /// with, whose title is on the same titlebar. It is asked of the
@@ -6252,6 +6259,20 @@ mod tests {
         assert_eq!(desktop.current_output(), 1);
         assert_eq!(desktop.focused(), Some(dragged));
         assert_eq!(frame(&desktop, dragged).geometry, across);
+    }
+
+    #[test]
+    fn a_window_is_said_to_be_on_the_output_it_is_listed_on() {
+        let mut desktop = two_outputs();
+        let first = open(&mut desktop, "first");
+        let second = open_on_second(&mut desktop, "second");
+        for listed in desktop.windows() {
+            assert_eq!(desktop.output_of(listed.window.id), Some(listed.output));
+        }
+        assert_eq!(desktop.output_of(first), Some(0));
+        assert_eq!(desktop.output_of(second), Some(1));
+        desktop.remove_window(second);
+        assert_eq!(desktop.output_of(second), None);
     }
 
     #[test]

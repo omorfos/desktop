@@ -1853,12 +1853,18 @@ Hardware and performance:
 - [x] The third priority as a gate: `quiet::` holds that a session with
       nothing changing, a window open, draws nothing, has nothing due to
       wake it, and keeps nothing it allocates, turn after turn; and that
-      a turn allocates no more than it does today, 42 times.
+      a turn allocates no more than it does today, 42 times then.
+- [x] `sync` allocating nothing on a turn in which no window came or
+      went: what it builds in is kept from turn to turn, the screens'
+      names are kept rather than copied out of Smithay to work out which
+      comes first, and nothing is put aside for titles when there are
+      none; 22 a turn now.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
-      lowered as each goes: 20 in `sync`, 2 in `reveal`, 1 in
-      `update_seal`, 7 in drawing, part of them Smithay's damage tracking,
-      and about 12 in dispatching and Smithay's refreshing of the space
-      and pop-ups, which may wait on Smithay.
+      lowered as each goes: 12 in `scale_x11`, which works out again what
+      programs written for X11 are told only to find it the same; 7 in
+      drawing, part of them Smithay's damage tracking; and the rest in
+      `reveal`, `update_seal` and Smithay's refreshing of the space, which
+      may wait on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
 

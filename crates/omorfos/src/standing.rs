@@ -118,11 +118,22 @@ impl Compositor {
     /// The way the screens stand for now in place of the configuration's,
     /// if there is one for those called `names`: what is being tried, or
     /// else what was kept, unless that is the configuration's way.
-    pub(crate) fn stood_for(&self, names: &[String]) -> Option<&Outputs> {
-        let names = sorted(names.to_vec());
+    pub(crate) fn stood_for<'a>(
+        &self,
+        names: &(impl Iterator<Item = &'a str> + Clone),
+    ) -> Option<&Outputs> {
+        // A screen's name is plugged in once, so the same number of names,
+        // each among those kept, are the same names.
+        let same = |stood: &&Stood| {
+            let count = names.clone().count() == stood.names.len();
+            count
+                && names
+                    .clone()
+                    .all(|name| stood.names.iter().any(|kept| kept == name))
+        };
         let tried = self.interim.trying.as_ref().map(|(stood, _)| stood);
         let stood = tried.into_iter().chain(&self.interim.kept);
-        let mut stood = stood.filter(|stood| stood.names == names);
+        let mut stood = stood.filter(same);
         let stood = stood.next()?;
         (stood.way != Way::Configured).then_some(&stood.outputs)
     }
@@ -162,7 +173,8 @@ impl Compositor {
             .cycle()
             .nth(at + 1)
             .unwrap_or(Way::Configured);
-        let outputs = way_of(self.configured_for(&plugged), &order, &way);
+        let configured = self.configured_for(&plugged.iter().map(String::as_str));
+        let outputs = way_of(configured, &order, &way);
         let stood = Stood {
             way,
             order,
