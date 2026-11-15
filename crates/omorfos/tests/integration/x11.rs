@@ -309,8 +309,21 @@ fn a_program_written_for_x11_with_nothing_changing_costs_a_turn_nothing_more() {
     let (mut session, program) = session();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
     // What the X server and the window had to say has been heard and drawn,
-    // and the turn after that taken.
-    session.eventually(|session| !session.render());
+    // and the turn after that taken. The X server answers the window
+    // manager in its own time, after the window is shown: a turn that
+    // draws nothing may come before its answer, which would then be heard
+    // in a turn that is measured. So the program asks the X server
+    // something, which it answers once all asked before is done, and a few
+    // turns in a row, apart in time, have to draw nothing.
+    meanwhile(&mut session, || {
+        program.get_input_focus().unwrap().reply().unwrap();
+    });
+    let mut quiet = 0;
+    session.eventually(|session| {
+        std::thread::sleep(Duration::from_millis(5));
+        quiet = if session.render() { 0 } else { quiet + 1 };
+        quiet >= 5
+    });
     session.advance(Duration::from_millis(16));
     for turn in 0..10 {
         assert_eq!(session.compositor().deadline(), None, "turn {turn}");
