@@ -35,11 +35,6 @@ a known gap.
   programs said, and no `/media/<you>/...` paths but `/media/(left
   out)`. The log's bound is shown only by a login that says more than
   8 MiB; `session.log` should then begin with the line saying so.
-- Sums in the launcher (stage 6): numbers read as the locale for
-  numbers writes them, as `1 000,5+1` in Polish and `1,000.5+1` in
-  English; `%`, as `200+10%`; `sqrt` or `√`, and `pi` or `π`; and
-  "Enter copies the answer" under the answer, with descriptions shown
-  and without.
 
 ## Where this is going
 
