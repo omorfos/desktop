@@ -35,6 +35,8 @@ const UP: Keycode = Keycode::new(111);
 const FIVE: Keycode = Keycode::new(14);
 const TWO: Keycode = Keycode::new(11);
 const MINUS: Keycode = Keycode::new(20);
+const Z: Keycode = Keycode::new(52);
+const DELETE: Keycode = Keycode::new(119);
 
 fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
@@ -273,7 +275,8 @@ fn settle_at(session: &mut Session, launcher: &mut Launcher, now: Duration) {
 /// Which row of the list is lit: the program that would be started.
 fn chosen(session: &mut Session) -> Option<i32> {
     let picture = session.draw();
-    (0..8).find(|place| {
+    let on_the_screen = (0..8).filter(|place| row(*place).1 < HEIGHT);
+    on_the_screen.into_iter().find(|place| {
         let (x, y) = row(*place);
         picture.at(x, y) == lit()
     })
@@ -283,6 +286,66 @@ fn hold(session: &mut Session, code: Keycode, pressed: bool) {
     session
         .compositor_mut()
         .input(Input::Key { code, pressed }, 0);
+}
+
+#[test]
+fn what_is_typed_is_edited_as_in_any_text_field() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    let chord = |session: &mut Session, held: &[Keycode], code: Keycode| {
+        for key in held {
+            hold(session, *key, true);
+        }
+        press(session, code);
+        for key in held.iter().rev() {
+            hold(session, *key, false);
+        }
+    };
+    // "fl" matches nothing; an i put between its letters makes "fil".
+    press(&mut session, F);
+    press(&mut session, L);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), None);
+    // Super and Backspace, as Ctrl and Backspace, take out the word before
+    // the cursor, which Right leaves at the end; all is listed, and typed
+    // again.
+    press(&mut session, key::RIGHT);
+    chord(&mut session, &[key::SUPER], key::BACKSPACE);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0), "nothing typed");
+    press(&mut session, F);
+    press(&mut session, L);
+    press(&mut session, key::LEFT);
+    press(&mut session, I);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0), "Files");
+    // Undone, and done again.
+    chord(&mut session, &[key::CONTROL], Z);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), None, "fl");
+    chord(&mut session, &[key::CONTROL, key::SHIFT], Z);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0), "fil");
+    // The first character taken out from in front: "il", in Files still.
+    press(&mut session, key::HOME);
+    press(&mut session, DELETE);
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(0));
+    // All of it chosen and copied, the launcher staying; then cut.
+    chord(&mut session, &[key::CONTROL], key::A);
+    chord(&mut session, &[key::CONTROL], key::C);
+    assert!(!settle(&mut session, &mut launcher), "still open");
+    chord(&mut session, &[key::CONTROL], key::X);
+    assert!(!settle(&mut session, &mut launcher), "still open");
+    // A word chosen back from the end, with Shift and Ctrl, and typed over.
+    chord(&mut session, &[key::CONTROL], Z);
+    press(&mut session, key::END);
+    chord(&mut session, &[key::CONTROL, key::SHIFT], key::LEFT);
+    press(&mut session, L);
+    press(&mut session, key::RETURN);
+    settle(&mut session, &mut launcher);
+    session.eventually(|session| mark(session, "lens") == "x");
 }
 
 #[test]

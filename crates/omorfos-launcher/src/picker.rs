@@ -6,6 +6,7 @@
 use omorfos_config::{Command, Edges, Launcher as Show, Part, State, States, Theme};
 use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
+use omorfos_ui::field::{Edit, Field, Reach, Way};
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
@@ -27,10 +28,16 @@ const NARROWEST: u32 = 160;
 /// A key, as the launcher understands keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Key {
-    /// Something to add to what has been typed.
+    /// Something to type where the cursor is, in place of what is chosen.
     Text(String),
-    /// Take the last character back.
-    Backspace,
+    /// Something else done to what is typed: the cursor moved, by a
+    /// character, a word or to an end, choosing as it goes or not; a
+    /// character or a word taken out; a change undone or done again.
+    Edit(Edit),
+    /// Copy what is chosen of what is typed.
+    Copy,
+    /// Copy what is chosen of what is typed, and take it out.
+    Cut,
     /// Choose the program above.
     Up,
     /// Choose the program below.
@@ -53,6 +60,9 @@ pub enum Outcome {
     /// The compositor is asked for this, which starts the program or copies
     /// the answer, and the launcher is done with.
     Start(Request),
+    /// The compositor is asked for this, which copies what is chosen of what
+    /// is typed, and the launcher stays.
+    Ask(Request),
 }
 
 /// The launcher's state: the programs there are, what has been typed, the
@@ -63,10 +73,8 @@ pub struct Picker {
     apps: Vec<App>,
     /// What is shown of each program besides its name.
     show: Show,
-    query: String,
-    /// Whether all that is typed is chosen, as Ctrl and A choose it, to be
-    /// typed over or taken out at once.
-    marked: bool,
+    /// What has been typed, where the cursor is in it, and what is chosen.
+    field: Field,
     /// The answer to what has been typed, if it is a sum, and how it is
     /// written on its row.
     answer: Option<(String, String)>,
@@ -150,8 +158,7 @@ impl Picker {
         Self {
             apps,
             show,
-            query: String::new(),
-            marked: false,
+            field: Field::new(LONGEST),
             answer: None,
             found,
             chosen: 0,
@@ -195,7 +202,7 @@ impl Picker {
 
     /// Whether something is typed, and nothing matches it.
     fn nothing(&self) -> bool {
-        self.count() == 0 && !self.query.is_empty()
+        self.count() == 0 && !self.field.text().is_empty()
     }
 
     /// The furthest down the list can be scrolled: its last row at the
@@ -219,7 +226,7 @@ impl Picker {
     /// What has been typed.
     #[must_use]
     pub fn query(&self) -> &str {
-        &self.query
+        self.field.text()
     }
 
     /// The names of the programs that match what has been typed, best
@@ -259,26 +266,11 @@ impl Picker {
     /// Takes a key.
     pub fn key(&mut self, key: Key) -> Outcome {
         match key {
-            Key::Text(text) => {
-                // In place of all of it, if all is chosen.
-                if std::mem::take(&mut self.marked) {
-                    self.query.clear();
-                }
-                let room = LONGEST.saturating_sub(self.query.chars().count());
-                let typed = text.chars().filter(|character| !character.is_control());
-                self.query.extend(typed.take(room));
-                self.search();
-            }
-            Key::Backspace => {
-                // All of it, if all is chosen.
-                if std::mem::take(&mut self.marked) {
-                    self.query.clear();
-                } else {
-                    self.query.pop();
-                }
-                self.search();
-            }
-            Key::All => self.marked = !self.query.is_empty(),
+            Key::Text(text) => self.change(Edit::Type(text)),
+            Key::Edit(edit) => self.change(edit),
+            Key::All => self.change(Edit::All),
+            Key::Copy => return self.copy(false),
+            Key::Cut => return self.copy(true),
             Key::Up => {
                 self.chosen = self.chosen.saturating_sub(1);
                 self.follow();
@@ -311,6 +303,29 @@ impl Picker {
         over.map_or(Outcome::Stay, |_| self.start())
     }
 
+    /// Does `edit` to what is typed, and lists what matches it if that
+    /// changed.
+    fn change(&mut self, edit: Edit) {
+        let before = self.field.text().to_owned();
+        self.field.edit(edit);
+        if self.field.text() != before {
+            self.search();
+        }
+    }
+
+    /// Asks for what is chosen of what is typed to be copied, if anything
+    /// is, and takes it out if `cut`.
+    fn copy(&mut self, cut: bool) -> Outcome {
+        let chosen = self.field.chosen_text().map(str::to_owned);
+        if cut && chosen.is_some() {
+            self.change(Edit::Remove {
+                way: Way::Back,
+                reach: Reach::Character,
+            });
+        }
+        chosen.map_or(Outcome::Stay, |text| Outcome::Ask(Request::Copy { text }))
+    }
+
     /// Draws the launcher, with `scale` pixels to a unit of layout. The
     /// icons of the programs in sight are looked up in `icons`, if icons
     /// are shown. A row that has just been chosen, or has just stopped
@@ -336,32 +351,43 @@ impl Picker {
         canvas.draw_box(layout.input, &input);
         let typed = inset(layout.input, input.inset());
         let (left, top, room, tall) = typed;
-        let along = text.measure(&self.query, font).min(room.saturating_sub(1));
-        if self.marked {
-            // All of it chosen: what is typed on what the theme marks it
-            // with, and no line where the next character goes, as it goes
-            // in place of all of it.
-            let chosen = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
-            canvas.fill((left, top, along, tall), chosen.ground());
-            text.draw(&mut canvas, &self.query, typed, chosen.color, font);
-        } else {
-            text.draw(&mut canvas, &self.query, typed, input.color, font);
+        let typed_in = self.field.text();
+        let across = |text: &mut Text, at: usize| {
+            text.measure(&typed_in[..at], font)
+                .min(room.saturating_sub(1))
+        };
+        text.draw(&mut canvas, typed_in, typed, input.color, font);
+        let chosen = self.field.chosen();
+        if chosen.is_empty() {
             // A line where the next character will go, which stays in the
             // box however much has been typed.
             let margin = tall / 5;
             let caret = (
-                left.saturating_add_unsigned(along),
+                left.saturating_add_unsigned(across(text, self.field.cursor())),
                 top.saturating_add_unsigned(margin),
                 1,
                 tall.saturating_sub(margin * 2),
             );
             canvas.fill(caret, input.color);
+        } else {
+            // What is chosen on what the theme marks it with, and no line
+            // where the next character goes, as it goes in its place.
+            let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
+            let (start, end) = (across(text, chosen.start), across(text, chosen.end));
+            let mark = (
+                left.saturating_add_unsigned(start),
+                top,
+                end.saturating_sub(start),
+                tall,
+            );
+            canvas.fill(mark, marked.ground());
+            text.draw(&mut canvas, &typed_in[chosen], mark, marked.color, font);
         }
 
         let listed = self.rows().enumerate().skip(self.first()).take(self.room);
         for (place, (row, item)) in listed.enumerate() {
             let (name, says, icon) = match item {
-                Row::Answer(_, shown) => (shown, self.query.as_str(), None),
+                Row::Answer(_, shown) => (shown, self.field.text(), None),
                 Row::App(app) => (app.name.as_str(), app.description.as_str(), Some(&app.icon)),
             };
             let states = States::NONE.when(State::Active, row == self.chosen);
@@ -415,7 +441,7 @@ impl Picker {
             let area = inset(inset(layout.row(0), style.margin), style.inset());
             let said = theme.style(Part::LauncherDescription, States::NONE);
             let font = theme.font(Part::LauncherDescription, States::NONE);
-            let typed = [("typed", Value::Words(&self.query))];
+            let typed = [("typed", Value::Words(self.field.text()))];
             let nothing = words.say("nothing-matches", &typed);
             text.draw(&mut canvas, &nothing, area, said.color, font);
         }
@@ -456,13 +482,13 @@ impl Picker {
     /// is a sum, and sums are worked out, its answer comes before them all.
     /// The first of all is chosen.
     fn search(&mut self) {
-        let answer = self.show.sums.then(|| sums::answer(&self.query));
+        let answer = self.show.sums.then(|| sums::answer(self.field.text()));
         let answer = answer.flatten();
         self.answer = answer.map(|answer| {
             let shown = format!("= {answer}");
             (answer, shown)
         });
-        let query = self.query.to_lowercase();
+        let query = self.field.text().to_lowercase();
         let described = self.show.descriptions;
         // How well each program matches: the lower the better.
         let rank = |app: &App| {
@@ -518,6 +544,12 @@ mod tests {
     use omorfos_config::Color;
 
     use super::*;
+
+    /// Backspace, taking out the character before the cursor.
+    const BACKSPACE: Key = Key::Edit(Edit::Remove {
+        way: Way::Back,
+        reach: Reach::Character,
+    });
 
     /// Names alone, which most of what is tested here is easiest seen in,
     /// with sums worked out.
@@ -630,13 +662,51 @@ mod tests {
         assert_eq!(names_of(&picker), ["Files", "Firefox"]);
         typed(&mut picker, "r");
         assert_eq!(names_of(&picker), ["Firefox"]);
-        assert_eq!(picker.key(Key::Backspace), Outcome::Stay);
+        assert_eq!(picker.key(BACKSPACE), Outcome::Stay);
         assert_eq!(names_of(&picker), ["Files", "Firefox"]);
         for _ in 0..5 {
-            picker.key(Key::Backspace);
+            picker.key(BACKSPACE);
         }
         assert_eq!(picker.query(), "");
         assert_eq!(names_of(&picker).len(), 5);
+    }
+
+    #[test]
+    fn what_is_typed_is_edited_where_the_cursor_is_and_what_is_chosen_copied_or_cut() {
+        let mut picker = several();
+        typed(&mut picker, "fiefox");
+        assert_eq!(names_of(&picker), Vec::<&str>::new());
+        let left = Key::Edit(Edit::Move {
+            way: Way::Back,
+            reach: Reach::Character,
+            choosing: false,
+        });
+        for _ in 0..4 {
+            assert_eq!(picker.key(left.clone()), Outcome::Stay);
+        }
+        typed(&mut picker, "r");
+        assert_eq!(picker.query(), "firefox");
+        assert_eq!(names_of(&picker), ["Firefox"]);
+        // Nothing chosen is nothing to copy or cut.
+        assert_eq!(picker.key(Key::Copy), Outcome::Stay);
+        assert_eq!(picker.key(Key::Cut), Outcome::Stay);
+        assert_eq!(picker.query(), "firefox");
+        let copy = Outcome::Ask(Request::Copy {
+            text: "firefox".to_owned(),
+        });
+        picker.key(Key::All);
+        assert_eq!(picker.key(Key::Copy), copy, "the launcher staying");
+        assert_eq!(picker.query(), "firefox");
+        assert_eq!(picker.key(Key::Cut), copy);
+        assert_eq!(picker.query(), "");
+        assert_eq!(names_of(&picker).len(), 5, "everything again");
+        picker.key(Key::Edit(Edit::Undo));
+        assert_eq!(names_of(&picker), ["Firefox"]);
+        // Moving the cursor alone lists nothing anew: the first is chosen
+        // still, wherever the list was.
+        picker.key(Key::Down);
+        picker.key(left);
+        assert_eq!(picker.chosen(), Some("Firefox"));
     }
 
     #[test]
@@ -660,13 +730,13 @@ mod tests {
         typed(&mut picker, "er");
         assert_eq!(picker.query(), "ter", "and then after it, as usual");
         picker.key(Key::All);
-        picker.key(Key::Backspace);
+        picker.key(BACKSPACE);
         assert_eq!(picker.query(), "", "all of it taken out");
         assert_eq!(names_of(&picker).len(), 5);
         // With nothing typed there is nothing to choose.
         picker.key(Key::All);
         typed(&mut picker, "f");
-        picker.key(Key::Backspace);
+        picker.key(BACKSPACE);
         assert_eq!(picker.query(), "");
         // The arrows leave it chosen.
         typed(&mut picker, "fi");
@@ -1075,7 +1145,7 @@ mod tests {
         assert_eq!(picker.chosen(), Some("10"));
         // Taken back to a number alone, it is no sum.
         for _ in 0..5 {
-            picker.key(Key::Backspace);
+            picker.key(BACKSPACE);
         }
         assert_eq!(picker.query(), "2+");
         assert_eq!(picker.chosen(), None);

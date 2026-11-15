@@ -21,6 +21,12 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- [ ] The launcher's text field, as changed on 15 November 2026: Left and
+      Right, with `Ctrl` or `Alt` by a word, Home and End to an end, Shift
+      choosing as they go; Backspace and Delete, by a
+      word with `Ctrl` or `Alt`; `Ctrl+Z`, `Ctrl+Shift+Z`; `Ctrl+C` and
+      `Ctrl+X` on what is chosen, pasting elsewhere. Not yet: pasting into
+      it, or a click in it.
 - [ ] The launcher's list, as changed on 15 November 2026: the wheel and
       the touchpad scroll it, a notch a row, without choosing each program
       on the way; the pointer chooses the one it is over and the list stays
@@ -1572,16 +1578,16 @@ to false, as `launcher.sums` is (ADR 83).
       nor percentages, functions such as `sqrt`, or `pi`. Nothing says
       on the launcher that Enter copies the answer, though the launcher
       has messages of its own to translate now.
-- [ ] Known gaps in the launcher's text field, as the maintainer found it
-      on 15 November 2026: only typing at the end and Backspace work, with
-      `Ctrl+A`; the arrows, `Ctrl` or `Alt` and an arrow or Backspace by
-      word, Home and End, choosing with Shift or the pointer, and undo do
-      not, which makes it feel unnatural. To be one text field shared by
-      the components, in `omorfos-ui`, built on cosmic-text's `Editor`
-      (already what text is drawn with) for the cursor, choosing, words
-      and undo, with the keys of GTK's fields and Super for Ctrl (ADR 78);
-      the launcher first, then the lock screen and the boxes that ask for
-      a password.
+- [x] The launcher's text field as any text field is (ADR 85), as the
+      maintainer found it wanting on 15 November 2026: the arrows, by a
+      word with `Ctrl` or `Alt`, and Home and End to an end;
+      Shift choosing; Backspace and Delete by a word; undo and redo; and
+      copying and cutting what is chosen. One field, `omorfos_ui::Field`,
+      for the other components to take up.
+- [ ] Known gaps in the text field: pasting, which needs a request of the
+      launcher's to read the clipboard; a click putting the cursor and a
+      drag choosing; and text wider than the field scrolled along to the
+      cursor.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

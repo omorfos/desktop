@@ -6,6 +6,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::FileExt;
 use std::time::{Duration, Instant};
 
+use omorfos_ui::field::{Reach, Way};
 use xkbcommon::xkb;
 
 /// The largest keyboard layout read, in bytes. One is some tens of
@@ -19,8 +20,31 @@ pub enum Key {
     Enter,
     /// Escape: gives up, or clears the field.
     Escape,
-    /// Backspace: takes the last character out.
-    Back,
+    /// Backspace: takes out the character before the cursor; with Ctrl or
+    /// Alt, the word.
+    Back(Reach),
+    /// Delete: takes out the character after the cursor, or with Ctrl or
+    /// Alt the word.
+    Delete(Reach),
+    /// The arrows left and right, and Home and End: the cursor moved, by a
+    /// word with Ctrl or Alt, Home and End to an end, choosing
+    /// what it goes over with Shift.
+    Move {
+        /// Which way.
+        way: Way,
+        /// How far.
+        reach: Reach,
+        /// Whether Shift is held, choosing what it goes over.
+        choosing: bool,
+    },
+    /// Ctrl and Z, or Super and Z: the last change undone.
+    Undo,
+    /// Ctrl, Shift and Z, or Ctrl and Y: the last change undone done again.
+    Redo,
+    /// Ctrl and C, or Super and C: what is chosen copied.
+    Copy,
+    /// Ctrl and X, or Super and X: what is chosen copied and taken out.
+    Cut,
     /// Tab: on to what comes next, as a button.
     Next,
     /// Shift and Tab: back to what came before.
@@ -117,20 +141,53 @@ fn typed(state: &xkb::State, code: u32) -> Key {
     // The numbers the layout knows keys by are eight higher.
     let code = xkb::Keycode::new(code.saturating_add(8));
     let held = |name| state.mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE);
-    let command = held(xkb::MOD_NAME_CTRL) || held(xkb::MOD_NAME_LOGO);
-    let chord = command || held(xkb::MOD_NAME_ALT);
+    let (ctrl, alt, logo) = (
+        held(xkb::MOD_NAME_CTRL),
+        held(xkb::MOD_NAME_ALT),
+        held(xkb::MOD_NAME_LOGO),
+    );
+    let command = ctrl || logo;
+    let chord = command || alt;
     let sym = state.key_get_one_sym(code);
     // A shortcut is the key's, whatever letter the layout typed with puts
     // on it, as programs take it.
     let shortcut = command.then(|| latin(state, code)).flatten().unwrap_or(sym);
-    let all = matches!(shortcut, xkb::Keysym::a | xkb::Keysym::A);
-    if all && command && !held(xkb::MOD_NAME_ALT) {
-        return Key::All;
+    let letter = (command && !alt).then(|| u8::try_from(shortcut.raw()).ok());
+    let letter = letter.flatten().map(|letter| letter.to_ascii_lowercase());
+    let shift = held(xkb::MOD_NAME_SHIFT);
+    let found = letter.and_then(|letter| match (letter, shift) {
+        (b'a', _) => Some(Key::All),
+        (b'z', false) => Some(Key::Undo),
+        (b'z', true) | (b'y', false) => Some(Key::Redo),
+        (b'c', false) => Some(Key::Copy),
+        (b'x', false) => Some(Key::Cut),
+        _ => None,
+    });
+    if let Some(found) = found {
+        return found;
     }
+    // By a word with Ctrl or Alt; and with Super, as Ctrl, which is how
+    // the compositor hands Super on to the shell's fields (ADR 78), so
+    // that it is the same whichever reaches a field.
+    let reach = if command || alt {
+        Reach::Word
+    } else {
+        Reach::Character
+    };
+    let moved = |way, reach| Key::Move {
+        way,
+        reach,
+        choosing: shift,
+    };
     match sym {
         xkb::Keysym::Return | xkb::Keysym::KP_Enter => Key::Enter,
         xkb::Keysym::Escape => Key::Escape,
-        xkb::Keysym::BackSpace => Key::Back,
+        xkb::Keysym::BackSpace => Key::Back(reach),
+        xkb::Keysym::Delete | xkb::Keysym::KP_Delete => Key::Delete(reach),
+        xkb::Keysym::Left | xkb::Keysym::KP_Left => moved(Way::Back, reach),
+        xkb::Keysym::Right | xkb::Keysym::KP_Right => moved(Way::On, reach),
+        xkb::Keysym::Home | xkb::Keysym::KP_Home => moved(Way::Back, Reach::Line),
+        xkb::Keysym::End | xkb::Keysym::KP_End => moved(Way::On, Reach::Line),
         xkb::Keysym::Tab => Key::Next,
         xkb::Keysym::ISO_Left_Tab => Key::Previous,
         xkb::Keysym::Up => Key::Up,
@@ -263,6 +320,78 @@ mod tests {
         let (up, down) = (103, 108);
         assert_eq!(typed(&keyboard("us", 0, false), up), Key::Up);
         assert_eq!(typed(&keyboard("us", 0, false), down), Key::Down);
+    }
+
+    /// A US keyboard with the modifiers named in `held` held down.
+    fn holding(held: &[&str]) -> xkb::State {
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let flags = xkb::KEYMAP_COMPILE_NO_FLAGS;
+        let keymap = xkb::Keymap::new_from_names(&context, "", "", "us", "", None, flags);
+        let mut state = xkb::State::new(&keymap.unwrap());
+        let keymap = state.get_keymap();
+        let mask = held.iter().map(|name| 1 << keymap.mod_get_index(name));
+        state.update_mask(mask.sum(), 0, 0, 0, 0, 0);
+        state
+    }
+
+    #[test]
+    fn the_keys_that_edit_a_line_go_by_a_character_a_word_or_to_an_end() {
+        // As the compositor numbers them.
+        let (left, right, home, end, delete, backspace) = (105, 106, 102, 107, 111, 14);
+        let moved = |way, reach, choosing| Key::Move {
+            way,
+            reach,
+            choosing,
+        };
+        let plain = holding(&[]);
+        assert_eq!(
+            typed(&plain, left),
+            moved(Way::Back, Reach::Character, false)
+        );
+        assert_eq!(
+            typed(&plain, right),
+            moved(Way::On, Reach::Character, false)
+        );
+        assert_eq!(typed(&plain, home), moved(Way::Back, Reach::Line, false));
+        assert_eq!(typed(&plain, end), moved(Way::On, Reach::Line, false));
+        assert_eq!(typed(&plain, backspace), Key::Back(Reach::Character));
+        assert_eq!(typed(&plain, delete), Key::Delete(Reach::Character));
+        // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it.
+        // And with Super, as Ctrl, which is how the compositor hands it on.
+        for word in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_ALT, xkb::MOD_NAME_LOGO] {
+            let held = holding(&[word]);
+            assert_eq!(typed(&held, left), moved(Way::Back, Reach::Word, false));
+            assert_eq!(typed(&held, backspace), Key::Back(Reach::Word));
+            assert_eq!(typed(&held, delete), Key::Delete(Reach::Word));
+        }
+        // Shift chooses what the cursor goes over.
+        let shift = holding(&[xkb::MOD_NAME_SHIFT, xkb::MOD_NAME_CTRL]);
+        assert_eq!(typed(&shift, right), moved(Way::On, Reach::Word, true));
+        assert_eq!(
+            typed(&holding(&[xkb::MOD_NAME_SHIFT]), home),
+            moved(Way::Back, Reach::Line, true)
+        );
+    }
+
+    #[test]
+    fn ctrl_or_super_with_z_y_c_or_x_undoes_does_again_copies_or_cuts() {
+        let (key_z, key_y, key_c, key_x, key_b) = (44, 21, 46, 45, 48);
+        for command in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_LOGO] {
+            let held = holding(&[command]);
+            assert_eq!(typed(&held, key_z), Key::Undo);
+            assert_eq!(typed(&held, key_y), Key::Redo);
+            assert_eq!(typed(&held, key_c), Key::Copy);
+            assert_eq!(typed(&held, key_x), Key::Cut);
+            assert_eq!(typed(&held, key_b), Key::Nothing, "no shortcut");
+            let shifted = holding(&[command, xkb::MOD_NAME_SHIFT]);
+            assert_eq!(typed(&shifted, key_z), Key::Redo);
+            assert_eq!(typed(&shifted, key_c), Key::Nothing, "not with Shift");
+        }
+        // With Alt as well, none of them: that is another shortcut.
+        let both = holding(&[xkb::MOD_NAME_CTRL, xkb::MOD_NAME_ALT]);
+        assert_eq!(typed(&both, key_z), Key::Nothing);
+        // Alone, they type.
+        assert_eq!(typed(&holding(&[]), key_z), Key::Typed("z".to_owned()));
     }
 
     #[test]

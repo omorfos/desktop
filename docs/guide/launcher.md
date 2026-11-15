@@ -10,7 +10,14 @@ Enter starts the chosen one, and Escape closes the launcher. A click on a
 program starts it too, and a click anywhere beside the launcher closes
 it. `Ctrl+A`, or `Super+A`, chooses all that is
 typed, for what is typed next to take its place, or Backspace to take it
-all out, as in the box that asks for a password.
+all out, as in the box that asks for a password. What is typed is edited
+as in any text field: Left and Right move the cursor, by a word with
+`Ctrl` or `Alt`, and Home and End to an end; with Shift they choose what
+they go over; Backspace and Delete take out a
+character, or a word with `Ctrl` or `Alt`; `Ctrl+Z` undoes and
+`Ctrl+Shift+Z` does again; `Ctrl+C` copies what is chosen and `Ctrl+X`
+cuts it. `Super` does as `Ctrl` in each. Pasting into it is not there
+yet.
 
 The launcher is as tall as what it lists, up to half the height of the
 screen, and the list scrolls past that. Its top stays where it would be

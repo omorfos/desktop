@@ -17,6 +17,7 @@ use omorfos_i18n::{LAUNCHER, Words};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::typing::{Key as Typed, Typing};
 use omorfos_shell::{picture, whole};
+use omorfos_ui::field::{Edit, Way};
 use omorfos_ui::{Canvas, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
@@ -339,6 +340,10 @@ impl Shell {
                 self.sent = self.commands.send(&request);
                 self.done = true;
             }
+            Outcome::Ask(request) => {
+                self.sent = self.commands.send(&request);
+                self.stale = true;
+            }
         }
     }
 
@@ -431,7 +436,27 @@ impl Shell {
         let key = match self.typing.pressed(code) {
             Typed::Enter => Some(Key::Enter),
             Typed::Escape => Some(Key::Escape),
-            Typed::Back => Some(Key::Backspace),
+            Typed::Back(reach) => Some(Key::Edit(Edit::Remove {
+                way: Way::Back,
+                reach,
+            })),
+            Typed::Delete(reach) => Some(Key::Edit(Edit::Remove {
+                way: Way::On,
+                reach,
+            })),
+            Typed::Move {
+                way,
+                reach,
+                choosing,
+            } => Some(Key::Edit(Edit::Move {
+                way,
+                reach,
+                choosing,
+            })),
+            Typed::Undo => Some(Key::Edit(Edit::Undo)),
+            Typed::Redo => Some(Key::Edit(Edit::Redo)),
+            Typed::Copy => Some(Key::Copy),
+            Typed::Cut => Some(Key::Cut),
             Typed::All => Some(Key::All),
             Typed::Up => Some(Key::Up),
             Typed::Down => Some(Key::Down),

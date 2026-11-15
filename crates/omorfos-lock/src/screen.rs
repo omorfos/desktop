@@ -758,7 +758,7 @@ impl Shell {
         let key = self.typing.pressed(code);
         // Only what types, or takes out, is done again while it is held:
         // not Enter, Escape or Tab, which do something once.
-        let again = matches!(key, Key::Typed(_) | Key::Back) && self.typing.repeats(code);
+        let again = matches!(key, Key::Typed(_) | Key::Back(_)) && self.typing.repeats(code);
         self.repeat.pressed(code, again, self.now);
         self.key(key);
     }
@@ -766,7 +766,7 @@ impl Shell {
     /// Does what `key` does, going down or held.
     fn key(&mut self, key: Key) {
         // What types, takes out or chooses is for the field.
-        if matches!(key, Key::Typed(_) | Key::Back | Key::All) {
+        if matches!(key, Key::Typed(_) | Key::Back(_) | Key::All) {
             self.focused = None;
         }
         match key {
@@ -791,9 +791,10 @@ impl Shell {
             Key::Next => self.tab(false),
             Key::Previous => self.tab(true),
             Key::All => self.marked = !self.typed.is_empty(),
-            // All of it, if all is chosen.
-            Key::Back if self.marked => self.empty(),
-            Key::Back => {
+            // All of it, if all is chosen; else a character whatever
+            // Backspace is held with, as what is typed is not shown.
+            Key::Back(_) if self.marked => self.empty(),
+            Key::Back(_) => {
                 self.typed.pop();
             }
             Key::Typed(typed) => {
@@ -805,8 +806,17 @@ impl Shell {
                 let room = LONGEST.saturating_sub(self.typed.chars().count());
                 self.typed.extend(typed.chars().take(room));
             }
-            // There is no list to go up and down.
-            Key::Up | Key::Down | Key::Nothing => {}
+            // There is no list to go up and down; nor, in a secret that is
+            // not shown, anywhere to move to, and nothing to copy or undo.
+            Key::Up
+            | Key::Down
+            | Key::Delete(_)
+            | Key::Move { .. }
+            | Key::Undo
+            | Key::Redo
+            | Key::Copy
+            | Key::Cut
+            | Key::Nothing => {}
         }
         self.stale = true;
     }
