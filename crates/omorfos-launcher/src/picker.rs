@@ -38,6 +38,8 @@ pub enum Key {
     Enter,
     /// Go away without starting anything.
     Escape,
+    /// Choose all that is typed, for what is typed next to take its place.
+    All,
 }
 
 /// What comes of a key or a click.
@@ -61,6 +63,9 @@ pub struct Picker {
     /// What is shown of each program besides its name.
     show: Show,
     query: String,
+    /// Whether all that is typed is chosen, as Ctrl and A choose it, to be
+    /// typed over or taken out at once.
+    marked: bool,
     /// The answer to what has been typed, if it is a sum, and how it is
     /// written on its row.
     answer: Option<(String, String)>,
@@ -142,6 +147,7 @@ impl Picker {
             apps,
             show,
             query: String::new(),
+            marked: false,
             answer: None,
             found,
             chosen: 0,
@@ -224,15 +230,25 @@ impl Picker {
     pub fn key(&mut self, key: Key) -> Outcome {
         match key {
             Key::Text(text) => {
+                // In place of all of it, if all is chosen.
+                if std::mem::take(&mut self.marked) {
+                    self.query.clear();
+                }
                 let room = LONGEST.saturating_sub(self.query.chars().count());
                 let typed = text.chars().filter(|character| !character.is_control());
                 self.query.extend(typed.take(room));
                 self.search();
             }
             Key::Backspace => {
-                self.query.pop();
+                // All of it, if all is chosen.
+                if std::mem::take(&mut self.marked) {
+                    self.query.clear();
+                } else {
+                    self.query.pop();
+                }
                 self.search();
             }
+            Key::All => self.marked = !self.query.is_empty(),
             Key::Up => self.chosen = self.chosen.saturating_sub(1),
             Key::Down => {
                 let last = self.count().saturating_sub(1);
@@ -284,19 +300,28 @@ impl Picker {
         let font = theme.font(Part::LauncherInput, States::NONE);
         canvas.draw_box(layout.input, &input);
         let typed = inset(layout.input, input.inset());
-        text.draw(&mut canvas, &self.query, typed, input.color, font);
-        // A line where the next character will go, which stays in the box
-        // however much has been typed.
         let (left, top, room, tall) = typed;
         let along = text.measure(&self.query, font).min(room.saturating_sub(1));
-        let margin = tall / 5;
-        let caret = (
-            left.saturating_add_unsigned(along),
-            top.saturating_add_unsigned(margin),
-            1,
-            tall.saturating_sub(margin * 2),
-        );
-        canvas.fill(caret, input.color);
+        if self.marked {
+            // All of it chosen: what is typed on what the theme marks it
+            // with, and no line where the next character goes, as it goes
+            // in place of all of it.
+            let chosen = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
+            canvas.fill((left, top, along, tall), chosen.ground());
+            text.draw(&mut canvas, &self.query, typed, chosen.color, font);
+        } else {
+            text.draw(&mut canvas, &self.query, typed, input.color, font);
+            // A line where the next character will go, which stays in the
+            // box however much has been typed.
+            let margin = tall / 5;
+            let caret = (
+                left.saturating_add_unsigned(along),
+                top.saturating_add_unsigned(margin),
+                1,
+                tall.saturating_sub(margin * 2),
+            );
+            canvas.fill(caret, input.color);
+        }
 
         let listed = self.rows().enumerate().skip(self.first()).take(self.room);
         for (place, (row, item)) in listed.enumerate() {
@@ -565,6 +590,61 @@ mod tests {
         assert_eq!(picker.query().chars().count(), LONGEST);
         typed(&mut picker, "y");
         assert_eq!(picker.query().chars().count(), LONGEST);
+    }
+
+    #[test]
+    fn all_that_is_typed_can_be_chosen_for_the_next_key_to_take_its_place() {
+        let mut picker = several();
+        typed(&mut picker, "fire");
+        assert_eq!(picker.key(Key::All), Outcome::Stay);
+        typed(&mut picker, "t");
+        assert_eq!(picker.query(), "t", "typed in place of all of it");
+        typed(&mut picker, "er");
+        assert_eq!(picker.query(), "ter", "and then after it, as usual");
+        picker.key(Key::All);
+        picker.key(Key::Backspace);
+        assert_eq!(picker.query(), "", "all of it taken out");
+        assert_eq!(names_of(&picker).len(), 5);
+        // With nothing typed there is nothing to choose.
+        picker.key(Key::All);
+        typed(&mut picker, "f");
+        picker.key(Key::Backspace);
+        assert_eq!(picker.query(), "");
+        // The arrows leave it chosen.
+        typed(&mut picker, "fi");
+        picker.key(Key::All);
+        picker.key(Key::Down);
+        typed(&mut picker, "t");
+        assert_eq!(picker.query(), "t");
+    }
+
+    #[test]
+    fn what_is_typed_when_all_of_it_is_chosen_is_drawn_on_the_themes_mark() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
+        assert_ne!(input.background, marked.background);
+        let (left, top, _, height) = layout.input;
+        // Just inside where the text starts, half-way down.
+        let at = (
+            left.unsigned_abs() + input.padding.left + 1,
+            top.unsigned_abs() + height / 2,
+        );
+        let mut picker = several();
+        typed(&mut picker, "fire");
+        let ground = |picker: &Picker| {
+            let canvas = painted(picker);
+            let row = (at.0..at.0 + 30).map(|x| canvas.at(x, at.1));
+            row.filter(|pixel| *pixel == argb(marked.background))
+                .count()
+        };
+        assert_eq!(ground(&picker), 0);
+        picker.key(Key::All);
+        // Between the letters, as far across as they go.
+        assert!(ground(&picker) > 5, "the mark behind the text");
+        typed(&mut picker, "f");
+        assert_eq!(ground(&picker), 0);
     }
 
     #[test]

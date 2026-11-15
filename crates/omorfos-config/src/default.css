@@ -256,6 +256,11 @@ launcher-input {
   color: var(--text);
   border-radius: 6px;
 }
+/* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
+launcher-input:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 /* A row has two lines: the name, and under it what the program says of
  * itself, if the launcher shows that; its icon is as tall as both. */
 launcher-item {

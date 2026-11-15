@@ -1,5 +1,5 @@
-//! What the keys the compositor reports type, for a field that a secret
-//! is typed into: the prompt that asks for one, and the lock screen.
+//! What the keys the compositor reports type, for a field of the shell's:
+//! the prompt that asks for a secret, the lock screen, and the launcher.
 
 use std::fs::File;
 use std::os::fd::OwnedFd;
@@ -25,6 +25,10 @@ pub enum Key {
     Next,
     /// Shift and Tab: back to what came before.
     Previous,
+    /// The arrow up: what is above, in a list.
+    Up,
+    /// The arrow down: what is below, in a list.
+    Down,
     /// Ctrl and A, or Super and A as on a Mac: all that is typed chosen,
     /// for what is typed next to take its place.
     All,
@@ -91,6 +95,12 @@ impl Typing {
         keymap.is_some_and(|keymap| keymap.key_repeats(code))
     }
 
+    /// Whether the keyboard layout is known, so that keys type something.
+    #[must_use]
+    pub const fn known(&self) -> bool {
+        self.state.is_some()
+    }
+
     /// What the key the compositor numbers `code` does, going down.
     #[must_use]
     pub fn pressed(&self, code: u32) -> Key {
@@ -123,6 +133,8 @@ fn typed(state: &xkb::State, code: u32) -> Key {
         xkb::Keysym::BackSpace => Key::Back,
         xkb::Keysym::Tab => Key::Next,
         xkb::Keysym::ISO_Left_Tab => Key::Previous,
+        xkb::Keysym::Up => Key::Up,
+        xkb::Keysym::Down => Key::Down,
         _ => {
             let typed = state.key_get_utf8(code);
             let printable = typed.chars().all(|character| !character.is_control());
@@ -246,6 +258,14 @@ mod tests {
     }
 
     #[test]
+    fn the_arrows_go_up_and_down_a_list() {
+        // As the compositor numbers them.
+        let (up, down) = (103, 108);
+        assert_eq!(typed(&keyboard("us", 0, false), up), Key::Up);
+        assert_eq!(typed(&keyboard("us", 0, false), down), Key::Down);
+    }
+
+    #[test]
     fn with_no_latin_layout_beside_it_there_is_no_a_to_choose_all_by() {
         assert_eq!(typed(&keyboard("gr", 0, true), A), Key::Nothing);
     }
@@ -297,6 +317,7 @@ mod tests {
     #[test]
     fn before_the_layout_is_known_no_key_types_anything() {
         let typing = Typing::default();
+        assert!(!typing.known());
         assert_eq!(typing.pressed(30), Key::Nothing);
         assert!(!typing.repeats(30));
         assert!(format!("{typing:?}").contains("known: false"));

@@ -6,16 +6,15 @@
 //! out, and one request goes to the compositor at the end.
 
 use std::error::Error;
-use std::fs::File;
 use std::io;
 use std::os::fd::OwnedFd;
-use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Part, States, Store, Theme};
 use omorfos_ipc::Client as Ipc;
+use omorfos_shell::typing::{Key as Typed, Typing};
 use omorfos_shell::{picture, whole};
 use omorfos_ui::{Canvas, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -30,7 +29,6 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-use xkbcommon::xkb;
 
 use crate::{App, Icons, Key, Outcome, Picker};
 
@@ -43,10 +41,6 @@ const LEFT_BUTTON: u32 = 0x110;
 /// The most times a held key is taken again in one turn. A program that
 /// was kept from running for a while does not then type a screenful.
 const MOST_REPEATS: usize = 8;
-
-/// The most of a keyboard layout that is read, in bytes. Real ones are
-/// some tens of kilobytes.
-const LARGEST_KEYMAP: u32 = 1024 * 1024;
 
 /// The launcher: a connection to the compositor as a Wayland client, one to
 /// its own socket, and the box on the screen.
@@ -197,9 +191,8 @@ struct Shell {
     icons: Icons,
     theme: Theme,
     text: Text,
-    /// The keyboard layout, for telling what a key types.
-    layouts: xkb::Context,
-    typing: Option<xkb::State>,
+    /// The keyboard as it is, for telling what a key types.
+    typing: Typing,
     /// What the time is, as whoever runs the launcher last said.
     now: Duration,
     /// How long a key is held before it is taken again, and how long
@@ -308,8 +301,7 @@ impl Shell {
             icons,
             theme,
             text: Text::new(),
-            layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
-            typing: None,
+            typing: Typing::default(),
             now: Duration::ZERO,
             repeating: None,
             held: None,
@@ -343,33 +335,25 @@ impl Shell {
         self.stale |= self.on_box && self.picker.point(x, y, &self.theme);
     }
 
+    /// Does what `key` does to the list.
+    fn take_key(&mut self, key: Key) {
+        let outcome = self.picker.key(key);
+        self.take(outcome);
+    }
+
     /// Takes in the keyboard layout the compositor sent.
     fn learn_layout(&mut self, layout: OwnedFd, size: u32) {
-        let length = usize::try_from(size.min(LARGEST_KEYMAP)).unwrap_or(0);
-        let mut bytes = vec![0; length];
-        // Read from the start whatever else has read it: the compositor
-        // hands every program the same file.
-        let read = File::from(layout).read_exact_at(&mut bytes, 0);
-        let text = read.ok().and_then(|()| String::from_utf8(bytes).ok());
-        let keymap = text.and_then(|text| {
-            let text = text.trim_end_matches('\0').to_owned();
-            let (format, flags) = (xkb::KEYMAP_FORMAT_TEXT_V1, xkb::KEYMAP_COMPILE_NO_FLAGS);
-            xkb::Keymap::new_from_string(&self.layouts, text, format, flags)
-        });
-        self.typing = keymap.as_ref().map(xkb::State::new);
+        self.typing.learn_layout(layout, size);
         // A launcher that cannot be typed in, nor dismissed with a key, is
         // worse than none.
-        self.done |= self.typing.is_none();
+        self.done |= !self.typing.known();
     }
 
     /// Takes in a key going down: it is taken once now, and again and
     /// again while it stays down, if it is a key that repeats.
     fn pressed(&mut self, code: u32) {
         self.press(code);
-        let repeats = self.typing.as_ref().is_some_and(|typing| {
-            let layout = typing.get_keymap();
-            layout.key_repeats(xkb::Keycode::new(code.saturating_add(8)))
-        });
+        let repeats = self.typing.repeats(code);
         let repeating = self.repeating.filter(|_| repeats);
         let held = repeating.map(|(delay, _)| (code, self.now.saturating_add(delay)));
         // A key that does not repeat, such as Shift, going down leaves the
@@ -403,26 +387,21 @@ impl Shell {
 
     /// Takes a key that was pressed, by its number.
     fn press(&mut self, code: u32) {
-        // The numbers the layout knows keys by are eight higher.
-        let code = xkb::Keycode::new(code.saturating_add(8));
-        let key = self
-            .typing
-            .as_ref()
-            .and_then(|typing| match typing.key_get_one_sym(code) {
-                xkb::Keysym::Escape => Some(Key::Escape),
-                xkb::Keysym::Return | xkb::Keysym::KP_Enter => Some(Key::Enter),
-                xkb::Keysym::BackSpace => Some(Key::Backspace),
-                xkb::Keysym::Up => Some(Key::Up),
-                xkb::Keysym::Down => Some(Key::Down),
-                _ => {
-                    let typed = typing.key_get_utf8(code);
-                    (!typed.is_empty()).then_some(Key::Text(typed))
-                }
-            });
+        // Read as every field of the shell reads keys, Ctrl and A, or Super
+        // and A, choosing all that is typed.
+        let key = match self.typing.pressed(code) {
+            Typed::Enter => Some(Key::Enter),
+            Typed::Escape => Some(Key::Escape),
+            Typed::Back => Some(Key::Backspace),
+            Typed::All => Some(Key::All),
+            Typed::Up => Some(Key::Up),
+            Typed::Down => Some(Key::Down),
+            Typed::Typed(typed) => Some(Key::Text(typed)),
+            Typed::Next | Typed::Previous | Typed::Nothing => None,
+        };
         // A key that types nothing, such as Shift, is no key to the launcher.
         if let Some(key) = key {
-            let outcome = self.picker.key(key);
-            self.take(outcome);
+            self.take_key(key);
         }
     }
 
@@ -671,10 +650,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
                 group,
                 ..
             } => {
-                let typing = shell.typing.iter_mut();
-                typing.for_each(|typing| {
-                    typing.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
-                });
+                let held = (mods_depressed, mods_latched, mods_locked, group);
+                shell.typing.modifiers(held);
             }
             wl_keyboard::Event::Key {
                 key,

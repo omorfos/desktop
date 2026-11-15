@@ -2080,7 +2080,6 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
- "xkbcommon",
 ]
 
 [[package]]

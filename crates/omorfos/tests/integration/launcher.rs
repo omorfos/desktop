@@ -280,6 +280,26 @@ fn hold(session: &mut Session, code: Keycode, pressed: bool) {
 }
 
 #[test]
+fn ctrl_a_or_super_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_place() {
+    for chooser in [key::CONTROL, key::SUPER] {
+        let mut session = Session::new();
+        let mut launcher = launcher(&mut session);
+        settle(&mut session, &mut launcher);
+        press(&mut session, F);
+        press(&mut session, I);
+        hold(&mut session, chooser, true);
+        press(&mut session, key::A);
+        hold(&mut session, chooser, false);
+        // "l" in place of "fi": Lens first, as its name begins with it.
+        press(&mut session, L);
+        press(&mut session, key::RETURN);
+        assert!(settle(&mut session, &mut launcher));
+        session.eventually(|session| mark(session, "lens") == "x");
+        assert_eq!(mark(&session, "files"), "");
+    }
+}
+
+#[test]
 fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
     let mut session = Session::new();
     let mut launcher = launcher(&mut session);

@@ -5,7 +5,9 @@ the screen the pointer is on. Type part of a program's name and the list
 narrows to the programs that have it, those that begin with it first. Up
 and Down choose among them, Enter starts the chosen one, and Escape
 closes the launcher. A click on a program starts it too, and a click
-anywhere beside the launcher closes it.
+anywhere beside the launcher closes it. `Ctrl+A`, or `Super+A`, chooses
+all that is typed, for what is typed next to take its place, or Backspace
+to take it all out, as in the box that asks for a password.
 
 The launcher is as tall as what it lists, up to half the height of the
 screen, and the list scrolls past that. Its top stays where it would be
@@ -49,7 +51,8 @@ answer has at most 15 figures, and a very large or very small one is
 written with a power of ten, as `1e20`.
 
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,
-`launcher-item` and `launcher-description`. `launcher-backdrop` is the rest
+`launcher-item` and `launcher-description`; `launcher-input:active` is
+what is typed when all of it is chosen. `launcher-backdrop` is the rest
 of the screen while it is open: give it a see-through background, such as
 `rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with
 another key, bind `show_launcher` in `keys.yaml`.

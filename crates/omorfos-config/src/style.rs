@@ -81,7 +81,9 @@ pub enum Part {
     Clock,
     /// The launcher: the box that programs are picked from.
     Launcher,
-    /// Where what is being looked for is typed in the launcher.
+    /// Where what is being looked for is typed in the launcher;
+    /// [`State::Active`] what is typed when all of it is chosen, its
+    /// background behind it.
     LauncherInput,
     /// A program in the launcher's list: its name, and under it what it
     /// says of itself, if that is shown, each in half of the room inside

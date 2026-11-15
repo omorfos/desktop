@@ -805,7 +805,8 @@ impl Shell {
                 let room = LONGEST.saturating_sub(self.typed.chars().count());
                 self.typed.extend(typed.chars().take(room));
             }
-            Key::Nothing => {}
+            // There is no list to go up and down.
+            Key::Up | Key::Down | Key::Nothing => {}
         }
         self.stale = true;
     }

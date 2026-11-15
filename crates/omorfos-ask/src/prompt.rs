@@ -639,7 +639,8 @@ impl Shell {
             }
             Key::Next => self.tab(false),
             Key::Previous => self.tab(true),
-            Key::Nothing => {}
+            // There is no list to go up and down.
+            Key::Up | Key::Down | Key::Nothing => {}
         }
     }
 
