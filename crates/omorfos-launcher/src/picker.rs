@@ -4,6 +4,7 @@
 //! Nothing here knows of Wayland or of sockets.
 
 use omorfos_config::{Command, Edges, Launcher as Show, Part, State, States, Theme};
+use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
@@ -76,6 +77,9 @@ pub struct Picker {
     chosen: usize,
     /// How many rows are listed at most.
     room: usize,
+    /// The first row listed: as far down as the wheel has scrolled, or as
+    /// the arrows have taken the chosen row.
+    top: usize,
 }
 
 /// A row of the launcher's list.
@@ -152,6 +156,7 @@ impl Picker {
             found,
             chosen: 0,
             room: ROWS,
+            top: 0,
         }
     }
 
@@ -161,6 +166,7 @@ impl Picker {
         let layout = Layout::new(theme);
         let room = (height / 2).saturating_sub(layout.bare) / layout.pitch.max(1);
         self.room = usize::try_from(room).unwrap_or(usize::MAX).max(1);
+        self.top = self.top.min(self.last_top());
     }
 
     /// How large the launcher is under `theme`, in units of layout: as
@@ -181,9 +187,33 @@ impl Picker {
         height.saturating_sub(tallest) / 2
     }
 
-    /// How many rows are listed.
+    /// How many rows are listed: one, to say so, when nothing matches
+    /// what is typed.
     fn shown(&self) -> usize {
-        self.count().min(self.room)
+        self.count().min(self.room).max(usize::from(self.nothing()))
+    }
+
+    /// Whether something is typed, and nothing matches it.
+    fn nothing(&self) -> bool {
+        self.count() == 0 && !self.query.is_empty()
+    }
+
+    /// The furthest down the list can be scrolled: its last row at the
+    /// bottom.
+    fn last_top(&self) -> usize {
+        self.count().saturating_sub(self.room)
+    }
+
+    /// Scrolls the list `rows` down, or up if it is less than none, as far
+    /// as it goes, the chosen row kept in sight: the same while it is in
+    /// sight, and else the nearest that is. Says whether it moved.
+    pub fn scroll(&mut self, rows: isize) -> bool {
+        let top = self.top.saturating_add_signed(rows).min(self.last_top());
+        let moved = top != self.top;
+        self.top = top;
+        let last = (self.top + self.room).min(self.count()).saturating_sub(1);
+        self.chosen = self.chosen.max(self.top).min(last);
+        moved
     }
 
     /// What has been typed.
@@ -249,10 +279,14 @@ impl Picker {
                 self.search();
             }
             Key::All => self.marked = !self.query.is_empty(),
-            Key::Up => self.chosen = self.chosen.saturating_sub(1),
+            Key::Up => {
+                self.chosen = self.chosen.saturating_sub(1);
+                self.follow();
+            }
             Key::Down => {
                 let last = self.count().saturating_sub(1);
                 self.chosen = (self.chosen + 1).min(last);
+                self.follow();
             }
             Key::Enter => return self.start(),
             Key::Escape => return Outcome::Close,
@@ -281,10 +315,11 @@ impl Picker {
     /// icons of the programs in sight are looked up in `icons`, if icons
     /// are shown. A row that has just been chosen, or has just stopped
     /// being, is as far on its way to its new colours as `motion` has it.
+    /// When nothing matches what is typed, it says so, in `words`.
     #[must_use]
     pub fn paint(
         &self,
-        text: &mut Text,
+        (text, words): (&mut Text, &Words),
         theme: &Theme,
         scale: Scale,
         icons: &mut Icons,
@@ -373,13 +408,30 @@ impl Picker {
                 text.draw(&mut canvas, name, room, style.color, font);
             }
         }
+        if self.nothing() {
+            // Where the first program would be, as what a program says of
+            // itself is written.
+            let style = theme.style(Part::LauncherItem, States::NONE);
+            let area = inset(inset(layout.row(0), style.margin), style.inset());
+            let said = theme.style(Part::LauncherDescription, States::NONE);
+            let font = theme.font(Part::LauncherDescription, States::NONE);
+            let typed = [("typed", Value::Words(&self.query))];
+            let nothing = words.say("nothing-matches", &typed);
+            text.draw(&mut canvas, &nothing, area, said.color, font);
+        }
         canvas
     }
 
-    /// The first program listed: the list moves down only as far as it
-    /// takes to keep the chosen one in sight.
-    fn first(&self) -> usize {
-        (self.chosen + 1).saturating_sub(self.room)
+    /// The first row listed.
+    const fn first(&self) -> usize {
+        self.top
+    }
+
+    /// Scrolls the list only as far as it takes to keep the chosen row in
+    /// sight, as the arrows move it.
+    fn follow(&mut self) {
+        let lowest = (self.chosen + 1).saturating_sub(self.room);
+        self.top = self.top.min(self.chosen).max(lowest);
     }
 
     /// Which of the programs that match is listed at a point, if any is.
@@ -426,6 +478,7 @@ impl Picker {
         ranked.sort_by_key(|(rank, _)| *rank);
         self.found = ranked.into_iter().map(|(_, place)| place).collect();
         self.chosen = 0;
+        self.top = 0;
     }
 
     /// Asks for the chosen program to be started, or the chosen answer to
@@ -497,7 +550,9 @@ mod tests {
 
     /// The launcher's picture with nothing on its way anywhere.
     fn still(picker: &Picker, theme: &Theme, scale: Scale, icons: &mut Icons) -> Canvas {
-        picker.paint(&mut Text::new(), theme, scale, icons, &mut Motion::new())
+        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
+        let text = (&mut Text::new(), &words);
+        picker.paint(text, theme, scale, icons, &mut Motion::new())
     }
 
     fn several() -> Picker {
@@ -674,6 +729,75 @@ mod tests {
     }
 
     #[test]
+    fn the_wheel_scrolls_the_list_and_the_pointer_chooses_in_it_without_moving_it() {
+        let theme = Theme::default();
+        let mut picker = several();
+        picker.room = 2;
+        assert!(picker.scroll(1));
+        assert_eq!(picker.first(), 1);
+        // Out of sight, the chosen row is the nearest in sight.
+        assert_eq!(picker.chosen(), Some("Files"));
+        assert!(picker.scroll(1));
+        assert!(picker.scroll(1));
+        assert!(!picker.scroll(1), "no further than the last");
+        assert_eq!(picker.first(), 3);
+        assert_eq!(picker.chosen(), Some("Terminal"));
+        // The pointer on the second row in sight chooses it, and the list
+        // stays where it was scrolled to.
+        let (x, y, _, tall) = Layout::new(&theme).row(1);
+        assert!(picker.point(x + 1, y + tall.cast_signed() / 2, &theme));
+        assert_eq!(picker.chosen(), Some("Text Editor"));
+        assert_eq!(picker.first(), 3);
+        // While it is in sight, the chosen row stays as the list scrolls.
+        assert!(picker.scroll(-1));
+        assert_eq!(picker.chosen(), Some("Terminal"), "the nearest in sight");
+        picker.key(Key::Up);
+        assert!(picker.scroll(-1));
+        assert_eq!((picker.first(), picker.chosen()), (1, Some("Firefox")));
+        assert!(picker.scroll(-10));
+        assert!(!picker.scroll(-1), "no further than the first");
+        // The arrows bring the chosen row back into sight, and no further.
+        for _ in 0..2 {
+            picker.key(Key::Down);
+        }
+        assert_eq!((picker.first(), picker.chosen()), (2, Some("Terminal")));
+        // Typing lists from the top again.
+        typed(&mut picker, "t");
+        assert_eq!(picker.first(), 0);
+    }
+
+    #[test]
+    fn when_nothing_matches_it_says_so_under_what_is_typed() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let mut launcher = several();
+        typed(&mut launcher, "zzz");
+        let (_, tall) = launcher.size(&theme);
+        assert_eq!(tall, layout.bare + layout.pitch, "a row to say so");
+        let canvas = painted(&launcher);
+        let (left, top, width, height) = layout.row(0);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        let mut colours: Vec<u32> = (top..top + height)
+            .flat_map(|y| (left..left + width).map(move |x| (x, y)))
+            .map(|(x, y)| canvas.at(x, y))
+            .collect();
+        colours.sort_unstable();
+        colours.dedup();
+        assert!(colours.len() > 2, "written");
+        // With nothing typed there is nothing to say, even with nothing to
+        // offer.
+        let none = picker(&[]);
+        assert_eq!(none.size(&theme).1, layout.bare);
+        // And it is said in the user's language.
+        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &["pl".to_owned()]);
+        let said = words.say("nothing-matches", &[("typed", Value::Words("zzz"))]);
+        assert!(
+            said.contains("zzz") && !said.starts_with("Nothing"),
+            "{said}"
+        );
+    }
+
+    #[test]
     fn enter_asks_for_the_chosen_program_to_be_started() {
         let mut picker = several();
         typed(&mut picker, "fire");
@@ -753,7 +877,7 @@ mod tests {
         typed(&mut picker, "fi");
         assert_eq!(picker.size(&theme), (480, bare + 2 * 48));
         typed(&mut picker, "zzz");
-        assert_eq!(picker.size(&theme), (480, bare), "the field alone");
+        assert_eq!(picker.size(&theme), (480, bare + 48), "a row to say so");
         // A smaller screen has room for fewer.
         let mut picker = several();
         picker.fit(&theme, 480);

@@ -81,8 +81,14 @@ fn mark(session: &Session, name: &str) -> String {
 /// A launcher in the session offering Files, Firefox and Lens, which each
 /// leave a mark when started.
 fn launcher(session: &mut Session) -> Launcher {
+    launcher_of(session, &["Files", "Firefox", "Lens"])
+}
+
+/// A launcher in the session offering programs called `names`, which each
+/// leave a mark when started.
+fn launcher_of(session: &mut Session, names: &[&str]) -> Launcher {
     let socket = session.listen();
-    let apps = ["Files", "Firefox", "Lens"].map(|name| marking(session, name));
+    let apps: Vec<App> = names.iter().map(|name| marking(session, name)).collect();
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
         .compositor_mut()
@@ -91,7 +97,7 @@ fn launcher(session: &mut Session) -> Launcher {
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
-    Launcher::new(theirs, commands, &config, apps.into(), icons).unwrap()
+    Launcher::new(theirs, commands, &config, apps, icons).unwrap()
 }
 
 /// Lets the launcher and the compositor talk until they have nothing more
@@ -309,41 +315,62 @@ fn scroll(session: &mut Session, vertical: f64) {
 }
 
 #[test]
-fn the_wheel_and_the_touchpad_scroll_through_the_programs() {
+fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     let mut session = Session::new();
-    let mut launcher = launcher(&mut session);
+    // Six programs, where the screen has room for three at once.
+    let six = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
+    let mut launcher = launcher_of(&mut session, &six);
     settle(&mut session, &mut launcher);
+    let point = |session: &mut Session, (x, y): (i32, i32)| {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+    };
     // Over the text field, where the pointer chooses nothing.
     let (left, top) = corner();
-    let (x, y) = (f64::from(left + 40), f64::from(top + 20));
-    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    point(&mut session, (left + 40, top + 20));
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(0));
 
-    // A notch of the wheel is a row.
+    // A notch of the wheel scrolls the list a row: Alpha, chosen, goes
+    // out of sight, and the first in sight, Bravo, is chosen instead.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1));
-    // A touchpad goes by less at a time, and gets there as it adds up.
+    assert_eq!(chosen(&mut session), Some(0));
+    // The pointer chooses Delta, the third in sight, and the list stays.
+    point(&mut session, row(2));
+    settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(2));
+    // A touchpad goes by less at a time, and gets there as it adds up;
+    // Delta stays chosen while it is in sight.
     for _ in 0..2 {
         scroll(&mut session, 7.0);
         settle(&mut session, &mut launcher);
-        assert_eq!(chosen(&mut session), Some(1));
+        assert_eq!(chosen(&mut session), Some(2));
     }
     scroll(&mut session, 7.0);
     settle(&mut session, &mut launcher);
+    assert_eq!(chosen(&mut session), Some(1), "Delta, a row higher");
+    // Moving the pointer on chooses what is under it, Echo, and does not
+    // scroll the list back.
+    let (x, y) = row(2);
+    point(&mut session, (x - 10, y));
+    settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(2));
-    // Back up by as much, and no further than the first, however far.
+    // Back up by as much, and no further than the first, however far; the
+    // chosen program out of sight gives way to the nearest in sight.
     scroll(&mut session, -21.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1));
+    assert_eq!(chosen(&mut session), Some(2), "Delta");
     scroll(&mut session, -1.0e9);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(0));
+    assert_eq!(chosen(&mut session), Some(2), "Charlie");
     // Nor is what was beyond the first kept, to be scrolled back first.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1));
+    assert_eq!(chosen(&mut session), Some(1), "Charlie, a row higher");
+    press(&mut session, key::RETURN);
+    settle(&mut session, &mut launcher);
+    session.eventually(|session| mark(session, "charlie") == "x");
 }
 
 #[test]

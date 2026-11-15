@@ -21,28 +21,12 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- [ ] The launcher (`Super+Space`), since 15 November 2026: each program
-      on two lines, its name over what it says of itself, with an icon as
-      tall as both, shown by default; the box as tall as what it lists, up
-      to half the screen, and the text field alone when nothing matches,
-      the field staying where it is as the list grows and shrinks. `6*7`
-      shows `= 42` above the programs, chosen, and Enter puts `42` on the
-      clipboard, to paste anywhere, X11 programs too; `0.1+0.2` is `0.3`;
-      `7` alone is no sum.
-- [ ] Icons from an icon theme laid out as its `index.theme` lists it,
-      since 15 November 2026: with `icons.theme: breeze` (or another theme
-      that keeps its sizes under its kinds, as `apps/48`), the launcher,
-      the switcher (`Alt+Tab`) and notifications show that theme's icons,
-      sharp at a scale of 1 and of 2; and the launcher opens as quickly as
-      before.
-- [ ] The launcher, as changed on 15 November 2026: `Ctrl+A` and
-      `Super+A` choose all that is typed, drawn on the accent, for the
-      next key to type over or Backspace to take out; the wheel and the
-      touchpad scroll through the programs, a notch a program; and
-      `60 + 60 +` keeps `= 120` shown, to go on from. Whether Enter on an
-      answer, or a click on it, puts it on the clipboard on real hardware:
-      it was said not to, and it does in every test, with
-      `omorfos-clipboard` running too.
+- [ ] The launcher's list, as changed on 15 November 2026: the wheel and
+      the touchpad scroll it, a notch a row, without choosing each program
+      on the way; the pointer chooses the one it is over and the list stays
+      where it was scrolled to; the arrows move the chosen one and the
+      list follows it. With nothing matching what is typed, a line under
+      the field says so, in English or Polish.
 
 ## Where this is going
 
@@ -1586,8 +1570,18 @@ to false, as `launcher.sums` is (ADR 83).
 - [ ] Known gaps in sums: a comma for the decimals, as Polish and German
       write them, and spaces or commas between thousands, are not read;
       nor percentages, functions such as `sqrt`, or `pi`. Nothing says
-      on the launcher that Enter copies the answer, as the launcher has
-      no messages of its own to translate yet.
+      on the launcher that Enter copies the answer, though the launcher
+      has messages of its own to translate now.
+- [ ] Known gaps in the launcher's text field, as the maintainer found it
+      on 15 November 2026: only typing at the end and Backspace work, with
+      `Ctrl+A`; the arrows, `Ctrl` or `Alt` and an arrow or Backspace by
+      word, Home and End, choosing with Shift or the pointer, and undo do
+      not, which makes it feel unnatural. To be one text field shared by
+      the components, in `omorfos-ui`, built on cosmic-text's `Editor`
+      (already what text is drawn with) for the cursor, choosing, words
+      and undo, with the keys of GTK's fields and Super for Ctrl (ADR 78);
+      the launcher first, then the lock screen and the boxes that ask for
+      a password.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

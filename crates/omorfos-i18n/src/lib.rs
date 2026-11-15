@@ -60,9 +60,16 @@ pub const COMPOSITOR: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/compositor.ftl"))],
 };
 
+/// The launcher's words.
+pub const LAUNCHER: Program = Program {
+    name: "launcher",
+    english: include_str!("../../../i18n/en/launcher.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/launcher.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR];
+pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR, LAUNCHER];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.

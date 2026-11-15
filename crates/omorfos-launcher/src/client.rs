@@ -13,6 +13,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Part, States, Store, Theme};
+use omorfos_i18n::{LAUNCHER, Words};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::typing::{Key as Typed, Typing};
 use omorfos_shell::{picture, whole};
@@ -199,6 +200,8 @@ struct Shell {
     icons: Icons,
     theme: Theme,
     text: Text,
+    /// What it says, in the user's language.
+    words: Words,
     /// The keyboard as it is, for telling what a key types.
     typing: Typing,
     /// What the time is, as whoever runs the launcher last said.
@@ -311,6 +314,7 @@ impl Shell {
             icons,
             theme,
             text: Text::new(),
+            words: Words::of(&LAUNCHER),
             typing: Typing::default(),
             now: Duration::ZERO,
             repeating: None,
@@ -347,8 +351,9 @@ impl Shell {
     }
 
     /// Takes in a scroll of the wheel or the touchpad, `by` so far downwards:
-    /// a row for each notch, as the arrows go, and what is less than a
-    /// notch kept for the next.
+    /// the list scrolled a row for each notch, the chosen row kept as it is
+    /// while it is in sight, and what is less than a notch kept for the
+    /// next.
     fn scroll(&mut self, by: f64) {
         let scrolled = self.scrolled + by;
         let whole = (scrolled / NOTCH).trunc();
@@ -360,11 +365,11 @@ impl Shell {
             scrolled % NOTCH
         };
         while rows >= 1.0 {
-            self.take_key(Key::Down);
+            self.stale |= self.picker.scroll(1);
             rows -= 1.0;
         }
         while rows <= -1.0 {
-            self.take_key(Key::Up);
+            self.stale |= self.picker.scroll(-1);
             rows += 1.0;
         }
     }
@@ -535,7 +540,7 @@ impl Shell {
             face.layer.set_margin(top.cast_signed(), 0, 0, 0);
             (face.size, face.top) = ((width, height), top);
         }
-        let (text, icons) = (&mut self.text, &mut self.icons);
+        let (text, icons) = ((&mut self.text, &self.words), &mut self.icons);
         self.motion.begin(self.now);
         let canvas = self
             .picker

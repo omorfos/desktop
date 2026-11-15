@@ -3,10 +3,12 @@
 `Super+Space`, or **Run…** in the root menu, opens the launcher: a box on
 the screen the pointer is on. Type part of a program's name and the list
 narrows to the programs that have it, those that begin with it first. Up
-and Down choose among them, as the wheel and the touchpad do, a notch of
-the wheel a program; Enter starts the chosen one, and Escape closes the
-launcher. A click on a program starts it too, and a click anywhere beside
-the launcher closes it. `Ctrl+A`, or `Super+A`, chooses all that is
+and Down choose among them, the list following the one chosen; the wheel
+and the touchpad scroll the list, a notch of the wheel a program, and the
+pointer chooses the one it is over, the list staying as it was scrolled.
+Enter starts the chosen one, and Escape closes the launcher. A click on a
+program starts it too, and a click anywhere beside the launcher closes
+it. `Ctrl+A`, or `Super+A`, chooses all that is
 typed, for what is typed next to take its place, or Backspace to take it
 all out, as in the box that asks for a password.
 
@@ -14,7 +16,7 @@ The launcher is as tall as what it lists, up to half the height of the
 screen, and the list scrolls past that. Its top stays where it would be
 if it stood in the middle of the screen at its tallest, so that the
 field typed in does not move as the list grows and shrinks; with nothing
-matching, it is the field alone.
+matching what is typed, it says so under the field.
 
 The programs are those with a desktop entry installed, in
 `~/.local/share/applications` and the system's `applications` directories,
