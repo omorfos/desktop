@@ -84,6 +84,16 @@ let events = client.take_events();                    // what the client was tol
 | Ask over IPC | `session.listen()`, `session.ask(…)` |
 | Prove the event loop wakes by itself | `session.run_until(…)` |
 
+### A session with nothing changing
+
+`quiet::` is the third priority as a test: a session with a window open
+and nothing changing draws nothing, has no deadline to wake for, and
+keeps nothing it allocates, turn after turn. What a turn allocates is
+counted on the test's own thread by `allocation-counter`, which is the
+allocator of the integration tests, and is held under a ceiling that only
+comes down: a change that makes an idle turn allocate more fails it, and
+one that takes allocations out lowers it in the same commit.
+
 ### Time
 
 The session's clock is `session.now`, and it stands still. Nothing takes

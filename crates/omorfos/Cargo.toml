@@ -178,6 +178,10 @@ serde_json = "1.0"
 # only, so the shipped binary does not link pixman.
 smithay = { version = "0.7.0", default-features = false, features = ["renderer_pixman"] }
 tempfile = "3.27.0"
+# Counts what a turn of the compositor allocates, on its own thread, for the
+# gate on a session with nothing changing. It replaces the allocator of the
+# test binaries that use it, which our crates could not do without `unsafe`.
+allocation-counter = "0.8.1"
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # The input method's protocols, as an input method speaks them; the

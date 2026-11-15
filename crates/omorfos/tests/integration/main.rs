@@ -48,6 +48,7 @@ mod popups;
 mod portal;
 mod presentation;
 mod protocols;
+mod quiet;
 mod real;
 mod recording;
 mod relayed;

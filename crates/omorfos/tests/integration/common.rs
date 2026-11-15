@@ -681,6 +681,25 @@ impl Session {
         self.draw_aged(0, age)
     }
 
+    /// Draws a frame on the first output, as a screen does, without reading
+    /// back what it shows. Returns whether anything was drawn.
+    pub(crate) fn render(&mut self) -> bool {
+        let monitor = &mut self.monitors[0];
+        let mut target = self.renderer.bind(&mut monitor.image).unwrap();
+        let result = self
+            .inner
+            .compositor_mut()
+            .render::<_, Drawn>(
+                &monitor.output,
+                &mut self.renderer,
+                &mut target,
+                (&mut monitor.tracker, 1),
+                self.frosting.as_deref_mut(),
+            )
+            .unwrap();
+        result.damage.is_some()
+    }
+
     /// Draws a frame on one of the outputs, counted in the order they were
     /// added, and returns what is on it.
     pub(crate) fn draw_on(&mut self, index: usize) -> Picture {

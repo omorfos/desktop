@@ -1850,8 +1850,15 @@ Hardware and performance:
       screen needs for its own curve: there it is to warm the picture as
       it is composed instead.
 - [ ] Measured: what an idle session costs, and how long a frame takes.
-- [ ] The third priority as a gate: a test that a session with nothing
-      changing draws nothing and allocates nothing, turn after turn.
+- [x] The third priority as a gate: `quiet::` holds that a session with
+      nothing changing, a window open, draws nothing, has nothing due to
+      wake it, and keeps nothing it allocates, turn after turn; and that
+      a turn allocates no more than it does today, 42 times.
+- [ ] A turn with nothing changing allocating nothing, the gate's ceiling
+      lowered as each goes: 20 in `sync`, 2 in `reveal`, 1 in
+      `update_seal`, 7 in drawing, part of them Smithay's damage tracking,
+      and about 12 in dispatching and Smithay's refreshing of the space
+      and pop-ups, which may wait on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
 
