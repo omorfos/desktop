@@ -1912,12 +1912,13 @@ Known gaps carried forward:
       some five seconds of turns had been too few on a busy runner. Neither
       has failed in the nightly stress since, some 780 runs of the whole
       suite, nor in 400 runs of the launcher's, four at a time.
-- [ ] A program the compositor ends by its number, as a keeper retired
+- [x] A program the compositor ends by its number, as a keeper retired
       after a new one takes over or a component that is to be started
-      anew, may have ended already, and its number been given to another
-      process, which is then sent `TERM` instead. Numbers come round only
-      after millions, so it is unlikely, but a pidfd held from the start
-      would make it impossible.
+      anew, could have ended already, and its number been given to
+      another process, which would then have been sent `TERM` instead. It
+      is now asked only while it is a child not yet waited for, whose
+      number cannot be another's, or, kept from a compositor before,
+      through the pidfd held for it.
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Waits on:
       people wanting to bring their own, as ours use the IPC socket.

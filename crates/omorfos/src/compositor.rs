@@ -28,7 +28,7 @@ use omorfos_core::{
 };
 use omorfos_ui::{Area, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
-use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open};
+use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open, pidfd_send_signal};
 use smithay::backend::allocator::Format;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -1666,8 +1666,7 @@ impl Compositor {
         };
         let since = *self.on_demand.relocking.get_or_insert(now);
         if now.saturating_duration_since(since) >= RELOCKING {
-            let kept = Pid::from_raw(kept.cast_signed());
-            let _ = kept.map(|kept| kill_process(kept, Signal::TERM));
+            self.terminate(kept);
             self.on_demand.relocking = None;
             self.start_locker();
         }
@@ -1708,6 +1707,23 @@ impl Compositor {
             self.on_demand.ending = Ending::Asked;
         }
         self.running = waiting;
+    }
+
+    /// Asks `process`, a part of the session, to end, by `TERM`: one of the
+    /// compositor's children it has not yet waited for, or one kept from a
+    /// compositor before through what it holds of it. A process that has
+    /// ended and been waited for is neither, and is not asked, as its
+    /// number may be another's by now.
+    fn terminate(&self, process: u32) {
+        let children = self.children.iter().filter(|child| child.id() == process);
+        for child in children {
+            let _ = kill_process(Pid::from_child(child), Signal::TERM);
+        }
+        let adopted = self.autostarted.parts.adopted.iter();
+        let adopted = adopted.filter(|(adopted, _)| *adopted == process);
+        for opened in adopted.filter_map(|(_, opened)| opened.as_ref()) {
+            let _ = pidfd_send_signal(opened, Signal::TERM);
+        }
     }
 
     /// The programs started in the session that are asked to end before it
@@ -2303,11 +2319,13 @@ impl Compositor {
             self.check_own(&own, now);
         }
         self.checked_own();
-        let retired = self.updates.retiring.extract_if(.., |(_, by)| *by <= now);
-        let retired = retired.filter_map(|(process, _)| Pid::from_raw(process.cast_signed()));
+        let retiring = &mut self.updates.retiring;
+        let retired: Vec<u32> = retiring
+            .extract_if(.., |(_, by)| *by <= now)
+            .map(|(process, _)| process)
+            .collect();
         for process in retired {
-            // One that has gone already is nothing to ask.
-            let _ = kill_process(process, Signal::TERM);
+            self.terminate(process);
         }
         let config = Arc::clone(self.store.current());
         let started = self.autostarted.done;
@@ -2344,8 +2362,7 @@ impl Compositor {
                     component.process = self.launch(program.as_os_str(), &[], how, None);
                 }
                 Some(old) => {
-                    let old_one = Pid::from_raw(old.cast_signed());
-                    let _ = old_one.map(|old_one| kill_process(old_one, Signal::TERM));
+                    self.terminate(old);
                     component.after = Some(old);
                 }
                 None => component.process = self.launch(program.as_os_str(), &[], how, None),
