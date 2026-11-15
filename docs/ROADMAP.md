@@ -1675,6 +1675,49 @@ decision of stage 2.
       to type a secret without a keyboard, so it is started by those as
       well as in the session, and wears the theme in each.
 
+More of them, asked for on 15 November 2026. Each is optional: a package
+of its own, recommended by omorfos's and never needed by it, so that
+leaving one out leaves nothing broken. Those marked standalone need
+nothing of omorfos's session, and are packaged to install on any
+desktop, as stage 8 has it for Files, the task manager and the image
+viewer.
+
+- [ ] **Calculator**, standalone: the sums the launcher works out, with
+      a history of them to go back to, a memory, and the
+      functions and constants the launcher leaves out (`sqrt`, `pi`,
+      percentages). The same code as the launcher's, moved into a crate
+      both use, so that a sum comes out the same in each. The keyboard's
+      calculator key (`XF86Calculator`) opens it where it is installed,
+      and the launcher where it is not.
+- [ ] **Player**, standalone: one program for a sound or a video, opened
+      on a file, as QuickTime Player is on macOS, rather than a player of
+      music and a player of video apart; what Files' quick look plays,
+      opened whole. It plays what it is given and a queue of what was
+      given with it, and keeps no library: a program that gathers music
+      into albums and playlists is another thing, to be decided only if
+      asked for. Decoding is the largest part and the most dangerous,
+      as every file it opens is someone else's: it is done by a library
+      decided with it (GStreamer, or FFmpeg), in a process of its own
+      allowed nothing but to decode. Settings offers it as the player of
+      music and of video, among the others installed.
+- [ ] **Camera**, standalone: a picture or a video from a camera,
+      mirrored as a mirror is while it is looked at, saved where the
+      user's pictures and videos are. The camera through the portal and
+      PipeWire, as any program asks for it, so that it works on any
+      desktop, and so that the camera's being on is shown as it is for
+      every program (`omorfos-recording`'s cameras).
+- [ ] **Sound recorder**, standalone: the microphone recorded to a file,
+      with a level to see it is heard, a list of what was recorded,
+      played back in the player and renamed or thrown away. Through
+      PipeWire and the portal, as the camera; the microphone's being on
+      shown as for any program.
+- [ ] **Text editor**, standalone, last of these: plain text, with undo
+      and redo, find and replace, lines
+      numbered, and a file that changed on disk said so. Programs as
+      good exist (GNOME's Text Editor, Kate), and Settings chooses
+      among them; it is built only if the toolkit decided on makes it
+      small, and it never becomes an editor of code.
+
 ## 8. Reach and hardening
 
 Ongoing, and taken between the stages above as much as after them.
@@ -1717,10 +1760,19 @@ Accessibility:
 - [ ] Everything in the shell reachable from the keyboard.
 - [ ] High contrast, larger text and reduced motion, as settings the
       portal also tells applications of.
-- [ ] A magnifier.
+- [ ] A magnifier: the screen, or the part round the pointer, made larger,
+      following the pointer, the focus and where text is typed, by keys
+      that zoom in and out and turn it on and off. The compositor's,
+      since only it has the whole screen and the pointer; so it is part
+      of omorfos and not a program to install elsewhere, where each
+      desktop has its own.
 - [ ] Sticky and slow keys.
 - [ ] What a screen reader needs of the shell (AT-SPI), which depends on
-      the toolkit decision.
+      the toolkit decision. The narrator is Orca, which reads every
+      desktop on Linux and every program that speaks AT-SPI, rather than
+      one of omorfos's own: omorfos's part is that what it draws is told
+      to it, a key that starts and stops it (`Super+Alt+S`, as GNOME
+      has), and the packages recommending it.
 
 Hardware and performance:
 
@@ -1953,13 +2005,15 @@ Reviews, and what is still to decide (asked for on 14 November 2026):
 - [ ] A review of the codebase, of how fast it is, and of how secure,
       by a stronger model than writes it, as Mythos 5.2 or Fable 5.2; what
       it finds fixed or put on this roadmap.
-- [ ] What other applications a desktop needs with it, beyond stage 7:
-      as a very simple player of music and sounds, and a very simple
-      player of video; each decided, and those wanted added to stage 7.
+- [x] What other applications a desktop needs with it, beyond stage 7:
+      decided on 15 November 2026, and added to stage 7: a calculator,
+      one player for sound and video rather than two, a camera, a sound
+      recorder, and a text editor last; a magnifier and a narrator are
+      accessibility's, above.
 - [ ] Stage 7's applications installable on any desktop, as GNOME, KDE
-      or Xfce, and not only under omorfos: Files, the task manager and the
-      image viewer, packaged each by itself, needing nothing of omorfos's
-      session.
+      or Xfce, and not only under omorfos: Files, the task manager, the
+      image viewer, and those marked standalone in stage 7, packaged each
+      by itself, needing nothing of omorfos's session.
 - [ ] The configuration made clean: the defaults made really good and
       polished, with the review of the defaults (stage 4); then how the
       files are laid out and written. One `config.yaml`; a file for each
