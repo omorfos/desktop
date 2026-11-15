@@ -209,23 +209,12 @@ pub struct Drawn {
 }
 
 impl Drawn {
-    /// What the last drawing of a screen came to, with what the drawings
-    /// before it in the same turn changed, and who is to be told when it
-    /// is shown.
-    fn of(
-        last: RenderOutputResult<'_>,
-        mut before: Vec<Rectangle<i32, Physical>>,
-        feedback: Feedback,
-    ) -> Self {
-        let damage = if before.is_empty() {
-            last.damage.cloned()
-        } else {
-            before.extend(last.damage.into_iter().flatten().copied());
-            Some(before)
-        };
+    /// What drawing a screen came to, and who is to be told when it is
+    /// shown.
+    fn of(drawn: RenderOutputResult<'_>, feedback: Feedback) -> Self {
         Self {
-            damage,
-            sync: last.sync,
+            damage: drawn.damage.cloned(),
+            sync: drawn.sync,
             feedback,
         }
     }
@@ -3001,7 +2990,7 @@ impl Compositor {
             // turn it off; one that cannot is shown black.
             let none: &[Element<R>] = &[];
             let drawn = tracker.render_output(renderer, framebuffer, age, none, BLACK);
-            return self.drawn(output, output, drawn, Vec::new());
+            return self.drawn(output, output, drawn);
         }
         let mirror = self
             .aside
@@ -3025,7 +3014,7 @@ impl Compositor {
                 head.blanked.set(true);
             }
             let drawn = tracker.render_output(renderer, framebuffer, age, &elements, BLACK);
-            return self.drawn(output, output, drawn, Vec::new());
+            return self.drawn(output, output, drawn);
         }
         // A pointer an application draws is drawn by itself for programs
         // following it, on the screen it is on.
@@ -3040,9 +3029,7 @@ impl Compositor {
         let behind = color(desktop.ground());
         // A picture a program is to be given is drawn first, without the
         // mark and with the pointer only if the program asked for it, and
-        // read back. What the screen shows is drawn over it after.
-        let mut age = age;
-        let mut before = Vec::new();
+        // read back; then what the screen shows.
         for pass in self.capture.wanted(output) {
             let (elements, behind) = match pass {
                 Pass::Screen { pointer } => {
@@ -3066,43 +3053,15 @@ impl Compositor {
             let (on_card, due) = self.capture.split(due);
             let scale = view.scale.factor();
             self.draw_on_card(renderer, on_card, (&elements, behind), scale);
-            // A window by itself is drawn in a picture of its own, as large
-            // as it is, whatever the screen is; and so is a screen that is
-            // turned, as what it is drawn into is turned with it, and the
-            // pictures are to be the right way up.
-            let turned = self
-                .head(output)
-                .is_some_and(|head| head.turned() != Transform::Normal);
-            if matches!(pass, Pass::Window { .. }) || turned {
-                self.read_alone::<R, P>(renderer, (&elements, behind), due, scale);
-                continue;
-            }
-            if due.is_empty() {
-                continue;
-            }
-            // If this cannot be drawn, neither can what follows, which is
-            // where it is said.
-            let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
-            let changed = drawn
-                .iter()
-                .flat_map(|drawn| drawn.damage.into_iter().flatten());
-            before.extend(changed.copied());
-            age = 1;
-            // Only what the pictures need is read back: what has changed,
-            // and what their programs say is out of date in their buffers.
-            // Red first is the one order every renderer can give.
-            let part = Capture::reading(&due).unwrap_or_default();
-            let (at, of) = ((part.loc.x, part.loc.y), (part.size.w, part.size.h));
-            let read = renderer.copy_framebuffer(
-                framebuffer,
-                Rectangle::new(at.into(), of.into()),
-                Fourcc::Abgr8888,
-            );
-            let read = read.ok();
-            let pixels = read
-                .as_ref()
-                .and_then(|read| renderer.map_texture(read).ok());
-            self.capture.hand(due, pixels, part, self.animation.clock);
+            // Each is drawn in a picture of its own, never into what the
+            // screen is drawn into: how much of that is drawn again goes by
+            // what it showed when it was last shown, a frame back for each
+            // picture it holds, and a picture drawn there in between would
+            // leave what it held before, a private window as well as
+            // anything, to be read into the next picture and shown. A
+            // window by itself is as large as it is, and a screen that is
+            // turned is the right way up.
+            self.read_alone::<R, P>(renderer, (&elements, behind), due, scale);
         }
         let shown = Extras {
             pointer: true,
@@ -3110,7 +3069,7 @@ impl Compositor {
         };
         let elements = self.scene::<R, P>(renderer, output, (view, shown), frosting);
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
-        self.drawn(output, output, drawn, before)
+        self.drawn(output, output, drawn)
     }
 
     /// Everything `output` shows, with or without what `shown` names, from
@@ -3147,11 +3106,10 @@ impl Compositor {
         output: &Output,
         shows: &Output,
         drawn: Result<RenderOutputResult<'_>, E>,
-        before: Vec<Rectangle<i32, Physical>>,
     ) -> Result<Drawn, E> {
         drawn.map(|drawn| {
             let feedback = self.feedback(output, shows, &drawn.states);
-            Drawn::of(drawn, before, feedback)
+            Drawn::of(drawn, feedback)
         })
     }
 
@@ -3314,8 +3272,8 @@ impl Compositor {
         }
     }
 
-    /// Draws a window by itself, or a screen that is turned, as `elements`
-    /// have it over `behind`, in a picture the right way up as large as the
+    /// Draws a screen, or a window by itself, as `elements` have it over
+    /// `behind`, in a picture of its own the right way up as large as the
     /// largest of those `due`, and gives them what they need of it.
     fn read_alone<R, P>(
         &mut self,
@@ -3473,7 +3431,7 @@ impl Compositor {
         }));
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
         let output = self.aside.mirrors[at].head.output.clone();
-        self.drawn(&output, &source, drawn, Vec::new())
+        self.drawn(&output, &source, drawn)
     }
 
     /// What a locked screen shows: the pointer, over what the locker put

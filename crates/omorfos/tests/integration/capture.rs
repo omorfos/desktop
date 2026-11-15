@@ -849,6 +849,56 @@ const PRIVATE: [(&str, &str); 2] = [
     ("theme.css", "capture { background: #00ff00; }"),
 ];
 
+/// Takes a picture of the first screen as it is now, the screen drawn as
+/// one with two pictures to draw into in turn: [`Session::draw_swapped`].
+fn snap_swapped(session: &mut Session, client: &mut Client, taking: &Taking) -> (Picture, Picture) {
+    let (file, buffer) = client.shot_buffer((WIDTH, HEIGHT));
+    let frame = ask(client, taking, &buffer);
+    session.roundtrip(client);
+    let screen = session.draw_swapped();
+    session.roundtrip(client);
+    client.take_events();
+    frame.destroy();
+    (picture(&file), screen)
+}
+
+#[test]
+fn a_private_window_gone_is_in_no_picture_drawn_where_it_was_shown_two_frames_before() {
+    // On a graphics card the screen is drawn into two pictures in turn,
+    // each holding what was shown two frames before when it comes round
+    // again. A private window shown in one, and gone by the next, is to be
+    // drawn over in it, in a picture of the screen as on the screen.
+    let mut session = Session::with_config(&PRIVATE);
+    let mut app = session.connect();
+    let wallet = session.open(&mut app, "wallet", (200, 100), RED);
+    let notes = session.open(&mut app, "notes", (200, 100), BLUE);
+    // Where the wallet is and the notes are not.
+    let at = {
+        let frames = session.compositor().desktop().frames();
+        let mut frames = frames.filter(|frame| frame.window().app_id == "wallet");
+        frames.next().unwrap().geometry.origin
+    };
+    let (x, y) = (at.x + 2, at.y + 2);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, screen) = snap_swapped(&mut session, &mut camera, &taking);
+    assert_eq!((shot.at(x, y), screen.at(x, y)), (GREEN, RED));
+    wallet.role.destroy();
+    wallet.xdg_surface.destroy();
+    wallet.surface.destroy();
+    session.roundtrip(&mut app);
+    // Gone, faded and all, before the next frame is drawn into the other.
+    session.advance(Duration::from_secs(1));
+    let (shot, screen) = snap_swapped(&mut session, &mut camera, &taking);
+    assert_eq!((shot.at(x, y), screen.at(x, y)), (BACKGROUND, BACKGROUND));
+    // Back in the first, which showed it, as the notes change elsewhere.
+    app.fill(&notes.surface, (200, 100), 0xffff_ffff);
+    session.roundtrip(&mut app);
+    let (shot, screen) = snap_swapped(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(x, y), BACKGROUND, "in the picture");
+    assert_eq!(screen.at(x, y), BACKGROUND, "on the screen");
+}
+
 #[test]
 fn a_private_window_that_closes_is_not_in_a_picture_as_it_fades() {
     let rules = PRIVATE[0];

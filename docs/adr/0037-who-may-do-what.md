@@ -186,6 +186,17 @@ after a picture has been read back, which is what keeps it out of the
 pictures without a second way of drawing the screen. While the session
 is locked a picture asked for fails.
 
+*Amended:* a picture of the screen is drawn whole in a picture
+of its own, as one of a window by itself or of a turned screen was
+already, not into what the screen is drawn into and read back from
+there. On a graphics card the screen is drawn into two or three
+pictures in turn, and only what changed since one was last shown is
+drawn into it again; a picture drawn into it in between made that count
+wrong, and what it had shown, a private window's picture or title among
+anything else, was left in it to be read into the next picture and shown
+on the screen. Drawing it whole costs a drawing of the screen for each
+picture taken, which is only while one is.
+
 **The pointer by itself goes to the same programs.** One that may take
 pictures may also follow the pointer over a screen: it is told when the
 pointer comes over it and leaves, where it is in the screen's pixels,

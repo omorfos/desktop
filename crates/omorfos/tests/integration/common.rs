@@ -195,6 +195,11 @@ struct Monitor {
     size: (i32, i32),
     /// Who is to be told when the frame drawn last is shown.
     drawn: Option<Feedback>,
+    /// The other picture a screen with two to draw into in turn has, as on
+    /// a graphics card, once [`Session::draw_swapped`] has drawn.
+    spare: Option<Image<'static, 'static>>,
+    /// How many frames [`Session::draw_swapped`] has drawn.
+    swapped: usize,
 }
 
 pub(crate) struct Picture {
@@ -286,6 +291,8 @@ impl Session {
             output: output.clone(),
             size,
             drawn: None,
+            spare: None,
+            swapped: 0,
         });
         output
     }
@@ -652,9 +659,37 @@ impl Session {
         drop(self.draw());
     }
 
+    /// Draws a frame on the first output as a screen with two pictures to
+    /// draw into in turn does, as on a graphics card: into the one not
+    /// drawn into last, which holds what was shown two frames ago, or is
+    /// as good as new the first time each is drawn into. Returns what is
+    /// on it.
+    pub(crate) fn draw_swapped(&mut self) -> Picture {
+        let monitor = &mut self.monitors[0];
+        let (width, height) = (monitor.size.0.unsigned_abs(), monitor.size.1.unsigned_abs());
+        let (width, height) = (
+            usize::try_from(width).unwrap(),
+            usize::try_from(height).unwrap(),
+        );
+        let spare = monitor
+            .spare
+            .take()
+            .unwrap_or_else(|| Image::new(FormatCode::A8R8G8B8, width, height, true).unwrap());
+        monitor.spare = Some(std::mem::replace(&mut monitor.image, spare));
+        let age = if monitor.swapped < 2 { 0 } else { 2 };
+        monitor.swapped += 1;
+        self.draw_aged(0, age)
+    }
+
     /// Draws a frame on one of the outputs, counted in the order they were
     /// added, and returns what is on it.
     pub(crate) fn draw_on(&mut self, index: usize) -> Picture {
+        self.draw_aged(index, 1)
+    }
+
+    /// Draws a frame on one of the outputs into a picture that holds what
+    /// was drawn `age` frames ago, none if 0, and returns what is on it.
+    fn draw_aged(&mut self, index: usize, age: usize) -> Picture {
         let monitor = &mut self.monitors[index];
         let mut target = self.renderer.bind(&mut monitor.image).unwrap();
         let result = self
@@ -664,7 +699,7 @@ impl Session {
                 &monitor.output,
                 &mut self.renderer,
                 &mut target,
-                (&mut monitor.tracker, 1),
+                (&mut monitor.tracker, age),
                 self.frosting.as_deref_mut(),
             )
             .unwrap();
