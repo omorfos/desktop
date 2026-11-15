@@ -828,6 +828,18 @@ pub(crate) enum Event {
     },
     /// What a surface committed was never shown.
     Discarded,
+    /// Something dragged came over one of the client's surfaces, or left.
+    DragEntered,
+    DragLeft,
+    /// What was dragged over it was let go there.
+    Dropped,
+    /// What the client dragged was let go where it was taken.
+    DropPerformed,
+    /// What the client dragged has been taken, and the drag is over.
+    DragFinished,
+    /// What the client dragged was let go where nothing took it, or it
+    /// was put on the clipboard and something else has been since.
+    SourceCancelled,
     /// A window of another program's imported is not there, or no longer.
     ImportGone,
     /// The pointer moved by this much, and by this much as the device
@@ -993,6 +1005,9 @@ pub(crate) struct ClientState {
     pub(crate) selection: Option<wl_data_offer::WlDataOffer>,
     /// The formats the offered clipboard can be had in.
     pub(crate) formats: Vec<String>,
+    /// What is being dragged over one of its surfaces, and the serial it
+    /// came over it with, which taking it needs.
+    dragged: Option<(wl_data_offer::WlDataOffer, u32)>,
     seat: Option<wl_seat::WlSeat>,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
@@ -1003,6 +1018,9 @@ pub(crate) struct ClientState {
     /// client's surfaces, which is what asking for a look of the pointer
     /// has to give.
     entered: u32,
+    /// The serial of the last press of a button of the pointer, which is
+    /// what starting a drag has to give: the keyboard may have come since.
+    pressed: u32,
     pub(crate) events: Vec<Event>,
 }
 
@@ -1999,6 +2017,42 @@ impl Client {
         Some(reader)
     }
 
+    /// Starts dragging `text` from `surface`, as an application does when
+    /// the pointer is pressed on something and moved: with the serial of
+    /// that press, and to be copied where it is let go.
+    pub(crate) fn drag(&mut self, surface: &wl_surface::WlSurface, text: &str) {
+        text.clone_into(&mut self.state.copied);
+        let clipboards = self.state.clipboards.as_ref().unwrap();
+        let source = clipboards.create_data_source(&self.handle(), ());
+        source.offer(TEXT.to_owned());
+        source.set_actions(wl_data_device_manager::DndAction::Copy);
+        let device = self.state.data_device.as_ref().unwrap();
+        device.start_drag(Some(&source), surface, None, self.state.pressed);
+    }
+
+    /// Takes what is being dragged over it, as text, to copy it.
+    pub(crate) fn accept_drag(&self) {
+        let (offer, serial) = self.state.dragged.as_ref().unwrap();
+        offer.accept(*serial, Some(TEXT.to_owned()));
+        let copy = wl_data_device_manager::DndAction::Copy;
+        offer.set_actions(copy, copy);
+    }
+
+    /// Asks for what was dropped on it, as text. Returns where it will
+    /// arrive.
+    pub(crate) fn take_drop(&self) -> std::io::PipeReader {
+        let (offer, _) = self.state.dragged.as_ref().unwrap();
+        let (reader, writer) = std::io::pipe().unwrap();
+        offer.receive(TEXT.to_owned(), writer.as_fd());
+        reader
+    }
+
+    /// Says it has what was dropped on it, which ends the drag.
+    pub(crate) fn finish_drop(&self) {
+        let (offer, _) = self.state.dragged.as_ref().unwrap();
+        offer.finish();
+    }
+
     /// Asks for what is on the clipboard in one of the formats it is
     /// offered in. Returns where it will arrive, or `None` if the
     /// clipboard is empty.
@@ -2506,6 +2560,12 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for ClientState {
         match event {
             wl_data_device::Event::DataOffer { .. } => state.formats.clear(),
             wl_data_device::Event::Selection { id } => state.selection = id,
+            wl_data_device::Event::Enter { serial, id, .. } => {
+                state.dragged = id.map(|offer| (offer, serial));
+                state.events.push(Event::DragEntered);
+            }
+            wl_data_device::Event::Leave => state.events.push(Event::DragLeft),
+            wl_data_device::Event::Drop => state.events.push(Event::Dropped),
             _ => {}
         }
     }
@@ -2554,7 +2614,12 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
                     .write_all(state.copied.as_bytes())
                     .unwrap();
             }
-            wl_data_source::Event::Cancelled => state.replaced = true,
+            wl_data_source::Event::Cancelled => {
+                state.replaced = true;
+                state.events.push(Event::SourceCancelled);
+            }
+            wl_data_source::Event::DndDropPerformed => state.events.push(Event::DropPerformed),
+            wl_data_source::Event::DndFinished => state.events.push(Event::DragFinished),
             _ => {}
         }
     }
@@ -2730,6 +2795,9 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientState {
             } => {
                 state.serial = serial;
                 let pressed = button_state == WEnum::Value(wl_pointer::ButtonState::Pressed);
+                if pressed {
+                    state.pressed = serial;
+                }
                 state.events.push(Event::PointerButton { button, pressed });
             }
             wl_pointer::Event::Axis { axis, value, .. } => {

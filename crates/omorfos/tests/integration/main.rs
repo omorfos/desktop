@@ -17,6 +17,7 @@ mod corners;
 mod cursors;
 mod decorations;
 mod display_key;
+mod drag_and_drop;
 mod dragging;
 mod executable;
 mod fading;

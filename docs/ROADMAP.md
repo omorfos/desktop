@@ -1929,8 +1929,14 @@ Known gaps carried forward:
       does so smoothly (stage 4, "Movement"): its last picture is now
       stretched to the frame until it has drawn, where windows change
       over a time (ADR 72).
-- [ ] Dragging and dropping between applications works through Smithay's
-      defaults and has no test.
+- [x] Dragging and dropping between applications, which works through
+      Smithay's defaults, tested through two real clients (`drag_and_drop::`):
+      text dragged from one and dropped on the other arrives, and both are
+      told the drop was taken; one let go where nothing takes it is given
+      back.
+- [ ] Known gaps in dragging and dropping: no test drags an icon with
+      what is dragged, nor moves rather than copies, nor drags between a
+      program written for X11 and one written for Wayland.
 - [ ] The nested backend has not been run by hand since the event loop
       moved into `Session`.
 - [x] Two tests that failed only sometimes, both mended on 20 October
