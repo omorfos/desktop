@@ -229,6 +229,10 @@ What else is sized by a window was looked for, as this finding asked:
   of the renderer (`Capture::alone`). Read, a renderer that cannot make
   one says so and the picture is not taken; to be shown with a card.
   Only a program that may take pictures, or the user, has one taken.
+  **Fixed the next day**: what a window draws counts toward its picture
+  only within 512 units of its frame (`PORTRAIT_REACH`), so a picture is
+  no larger than a frame may be and that reach round it; tested with a
+  part of a window placed 100,000 units off.
 - **Where a surface is** is its program's to say as well, and is added
   to in whole numbers of 32 bits, in Smithay and in the compositor. A
   release build wraps where they run out, and the tests' build panics.

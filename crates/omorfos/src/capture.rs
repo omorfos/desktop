@@ -66,6 +66,11 @@ use crate::recording::{Recorded, Recording};
 use crate::roles::Roles;
 use crate::surfaces;
 
+/// How far beyond its frame what a window draws is in a picture of it by
+/// itself, in units of layout: more than any shadow a program draws round
+/// itself.
+const PORTRAIT_REACH: i32 = 512;
+
 /// How long the mark stays after the last picture of a screen was asked
 /// for, so that one picture cannot be taken unseen.
 pub(crate) const LINGER: Duration = Duration::from_millis(1500);
@@ -845,10 +850,18 @@ impl Compositor {
         let mut area = rectangle(outer);
         if !frame.standing.shaded {
             let client = frame.client().origin;
+            // What it draws beyond its frame, as a shadow of its own, is in
+            // the picture as far as a shadow reaches and no further: a part
+            // of it placed far off would make the picture as large as the
+            // distance.
+            let reach = Point::from((PORTRAIT_REACH, PORTRAIT_REACH));
+            let room = Size::from((2 * PORTRAIT_REACH, 2 * PORTRAIT_REACH));
+            let around = Rectangle::new(area.loc - reach, area.size + room);
             let drawn = mapped.window.bbox();
             let at = Point::from((client.x, client.y)) - surfaces::proper(&mapped.window).loc
                 + drawn.loc;
-            area = area.merge(Rectangle::new(at, drawn.size));
+            let drawn = Rectangle::new(at, drawn.size).intersection(around);
+            area = drawn.map_or(area, |drawn| area.merge(drawn));
         }
         // A window as large as it can be, or larger, casts none.
         let cast = frame.decoration.is_some() && !frame.fullscreen && !frame.maximized;

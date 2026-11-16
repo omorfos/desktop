@@ -1215,6 +1215,28 @@ fn a_picture_of_a_window_after_the_first_waits_for_it_to_change() {
 }
 
 #[test]
+fn a_picture_of_a_window_is_no_larger_for_a_part_of_it_placed_far_off() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    // A part of it, far off to its right, where nothing of it is seen; the
+    // window says where it is, as a program with parts does.
+    let part = app.surface();
+    let placed = app.part_of(&part, &window.surface);
+    placed.set_position(100_000, 0);
+    app.fill(&part, (10, 10), GREEN);
+    window.xdg_surface.set_window_geometry(0, 0, 200, 100);
+    window.surface.commit();
+    session.roundtrip(&mut app);
+    let mut camera = window_camera(&mut session);
+    let _taking = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    // As far beyond the window as a shadow a program draws may reach, and
+    // no further: what it draws is one rectangle out to the part.
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(200 + 512, 100));
+}
+
+#[test]
 fn a_picture_of_a_window_has_the_shadow_it_draws_round_itself() {
     let mut session = Session::new();
     let mut app = session.connect();

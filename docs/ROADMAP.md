@@ -1945,10 +1945,6 @@ Security:
         Whoever gives is not told who asks, so this wants either that,
         asked of Smithay for the compositor's own text, or one thread
         that hands everything over in place of one for each (ADR 90);
-      - a picture of a window by itself is as large as all its program
-        says it draws, and one that large is asked of the renderer. To
-        be held to what a frame may be, and shown with a graphics card
-        ([finding 2](reviews/2026-11-15-what-a-client-can-cost.md#2-a-window-said-to-be-enormous-ends-the-compositor));
       - where a surface is, which its program says as it says how large,
         is added to in whole numbers that wrap in a release build and
         panic in the tests': to be read through, in the compositor and
