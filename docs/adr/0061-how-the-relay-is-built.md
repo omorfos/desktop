@@ -183,6 +183,12 @@ as GTK's are, come in step 3.
   however long its own connection stays open; the wait is left for one
   that says nothing, as an older one does, or one that crashes, whose
   connections all close at once.
+  (Amended 16 November 2026: the relay waited that half second in
+  `poll`, on the compositor's connection alone, and every other program
+  waited with it; one that had the compositor let it go again and again
+  froze the rest. Such a program is now kept aside, and the relay goes
+  on; within the half second it is kept with the rest if the compositor
+  is seen gone, and let go if it is not.)
   A program that is busy, as one playing a video is, is as likely to find
   the compositor gone by a request that cannot be written to it, which is
   taken the same way; taken for the program's own end, it let Firefox go.

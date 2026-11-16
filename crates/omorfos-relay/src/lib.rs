@@ -52,9 +52,10 @@ const READABLE: PollFlags = PollFlags::IN.union(PollFlags::HUP).union(PollFlags:
 /// How long the compositor is given to be seen gone once a program's
 /// connection to it has closed with no error said. A compositor ending
 /// closes its connections one at a time, and another process may hold a
-/// copy of one for a moment, as one being started does; a compositor that
-/// lets a program go while it goes on does so only with an error, so the
-/// wait is all but never waited out.
+/// copy of one for a moment, as one being started does. The program is
+/// kept aside meanwhile, and the rest go on: a compositor can let a program
+/// go while it goes on, and a program can have that happen again and
+/// again.
 const GRACE: Duration = Duration::from_millis(500);
 
 /// The most sandboxes listened on at once: one for each program Flatpak has
@@ -97,6 +98,10 @@ pub struct Relay {
     /// it could not be taken; and whether that has been said since a
     /// program last was.
     paused: (Option<Instant>, bool),
+    /// The programs whose connection to the compositor closed while it
+    /// was still there, each until when it is waited for to be seen gone:
+    /// kept with the rest if it is, let go if it is not.
+    doubtful: Vec<(Link, Instant)>,
 }
 
 impl Relay {
@@ -115,6 +120,7 @@ impl Relay {
             readying: false,
             going: false,
             paused: (None, false),
+            doubtful: Vec::new(),
         }
     }
 
@@ -122,7 +128,7 @@ impl Relay {
     /// compositor or not.
     #[must_use]
     pub fn programs(&self) -> usize {
-        self.links.len()
+        self.links.len() + self.doubtful.len()
     }
 
     /// Waits up to `timeout`, or until something happens, and does what it
@@ -182,13 +188,17 @@ impl Relay {
                 Err(why) => ended.push((index, why)),
             }
         }
-        let gone = went || (lost && (self.going || self.compositor_gone(GRACE, log)));
+        let doubting = lost || !self.doubtful.is_empty();
+        let gone = went || (doubting && self.going);
         if gone {
-            // One that lost it is kept with the rest; one let go alone, by
-            // a compositor still there, is not.
+            // One that lost it is kept with the rest.
             ended.retain(|(_, why)| *why != Ended::Lost);
         }
-        remove(&mut self.links, ended, log);
+        let until = Instant::now() + GRACE;
+        let doubted = remove(&mut self.links, ended, log);
+        self.doubtful
+            .extend(doubted.into_iter().map(|link| (link, until)));
+        self.doubt(gone, log);
         // Pictures of a window whose program has gone, or closed it, stop.
         if self.links.iter().any(Link::awaits_pictures) {
             let present: HashSet<(u32, u32)> = self.links.iter().flat_map(Link::windows).collect();
@@ -313,6 +323,10 @@ impl Relay {
                     .map(|listening| PollFd::new(listening, socket)),
             );
         }
+        // Woken too when the first program kept aside is to be decided on.
+        let doubted = self.doubtful.iter().map(|(_, until)| *until).min();
+        let doubted = doubted.map(|until| until.saturating_duration_since(Instant::now()));
+        let paused = paused.into_iter().chain(doubted).min();
         let timeout = match (timeout, paused) {
             (Some(timeout), Some(paused)) => Some(timeout.min(paused)),
             (timeout, paused) => timeout.or(paused),
@@ -352,21 +366,23 @@ impl Relay {
         polled.iter().map(PollFd::revents).collect()
     }
 
-    /// Whether the compositor has gone: there is none, or its connection to
-    /// the relay has closed, or does within `grace`. What it hands meanwhile
-    /// is taken, and said on `log` if it cannot be. One that said it is
-    /// going has said so before it closed any program's connection, and is
-    /// heard to have, as what it hands is taken first in each step.
-    fn compositor_gone(&mut self, grace: Duration, log: &mut dyn Write) -> bool {
-        let readable = self.compositor.as_ref().is_none_or(|compositor| {
-            let mut polled = [PollFd::new(compositor, PollFlags::IN)];
-            let grace = Timespec::try_from(grace).unwrap_or_default();
-            let _ = poll(&mut polled, Some(&grace));
-            polled
-                .iter()
-                .any(|polled| polled.revents().intersects(READABLE))
-        });
-        readable && !self.hear(log)
+    /// Decides on the programs kept aside: kept with the rest if the
+    /// compositor has `gone`, as one ending closes its connections one at a
+    /// time; let go, and said on `log` to be, once it has been there for as
+    /// long as it is given to be seen gone. One that said it is going has
+    /// said so before it closed any program's connection, and is heard to
+    /// have, as what it hands is taken first in each step.
+    fn doubt(&mut self, gone: bool, log: &mut dyn Write) {
+        let now = Instant::now();
+        for (link, until) in std::mem::take(&mut self.doubtful) {
+            if gone {
+                self.links.push(link);
+            } else if until <= now {
+                said_lost(&link, log);
+            } else {
+                self.doubtful.push((link, until));
+            }
+        }
     }
 
     /// Takes what the compositor has handed. Returns whether it is still
@@ -445,7 +461,9 @@ impl Relay {
             }
             (Some(Hand::Compositor), Some(compositor)) => {
                 // One not yet seen to go has gone, as the holder starts
-                // another only then.
+                // another only then: a program kept aside as it went is
+                // kept with the rest.
+                self.doubt(true, log);
                 self.lose_compositor(log);
                 let towards = compositor.as_fd();
                 // Where the session was first, then each program, and where
@@ -574,29 +592,37 @@ fn named(who: Program) -> String {
 }
 
 /// Lets go of each link in `ended`, saying on `log` why where it was for
-/// what the program sent, or the compositor let it go.
-fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write) {
+/// what the program sent; returns those the compositor let go, to be
+/// decided on.
+fn remove(links: &mut Vec<Link>, ended: Vec<(usize, Ended)>, log: &mut dyn Write) -> Vec<Link> {
+    let mut lost = Vec::new();
     for (index, why) in ended.into_iter().rev() {
         let link = links.remove(index);
-        let who = link.who();
-        let said = match why {
-            Ended::Broken(broken) => writeln!(
-                log,
-                "omorfos-relay: {} was let go, for {}",
-                named(who),
-                broken.0
-            ),
-            Ended::Lost => writeln!(
-                log,
-                "omorfos-relay: {} was let go, as the compositor closed its connection and went \
-                 on, {}",
-                named(who),
-                link.lost()
-            ),
-            Ended::Closed => Ok(()),
-        };
-        let _ = said;
+        match why {
+            Ended::Broken(broken) => {
+                let _ = writeln!(
+                    log,
+                    "omorfos-relay: {} was let go, for {}",
+                    named(link.who()),
+                    broken.0
+                );
+            }
+            Ended::Lost => lost.push(link),
+            Ended::Closed => {}
+        }
     }
+    lost
+}
+
+/// Says on `log` that the program of `link` was let go, as the compositor
+/// closed its connection while it went on.
+fn said_lost(link: &Link, log: &mut dyn Write) {
+    let _ = writeln!(
+        log,
+        "omorfos-relay: {} was let go, as the compositor closed its connection and went on, {}",
+        named(link.who()),
+        link.lost()
+    );
 }
 
 /// Each program waiting at `socket`, without waiting for one; `failed` is

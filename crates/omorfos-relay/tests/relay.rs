@@ -463,12 +463,14 @@ fn a_program_whose_connection_closes_a_moment_before_the_compositor_has_gone_is_
     held.step();
     held.step();
     closing.join().unwrap();
-    assert_eq!(
-        held.relay.programs(),
-        1,
-        "kept: {}",
-        String::from_utf8_lossy(&held.said)
-    );
+    // Past the time it is given to be seen gone, too.
+    let past = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < past {
+        held.step();
+    }
+    let said = String::from_utf8_lossy(&held.said);
+    assert_eq!(held.relay.programs(), 1, "kept: {said}");
+    assert!(!said.contains("was let go"), "{said}");
 }
 
 /// Has the compositor of `held` say it is going, and close the program's
@@ -1010,4 +1012,41 @@ fn a_program_in_a_sandbox_that_makes_one_is_let_go_and_said_to_be() {
         said.contains("was let go, for a sandbox made from inside one"),
         "{said}"
     );
+}
+
+#[test]
+fn a_program_the_compositor_lets_go_holds_up_no_other() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (_let_go, connection, _) = held.connect(&compositor);
+    let (mut other, mut others, _) = held.connect(&compositor);
+    drop(connection);
+    let started = Instant::now();
+    held.step();
+    other.write_all(&get_registry()).unwrap();
+    assert_eq!(read(&mut held, &mut others, 12), get_registry());
+    let took = started.elapsed();
+    assert!(took < Duration::from_millis(200), "held up for {took:?}");
+    drop(compositor);
+}
+
+#[test]
+fn a_program_whose_connection_closes_before_the_next_compositor_is_handed_is_kept_for_it() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (_program, connection, who) = held.connect(&compositor);
+    // The compositor has gone, its connection to the relay not yet seen
+    // closed when the holder hands the next, as it does only then.
+    drop(connection);
+    held.step();
+    let next = held.compositor();
+    let handed = held.handed(&next);
+    assert_eq!(handed.hand, Some(Hand::Program(who)), "handed to the next");
+    let past = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < past {
+        held.step();
+    }
+    let said = String::from_utf8_lossy(&held.said);
+    assert_eq!(held.relay.programs(), 1, "kept: {said}");
+    drop(compositor);
 }

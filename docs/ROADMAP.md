@@ -2028,9 +2028,11 @@ Security:
 - [x] A program inside a sandbox that makes another is ended, as the
       compositor would: the relay answers for every link, and the
       compositor cannot refuse a bind it does not see in time.
-- [ ] High: every other program stops for half a second whenever the
+- [x] High: every other program stops for half a second whenever the
       compositor sends one away
-      ([finding 2](reviews/2026-11-16-the-whole-tree.md#2-whenever-the-compositor-sends-one-program-away-every-other-stops-for-half-a-second)).
+      ([finding 2](reviews/2026-11-16-the-whole-tree.md#2-whenever-the-compositor-sends-one-program-away-every-other-stops-for-half-a-second)):
+      the program is kept aside for the half second, and decided on in a
+      later turn.
 - [ ] Medium: a window's `app_id` opened as a file on the compositor's
       thread
       ([finding 3](reviews/2026-11-16-the-whole-tree.md#3-a-windows-name-for-its-program-is-opened-as-a-file-on-the-compositors-thread)).
