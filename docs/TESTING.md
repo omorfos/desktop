@@ -36,7 +36,7 @@ slowest are run while the maintainer tries a change rather than before.
 | `commit` | Before every commit | `typos`, the commit hook's check, `cargo fmt`, clippy with all features, every test once without the coverage gate | a few minutes |
 | `handover` | Before a build is handed over to be tried by hand | `typos`, `cargo fmt`, clippy with all features, every test once under the coverage gate, with those that need a graphics card where there is one, the nightly build | 15 min |
 | `rest` | Started as the build is handed over, while it is tried | Clippy without features, the coverage gate as CI runs it, without the tests that need a graphics card, the doctests, `cargo deny`, `zizmor` and the actions' lockfile, `cargo doc` | 18 min |
-| `commits [base [tip]]` | Before merging more than one commit | Each commit after `base` (`main`) alone, up to `tip` (`HEAD`), in a worktree of its own: formatting, clippy, the coverage gate. Where `all` passed on the last commit's tree, `HEAD~1` as `tip` leaves out the one already checked | 13 min a commit |
+| `commits [base [tip]]` | Before merging more than one commit | Each commit after `base` (`main`) alone, up to `tip` (`HEAD`), in a worktree of its own: formatting, clippy, the coverage gate; one whose tree has passed already, as one a rebase left as it was, is not checked again. Where `all` passed on the last commit's tree, `HEAD~1` as `tip` leaves out the one already checked | 13 min a commit |
 | `push` | Before every push | `all` on the last commit, which must be the working copy, and `commits` for each other commit not yet pushed | `all`, and 5–13 min a commit |
 | `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
 

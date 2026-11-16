@@ -126,6 +126,15 @@ commits() {
     # above the one it runs in, and would take the coverage alias twice.
     tree="$(mktemp -d)/commit"
     for commit in $list; do
+        # One whose tree has passed already, as a commit unchanged by a
+        # rebase has, would pass again: it is not checked twice.
+        local done_before
+        done_before=$(git rev-parse "$commit^{tree}")
+        if has_passed commits "$done_before" || has_passed push "$done_before" ||
+            has_passed all "$done_before"; then
+            echo "=== $(git log -1 --format='%h %s' "$commit"): passed already, as it is" | tee -a "$log"
+            continue
+        fi
         git worktree remove --force "$tree" 2>/dev/null || rm -rf "$tree"
         git worktree add -q --detach "$tree" "$commit"
         echo "=== $(git log -1 --format='%h %s' "$commit")" | tee -a "$log"
