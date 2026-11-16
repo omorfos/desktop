@@ -274,10 +274,14 @@ mod tests {
         // Once a program that was not reading has gone, there is room for
         // another.
         drop(stuck.pop());
-        let until = Instant::now() + Duration::from_secs(10);
-        while handing.busy() == MOST && Instant::now() < until {
+        // However soon the thread that was writing notices: each part of the
+        // wait runs at least once, so what is reached does not depend on it.
+        let waited = std::iter::repeat_with(|| {
             thread::sleep(Duration::from_millis(2));
-        }
+            handing.busy()
+        });
+        let freed = waited.take(5000).find(|busy| *busy < MOST);
+        assert!(freed.is_some(), "room again within ten seconds");
         let (reader, to) = pipe();
         assert!(handing.hand(Arc::from(*b"copied"), to));
         assert_eq!(all(reader), b"copied");
