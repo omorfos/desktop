@@ -24,7 +24,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
 
 use rustix::pipe::{PipeFlags, pipe_with};
 use zbus::blocking::connection::Builder;
@@ -310,7 +309,7 @@ impl Portal {
             named.map_err(taken).map(|_| {
                 let answering = connection.clone();
                 let (sender, asked) = mpsc::channel();
-                thread::spawn(move || {
+                let _ = omorfos_ipc::threads::start("xdg-desktop-portal-omorfos: bus", move || {
                     let waiting = Waiting { sender, ask };
                     let mut sessions = Sessions::new();
                     let mut holds = Holds::new(keep);
@@ -739,9 +738,14 @@ fn property(connection: &Connection, message: &Message, member: &str) -> zbus::R
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 pub(crate) mod tests {
     use std::io::{BufRead, BufReader};
     use std::process::{Child, Command, Stdio};
+    use std::thread;
 
     use zbus::zvariant::{ObjectPath, OwnedValue};
 

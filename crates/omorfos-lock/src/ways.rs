@@ -99,7 +99,7 @@ impl Helper {
             let pipes = pipes.ok_or(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
             pipes.map(|(told, said)| {
                 let (sender, wake) = heard_by;
-                std::thread::spawn(move || {
+                let _ = omorfos_ipc::threads::start("omorfos-lock: helper", move || {
                     let lines = BufReader::new(said).lines().map_while(Result::ok);
                     let mut ended = false;
                     for said in lines.filter_map(|line| heard(&line)) {

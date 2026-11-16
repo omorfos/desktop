@@ -142,7 +142,7 @@ impl Power {
         if std::mem::take(&mut self.due) {
             let command = self.command(&["offered"]);
             let (sender, wake) = told_by.clone();
-            std::thread::spawn(move || {
+            let _ = omorfos_ipc::threads::start("omorfos-lock: offered", move || {
                 let said = run(command).unwrap_or_default();
                 let _ = sender.send(Told::Offered(Offered::read(&said)));
                 wake();
@@ -185,7 +185,7 @@ impl Power {
         };
         let command = self.command(words);
         let (sender, wake) = told_by.clone();
-        std::thread::spawn(move || {
+        let _ = omorfos_ipc::threads::start("omorfos-lock: power", move || {
             let done = run(command).map(drop);
             let _ = sender.send(Told::Done(act, done));
             wake();

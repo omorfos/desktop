@@ -101,7 +101,9 @@ make.
 - **Test behaviour, not implementation.** Test names read as sentences
   describing the behaviour.
 - **No panics in non-test code:** `unwrap`, `expect`, `panic!`, `todo!` and
-  `dbg!` are linted. Return errors.
+  `dbg!` are linted. Return errors. A thread is started by
+  `omorfos_ipc::threads::start`, as `std::thread::spawn` panics where none
+  can be (ADR 95).
 - **Document every public item** (`missing_docs` is on).
 - **Never weaken a lint** to make code pass. A local `#[expect(..., reason =
   "...")]` with a real reason is acceptable; a blanket `allow` is not.

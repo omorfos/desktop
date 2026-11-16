@@ -759,6 +759,10 @@ fn give_out(to: &UnixStream, passing: &mut Passing) -> io::Result<()> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use std::fs::File;
     use std::io::{Read, Write};

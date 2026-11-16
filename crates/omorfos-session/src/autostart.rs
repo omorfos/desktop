@@ -189,6 +189,10 @@ pub(crate) fn start(places: &Places) -> Result<(), Failure> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use std::time::Duration;
 

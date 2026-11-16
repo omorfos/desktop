@@ -48,7 +48,7 @@ impl Helper {
                 writeln!(said_to, "{cookie}").map(|()| (said_to, said))
             });
             told_cookie.map(|(said_to, said)| {
-                std::thread::spawn(move || {
+                let _ = omorfos_ipc::threads::start("omorfos-ask: helper", move || {
                     let lines = BufReader::new(said).lines().map_while(Result::ok);
                     let mut ended = false;
                     for said in lines.filter_map(|line| heard(&line)) {

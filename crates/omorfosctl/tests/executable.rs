@@ -1,4 +1,8 @@
 //! The `omorfosctl` executable itself.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;

@@ -172,11 +172,13 @@ pub fn keep(connection: &Connection, limits: Limits) -> Failure {
         let (tell, told) = mpsc::channel();
         let (device, connection) = (device.clone(), connection.clone());
         let (kept, held) = (Arc::clone(&state.kept), Arc::clone(&state.held));
-        let thread = thread::spawn(move || forget(&told, (&device, &connection), (&kept, &held)));
+        let thread = omorfos_ipc::threads::start("omorfos-clipboard: forget", move || {
+            forget(&told, (&device, &connection), (&kept, &held));
+        });
         Forgetting {
             tell: Some(tell),
             after,
-            thread: Some(thread),
+            thread: thread.ok(),
         }
     });
     loop {

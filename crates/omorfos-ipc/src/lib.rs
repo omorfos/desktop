@@ -35,6 +35,7 @@ pub mod relay;
 pub mod seat;
 pub mod session_log;
 mod steady;
+pub mod threads;
 
 pub use client::{Client, socket_path, socket_path_from_env};
 pub use message::{

@@ -166,7 +166,7 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
         compositor.to_owned(),
         (places.session.clone(), places.locale.clone()),
     );
-    std::thread::spawn(move || {
+    let _ = omorfos_ipc::threads::start("omorfos-session: radios", move || {
         let (shown, locale) = shown;
         crate::radios::follow(&radios, &told, (shown.as_deref(), &locale));
     });
@@ -190,8 +190,8 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
     let mut watch = Watch::new(delay(&bus));
     let (tell, heard) = mpsc::channel();
     let (told, followed) = (tell.clone(), tell.clone());
-    std::thread::spawn(move || listen(signals, &told));
-    std::thread::spawn(move || follow(news, &followed));
+    let _ = omorfos_ipc::threads::start("omorfos-session: signals", move || listen(signals, &told));
+    let _ = omorfos_ipc::threads::start("omorfos-session: news", move || follow(news, &followed));
     loop {
         // While nothing is due, as good as for ever: none is waited for
         // longer than an `Instant` can count.
@@ -354,6 +354,10 @@ fn warn(places: &Places) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;

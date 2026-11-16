@@ -14,7 +14,6 @@
 use std::collections::HashMap;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
 
 use omorfos_ui::Image;
 use rustix::pipe::{PipeFlags, pipe_with};
@@ -160,7 +159,9 @@ impl Bus {
             named.map_err(taken).map(|_| {
                 let (sender, events) = mpsc::channel();
                 let answering = connection.clone();
-                thread::spawn(move || listen(messages, &answering, &sender, &waker));
+                let _ = omorfos_ipc::threads::start("omorfos-notifications: bus", move || {
+                    listen(messages, &answering, &sender, &waker);
+                });
                 Self {
                     connection,
                     events,

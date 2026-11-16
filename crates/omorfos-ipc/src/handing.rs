@@ -281,6 +281,10 @@ fn pour_all(taken: &Receiver<Pour>, woken: &OwnedFd, busy: &AtomicUsize) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use std::io::{PipeReader, PipeWriter, Read, Write};
     use std::os::unix::net::UnixStream;

@@ -449,6 +449,10 @@ pub(crate) struct Compositor {
     _directory: tempfile::TempDir,
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 impl Compositor {
     pub(crate) fn start() -> Self {
         let directory = tempfile::TempDir::new().unwrap();

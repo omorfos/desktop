@@ -2054,9 +2054,16 @@ Security:
       ([finding 3 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#3-another-program-can-have-the-program-that-holds-the-clipboard-let-go-of-by-the-relay)):
       towards a program, the relay stops reading short of the most
       descriptors kept, as it does short of the most bytes.
-- [ ] Medium: a thread that cannot be started ends the program, the
+- [x] Medium: a thread that cannot be started ends the program, the
       compositor among them
-      ([finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)).
+      ([finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)):
+      every thread is started by `omorfos_ipc::threads::start`, and the
+      lint refuses `std::thread::spawn` outside the tests (ADR 95).
+- [ ] X's resources set one change at a time: the compositor's thread
+      reads, changes and writes `RESOURCE_MANAGER` without a lock, so two
+      changes of scale in quick succession can leave the older, and it
+      waits on the X server without bound (the rest of
+      [finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)).
 - [ ] Medium: the lock not waited for at sleep after one failed hold
       ([finding 8](reviews/2026-11-16-the-whole-tree.md#8-after-one-failed-hold-on-sleep-at-waking-the-lock-is-never-waited-for-again)).
 - [ ] Medium: a configuration broken at a restart put aside for the

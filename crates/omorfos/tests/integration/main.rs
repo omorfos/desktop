@@ -3,6 +3,10 @@
 //!
 //! Everything runs on one thread. The tests step the client and the
 //! compositor by hand, so each exchange is deterministic.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 
 mod about;
 mod actions;

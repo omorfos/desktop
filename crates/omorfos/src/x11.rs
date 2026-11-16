@@ -686,8 +686,11 @@ impl Compositor {
             .and_then(|display| display.into_string().ok());
         // Asked of the X server from a thread of its own: it may not
         // answer until it has had an answer from here.
-        let _ =
-            display.map(|display| std::thread::spawn(move || set_resources(&display, &resources)));
+        let _ = display.map(|display| {
+            omorfos_ipc::threads::start("omorfos: X resources", move || {
+                set_resources(&display, &resources);
+            })
+        });
     }
 
     /// What a step that can fail came to, the failure being told to the

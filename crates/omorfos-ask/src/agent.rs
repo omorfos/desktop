@@ -9,7 +9,6 @@
 use std::collections::HashMap;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver};
-use std::thread;
 
 use rustix::pipe::{PipeFlags, pipe_with};
 use zbus::blocking::connection::Builder;
@@ -97,7 +96,7 @@ impl Agent {
             |(connection, ((gone, going), (asking, ask)), messages, owner)| {
                 let answering = connection.clone();
                 let (sender, asked) = mpsc::channel();
-                thread::spawn(move || {
+                let _ = omorfos_ipc::threads::start("omorfos-ask: agent", move || {
                     let messages = messages.map_while(Result::ok);
                     for message in messages.take_while(|message| !lost(message)) {
                         let heard = heard(&answering, &message, &owner);

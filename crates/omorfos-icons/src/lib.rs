@@ -716,6 +716,10 @@ fn svg(bytes: &[u8], pixels: u32) -> Option<Image> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use super::*;
 

@@ -140,7 +140,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
 /// bus is answered at once, whatever the compositor is doing.
 fn keeper(socket: Option<PathBuf>) -> Keep {
     let (tell, told) = channel::<(bool, bool)>();
-    std::thread::spawn(move || {
+    let _ = omorfos_ipc::threads::start("xdg-desktop-portal-omorfos: keeper", move || {
         let mut kept: Option<omorfos_ipc::Client> = None;
         let mut held = (false, false);
         loop {
@@ -439,14 +439,18 @@ impl Backend<'_> {
                     let (told, done) = channel();
                     let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
                     let socket = self.socket.clone();
-                    std::thread::spawn(move || {
-                        // Where the windows are is asked as the pictures
-                        // were taken, and not on the way that answers the
-                        // bus, so that it waits on the compositor alone.
-                        let placed = omorfos_screenshot::placed(socket.as_deref());
-                        let picked = omorfos_screenshot::pick(&connection, shots, &placed, &theme);
-                        let _ = told.send(Chose::Picture(picked));
-                    });
+                    let _ = omorfos_ipc::threads::start(
+                        "xdg-desktop-portal-omorfos: picture",
+                        move || {
+                            // Where the windows are is asked as the pictures
+                            // were taken, and not on the way that answers the
+                            // bus, so that it waits on the compositor alone.
+                            let placed = omorfos_screenshot::placed(socket.as_deref());
+                            let picked =
+                                omorfos_screenshot::pick(&connection, shots, &placed, &theme);
+                            let _ = told.send(Chose::Picture(picked));
+                        },
+                    );
                     note("the user said yes, and picks what the picture is of");
                     let picking = Picking {
                         call,
@@ -513,7 +517,7 @@ impl Backend<'_> {
         let (told, done) = channel();
         let (connection, theme) = (self.desk.connection().clone(), self.desk.theme());
         let socket = self.socket.clone();
-        std::thread::spawn(move || {
+        let _ = omorfos_ipc::threads::start("xdg-desktop-portal-omorfos: share", move || {
             // Where the windows are is asked as the pictures were taken,
             // and only if a window may be picked.
             let placed = if windows {
@@ -941,6 +945,10 @@ fn serve(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
 mod tests {
     use std::thread;
 

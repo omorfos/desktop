@@ -3,6 +3,10 @@
 //! recorded from by a stream of this process; and with files that stand
 //! for cameras, opened by this process itself.
 #![expect(
+    clippy::disallowed_methods,
+    reason = "a test ends with its threads, and one that cannot be started fails it"
+)]
+#![expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
 )]

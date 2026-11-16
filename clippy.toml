@@ -7,7 +7,11 @@ doc-valid-idents = ["..", "GnuPG", "PipeWire", "PulseAudio", "WirePlumber"]
 # What a program shows is made into what is drawn in one place,
 # `crates/omorfos/src/surfaces.rs`, which leaves out a surface said to be
 # larger than anything is (ADR 91). These are what it stands in front of.
+#
+# A thread is started by `omorfos_ipc::threads::start`, which says it could
+# not be rather than end the program, as `std::thread::spawn` does.
 disallowed-methods = [
+    { path = "std::thread::spawn", reason = "use `omorfos_ipc::threads::start`, which returns the error where no thread can be started rather than end the program" },
     { path = "smithay::backend::renderer::element::surface::render_elements_from_surface_tree", reason = "use `surfaces::tree`, which leaves out a surface larger than a frame may be" },
     { path = "smithay::backend::renderer::element::AsRenderElements::render_elements", reason = "use `surfaces::of`, which leaves out a surface larger than a frame may be" },
     { path = "smithay::desktop::Window::geometry", reason = "use `surfaces::proper`, which takes a window to be no larger than a frame may be" },
