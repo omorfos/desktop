@@ -429,21 +429,24 @@ struct Holding {
 /// by which what it keeps is known; its `MARK`.
 const KEPT: &str = "application/x-omorfos-kept";
 
-/// The most kinds of what was copied offered to programs written for X11:
-/// more than any program offers that has something to give, as text,
-/// pictures and files. Each costs the X server a name it keeps for as long
-/// as it runs, and the compositor a wait on it whenever a program asks
-/// which kinds there are.
+/// The most kinds of what was copied passed on between programs written
+/// for X11 and those written for Wayland: more than any program offers that
+/// has something to give, as text, pictures and files. Each costs the X
+/// server a name it keeps for as long as it runs, and the compositor a wait
+/// on it whenever a program asks which kinds there are; and each a program
+/// written for Wayland a message.
 const MOST_KINDS: usize = 32;
 
 /// The longest a kind is: as long as a media type may be.
 const LONGEST_KIND: usize = 255;
 
 /// Of the `kinds` a program offers what it copied in, those offered to
-/// programs written for X11: the first [`MOST_KINDS`] that are no longer
-/// than a kind is and are written as one is, in the order given, which is
-/// the program's own from the best.
-fn for_x11(kinds: Vec<String>) -> Vec<String> {
+/// programs of the other kind, written for X11 or for Wayland: the first
+/// [`MOST_KINDS`] that are no longer than a kind is and are written as one
+/// is, in the order given, which is the program's own from the best. A kind
+/// longer than a message to a program written for Wayland may be would end
+/// each that it was offered to.
+fn passed_on(kinds: Vec<String>) -> Vec<String> {
     let written = |kind: &String| {
         kind.len() <= LONGEST_KIND
             && !kind.is_empty()
@@ -811,7 +814,7 @@ impl Compositor {
             return;
         }
         *holding = Holding::default();
-        let kinds = kinds.map(for_x11);
+        let kinds = kinds.map(passed_on);
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {
@@ -1061,11 +1064,12 @@ impl XwmHandler for Compositor {
 
     fn new_selection(&mut self, _: XwmId, which: SelectionTarget, kinds: Vec<String>) {
         // What a program written for X11 has copied or selected is offered
-        // by the compositor on its behalf.
+        // by the compositor on its behalf, in the kinds that may be.
         *self.x11.holding(which) = Holding {
             held: true,
             back: None,
         };
+        let kinds = passed_on(kinds);
         match which {
             SelectionTarget::Clipboard => {
                 set_data_device_selection(&self.display, &self.seat, kinds, Offer::X11);
@@ -1117,14 +1121,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn programs_written_for_x11_are_offered_a_few_kinds_of_what_was_copied_each_as_a_kind_is() {
+    fn programs_of_the_other_kind_are_offered_a_few_kinds_of_what_was_copied_each_as_a_kind_is() {
         let named = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect();
         // As a program offers them, the best first.
         let ordinary: Vec<String> = named(&["text/plain;charset=utf-8", "UTF8_STRING", KEPT]);
-        assert_eq!(for_x11(ordinary.clone()), ordinary);
+        assert_eq!(passed_on(ordinary.clone()), ordinary);
         // Ten thousand of a program's own naming: the first few.
         let many: Vec<String> = (0..10_000).map(|at| format!("kind/{at}")).collect();
-        assert_eq!(for_x11(many.clone()), many[..MOST_KINDS]);
+        assert_eq!(passed_on(many.clone()), many[..MOST_KINDS]);
         // Ones too long, empty, or not written as a kind is, are left out.
         let long = "a".repeat(LONGEST_KIND + 1);
         let odd = named(&[
@@ -1135,9 +1139,9 @@ mod tests {
             "ünïcode",
             "image/png",
         ]);
-        assert_eq!(for_x11(odd), named(&["text/plain", "image/png"]));
+        assert_eq!(passed_on(odd), named(&["text/plain", "image/png"]));
         assert_eq!(
-            for_x11(vec!["a".repeat(LONGEST_KIND)]).len(),
+            passed_on(vec!["a".repeat(LONGEST_KIND)]).len(),
             1,
             "as long as may be"
         );

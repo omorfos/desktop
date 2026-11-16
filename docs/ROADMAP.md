@@ -2038,9 +2038,11 @@ Security:
       ([finding 3](reviews/2026-11-16-the-whole-tree.md#3-a-windows-name-for-its-program-is-opened-as-a-file-on-the-compositors-thread)):
       an `app_id` with a `/` is looked up as no icon, and a picture is
       opened without waiting and read only if it is a plain file.
-- [ ] Medium: a program written for X11 ends programs written for
+- [x] Medium: a program written for X11 ends programs written for
       Wayland through the clipboard's kinds
-      ([finding 4](reviews/2026-11-16-the-whole-tree.md#4-a-program-written-for-x11-can-end-every-program-written-for-wayland-that-is-given-the-keyboard)).
+      ([finding 4](reviews/2026-11-16-the-whole-tree.md#4-a-program-written-for-x11-can-end-every-program-written-for-wayland-that-is-given-the-keyboard)):
+      the kinds are held to the same few, each written as a kind is,
+      both ways.
 - [ ] Medium: any program on the bus puts up the portal's sealed prompt
       under any name
       ([finding 2 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#2-any-program-on-the-session-bus-can-put-up-the-portals-sealed-prompt-under-any-name)).

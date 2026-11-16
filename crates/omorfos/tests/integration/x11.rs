@@ -1196,6 +1196,43 @@ fn what_a_program_written_for_x11_copies_or_selects_can_be_pasted_by_any_other()
     }
 }
 
+/// Has a program that [`hold`]s what it copied let go of it once dropped,
+/// as when a test fails, so that the test ends.
+struct Stopping<'a>(&'a AtomicBool);
+
+impl Drop for Stopping<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+#[test]
+fn a_kind_a_program_written_for_x11_offers_that_no_kind_is_written_as_is_not_passed_on() {
+    let (mut session, program) = session();
+    let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    // A kind as Smithay passes one on, with a `/`, and longer than any
+    // message to a program written for Wayland may be.
+    let long = format!("text/{}", "x".repeat(5000));
+    let names = [selection(false), "TARGETS", long.as_str()];
+    let names = names.map(|name| atom(&mut session, &program, name));
+    let stop = AtomicBool::new(false);
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| hold(&program, window, names, "from x11", &stop));
+        let _stopping = Stopping(&stop);
+        let mut client = session.connect();
+        session.open(&mut client, "app", (50, 50), GREEN);
+        until(&mut session, &mut client, |_, client| {
+            offered(client, false)
+        });
+        let formats = client.state.formats.clone();
+        assert!(formats.iter().all(|kind| kind.len() <= 255), "{formats:?}");
+        // And it is still there to be offered more.
+        session.roundtrip(&mut client);
+        assert!(offered(&client, false));
+    });
+}
+
 #[test]
 fn what_the_keeper_keeps_of_a_copy_from_x11_leaves_x11_with_the_program_that_copied_it() {
     let (mut session, program) = session();
