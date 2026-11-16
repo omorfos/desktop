@@ -86,6 +86,11 @@ pub(crate) enum Icon {
     Given(WlBuffer),
 }
 
+/// The most applications whose desktop entry is kept as read: more than
+/// a session shows, and few enough that identifiers programs choose cannot
+/// make it grow without end.
+const MOST_ENTRIES: usize = 256;
+
 /// Where icons are installed, and those looked up so far.
 #[derive(Debug, Default)]
 pub(crate) struct WindowIcons {
@@ -169,6 +174,11 @@ impl WindowIcons {
     /// The name of the icon of the application `app_id` that a theme has:
     /// the one its desktop entry names, or else the one of its own name.
     fn application(&mut self, app_id: &str, pixels: u32, ink: Color) -> Option<String> {
+        // An identifier is the program's own: past the most kept, what was
+        // read of entries is let go of and read again as it is wanted.
+        if self.entries.len() >= MOST_ENTRIES && !self.entries.contains_key(app_id) {
+            self.entries.clear();
+        }
         let data = &self.data;
         let entry = self
             .entries
@@ -420,6 +430,20 @@ impl Dispatch<XdgToplevelIconV1, ()> for Compositor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_more_desktop_entries_are_kept_as_read_than_the_most() {
+        let mut icons = WindowIcons::default();
+        for id in 0..1000 {
+            let _ = icons.application(
+                &format!("org.example.App{id}"),
+                16,
+                Color::rgba(0, 0, 0, 0xff),
+            );
+            assert!(icons.entries.len() <= MOST_ENTRIES);
+        }
+        assert!(icons.entries.contains_key("org.example.App999"));
+    }
 
     #[test]
     fn what_is_kept_of_programs_pixels_is_shown_by_how_many_not_what() {

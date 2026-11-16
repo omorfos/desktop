@@ -486,7 +486,10 @@ and `omorfos-session` are what it is for.
   `WindowIcons::entries` in `crates/omorfos/src/icons.rs` keeps an entry
   for every application identifier it was asked about, valid or not, each
   as long as a program made it. Keep those that could name a desktop
-  entry only, and no more than a most.
+  entry only, and no more than a most. **Fixed the same day**: no more
+  than 256 entries are kept, and the icon library keeps no more than 512
+  icons as found, which it also kept for every name asked; past the most,
+  all are let go of and found again as wanted.
 - **Titles and identifiers are as long as they came.** Four kilobytes from
   a program written for Wayland, eight from one written for X11 (Smithay
   reads 2048 words of a property), copied each turn and shaped again at

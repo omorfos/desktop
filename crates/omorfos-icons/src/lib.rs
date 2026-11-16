@@ -65,6 +65,11 @@ const KINDS: [&str; 8] = [
 /// is meant to be drawn in the colour of the text it stands beside.
 const SHAPE: &str = "-symbolic";
 
+/// The most icons kept as found, each at a size and in a colour: more
+/// than any shell shows at once, and few enough that names programs choose
+/// cannot make it grow without end.
+const MOST_FOUND: usize = 512;
+
 /// The icons there are, and those that have been looked up so far.
 #[derive(Debug)]
 pub struct Icons {
@@ -134,7 +139,14 @@ impl Icons {
     /// Where a theme has an icon only as a shape, the shape is what is
     /// found, drawn in `ink`.
     pub fn get(&mut self, name: &str, pixels: u32, ink: Color) -> Option<&Image> {
-        let known = self.found.entry((name.to_owned(), pixels, ink));
+        // A name may be a program's own, as one that has no icon of its
+        // name: past the most kept, everything found is let go of and found
+        // again as it is wanted.
+        let wanted = (name.to_owned(), pixels, ink);
+        if self.found.len() >= MOST_FOUND && !self.found.contains_key(&wanted) {
+            self.found.clear();
+        }
+        let known = self.found.entry(wanted);
         let (directories, themes) = (&self.directories, &self.themes);
         known
             .or_insert_with(|| {
@@ -687,6 +699,26 @@ fn svg(bytes: &[u8], pixels: u32) -> Option<Image> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_more_icons_are_kept_as_found_than_the_most() {
+        let mut icons = Icons::new(Vec::new());
+        for name in 0..2000 {
+            let _ = icons.get(
+                &format!("no-such-icon-{name}"),
+                16,
+                Color::rgba(0, 0, 0, 0xff),
+            );
+            assert!(icons.found.len() <= MOST_FOUND);
+        }
+        // One wanted again while it is kept is not looked for again.
+        let _ = icons.get("no-such-icon-1999", 16, Color::rgba(0, 0, 0, 0xff));
+        assert!(icons.found.contains_key(&(
+            "no-such-icon-1999".to_owned(),
+            16,
+            Color::rgba(0, 0, 0, 0xff)
+        )));
+    }
 
     #[test]
     fn an_application_is_named_by_its_desktop_entry() {
