@@ -1959,6 +1959,11 @@ Security:
       (ADR 93); and the relay holds a program to 4096 descriptors.
 - [ ] What fixing descriptors left open: the compositor holds no program
       that connects without the relay to a most number of descriptors.
+      The descriptors are Smithay's, kept for pools and buffers, with no
+      one place in the compositor to count them; asked of Smithay in
+      `docs/UPSTREAM.md`, as what is added to an object was. In a
+      session under the holder with a relay that works, every program
+      comes through the relay and is held to 4096 (ADR 61).
 - [x] What is added to an object kept without end
       ([finding 5](reviews/2026-11-15-what-a-client-can-cost.md#5-what-is-added-to-an-object-is-kept-without-end)),
       medium: the relay now ends a program that adds more than 4096 to

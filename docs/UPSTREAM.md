@@ -37,6 +37,27 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'rects.push\|fn add' "$S"/src/wayland/compositor/handlers.rs "$S"/src/wayland/selection/*/source.rs`
   shows whether anything counts them first.
 
+### Nothing holds a program to a number of descriptors
+
+- **Wrong:** every pool of shared memory a program makes keeps its
+  descriptor in the compositor for as long as the pool lasts
+  (`wl_shm.create_pool`, Smithay's `Pool`), and every buffer of the
+  graphics card one for each plane (`zwp_linux_buffer_params_v1.add`);
+  Smithay counts neither by program. A program that makes a thousand
+  small pools has taken a thousand of the compositor's descriptors. A
+  way to say the most a client may keep, or a count of what each client
+  holds, ended with `no_memory` past it, would let a compositor hold
+  each program to its share.
+- **Meanwhile:** the compositor raises its limit to the hard one
+  (ADR 93) and, out of descriptors, takes no new program on until one is
+  free rather than ending; and the relay holds each program that
+  connects through it to 4096 descriptors (`link::MOST_DESCRIPTORS`,
+  finding 4 of `docs/reviews/2026-11-15-what-a-client-can-cost.md`). A
+  program connected without the relay, as in the nested backend or once
+  the relay has been given up, is held only by the limit.
+- **Check:** `grep -rn 'OwnedFd\|RawFd' "$S"/src/wayland/shm/ "$S"/src/wayland/dmabuf/ | grep -i 'count\|most\|limit'`
+  shows whether anything counts them.
+
 ### A second input method puts out the first
 
 - **Wrong:** asked for a second input method while there is one,
