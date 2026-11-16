@@ -38,11 +38,23 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::compositor::get_parent;
 use smithay::wayland::idle_inhibit::IdleInhibitHandler;
-use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
+use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::ext_idle_notification_v1::{
+    self, ExtIdleNotificationV1,
+};
+use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::ext_idle_notifier_v1::{
+    self, ExtIdleNotifierV1,
+};
+use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::{
+    Client, DataInit, Dispatch, DisplayHandle, delegate_global_dispatch,
+};
+use smithay::wayland::idle_notify::{
+    IdleNotificationUserData, IdleNotifierHandler, IdleNotifierState,
+};
 use smithay::wayland::session_lock::{
     LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
 };
-use smithay::{delegate_idle_inhibit, delegate_idle_notify, delegate_session_lock};
+use smithay::{delegate_idle_inhibit, delegate_session_lock};
 
 use crate::Input;
 use crate::compositor::Compositor;
@@ -561,6 +573,105 @@ impl IdleNotifierHandler for Compositor {
     }
 }
 
+/// The most notifications of idleness a program may hold at once: more than
+/// any asks for, and few enough that one cannot have every key and every
+/// move of the pointer set as many timers again as it likes.
+const MOST_IDLE: usize = 16;
+
+/// A notification of idleness asked for past the most: it is made, as the
+/// protocol has it, and never says anything.
+#[derive(Debug)]
+pub(crate) struct Unanswered;
+
+impl Dispatch<ExtIdleNotifierV1, ()> for Compositor {
+    fn request(
+        state: &mut Self,
+        client: &Client,
+        notifier: &ExtIdleNotifierV1,
+        request: ext_idle_notifier_v1::Request,
+        data: &(),
+        display: &DisplayHandle,
+        init: &mut DataInit<'_, Self>,
+    ) {
+        let held = state
+            .idle_asked
+            .get(&client.id())
+            .copied()
+            .unwrap_or_default();
+        let room = held < MOST_IDLE;
+        match request {
+            ext_idle_notifier_v1::Request::GetIdleNotification { id, .. }
+            | ext_idle_notifier_v1::Request::GetInputIdleNotification { id, .. }
+                if !room =>
+            {
+                init.init(id, Unanswered);
+            }
+            request => {
+                if !matches!(request, ext_idle_notifier_v1::Request::Destroy) {
+                    *state.idle_asked.entry(client.id()).or_default() += 1;
+                }
+                <IdleNotifierState<Self> as Dispatch<ExtIdleNotifierV1, (), Self>>::request(
+                    state, client, notifier, request, data, display, init,
+                );
+            }
+        }
+    }
+}
+
+impl Dispatch<ExtIdleNotificationV1, IdleNotificationUserData> for Compositor {
+    fn request(
+        state: &mut Self,
+        client: &Client,
+        notification: &ExtIdleNotificationV1,
+        request: ext_idle_notification_v1::Request,
+        data: &IdleNotificationUserData,
+        display: &DisplayHandle,
+        init: &mut DataInit<'_, Self>,
+    ) {
+        <IdleNotifierState<Self> as Dispatch<
+            ExtIdleNotificationV1,
+            IdleNotificationUserData,
+            Self,
+        >>::request(state, client, notification, request, data, display, init);
+    }
+
+    fn destroyed(
+        state: &mut Self,
+        client: ClientId,
+        notification: &ExtIdleNotificationV1,
+        data: &IdleNotificationUserData,
+    ) {
+        let left = state.idle_asked.get_mut(&client).map(|asked| {
+            *asked = asked.saturating_sub(1);
+            *asked
+        });
+        if left == Some(0) {
+            state.idle_asked.remove(&client);
+        }
+        <IdleNotifierState<Self> as Dispatch<
+            ExtIdleNotificationV1,
+            IdleNotificationUserData,
+            Self,
+        >>::destroyed(state, client, notification, data);
+    }
+}
+
+impl Dispatch<ExtIdleNotificationV1, Unanswered> for Compositor {
+    fn request(
+        _: &mut Self,
+        _: &Client,
+        _: &ExtIdleNotificationV1,
+        _: ext_idle_notification_v1::Request,
+        _: &Unanswered,
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, Self>,
+    ) {
+        // Its one request is to be destroyed, which needs nothing done.
+    }
+}
+
+delegate_global_dispatch!(Compositor: [ExtIdleNotifierV1: ()] => IdleNotifierState<Compositor>);
+
 impl IdleInhibitHandler for Compositor {
     fn inhibit(&mut self, surface: WlSurface) {
         self.inhibitors.push(surface);
@@ -572,5 +683,4 @@ impl IdleInhibitHandler for Compositor {
 }
 
 delegate_session_lock!(Compositor);
-delegate_idle_notify!(Compositor);
 delegate_idle_inhibit!(Compositor);

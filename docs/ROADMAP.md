@@ -1993,10 +1993,13 @@ Security:
 - [ ] A program refused is told of once for each connection, not each
       name it gives itself, so that one renaming itself as it asks again
       is not told of up to 64 times (finding 7).
-- [ ] Every notification of idleness set again at every key and every move
+- [x] Every notification of idleness set again at every key and every move
       ([finding 8](reviews/2026-11-15-what-a-client-can-cost.md#8-every-notification-of-idleness-is-set-again-at-every-key-and-every-move)),
-      low to medium: a program held to a few, and whether one in a sandbox
-      is told at all decided.
+      low to medium: a program is held to 16 at once.
+- [ ] Whether a program in a sandbox is told when the user is away at all
+      (finding 8): the lock screen and `omorfos-session` are what it is
+      for, and a sandboxed program learns from it when nobody is looking.
+      A decision for the maintainer.
 - [ ] Smaller things the review found
       ([finding 9](reviews/2026-11-15-what-a-client-can-cost.md#9-smaller-things)), low: the icons of applications
       looked up never forgotten; titles and identifiers as long as they

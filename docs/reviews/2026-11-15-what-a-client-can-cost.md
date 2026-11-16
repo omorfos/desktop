@@ -454,7 +454,17 @@ by its name; and the name is shown without control characters.
 
 ### 8. Every notification of idleness is set again at every key and every move
 
-**Low to medium. Shown by reading.**
+**Low to medium. Shown by reading; fixed in part the same day.**
+
+A program is now held to 16 notifications at once: the compositor
+answers the requests for them itself, in `lock.rs`, hands Smithay up to
+16 for each program, and makes any past them as objects that never say
+anything, as the protocol has no error for it. The test,
+`idle::a_program_is_told_of_idleness_no_more_than_the_most_times_at_once`,
+fails without the most. Whether a program in a sandbox is to be told at
+all is not decided, and is on the roadmap.
+
+As it was first written:
 
 `ext_idle_notifier_v1` is offered to every program, one in a sandbox
 too. Each notification a program asks for is a timer in the compositor's

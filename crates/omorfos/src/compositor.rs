@@ -3,6 +3,7 @@
 use omorfos_i18n::{COMPOSITOR, Value, Words};
 use std::borrow::Cow;
 use std::cell::{Ref, RefCell};
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -396,6 +397,9 @@ pub struct Compositor {
     pub(crate) lock_manager: SessionLockManagerState,
     /// Tells those who asked when the user has been away for a while.
     pub(crate) idle: IdleNotifierState<Self>,
+    /// How many notifications of idleness each program has asked for
+    /// and still holds, to hold it to a most.
+    pub(crate) idle_asked: HashMap<wayland_server::backend::ClientId, usize>,
     /// The input method, and what is known of it.
     pub(crate) typing: Typing,
     /// What is drawn round a prompt that asks for a secret.
@@ -570,6 +574,7 @@ impl Compositor {
                     lock: None,
                     lock_manager,
                     idle,
+                    idle_asked: HashMap::new(),
                     inhibitors: Vec::new(),
                     presence: Presence::default(),
                     children: Vec::new(),

@@ -1500,9 +1500,28 @@ impl Client {
     }
 
     /// Asks to be told when the user has been away for `milliseconds`.
-    pub(crate) fn watch_idle(&self, milliseconds: u32) {
+    pub(crate) fn watch_idle(
+        &self,
+        milliseconds: u32,
+    ) -> ext_idle_notification_v1::ExtIdleNotificationV1 {
         let idlers = self.state.idlers.as_ref().unwrap();
-        idlers.get_idle_notification(milliseconds, self.seat(), &self.handle(), ());
+        idlers.get_idle_notification(milliseconds, self.seat(), &self.handle(), ())
+    }
+
+    /// Lets go of what idle notifications are asked of, as a program done
+    /// with them does; those it made go on.
+    pub(crate) fn let_go_of_idle_notifier(&self) {
+        self.state.idlers.as_ref().unwrap().destroy();
+    }
+
+    /// Asks to be told when the user has done nothing for `milliseconds`,
+    /// whatever asks for the session not to go idle.
+    pub(crate) fn watch_input_idle(
+        &self,
+        milliseconds: u32,
+    ) -> ext_idle_notification_v1::ExtIdleNotificationV1 {
+        let idlers = self.state.idlers.as_ref().unwrap();
+        idlers.get_input_idle_notification(milliseconds, self.seat(), &self.handle(), ())
     }
 
     /// Asks for the session not to go idle while `surface` is shown.

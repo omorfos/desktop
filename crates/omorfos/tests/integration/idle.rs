@@ -74,6 +74,69 @@ fn a_client_is_told_when_the_user_has_been_away_and_when_they_are_back() {
     );
 }
 
+/// How many times `client` is told the user is away, waiting until it has
+/// been told `expected` times and a while more, or for a few seconds.
+fn told_away(session: &mut Session, client: &mut Client, expected: usize) -> usize {
+    let mut told = 0;
+    let deadline = Instant::now() + SOON;
+    while told < expected && Instant::now() < deadline {
+        session.roundtrip(client);
+        told += client
+            .take_events()
+            .iter()
+            .filter(|event| **event == Event::Idle)
+            .count();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    std::thread::sleep(A_WHILE);
+    session.roundtrip(client);
+    told + client
+        .take_events()
+        .iter()
+        .filter(|event| **event == Event::Idle)
+        .count()
+}
+
+#[test]
+fn a_program_is_told_of_idleness_no_more_than_the_most_times_at_once() {
+    let (mut session, mut client, _window) = opened();
+    session.roundtrip(&mut client);
+    // Twenty notifications, of either kind, of which sixteen are answered:
+    // eight of each, then two of each more.
+    let mut asked: Vec<_> = (0..8).map(|_| client.watch_idle(AWAY)).collect();
+    asked.extend((0..8).map(|_| client.watch_input_idle(AWAY)));
+    asked.extend((0..2).map(|_| client.watch_idle(AWAY)));
+    asked.extend((0..2).map(|_| client.watch_input_idle(AWAY)));
+    session.roundtrip(&mut client);
+    assert_eq!(told_away(&mut session, &mut client, 16), 16);
+
+    // One answered and one not let go of: there is room for one more.
+    let unanswered = asked.pop().unwrap();
+    unanswered.destroy();
+    asked.remove(0).destroy();
+    session.roundtrip(&mut client);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 400.0, y: 400.0 }, 0);
+    let _again = client.watch_idle(AWAY);
+    session.roundtrip(&mut client);
+    client.take_events();
+    assert_eq!(told_away(&mut session, &mut client, 16), 16);
+
+    // Another program has notifications of its own, and once it has let
+    // go of all of them has none counted against it.
+    let mut other = session.connect();
+    session.roundtrip(&mut other);
+    other.take_events();
+    let its = other.watch_idle(AWAY);
+    assert!(idles_within(&mut session, &mut other, SOON));
+    its.destroy();
+    session.roundtrip(&mut other);
+    let _again = other.watch_input_idle(AWAY);
+    other.let_go_of_idle_notifier();
+    assert!(idles_within(&mut session, &mut other, SOON));
+}
+
 #[test]
 fn a_window_on_screen_can_ask_for_the_session_not_to_go_idle() {
     let (mut session, mut client, window) = opened();
