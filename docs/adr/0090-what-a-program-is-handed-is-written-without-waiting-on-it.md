@@ -44,10 +44,13 @@ the program and never rests on what the program can change.**
   whatever is said of it. A file may wait on what it is kept on and a
   socket on its other end; either is closed with nothing written, and
   its program reads nothing, as from one that had nothing to give.
-- **On a thread for each, and no more than sixteen at once**
+- **On a thread of its own, and no more than sixteen at once**
   (`handing::MOST`). Whoever hands something over goes on at once: the
   compositor never touches the program's pipe on the thread it draws
-  on. One more than sixteen is handed nothing until one of them is done.
+  on. (Amended 16 November 2026: first a thread for each, and one more
+  than sixteen handed nothing; now one thread for each that gives, which
+  pours into every pipe at once, and one more than sixteen lets go of
+  the one that has waited longest.)
 - **Through a pipe of our own.** What is handed over is written into a
   pipe made here, asked not to wait, which nothing else holds and so
   nothing else can ask to wait again; and moved from there into the
@@ -95,20 +98,16 @@ over through it, so it is right, and tested, in one place.
 - A program that hands over something that is not a pipe to paste into
   is given nothing. What pastes makes a pipe for it, as far as is
   known; a program found not to is a reason to look at this again.
-- While programs do not read, up to sixteen threads are held for up to
-  half a minute each, and a paste beyond them is refused. Sixteen is
-  far more than are pasted at once, and each costs a stack that is not
-  touched.
-- A program can keep all sixteen busy, by asking again each half minute
-  through pipes it does not read, and while it does nothing else is
-  handed what that giver gives: a paste of it comes out empty. That
-  stops a paste and nothing more, where the same program could stop
-  the session before, and one with the keyboard can put something else
-  on the clipboard in any case. Who asks is not told to whoever gives,
-  by `ext-data-control` at all, so they cannot be counted by program;
-  and letting the newest take the place of the oldest would have a
-  thread started for every request a program cared to make. It is on
-  the roadmap as it stands.
+- While programs do not read, one thread of each that gives holds up to
+  sixteen pipes for up to half a minute each; it is started the first
+  time something is handed over.
+- A program asking again and again through pipes it does not read
+  cannot keep a paste from going through: a paste is the newest, and
+  the one that has waited longest makes room for it. Who asks is not
+  told to whoever gives, by `ext-data-control` at all, so they cannot be
+  counted by program; this needs no telling. (Amended 16 November 2026:
+  with a thread for each, a program that kept all sixteen busy had
+  every paste of that giver's come out empty until one of them ended.)
 - The compositor's own text is no longer in the pipe by the time the
   request for it has been dispatched: a test that pastes it waits until
   nothing is being handed over (`Compositor::handing_over`).

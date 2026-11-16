@@ -1939,12 +1939,6 @@ Security:
         twice, in the launcher and in the keeper. One reader, beside
         `Handing` in `omorfos-ipc`, bounded as it is
         ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it));
-      - a program that asks sixteen times each half minute for what is
-        being given, through pipes it does not read, keeps anything else
-        from being handed it for as long: a paste then comes out empty.
-        Whoever gives is not told who asks, so this wants either that,
-        asked of Smithay for the compositor's own text, or one thread
-        that hands everything over in place of one for each (ADR 90);
       - where a surface is, which its program says as it says how large,
         is added to in whole numbers that wrap in a release build and
         panic in the tests': to be read through, in the compositor and

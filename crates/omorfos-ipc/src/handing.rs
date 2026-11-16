@@ -10,28 +10,35 @@
 //! and each does it through [`Handing`], so that it is right in one place
 //! (ADR 90).
 //!
-//! Each thing handed over is on a thread of its own, so that nothing of
-//! whoever hands it over touches the program's pipe at all. The thread
-//! does not wait on the program either. Whether a write to a pipe waits is
-//! the pipe's to say, and the pipe is the program's as much as ours: asked
-//! not to wait, it can be asked again to, by the program, before it is
-//! written to. So what is handed over is written into a pipe of our own,
-//! which nothing else can ask anything of, and moved from there into the
-//! program's (`splice`), which is told at each move not to wait. A program
-//! whose pipe has no room is waited for by the clock, and given up on
-//! once its time is up.
+//! What is handed over is poured by a thread of [`Handing`]'s own, so that
+//! nothing of whoever hands it over touches the program's pipe at all, into
+//! every pipe it has at once. The thread does not wait on any program
+//! either. Whether a write to a pipe waits is the pipe's to say, and the
+//! pipe is the program's as much as ours: asked not to wait, it can be
+//! asked again to, by the program, before it is written to. So what is
+//! handed over is written into a pipe of our own, which nothing else can
+//! ask anything of, and moved from there into the program's (`splice`),
+//! which is told at each move not to wait. A program whose pipe has no room
+//! is waited for by the clock, and given up on once its time is up.
+//!
+//! No more than [`MOST`] are poured at once. One more lets go of the one
+//! that has waited longest: a paste is always the newest, and a program
+//! asking without end through pipes it never reads cannot keep anything
+//! from the one that does.
 
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fs::{FileType, fstat};
-use rustix::io::{Errno, retry_on_intr, write};
+use rustix::io::{Errno, read, retry_on_intr, write};
 use rustix::pipe::{PipeFlags, SpliceFlags, pipe_with, splice};
 
-/// The most that is handed over at once: more than any program asks for
+/// The most that is poured at once: more than any program asks for
 /// together, and few enough that one that takes nothing costs little.
 pub const MOST: usize = 16;
 
@@ -41,12 +48,30 @@ pub const MOST: usize = 16;
 const PATIENCE: Duration = Duration::from_secs(30);
 
 /// What is being handed over to programs that asked for it.
-#[derive(Debug)]
 pub struct Handing {
     /// How long each program is given.
     patience: Duration,
-    /// The threads handing something over, and those that have just done.
-    writers: Vec<JoinHandle<()>>,
+    /// How many are being poured, or are on their way to be.
+    busy: Arc<AtomicUsize>,
+    /// The thread that pours, while there is one, with what it is handed
+    /// and what wakes it.
+    pourer: Option<Pourer>,
+}
+
+/// The thread that pours, and what it is handed through.
+struct Pourer {
+    handed: Sender<Pour>,
+    wake: OwnedFd,
+    thread: JoinHandle<()>,
+}
+
+impl std::fmt::Debug for Handing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let busy = self.busy.load(Ordering::SeqCst);
+        f.debug_struct("Handing")
+            .field("busy", &busy)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Handing {
@@ -59,41 +84,46 @@ impl Handing {
     /// Nothing being handed over yet, each program to be given `patience`
     /// to take what it is handed: half a minute, but in the tests of this,
     /// which do not wait that long.
-    const fn patient(patience: Duration) -> Self {
+    fn patient(patience: Duration) -> Self {
         Self {
             patience,
-            writers: Vec::new(),
+            busy: Arc::default(),
+            pourer: None,
         }
     }
 
     /// Hands `bytes` to a program through `to`, the pipe it gave for them,
     /// without waiting on it: at once if the pipe has room, as the program
     /// reads if it has not, and not at all once the program has had its
-    /// time. The pipe is closed when it is done with, which is how the
-    /// program knows it has everything.
+    /// time, or [`MOST`] newer have been handed over since. The pipe is
+    /// closed when it is done with, which is how the program knows it has
+    /// everything.
     ///
     /// Returns whether it is being handed over. It is not if `to` is not a
     /// pipe, which is all a program pastes through and all that can be
-    /// written into without waiting; nor while [`MOST`] are being handed
-    /// over already. The program then reads nothing, as from one that had
+    /// written into without waiting, or if what it is poured through cannot
+    /// be made. The program then reads nothing, as from one that had
     /// nothing to give.
     pub fn hand(&mut self, bytes: Arc<[u8]>, to: OwnedFd) -> bool {
         let pipe = fstat(&to).is_ok_and(|is| FileType::from_raw_mode(is.st_mode) == FileType::Fifo);
-        let room = self.busy() < MOST;
-        let patience = self.patience;
-        // A thread that cannot be started hands nothing over.
-        let writer = (pipe && room)
-            .then(|| thread::Builder::new().spawn(move || pour(&bytes, &to, patience)))
-            .and_then(Result::ok);
-        let handed = writer.is_some();
-        self.writers.extend(writer);
-        handed
+        let until = Instant::now() + self.patience;
+        let pour = pipe.then(|| Pour::new(bytes, to, until)).flatten();
+        let busy = Arc::clone(&self.busy);
+        let pourer = pour.and_then(|pour| self.pourer().map(|pourer| (pourer, pour)));
+        pourer.is_some_and(|(pourer, pour)| {
+            busy.fetch_add(1, Ordering::SeqCst);
+            let sent = pourer.handed.send(pour).is_ok();
+            // One that cannot be sent never reaches the thread to be counted
+            // done.
+            busy.fetch_sub(usize::from(!sent), Ordering::SeqCst);
+            let _ = write(&pourer.wake, &[0]);
+            sent
+        })
     }
 
     /// How many are being handed over now.
     pub fn busy(&mut self) -> usize {
-        self.writers.retain(|writer| !writer.is_finished());
-        self.writers.len()
+        self.busy.load(Ordering::SeqCst)
     }
 
     /// Waits until everything being handed over has been, or been given up
@@ -101,47 +131,153 @@ impl Handing {
     /// it has handed over what it had, so that what a program is reading
     /// as it ends is not cut short.
     pub fn finish(&mut self) {
-        for writer in self.writers.drain(..) {
-            // One that failed handed over what it could.
-            let _ = writer.join();
+        let pourer = self.pourer.take();
+        let _ = pourer.map(
+            |Pourer {
+                 handed,
+                 wake,
+                 thread,
+             }| {
+                // Told there is no more, the thread ends once it has poured
+                // what it has.
+                drop(handed);
+                let _ = write(&wake, &[0]);
+                // One that failed poured what it could.
+                thread.join()
+            },
+        );
+    }
+
+    /// The thread that pours, started if there is none: none if it cannot
+    /// be.
+    fn pourer(&mut self) -> Option<&Pourer> {
+        if self.pourer.is_none() {
+            let (handed, taken) = mpsc::channel();
+            let woken = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).ok();
+            let busy = Arc::clone(&self.busy);
+            self.pourer = woken.and_then(|(woken, wake)| {
+                let pouring = move || pour_all(&taken, &woken, &busy);
+                let thread = thread::Builder::new().spawn(pouring).ok();
+                thread.map(|thread| Pourer {
+                    handed,
+                    wake,
+                    thread,
+                })
+            });
         }
+        self.pourer.as_ref()
     }
 }
 
-/// Writes `bytes` into `to`, a pipe of a program's, as the program makes
-/// room for them, for no longer than `patience`; and stops once the
-/// program has stopped reading.
-fn pour(bytes: &[u8], to: &OwnedFd, patience: Duration) {
-    let until = Instant::now() + patience;
-    // A pipe of our own, which does not wait because we made it so, and
-    // which nothing else can make wait again.
-    let ours = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).ok();
-    let _ = ours.map(|(staged, staging)| {
-        let (mut written, mut moved) = (0, 0);
-        while moved < bytes.len() {
-            // As much more as our own pipe takes: none, if it is full.
-            written += write(&staging, &bytes[written..]).unwrap_or(0);
-            let waiting = written - moved;
-            match splice(&staged, None, to, None, waiting, SpliceFlags::NONBLOCK) {
-                Ok(some) if some > 0 => moved += some,
-                Err(Errno::AGAIN) if room(to, until) => {}
-                // The program has stopped reading, or has had its time.
-                _ => break,
-            }
-        }
-    });
+/// Something being poured into a program's pipe, through a pipe of our own.
+struct Pour {
+    bytes: Arc<[u8]>,
+    /// The program's pipe.
+    to: OwnedFd,
+    /// Our own, read from and written to.
+    staged: OwnedFd,
+    staging: OwnedFd,
+    /// How much has been written into ours, and moved into the program's.
+    written: usize,
+    moved: usize,
+    /// When the program's time is up.
+    until: Instant,
 }
 
-/// Waits for `to` to have room, until `until` at the latest, and returns
-/// whether it is worth trying it again: not once the time is up, nor if
-/// it cannot be waited for at all.
-fn room(to: &OwnedFd, until: Instant) -> bool {
-    let left = until.saturating_duration_since(Instant::now());
-    let mut waiting = [PollFd::new(to, PollFlags::OUT)];
-    // A wait that was interrupted is begun again.
-    let waited =
-        Timespec::try_from(left).map(|left| retry_on_intr(|| poll(&mut waiting, Some(&left))));
-    !left.is_zero() && matches!(waited, Ok(Ok(1..)))
+/// How far pouring has got.
+#[derive(PartialEq, Eq)]
+enum Poured {
+    /// All of it is in the program's pipe.
+    Done,
+    /// The program's pipe has no room for now.
+    Waiting,
+    /// The program has stopped reading.
+    Gone,
+}
+
+impl Pour {
+    /// `bytes` to be poured into `to` until `until`, through a pipe of our
+    /// own, which does not wait because we made it so and which nothing
+    /// else can make wait again; nothing if that pipe cannot be made.
+    fn new(bytes: Arc<[u8]>, to: OwnedFd, until: Instant) -> Option<Self> {
+        let ours = pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).ok();
+        ours.map(|(staged, staging)| Self {
+            bytes,
+            to,
+            staged,
+            staging,
+            written: 0,
+            moved: 0,
+            until,
+        })
+    }
+
+    /// Pours as much as the program's pipe takes now.
+    fn pour(&mut self) -> Poured {
+        while self.moved < self.bytes.len() {
+            // As much more as our own pipe takes: none, if it is full.
+            self.written += write(&self.staging, &self.bytes[self.written..]).unwrap_or(0);
+            let waiting = self.written - self.moved;
+            match splice(
+                &self.staged,
+                None,
+                &self.to,
+                None,
+                waiting,
+                SpliceFlags::NONBLOCK,
+            ) {
+                Ok(some) if some > 0 => self.moved += some,
+                Err(Errno::AGAIN) => return Poured::Waiting,
+                _ => return Poured::Gone,
+            }
+        }
+        Poured::Done
+    }
+}
+
+/// What the thread that pours does: takes what it is handed from `taken`,
+/// woken through `woken`, and pours each, no more than [`MOST`] at once,
+/// until it is told there is no more and has poured what it had. `busy`
+/// is told of each that is done with.
+fn pour_all(taken: &Receiver<Pour>, woken: &OwnedFd, busy: &AtomicUsize) {
+    let mut pours: Vec<Pour> = Vec::new();
+    let mut open = true;
+    while open || !pours.is_empty() {
+        // What has been handed over since; past the most, the one that has
+        // waited longest is let go of.
+        loop {
+            match taken.try_recv() {
+                Ok(pour) => pours.push(pour),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    open = false;
+                    break;
+                }
+            }
+        }
+        let past = pours.len().saturating_sub(MOST);
+        let now = Instant::now();
+        let before = pours.len();
+        pours.drain(..past);
+        pours.retain_mut(|pour| pour.until > now && pour.pour() == Poured::Waiting);
+        busy.fetch_sub(before - pours.len(), Ordering::SeqCst);
+        // Until a pipe has room, or more is handed over, or the soonest
+        // time is up.
+        let soonest = pours.iter().map(|pour| pour.until).min();
+        let left = soonest.map(|until| until.saturating_duration_since(now));
+        let mut waiting = vec![PollFd::new(woken, PollFlags::IN)];
+        waiting.extend(
+            pours
+                .iter()
+                .map(|pour| PollFd::new(&pour.to, PollFlags::OUT)),
+        );
+        let left = left.and_then(|left| Timespec::try_from(left).ok());
+        // Interrupted or not, it looks again at what it has.
+        let _ = (open || !pours.is_empty())
+            .then(|| retry_on_intr(|| poll(&mut waiting, left.as_ref())));
+        let mut drained = [0; 64];
+        while read(woken, &mut drained).is_ok_and(|read| read > 0) {}
+    }
 }
 
 #[cfg(test)]
@@ -188,6 +324,15 @@ mod tests {
         let mut read = Vec::new();
         reader.read_to_end(&mut read).unwrap();
         read
+    }
+
+    #[test]
+    fn what_is_being_handed_over_is_said_by_how_many_not_what() {
+        let mut handing = Handing::default();
+        let (_reader, to, _) = full();
+        assert!(handing.hand(Arc::from(*b"secret"), to));
+        let said = format!("{handing:?}");
+        assert_eq!(said, "Handing { busy: 1, .. }");
     }
 
     #[test]
@@ -258,33 +403,30 @@ mod tests {
     }
 
     #[test]
-    fn no_more_are_handed_over_at_once_than_the_most_there_may_be() {
+    fn past_the_most_the_one_that_has_waited_longest_is_let_go_of() {
         let mut handing = Handing::default();
+        // As many as may be poured at once, to programs that never read,
+        // as one that means to keep a paste from going through would ask.
         let stuck: Vec<_> = (0..MOST).map(|_| full()).collect();
-        let stuck = stuck.into_iter().map(|(reader, to, _)| {
-            assert!(handing.hand(Arc::from(*b"copied"), to));
-            reader
-        });
-        let mut stuck: Vec<PipeReader> = stuck.collect();
-        assert_eq!(handing.busy(), MOST);
-        // One more is given nothing.
-        let (reader, to) = pipe();
-        assert!(!handing.hand(Arc::from(*b"copied"), to));
-        assert_eq!(all(reader), b"");
-        // Once a program that was not reading has gone, there is room for
-        // another.
-        drop(stuck.pop());
-        // However soon the thread that was writing notices: each part of the
-        // wait runs at least once, so what is reached does not depend on it.
-        let waited = std::iter::repeat_with(|| {
-            thread::sleep(Duration::from_millis(2));
-            handing.busy()
-        });
-        let freed = waited.take(5000).find(|busy| *busy < MOST);
-        assert!(freed.is_some(), "room again within ten seconds");
+        let mut stuck: Vec<_> = stuck
+            .into_iter()
+            .map(|(reader, to, filled)| {
+                assert!(handing.hand(Arc::from(*b"held up"), to));
+                (reader, filled)
+            })
+            .collect();
+        // A paste, the newest, goes through whatever they ask.
         let (reader, to) = pipe();
         assert!(handing.hand(Arc::from(*b"copied"), to));
         assert_eq!(all(reader), b"copied");
+        // And the one that had waited longest was let go of already, not
+        // half a minute from now: its program reads only what it put there
+        // itself, and then the end at once.
+        let (mut oldest, filled) = stuck.remove(0);
+        let mut read = vec![0; filled];
+        oldest.read_exact(&mut read).unwrap();
+        fcntl_setfl(&oldest, OFlags::NONBLOCK).unwrap();
+        assert_eq!(oldest.read(&mut [0; 16]).unwrap(), 0, "the end");
         // The rest go as their programs do.
         drop(stuck);
         assert!(idle(&mut handing));

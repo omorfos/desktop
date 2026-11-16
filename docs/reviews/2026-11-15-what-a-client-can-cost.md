@@ -120,12 +120,12 @@ over through `Handing` too.
 - Reading a paste is written twice, in the launcher (`Pasting`) and in
   the keeper (`ask`), each with its own bounds. One reader beside
   `Handing` would hold both to the same.
-- A program can keep all sixteen of a giver's threads busy, asking again
-  each half minute through pipes it does not read. While it does, a
-  paste of what that giver gives comes out empty: of the compositor's
-  own text, or of what the keeper keeps. Nothing else is stopped. Who
-  asks is not told to whoever gives, so they cannot be counted by
-  program (ADR 90).
+- A program could keep all sixteen of a giver's threads busy, asking
+  again each half minute through pipes it does not read, and a paste of
+  what that giver gives came out empty meanwhile. **Fixed the next
+  day**: each giver pours from one thread into every pipe at once, and
+  past sixteen the one that has waited longest is let go of, so the
+  newest, a paste, always goes through (ADR 90, amended).
 
 ### 2. A window said to be enormous ends the compositor
 
