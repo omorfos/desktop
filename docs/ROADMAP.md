@@ -2007,6 +2007,98 @@ Security:
       no longer most of a run: each test binary's profile kept from run to
       run, keyed by its build and the files it reads, and only those built
       anew run again (ADR 94, "Alternatives").
+- [x] A review, for security, of what the review of 15 November did not
+      look at: done on 16 November 2026, and written up in
+      [reviews/2026-11-16-what-the-first-review-did-not-look-at.md](reviews/2026-11-16-what-the-first-review-did-not-look-at.md).
+      What it found is below, with what the review of the whole tree
+      found, in the order to take it.
+- [x] A review of the whole tree in every dimension: done on 16 November
+      2026, and written up in [reviews/2026-11-16-the-whole-tree.md](reviews/2026-11-16-the-whole-tree.md).
+- [ ] High: any program takes the keyboard from the window typed in,
+      with a pop-up grabbed with a serial it made up
+      ([finding 1](reviews/2026-11-16-the-whole-tree.md#1-any-program-can-take-the-keyboard-from-the-window-being-typed-in-with-a-pop-up)).
+- [ ] High: a program that makes a sandbox stops the relay, and every
+      program, for good
+      ([finding 1 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#1-a-program-that-makes-a-sandbox-can-stop-the-relay-for-good)).
+- [ ] High: every other program stops for half a second whenever the
+      compositor sends one away
+      ([finding 2](reviews/2026-11-16-the-whole-tree.md#2-whenever-the-compositor-sends-one-program-away-every-other-stops-for-half-a-second)).
+- [ ] Medium: a window's `app_id` opened as a file on the compositor's
+      thread
+      ([finding 3](reviews/2026-11-16-the-whole-tree.md#3-a-windows-name-for-its-program-is-opened-as-a-file-on-the-compositors-thread)).
+- [ ] Medium: a program written for X11 ends programs written for
+      Wayland through the clipboard's kinds
+      ([finding 4](reviews/2026-11-16-the-whole-tree.md#4-a-program-written-for-x11-can-end-every-program-written-for-wayland-that-is-given-the-keyboard)).
+- [ ] Medium: any program on the bus puts up the portal's sealed prompt
+      under any name
+      ([finding 2 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#2-any-program-on-the-session-bus-can-put-up-the-portals-sealed-prompt-under-any-name)).
+- [ ] Medium: a program has the one that holds the clipboard let go of
+      by the relay
+      ([finding 3 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#3-another-program-can-have-the-program-that-holds-the-clipboard-let-go-of-by-the-relay)).
+- [ ] Medium: a thread that cannot be started ends the program, the
+      compositor among them
+      ([finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)).
+- [ ] Medium: the lock not waited for at sleep after one failed hold
+      ([finding 8](reviews/2026-11-16-the-whole-tree.md#8-after-one-failed-hold-on-sleep-at-waking-the-lock-is-never-waited-for-again)).
+- [ ] Medium: a configuration broken at a restart put aside for the
+      defaults
+      ([finding 7](reviews/2026-11-16-the-whole-tree.md#7-a-configuration-broken-when-the-compositor-starts-again-is-put-aside-for-the-defaults-not-the-last-that-loaded)).
+- [ ] Medium: a buffer of the card not finished holds up drawing; with a
+      card
+      ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).
+- [ ] Medium: on a card, an idle session wakes at the screen's rate
+      ([finding 5](reviews/2026-11-16-the-whole-tree.md#5-on-a-graphics-card-a-session-with-nothing-changing-wakes-at-the-screens-rate-for-good)).
+- [ ] Medium: the keyboard's row of a menu unseen in the light scheme
+      ([finding 9](reviews/2026-11-16-the-whole-tree.md#9-in-the-light-scheme-which-row-of-a-menu-the-keyboard-is-on-cannot-be-seen)).
+- [ ] Medium: the screenshot's help and a program that cannot start said
+      in English only
+      ([finding 13](reviews/2026-11-16-the-whole-tree.md#13-two-things-the-user-is-told-come-only-in-english)).
+- [ ] Medium: the manual pages say restarting closes the windows
+      ([finding 14](reviews/2026-11-16-the-whole-tree.md#14-the-manual-pages-and-the-schemas-say-that-starting-the-compositor-again-closes-the-windows)).
+- [ ] Medium: the test of the most windows reaches only those waiting
+      ([finding 15](reviews/2026-11-16-the-whole-tree.md#15-a-program-can-map-any-number-of-windows-if-the-count-of-those-shown-were-lost-and-no-test-would-know)).
+- [ ] Medium: the IPC state built every turn
+      ([finding 10](reviews/2026-11-16-the-whole-tree.md#10-every-turn-builds-what-is-told-to-ipc-peers-and-copies-it-though-none-listens)).
+- [ ] Medium: every window looked up again for the relay every turn
+      ([finding 11](reviews/2026-11-16-the-whole-tree.md#11-under-the-relay-every-turn-looks-every-window-up-again-and-every-move-of-the-pointer-is-sent)).
+- [ ] Medium: the relay allocating for every message
+      ([finding 12](reviews/2026-11-16-the-whole-tree.md#12-the-relay-allocates-for-every-message-it-passes)).
+- [ ] Medium: putting a picture on a scaled surface written fifteen
+      times
+      ([finding 16](reviews/2026-11-16-the-whole-tree.md#16-putting-a-picture-on-a-scaled-surface-is-written-fifteen-times)).
+- [ ] Low to medium: one program takes every sandbox's place
+      ([finding 5 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#5-one-program-can-take-every-place-the-relay-keeps-for-sandboxes)).
+- [ ] Low to medium: words of a program's own in the notice for every
+      key
+      ([finding 18](reviews/2026-11-16-the-whole-tree.md#18-a-program-can-put-words-of-its-own-in-the-compositors-notices-by-asking-for-every-key)).
+- [ ] Low to medium: the selector of tests not tested before a push
+      ([finding 26](reviews/2026-11-16-the-whole-tree.md#26-the-selector-of-tests-is-not-tested-before-a-push)).
+- [ ] Low: an X11 window that says it is another program
+      ([finding 19](reviews/2026-11-16-the-whole-tree.md#19-a-window-written-for-x11-can-say-it-is-another-program-and-be-activated-in-its-place)).
+- [ ] Low: the lock screen's clock after sleep
+      ([finding 20](reviews/2026-11-16-the-whole-tree.md#20-the-lock-screen-shows-the-time-the-machine-went-to-sleep-for-up-to-a-minute-after-it-wakes)).
+- [ ] Low: the relay takes a version not offered
+      ([finding 21](reviews/2026-11-16-the-whole-tree.md#21-the-relay-takes-a-bind-at-a-version-the-compositor-does-not-offer)).
+- [ ] Low: a drag below a window's least
+      ([finding 22](reviews/2026-11-16-the-whole-tree.md#22-dragging-a-windows-edge-takes-it-below-what-its-program-says-is-its-least)).
+- [ ] Low: the relay's records and the roles' byte
+      ([finding 23](reviews/2026-11-16-the-whole-tree.md#23-what-the-relay-hands-the-compositor-is-mostly-written-only-in-the-code-and-a-roles-bit-can-be-taken-for-the-users)).
+- [ ] Low: four components reach the domain
+      ([finding 24](reviews/2026-11-16-the-whole-tree.md#24-the-architecture-says-no-component-reaches-the-domain-and-four-do)).
+- [ ] Low: the password box drops a failed drawing
+      ([finding 25](reviews/2026-11-16-the-whole-tree.md#25-the-password-box-drops-a-drawing-that-failed)).
+- [ ] Low: tests that pass with less than they say
+      ([finding 27](reviews/2026-11-16-the-whole-tree.md#27-tests-that-would-pass-with-less-than-they-say)).
+- [ ] Low: smaller things the user meets
+      ([finding 28](reviews/2026-11-16-the-whole-tree.md#28-smaller-things-the-user-meets)).
+- [ ] Low: documents no longer so
+      ([finding 29](reviews/2026-11-16-the-whole-tree.md#29-documents-that-say-what-is-no-longer-so)).
+- [ ] Low: smaller things written more than once
+      ([finding 17](reviews/2026-11-16-the-whole-tree.md#17-smaller-things-written-more-than-once)).
+- [ ] Low: every window placed again each turn
+      ([finding 30](reviews/2026-11-16-the-whole-tree.md#30-every-window-is-placed-in-smithays-space-again-on-every-turn)).
+- [ ] Low: smaller things in the helpers and services
+      ([finding 6 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#6-smaller-things)).
 - [x] Whether a program in a sandbox is told when the user is away at all
       (finding 8): decided on 16 November 2026, it is, as chat programs
       set their users away, but no sooner than after a minute, so that it
