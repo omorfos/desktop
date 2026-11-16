@@ -328,13 +328,35 @@ fn names(surface: &WlSurface) -> (String, String) {
     })
 }
 
+/// The most windows a program has at once, shown or waiting to be: far
+/// more than a browser or an editor opens, and few enough that the frames
+/// and titlebars one costs are not without end.
+const MOST_WINDOWS: usize = 256;
+
+impl Compositor {
+    /// How many windows the program `surface` is of has, shown or waiting
+    /// to be shown.
+    fn windows_of(&self, surface: &WlSurface) -> usize {
+        let owner = surface.client().map(|client| client.id());
+        let ours = |surface: &WlSurface| surface.client().map(|client| client.id()) == owner;
+        let waiting = self.unmapped.iter().filter(|it| ours(it.wl_surface()));
+        let shown = self.windows.iter().filter(|mapped| ours(&mapped.surface));
+        waiting.count() + shown.count()
+    }
+}
+
 impl XdgShellHandler for Compositor {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        self.unmapped.push(surface);
+        // Past the most, a window is never configured, and so never shown:
+        // the protocol has no error to say so with, and a program waits for
+        // its first configure as it would for one that came late.
+        if self.windows_of(surface.wl_surface()) < MOST_WINDOWS {
+            self.unmapped.push(surface);
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {

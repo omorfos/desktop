@@ -106,3 +106,9 @@ may refuse; and nothing honest is that large to be cut.
   as all its program says it draws; and that every window costs a
   titlebar painted as wide as its frame, so many wide windows cost
   memory in proportion.
+- (Added 16 November 2026.) A program has at most 256 windows at once,
+  shown or waiting to be (`MOST_WINDOWS`), so the titlebars one costs
+  are bounded too; one more is never configured, and so never shown, as
+  the protocol has no error to say so with. Programs written for X11 all
+  come through one X server, and are not held to it; the picture of a
+  window by itself was held to its frame and a reach round it.

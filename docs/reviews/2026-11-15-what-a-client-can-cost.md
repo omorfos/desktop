@@ -241,7 +241,12 @@ What else is sized by a window was looked for, as this finding asked:
   Not looked at beyond that nothing found allocates by one.
 - **Every window costs a titlebar** painted as wide as its frame, up to
   16384 units now: many wide windows cost memory in proportion, and
-  nothing holds a program to a number of windows.
+  nothing held a program to a number of windows. **Fixed the next
+  day**: a program has at most 256 at once, shown or waiting to be, and
+  one more is never configured, so never shown; tested by
+  `windows::a_program_is_given_no_more_than_the_most_windows_at_once`,
+  which fails without it. Programs written for X11 come through one X
+  server and are not held to it.
 
 ### 3. Any program can take the keyboard with a serial it made up
 

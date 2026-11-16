@@ -614,3 +614,47 @@ fn title_of(session: &Session, app_id: &str) -> String {
     let kept = windows.find(|listed| listed.window.app_id == app_id);
     kept.map_or_else(String::new, |kept| kept.window.title.clone())
 }
+
+#[test]
+fn a_program_is_given_no_more_than_the_most_windows_at_once() {
+    // The most, `MOST_WINDOWS` in the compositor's handlers.
+    const MOST: usize = 256;
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let configured = |events: Vec<Event>| {
+        let configures = events.iter();
+        configures
+            .filter(|event| matches!(event, Event::Configure { .. }))
+            .count()
+    };
+    let mut windows = Vec::new();
+    for _ in 0..MOST {
+        let window = client.toplevel_uncommitted("app", "app");
+        window.surface.commit();
+        windows.push(window);
+    }
+    session.roundtrip(&mut client);
+    assert_eq!(configured(client.take_events()), MOST);
+
+    // One more is never configured, and so never shown.
+    let past = client.toplevel_uncommitted("app", "past");
+    past.surface.commit();
+    session.roundtrip(&mut client);
+    assert_eq!(configured(client.take_events()), 0);
+
+    // Another program is not held to this one's.
+    let mut other = session.connect();
+    let theirs = other.toplevel_uncommitted("other", "other");
+    theirs.surface.commit();
+    session.roundtrip(&mut other);
+    assert_eq!(configured(other.take_events()), 1);
+
+    // One let go of makes room for another.
+    let gone = windows.pop().unwrap();
+    gone.role.destroy();
+    gone.xdg_surface.destroy();
+    let again = client.toplevel_uncommitted("app", "again");
+    again.surface.commit();
+    session.roundtrip(&mut client);
+    assert_eq!(configured(client.take_events()), 1);
+}

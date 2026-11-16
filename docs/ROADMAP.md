@@ -1941,7 +1941,8 @@ Security:
         panic in the tests': to be read through, in the compositor and
         in what it asks of Smithay;
       - every window costs a titlebar painted as wide as its frame, and
-        nothing holds a program to a number of windows.
+        nothing held a program to a number of windows: now a program
+        has at most 256 at once, one past them never configured (ADR 91).
 - [x] Any program taking the keyboard with a serial it made up
       ([finding 3](reviews/2026-11-15-what-a-client-can-cost.md#3-any-program-can-take-the-keyboard-with-a-serial-it-made-up)),
       medium: an activation token was honoured for having a serial, not
