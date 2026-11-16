@@ -716,11 +716,15 @@ fn bind_shm() -> Vec<u8> {
 
 /// Sends `bytes` over `to`, with `fd` handed over beside them.
 fn send_with(to: &UnixStream, bytes: &[u8], fd: &std::fs::File) {
+    send_fds(to, bytes, &[fd.as_fd()]);
+}
+
+/// Sends `bytes` over `to`, with `fds` handed over beside them.
+fn send_fds(to: &UnixStream, bytes: &[u8], fds: &[std::os::fd::BorrowedFd<'_>]) {
     use rustix::net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags, sendmsg};
-    let fds = [fd.as_fd()];
-    let mut space = vec![std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
+    let mut space = vec![std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(2))];
     let mut ancillary = SendAncillaryBuffer::new(&mut space);
-    assert!(ancillary.push(SendAncillaryMessage::ScmRights(&fds)));
+    assert!(ancillary.push(SendAncillaryMessage::ScmRights(fds)));
     let sent = sendmsg(
         to,
         &[std::io::IoSlice::new(bytes)],
@@ -812,10 +816,11 @@ fn a_program_that_holds_fewer_descriptors_than_the_most_is_let_be() {
 /// process of its own: the limit on descriptors is the process's.
 const STARVED: &str = "OMORFOS_TEST_STARVED";
 
-#[test]
-fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
+/// Whether this is the test `name` run by itself, as a process of its own
+/// that may take every descriptor it has; if it is not, runs it so, and
+/// sees that it passed.
+fn starved(name: &str) -> bool {
     use rustix::process::{Resource, getrlimit, setrlimit};
-    let name = "a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is";
     if std::env::var_os(STARVED).is_none() {
         let ran = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", name, "--nocapture"])
@@ -826,11 +831,19 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
         let err = String::from_utf8_lossy(&ran.stderr);
         assert!(ran.status.success(), "{said}{err}");
         assert!(said.contains("1 passed"), "{said}");
-        return;
+        return false;
     }
     let mut limit = getrlimit(Resource::Nofile);
     limit.current = Some(256);
     setrlimit(Resource::Nofile, limit).unwrap();
+    true
+}
+
+#[test]
+fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
+    if !starved("a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is") {
+        return;
+    }
     let mut held = Held::new();
     let compositor = held.compositor();
     // Every descriptor taken but one, for the program's end.
@@ -897,5 +910,79 @@ fn a_program_that_adds_more_to_an_object_than_any_adds_is_let_go_and_said_to_be(
             named()
         )),
         "{said}"
+    );
+}
+
+/// Has `program` make a sandbox whose programs connect at `listening`, and
+/// which ends once `closing` closes: the manager bound as the object 3, the
+/// sandbox made as the object 4 and committed.
+fn make_sandbox(program: &UnixStream, listening: &UnixListener, closing: &UnixStream) {
+    let mut setup = get_registry();
+    setup.extend(bind(1, "wp_security_context_manager_v1", 1, 3));
+    (&*program).write_all(&setup).unwrap();
+    let fds = [listening.as_fd(), closing.as_fd()];
+    send_fds(program, &message(3, 1, &[4]), &fds);
+    (&*program).write_all(&message(4, 4, &[])).unwrap();
+}
+
+#[test]
+fn a_program_that_has_the_socket_of_its_sandbox_wait_stops_nothing() {
+    // The relay is run on a thread of its own, so that one that waits for
+    // good fails the test rather than holding it up.
+    let (done, finished) = std::sync::mpsc::channel();
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    std::thread::spawn(move || {
+        let mut held = Held::new();
+        let compositor = held.compositor();
+        let (program, _connection, _) = held.connect(&compositor);
+        let listening = UnixListener::bind(&path).unwrap();
+        let (_open, closing) = UnixStream::pair().unwrap();
+        make_sandbox(&program, &listening, &closing);
+        for _ in 0..3 {
+            held.step();
+        }
+        // Whether the socket waits is the program's to say as much as the
+        // relay's: it has it wait, and connects once.
+        listening.set_nonblocking(false).unwrap();
+        let _inside = UnixStream::connect(&path).unwrap();
+        let handed = held.handed(&compositor);
+        let _ = done.send(handed.hand);
+    });
+    let handed = finished.recv_timeout(Duration::from_secs(5));
+    assert!(matches!(handed, Ok(Some(Hand::Sandboxed(_)))), "{handed:?}");
+}
+
+#[test]
+fn a_sandbox_made_when_no_descriptor_is_left_to_listen_on_it_is_let_go_and_said_to_be() {
+    if !starved(
+        "a_sandbox_made_when_no_descriptor_is_left_to_listen_on_it_is_let_go_and_said_to_be",
+    ) {
+        return;
+    }
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, _connection, _) = held.connect(&compositor);
+    let directory = TempDir::new().unwrap();
+    let listening = UnixListener::bind(directory.path().join("sandbox")).unwrap();
+    let (_open, closing) = UnixStream::pair().unwrap();
+    make_sandbox(&program, &listening, &closing);
+    // Every descriptor taken but the two the relay takes the sandbox's in.
+    let mut taken = Vec::new();
+    while let Ok(file) = std::fs::File::open("/dev/null") {
+        taken.push(file);
+    }
+    drop(taken.drain(..2));
+    held.until(|held| !held.said.is_empty());
+    drop(taken);
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains("a sandbox was let go, as it could not be listened on"),
+        "{said}"
+    );
+    assert_eq!(
+        held.relay.programs(),
+        1,
+        "and the program that made it is not"
     );
 }

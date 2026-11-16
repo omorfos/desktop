@@ -879,13 +879,18 @@ mod tests {
         let mut sandboxes = link.sandboxes();
         assert_eq!(sandboxes.len(), 1, "made once");
         assert!(link.sandboxes().is_empty(), "and taken once");
-        let sandbox = sandboxes.remove(0);
+        let sandbox = sandboxes.remove(0).listen().unwrap();
         assert_eq!(
             sandbox.waiting(&std::cell::Cell::new(false)).count(),
             0,
             "listened on without waiting"
         );
         let inside = UnixStream::connect_addr(&address).unwrap();
+        let mut woken = [rustix::event::PollFd::from_borrowed_fd(
+            sandbox.woken(),
+            PollFlags::IN,
+        )];
+        rustix::event::poll(&mut woken, None).unwrap();
         assert_eq!(sandbox.waiting(&std::cell::Cell::new(false)).count(), 1);
         drop(inside);
         drop(open);

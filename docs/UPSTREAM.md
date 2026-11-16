@@ -58,6 +58,25 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -rn 'OwnedFd\|RawFd' "$S"/src/wayland/shm/ "$S"/src/wayland/dmabuf/ | grep -i 'count\|most\|limit'`
   shows whether anything counts them.
 
+### A sandbox's socket is taken from as though it could not wait
+
+- **Wrong:** `SecurityContextListenerSource` sets the socket a program
+  hands over not to wait, once, and takes from it until it would
+  (`listener_source.rs`). Whether a socket waits belongs to every
+  descriptor of it, and the program that made the sandbox holds one: it
+  sets it to wait again, connects once, and the compositor's loop waits
+  in `accept` for good. Taking from it on a thread, or asking `poll` each
+  time with the program unable to change the answer, would not rest on
+  the flag.
+- **Meanwhile:** the relay answers for every sandbox made through it and
+  listens on each from a thread of its own (finding 1 of
+  `docs/reviews/2026-11-16-what-the-first-review-did-not-look-at.md`), so
+  the compositor is never handed one. One made by a program connected
+  without the relay, as in the nested backend or once the relay has been
+  given up, still is.
+- **Check:** `grep -n 'set_nonblocking\|accept' "$S"/src/wayland/security_context/listener_source.rs`
+  shows whether it still rests on the flag.
+
 ### A second input method puts out the first
 
 - **Wrong:** asked for a second input method while there is one,

@@ -30,7 +30,7 @@ use omorfos_ipc::relay::{self, Hand, Program, Received, Started};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
 use crate::link::{Ended, Link, Way};
-use crate::sandbox::Sandbox;
+use crate::sandbox::Listened;
 
 /// What it says of itself, when asked and in its manual page.
 pub const ABOUT: About = About {
@@ -65,7 +65,7 @@ const SANDBOXES: usize = 64;
 /// How long the socket is not listened to once a program waiting at it
 /// could not be taken, as when no descriptor is left: it stays ready, and
 /// listened to it would be woken for at once, again and again.
-const AGAIN: Duration = Duration::from_millis(100);
+pub(crate) const AGAIN: Duration = Duration::from_millis(100);
 
 /// The relay, and every program's connection through it.
 #[derive(Debug)]
@@ -75,7 +75,7 @@ pub struct Relay {
     /// The socket programs connect to, once the holder has handed it.
     socket: Option<UnixListener>,
     /// The sandboxes programs have made, whose sockets the relay listens on.
-    sandboxes: Vec<Sandbox>,
+    sandboxes: Vec<Listened>,
     /// The connection to the compositor, while there is one.
     compositor: Option<OwnedFd>,
     links: Vec<Link>,
@@ -267,7 +267,16 @@ impl Relay {
         let made = self.links.iter_mut().flat_map(Link::sandboxes);
         for sandbox in made.collect::<Vec<_>>() {
             if self.sandboxes.len() < SANDBOXES {
-                self.sandboxes.push(sandbox);
+                match sandbox.listen() {
+                    Ok(listened) => self.sandboxes.push(listened),
+                    Err(error) => {
+                        let _ = writeln!(
+                            log,
+                            "omorfos-relay: a sandbox was let go, as it could not be listened on: \
+                             {error}"
+                        );
+                    }
+                }
             } else {
                 let _ = writeln!(
                     log,
@@ -313,8 +322,7 @@ impl Relay {
             if self.compositor.is_some() {
                 // Not listened to while the socket is not: what keeps a
                 // program from being taken is the relay's, not the socket's.
-                let listening = sandbox.listening();
-                polled.push(PollFd::from_borrowed_fd(listening, socket));
+                polled.push(PollFd::from_borrowed_fd(sandbox.woken(), socket));
             }
         }
         for link in &self.links {

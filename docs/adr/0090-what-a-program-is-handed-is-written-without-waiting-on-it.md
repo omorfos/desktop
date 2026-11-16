@@ -113,6 +113,12 @@ over through it, so it is right, and tested, in one place.
   nothing is being handed over (`Compositor::handing_over`).
 - `splice` is Linux's, as the rest of omorfos is.
 - ADR 82's sentence on this is put right there.
+- (Amended 16 November 2026.) The same holds of a socket a program
+  hands over to be listened on, as the relay is a sandbox's: whether
+  taking a program from it waits is the program's to say as much as
+  ours, and one that has it wait would have the relay wait for good.
+  The relay listens on each from a thread of its own, which waits in
+  its place and hands on what connects (`omorfos_relay::sandbox`).
 - Reading what another program copied is not part of this: the launcher
   and the keeper each read a paste in their own way, and the keeper's
   holds a thread for each kind until its program closes the pipe. That

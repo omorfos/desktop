@@ -2019,9 +2019,15 @@ Security:
       ([finding 1](reviews/2026-11-16-the-whole-tree.md#1-any-program-can-take-the-keyboard-from-the-window-being-typed-in-with-a-pop-up)):
       a menu grabs only with a press that went to its program, as
       activation is asked for; any other is closed at once.
-- [ ] High: a program that makes a sandbox stops the relay, and every
+- [x] High: a program that makes a sandbox stops the relay, and every
       program, for good
-      ([finding 1 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#1-a-program-that-makes-a-sandbox-can-stop-the-relay-for-good)).
+      ([finding 1 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#1-a-program-that-makes-a-sandbox-can-stop-the-relay-for-good)):
+      each sandbox is listened on by a thread of its own. Smithay's
+      listener, which a compositor without the relay still uses, is in
+      `UPSTREAM.md`.
+- [ ] A program inside a sandbox that makes another is ended, as the
+      compositor would: the relay answers for every link, and the
+      compositor cannot refuse a bind it does not see in time.
 - [ ] High: every other program stops for half a second whenever the
       compositor sends one away
       ([finding 2](reviews/2026-11-16-the-whole-tree.md#2-whenever-the-compositor-sends-one-program-away-every-other-stops-for-half-a-second)).

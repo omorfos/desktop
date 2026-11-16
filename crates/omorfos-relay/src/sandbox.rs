@@ -15,18 +15,38 @@
 //! What a sandbox is said to be, its engine, its program and its instance,
 //! is not kept: the compositor takes nothing from it, and a program inside
 //! is held to the same whatever it is.
+//!
+//! Each sandbox's socket is listened on by a thread of its own, which hands
+//! the relay what connects. Whether taking a program from a socket waits is
+//! the socket's to say, and the socket is the program's that made it as
+//! much as the relay's: told not to wait, it can be told again to, and a
+//! connection the relay was woken for can be taken by that program first.
+//! Either would have the relay wait in `accept` for good, and every program
+//! with it, as a pipe written to would (ADR 90). The thread waits instead,
+//! and the relay is woken only once there is a program to take.
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::rc::Rc;
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::thread;
 
-use rustix::io::{Errno, ioctl_fionbio};
-use rustix::net::{SocketFlags, accept_with};
+use rustix::event::{PollFd, PollFlags, poll};
+use rustix::io::{Errno, read, retry_on_intr, write};
+use rustix::net::{
+    AddressFamily, Shutdown, SocketFlags, SocketType, accept_with, shutdown, socketpair,
+};
 use wayland_backend::protocol::MessageDesc;
 
+use crate::AGAIN;
 use crate::objects::Read;
+
+/// How many programs that came in through one sandbox wait for the relay
+/// to take them; past that, they wait to be taken from the socket.
+const ROOM: usize = 4;
 
 /// What makes a sandbox, and the sandbox being made.
 const MANAGER: &str = "wp_security_context_manager_v1";
@@ -41,10 +61,84 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    /// The socket programs inside it connect to.
+    /// Listens on the sandbox, on a thread of its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no descriptor or thread is left for it.
+    pub fn listen(self) -> io::Result<Listened> {
+        let (sent, came) = mpsc::sync_channel(ROOM);
+        let theirs = self.listening.try_clone();
+        let flags = SocketFlags::CLOEXEC | SocketFlags::NONBLOCK;
+        let pair = socketpair(AddressFamily::UNIX, SocketType::STREAM, flags, None);
+        let woken = theirs.and_then(|theirs| {
+            pair.map_err(io::Error::from).and_then(|(wake, woken)| {
+                let thread = thread::Builder::new().name("omorfos-relay: sandbox".to_owned());
+                let started = thread.spawn(move || listen(&theirs, &woken, &sent));
+                started.map(|_| wake)
+            })
+        });
+        woken.map(|wake| Listened {
+            listening: self.listening,
+            closing: self.closing,
+            wake,
+            came,
+        })
+    }
+}
+
+/// What came in at a sandbox's socket: a program, or why one could not
+/// be taken.
+#[derive(Debug)]
+enum Came {
+    Program(UnixStream),
+    Failed(Errno),
+}
+
+/// Takes each program that connects at `listening` and hands it on through
+/// `came`, waking the relay at `woken`, until the relay hangs up there.
+fn listen(listening: &OwnedFd, woken: &OwnedFd, came: &SyncSender<Came>) {
+    // The relay never writes to its end, so it is read from only once it
+    // has hung up.
+    while !matches!(read(woken, &mut [0]), Ok(0)) {
+        let mut polled = [
+            PollFd::new(listening, PollFlags::IN),
+            PollFd::new(woken, PollFlags::IN),
+        ];
+        let _ = retry_on_intr(|| poll(&mut polled, None));
+        // Taken without waiting, if the socket says so; if it does not, and
+        // the program took the one there first, until the next connects or
+        // the relay shuts the socket.
+        let taken = accept_with(listening, SocketFlags::CLOEXEC | SocketFlags::NONBLOCK);
+        let failed = taken.as_ref().err().copied();
+        // One that could not be taken, as when no descriptor is left, is
+        // still there: tried again at once, it would be again and again.
+        let _ = failed.map(|_| thread::sleep(AGAIN));
+        let came = came.send(taken.map_or_else(Came::Failed, |program| {
+            Came::Program(UnixStream::from(program))
+        }));
+        // The relay is woken with a byte; one that has bytes left to read
+        // will be woken without another.
+        let _ = came.map(|()| write(woken, &[0]));
+    }
+}
+
+/// A sandbox listened on, by a thread that stops when it is let go of.
+#[derive(Debug)]
+pub struct Listened {
+    listening: Rc<OwnedFd>,
+    closing: Rc<OwnedFd>,
+    /// Readable once a program has come in; hung up, it stops the thread.
+    wake: OwnedFd,
+    came: Receiver<Came>,
+}
+
+impl Listened {
+    /// The descriptor that is readable once a program has come in through
+    /// the sandbox.
     #[must_use]
-    pub fn listening(&self) -> BorrowedFd<'_> {
-        self.listening.as_fd()
+    pub fn woken(&self) -> BorrowedFd<'_> {
+        self.wake.as_fd()
     }
 
     /// The descriptor that is readable, or hung up, once the sandbox has
@@ -54,18 +148,30 @@ impl Sandbox {
         self.closing.as_fd()
     }
 
-    /// Each program waiting to connect inside it, without waiting for one;
-    /// `failed` is set if one waiting could not be taken, as when no
-    /// descriptor is left.
+    /// Each program that has come in through the sandbox, without waiting
+    /// for one; `failed` is set if one waiting could not be taken, as when
+    /// no descriptor is left.
     pub fn waiting<'a>(&'a self, failed: &'a Cell<bool>) -> impl Iterator<Item = UnixStream> + 'a {
-        let flags = SocketFlags::CLOEXEC | SocketFlags::NONBLOCK;
-        std::iter::from_fn(move || match accept_with(&*self.listening, flags) {
-            Ok(program) => Some(UnixStream::from(program)),
-            Err(error) => {
+        // What woke the relay is read first, so that what comes after it
+        // wakes it again.
+        while matches!(read(&self.wake, &mut [0; 64]), Ok(1..)) {}
+        self.came.try_iter().filter_map(|came| match came {
+            Came::Program(program) => Some(program),
+            Came::Failed(error) => {
                 failed.set(error != Errno::AGAIN);
                 None
             }
         })
+    }
+}
+
+impl Drop for Listened {
+    fn drop(&mut self) {
+        // The thread is told by its end hung up, and woken by the socket
+        // shut if it waits to take a program; it is not waited for. Shut,
+        // the socket takes no one more, which an ended sandbox does not.
+        let _ = shutdown(&self.wake, Shutdown::Both);
+        let _ = shutdown(&*self.listening, Shutdown::Both);
     }
 }
 
@@ -106,11 +212,6 @@ impl Sandboxes {
             (CONTEXT, "commit") => {
                 // Made once; what is asked of it after that is passed over.
                 let made = self.making.remove(&object);
-                // Listened on without waiting, as the compositor would. One
-                // that will not be is found out by a program never let in.
-                if let Some(made) = &made {
-                    let _ = ioctl_fionbio(&*made.listening, true);
-                }
                 self.made.extend(made);
                 true
             }
