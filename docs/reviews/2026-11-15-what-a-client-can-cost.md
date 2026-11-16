@@ -392,7 +392,16 @@ write it in `docs/UPSTREAM.md`.
 
 ### 6. Each kind a program offers costs the X server an atom, and the compositor a wait
 
-**Medium. Shown by reading.**
+**Medium. Shown by reading; fixed the same day.**
+
+`offer_to_x11` now hands on at most 32 kinds, the first the program gave,
+each no longer than 255 bytes and of visible ASCII alone (`for_x11`,
+tested by
+`programs_written_for_x11_are_offered_a_few_kinds_of_what_was_copied_each_as_a_kind_is`).
+Programs written for Wayland are still offered every kind. The wait is
+written in `docs/UPSTREAM.md`, to be asked of Smithay.
+
+As it was first written:
 
 What a program written for Wayland copies is offered to programs written
 for X11 in every kind the program named: `offer_to_x11` in

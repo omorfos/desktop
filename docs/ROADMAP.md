@@ -1980,11 +1980,12 @@ Security:
       medium: the relay now ends a program that adds more than 4096 to
       one object. The same is to be asked of Smithay, for a compositor
       with no relay (`docs/UPSTREAM.md`).
-- [ ] Each kind a program offers costing the X server an atom and the
+- [x] Each kind a program offers costing the X server an atom and the
       compositor a wait
       ([finding 6](reviews/2026-11-15-what-a-client-can-cost.md#6-each-kind-a-program-offers-costs-the-x-server-an-atom-and-the-compositor-a-wait)),
-      medium: at most a few dozen kinds, each of a kind's length, are to
-      be handed on to programs written for X11.
+      medium: at most 32 kinds, each written as a kind is, are now handed
+      on to programs written for X11; the wait itself is to be asked of
+      Smithay (`docs/UPSTREAM.md`).
 - [ ] What was refused remembered without end, by a name the program chose
       ([finding 7](reviews/2026-11-15-what-a-client-can-cost.md#7-what-was-refused-is-remembered-without-end-by-a-name-the-program-chose)),
       low to medium.

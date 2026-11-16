@@ -429,6 +429,29 @@ struct Holding {
 /// by which what it keeps is known; its `MARK`.
 const KEPT: &str = "application/x-omorfos-kept";
 
+/// The most kinds of what was copied offered to programs written for X11:
+/// more than any program offers that has something to give, as text,
+/// pictures and files. Each costs the X server a name it keeps for as long
+/// as it runs, and the compositor a wait on it whenever a program asks
+/// which kinds there are.
+const MOST_KINDS: usize = 32;
+
+/// The longest a kind is: as long as a media type may be.
+const LONGEST_KIND: usize = 255;
+
+/// Of the `kinds` a program offers what it copied in, those offered to
+/// programs written for X11: the first [`MOST_KINDS`] that are no longer
+/// than a kind is and are written as one is, in the order given, which is
+/// the program's own from the best.
+fn for_x11(kinds: Vec<String>) -> Vec<String> {
+    let written = |kind: &String| {
+        kind.len() <= LONGEST_KIND
+            && !kind.is_empty()
+            && kind.bytes().all(|byte| byte.is_ascii_graphic())
+    };
+    kinds.into_iter().filter(written).take(MOST_KINDS).collect()
+}
+
 impl X11 {
     /// Whether a program written for X11 holds the clipboard, or the
     /// selection.
@@ -788,6 +811,7 @@ impl Compositor {
             return;
         }
         *holding = Holding::default();
+        let kinds = kinds.map(for_x11);
         let manager = self.x11.wm.as_mut();
         // The only failure is the X server having gone.
         let _ = manager.map(|manager| {
@@ -1087,6 +1111,33 @@ mod tests {
     use smithay::reexports::wayland_server::Display;
 
     use super::*;
+
+    #[test]
+    fn programs_written_for_x11_are_offered_a_few_kinds_of_what_was_copied_each_as_a_kind_is() {
+        let named = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect();
+        // As a program offers them, the best first.
+        let ordinary: Vec<String> = named(&["text/plain;charset=utf-8", "UTF8_STRING", KEPT]);
+        assert_eq!(for_x11(ordinary.clone()), ordinary);
+        // Ten thousand of a program's own naming: the first few.
+        let many: Vec<String> = (0..10_000).map(|at| format!("kind/{at}")).collect();
+        assert_eq!(for_x11(many.clone()), many[..MOST_KINDS]);
+        // Ones too long, empty, or not written as a kind is, are left out.
+        let long = "a".repeat(LONGEST_KIND + 1);
+        let odd = named(&[
+            "text/plain",
+            &long,
+            "",
+            "with space",
+            "ünïcode",
+            "image/png",
+        ]);
+        assert_eq!(for_x11(odd), named(&["text/plain", "image/png"]));
+        assert_eq!(
+            for_x11(vec!["a".repeat(LONGEST_KIND)]).len(),
+            1,
+            "as long as may be"
+        );
+    }
 
     // No program but the X server is shown it, so it is not among what a
     // program is offered, which the integration tests check.

@@ -94,6 +94,21 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   `cargo test -p omorfos --test integration x11::what_any_other_program_copies_or_selects_can_be_pasted_by_one_written_for_x11`.
   If it passes as often as it does with them, Smithay flushes for itself.
 
+### Each kind offered to programs written for X11 is a wait on the X server
+
+- **Wrong:** when a program written for X11 asks which kinds what was
+  copied comes in (`TARGETS`), `X11Wm` asks the X server for an atom for
+  each kind, one at a time, waiting for each answer
+  (`intern_atom(false, …).reply_unchecked()` in `src/xwayland/xwm/mod.rs`).
+  The X server can be waiting on the compositor meanwhile, as above.
+- **Meanwhile:** the compositor hands on at most 32 kinds, each written as
+  a kind is (`for_x11` in `crates/omorfos/src/x11.rs`, finding 6 of
+  `docs/reviews/2026-11-15-what-a-client-can-cost.md`), so the waits are
+  few.
+- **Check:** `grep -n 'intern_atom' "$S"/src/xwayland/xwm/mod.rs` shows
+  whether they are still asked one by one and waited on; asked all at
+  once and the answers read after, the most could go.
+
 ### The primary screen can only be asked by waiting
 
 - **Wrong:** the X server's primary screen is asked by
