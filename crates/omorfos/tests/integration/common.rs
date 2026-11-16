@@ -2033,14 +2033,25 @@ impl Client {
             .set_selection(Some(&source), self.state.serial);
     }
 
+    /// Whether whatever asked for what was copied while this client was
+    /// holding on has closed its end of every pipe it gave.
+    pub(crate) fn asked_has_gone(&self) -> bool {
+        use rustix::event::{PollFd, PollFlags, poll};
+        self.state.held.iter().all(|fd| {
+            let mut waiting = [PollFd::new(fd, PollFlags::OUT)];
+            let ready = poll(&mut waiting, None);
+            ready.is_ok() && waiting[0].revents().contains(PollFlags::ERR)
+        })
+    }
+
     /// Hands over what was copied to whatever asked for it while this
     /// client was holding on, and holds on no longer.
     pub(crate) fn hand_over(&mut self) {
         self.state.holding = false;
         for fd in self.state.held.drain(..) {
-            std::fs::File::from(fd)
-                .write_all(self.state.copied.as_bytes())
-                .unwrap();
+            // What asked may have given up and closed its end, as the
+            // keeper does once its time is up.
+            let _ = std::fs::File::from(fd).write_all(self.state.copied.as_bytes());
         }
     }
 

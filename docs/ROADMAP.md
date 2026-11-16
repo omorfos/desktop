@@ -1932,12 +1932,9 @@ Security:
       said to be larger and takes a window to be no larger (ADR 91).
 - [ ] What fixing the first two showed and left open, each small and
       none a way to stop or end the session as far as was read:
-      - the keeper of the clipboard reads what was copied on a thread
-        for each kind it is offered in, uncounted, each held until the
-        program that copied closes its pipe, and started in a way that
-        panics where a thread cannot be; and reading a paste is written
-        twice, in the launcher and in the keeper. One reader, beside
-        `Handing` in `omorfos-ipc`, bounded as it is
+      - reading a paste is written twice, in the launcher and in the
+        keeper, each bounded its own way: one reader, beside `Handing`
+        in `omorfos-ipc`, for both
         ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it));
       - where a surface is, which its program says as it says how large,
         is added to in whole numbers that wrap in a release build and

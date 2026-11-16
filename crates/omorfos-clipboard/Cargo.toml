@@ -22,6 +22,10 @@ omorfos-shell = { path = "../omorfos-shell" }
 # Smithay's nested backend.
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# Already in the tree through Smithay. Reads what was copied, in each of its
+# forms at once, without a thread for each: waits on them all (`event`),
+# its own ends of them set not to wait (`fs`).
+rustix = { version = "1.1.5", default-features = false, features = ["event", "fs", "std"] }
 
 [lints]
 workspace = true

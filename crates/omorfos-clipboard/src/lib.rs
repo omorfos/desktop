@@ -20,7 +20,7 @@
 
 use std::error::Error;
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{PipeReader, Read};
 use std::os::fd::AsFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,6 +31,8 @@ use std::time::{Duration, Instant};
 
 use omorfos_ipc::handing::Handing;
 use omorfos_ipc::help::About;
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::fs::{OFlags, fcntl_setfl};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat};
 use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
@@ -280,67 +282,116 @@ fn forget(
     }
 }
 
+/// The most forms of one copy that are read: more than any program offers
+/// that has something to give, as text, pictures and files. Each is a pipe
+/// read until the program has handed it all over.
+const MOST_KINDS: usize = 32;
+
 /// Reads what was copied, in each of `kinds` there is data in, all at
-/// once: the forms that come within `limits`, unless together they are
-/// more than it allows.
+/// once and on this thread, for no longer than `limits` says: the forms
+/// that come whole in time and within `limits`, unless together they are
+/// more than it allows. What has not come by then is let go of, its pipe
+/// closed, and nothing is left waiting on the program that copied.
 fn read(
     connection: &Connection,
     offer: &ExtDataControlOfferV1,
     kinds: &[String],
     limits: Limits,
 ) -> Option<Kept> {
-    let most = u64::try_from(limits.most).unwrap_or(u64::MAX);
     // A program written for X11 offers some things that are not data but
     // what it can be asked to do, and some forms more than once. The rest
     // are kept in the order they were offered, which says which is best.
     let new = |(at, kind): &(usize, &String)| !kinds[..*at].contains(kind);
     // Nor is the mark of a keeper data: it is offered again as this one's.
     let data = |(_, kind): &(usize, &String)| !ASKED.contains(&kind.as_str()) && *kind != MARK;
-    let kinds: Vec<&String> = kinds
-        .iter()
-        .enumerate()
-        .filter(new)
-        .filter(data)
-        .map(|(_, kind)| kind)
+    let kinds = kinds.iter().enumerate().filter(new).filter(data);
+    let mut asked: Vec<Asked<'_>> = kinds
+        .take(MOST_KINDS)
+        .map(|(_, kind)| Asked::new(offer, kind))
         .collect();
-    let asked: Vec<_> = kinds.iter().map(|kind| ask(offer, kind, most)).collect();
     // A failure to send is seen by the next wait for events.
     let _ = connection.flush();
     let until = Instant::now() + limits.wait;
-    let got = asked.iter().map(|answer| {
+    loop {
+        let mut waiting: Vec<PollFd<'_>> = asked
+            .iter()
+            .filter_map(|asked| asked.from.as_ref())
+            .map(|from| PollFd::new(from, PollFlags::IN))
+            .collect();
         let left = until.saturating_duration_since(Instant::now());
-        answer.recv_timeout(left).ok().flatten()
-    });
-    // What does not come in time, or cannot be read, is gone without.
-    let kept = kinds
-        .into_iter()
-        .zip(got)
-        .filter_map(|(kind, data)| data.map(|data| (kind.clone(), Arc::from(data))));
-    let kept: Kept = kept.collect();
+        if waiting.is_empty() || left.is_zero() {
+            break;
+        }
+        // Interrupted, it looks again at what it has.
+        let left = Timespec::try_from(left).ok();
+        let _ = poll(&mut waiting, left.as_ref());
+        drop(waiting);
+        for asked in &mut asked {
+            asked.take(limits.most);
+        }
+    }
+    // What did not come whole in time, or was too large, is gone without.
+    let kept = asked.into_iter().filter(|asked| asked.whole);
+    let kept: Kept = kept
+        .map(|asked| (asked.kind.clone(), Arc::from(asked.got)))
+        .collect();
     let small = kept.iter().map(|(_, data)| data.len()).sum::<usize>() <= limits.most;
     small.then_some(kept)
 }
 
-/// Asks for what was copied in the form `kind`, which arrives on what is
-/// returned: all of it, or nothing if it was more than `most` bytes or
-/// could not be read. A program that never hands it over holds a thread
-/// until it closes.
-fn ask(offer: &ExtDataControlOfferV1, kind: &str, most: u64) -> mpsc::Receiver<Option<Vec<u8>>> {
-    let (sender, receiver) = mpsc::channel();
-    let pipe = std::io::pipe();
-    let reader = pipe.map(|(reader, writer)| {
-        offer.receive(kind.to_owned(), writer.as_fd());
-        reader
-    });
-    let _ = reader.map(|reader| {
-        thread::spawn(move || {
-            let mut got = Vec::new();
-            let read = reader.take(most.saturating_add(1)).read_to_end(&mut got);
-            let fits = |length: &usize| u64::try_from(*length).is_ok_and(|length| length <= most);
-            let _ = sender.send(read.ok().filter(fits).map(|_| got));
-        })
-    });
-    receiver
+/// One form of what was copied, being read.
+struct Asked<'a> {
+    kind: &'a String,
+    /// Our end of the pipe the program hands it over through, while it is
+    /// being read.
+    from: Option<PipeReader>,
+    got: Vec<u8>,
+    /// Whether all of it has come.
+    whole: bool,
+}
+
+impl<'a> Asked<'a> {
+    /// Asks for what was copied in the form `kind`. Nothing is read if no
+    /// pipe can be made for it.
+    fn new(offer: &ExtDataControlOfferV1, kind: &'a String) -> Self {
+        let pipe = std::io::pipe().ok();
+        let from = pipe.map(|(reader, writer)| {
+            offer.receive(kind.clone(), writer.as_fd());
+            reader
+        });
+        // Ours, so that only this says whether reading it waits.
+        let from = from.filter(|from| fcntl_setfl(from, OFlags::NONBLOCK).is_ok());
+        Self {
+            kind,
+            from,
+            got: Vec::new(),
+            whole: false,
+        }
+    }
+
+    /// Takes what has come, without waiting: all of it once the program
+    /// has closed its end, and nothing more past `most` bytes.
+    fn take(&mut self, most: usize) {
+        let mut chunk = [0; 16 << 10];
+        while let Some(from) = self.from.as_mut() {
+            match from.read(&mut chunk) {
+                Ok(0) => {
+                    self.whole = true;
+                    self.from = None;
+                }
+                Ok(read) => {
+                    self.got.extend_from_slice(&chunk[..read]);
+                    // Too large is never kept, so no more is read of it.
+                    if self.got.len() > most {
+                        self.from = None;
+                    }
+                }
+                // Nothing more for now, or nothing more at all: the time
+                // decides.
+                Err(_) => break,
+            }
+        }
+    }
 }
 
 /// What the compositor has said.

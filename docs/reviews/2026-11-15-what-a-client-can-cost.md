@@ -112,11 +112,13 @@ over through `Handing` too.
 
 **Still open**, found while this was fixed, and on the roadmap:
 
-- `ask` in `crates/omorfos-clipboard/src/lib.rs` reads what was copied
+- `ask` in `crates/omorfos-clipboard/src/lib.rs` read what was copied
   on a thread for each kind it is offered in, each held until the
-  program that copied closes its pipe, as its comment says, and
-  uncounted; and it starts them with `thread::spawn`, which panics
-  where a thread cannot be started.
+  program that copied closes its pipe, as its comment said, and
+  uncounted; and it started them with `thread::spawn`, which panics
+  where a thread cannot be started. **Fixed the next day**: the keeper
+  reads every form, at most 32, on its own thread with one wait, and
+  closes what has not come when its time is up.
 - Reading a paste is written twice, in the launcher (`Pasting`) and in
   the keeper (`ask`), each with its own bounds. One reader beside
   `Handing` would hold both to the same.

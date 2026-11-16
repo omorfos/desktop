@@ -224,6 +224,9 @@ fn what_is_too_large_or_too_slow_is_left_with_the_program_that_copied() {
         editor.state.asked == 1
     });
     std::thread::sleep(Duration::from_millis(100));
+    // The keeper has let go of it: nothing of the keeper's is left waiting
+    // on a program that never hands it over.
+    assert!(editor.asked_has_gone(), "the keeper's end is closed");
     // Handed over too late, it is not kept; what is copied next is.
     editor.hand_over();
     assert!(!editor.state.replaced);

@@ -1992,6 +1992,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-ipc",
  "omorfos-shell",
+ "rustix 1.1.6",
  "wayland-client",
  "wayland-protocols",
 ]
