@@ -514,7 +514,14 @@ and `omorfos-session` are what it is for.
   on the user's bus gives a path (`image-path`, or `app_icon`), which
   `omorfos-notifications` reads and decodes. To be shown: whether an SVG
   so named can have the decoder read other files it refers to, and how
-  large a picture is decoded.
+  large a picture is decoded. **Shown by reading, and fixed the same
+  day**: it could, and worse than this says. The SVG library's default
+  reads any file a drawing's `<image>` names, whole and without a most,
+  so a drawing naming `/dev/zero` had the reader read until memory ran
+  out. `omorfos-icons` now reads no file a drawing names, and draws
+  what is written in it alone (`svg` in `crates/omorfos-icons/src/lib.rs`,
+  tested); a file it reads itself is held to 2 MiB, and a picture to
+  1024 pixels a side, as before.
 
 ## What was looked at and found sound
 

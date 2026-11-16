@@ -2000,12 +2000,13 @@ Security:
       (finding 8): the lock screen and `omorfos-session` are what it is
       for, and a sandboxed program learns from it when nobody is looking.
       A decision for the maintainer.
-- [ ] Smaller things the review found
-      ([finding 9](reviews/2026-11-15-what-a-client-can-cost.md#9-smaller-things)), low: the icons of applications
+- [x] Smaller things the review found
+      ([finding 9](reviews/2026-11-15-what-a-client-can-cost.md#9-smaller-things)), low, all fixed: the icons of applications
       looked up never forgotten; titles and identifiers as long as they
       came; a peer of the IPC socket read from for as long as it writes;
       and what a notification's picture, named by its path, has the
-      decoder read, which is to be shown.
+      decoder read, which was any file a drawing names, `/dev/zero`
+      among them, and is now none.
 - [ ] What the review did not look at, each a review of its own: the relay
       beyond what it keeps, the portal and the services on D-Bus, buffers
       of the graphics card, the hardware backend and what a graphics

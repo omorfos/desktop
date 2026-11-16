@@ -675,7 +675,18 @@ fn png(bytes: &[u8]) -> Option<Image> {
 /// Draws an SVG, `pixels` pixels across.
 fn svg(bytes: &[u8], pixels: u32) -> Option<Image> {
     let side = pixels.clamp(1, LARGEST_SIDE);
-    let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).ok();
+    // A drawing may name a file to draw in it, which would be read whole,
+    // whatever it is, as `/dev/zero` is never done being read: an icon is
+    // drawn from what is written in it alone, pictures written in it
+    // included.
+    let options = usvg::Options {
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_string: Box::new(|_, _| None),
+            ..usvg::ImageHrefResolver::default()
+        },
+        ..usvg::Options::default()
+    };
+    let tree = usvg::Tree::from_data(bytes, &options).ok();
     let canvas = tiny_skia::Pixmap::new(side, side);
     tree.zip(canvas).and_then(|(tree, mut canvas)| {
         let drawing = tree.size();
@@ -952,6 +963,53 @@ mod tests {
         assert_eq!(pixel(&large, 2, 20), 0xffff_0000);
         assert_eq!(pixel(&large, 20, 4), 0);
         assert_eq!(pixel(&large, 20, 35), 0);
+    }
+
+    #[test]
+    fn a_drawn_icon_reads_no_file_it_names_and_draws_what_is_written_in_it() {
+        let root = tempfile::TempDir::new().unwrap();
+        // A drawing of red beside it, named by its whole path, and one of
+        // blue written in it.
+        let square = |colour: &str| {
+            format!(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>\
+                 <rect width='10' height='10' fill='{colour}'/></svg>"
+            )
+        };
+        let red = root.path().join("red.svg");
+        fs::write(&red, square("#ff0000")).unwrap();
+        let written = base64(square("#0000ff").as_bytes());
+        let drawing = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='10'>\
+             <image href='{}' x='0' y='0' width='10' height='10'/>\
+             <image href='data:image/svg+xml;base64,{written}' x='10' y='0' \
+             width='10' height='10'/></svg>",
+            red.display()
+        );
+        let drawn = svg(drawing.as_bytes(), 20).unwrap();
+        assert_eq!(pixel(&drawn, 5, 10), 0, "the file named is not read");
+        assert_eq!(
+            pixel(&drawn, 15, 10),
+            0xff00_00ff,
+            "what is written is drawn"
+        );
+    }
+
+    /// `bytes` in base64, as a picture is written in a drawing; with spaces
+    /// after them as needed for whole groups of three, which a drawing
+    /// passes over.
+    fn base64(bytes: &[u8]) -> String {
+        const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut padded = bytes.to_vec();
+        padded.resize(bytes.len().next_multiple_of(3), b' ');
+        let mut written = String::new();
+        for three in padded.chunks(3) {
+            let word = u32::from(three[0]) << 16 | u32::from(three[1]) << 8 | u32::from(three[2]);
+            for at in 0..4 {
+                written.push(char::from(LETTERS[(word >> (18 - 6 * at) & 63) as usize]));
+            }
+        }
+        written
     }
 
     #[test]
