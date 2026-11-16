@@ -11,6 +11,14 @@
 //! machinery in between, so that every answer there is can be seen and
 //! tested. They come from other programs: one that does not have the shape
 //! it should is answered with an error and otherwise passed over.
+//!
+//! What puts up a question to the user, and what takes one back or ends
+//! a share, is answered for `xdg-desktop-portal` alone, which names the
+//! application that asks and which it may hold to what it has asked
+//! (ADR 37). Any other program on the bus is refused: it could name any
+//! application it liked, or none, and take back another's question. The
+//! settings, the screen saver and what keeps the session awake are open
+//! to all, as they give nothing the screen saver does not.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -55,6 +63,13 @@ pub const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
 /// The interface by which the portal says it no longer wants what it
 /// asked for, on the object it named for that request.
 pub const REQUEST: &str = "org.freedesktop.impl.portal.Request";
+
+/// The name `xdg-desktop-portal` has on the bus, whose owner alone may ask
+/// the user anything through this.
+pub(crate) const PORTAL: &str = "org.freedesktop.portal.Desktop";
+
+/// The longest an application's identifier is, as D-Bus has a name.
+const LONGEST_APP: usize = 255;
 
 /// What can be read of each interface: which version of it is spoken,
 /// and, of sharing the screen, that screens and windows can be shared,
@@ -277,6 +292,12 @@ impl Portal {
             let watched = (Some(bus), "/org/freedesktop/DBus", Some(bus), "AddMatch");
             let (to, at, on, asked) = watched;
             let _ = connection.call_method(to, at, on, asked, &(left,));
+            // Who the portal is, asked once that it changes is listened
+            // for, so that no change is missed; none, while it is not there.
+            let owner = connection.call_method(to, at, on, "GetNameOwner", &(PORTAL,));
+            let owner = owner
+                .ok()
+                .and_then(|reply| reply.body().deserialize::<String>().ok());
             let _ = connection.request_name_with_flags(SCREENSAVER, flags);
             let named = connection.request_name_with_flags(NAME, flags);
             let taken = |error: zbus::Error| {
@@ -293,13 +314,19 @@ impl Portal {
                     let waiting = Waiting { sender, ask };
                     let mut sessions = Sessions::new();
                     let mut holds = Holds::new(keep);
+                    let mut owner = owner;
                     let messages = messages.map_while(Result::ok);
                     for message in messages.take_while(|message| !lost(message)) {
                         if let Some(left) = left_the_bus(&message) {
                             holds.gone(&left);
                         }
+                        // A portal started anew has made no sessions yet.
+                        if let Some(now) = portal_changed(&message) {
+                            owner = Some(now).filter(|now| !now.is_empty());
+                            sessions.clear();
+                        }
                         let held = (&waiting, &mut sessions, &mut holds);
-                        answer(&answering, &message, &look, held);
+                        answer(&answering, &message, (&look, owner.as_deref()), held);
                     }
                     // If nobody is waiting any more, there is nobody to tell.
                     let _ = rustix::io::write(&going, &[1]);
@@ -523,11 +550,56 @@ fn left_the_bus(message: &Message) -> Option<String> {
     (name.starts_with(':') && now.is_empty()).then_some(name)
 }
 
-/// Answers one message.
+/// Who the portal is now, by its own name on the bus, or nothing written if
+/// it is not there, if a message says that has changed.
+fn portal_changed(message: &Message) -> Option<String> {
+    let header = message.header();
+    let member = header.member().map(ToString::to_string);
+    let changed =
+        header.message_type() == Type::Signal && member.as_deref() == Some("NameOwnerChanged");
+    let said = changed.then(|| {
+        message
+            .body()
+            .deserialize::<(String, String, String)>()
+            .ok()
+    });
+    let (name, _, now) = said.flatten()?;
+    (name == PORTAL).then_some(now)
+}
+
+/// What an application is called in what it is asked: its identifier, if
+/// that is written as one is, or nothing, as for a program not in a
+/// sandbox, which has none.
+pub(crate) fn identified(app: String) -> String {
+    let allowed = |byte: u8| byte.is_ascii_alphanumeric() || b"._-".contains(&byte);
+    let written = app.len() <= LONGEST_APP && app.bytes().all(allowed);
+    if written { app } else { String::new() }
+}
+
+/// Refuses a message to `interface` that asks the user, or takes a
+/// question back, from any program but the portal, by its own name on the
+/// bus `portal`. Nothing, if it is not refused.
+fn refused(
+    connection: &Connection,
+    message: &Message,
+    interface: &str,
+    portal: Option<&str>,
+) -> Option<zbus::Result<()>> {
+    let header = message.header();
+    let asking = [SCREENSHOT, SCREENCAST, SESSION, REQUEST].contains(&interface);
+    let sender = header.sender().map(zbus::names::UniqueName::as_str);
+    (asking && sender != portal).then(|| {
+        let name = "org.freedesktop.DBus.Error.AccessDenied";
+        connection.reply_error(&header, name, &"only the portal may ask this")
+    })
+}
+
+/// Answers one message, with how the desktop looks, `look`, and who the
+/// portal is, `portal`.
 fn answer(
     connection: &Connection,
     message: &Message,
-    look: &Look,
+    (look, portal): (&Look, Option<&str>),
     (waiting, sessions, holds): (&Waiting, &mut Sessions, &mut Holds),
 ) {
     let header = message.header();
@@ -539,6 +611,7 @@ fn answer(
     let member = header.member().map(ToString::to_string);
     let called = (interface.as_deref().unwrap_or(SETTINGS), member.as_deref());
     let kept = inhibit::answer(connection, message, called, holds);
+    let kept = kept.or_else(|| refused(connection, message, called.0, portal));
     let sent = kept.or_else(|| screencast::answer(connection, message, called, sessions, waiting));
     if let Some(sent) = sent {
         // As below.
@@ -583,7 +656,7 @@ fn answer(
                 waiting.tell(Asked::Screenshot {
                     call: message.clone(),
                     request,
-                    app,
+                    app: identified(app),
                 });
                 Ok(())
             }
@@ -602,7 +675,7 @@ fn answer(
                 waiting.tell(Asked::Pick {
                     call: message.clone(),
                     request,
-                    app,
+                    app: identified(app),
                 });
                 Ok(())
             }
@@ -703,9 +776,17 @@ pub(crate) mod tests {
             }
         }
 
-        /// A program on the bus that is not the service, as the portal
-        /// that passes questions on is.
+        /// The portal that passes questions on: a program on the bus that
+        /// is not the service, with the portal's name.
         pub(crate) fn peer(&self) -> Connection {
+            let portal = self.stranger();
+            let flags = RequestNameFlags::ReplaceExisting | RequestNameFlags::AllowReplacement;
+            portal.request_name_with_flags(PORTAL, flags).unwrap();
+            portal
+        }
+
+        /// A program on the bus that is neither the service nor the portal.
+        pub(crate) fn stranger(&self) -> Connection {
             Builder::address(self.address.as_str())
                 .unwrap()
                 .build()
@@ -1119,6 +1200,79 @@ pub(crate) mod tests {
             .unwrap_err()
             .to_string();
         assert!(said.contains("InvalidArgs"), "{said}");
+    }
+
+    #[test]
+    fn a_program_that_is_not_the_portal_is_refused_what_asks_the_user() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, dark());
+        let _portal = daemon.peer();
+        let stranger = daemon.stranger();
+        let none: HashMap<&str, Value<'_>> = HashMap::new();
+        let request = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/1/x").unwrap();
+        let shot = (request.clone(), "org.example.App", "", none.clone());
+        let refused = |reply: zbus::Result<Message>, what: &str| {
+            let said = reply.unwrap_err().to_string();
+            assert!(said.contains("AccessDenied"), "{what}: {said}");
+        };
+        let reply = stranger.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &shot);
+        refused(reply, "Screenshot");
+        let reply = stranger.call_method(Some(NAME), PATH, Some(SCREENSHOT), "PickColor", &shot);
+        refused(reply, "PickColor");
+        let session = ObjectPath::try_from("/org/freedesktop/portal/desktop/session/1/x").unwrap();
+        let made = (request.clone(), session.clone(), "org.example.App", none);
+        let reply =
+            stranger.call_method(Some(NAME), PATH, Some(SCREENCAST), "CreateSession", &made);
+        refused(reply, "CreateSession");
+        let reply = stranger.call_method(Some(NAME), request.as_str(), Some(REQUEST), "Close", &());
+        refused(reply, "a request's Close");
+        let reply = stranger.call_method(Some(NAME), session.as_str(), Some(SESSION), "Close", &());
+        refused(reply, "a session's Close");
+        // Nothing was asked of the user; what the settings say is anyone's.
+        assert!(portal.asked().is_empty());
+        assert_eq!(scheme(&read_all(&stranger, &[LOOKS])), 1);
+    }
+
+    #[test]
+    fn an_application_named_as_no_application_is_is_asked_about_unnamed() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, dark());
+        let peer = daemon.peer();
+        let none: HashMap<&str, Value<'_>> = HashMap::new();
+        let request = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/1/n").unwrap();
+        let shot = (request, "Your bank\nwants a picture", "", none);
+        let asking = peer.clone();
+        thread::spawn(move || {
+            let _ = asking.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &shot);
+        });
+        let asked = heard(&portal).pop().unwrap();
+        assert!(matches!(&asked, Asked::Screenshot { app, .. } if app.is_empty()));
+    }
+
+    #[test]
+    fn no_more_sessions_are_made_than_the_most() {
+        let daemon = Daemon::start();
+        let _portal = service(&daemon, dark());
+        let peer = daemon.peer();
+        let none: HashMap<&str, Value<'_>> = HashMap::new();
+        let make = |at: usize| {
+            let request = format!("/org/freedesktop/portal/desktop/request/1/r{at}");
+            let session = format!("/org/freedesktop/portal/desktop/session/1/s{at}");
+            let request = ObjectPath::try_from(request).unwrap();
+            let session = ObjectPath::try_from(session).unwrap();
+            let made = (request, session, "org.example.App", none.clone());
+            let reply =
+                peer.call_method(Some(NAME), PATH, Some(SCREENCAST), "CreateSession", &made);
+            reply
+                .unwrap()
+                .body()
+                .deserialize::<(u32, HashMap<String, OwnedValue>)>()
+                .unwrap()
+                .0
+        };
+        let answers: Vec<u32> = (0..64).map(make).collect();
+        assert!(answers.iter().all(|&response| response == 0));
+        assert_eq!(make(64), 2, "one more fails");
     }
 
     #[test]

@@ -60,13 +60,20 @@ impl Daemon {
         }
     }
 
-    /// A program on the bus that is not the service, as the portal that
-    /// passes applications' questions on is.
+    /// The portal that passes applications' questions on: a program on the
+    /// bus that is not the service, with the portal's name, which the
+    /// service answers questions for alone.
     fn peer(&self) -> Connection {
-        Builder::address(self.address.as_str())
+        use zbus::fdo::RequestNameFlags;
+        let portal = Builder::address(self.address.as_str())
             .unwrap()
             .build()
-            .unwrap()
+            .unwrap();
+        let flags = RequestNameFlags::ReplaceExisting | RequestNameFlags::AllowReplacement;
+        portal
+            .request_name_with_flags("org.freedesktop.portal.Desktop", flags)
+            .unwrap();
+        portal
     }
 }
 

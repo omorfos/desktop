@@ -141,6 +141,13 @@ and no role alters them.
 - A program not in a sandbox is never asked about with a prompt. A
   prompt for every panel and screenshot tool teaches saying yes; the
   configuration says who has what, in one place that can be read.
+- (Added 16 November 2026.) The portal backend asks only for
+  `xdg-desktop-portal`, the program with the name
+  `org.freedesktop.portal.Desktop`, which knows which application asks.
+  Any other program on the bus is refused what would put the prompt up,
+  or take a question back or end a share: else it could have the prompt
+  name any application it liked. The name an application is shown by is
+  its identifier, or none if what is given is not written as one.
 
 ### Programs written for X11
 

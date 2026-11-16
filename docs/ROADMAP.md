@@ -2043,9 +2043,12 @@ Security:
       ([finding 4](reviews/2026-11-16-the-whole-tree.md#4-a-program-written-for-x11-can-end-every-program-written-for-wayland-that-is-given-the-keyboard)):
       the kinds are held to the same few, each written as a kind is,
       both ways.
-- [ ] Medium: any program on the bus puts up the portal's sealed prompt
+- [x] Medium: any program on the bus puts up the portal's sealed prompt
       under any name
-      ([finding 2 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#2-any-program-on-the-session-bus-can-put-up-the-portals-sealed-prompt-under-any-name)).
+      ([finding 2 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#2-any-program-on-the-session-bus-can-put-up-the-portals-sealed-prompt-under-any-name)):
+      only the portal is answered what asks the user; sessions are held
+      to 64 and forgotten when the portal starts anew; an application is
+      named only by an identifier.
 - [ ] Medium: a program has the one that holds the clipboard let go of
       by the relay
       ([finding 3 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#3-another-program-can-have-the-program-that-holds-the-clipboard-let-go-of-by-the-relay)).

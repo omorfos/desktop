@@ -44,6 +44,10 @@ use wayland_protocols_wlr::layer_shell::v1::client::{
 struct Daemon {
     child: Child,
     address: String,
+    /// The portal, once it has been asked for: one program throughout, as
+    /// another taking its name would be a portal started anew, whose
+    /// sessions the service forgets.
+    portal: std::sync::OnceLock<Connection>,
     _directory: tempfile::TempDir,
 }
 
@@ -66,15 +70,28 @@ impl Daemon {
         Self {
             child,
             address: address.trim().to_owned(),
+            portal: std::sync::OnceLock::new(),
             _directory: directory,
         }
     }
 
+    /// The portal that passes applications' questions on: a program on the
+    /// bus that is not the service, with the portal's name, which the
+    /// service answers questions for alone.
     fn peer(&self) -> Connection {
-        Builder::address(self.address.as_str())
-            .unwrap()
-            .build()
-            .unwrap()
+        use zbus::fdo::RequestNameFlags;
+        let portal = self.portal.get_or_init(|| {
+            let portal = Builder::address(self.address.as_str())
+                .unwrap()
+                .build()
+                .unwrap();
+            let flags = RequestNameFlags::ReplaceExisting | RequestNameFlags::AllowReplacement;
+            portal
+                .request_name_with_flags("org.freedesktop.portal.Desktop", flags)
+                .unwrap();
+            portal
+        });
+        portal.clone()
     }
 }
 

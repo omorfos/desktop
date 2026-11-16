@@ -57,6 +57,10 @@ impl Pointer {
     }
 }
 
+/// The most sessions there are at once: more than any desktop shares at
+/// once.
+const MOST_SESSIONS: usize = 64;
+
 /// The sessions there are, by the object each is known by.
 pub(crate) type Sessions = HashMap<OwnedObjectPath, Session>;
 
@@ -105,8 +109,12 @@ pub(crate) fn answer(
     let sent = match called {
         (SCREENCAST, Some("CreateSession")) => match body.deserialize::<Made>() {
             Ok((_, session, _, _)) => {
-                sessions.insert(session, Session::default());
-                given()
+                // No more than the most at once: a portal ends a session
+                // when its application leaves the bus, so more is one that
+                // does not.
+                let room = sessions.len() < MOST_SESSIONS;
+                let made = room.then(|| sessions.insert(session, Session::default()));
+                made.map_or_else(failed, |_| given())
             }
             Err(_) => malformed(),
         },
@@ -138,7 +146,7 @@ pub(crate) fn answer(
                         call: message.clone(),
                         request,
                         session,
-                        app,
+                        app: crate::bus::identified(app),
                         pointer,
                         windows,
                     });
