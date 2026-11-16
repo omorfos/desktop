@@ -2049,9 +2049,11 @@ Security:
       only the portal is answered what asks the user; sessions are held
       to 64 and forgotten when the portal starts anew; an application is
       named only by an identifier.
-- [ ] Medium: a program has the one that holds the clipboard let go of
+- [x] Medium: a program has the one that holds the clipboard let go of
       by the relay
-      ([finding 3 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#3-another-program-can-have-the-program-that-holds-the-clipboard-let-go-of-by-the-relay)).
+      ([finding 3 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#3-another-program-can-have-the-program-that-holds-the-clipboard-let-go-of-by-the-relay)):
+      towards a program, the relay stops reading short of the most
+      descriptors kept, as it does short of the most bytes.
 - [ ] Medium: a thread that cannot be started ends the program, the
       compositor among them
       ([finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)).

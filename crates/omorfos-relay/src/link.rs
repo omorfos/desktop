@@ -357,7 +357,7 @@ impl Link {
     /// waits for the compositor.
     #[must_use]
     pub fn reads(&self, way: Way) -> bool {
-        let room = self.passing(way).read.len() < READING;
+        let room = room(self.passing(way), way);
         let open = match way {
             Way::Up => self.keeping.live(),
             Way::Down => self.compositor.is_some(),
@@ -396,7 +396,7 @@ impl Link {
             self.again = false;
         }
         let passing = passing_mut(&mut self.up, &mut self.down, way);
-        let open = from.map_or(Ok(true), |from| take_in(from, passing));
+        let open = from.map_or(Ok(true), |from| take_in(from, passing, way));
         let open = self.refusing(way, open)?;
         let passed = self.pass(way);
         // What came before the end has been passed on, as far as it could
@@ -678,12 +678,26 @@ fn passing_mut<'a>(up: &'a mut Passing, down: &'a mut Passing, way: Way) -> &'a 
     }
 }
 
-/// Reads what `from` has sent into `passing`, as much as is kept. Returns
-/// whether `from` is still open.
-fn take_in(from: &UnixStream, passing: &mut Passing) -> Result<bool, Ended> {
+/// Whether there is room in `passing`, the way `way`, to read more: for
+/// its bytes, and towards a program for as many descriptors as one read
+/// brings. The compositor sends each with its message, so a program that
+/// is not reading for a while has the compositor not read meanwhile, as for
+/// bytes, rather than be let go: what is asked of the program that holds
+/// the clipboard, by another as often as it likes, comes each with a pipe.
+/// What a program sends is not held back so, as it may send descriptors
+/// ahead of the bytes they come with, and is let go past the most.
+fn room(passing: &Passing, way: Way) -> bool {
+    let bytes = passing.read.len() < READING;
+    let fds = way == Way::Up || passing.read_fds.len() + AT_ONCE <= DESCRIPTORS;
+    bytes && fds
+}
+
+/// Reads what `from` has sent into `passing`, the way `way`, as much as is
+/// kept. Returns whether `from` is still open.
+fn take_in(from: &UnixStream, passing: &mut Passing, way: Way) -> Result<bool, Ended> {
     let had = passing.read.len();
     // With no room, nothing is read, which is not the other side closing.
-    if had >= READING {
+    if !room(passing, way) {
         return Ok(true);
     }
     passing.read.resize(READING, 0);
@@ -1145,6 +1159,52 @@ mod tests {
         assert!(link.writes(Way::Down));
         assert!(!link.reads(Way::Down), "nothing more read for now");
         drop(program);
+    }
+
+    #[test]
+    fn a_program_that_does_not_read_for_a_while_what_comes_with_descriptors_is_kept() {
+        omorfos_ipc::limits::raise();
+        let (mut link, program, compositor) = linked();
+        // A registry, offered a seat, the seat bound, and its keyboard.
+        send(&program, &get_registry(), &[]);
+        link.read(Way::Up).unwrap();
+        let mut seat = words(&[1]);
+        seat.extend(text("wl_seat"));
+        seat.extend(words(&[7]));
+        send(&compositor, &message(2, 0, &seat), &[]);
+        link.read(Way::Down).unwrap();
+        let mut bind = words(&[1]);
+        bind.extend(text("wl_seat"));
+        bind.extend(words(&[7, 3]));
+        let mut bound = message(2, 0, &bind);
+        bound.extend(message(3, 1, &words(&[4])));
+        send(&program, &bound, &[]);
+        link.read(Way::Up).unwrap();
+        received(&program);
+        // As much kept to be written as may be, of what has no descriptor,
+        // while the program reads nothing...
+        let deleted = message(1, 1, &words(&[999]));
+        for _ in 0..WRITING / deleted.len() {
+            send(&compositor, &deleted, &[]);
+            link.read(Way::Down).unwrap();
+        }
+        // ...and then a keymap after another, each with its descriptor, as
+        // many as would fill what is read.
+        let keymap = message(4, 0, &words(&[1, 32]));
+        let file = File::open("/dev/null").unwrap();
+        let keymaps = 600;
+        for _ in 0..keymaps {
+            send(&compositor, &keymap, &[file.as_fd()]);
+            assert_eq!(link.read(Way::Down), Ok(()), "kept");
+        }
+        // Once the program reads, it is given every one.
+        let mut fds = 0;
+        for _ in 0..1000 {
+            let _ = link.write(Way::Down);
+            fds += received(&program).1;
+            link.read(Way::Down).unwrap();
+        }
+        assert_eq!(fds, keymaps);
     }
 
     #[test]
