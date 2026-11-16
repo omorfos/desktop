@@ -223,8 +223,44 @@ fn a_program_that_cannot_be_started_is_reported() {
         .compositor_mut()
         .perform(&Action::Spawn(command.into()));
     let problems = session.compositor().problems();
-    assert_eq!(problems.len(), 1);
-    assert!(problems[0].starts_with("cannot start `/nonexistent/omorfos-test-program`: "));
+    assert_eq!(
+        problems,
+        [
+            "cannot start `/nonexistent/omorfos-test-program`, which is not installed: install it, \
+          or name another in its place in the configuration"
+        ]
+    );
+}
+
+#[test]
+fn a_program_that_cannot_be_run_is_reported_with_why() {
+    let directory = tempfile::TempDir::new().unwrap();
+    // There, but not to be run.
+    let program = directory.path().join("program");
+    std::fs::write(&program, "").unwrap();
+    let mut session = Session::new();
+    let command = Command::new(program.to_str().unwrap(), [""; 0]).unwrap();
+    session
+        .compositor_mut()
+        .perform(&Action::Spawn(command.into()));
+    let problems = session.compositor().problems();
+    let said = format!("cannot start `{}`: Permission denied", program.display());
+    assert!(problems[0].starts_with(&said), "{problems:?}");
+}
+
+#[test]
+fn a_program_that_is_not_installed_is_reported_in_the_users_language() {
+    let mut session = Session::new();
+    session.compositor_mut().set_languages(&["pl".to_owned()]);
+    let command = Command::new("/nonexistent/omorfos-test-program", [""; 0]).unwrap();
+    session
+        .compositor_mut()
+        .perform(&Action::Spawn(command.into()));
+    let problems = session.compositor().problems();
+    assert!(
+        problems[0].starts_with("nie można uruchomić `/nonexistent/omorfos-test-program`, bo"),
+        "{problems:?}"
+    );
 }
 
 #[test]

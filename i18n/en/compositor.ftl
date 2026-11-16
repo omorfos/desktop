@@ -68,6 +68,13 @@ not-starting = the new version of omorfos, `{ $program }`, does not start ({ $wh
 keeps-stopping = `{ $program }` keeps stopping, and will not be started again until you log in
 locker-keeps-stopping = The locker keeps stopping with the session locked: from another virtual terminal, `omorfosctl action lock` starts it again
 no-locker = nothing is set to lock the session with: name a screen locker as `locker` in config.yaml, such as `locker: [swaylock, -f]`
+# A program that could not be started, and why, in the system's words.
+cannot-start = cannot start `{ $program }`: { $why }
+# One that is not installed, as `foot` may not be, which Super+Return
+# starts with no configuration.
+cannot-find = cannot start `{ $program }`, which is not installed: install it, or name another in its place in the configuration
+x11-cannot-run = cannot run programs written for X11: { $why }
+x11-cannot-manage = cannot manage programs written for X11: { $why }
 x11-restarted = the X server stopped and has been started again; programs written for X11 that were running have closed
 x11-keeps-stopping = the X server keeps stopping; programs written for X11 will not run until you log in again
 # What blurs glass could not be had, for $why, in the words of what failed.

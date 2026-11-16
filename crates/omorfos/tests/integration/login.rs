@@ -439,7 +439,9 @@ fn a_panel_that_is_not_installed_is_a_problem_the_user_is_told_of() {
     session.compositor_mut().autostart();
     assert_eq!(
         session.compositor().problems(),
-        ["cannot start `/no/such/panel`: No such file or directory (os error 2)"]
+        [
+            "cannot start `/no/such/panel`, which is not installed: install it, or name another in its place in the configuration"
+        ]
     );
 }
 
@@ -461,7 +463,9 @@ fn the_programs_listed_are_started_with_the_session_and_only_once() {
     session.eventually(|_| ran("first") == "x" && ran("second") == "x");
     assert_eq!(
         session.compositor().problems(),
-        ["cannot start `/no/such/program`: No such file or directory (os error 2)"],
+        [
+            "cannot start `/no/such/program`, which is not installed: install it, or name another in its place in the configuration"
+        ],
         "one that cannot be started is reported, and the rest still are"
     );
 

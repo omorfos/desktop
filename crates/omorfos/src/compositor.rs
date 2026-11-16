@@ -1970,8 +1970,19 @@ impl Compositor {
                 Some(process)
             }
             Err(error) => {
-                self.problems
-                    .push(format!("cannot start `{}`: {error}", program.display()));
+                let program = program.display().to_string();
+                let said = if error.kind() == io::ErrorKind::NotFound {
+                    self.words
+                        .say("cannot-find", &[("program", Value::Words(&program))])
+                } else {
+                    let why = error.to_string();
+                    let said = [
+                        ("program", Value::Words(&program)),
+                        ("why", Value::Words(&why)),
+                    ];
+                    self.words.say("cannot-start", &said)
+                };
+                self.problems.push(said);
                 None
             }
         };

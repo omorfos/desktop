@@ -1020,7 +1020,9 @@ fn a_launcher_that_is_not_installed_is_a_problem_the_user_is_told_of() {
     session.compositor_mut().perform(&Action::ShowLauncher);
     assert_eq!(
         session.compositor().problems(),
-        ["cannot start `/no/such/launcher`: No such file or directory (os error 2)"]
+        [
+            "cannot start `/no/such/launcher`, which is not installed: install it, or name another in its place in the configuration"
+        ]
     );
 }
 

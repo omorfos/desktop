@@ -553,7 +553,7 @@ impl Compositor {
     /// Takes up an X server that has been started, or tells the user that
     /// it could not be.
     fn started_x11(&mut self, started: io::Result<(XWayland, Client)>) {
-        let started = self.or_problem("cannot run programs written for X11", started);
+        let started = self.or_problem("x11-cannot-run", started);
         self.x11.server = started.map(|(process, client)| Server {
             // The loop is woken when the X server says it is ready, which
             // is noticed the next time round.
@@ -694,12 +694,16 @@ impl Compositor {
     }
 
     /// What a step that can fail came to, the failure being told to the
-    /// user as a problem.
-    fn or_problem<T, E: Display>(&mut self, what: &str, result: Result<T, E>) -> Option<T> {
+    /// user as a problem, by the message called `said`, with why.
+    fn or_problem<T, E: Display>(&mut self, said: &str, result: Result<T, E>) -> Option<T> {
         match result {
             Ok(done) => Some(done),
             Err(error) => {
-                self.problems.push(format!("{what}: {error}"));
+                let why = error.to_string();
+                let said = self
+                    .words
+                    .say(said, &[("why", omorfos_i18n::Value::Words(&why))]);
+                self.problems.push(said);
                 None
             }
         }
@@ -753,7 +757,7 @@ impl Compositor {
             // ever after if it were still listened to.
             self.stop_waking(waking);
             let manager = X11Wm::start_wm(self.event_loop.clone(), socket, client);
-            self.x11.wm = self.or_problem("cannot manage programs written for X11", manager);
+            self.x11.wm = self.or_problem("x11-cannot-manage", manager);
         }
         self.scale_x11();
     }
