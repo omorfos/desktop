@@ -2014,9 +2014,11 @@ Security:
       found, in the order to take it.
 - [x] A review of the whole tree in every dimension: done on 16 November
       2026, and written up in [reviews/2026-11-16-the-whole-tree.md](reviews/2026-11-16-the-whole-tree.md).
-- [ ] High: any program takes the keyboard from the window typed in,
+- [x] High: any program takes the keyboard from the window typed in,
       with a pop-up grabbed with a serial it made up
-      ([finding 1](reviews/2026-11-16-the-whole-tree.md#1-any-program-can-take-the-keyboard-from-the-window-being-typed-in-with-a-pop-up)).
+      ([finding 1](reviews/2026-11-16-the-whole-tree.md#1-any-program-can-take-the-keyboard-from-the-window-being-typed-in-with-a-pop-up)):
+      a menu grabs only with a press that went to its program, as
+      activation is asked for; any other is closed at once.
 - [ ] High: a program that makes a sandbox stops the relay, and every
       program, for good
       ([finding 1 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#1-a-program-that-makes-a-sandbox-can-stop-the-relay-for-good)).

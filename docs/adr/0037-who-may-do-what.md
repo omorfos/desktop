@@ -116,7 +116,12 @@ and no role alters them.
   user can always find out that something has it.
 - **Focus is not taken.** A program may ask to be activated, and is, if
   the user just did something in the program that asks. Otherwise its
-  window is marked as wanting attention.
+  window is marked as wanting attention. (Added 16 November 2026.) The
+  same holds a menu that asks for the keyboard while it is up, an
+  `xdg_popup` grab: it must give the serial of a press that went to its
+  program, or one since, or it is closed at once. Else a program in the
+  background would open a menu of a pixel and be given every key typed
+  into the window the user is in.
 - **When keys are typed is not told.** (Added 16 November 2026.) Any
   program may be told when the user has been away for a while, as a
   chat program sets its user away; but a program in a sandbox is told no

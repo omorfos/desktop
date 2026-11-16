@@ -1022,8 +1022,9 @@ pub(crate) struct ClientState {
     /// has to give.
     entered: u32,
     /// The serial of the last press of a button of the pointer, which is
-    /// what starting a drag has to give: the keyboard may have come since.
-    pressed: u32,
+    /// what starting a drag or a menu's grab has to give: the keyboard may
+    /// have come since.
+    pub(crate) pressed: u32,
     pub(crate) events: Vec<Event>,
 }
 

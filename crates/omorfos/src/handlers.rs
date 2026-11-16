@@ -448,10 +448,17 @@ impl XdgShellHandler for Compositor {
         surface.send_repositioned(token);
     }
 
-    fn grab(&mut self, surface: PopupSurface, _seat: WlSeat, _serial: Serial) {
+    fn grab(&mut self, surface: PopupSurface, _seat: WlSeat, serial: Serial) {
         // A menu asks to be told when the user clicks away from it, and to
-        // have the keyboard while it is up.
-        self.grabbed_popups.push(surface);
+        // have the keyboard while it is up. Only one opened by a press
+        // that went to its program may: any other would take what is typed
+        // into the window the user is in (ADR 37), so it is closed at once.
+        let client = surface.wl_surface().client().map(|client| client.id());
+        if client.is_some_and(|client| self.may_move_focus(&client, serial)) {
+            self.grabbed_popups.push(surface);
+        } else {
+            surface.send_popup_done();
+        }
     }
 }
 

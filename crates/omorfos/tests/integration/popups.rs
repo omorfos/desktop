@@ -37,14 +37,24 @@ fn click_at(session: &mut Session, x: i32, y: i32) {
     session.step();
 }
 
+/// Clicks at (`x`, `y`), on one of `client`'s surfaces, and gives the
+/// serial of the press, as a program opens a menu with.
+fn press(session: &mut Session, client: &mut Client, x: i32, y: i32) -> u32 {
+    click_at(session, x, y);
+    session.roundtrip(client);
+    client.take_events();
+    client.state.pressed
+}
+
 /// Opens a 200 by 100 window with a 50 by 30 menu at (10, 20) that has
 /// asked to be dismissed on a click elsewhere.
 fn window_with_menu(session: &mut Session, client: &mut Client) -> Toplevel {
     let window = session.open(client, "app", (200, 100), RED);
+    let pressed = press(session, client, 150, 80);
     let (surface, popup, _positioner) = client.popup(&window, (10, 20), (50, 30));
     session.roundtrip(client);
     client.fill(&surface, (50, 30), GREEN);
-    popup.grab(client.seat(), client.state.serial);
+    popup.grab(client.seat(), pressed);
     session.roundtrip(client);
     session.roundtrip(client);
     client.take_events();
@@ -115,10 +125,11 @@ fn a_click_on_a_titlebar_dismisses_it() {
     let mut session = Session::new();
     let mut client = session.connect();
     let window = session.open_decorated(&mut client, "app", (200, 100), RED);
+    let pressed = press(&mut session, &mut client, 100, 80);
     let (surface, popup, _positioner) = client.popup(&window, (10, 20), (50, 30));
     session.roundtrip(&mut client);
     client.fill(&surface, (50, 30), GREEN);
-    popup.grab(client.seat(), client.state.serial);
+    popup.grab(client.seat(), pressed);
     session.roundtrip(&mut client);
     client.take_events();
 
@@ -136,12 +147,12 @@ fn an_open_menu_has_the_keyboard_and_hands_it_back() {
     let mut session = Session::new();
     let mut client = session.connect();
     let window = session.open(&mut client, "app", (200, 100), RED);
-    client.take_events();
+    let pressed = press(&mut session, &mut client, 150, 80);
 
     let (surface, popup, _positioner) = client.popup(&window, (10, 20), (50, 30));
     session.roundtrip(&mut client);
     client.fill(&surface, (50, 30), GREEN);
-    popup.grab(client.seat(), client.state.serial);
+    popup.grab(client.seat(), pressed);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     let events = client.take_events();
@@ -184,7 +195,8 @@ fn nested_menus_are_dismissed_together() {
     let (surface, popup, _positioner) = client.popup(&window, (70, 20), (50, 30));
     session.roundtrip(&mut client);
     client.fill(&surface, (50, 30), BLUE);
-    popup.grab(client.seat(), client.state.serial);
+    // A menu opened from a menu, by the press that opened the first.
+    popup.grab(client.seat(), client.state.pressed);
     session.roundtrip(&mut client);
     client.take_events();
 
@@ -211,11 +223,12 @@ fn a_panels_menu_is_shown_and_dismissed_like_any_other() {
         keyboard: KeyboardInteractivity::None,
     };
     let (_surface, role) = session.open_layer(&mut client, &panel, (WIDTH, 30), RED);
+    let pressed = press(&mut session, &mut client, 110, 10);
 
     let (menu, popup) = client.layer_popup(&role, (100, 30), (80, 60));
     session.roundtrip(&mut client);
     client.fill(&menu, (80, 60), GREEN);
-    popup.grab(client.seat(), client.state.serial);
+    popup.grab(client.seat(), pressed);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     assert_eq!(
@@ -246,6 +259,7 @@ fn a_menu_of_a_bar_along_the_bottom_is_turned_to_hang_above_it_and_slid_onto_the
         keyboard: KeyboardInteractivity::None,
     };
     let (_surface, role) = session.open_layer(&mut client, &panel, (WIDTH, 30), RED);
+    let pressed = press(&mut session, &mut client, WIDTH - 20, HEIGHT - 10);
 
     // Hung below its bar it would be off the bottom of the screen, and to
     // the right of where it is asked for, off its right edge.
@@ -254,7 +268,7 @@ fn a_menu_of_a_bar_along_the_bottom_is_turned_to_hang_above_it_and_slid_onto_the
     let (menu, popup) = client.layer_popup_kept(&role, ((WIDTH - 40, 0), (80, 60)), kept);
     session.roundtrip(&mut client);
     client.fill(&menu, (80, 60), GREEN);
-    popup.grab(client.seat(), client.state.serial);
+    popup.grab(client.seat(), pressed);
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
     let picture = session.draw();
@@ -268,4 +282,40 @@ fn a_menu_of_a_bar_along_the_bottom_is_turned_to_hang_above_it_and_slid_onto_the
         BACKGROUND,
         "and no further"
     );
+}
+
+#[test]
+fn a_program_in_the_background_cannot_take_the_keyboard_with_a_menu() {
+    let mut session = Session::new();
+    let mut behind = session.connect();
+    let hidden = session.open(&mut behind, "behind", (200, 100), RED);
+    let mut typed_in = session.connect();
+    session.open(&mut typed_in, "typed in", (100, 100), BLUE);
+    typed_in.take_events();
+
+    // A menu of a pixel, grabbing with a serial the compositor never gave
+    // for a press to it.
+    let (surface, popup, _positioner) = behind.popup(&hidden, (0, 0), (1, 1));
+    session.roundtrip(&mut behind);
+    behind.fill(&surface, (1, 1), GREEN);
+    popup.grab(behind.seat(), 0);
+    session.roundtrip(&mut behind);
+    session.roundtrip(&mut behind);
+    assert!(dismissed(&mut behind), "the menu is closed at once");
+
+    session.compositor_mut().input(
+        Input::Key {
+            code: key::A,
+            pressed: true,
+        },
+        0,
+    );
+    session.roundtrip(&mut behind);
+    session.roundtrip(&mut typed_in);
+    let pressed = Event::Key {
+        code: 30,
+        pressed: true,
+    };
+    assert!(!behind.take_events().contains(&pressed));
+    assert!(typed_in.take_events().contains(&pressed));
 }

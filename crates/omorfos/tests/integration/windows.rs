@@ -412,7 +412,6 @@ fn popups_are_configured_where_the_client_asks_and_can_be_repositioned() {
     session.roundtrip(&mut client);
     assert_eq!(session.draw().at(15, 25), GREEN);
 
-    popup.grab(client.seat(), client.state.serial);
     positioner.set_anchor_rect(30, 40, 1, 1);
     popup.reposition(&positioner, 7);
     session.roundtrip(&mut client);
