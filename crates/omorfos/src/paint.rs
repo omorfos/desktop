@@ -231,6 +231,14 @@ fn sign(canvas: &mut Canvas, button: Button, (left, top, width, height): Area, i
     }
 }
 
+/// The states of a row of a menu that is `highlighted` or not, by the
+/// keyboard, `keyed`, or by the pointer: [`State::Focused`] where the
+/// keyboard is, [`State::Hovered`] where the pointer is.
+fn row_states(highlighted: bool, keyed: bool) -> States {
+    let states = States::NONE.when(State::Focused, highlighted && keyed);
+    states.when(State::Hovered, highlighted && !keyed)
+}
+
 /// How each row of each panel of an open menu looks, from the root panel
 /// outwards. A row the pointer has just come onto or left is as far on its
 /// way as `motion` has it.
@@ -244,7 +252,7 @@ pub(crate) fn menu_looks<A: Clone>(
         let rows = (0..panel.items().len()).zip(0_u64..);
         let looks = rows.map(|(index, row)| {
             let highlighted = panel.highlighted() == Some(index);
-            let states = States::NONE.when(State::Hovered, highlighted);
+            let states = row_states(highlighted, panel.keyed());
             // A row is told from the others by its panel and its place.
             motion.style(theme, Part::MenuItem, depth << 32 | row, states)
         });
@@ -301,7 +309,7 @@ pub(crate) fn menu_panel<A: Clone>(
             Item::Entry { label, mark, .. } | Item::Submenu { label, mark, .. } => (label, mark),
         };
         let highlighted = panel.highlighted() == Some(index);
-        let states = States::NONE.when(State::Hovered, highlighted);
+        let states = row_states(highlighted, panel.keyed());
         let font = theme.font(Part::MenuItem, states);
         canvas.draw_box_within(area, style, within);
         let (left, top, room, tall) = inset(area, style.inset());

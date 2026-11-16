@@ -16,6 +16,9 @@ const RIGHT: u32 = 0x111;
 /// Colours of the default theme, as `0xAARRGGBB`.
 /// A row under the pointer, raised.
 const RAISED: u32 = 0xff24_3364;
+/// The row the keyboard is on: the accent, seen from further off than
+/// the pointer's.
+const KEYED: u32 = 0xff22_d3ee;
 const PANEL: u32 = 0xff14_1c38;
 
 /// Second / ---- / More > (Quit)
@@ -403,12 +406,12 @@ fn the_arrows_go_through_the_rows_and_enter_chooses_one() {
     assert_eq!(session.draw().at(510, 218), PANEL, "nothing is highlighted");
 
     press(&mut session, &[key::DOWN]);
-    assert_eq!(session.draw().at(510, 218), RAISED, "the first row");
+    assert_eq!(session.draw().at(510, 218), KEYED, "the first row");
 
     press(&mut session, &[key::DOWN]);
     let picture = session.draw();
     assert_eq!(picture.at(510, 218), PANEL);
-    assert_eq!(picture.at(510, 255), RAISED, "past the separator");
+    assert_eq!(picture.at(510, 255), KEYED, "past the separator");
 
     press(&mut session, &[key::UP, key::RETURN]);
     assert_eq!(session.compositor().desktop().active_workspace(), 1);
@@ -422,14 +425,14 @@ fn right_goes_into_a_submenu_and_left_comes_back_out() {
 
     press(&mut session, &[key::UP, key::RIGHT]);
     let picture = session.draw();
-    assert_eq!(picture.at(290, 255), RAISED, "its first row is highlighted");
-    assert_eq!(picture.at(510, 255), RAISED, "and the row it belongs to");
+    assert_eq!(picture.at(290, 255), KEYED, "its first row is highlighted");
+    assert_eq!(picture.at(510, 255), KEYED, "and the row it belongs to");
 
     press(&mut session, &[key::LEFT]);
     let picture = session.draw();
     let gone = picture.at(290, 255);
     assert!(shaded(gone, BACKGROUND), "the submenu is gone: {gone:#x}");
-    assert_eq!(picture.at(510, 255), RAISED);
+    assert_eq!(picture.at(510, 255), KEYED);
 
     press(&mut session, &[key::RETURN, key::RETURN]);
     assert!(!session.compositor().is_running(), "Quit was chosen");

@@ -45,18 +45,20 @@ pub enum Part {
     ButtonMinimize,
     /// A panel of the menu.
     Menu,
-    /// A row of the menu. It is [`State::Hovered`] under the pointer.
+    /// A row of the menu. It is [`State::Hovered`] under the pointer, and
+    /// [`State::Focused`] where the keyboard has put it.
     MenuItem,
     /// The line between groups of rows in the menu, drawn in its text
     /// colour.
     MenuSeparator,
     /// What stands before the label of a row of the menu: a sign, drawn in
     /// its text colour, or a program's icon, inside its padding. It is
-    /// [`State::Hovered`] with its row, and [`State::Active`] while what
-    /// its row turns on and off is on.
+    /// [`State::Hovered`] or [`State::Focused`] with its row, and
+    /// [`State::Active`] while what its row turns on and off is on.
     MenuSign,
     /// The keys that do what a row of the menu does, at the row's end, in
-    /// its text colour. It is [`State::Hovered`] with its row.
+    /// its text colour. It is [`State::Hovered`] or [`State::Focused`] with
+    /// its row.
     MenuKeys,
     /// The notice that says something is wrong.
     Notice,

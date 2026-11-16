@@ -89,6 +89,9 @@ pub struct Panel<A> {
     origin: Point,
     items: Vec<Item<A>>,
     highlighted: Option<usize>,
+    /// Whether the keyboard put the highlighted row there, not the
+    /// pointer.
+    keyed: bool,
 }
 
 impl<A> Panel<A> {
@@ -103,6 +106,14 @@ impl<A> Panel<A> {
     #[must_use]
     pub const fn highlighted(&self) -> Option<usize> {
         self.highlighted
+    }
+
+    /// Whether the keyboard, and not the pointer, put the highlighted row
+    /// there: it is drawn so that it is seen from further off, as the
+    /// keyboard's place has no pointer over it to find it by.
+    #[must_use]
+    pub const fn keyed(&self) -> bool {
+        self.keyed
     }
 }
 
@@ -197,6 +208,7 @@ impl<A: Clone> Menu<A> {
         };
         self.panels.truncate(panel + 1);
         self.panels[panel].highlighted = row;
+        self.panels[panel].keyed = false;
         let submenu = row.and_then(|row| match &self.panels[panel].items[row] {
             Item::Submenu { items, .. } => Some((row, items.clone())),
             _ => None,
@@ -221,6 +233,7 @@ impl<A: Clone> Menu<A> {
             MenuKey::Up | MenuKey::Down => {
                 let down = key == MenuKey::Down;
                 let panel = &mut self.panels[last];
+                panel.keyed = true;
                 let count = panel.items.len();
                 // Where to look first: the row after or before the
                 // highlighted one, or the first or last row of all.
@@ -326,6 +339,7 @@ impl<A: Clone> Menu<A> {
             origin,
             items,
             highlighted: None,
+            keyed: false,
         });
     }
 
@@ -452,6 +466,17 @@ mod tests {
         assert_eq!(menu.panels()[0].highlighted(), Some(0));
         menu.hover(Point::new(150, 160));
         assert_eq!(menu.panels()[0].highlighted(), Some(3));
+    }
+
+    #[test]
+    fn a_row_is_known_to_have_been_put_there_by_the_keyboard_or_by_the_pointer() {
+        let mut menu = open_at(100, 100);
+        menu.hover(Point::new(150, 110));
+        assert!(!menu.panels()[0].keyed(), "by the pointer");
+        let _ = menu.key(MenuKey::Down);
+        assert!(menu.panels()[0].keyed(), "by the keyboard");
+        menu.hover(Point::new(150, 110));
+        assert!(!menu.panels()[0].keyed(), "by the pointer again");
     }
 
     #[test]

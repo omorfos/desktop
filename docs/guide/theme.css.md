@@ -199,6 +199,14 @@ menu-sign:active {
 }
 /* The keys that do what a row does, at its end. */
 menu-keys { color: var(--text-dim); }
+/* The row the keyboard is on, in the accent: seen from across the room,
+ * where the pointer's is only raised. */
+menu-item:focus {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+menu-sign:focus { color: var(--on-accent); }
+menu-keys:focus { color: var(--on-accent); }
 
 /* What is wrong with the configuration, when it was last read. */
 notice {

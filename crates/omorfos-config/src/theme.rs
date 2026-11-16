@@ -1639,6 +1639,19 @@ mod tests {
             let ratio = edge.contrast(under);
             assert!(ratio >= 3.0, "{which}: edge {index}: {ratio:.2} to 1");
         }
+        // The row of a menu the keyboard is on is seen among the others,
+        // and what is written on it read.
+        let keyed = over(style(Part::MenuItem, FOCUSED).background, surface);
+        let ratio = keyed.contrast(surface);
+        assert!(ratio >= 3.0, "{which}: the keyboard's row: {ratio:.2} to 1");
+        for part in [Part::MenuItem, Part::MenuSign, Part::MenuKeys] {
+            let ratio = style(part, FOCUSED).color.contrast(keyed);
+            let name = part.name();
+            assert!(
+                ratio >= 4.5,
+                "{which}: {name} on the keyboard's row: {ratio:.2} to 1"
+            );
+        }
     }
 
     #[test]

@@ -2076,8 +2076,10 @@ Security:
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).
 - [ ] Medium: on a card, an idle session wakes at the screen's rate
       ([finding 5](reviews/2026-11-16-the-whole-tree.md#5-on-a-graphics-card-a-session-with-nothing-changing-wakes-at-the-screens-rate-for-good)).
-- [ ] Medium: the keyboard's row of a menu unseen in the light scheme
-      ([finding 9](reviews/2026-11-16-the-whole-tree.md#9-in-the-light-scheme-which-row-of-a-menu-the-keyboard-is-on-cannot-be-seen)).
+- [x] Medium: the keyboard's row of a menu unseen in the light scheme
+      ([finding 9](reviews/2026-11-16-the-whole-tree.md#9-in-the-light-scheme-which-row-of-a-menu-the-keyboard-is-on-cannot-be-seen)):
+      the row the keyboard is on is `menu-item:focus`, the accent with
+      `--on-accent`; `:hover` is the pointer's.
 - [ ] Medium: the screenshot's help and a program that cannot start said
       in English only
       ([finding 13](reviews/2026-11-16-the-whole-tree.md#13-two-things-the-user-is-told-come-only-in-english)).
