@@ -2033,9 +2033,11 @@ Security:
       ([finding 2](reviews/2026-11-16-the-whole-tree.md#2-whenever-the-compositor-sends-one-program-away-every-other-stops-for-half-a-second)):
       the program is kept aside for the half second, and decided on in a
       later turn.
-- [ ] Medium: a window's `app_id` opened as a file on the compositor's
+- [x] Medium: a window's `app_id` opened as a file on the compositor's
       thread
-      ([finding 3](reviews/2026-11-16-the-whole-tree.md#3-a-windows-name-for-its-program-is-opened-as-a-file-on-the-compositors-thread)).
+      ([finding 3](reviews/2026-11-16-the-whole-tree.md#3-a-windows-name-for-its-program-is-opened-as-a-file-on-the-compositors-thread)):
+      an `app_id` with a `/` is looked up as no icon, and a picture is
+      opened without waiting and read only if it is a plain file.
 - [ ] Medium: a program written for X11 ends programs written for
       Wayland through the clipboard's kinds
       ([finding 4](reviews/2026-11-16-the-whole-tree.md#4-a-program-written-for-x11-can-end-every-program-written-for-wayland-that-is-given-the-keyboard)).

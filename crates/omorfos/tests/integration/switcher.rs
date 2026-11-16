@@ -605,6 +605,26 @@ fn a_window_has_its_applications_icon_from_its_desktop_entry_or_by_its_name() {
 }
 
 #[test]
+fn a_window_whose_application_is_named_by_a_path_is_not_shown_with_that_file() {
+    let data = installed(&[("org.example.Given", YELLOW)], &[]);
+    let path = data
+        .path()
+        .join("icons/hicolor/scalable/apps/org.example.Given.svg");
+    let mut session = Session::with_config(&[FLAT]);
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open(&mut client, path.to_str().unwrap(), (200, 100), BLUE);
+    alt_tab(&mut session, 1, false);
+    let shown = icons_shown(&mut session);
+    assert_eq!(shown[0].1, BLUE, "the window named by the path");
+    assert_ne!(shown[0].0, YELLOW, "without the file");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
 fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
     let data = installed(&[("org.example.Given", YELLOW), ("one", CYAN)], &[]);
     let path = data

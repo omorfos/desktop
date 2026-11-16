@@ -19,6 +19,7 @@ use omorfos_config::Color;
 use omorfos_core::Sign;
 use omorfos_ui::Image;
 use resvg::{tiny_skia, usvg};
+use rustix::fs::{Mode, OFlags};
 
 /// The most of an icon's file that is read, in bytes.
 const LARGEST_FILE: u64 = 2 * 1024 * 1024;
@@ -618,10 +619,17 @@ fn sizes(theme: &Path) -> Vec<(u32, PathBuf)> {
     sized.collect()
 }
 
-/// Reads a picture, to be drawn `pixels` pixels across.
+/// Reads a picture, to be drawn `pixels` pixels across. Nothing if it is
+/// not a plain file when it is opened: a path can be a program's, and
+/// opening a pipe, or a file under a lease, would wait on that program.
 fn load(file: &Path, pixels: u32) -> Option<Image> {
     let mut bytes = Vec::new();
-    let opened = File::open(file).ok();
+    let flags = OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC;
+    let opened = rustix::fs::open(file, flags, Mode::empty())
+        .ok()
+        .map(File::from);
+    let plain = |opened: &File| opened.metadata().is_ok_and(|opened| opened.is_file());
+    let opened = opened.filter(plain);
     let read = opened.map(|opened| opened.take(LARGEST_FILE).read_to_end(&mut bytes));
     let bytes = read.and_then(Result::ok).map(|_| bytes);
     let drawn = file.extension() == Some(OsStr::new("svg"));
@@ -710,6 +718,20 @@ fn svg(bytes: &[u8], pixels: u32) -> Option<Image> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_that_cannot_be_read_at_once_is_not_waited_for() {
+        // A pipe of no writer waits in `open` for one, as a file under a
+        // lease waits for its holder: a path a program gives can be either.
+        let directory = tempfile::tempdir().unwrap();
+        let pipe = directory.path().join("icon.png");
+        let mode = Mode::RUSR | Mode::WUSR;
+        rustix::fs::mknodat(rustix::fs::CWD, &pipe, rustix::fs::FileType::Fifo, mode, 0).unwrap();
+        let (done, loaded) = std::sync::mpsc::channel();
+        std::thread::spawn(move || done.send(load(&pipe, 16).is_none()));
+        let loaded = loaded.recv_timeout(std::time::Duration::from_secs(2));
+        assert_eq!(loaded, Ok(true));
+    }
 
     #[test]
     fn no_more_icons_are_kept_as_found_than_the_most() {

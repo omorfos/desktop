@@ -17,6 +17,9 @@ omorfos-core = { path = "../omorfos-core" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Reads the icons that are PNG.
 png = "0.18.1"
+# Already in the tree. Opens a picture without waiting on it, as a pipe or
+# a file under a lease would have it waited for (`fs`).
+rustix = { version = "1.1.5", default-features = false, features = ["fs", "std"] }
 # Draws the icons that are SVG, which most are. Without its default
 # features it reads no text and no pictures inside a drawing.
 resvg = { version = "0.49.0", default-features = false }

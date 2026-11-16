@@ -186,10 +186,10 @@ impl WindowIcons {
             .or_insert_with(|| omorfos_icons::icon_of(app_id, data))
             .clone();
         let mut found = |name: &str| self.icons.get(name, pixels, ink).is_some();
-        entry
-            .into_iter()
-            .chain([app_id.to_owned()])
-            .find(|name| found(name))
+        // By its own name, but not as a path: that is any file the program
+        // likes, which it may have keep the compositor waiting to open.
+        let own = (!app_id.contains('/')).then(|| app_id.to_owned());
+        entry.into_iter().chain(own).find(|name| found(name))
     }
 
     /// What stands before the label of a row of a menu, drawn `pixels`
