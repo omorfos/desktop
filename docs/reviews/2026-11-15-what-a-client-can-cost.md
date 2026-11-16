@@ -317,9 +317,12 @@ in the compositor's, and three in `crates/omorfos-relay/tests/relay.rs`.
 
 **Still open**, and on the roadmap:
 
-- Text drawn for the first time with no descriptor left panics in
-  cosmic-text (`no default font found`): no font can be opened. A session
-  has drawn text long before, so the tests draw a titlebar first.
+- Text drawn for the first time with no descriptor left panicked in
+  cosmic-text (`no default font found`): no font could be opened, and one
+  that failed was remembered as missing. **Fixed the next day**: every
+  font the theme names is opened as the configuration is applied, while
+  there are descriptors; tested by the notice of a program not taken on
+  being the first text a starved session draws.
 - The sockets of sandboxes the relay listens on accepted as before, and
   spun the same way. **Fixed the next day**: a failed accept at any of
   them pauses the relay's listening as one at the socket does, as no

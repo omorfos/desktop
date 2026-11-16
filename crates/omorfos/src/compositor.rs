@@ -1361,6 +1361,21 @@ impl Compositor {
 
     // --- Configuration -------------------------------------------------------
 
+    /// Opens each font the `theme` names for its parts, in each state, by
+    /// measuring a little text in it. A font's file is opened the first
+    /// time it draws, which needs a descriptor: opened now, while there
+    /// are some, it does not fail later when a program has taken them all,
+    /// where text drawn with no font to draw it in ends the compositor.
+    fn open_fonts(&mut self, theme: &Theme) {
+        let states = [States::NONE, States::NONE.with(State::Focused)];
+        let parts = Part::ALL
+            .iter()
+            .flat_map(|part| states.map(|states| (*part, states)));
+        for (part, states) in parts {
+            let _ = self.text.measure("Aa", theme.font(part, states));
+        }
+    }
+
     /// Reads the configuration again and applies it.
     pub fn reload_config(&mut self) {
         self.store.reload();
@@ -1380,6 +1395,7 @@ impl Compositor {
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
         problems.extend(crate::outputs::misplaced(&config.general));
 
+        self.open_fonts(&config.theme);
         self.desktop.set_settings(bridge::settings(&config));
         self.desktop.set_rules(bridge::rules(&config.rules));
         self.desktop

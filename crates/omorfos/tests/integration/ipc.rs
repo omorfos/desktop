@@ -926,11 +926,6 @@ fn a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is() {
     }
     let mut session = Session::new();
     let socket = session.listen();
-    // A window in a frame of ours, so that text has been drawn and the
-    // fonts found, as in any session by the time descriptors run out.
-    let mut first = session.connect();
-    session.open_decorated(&mut first, "first", (200, 100), RED);
-    drop(session.draw());
     let taken = crate::common::take_descriptors(1);
     let waiting = UnixStream::connect(&socket).unwrap();
 

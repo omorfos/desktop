@@ -1975,11 +1975,6 @@ fn a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_onc
     let mut flatpak = first.adopt(UnixStream::connect(&relayed.path).unwrap());
     let _open = flatpak.sandbox(&path);
     first.roundtrip(&mut flatpak);
-    // A window in a frame of ours, so that text has been drawn and the
-    // fonts found, as in any session by the time descriptors run out.
-    let mut drawn = first.adopt(UnixStream::connect(&path).unwrap());
-    first.open_decorated(&mut drawn, "first", (200, 100), BLUE);
-    drop(first.draw());
     let taken = crate::common::take_descriptors(1);
     let waiting = UnixStream::connect(&path).unwrap();
 
@@ -2002,7 +1997,7 @@ fn a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_onc
     let mut app = first.adopt(waiting);
     first.open(&mut app, "app", (200, 100), GREEN);
     let windows = first.compositor().desktop().windows().count();
-    assert_eq!(windows, 2);
+    assert_eq!(windows, 1);
 }
 
 #[test]

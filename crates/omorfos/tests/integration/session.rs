@@ -38,11 +38,6 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is() 
     let path = session.config.path().join("wayland-test");
     let socket = ListeningSocket::bind_absolute(path.clone()).unwrap();
     session.inner().serve(socket, omorfos::Roles::NONE).unwrap();
-    // A window in a frame of ours, so that text has been drawn and the
-    // fonts found, as in any session by the time descriptors run out.
-    let mut first = session.connect();
-    session.open_decorated(&mut first, "first", (200, 100), RED);
-    drop(session.draw());
 
     // Every descriptor taken, as a program can take them, but the one the
     // program that connects next has for its end.
@@ -65,7 +60,31 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_taken_on_once_one_is() 
     }
     let mut program = session.adopt(waiting);
     session.open(&mut program, "late", (200, 100), RED);
-    assert_eq!(session.compositor().desktop().windows().count(), 2);
+    assert_eq!(session.compositor().desktop().windows().count(), 1);
+}
+
+#[test]
+fn text_drawn_first_when_no_descriptor_is_left_is_drawn() {
+    let name = "session::text_drawn_first_when_no_descriptor_is_left_is_drawn";
+    if !crate::common::starved(name) {
+        return;
+    }
+    // A session that has drawn no text yet, as one may not have when a
+    // program takes every descriptor.
+    let mut session = Session::new();
+    let path = session.config.path().join("wayland-test");
+    let socket = ListeningSocket::bind_absolute(path.clone()).unwrap();
+    session.inner().serve(socket, omorfos::Roles::NONE).unwrap();
+    let taken = crate::common::take_descriptors(1);
+    // A program connecting then cannot be taken on, and the user is told
+    // so, in words drawn for the first time with no descriptor to open a
+    // font with.
+    let _waiting = UnixStream::connect(&path).unwrap();
+    for _ in 0..3 {
+        session.step();
+    }
+    drop(session.draw());
+    drop(taken);
 }
 
 #[test]

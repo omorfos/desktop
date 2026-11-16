@@ -391,7 +391,9 @@ the machine's before it fails:
 A test of what happens when a process has no descriptor left runs as a
 process of its own, as the limit is the process's and every other test
 runs in this one: `common::starved` runs the test so, with a lowered
-limit, and `common::take_descriptors` takes what is left.
+limit, and `common::take_descriptors` takes what is left; and
+`common::turns_within` counts the turns it takes in a while, a few for a
+session that waits and thousands for one that spins.
 
 ## Stress
 
